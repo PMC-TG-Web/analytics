@@ -22,13 +22,26 @@ async function importCsv() {
     trim: true,
   });
 
-  // Import in batches
+  // Helper to parse currency/number fields
+  function parseNumber(val) {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    return Number(String(val).replace(/[$,\s]/g, '')) || 0;
+  }
+
   const BATCH_SIZE = 400;
   let imported = 0;
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
     for (const row of batch) {
-      await addDoc(collection(db, 'projects'), row);
+      // Parse cost, sales, hours as numbers
+      const doc = {
+        ...row,
+        cost: parseNumber(row.cost),
+        sales: parseNumber(row.sales),
+        hours: parseNumber(row.hours),
+      };
+      await addDoc(collection(db, 'projects'), doc);
       imported++;
       if (imported % 100 === 0) {
         console.log(`Imported ${imported} records...`);

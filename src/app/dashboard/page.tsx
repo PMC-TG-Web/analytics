@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 // Dynamically import Chart.js to avoid SSR issues
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
@@ -45,16 +45,61 @@ export default function Dashboard() {
     );
   }
 
+  const parseDateValue = (value: any) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === "number") return new Date(value);
+    if (typeof value === "string") {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof value === "object" && typeof value.toDate === "function") {
+      const d = value.toDate();
+      return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+    }
+    return null;
+  };
+
+  const getProjectDate = (project: Project) => {
+    const updated = parseDateValue(project.dateUpdated);
+    const created = parseDateValue(project.dateCreated);
+    if (updated && created) return updated > created ? updated : created;
+    return updated || created || null;
+  };
+
+  const getProjectNumberKey = (project: Project) => {
+    const number = (project.projectNumber ?? "").toString().trim();
+    return number || `__noNumber__${project.id}`;
+  };
+
+  const dedupedProjects = useMemo(() => {
+    const map = new Map<string, Project>();
+    projects.forEach((project) => {
+      const key = getProjectNumberKey(project);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, project);
+        return;
+      }
+      const existingDate = getProjectDate(existing);
+      const candidateDate = getProjectDate(project);
+      if (candidateDate && (!existingDate || candidateDate > existingDate)) {
+        map.set(key, project);
+      }
+    });
+    return Array.from(map.values());
+  }, [projects]);
+
   // Calculate summary metrics
-  const totalSales = projects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
-  const totalCost = projects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
-  const totalHours = projects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+  const totalSales = dedupedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+  const totalCost = dedupedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+  const totalHours = dedupedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
   const markup = totalCost ? ((totalSales - totalCost) / totalCost) * 100 : 0;
 
   // Group by status
-  const statusGroups: Record<string, typeof projects> = {};
-  projects.forEach((p) => {
+  const statusGroups: Record<string, typeof dedupedProjects> = {};
+  dedupedProjects.forEach((p) => {
     const status = p.status || 'Unknown';
     if (!statusGroups[status]) statusGroups[status] = [];
     statusGroups[status].push(p);
@@ -63,7 +108,7 @@ export default function Dashboard() {
   // Calculate win rate: (Complete + In Progress + Accepted) / (Bid Submitted + Lost)
   const getUniqueProjectCount = (statusKey: string) => {
     const group = statusGroups[statusKey] || [];
-    return new Set(group.map(p => `${p.customer ?? ''}|${p.projectNumber ?? ''}`)).size;
+    return new Set(group.map(p => getProjectNumberKey(p))).size;
   };
   
   const wonProjects = getUniqueProjectCount('Complete') + getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
@@ -72,7 +117,17 @@ export default function Dashboard() {
 
   return (
     <main className="p-8" style={{ fontFamily: 'sans-serif', background: '#1a1d23', minHeight: '100vh', color: '#e5e7eb' }}>
-      <h1 style={{ color: '#fff', marginBottom: 32, fontSize: 32 }}>Paradise Masonry Estimating Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+        <h1 style={{ color: '#fff', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <a href="/scheduling" style={{ padding: '8px 16px', background: '#3b82f6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            Scheduling
+          </a>
+          <a href="/wip" style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            WIP Report
+          </a>
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 20, marginBottom: 48 }}>
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
@@ -129,13 +184,11 @@ export default function Dashboard() {
           );
         })}
       </div>
-      {/* Unique project count by customer+projectName */}
+      {/* Unique project count by project number */}
       <div style={{ color: '#9ca3af', marginBottom: 24 }}>
         Project count: {
           Array.from(
-            new Set(
-              projects.map(p => `${p.customer ?? ''}|${p.projectName ?? ''}`)
-            )
+            new Set(dedupedProjects.map(p => getProjectNumberKey(p)))
           ).length
         }
       </div>
@@ -143,7 +196,7 @@ export default function Dashboard() {
       {/* Time Series Line Chart by Month/Year for Hours by Status */}
       <div style={{ marginTop: 64, background: '#2b2d31', borderRadius: 12, boxShadow: '0 4px 6px rgba(0,0,0,0.3)', border: '1px solid #3a3d42', padding: 32 }}>
         <h2 style={{ marginBottom: 24, color: '#fff', fontSize: 20 }}>Hours by Month/Year (Submitted, In Progress, Accepted)</h2>
-        <TimeSeriesChart projects={projects} />
+        <TimeSeriesChart projects={dedupedProjects} />
       </div>
     </main>
   );
@@ -165,7 +218,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
     const sales = group.reduce((sum, p) => sum + (p.sales ?? 0), 0);
     // Count distinct customer+projectNumber combinations
     const uniqueProjects = new Set(
-      group.map(p => `${p.customer ?? ''}|${p.projectNumber ?? ''}`)
+      group.map(p => ((p.projectNumber ?? p.id) || "").toString().trim())
     );
     const count = uniqueProjects.size;
     return { sales, count };
@@ -248,7 +301,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
             <div>
               <div style={{ fontSize: 14, color: '#9ca3af' }}>Lost Opportunities</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444', marginTop: 4 }}>
-                {new Set(statusGroups['Lost'].map(p => `${p.customer ?? ''}|${p.projectNumber ?? ''}`)).size} projects
+                {new Set(statusGroups['Lost'].map(p => ((p.projectNumber ?? p.id) || "").toString().trim())).size} projects
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -256,7 +309,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
                 ${(statusGroups['Lost'].reduce((sum, p) => sum + (p.sales ?? 0), 0) / 1000000).toFixed(1)}M
               </div>
               <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
-                {((new Set(statusGroups['Lost'].map(p => `${p.customer ?? ''}|${p.projectNumber ?? ''}`)).size / totalProjects) * 100).toFixed(1)}% dropoff
+                {((new Set(statusGroups['Lost'].map(p => ((p.projectNumber ?? p.id) || "").toString().trim())).size / totalProjects) * 100).toFixed(1)}% dropoff
               </div>
             </div>
           </div>
@@ -318,27 +371,27 @@ function TimeSeriesChart({ projects }: { projects: any[] }) {
   };
 
   const options = {
-        responsive: true,
-        plugins: {
-          legend: { position: 'top' as const },
-          title: { display: false },
-        },
-        scales: {
-          y: {
-            type: 'linear' as const,
-            beginAtZero: true,
-            title: { display: true, text: 'Hours (Submitted, In Progress, Accepted)' },
-            position: 'left' as const,
-          },
-          y1: {
-            type: 'linear' as const,
-            beginAtZero: true,
-            title: { display: true, text: 'Hours (Bid Submitted)' },
-            position: 'right' as const,
-            grid: { drawOnChartArea: false },
-          },
-          x: { title: { display: true, text: 'Month/Year' } },
-        },
+    responsive: true,
+    plugins: {
+      legend: { position: 'top' as const },
+      title: { display: false },
+    },
+    scales: {
+      y: {
+        type: 'linear' as const,
+        beginAtZero: true,
+        title: { display: true, text: 'Hours (Submitted, In Progress, Accepted)' },
+        position: 'left' as const,
+      },
+      y1: {
+        type: 'linear' as const,
+        beginAtZero: true,
+        title: { display: true, text: 'Hours (Bid Submitted)' },
+        position: 'right' as const,
+        grid: { drawOnChartArea: false },
+      },
+      x: { title: { display: true, text: 'Month/Year' } },
+    },
   };
 
   return (

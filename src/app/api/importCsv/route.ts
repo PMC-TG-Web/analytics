@@ -14,7 +14,8 @@ export async function GET() {
       fileContent = fs.readFileSync(csvPath, 'utf8');
     } catch (fileErr) {
       console.error('Error reading CSV file:', fileErr);
-      return NextResponse.json({ success: false, error: 'CSV file read error', details: fileErr.message });
+      const errorMessage = fileErr instanceof Error ? fileErr.message : 'Unknown error';
+      return NextResponse.json({ success: false, error: 'CSV file read error', details: errorMessage });
     }
 
     // Parse CSV
@@ -27,7 +28,8 @@ export async function GET() {
       });
     } catch (parseErr) {
       console.error('Error parsing CSV:', parseErr);
-      return NextResponse.json({ success: false, error: 'CSV parse error', details: parseErr.message });
+      const errorMessage = parseErr instanceof Error ? parseErr.message : 'Unknown error';
+      return NextResponse.json({ success: false, error: 'CSV parse error', details: errorMessage });
     }
 
     // Import all rows, but only add new ones (by Project Number)
@@ -38,7 +40,8 @@ export async function GET() {
       existingProjectDocs = await getDocs(projectsCol);
     } catch (dbErr) {
       console.error('Error accessing Firestore:', dbErr);
-      return NextResponse.json({ success: false, error: 'Firestore access error', details: dbErr.message });
+      const errorMessage = dbErr instanceof Error ? dbErr.message : 'Unknown error';
+      return NextResponse.json({ success: false, error: 'Firestore access error', details: errorMessage });
     }
     let deletedCount = 0;
     for (const docSnap of existingProjectDocs.docs) {

@@ -779,7 +779,7 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
           display: true,
           color: "#22c55e",
           font: { weight: "bold", size: 10 },
-          formatter: (value) => {
+          formatter: (value: any) => {
             const percent = ((value / 3900) * 100).toFixed(0);
             return `${percent}%`;
           },

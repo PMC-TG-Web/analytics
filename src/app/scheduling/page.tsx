@@ -132,7 +132,7 @@ export default function SchedulingPage() {
   }, [months]);
 
   const uniqueJobs = useMemo(() => {
-    const qualifyingStatuses = ["Accepted", "In Progress"];
+    const qualifyingStatuses = ["In Progress"];
     const priorityStatuses = ["Accepted", "In Progress", "Complete"];
     
     // Step 1: Filter active projects with exclusions

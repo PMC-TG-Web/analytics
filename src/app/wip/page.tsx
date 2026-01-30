@@ -184,7 +184,7 @@ export default function WIPReportPage() {
   const filteredMonths = Object.keys(filteredMonthlyData).sort();
 
   // Calculate unscheduled hours from ALL qualifying projects with filters
-  const qualifyingStatuses = ["Accepted", "In Progress"];
+  const qualifyingStatuses = ["In Progress"];
   const priorityStatuses = ["Accepted", "In Progress", "Complete"];
   
   function parseDateValue(value: any): Date | null {
@@ -709,7 +709,7 @@ export default function WIPReportPage() {
                     <div style={{ textAlign: "right" }}>Hours</div>
                   </div>
                   {data.jobs.length > 0 ? (
-                    data.jobs.map((job, idx) => (
+                    data.jobs.filter((job) => (job.hours ?? 0) > 0).map((job, idx) => (
                       <div key={idx} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 13, color: "#222", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #f0f0f0" }}>
                         <div>{job.customer}</div>
                         <div>{job.projectName}</div>

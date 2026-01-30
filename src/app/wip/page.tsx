@@ -1,6 +1,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { db } from "@/firebase";
+import { collection, getDocs } from "firebase/firestore";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -81,17 +83,20 @@ export default function WIPReportPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [schedulesRes, projectsRes] = await Promise.all([
-          fetch("/api/scheduling"),
-          fetch("/api/projects") // We'll need to create this endpoint
-            .catch(() => ({ json: async () => ({ data: [] }) }))
-        ]);
+        // Fetch projects directly from Firestore
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsData = projectsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setProjects(projectsData);
+        console.log("Projects loaded from Firestore:", projectsData.length);
         
+        // Fetch schedules from API
+        const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
         setSchedules(schedulesJson.data || []);
-        
-        const projectsJson = await projectsRes.json();
-        setProjects(projectsJson.data || []);
+        console.log("Schedules loaded from API:", schedulesJson.data?.length || 0);
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -153,9 +158,10 @@ export default function WIPReportPage() {
     });
 
     if (filteredJobs.length > 0) {
+      const filteredHours = filteredJobs.reduce((sum, job) => sum + (job.hours ?? 0), 0);
       filteredMonthlyData[month] = {
         month,
-        hours: filteredJobs.reduce((sum, j) => sum + j.hours, 0),
+        hours: filteredHours,
         jobs: filteredJobs,
       };
     }
@@ -316,23 +322,110 @@ export default function WIPReportPage() {
   
   const unscheduledHours = totalQualifyingHours - totalScheduledHours;
 
+  const projectKeyForSchedule = (customer?: string, projectNumber?: string, projectName?: string) => {
+    return `${customer ?? ""}|${projectNumber ?? ""}|${projectName ?? ""}`;
+  };
+
+  const bidSubmittedSalesByMonth: Record<string, number> = {};
+  dedupedByCustomer.forEach((project) => {
+    if ((project.status || "") !== "Bid Submitted") return;
+    const projectDate = parseDateValue(project.dateCreated);
+    if (!projectDate) return;
+    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+    const sales = Number(project.sales ?? 0);
+    if (!Number.isFinite(sales)) return;
+    bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
+  });
+  const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
+  const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
+  bidSubmittedSalesMonths.forEach((month) => {
+    const [year, m] = month.split("-");
+    if (!bidSubmittedSalesYearMonthMap[year]) {
+      bidSubmittedSalesYearMonthMap[year] = {};
+    }
+    bidSubmittedSalesYearMonthMap[year][Number(m)] = bidSubmittedSalesByMonth[month];
+  });
+  const bidSubmittedSalesYears = Object.keys(bidSubmittedSalesYearMonthMap).sort();
+
+  const scheduledSalesByMonth: Record<string, number> = {};
+  
+  // Build a map of schedule keys to TOTAL project sales (sum of all matching projects)
+  // Note: Each project key might have multiple projects, we need to sum them all
+  const scheduleSalesMap = new Map<string, number>();
+  projects.forEach((project) => {
+    // Only include qualifying projects
+    if (!qualifyingStatuses.includes(project.status || "")) return;
+    
+    const key = projectKeyForSchedule(project.customer, project.projectNumber, project.projectName);
+    const sales = Number(project.sales ?? 0);
+    if (!Number.isFinite(sales)) return;
+    
+    // Add to existing or create new entry
+    const currentTotal = scheduleSalesMap.get(key) || 0;
+    scheduleSalesMap.set(key, currentTotal + sales);
+  });
+  
+  console.log("=== SCHEDULED SALES DEBUG ===");
+  console.log("Schedules:", schedules.length);
+  console.log("Unique project keys with qualifying status:", scheduleSalesMap.size);
+  console.log("Total qualifying sales:", Array.from(scheduleSalesMap.values()).reduce((sum, val) => sum + val, 0));
+  
+  let matchedCount = 0;
+  let unmatchedCount = 0;
+  
+  // For each schedule, distribute sales across months based on allocation percentages
+  schedules.forEach((schedule) => {
+    const key = schedule.jobKey || projectKeyForSchedule(schedule.customer, schedule.projectNumber, schedule.projectName);
+    const projectSales = scheduleSalesMap.get(key);
+    
+    if (!projectSales) {
+      unmatchedCount++;
+      return;
+    }
+
+    matchedCount++;
+
+    schedule.allocations.forEach((alloc) => {
+      const percent = Number(alloc.percent ?? 0);
+      if (!Number.isFinite(percent) || percent <= 0) return;
+      const monthKey = alloc.month;
+      const monthlySales = projectSales * (percent / 100);
+      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
+    });
+  });
+  
+  console.log("Matched schedules:", matchedCount);
+  console.log("Unmatched schedules:", unmatchedCount);
+  console.log("Scheduled sales by month:", scheduledSalesByMonth);
+
+  const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
+  const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
+  scheduledSalesMonths.forEach((month) => {
+    const [year, m] = month.split("-");
+    if (!scheduledSalesYearMonthMap[year]) {
+      scheduledSalesYearMonthMap[year] = {};
+    }
+    scheduledSalesYearMonthMap[year][Number(m)] = scheduledSalesByMonth[month];
+  });
+  const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
+
   if (loading) {
     return (
-      <main className="p-8" style={{ background: "#f3f4f6", minHeight: "100vh", color: "#111827" }}>
+      <main className="p-8" style={{ background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
         <div>Loading...</div>
       </main>
     );
   }
 
   return (
-    <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f3f4f6", minHeight: "100vh", color: "#111827" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, background: "#111827", padding: "16px 20px", borderRadius: 10 }}>
-        <h1 style={{ color: "#fff", fontSize: 28, margin: 0 }}>Work in Progress (WIP) Report</h1>
+    <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h1 style={{ color: "#003DA5", fontSize: 32, margin: 0 }}>WIP Report</h1>
         <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#374151", color: "#fff", borderRadius: 6, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Dashboard
           </a>
-          <a href="/scheduling" style={{ padding: "8px 16px", background: "#f97316", color: "#fff", borderRadius: 6, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Scheduling
           </a>
         </div>
@@ -373,25 +466,45 @@ export default function WIPReportPage() {
 
       {/* Hours Line Chart */}
       {months.length > 0 && (
-        <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42", marginBottom: 32 }}>
-          <h2 style={{ color: "#fff", marginBottom: 16 }}>Scheduled Hours Trend</h2>
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Hours Trend</h2>
           <div style={{ width: "100%", minHeight: 50 }}>
             <HoursLineChart months={months} monthlyData={filteredMonthlyData} />
           </div>
         </div>
       )}
 
+      {/* Scheduled Sales Line Chart */}
+      {scheduledSalesMonths.length > 0 && (
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Sales Trend</h2>
+          <div style={{ width: "100%", minHeight: 50 }}>
+            <ScheduledSalesChart months={scheduledSalesMonths} salesByMonth={scheduledSalesByMonth} />
+          </div>
+        </div>
+      )}
+
+      {/* Bid Submitted Sales Line Chart */}
+      {bidSubmittedSalesMonths.length > 0 && (
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Bid Submitted Sales Trend</h2>
+          <div style={{ width: "100%", minHeight: 50 }}>
+            <BidSubmittedSalesChart months={bidSubmittedSalesMonths} salesByMonth={bidSubmittedSalesByMonth} />
+          </div>
+        </div>
+      )}
+
       {/* Year/Month Matrix Table */}
       {months.length > 0 && (
-        <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42", marginBottom: 32 }}>
-          <h2 style={{ color: "#fff", marginBottom: 16 }}>Hours by Month</h2>
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Hours by Month</h2>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid #3a3d42" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#9ca3af", fontWeight: 600 }}>Year</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#9ca3af", fontWeight: 600 }}>
+                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
                       {name}
                     </th>
                   ))}
@@ -417,9 +530,81 @@ export default function WIPReportPage() {
         </div>
       )}
 
+      {/* Scheduled Sales by Month */}
+      {scheduledSalesYears.length > 0 && (
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Sales by Month</h2>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #3a3d42" }}>
+                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
+                  {monthNames.map((name, idx) => (
+                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
+                      {name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {scheduledSalesYears.map((year) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
+                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                    {monthNames.map((_, idx) => {
+                      const sales = scheduledSalesYearMonthMap[year][idx + 1] || 0;
+                      return (
+                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                          {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Bid Submitted Sales by Month */}
+      {bidSubmittedSalesYears.length > 0 && (
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Bid Submitted Sales by Month</h2>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #3a3d42" }}>
+                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
+                  {monthNames.map((name, idx) => (
+                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
+                      {name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bidSubmittedSalesYears.map((year) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
+                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                    {monthNames.map((_, idx) => {
+                      const sales = bidSubmittedSalesYearMonthMap[year][idx + 1] || 0;
+                      return (
+                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                          {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       {months.length > 0 ? (
-        <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42" }}>
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ color: "#fff", margin: 0 }}>Monthly Breakdown</h2>
             <button
@@ -519,40 +704,43 @@ export default function WIPReportPage() {
               
               const data = filteredMonthlyData[month];
               return (
-                <div key={month} style={{ marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #3a3d42" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-                    <h3 style={{ color: "#fff", fontSize: 18 }}>{formatMonthLabel(month)}</h3>
-                    <div style={{ color: "#22c55e", fontWeight: 700, fontSize: 18 }}>
+                <div key={month} style={{ background: "#ffffff", borderRadius: 12, border: "1px solid #ddd", padding: 24, marginBottom: 24 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+                    <h3 style={{ color: "#003DA5", fontSize: 20, margin: 0 }}>{formatMonthLabel(month)}</h3>
+                    <div style={{ color: "#0066CC", fontWeight: 700, fontSize: 18 }}>
                       {data.hours.toFixed(1)} hours
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 12, color: "#666", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #ddd", fontWeight: 600 }}>
                     <div>Customer</div>
                     <div>Project</div>
                     <div style={{ textAlign: "right" }}>Hours</div>
                   </div>
-
-                  {data.jobs.map((job, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 13, color: "#e5e7eb", marginBottom: 6 }}>
-                      <div>{job.customer}</div>
-                      <div>{job.projectName}</div>
-                      <div style={{ textAlign: "right", color: "#22c55e" }}>{job.hours.toFixed(1)}</div>
-                    </div>
-                  ))}
+                  {data.jobs.length > 0 ? (
+                    data.jobs.map((job, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 13, color: "#222", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <div>{job.customer}</div>
+                        <div>{job.projectName}</div>
+                        <div style={{ textAlign: "right", color: "#0066CC", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: "#999", padding: 12, textAlign: "center" }}>No jobs scheduled for this month</div>
+                  )}
                 </div>
               );
             }).filter(Boolean)
           ) : (
-            <div style={{ color: "#9ca3af", textAlign: "center", padding: 20 }}>
+            <div style={{ color: "#999", textAlign: "center", padding: 20 }}>
               No data matches the selected filters.
             </div>
           )}
         </div>
       ) : (
-        <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42", textAlign: "center", color: "#9ca3af" }}>
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", textAlign: "center", color: "#666" }}>
           No schedules created yet. Go to{" "}
-          <a href="/scheduling" style={{ color: "#3b82f6", textDecoration: "underline" }}>
+          <a href="/scheduling" style={{ color: "#0066CC", textDecoration: "underline" }}>
             Scheduling
           </a>{" "}
           to create a schedule.
@@ -649,6 +837,170 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         },
         grid: {
           color: "#3a3d42",
+        },
+      },
+    },
+  };
+
+  return <Line data={chartData} options={options} />;
+}
+
+function ScheduledSalesChart({ months, salesByMonth }: { months: string[]; salesByMonth: Record<string, number> }) {
+  const sortedMonths = [...months].sort();
+  const sales = sortedMonths.map(month => salesByMonth[month] || 0);
+  const labels = sortedMonths.map(month => {
+    const [year, m] = month.split("-");
+    const date = new Date(Number(year), Number(m) - 1, 1);
+    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  });
+
+  const maxSales = Math.max(...sales, 0);
+
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: "Scheduled Sales",
+        data: sales,
+        borderColor: "#003DA5",
+        backgroundColor: "rgba(0, 61, 165, 0.1)",
+        tension: 0.3,
+        fill: true,
+        pointBackgroundColor: "#003DA5",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 4,
+      },
+    ],
+  };
+
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "top" as const,
+        labels: {
+          color: "#666",
+          boxWidth: 12,
+        },
+      },
+      tooltip: {
+        backgroundColor: "rgba(0, 0, 0, 0.8)",
+        titleColor: "#fff",
+        bodyColor: "#e5e7eb",
+        borderColor: "#ddd",
+        borderWidth: 1,
+        callbacks: {
+          label: (context) => {
+            const value = context.parsed.y || 0;
+            return `$${value.toLocaleString()}`;
+          },
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: maxSales ? maxSales * 1.1 : undefined,
+        ticks: {
+          color: "#666",
+          callback: function(value) {
+            return `$${(value as number).toLocaleString()}`;
+          },
+        },
+        grid: {
+          color: "#e5e7eb",
+        },
+      },
+      x: {
+        ticks: {
+          color: "#666",
+        },
+        grid: {
+          color: "#f0f0f0",
+        },
+      },
+    },
+  };
+
+  return <Line data={chartData} options={options} />;
+}
+
+function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; salesByMonth: Record<string, number> }) {
+  const sortedMonths = [...months].sort();
+  const sales = sortedMonths.map(month => salesByMonth[month] || 0);
+  const labels = sortedMonths.map(month => {
+    const [year, m] = month.split("-");
+    const date = new Date(Number(year), Number(m) - 1, 1);
+    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  });
+
+  const maxSales = Math.max(...sales, 0);
+
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: "Bid Submitted Sales",
+        data: sales,
+        borderColor: "#0066CC",
+        backgroundColor: "rgba(0, 102, 204, 0.1)",
+        tension: 0.3,
+        fill: true,
+        pointBackgroundColor: "#0066CC",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 4,
+      },
+    ],
+  };
+
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "top" as const,
+        labels: {
+          color: "#666",
+          boxWidth: 12,
+        },
+      },
+      tooltip: {
+        backgroundColor: "rgba(0, 0, 0, 0.8)",
+        titleColor: "#fff",
+        bodyColor: "#e5e7eb",
+        borderColor: "#ddd",
+        borderWidth: 1,
+        callbacks: {
+          label: (context) => {
+            const value = context.parsed.y || 0;
+            return `$${value.toLocaleString()}`;
+          },
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: maxSales ? maxSales * 1.1 : undefined,
+        ticks: {
+          color: "#666",
+          callback: function(value) {
+            return `$${(value as number).toLocaleString()}`;
+          },
+        },
+        grid: {
+          color: "#e5e7eb",
+        },
+      },
+      x: {
+        ticks: {
+          color: "#666",
+        },
+        grid: {
+          color: "#f0f0f0",
         },
       },
     },

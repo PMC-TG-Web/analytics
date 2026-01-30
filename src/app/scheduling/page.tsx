@@ -471,34 +471,34 @@ export default function SchedulingPage() {
   }
 
   return (
-    <main className="p-8" style={{ fontFamily: "sans-serif", background: "#1a1d23", minHeight: "100vh", color: "#e5e7eb" }}>
+    <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ color: "#fff", fontSize: 32, margin: 0 }}>Job Scheduling</h1>
+        <h1 style={{ color: "#003DA5", fontSize: 32, margin: 0 }}>Scheduling</h1>
         <div style={{ display: "flex", gap: 12 }}>
-          <a href="/" style={{ padding: "8px 16px", background: "#3b82f6", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Dashboard
           </a>
-          <a href="/wip" style={{ padding: "8px 16px", background: "#8b5cf6", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/wip" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             WIP Report
           </a>
         </div>
       </div>
 
-      <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42", marginBottom: 24 }}>
+      <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#fff", fontSize: 20, margin: 0 }}>Scheduled Hours by Month</h2>
           <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Total Qualifying Hours</div>
-              <div style={{ color: "#22c55e", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalQualifying)}</div>
+              <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Total Qualifying Hours</div>
+              <div style={{ color: "#0066CC", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalQualifying)}</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Total Scheduled</div>
-              <div style={{ color: "#3b82f6", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalScheduled)}</div>
+              <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Total Scheduled</div>
+              <div style={{ color: "#10b981", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalScheduled)}</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Unscheduled Hours</div>
-              <div style={{ color: unscheduledHoursCalc.unscheduled > 0 ? "#f59e0b" : "#22c55e", fontSize: 20, fontWeight: 700 }}>
+              <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Unscheduled Hours</div>
+              <div style={{ color: unscheduledHoursCalc.unscheduled > 0 ? "#ef4444" : "#0066CC", fontSize: 20, fontWeight: 700 }}>
                 {Math.round(unscheduledHoursCalc.unscheduled)}
               </div>
             </div>
@@ -511,21 +511,21 @@ export default function SchedulingPage() {
               return sum + (job.totalHours * (allocation / 100));
             }, 0);
             return (
-              <div key={month} style={{ background: "#1a1d23", padding: 16, borderRadius: 8, border: "1px solid #3a3d42", textAlign: "center" }}>
-                <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div key={month} style={{ background: "#ffffff", padding: 16, borderRadius: 8, border: "1px solid #ddd", textAlign: "center" }}>
+                <div style={{ color: "#666", fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {formatMonthLabel(month)}
                 </div>
-                <div style={{ color: "#22c55e", fontSize: 24, fontWeight: 700 }}>
+                <div style={{ color: "#0066CC", fontSize: 24, fontWeight: 700 }}>
                   {Math.round(totalHours)}
                 </div>
-                <div style={{ color: "#6b7280", fontSize: 11, marginTop: 4 }}>hours</div>
+                <div style={{ color: "#999", fontSize: 11, marginTop: 4 }}>hours</div>
               </div>
             );
           })}
         </div>
       </div>
 
-      <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42" }}>
+      <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#fff", fontSize: 20, margin: 0 }}>Jobs</h2>
           <button
@@ -547,17 +547,17 @@ export default function SchedulingPage() {
         <div style={{ maxHeight: "500px", overflowY: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
-              <tr style={{ borderBottom: "2px solid #3a3d42", background: "#2b2d31" }}>
-                <th onClick={() => handleSort("customer")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "customer" ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+              <tr style={{ borderBottom: "2px solid #ddd", background: "#f9f9f9" }}>
+                <th onClick={() => handleSort("customer")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "customer" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Customer {sortColumn === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("projectName")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "projectName" ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("projectName")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "projectName" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Job Name {sortColumn === "projectName" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("status")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "status" ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("status")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "status" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Status {sortColumn === "status" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }}>Scheduled Hours</th>
@@ -571,16 +571,16 @@ export default function SchedulingPage() {
             </thead>
             <tbody>
               {filteredJobs.map((job) => {
-                const statusColor = job.status === "Accepted" ? "#22c55e" : job.status === "In Progress" ? "#f59e0b" : "#ef4444";
+                const statusColor = job.status === "Accepted" ? "#10b981" : job.status === "In Progress" ? "#f59e0b" : "#ef4444";
                 return (
-                  <tr key={job.jobKey} style={{ borderBottom: "1px solid #3a3d42" }}>
-                    <td style={{ padding: "12px 8px", color: "#e5e7eb" }}>{job.customer}</td>
-                    <td style={{ padding: "12px 8px", color: "#e5e7eb" }}>{job.projectName}</td>
+                  <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
+                    <td style={{ padding: "12px 8px", color: "#222" }}>{job.customer}</td>
+                    <td style={{ padding: "12px 8px", color: "#222" }}>{job.projectName}</td>
                     <td style={{ padding: "12px 8px", color: statusColor, fontWeight: 600 }}>{job.status}</td>
-                    <td style={{ padding: "12px 8px", color: "#22c55e", fontWeight: 700, textAlign: "right" }}>
+                    <td style={{ padding: "12px 8px", color: "#0066CC", fontWeight: 700, textAlign: "right" }}>
                       {job.totalHours.toLocaleString()}
                     </td>
-                    <td style={{ padding: "12px 8px", color: "#f59e0b", fontWeight: 700, textAlign: "right" }}>
+                    <td style={{ padding: "12px 8px", color: "#10b981", fontWeight: 700, textAlign: "right" }}>
                       {Math.round(job.totalHours * (Object.values(job.allocations).reduce((sum, val) => sum + (val || 0), 0) / 100))}
                     </td>
                     {months.map((month) => {
@@ -597,9 +597,9 @@ export default function SchedulingPage() {
                               width: "60px",
                               padding: "6px 8px",
                               borderRadius: 6,
-                              background: "#1a1d23",
-                              color: "#e5e7eb",
-                              border: "1px solid #3a3d42",
+                              background: "#fff",
+                              color: "#222",
+                              border: "1px solid #ddd",
                               textAlign: "center",
                             }}
                           />

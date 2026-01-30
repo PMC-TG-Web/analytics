@@ -25,6 +25,8 @@ type Project = {
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   useEffect(() => {
     async function fetchData() {
@@ -73,10 +75,27 @@ export default function Dashboard() {
     return `${number}|${customer}` || `__noKey__${project.id}`;
   };
 
-  const aggregatedProjects = useMemo(() => {
-    // Filter out archived projects and excluded criteria
-    const activeProjects = projects.filter(p => {
+  const filteredProjects = useMemo(() => {
+    return projects.filter(p => {
       if (p.projectArchived) return false;
+      
+      // Apply date range filter
+      if (startDate || endDate) {
+        const projectDate = getProjectDate(p);
+        if (!projectDate) return false;
+        
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (projectDate < start) return false;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (projectDate > end) return false;
+        }
+      }
       const customer = (p.customer ?? "").toString().toLowerCase();
       if (customer.includes("sop inc")) return false;
       const projectName = (p.projectName ?? "").toString().toLowerCase();
@@ -93,6 +112,10 @@ export default function Dashboard() {
       if (projectNumber === "701 poplar church rd") return false;
       return true;
     });
+  }, [projects, startDate, endDate]);
+
+  const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
+    const activeProjects = filteredProjects;
     
     // Group by project number/name to find duplicates with different customers
     const projectIdentifierMap = new Map<string, Project[]>();
@@ -214,8 +237,8 @@ export default function Dashboard() {
       
       map.set(key, baseProject);
     });
-    return Array.from(map.values());
-  }, [projects]);
+    return { aggregated: Array.from(map.values()), dedupedByCustomer };
+  }, [filteredProjects]);
 
   // Calculate summary metrics
   const totalSales = aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
@@ -231,6 +254,53 @@ export default function Dashboard() {
     if (!statusGroups[status]) statusGroups[status] = [];
     statusGroups[status].push(p);
   });
+
+  const statusGroupsForLabor = useMemo(() => {
+    const groups: Record<string, Project[]> = {};
+    dedupedByCustomer.forEach((p) => {
+      const status = p.status || 'Unknown';
+      if (!groups[status]) groups[status] = [];
+      groups[status].push(p);
+    });
+    return groups;
+  }, [dedupedByCustomer]);
+
+  const bidSubmittedLabor = useMemo(() => {
+    const targetGroups = [
+      'slab on grade labor',
+      'site concrete labor',
+      'wall labor',
+      'foundation labor',
+    ];
+    const totals: Record<string, number> = {
+      'Slab On Grade Labor': 0,
+      'Site Concrete Labor': 0,
+      'Wall Labor': 0,
+      'Foundation Labor': 0,
+    };
+    const bidProjects = statusGroupsForLabor['Bid Submitted'] || [];
+    bidProjects.forEach((p) => {
+      const groupName = (p.pmcGroup ?? '').toString().trim();
+      const normalized = groupName.toLowerCase();
+      if (!normalized) return;
+      const hours = Number(p.hours ?? 0);
+      if (!Number.isFinite(hours)) return;
+
+      if (normalized === targetGroups[0]) totals['Slab On Grade Labor'] += hours;
+      if (normalized === targetGroups[1]) totals['Site Concrete Labor'] += hours;
+      if (normalized === targetGroups[2]) totals['Wall Labor'] += hours;
+      if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
+    });
+
+    const totalHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    const breakdown = Object.entries(totals).map(([label, value]) => ({
+      label,
+      hours: value,
+      percent: totalHours > 0 ? (value / totalHours) * 100 : 0,
+    }));
+
+    return { totalHours, breakdown };
+  }, [statusGroupsForLabor]);
 
   // Calculate win rate including archived jobs as lost
   // For win rate, we need to count archived projects with same filters applied
@@ -265,18 +335,92 @@ export default function Dashboard() {
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
   return (
-    <main className="p-8" style={{ fontFamily: 'sans-serif', background: '#1a1d23', minHeight: '100vh', color: '#e5e7eb' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-        <h1 style={{ color: '#fff', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
+    <main className="p-8" style={{ fontFamily: 'sans-serif', background: '#f5f5f5', minHeight: '100vh', color: '#222' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <h1 style={{ color: '#003DA5', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <a href="/scheduling" style={{ padding: '8px 16px', background: '#3b82f6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: '8px 16px', background: '#003DA5', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Scheduling
           </a>
-          <a href="/wip" style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/wip" style={{ padding: '8px 16px', background: '#0066CC', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             WIP Report
           </a>
         </div>
       </div>
+      
+      {/* Date Range Filter */}
+      <div style={{ 
+        background: '#ffffff', 
+        borderRadius: 12, 
+        padding: '16px 24px', 
+        marginBottom: 32,
+        border: '1px solid #ddd',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 20
+      }}>
+        <div style={{ color: '#666', fontWeight: 600 }}>Date Range:</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 14 }}>From:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                padding: '6px 12px',
+                color: '#222',
+                fontSize: 14
+              }}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 14 }}>To:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                padding: '6px 12px',
+                color: '#222',
+                fontSize: 14
+              }}
+            />
+          </label>
+          {(startDate || endDate) && (
+            <button
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              style={{
+                background: '#0066CC',
+                border: 'none',
+                borderRadius: 6,
+                padding: '6px 12px',
+                color: '#fff',
+                fontSize: 14,
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {(startDate || endDate) && (
+          <div style={{ color: '#0066CC', fontSize: 14, marginLeft: 'auto' }}>
+            {Array.from(new Set(aggregatedProjects.map(p => getProjectKey(p)))).length} projects in date range
+          </div>
+        )}
+      </div>
+      
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 20, marginBottom: 48 }}>
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
@@ -285,10 +429,10 @@ export default function Dashboard() {
         <SummaryCard label="Markup %" value={markup} suffix="%" decimals={1} large />
         <SummaryCard label="Win Rate" value={winRate} suffix="%" decimals={1} large />
       </div>
-      <h2 style={{ color: '#fff', marginBottom: 24, fontSize: 24 }}>Sales Funnel</h2>
+      <h2 style={{ color: '#003DA5', marginBottom: 24, fontSize: 24 }}>Sales Funnel</h2>
       <FunnelChart statusGroups={statusGroups} />
       
-      <h2 style={{ color: '#fff', marginBottom: 24, marginTop: 64, fontSize: 24 }}>Status Breakdown</h2>
+      <h2 style={{ color: '#003DA5', marginBottom: 24, marginTop: 64, fontSize: 24 }}>Status Breakdown</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 48 }}>
         {Object.entries(statusGroups).map(([status, group]) => {
           const sales = group.reduce((sum, p) => sum + (p.sales ?? 0), 0);
@@ -296,21 +440,36 @@ export default function Dashboard() {
           const hours = group.reduce((sum, p) => sum + (p.hours ?? 0), 0);
           const rph = hours ? sales / hours : 0;
           const markup = cost ? ((sales - cost) / cost) * 100 : 0;
+          const excludedGroupPatterns = ['part', 'equipment', 'subcontract'];
+          const laborGroupSource = statusGroupsForLabor[status] || [];
+          const laborByGroup = laborGroupSource.reduce((acc, p) => {
+            const key = (p.pmcGroup ?? 'Unassigned').toString().trim() || 'Unassigned';
+            const labor = Number(p.hours ?? 0);
+            acc[key] = (acc[key] ?? 0) + (Number.isFinite(labor) ? labor : 0);
+            return acc;
+          }, {} as Record<string, number>);
+          const laborGroupEntries = Object.entries(laborByGroup)
+            .filter(([groupName, value]) => {
+              if (value === 0) return false;
+              const normalized = groupName.toLowerCase();
+              return !excludedGroupPatterns.some((pattern) => normalized.includes(pattern));
+            })
+            .sort((a, b) => b[1] - a[1]);
           return (
             <div key={status} style={{
-              background: '#2b2d31',
+              background: '#ffffff',
               borderRadius: 12,
               padding: '24px 32px',
               minWidth: 330,
-              boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-              border: '1px solid #3a3d42',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              border: '1px solid #ddd',
               marginBottom: 12,
             }}>
-              <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#fff' }}>{status}</div>
+              <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#003DA5' }}>{status}</div>
               <dl style={{ margin: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <dt style={{ color: '#9ca3af' }}>Sales</dt>
-                  <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#22c55e' }}>{`$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}</dd>
+                  <dt style={{ color: '#666' }}>Sales</dt>
+                  <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC' }}>{`$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}</dd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <dt style={{ color: '#9ca3af' }}>Cost</dt>
@@ -329,15 +488,74 @@ export default function Dashboard() {
                   <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#e5e7eb' }}>{`${markup.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</dd>
                 </div>
               </dl>
+              <div style={{ marginTop: 16, borderTop: '1px solid #ddd', paddingTop: 12 }}>
+                <div style={{ color: '#666', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Hours by PMC Group
+                </div>
+                {laborGroupEntries.length === 0 ? (
+                  <div style={{ color: '#999', fontSize: 12 }}>No hours</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {laborGroupEntries.map(([pmcGroup, labor]) => (
+                      <div key={pmcGroup} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#666' }}>{pmcGroup}</span>
+                        <span style={{ color: '#222', fontWeight: 600 }}>
+                          {labor.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
+        <div style={{
+          background: '#ffffff',
+          borderRadius: 12,
+          padding: '24px 32px',
+          minWidth: 330,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          border: '1px solid #ddd',
+          marginBottom: 12,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#003DA5' }}>
+            Bid Submitted Labor (Hours)
+          </div>
+          <dl style={{ margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <dt style={{ color: '#666' }}>Total Hours</dt>
+              <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC' }}>
+                {bidSubmittedLabor.totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </dd>
+            </div>
+          </dl>
+          <div style={{ marginTop: 16, borderTop: '1px solid #ddd', paddingTop: 12 }}>
+            <div style={{ color: '#666', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Breakdown
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {bidSubmittedLabor.breakdown.map((item) => (
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: '#666' }}>{item.label}</span>
+                  <span style={{ color: '#222', fontWeight: 600 }}>
+                    {item.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({item.percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%)
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
       {/* Unique project count by project number */}
       <div style={{ color: '#9ca3af', marginBottom: 24 }}>
         Project count: {
           Array.from(
-            new Set(aggregatedProjects.map(p => getProjectKey(p)))
+            new Set(
+              aggregatedProjects
+                .filter(p => ['Bid Submitted', 'In Progress', 'Accepted'].includes(p.status || ''))
+                .map(p => getProjectKey(p))
+            )
           ).length
         }
       </div>
@@ -355,11 +573,11 @@ export default function Dashboard() {
 function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) {
   // Define funnel stages in order
   const funnelStages = [
-    { key: 'Estimating', label: 'Estimating', color: '#3b82f6' },
-    { key: 'Bid Submitted', label: 'Bid Submitted', color: '#8b5cf6' },
-    { key: 'Accepted', label: 'Accepted', color: '#22c55e' },
+    { key: 'Estimating', label: 'Estimating', color: '#0066CC' },
+    { key: 'Bid Submitted', label: 'Bid Submitted', color: '#003DA5' },
+    { key: 'Accepted', label: 'Accepted', color: '#10b981' },
     { key: 'In Progress', label: 'In Progress', color: '#f59e0b' },
-    { key: 'Complete', label: 'Complete', color: '#10b981' },
+    { key: 'Complete', label: 'Complete', color: '#059669' },
   ];
 
   const getFunnelData = (stageKey: string) => {
@@ -379,7 +597,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
   }, 0);
 
   return (
-    <div style={{ marginBottom: 48, background: '#2b2d31', borderRadius: 12, padding: 32, border: '1px solid #3a3d42' }}>
+    <div style={{ marginBottom: 48, background: '#ffffff', borderRadius: 12, padding: 32, border: '1px solid #ddd' }}>
       {/* Metrics Row */}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: 24 }}>
         {funnelStages.map((stage) => {
@@ -387,8 +605,8 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
           const percentage = totalProjects > 0 ? ((count / totalProjects) * 100).toFixed(1) : '0.0';
           return (
             <div key={stage.key} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 4 }}>{stage.label}</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 2 }}>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>{stage.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#222', marginBottom: 2 }}>
                 {count}
               </div>
               <div style={{ fontSize: 12, color: stage.color }}>
@@ -424,7 +642,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
                 position: 'absolute', 
                 bottom: -24, 
                 fontSize: 12, 
-                color: '#9ca3af',
+                color: '#666',
                 whiteSpace: 'nowrap'
               }}>
                 Step {index + 1}
@@ -437,7 +655,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
       {/* Stage Labels */}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 32 }}>
         {funnelStages.map((stage, index) => (
-          <div key={stage.key} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>
+          <div key={stage.key} style={{ textAlign: 'center', fontSize: 12, color: '#666' }}>
             Step {index + 1}<br />{stage.label}
           </div>
         ))}
@@ -445,10 +663,10 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
 
       {/* Lost Section */}
       {statusGroups['Lost'] && statusGroups['Lost'].length > 0 && (
-        <div style={{ marginTop: 32, padding: 20, background: '#1a1d23', borderRadius: 8, border: '1px solid #ef4444' }}>
+        <div style={{ marginTop: 32, padding: 20, background: '#fff5f5', borderRadius: 8, border: '1px solid #ef4444' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 14, color: '#9ca3af' }}>Lost Opportunities</div>
+              <div style={{ fontSize: 14, color: '#666' }}>Lost Opportunities</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444', marginTop: 4 }}>
                 {new Set(statusGroups['Lost'].map(p => ((p.projectNumber ?? p.id) || "").toString().trim())).size} projects
               </div>
@@ -457,7 +675,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
               <div style={{ fontSize: 28, fontWeight: 700, color: '#ef4444' }}>
                 ${(statusGroups['Lost'].reduce((sum, p) => sum + (p.sales ?? 0), 0) / 1000000).toFixed(1)}M
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                 {((new Set(statusGroups['Lost'].map(p => ((p.projectNumber ?? p.id) || "").toString().trim())).size / totalProjects) * 100).toFixed(1)}% dropoff
               </div>
             </div>
@@ -562,16 +780,16 @@ type SummaryCardProps = {
 function SummaryCard({ label, value, prefix = '', suffix = '', decimals = 0, large = false }: SummaryCardProps) {
   return (
     <div style={{
-      background: '#2b2d31',
+      background: '#ffffff',
       borderRadius: 12,
       padding: large ? '24px 20px' : '20px 32px',
       minWidth: large ? 180 : 120,
-      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-      border: '1px solid #3a3d42',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      border: '1px solid #ddd',
       textAlign: 'center',
     }}>
-      <div style={{ fontSize: large ? 14 : 16, color: '#9ca3af', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: large ? 36 : 28, fontWeight: 700, color: '#22c55e' }}>
+      <div style={{ fontSize: large ? 14 : 16, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: large ? 36 : 28, fontWeight: 700, color: '#0066CC' }}>
         {prefix}{value?.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
       </div>
     </div>

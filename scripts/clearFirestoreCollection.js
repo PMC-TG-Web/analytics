@@ -21,7 +21,7 @@ async function clearCollection(collName) {
   console.log(`Cleared collection '${collName}'. Total deleted: ${deleted}`);
 }
 
-clearCollection('projects').catch(err => {
+clearCollection('schedules').catch(err => {
   console.error('Failed to clear collection:', err);
   process.exit(1);
 });

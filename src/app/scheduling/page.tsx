@@ -10,6 +10,7 @@ type Project = {
   projectNumber?: string;
   hours?: number;
   status?: string;
+  pmcgroup?: boolean;
 };
 
 type JobSchedule = {
@@ -40,10 +41,21 @@ function parseDateValue(value: any): Date | null {
 
 function getNextMonths(count: number) {
   const months: string[] = [];
+  // Start with all of 2025
+  for (let m = 1; m <= 12; m++) {
+    months.push(`2025-${String(m).padStart(2, "0")}`);
+  }
+  // Then add months starting from current date
   const now = new Date();
+  const startMonth = now.getFullYear() * 12 + now.getMonth();
   for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    const monthIndex = startMonth + i;
+    const year = Math.floor(monthIndex / 12);
+    const m = (monthIndex % 12) + 1;
+    const monthStr = `${year}-${String(m).padStart(2, "0")}`;
+    if (!months.includes(monthStr)) {
+      months.push(monthStr);
+    }
   }
   return months;
 }
@@ -55,13 +67,22 @@ export default function SchedulingPage() {
   const [months, setMonths] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("schedulingMonths");
+      let months = getNextMonths(6);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          // Ensure 2025 is always first
+          const has2025 = parsed.some((m: string) => m.startsWith("2025"));
+          if (!has2025) {
+            months = getNextMonths(6);
+          } else {
+            months = parsed;
+          }
         } catch {
-          return getNextMonths(6);
+          months = getNextMonths(6);
         }
       }
+      return months;
     }
     return getNextMonths(6);
   });
@@ -201,8 +222,12 @@ export default function SchedulingPage() {
       }
     });
     
-    // Step 4: Filter by qualifying statuses
-    const filteredByStatus = dedupedByCustomer.filter(p => qualifyingStatuses.includes(p.status || ""));
+    // Step 4: Filter by qualifying statuses and exclude PM hours
+    const filteredByStatus = dedupedByCustomer.filter(p => {
+      if (!qualifyingStatuses.includes(p.status || "")) return false;
+      if (p.pmcgroup) return false;
+      return true;
+    });
     
     // Step 5: Group by key (projectNumber + customer)
     const keyMap = new Map<string, typeof filteredByStatus>();

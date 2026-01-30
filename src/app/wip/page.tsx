@@ -140,7 +140,21 @@ export default function WIPReportPage() {
     yearMonthMap[year][Number(m)] = monthlyData[month].hours;
   });
 
-  const years = Object.keys(yearMonthMap).sort();
+  // Ensure 2025 has all 12 months
+  if (!yearMonthMap["2025"]) {
+    yearMonthMap["2025"] = {};
+  }
+  for (let i = 1; i <= 12; i++) {
+    if (yearMonthMap["2025"][i] === undefined) {
+      yearMonthMap["2025"][i] = 0;
+    }
+  }
+
+  let years = Object.keys(yearMonthMap).filter(year => year !== "2024").sort((a, b) => Number(a) - Number(b));
+  // Ensure 2025 is in the years array
+  if (!years.includes("2025")) {
+    years = ["2025", ...years];
+  }
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // Get unique customers and projects for filters
@@ -188,6 +202,7 @@ export default function WIPReportPage() {
   const activeProjects: any[] = [];
   projects.forEach((p: any) => {
     if (p.projectArchived) return;
+    if (p.pmcgroup) return;
     const customer = (p.customer ?? "").toString().toLowerCase();
     if (customer.includes("sop inc")) return;
     const projectName = (p.projectName ?? "").toString().toLowerCase();
@@ -408,6 +423,7 @@ export default function WIPReportPage() {
     scheduledSalesYearMonthMap[year][Number(m)] = scheduledSalesByMonth[month];
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
+  const combinedSalesYears = Array.from(new Set([...scheduledSalesYears, ...bidSubmittedSalesYears])).filter(year => year !== "2024").sort();
 
   if (loading) {
     return (
@@ -474,22 +490,17 @@ export default function WIPReportPage() {
         </div>
       )}
 
-      {/* Scheduled Sales Line Chart */}
-      {scheduledSalesMonths.length > 0 && (
+      {/* Combined Sales Line Chart */}
+      {(scheduledSalesMonths.length > 0 || bidSubmittedSalesMonths.length > 0) && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Sales Trend</h2>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled vs Bid Submitted Sales</h2>
           <div style={{ width: "100%", minHeight: 50 }}>
-            <ScheduledSalesChart months={scheduledSalesMonths} salesByMonth={scheduledSalesByMonth} />
-          </div>
-        </div>
-      )}
-
-      {/* Bid Submitted Sales Line Chart */}
-      {bidSubmittedSalesMonths.length > 0 && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Bid Submitted Sales Trend</h2>
-          <div style={{ width: "100%", minHeight: 50 }}>
-            <BidSubmittedSalesChart months={bidSubmittedSalesMonths} salesByMonth={bidSubmittedSalesByMonth} />
+            <CombinedSalesLineChart
+              scheduledMonths={scheduledSalesMonths}
+              scheduledSalesByMonth={scheduledSalesByMonth}
+              bidSubmittedMonths={bidSubmittedSalesMonths}
+              bidSubmittedSalesByMonth={bidSubmittedSalesByMonth}
+            />
           </div>
         </div>
       )}
@@ -530,15 +541,16 @@ export default function WIPReportPage() {
         </div>
       )}
 
-      {/* Scheduled Sales by Month */}
-      {scheduledSalesYears.length > 0 && (
+      {/* Combined Sales by Month */}
+      {combinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Sales by Month</h2>
+          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled + Bid Submitted Sales by Month</h2>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid #3a3d42" }}>
                   <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
                       {name}
@@ -547,54 +559,33 @@ export default function WIPReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {scheduledSalesYears.map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
-                    {monthNames.map((_, idx) => {
-                      const sales = scheduledSalesYearMonthMap[year][idx + 1] || 0;
-                      return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
-                          {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Bid Submitted Sales by Month */}
-      {bidSubmittedSalesYears.length > 0 && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Bid Submitted Sales by Month</h2>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #3a3d42" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
-                  {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
-                      {name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {bidSubmittedSalesYears.map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
-                    {monthNames.map((_, idx) => {
-                      const sales = bidSubmittedSalesYearMonthMap[year][idx + 1] || 0;
-                      return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
-                          {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                {combinedSalesYears.map((year) => (
+                  <React.Fragment key={year}>
+                    <tr style={{ borderBottom: "1px solid #3a3d42" }}>
+                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                      <td style={{ padding: "12px", color: "#FF9500", fontWeight: 700 }}>Scheduled</td>
+                      {monthNames.map((_, idx) => {
+                        const sales = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
+                        return (
+                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#FF9500" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                            {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #3a3d42" }}>
+                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}></td>
+                      <td style={{ padding: "12px", color: "#0066CC", fontWeight: 700 }}>Bid Submitted</td>
+                      {monthNames.map((_, idx) => {
+                        const sales = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                        return (
+                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                            {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -767,18 +758,18 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
       {
         label: "Scheduled Hours",
         data: hours,
-        borderColor: "#22c55e",
-        backgroundColor: "rgba(34, 197, 94, 0.1)",
+        borderColor: "#0066CC",
+        backgroundColor: "rgba(0, 102, 204, 0.1)",
         tension: 0.3,
         fill: true,
-        pointBackgroundColor: "#22c55e",
+        pointBackgroundColor: "#0066CC",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 5,
         datalabels: {
           display: true,
-          color: "#22c55e",
-          font: { weight: "bold", size: 10 },
+          color: "#0066CC",
+          font: { weight: "bold", size: 14 },
           formatter: (value: any) => {
             const percent = ((value / 3900) * 100).toFixed(0);
             return `${percent}%`;
@@ -805,7 +796,7 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
       legend: {
         position: "top" as const,
         labels: {
-          color: "#e5e7eb",
+          color: "#111827",
           boxWidth: 12,
         },
       },
@@ -845,105 +836,51 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
   return <Line data={chartData} options={options} />;
 }
 
-function ScheduledSalesChart({ months, salesByMonth }: { months: string[]; salesByMonth: Record<string, number> }) {
-  const sortedMonths = [...months].sort();
-  const sales = sortedMonths.map(month => salesByMonth[month] || 0);
+function CombinedSalesLineChart({
+  scheduledMonths,
+  scheduledSalesByMonth,
+  bidSubmittedMonths,
+  bidSubmittedSalesByMonth,
+}: {
+  scheduledMonths: string[];
+  scheduledSalesByMonth: Record<string, number>;
+  bidSubmittedMonths: string[];
+  bidSubmittedSalesByMonth: Record<string, number>;
+}) {
+  const monthSet = new Set<string>([...scheduledMonths, ...bidSubmittedMonths]);
+  const sortedMonths = Array.from(monthSet).filter(month => !month.startsWith("2024")).sort();
+
+  const scheduledSales = sortedMonths.map(month => scheduledSalesByMonth[month] || 0);
+  const bidSubmittedSales = sortedMonths.map(month => bidSubmittedSalesByMonth[month] || 0);
+
   const labels = sortedMonths.map(month => {
     const [year, m] = month.split("-");
     const date = new Date(Number(year), Number(m) - 1, 1);
     return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
   });
 
-  const maxSales = Math.max(...sales, 0);
+  const maxScheduledSales = Math.max(...scheduledSales, 0);
+  const maxBidSubmittedSales = Math.max(...bidSubmittedSales, 0);
 
   const chartData = {
     labels,
     datasets: [
       {
         label: "Scheduled Sales",
-        data: sales,
-        borderColor: "#003DA5",
-        backgroundColor: "rgba(0, 61, 165, 0.1)",
+        data: scheduledSales,
+        borderColor: "#FF9500",
+        backgroundColor: "rgba(255, 149, 0, 0.1)",
         tension: 0.3,
         fill: true,
-        pointBackgroundColor: "#003DA5",
+        pointBackgroundColor: "#FF9500",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 4,
+        yAxisID: "y",
       },
-    ],
-  };
-
-  const options: ChartOptions<'line'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "top" as const,
-        labels: {
-          color: "#666",
-          boxWidth: 12,
-        },
-      },
-      tooltip: {
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-        titleColor: "#fff",
-        bodyColor: "#e5e7eb",
-        borderColor: "#ddd",
-        borderWidth: 1,
-        callbacks: {
-          label: (context) => {
-            const value = context.parsed.y || 0;
-            return `$${value.toLocaleString()}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        max: maxSales ? maxSales * 1.1 : undefined,
-        ticks: {
-          color: "#666",
-          callback: function(value) {
-            return `$${(value as number).toLocaleString()}`;
-          },
-        },
-        grid: {
-          color: "#e5e7eb",
-        },
-      },
-      x: {
-        ticks: {
-          color: "#666",
-        },
-        grid: {
-          color: "#f0f0f0",
-        },
-      },
-    },
-  };
-
-  return <Line data={chartData} options={options} />;
-}
-
-function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; salesByMonth: Record<string, number> }) {
-  const sortedMonths = [...months].sort();
-  const sales = sortedMonths.map(month => salesByMonth[month] || 0);
-  const labels = sortedMonths.map(month => {
-    const [year, m] = month.split("-");
-    const date = new Date(Number(year), Number(m) - 1, 1);
-    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-  });
-
-  const maxSales = Math.max(...sales, 0);
-
-  const chartData = {
-    labels,
-    datasets: [
       {
         label: "Bid Submitted Sales",
-        data: sales,
+        data: bidSubmittedSales,
         borderColor: "#0066CC",
         backgroundColor: "rgba(0, 102, 204, 0.1)",
         tension: 0.3,
@@ -952,6 +889,7 @@ function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; sa
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 4,
+        yAxisID: "y1",
       },
     ],
   };
@@ -963,7 +901,7 @@ function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; sa
       legend: {
         position: "top" as const,
         labels: {
-          color: "#666",
+          color: "#111827",
           boxWidth: 12,
         },
       },
@@ -976,7 +914,7 @@ function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; sa
         callbacks: {
           label: (context) => {
             const value = context.parsed.y || 0;
-            return `$${value.toLocaleString()}`;
+            return `${context.dataset.label}: $${value.toLocaleString()}`;
           },
         },
       },
@@ -984,20 +922,46 @@ function BidSubmittedSalesChart({ months, salesByMonth }: { months: string[]; sa
     scales: {
       y: {
         beginAtZero: true,
-        max: maxSales ? maxSales * 1.1 : undefined,
+        max: maxScheduledSales ? maxScheduledSales * 1.1 : undefined,
         ticks: {
-          color: "#666",
+          color: "#FF9500",
           callback: function(value) {
-            return `$${(value as number).toLocaleString()}`;
+            return `$${Math.round(value as number).toLocaleString()}`;
           },
         },
         grid: {
           color: "#e5e7eb",
         },
+        title: {
+          display: true,
+          text: "Scheduled Sales",
+          color: "#FF9500",
+          font: { weight: "bold" },
+        },
+      },
+      y1: {
+        beginAtZero: true,
+        max: maxBidSubmittedSales ? maxBidSubmittedSales * 1.1 : undefined,
+        position: "right",
+        grid: {
+          drawOnChartArea: false,
+        },
+        ticks: {
+          color: "#0066CC",
+          callback: function(value) {
+            return `$${Math.round(value as number).toLocaleString()}`;
+          },
+        },
+        title: {
+          display: true,
+          text: "Bid Submitted Sales",
+          color: "#0066CC",
+          font: { weight: "bold" },
+        },
       },
       x: {
         ticks: {
-          color: "#666",
+          color: "#111827",
         },
         grid: {
           color: "#f0f0f0",

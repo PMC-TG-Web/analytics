@@ -27,6 +27,17 @@ function formatMonthLabel(month: string) {
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
+function parseDateValue(value: any): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value.toDate) return value.toDate();
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
 function getNextMonths(count: number) {
   const months: string[] = [];
   const now = new Date();
@@ -100,21 +111,131 @@ export default function SchedulingPage() {
   }, [months]);
 
   const uniqueJobs = useMemo(() => {
-    const qualifyingStatuses = ["Accepted", "In Progress", "Delayed"];
-    const map = new Map<string, Project>();
-    projects
-      .filter((p) => qualifyingStatuses.includes(p.status || ""))
-      .forEach((p) => {
-        const key = `${p.customer ?? ""}|${p.projectNumber ?? ""}|${p.projectName ?? ""}`;
-        if (!map.has(key)) map.set(key, p);
+    const qualifyingStatuses = ["Accepted", "In Progress"];
+    const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+    
+    // Step 1: Filter active projects with exclusions
+    const activeProjects = projects.filter((p) => {
+      if ((p as any).projectArchived) return false;
+      const customer = (p.customer ?? "").toString().toLowerCase();
+      if (customer.includes("sop inc")) return false;
+      const projectName = (p.projectName ?? "").toString().toLowerCase();
+      if (projectName === "pmc operations") return false;
+      if (projectName === "pmc shop time") return false;
+      if (projectName === "pmc test project") return false;
+      if (projectName.includes("sandbox")) return false;
+      if (projectName.includes("raymond king")) return false;
+      if (projectName === "alexander drive addition latest") return false;
+      const estimator = ((p as any).estimator ?? "").toString().trim();
+      if (!estimator) return false;
+      if (estimator.toLowerCase() === "todd gilmore") return false;
+      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+      if (projectNumber === "701 poplar church rd") return false;
+      return true;
+    });
+    
+    // Step 2: Group by project identifier to find duplicates with different customers
+    const projectIdentifierMap = new Map<string, typeof activeProjects>();
+    activeProjects.forEach((project) => {
+      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      if (!identifier) return;
+      if (!projectIdentifierMap.has(identifier)) {
+        projectIdentifierMap.set(identifier, []);
+      }
+      projectIdentifierMap.get(identifier)!.push(project);
+    });
+    
+    // Step 3: Deduplicate by customer (pick one customer per project identifier)
+    const dedupedByCustomer: typeof activeProjects = [];
+    projectIdentifierMap.forEach((projectList) => {
+      const customerMap = new Map<string, typeof projectList>();
+      projectList.forEach(p => {
+        const customer = (p.customer ?? "").toString().trim();
+        if (!customerMap.has(customer)) {
+          customerMap.set(customer, []);
+        }
+        customerMap.get(customer)!.push(p);
       });
-    return Array.from(map.entries()).map(([key, p]) => ({
-      key,
-      customer: p.customer ?? "Unknown",
-      projectName: p.projectName ?? "Unnamed",
-      status: p.status ?? "Unknown",
-      totalHours: p.hours ?? 0,
-    }));
+      
+      if (customerMap.size > 1) {
+        let selectedCustomer = "";
+        let selectedProjects: typeof projectList = [];
+        let foundPriorityCustomer = false;
+        
+        customerMap.forEach((projs, customer) => {
+          const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
+          if (hasPriorityStatus && !foundPriorityCustomer) {
+            selectedCustomer = customer;
+            selectedProjects = projs;
+            foundPriorityCustomer = true;
+          }
+        });
+        
+        if (!foundPriorityCustomer) {
+          let latestCustomer = "";
+          let latestDate: Date | null = null;
+          
+          customerMap.forEach((projs, customer) => {
+            const mostRecentProj = projs.reduce((latest, current) => {
+              const currentDate = parseDateValue((current as any).dateCreated);
+              const latestDateVal = parseDateValue((latest as any).dateCreated);
+              if (!currentDate) return latest;
+              if (!latestDateVal) return current;
+              return currentDate > latestDateVal ? current : latest;
+            }, projs[0]);
+            
+            const projDate = parseDateValue((mostRecentProj as any).dateCreated);
+            if (projDate && (!latestDate || projDate > latestDate)) {
+              latestDate = projDate;
+              latestCustomer = customer;
+            }
+          });
+          
+          selectedCustomer = latestCustomer;
+          selectedProjects = customerMap.get(latestCustomer) || [];
+        }
+        
+        dedupedByCustomer.push(...selectedProjects);
+      } else {
+        projectList.forEach(p => dedupedByCustomer.push(p));
+      }
+    });
+    
+    // Step 4: Filter by qualifying statuses
+    const filteredByStatus = dedupedByCustomer.filter(p => qualifyingStatuses.includes(p.status || ""));
+    
+    // Step 5: Group by key (projectNumber + customer)
+    const keyMap = new Map<string, typeof filteredByStatus>();
+    filteredByStatus.forEach((p) => {
+      const key = `${p.customer ?? ""}|${p.projectNumber ?? ""}|${p.projectName ?? ""}`;
+      if (!keyMap.has(key)) {
+        keyMap.set(key, []);
+      }
+      keyMap.get(key)!.push(p);
+    });
+    
+    // Step 6: Apply alphabetic tiebreaker and aggregate
+    const results: Array<{ key: string; customer: string; projectName: string; status: string; totalHours: number }> = [];
+    keyMap.forEach((projectGroup, key) => {
+      const sorted = projectGroup.sort((a, b) => {
+        const nameA = (a.projectName ?? "").toString().toLowerCase();
+        const nameB = (b.projectName ?? "").toString().toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      
+      const representative = sorted[0];
+      const totalHours = projectGroup.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+      
+      results.push({
+        key,
+        customer: representative.customer ?? "Unknown",
+        projectName: representative.projectName ?? "Unnamed",
+        status: representative.status ?? "Unknown",
+        totalHours,
+      });
+    });
+    
+    return results;
   }, [projects]);
 
   function updatePercent(jobKey: string, month: string, percent: number) {
@@ -308,6 +429,25 @@ export default function SchedulingPage() {
     return sorted;
   }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection]);
 
+  // Calculate unscheduled hours
+  const unscheduledHoursCalc = useMemo(() => {
+    const totalQualifyingHours = uniqueJobs.reduce((sum, job) => sum + job.totalHours, 0);
+    
+    const totalScheduledHours = allJobs.reduce((sum, job) => {
+      const jobScheduledHours = months.reduce((jobSum, month) => {
+        const allocation = job.allocations[month] || 0;
+        return jobSum + (job.totalHours * (allocation / 100));
+      }, 0);
+      return sum + jobScheduledHours;
+    }, 0);
+    
+    return {
+      totalQualifying: totalQualifyingHours,
+      totalScheduled: totalScheduledHours,
+      unscheduled: totalQualifyingHours - totalScheduledHours,
+    };
+  }, [uniqueJobs, allJobs, months]);
+
   function handleSort(column: string) {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -345,7 +485,25 @@ export default function SchedulingPage() {
       </div>
 
       <div style={{ background: "#2b2d31", borderRadius: 12, padding: 24, border: "1px solid #3a3d42", marginBottom: 24 }}>
-        <h2 style={{ color: "#fff", fontSize: 20, margin: "0 0 16px 0" }}>Scheduled Hours by Month</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ color: "#fff", fontSize: 20, margin: 0 }}>Scheduled Hours by Month</h2>
+          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Total Qualifying Hours</div>
+              <div style={{ color: "#22c55e", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalQualifying)}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Total Scheduled</div>
+              <div style={{ color: "#3b82f6", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalScheduled)}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>Unscheduled Hours</div>
+              <div style={{ color: unscheduledHoursCalc.unscheduled > 0 ? "#f59e0b" : "#22c55e", fontSize: 20, fontWeight: 700 }}>
+                {Math.round(unscheduledHoursCalc.unscheduled)}
+              </div>
+            </div>
+          </div>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${months.length}, 1fr)`, gap: 12 }}>
           {months.map((month) => {
             const totalHours = allJobs.reduce((sum, job) => {

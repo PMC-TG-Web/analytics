@@ -163,14 +163,151 @@ export default function WIPReportPage() {
 
   const filteredMonths = Object.keys(filteredMonthlyData).sort();
 
-  // Calculate unscheduled hours from schedules (which already filters for qualifying statuses)
-  let totalQualifyingHours = 0;
-  let totalScheduledHours = 0;
+  // Calculate unscheduled hours from ALL qualifying projects with filters
+  const qualifyingStatuses = ["Accepted", "In Progress"];
+  const priorityStatuses = ["Accepted", "In Progress", "Complete"];
   
+  function parseDateValue(value: any): Date | null {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === 'object' && value.toDate) return value.toDate();
+    if (typeof value === 'string') {
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+  }
+  
+  // Step 1: Filter active projects with exclusions
+  const activeProjects: any[] = [];
+  projects.forEach((p: any) => {
+    if (p.projectArchived) return;
+    const customer = (p.customer ?? "").toString().toLowerCase();
+    if (customer.includes("sop inc")) return;
+    const projectName = (p.projectName ?? "").toString().toLowerCase();
+    if (projectName === "pmc operations") return;
+    if (projectName === "pmc shop time") return;
+    if (projectName === "pmc test project") return;
+    if (projectName.includes("sandbox")) return;
+    if (projectName.includes("raymond king")) return;
+    if (projectName === "alexander drive addition latest") return;
+    const estimator = (p.estimator ?? "").toString().trim();
+    if (!estimator) return;
+    if (estimator.toLowerCase() === "todd gilmore") return;
+    const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+    if (projectNumber === "701 poplar church rd") return;
+    activeProjects.push(p);
+  });
+  
+  // Step 2: Group by project identifier to find duplicates with different customers
+  const projectIdentifierMap = new Map<string, typeof activeProjects>();
+  activeProjects.forEach((project) => {
+    const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+    if (!identifier) return;
+    if (!projectIdentifierMap.has(identifier)) {
+      projectIdentifierMap.set(identifier, []);
+    }
+    projectIdentifierMap.get(identifier)!.push(project);
+  });
+  
+  // Step 3: Deduplicate by customer
+  const dedupedByCustomer: typeof activeProjects = [];
+  projectIdentifierMap.forEach((projectList) => {
+    const customerMap = new Map<string, typeof projectList>();
+    projectList.forEach(p => {
+      const customer = (p.customer ?? "").toString().trim();
+      if (!customerMap.has(customer)) {
+        customerMap.set(customer, []);
+      }
+      customerMap.get(customer)!.push(p);
+    });
+    
+    if (customerMap.size > 1) {
+      let selectedCustomer = "";
+      let selectedProjects: typeof projectList = [];
+      let foundPriorityCustomer = false;
+      
+      customerMap.forEach((projs, customer) => {
+        const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
+        if (hasPriorityStatus && !foundPriorityCustomer) {
+          selectedCustomer = customer;
+          selectedProjects = projs;
+          foundPriorityCustomer = true;
+        }
+      });
+      
+      if (!foundPriorityCustomer) {
+        let latestCustomer = "";
+        let latestDate: Date | null = null;
+        
+        customerMap.forEach((projs, customer) => {
+          const mostRecentProj = projs.reduce((latest, current) => {
+            const currentDate = parseDateValue(current.dateCreated);
+            const latestDateVal = parseDateValue(latest.dateCreated);
+            if (!currentDate) return latest;
+            if (!latestDateVal) return current;
+            return currentDate > latestDateVal ? current : latest;
+          }, projs[0]);
+          
+          const projDate = parseDateValue(mostRecentProj.dateCreated);
+          if (projDate && (!latestDate || projDate > latestDate)) {
+            latestDate = projDate;
+            latestCustomer = customer;
+          }
+        });
+        
+        selectedCustomer = latestCustomer;
+        selectedProjects = customerMap.get(latestCustomer) || [];
+      }
+      
+      dedupedByCustomer.push(...selectedProjects);
+    } else {
+      projectList.forEach(p => dedupedByCustomer.push(p));
+    }
+  });
+  
+  // Step 4: Filter by qualifying statuses
+  const filteredByStatus = dedupedByCustomer.filter(p => qualifyingStatuses.includes(p.status || ""));
+  
+  // Step 5: Group by key
+  const keyMap = new Map<string, typeof filteredByStatus>();
+  filteredByStatus.forEach((p) => {
+    const key = `${p.customer ?? ""}|${p.projectNumber ?? ""}|${p.projectName ?? ""}`;
+    if (!keyMap.has(key)) {
+      keyMap.set(key, []);
+    }
+    keyMap.get(key)!.push(p);
+  });
+  
+  // Step 6: Apply alphabetic tiebreaker and aggregate
+  const qualifyingProjectsMap = new Map<string, { customer: string; projectName: string; totalHours: number }>();
+  keyMap.forEach((projectGroup, key) => {
+    const sorted = projectGroup.sort((a, b) => {
+      const nameA = (a.projectName ?? "").toString().toLowerCase();
+      const nameB = (b.projectName ?? "").toString().toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    
+    const representative = sorted[0];
+    const totalHours = projectGroup.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+    
+    qualifyingProjectsMap.set(key, {
+      customer: representative.customer ?? "Unknown",
+      projectName: representative.projectName ?? "Unnamed",
+      totalHours,
+    });
+  });
+  
+  // Calculate total hours from all qualifying projects
+  let totalQualifyingHours = 0;
+  qualifyingProjectsMap.forEach(project => {
+    totalQualifyingHours += project.totalHours;
+  });
+  
+  // Calculate total scheduled hours from schedules
+  let totalScheduledHours = 0;
   schedules.forEach(schedule => {
     const projectHours = schedule.totalHours || 0;
-    totalQualifyingHours += projectHours;
-    
     const scheduledHours = schedule.allocations.reduce((sum: number, alloc: any) => {
       return sum + (projectHours * (alloc.percent / 100));
     }, 0);
@@ -178,7 +315,6 @@ export default function WIPReportPage() {
   });
   
   const unscheduledHours = totalQualifyingHours - totalScheduledHours;
-  const qualifyingStatuses = ["Accepted", "In Progress", "Delayed"];
 
   if (loading) {
     return (

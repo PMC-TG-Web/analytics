@@ -67,52 +67,201 @@ export default function Dashboard() {
     return updated || created || null;
   };
 
-  const getProjectNumberKey = (project: Project) => {
+  const getProjectKey = (project: Project) => {
     const number = (project.projectNumber ?? "").toString().trim();
-    return number || `__noNumber__${project.id}`;
+    const customer = (project.customer ?? "").toString().trim();
+    return `${number}|${customer}` || `__noKey__${project.id}`;
   };
 
-  const dedupedProjects = useMemo(() => {
+  const aggregatedProjects = useMemo(() => {
+    // Filter out archived projects and excluded criteria
+    const activeProjects = projects.filter(p => {
+      if (p.projectArchived) return false;
+      const customer = (p.customer ?? "").toString().toLowerCase();
+      if (customer.includes("sop inc")) return false;
+      const projectName = (p.projectName ?? "").toString().toLowerCase();
+      if (projectName === "pmc operations") return false;
+      if (projectName === "pmc shop time") return false;
+      if (projectName === "pmc test project") return false;
+      if (projectName.includes("sandbox")) return false;
+      if (projectName.includes("raymond king")) return false;
+      if (projectName === "alexander drive addition latest") return false;
+      const estimator = (p.estimator ?? "").toString().trim();
+      if (!estimator) return false;
+      if (estimator.toLowerCase() === "todd gilmore") return false;
+      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+      if (projectNumber === "701 poplar church rd") return false;
+      return true;
+    });
+    
+    // Group by project number/name to find duplicates with different customers
+    const projectIdentifierMap = new Map<string, Project[]>();
+    activeProjects.forEach((project) => {
+      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      if (!identifier) return;
+      
+      if (!projectIdentifierMap.has(identifier)) {
+        projectIdentifierMap.set(identifier, []);
+      }
+      projectIdentifierMap.get(identifier)!.push(project);
+    });
+    
+    // For each project identifier, keep only the most recent customer version
+    const dedupedByCustomer: Project[] = [];
+    projectIdentifierMap.forEach((projectList, identifier) => {
+      // Group by customer
+      const customerMap = new Map<string, Project[]>();
+      projectList.forEach(p => {
+        const customer = (p.customer ?? "").toString().trim();
+        if (!customerMap.has(customer)) {
+          customerMap.set(customer, []);
+        }
+        customerMap.get(customer)!.push(p);
+      });
+      
+      // If multiple customers, prioritize by status first, then by date
+      if (customerMap.size > 1) {
+        const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+        let selectedCustomer: string = "";
+        let selectedProjects: Project[] = [];
+        
+        // First, check if any customer has priority status
+        let foundPriorityCustomer = false;
+        customerMap.forEach((projs, customer) => {
+          const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
+          if (hasPriorityStatus && !foundPriorityCustomer) {
+            selectedCustomer = customer;
+            selectedProjects = projs;
+            foundPriorityCustomer = true;
+          }
+        });
+        
+        // If no priority status found, use date logic
+        if (!foundPriorityCustomer) {
+          let latestCustomer: string = "";
+          let latestDate: Date | null = null;
+          
+          customerMap.forEach((projs, customer) => {
+            const mostRecentProj = projs.reduce((latest, current) => {
+              const currentDate = parseDateValue(current.dateCreated);
+              const latestDateVal = parseDateValue(latest.dateCreated);
+              if (!currentDate) return latest;
+              if (!latestDateVal) return current;
+              return currentDate > latestDateVal ? current : latest;
+            }, projs[0]);
+            
+            const projDate = parseDateValue(mostRecentProj.dateCreated);
+            if (projDate && (!latestDate || projDate > latestDate)) {
+              latestDate = projDate;
+              latestCustomer = customer;
+            }
+          });
+          
+          selectedCustomer = latestCustomer;
+          selectedProjects = customerMap.get(latestCustomer) || [];
+        }
+        
+        // Only keep projects from the selected customer
+        dedupedByCustomer.push(...selectedProjects);
+      } else {
+        // Only one customer, keep all
+        projectList.forEach(p => dedupedByCustomer.push(p));
+      }
+    });
+    
+    // Now aggregate by projectNumber + customer
+    // First group all projects by key
+    const keyGroupMap = new Map<string, Project[]>();
+    dedupedByCustomer.forEach((project) => {
+      const key = getProjectKey(project);
+      if (!keyGroupMap.has(key)) {
+        keyGroupMap.set(key, []);
+      }
+      keyGroupMap.get(key)!.push(project);
+    });
+    
+    // Then for each group, apply tiebreaker logic and aggregate
     const map = new Map<string, Project>();
-    projects.forEach((project) => {
-      const key = getProjectNumberKey(project);
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, project);
-        return;
-      }
-      const existingDate = getProjectDate(existing);
-      const candidateDate = getProjectDate(project);
-      if (candidateDate && (!existingDate || candidateDate > existingDate)) {
-        map.set(key, project);
-      }
+    keyGroupMap.forEach((projects, key) => {
+      // Sort by projectName alphabetically for tiebreaker
+      const sortedProjects = projects.sort((a, b) => {
+        const nameA = (a.projectName ?? "").toString().toLowerCase();
+        const nameB = (b.projectName ?? "").toString().toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      
+      // Use first project alphabetically as base, then sum all values
+      const baseProject = { ...sortedProjects[0] };
+      
+      // Sum all values
+      baseProject.sales = sortedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+      baseProject.cost = sortedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+      baseProject.hours = sortedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+      baseProject.laborSales = sortedProjects.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
+      baseProject.laborCost = sortedProjects.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
+      
+      // Keep the most recent date across all
+      const mostRecentProject = sortedProjects.reduce((latest, current) => {
+        const latestDate = getProjectDate(latest);
+        const currentDate = getProjectDate(current);
+        if (!currentDate) return latest;
+        if (!latestDate) return current;
+        return currentDate > latestDate ? current : latest;
+      }, sortedProjects[0]);
+      
+      baseProject.dateUpdated = mostRecentProject.dateUpdated;
+      baseProject.dateCreated = mostRecentProject.dateCreated;
+      
+      map.set(key, baseProject);
     });
     return Array.from(map.values());
   }, [projects]);
 
   // Calculate summary metrics
-  const totalSales = dedupedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
-  const totalCost = dedupedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
-  const totalHours = dedupedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+  const totalSales = aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+  const totalCost = aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+  const totalHours = aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
   const markup = totalCost ? ((totalSales - totalCost) / totalCost) * 100 : 0;
 
   // Group by status
-  const statusGroups: Record<string, typeof dedupedProjects> = {};
-  dedupedProjects.forEach((p) => {
+  const statusGroups: Record<string, typeof aggregatedProjects> = {};
+  aggregatedProjects.forEach((p) => {
     const status = p.status || 'Unknown';
     if (!statusGroups[status]) statusGroups[status] = [];
     statusGroups[status].push(p);
   });
 
-  // Calculate win rate: (Complete + In Progress + Accepted) / (Bid Submitted + Lost)
+  // Calculate win rate including archived jobs as lost
+  // For win rate, we need to count archived projects with same filters applied
+  const archivedProjects = projects.filter(p => {
+    if (!p.projectArchived) return false;
+    // Apply same exclusion filters as activeProjects
+    const customer = (p.customer ?? "").toString().toLowerCase();
+    if (customer.includes("sop inc")) return false;
+    const projectName = (p.projectName ?? "").toString().toLowerCase();
+    if (projectName === "pmc operations") return false;
+    if (projectName === "pmc shop time") return false;
+    if (projectName === "pmc test project") return false;
+    if (projectName.includes("sandbox")) return false;
+    if (projectName.includes("raymond king")) return false;
+    if (projectName === "alexander drive addition latest") return false;
+    const estimator = (p.estimator ?? "").toString().trim();
+    if (!estimator) return false;
+    if (estimator.toLowerCase() === "todd gilmore") return false;
+    const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+    if (projectNumber === "701 poplar church rd") return false;
+    return true;
+  });
+  const archivedCount = new Set(archivedProjects.map(p => getProjectKey(p))).size;
+  
   const getUniqueProjectCount = (statusKey: string) => {
     const group = statusGroups[statusKey] || [];
-    return new Set(group.map(p => getProjectNumberKey(p))).size;
+    return new Set(group.map(p => getProjectKey(p))).size;
   };
   
   const wonProjects = getUniqueProjectCount('Complete') + getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
-  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
+  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost') + archivedCount;
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
   return (
@@ -188,7 +337,7 @@ export default function Dashboard() {
       <div style={{ color: '#9ca3af', marginBottom: 24 }}>
         Project count: {
           Array.from(
-            new Set(dedupedProjects.map(p => getProjectNumberKey(p)))
+            new Set(aggregatedProjects.map(p => getProjectKey(p)))
           ).length
         }
       </div>
@@ -196,7 +345,7 @@ export default function Dashboard() {
       {/* Time Series Line Chart by Month/Year for Hours by Status */}
       <div style={{ marginTop: 64, background: '#2b2d31', borderRadius: 12, boxShadow: '0 4px 6px rgba(0,0,0,0.3)', border: '1px solid #3a3d42', padding: 32 }}>
         <h2 style={{ marginBottom: 24, color: '#fff', fontSize: 20 }}>Hours by Month/Year (Submitted, In Progress, Accepted)</h2>
-        <TimeSeriesChart projects={dedupedProjects} />
+        <TimeSeriesChart projects={aggregatedProjects} />
       </div>
     </main>
   );

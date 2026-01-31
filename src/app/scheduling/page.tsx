@@ -118,6 +118,22 @@ export default function SchedulingPage() {
           }, {}),
         }));
         setSchedules(schedulesArray);
+
+        // Collect all months that have scheduled hours
+        const scheduledMonths = new Set<string>();
+        schedulesArray.forEach((schedule: JobSchedule) => {
+          Object.entries(schedule.allocations).forEach(([month, percent]) => {
+            if (percent > 0) {
+              scheduledMonths.add(month);
+            }
+          });
+        });
+
+        // Merge with existing months and sort
+        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)])).sort();
+        if (allMonths.length > months.length) {
+          setMonths(allMonths);
+        }
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {

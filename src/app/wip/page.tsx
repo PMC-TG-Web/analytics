@@ -53,6 +53,7 @@ type Schedule = {
   projectName?: string;
   totalHours: number;
   allocations: Array<{ month: string; percent: number }>;
+  status?: string;
 };
 
 type MonthlyWIP = {
@@ -95,8 +96,32 @@ export default function WIPReportPage() {
         // Fetch schedules from API
         const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
-        setSchedules(schedulesJson.data || []);
-        console.log("Schedules loaded from API:", schedulesJson.data?.length || 0);
+        const schedulesData = schedulesJson.data || [];
+        
+        // Match schedules with projects to get their current status
+        const schedulesWithStatus = schedulesData.map((schedule: any) => {
+          const jobKey = schedule.jobKey || '';
+          // Find matching project by jobKey
+          const matchingProject = projectsData.find((p: any) => {
+            const projectKey = `${p.customer || ''}|${p.projectNumber || ''}|${p.projectName || ''}`;
+            return projectKey === jobKey;
+          });
+          
+          return {
+            ...schedule,
+            status: matchingProject?.status || 'Unknown'
+          };
+        });
+        
+        // Debug: Count schedules by status
+        const statusCounts = schedulesWithStatus.reduce((acc: any, s: any) => {
+          acc[s.status] = (acc[s.status] || 0) + 1;
+          return acc;
+        }, {});
+        console.log("Schedules by status:", statusCounts);
+        
+        setSchedules(schedulesWithStatus);
+        console.log("Schedules loaded from API:", schedulesWithStatus.length);
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -106,10 +131,13 @@ export default function WIPReportPage() {
     fetchData();
   }, []);
 
-  // Aggregate hours by month (excluding management)
+  // Aggregate hours by month (excluding management and Complete status)
   const monthlyData: Record<string, MonthlyWIP> = {};
 
   schedules.forEach((schedule) => {
+    // Skip Complete status jobs
+    if (schedule.status === 'Complete') return;
+    
     schedule.allocations.forEach((alloc) => {
       if (!monthlyData[alloc.month]) {
         monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
@@ -325,15 +353,34 @@ export default function WIPReportPage() {
     totalQualifyingHours += project.totalHours;
   });
   
-  // Calculate total scheduled hours from schedules
+  console.log("=== UNSCHEDULED HOURS DEBUG ===");
+  console.log("Qualifying projects (In Progress status):", qualifyingProjectsMap.size);
+  console.log("Total qualifying hours:", totalQualifyingHours.toFixed(1));
+  
+  // Calculate total scheduled hours from schedules (excluding Complete status)
   let totalScheduledHours = 0;
+  let excludedCompleteHours = 0;
   schedules.forEach(schedule => {
+    // Skip Complete status jobs
+    if (schedule.status === 'Complete') {
+      const projectHours = schedule.totalHours || 0;
+      const scheduledHours = schedule.allocations.reduce((sum: number, alloc: any) => {
+        return sum + (projectHours * (alloc.percent / 100));
+      }, 0);
+      excludedCompleteHours += scheduledHours;
+      return;
+    }
+    
     const projectHours = schedule.totalHours || 0;
     const scheduledHours = schedule.allocations.reduce((sum: number, alloc: any) => {
       return sum + (projectHours * (alloc.percent / 100));
     }, 0);
     totalScheduledHours += scheduledHours;
   });
+  
+  console.log("Total scheduled hours (In Progress only):", totalScheduledHours.toFixed(1));
+  console.log("Excluded scheduled hours (Complete status):", excludedCompleteHours.toFixed(1));
+  console.log("Unscheduled hours calculation:", `${totalQualifyingHours.toFixed(1)} - ${totalScheduledHours.toFixed(1)} = ${(totalQualifyingHours - totalScheduledHours).toFixed(1)}`);
   
   const unscheduledHours = totalQualifyingHours - totalScheduledHours;
 
@@ -390,6 +437,9 @@ export default function WIPReportPage() {
   
   // For each schedule, distribute sales across months based on allocation percentages
   schedules.forEach((schedule) => {
+    // Skip Complete status jobs
+    if (schedule.status === 'Complete') return;
+    
     const key = schedule.jobKey || projectKeyForSchedule(schedule.customer, schedule.projectNumber, schedule.projectName);
     const projectSales = scheduleSalesMap.get(key);
     
@@ -750,14 +800,62 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
     return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
   });
 
-  const maxHours = Math.max(...hours, 4800);
+  // Calculate forecast for next 3 months using linear regression
+  const numForecastMonths = 3;
+  const forecastData: (number | null)[] = [];
+  const actualData: (number | null)[] = [];
+  
+  // Calculate simple linear trend from last 6 months (or all available data)
+  const trendPeriod = Math.min(6, hours.length);
+  const recentHours = hours.slice(-trendPeriod);
+  
+  if (recentHours.length >= 2) {
+    // Calculate average change per month
+    const changes = [];
+    for (let i = 1; i < recentHours.length; i++) {
+      changes.push(recentHours[i] - recentHours[i - 1]);
+    }
+    const avgChange = changes.reduce((sum, val) => sum + val, 0) / changes.length;
+    const lastValue = hours[hours.length - 1];
+    
+    // Create actual data (fill with nulls, then add last actual value as connection point)
+    actualData.push(...Array(hours.length).fill(null));
+    
+    // Create forecast data (start from last actual value)
+    forecastData.push(...Array(hours.length - 1).fill(null));
+    forecastData.push(lastValue); // Connection point
+    
+    // Generate forecast months
+    const forecastLabels = [];
+    const lastMonthParts = sortedMonths[sortedMonths.length - 1].split("-");
+    let forecastYear = Number(lastMonthParts[0]);
+    let forecastMonth = Number(lastMonthParts[1]);
+    
+    for (let i = 0; i < numForecastMonths; i++) {
+      forecastMonth++;
+      if (forecastMonth > 12) {
+        forecastMonth = 1;
+        forecastYear++;
+      }
+      const forecastValue = lastValue + avgChange * (i + 1);
+      forecastData.push(Math.max(0, forecastValue));
+      
+      const date = new Date(forecastYear, forecastMonth - 1, 1);
+      forecastLabels.push(date.toLocaleDateString(undefined, { month: "short", year: "2-digit" }));
+    }
+    
+    labels.push(...forecastLabels);
+    actualData.push(...Array(numForecastMonths).fill(null));
+  }
+
+  const maxHours = Math.max(...hours, 4800, ...forecastData.filter((v): v is number => v !== null));
 
   const chartData = {
     labels,
     datasets: [
       {
         label: "Scheduled Hours",
-        data: hours,
+        data: hours.concat(Array(numForecastMonths).fill(null)),
         borderColor: "#0066CC",
         backgroundColor: "rgba(0, 102, 204, 0.1)",
         tension: 0.3,
@@ -771,9 +869,27 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
           color: "#0066CC",
           font: { weight: "bold", size: 14 },
           formatter: (value: any) => {
+            if (value === null) return "";
             const percent = ((value / 3900) * 100).toFixed(0);
             return `${percent}%`;
           },
+        },
+      },
+      {
+        label: "Forecast",
+        data: forecastData,
+        borderColor: "#8b5cf6",
+        backgroundColor: "rgba(139, 92, 246, 0.05)",
+        borderDash: [8, 4],
+        borderWidth: 2,
+        tension: 0.3,
+        fill: false,
+        pointBackgroundColor: "#8b5cf6",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        datalabels: {
+          display: false,
         },
       },
       {

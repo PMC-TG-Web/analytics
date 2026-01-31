@@ -11,5 +11,11 @@
   },
   "[javascriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "/^node scripts/checkPre2026Schedules\\.js$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }

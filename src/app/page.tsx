@@ -1,8 +1,13 @@
 "use client";
-export default function Dashboard() {
-  return (
-    <main className="p-8">
-      <h1>Hello World</h1>
-    </main>
-  );
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+export default function Home() {
+  const router = useRouter();
+  
+  useEffect(() => {
+    router.push("/dashboard");
+  }, [router]);
+  
+  return null;
 }

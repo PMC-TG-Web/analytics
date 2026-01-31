@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase";
 
 type Project = {
@@ -92,6 +92,7 @@ export default function SchedulingPage() {
   const [sortColumn, setSortColumn] = useState<string>("customer");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [savingJobKey, setSavingJobKey] = useState<string>("");
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -325,7 +326,7 @@ export default function SchedulingPage() {
       const projectInfo = uniqueJobs.find((j) => j.key === job.jobKey);
       const projectNumber = projectInfo?.key.split("|")[1] || "";
 
-      await fetch("/api/scheduling", {
+      const response = await fetch("/api/scheduling", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -338,6 +339,12 @@ export default function SchedulingPage() {
           allocations,
         }),
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save");
+      }
+      
       alert("Schedule saved successfully!");
     } catch (error) {
       console.error("Failed to save schedule:", error);
@@ -379,6 +386,44 @@ export default function SchedulingPage() {
       alert("Failed to save schedules");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function updateStatus(jobKey: string, newStatus: string) {
+    try {
+      setUpdatingStatus(jobKey);
+      
+      // Parse the jobKey to get projectNumber and customer
+      const [projectNumber, customer] = jobKey.split("|");
+      
+      // Query Firestore for all matching documents
+      const projectsRef = collection(db, "projects");
+      const q = query(
+        projectsRef,
+        where("projectNumber", "==", projectNumber),
+        where("customer", "==", customer)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      // Update all matching documents
+      const updatePromises = querySnapshot.docs.map((docSnapshot) => {
+        const docRef = doc(db, "projects", docSnapshot.id);
+        return updateDoc(docRef, { status: newStatus });
+      });
+      
+      await Promise.all(updatePromises);
+      
+      // Refresh the projects data
+      const allProjects = await getDocs(collection(db, "projects"));
+      setProjects(allProjects.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any);
+      
+      alert(`Status updated to ${newStatus} successfully!`);
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      alert("Failed to update status");
+    } finally {
+      setUpdatingStatus(null);
     }
   }
 
@@ -452,7 +497,7 @@ export default function SchedulingPage() {
     });
 
     return sorted;
-  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection]);
+  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, months]);
 
   // Calculate unscheduled hours
   const unscheduledHoursCalc = useMemo(() => {
@@ -509,7 +554,7 @@ export default function SchedulingPage() {
         </div>
       </div>
 
-      <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
+      <div style={{ background: "#ffffff", borderRadius: 12, padding: 16, border: "1px solid #ddd", marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#fff", fontSize: 20, margin: 0 }}>Scheduled Hours by Month</h2>
           <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
@@ -529,21 +574,21 @@ export default function SchedulingPage() {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${months.length}, 1fr)`, gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
           {months.map((month) => {
             const totalHours = allJobs.reduce((sum, job) => {
               const allocation = job.allocations[month] || 0;
               return sum + (job.totalHours * (allocation / 100));
             }, 0);
             return (
-              <div key={month} style={{ background: "#ffffff", padding: 16, borderRadius: 8, border: "1px solid #ddd", textAlign: "center" }}>
-                <div style={{ color: "#666", fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div key={month} style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #ddd", textAlign: "center" }}>
+                <div style={{ color: "#666", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {formatMonthLabel(month)}
                 </div>
                 <div style={{ color: "#0066CC", fontSize: 24, fontWeight: 700 }}>
                   {Math.round(totalHours)}
                 </div>
-                <div style={{ color: "#999", fontSize: 11, marginTop: 4 }}>hours</div>
+                <div style={{ color: "#999", fontSize: 11, marginTop: 2 }}>hours</div>
               </div>
             );
           })}
@@ -552,7 +597,7 @@ export default function SchedulingPage() {
 
       <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ color: "#fff", fontSize: 20, margin: 0 }}>Jobs</h2>
+          <h2 style={{ color: "#003DA5", fontSize: 20, margin: 0 }}>Jobs</h2>
           <button
             onClick={addMonth}
             style={{
@@ -601,7 +646,27 @@ export default function SchedulingPage() {
                   <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.customer}</td>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.projectName}</td>
-                    <td style={{ padding: "12px 8px", color: statusColor, fontWeight: 600 }}>{job.status}</td>
+                    <td style={{ padding: "12px 8px" }}>
+                      <select
+                        value={job.status}
+                        onChange={(e) => updateStatus(job.jobKey, e.target.value)}
+                        disabled={updatingStatus === job.jobKey}
+                        style={{
+                          padding: "6px 12px",
+                          background: "#fff",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          color: statusColor,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <option value="Accepted">Accepted</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Complete">Complete</option>
+                        <option value="Delayed">Delayed</option>
+                      </select>
+                    </td>
                     <td style={{ padding: "12px 8px", color: "#0066CC", fontWeight: 700, textAlign: "right" }}>
                       {job.totalHours.toLocaleString()}
                     </td>

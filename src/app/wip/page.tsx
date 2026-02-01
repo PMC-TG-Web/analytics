@@ -134,7 +134,7 @@ export default function WIPReportPage() {
           const matchingProject = projectsData.find((p: any) => {
             const projectKey = `${p.customer || ''}|${p.projectNumber || ''}|${p.projectName || ''}`;
             return projectKey === jobKey;
-          });
+          }) as any;
           
           return {
             ...schedule,

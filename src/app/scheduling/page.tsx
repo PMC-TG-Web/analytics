@@ -41,18 +41,29 @@ function parseDateValue(value: any): Date | null {
 
 function getNextMonths(count: number) {
   const months: string[] = [];
-  // Start from 2026 onwards, no longer include 2025
+  // Generate all months for 2026 and beyond
   const now = new Date();
-  const startMonth = Math.max(2026 * 12, now.getFullYear() * 12 + now.getMonth());
-  for (let i = 0; i < count; i++) {
-    const monthIndex = startMonth + i;
-    const year = Math.floor(monthIndex / 12);
-    const m = (monthIndex % 12) + 1;
-    const monthStr = `${year}-${String(m).padStart(2, "0")}`;
-    if (!months.includes(monthStr)) {
-      months.push(monthStr);
+  const currentYear = now.getFullYear();
+  const startYear = Math.max(2026, currentYear);
+  
+  // Generate all 12 months of the start year
+  for (let m = 1; m <= 12; m++) {
+    months.push(`${startYear}-${String(m).padStart(2, "0")}`);
+  }
+  
+  // Add additional months for next year if count > 12
+  if (count > 12) {
+    const additionalMonths = count - 12;
+    for (let i = 0; i < additionalMonths; i++) {
+      const m = (i % 12) + 1;
+      const year = startYear + 1 + Math.floor(i / 12);
+      const monthStr = `${year}-${String(m).padStart(2, "0")}`;
+      if (!months.includes(monthStr)) {
+        months.push(monthStr);
+      }
     }
   }
+  
   return months;
 }
 

@@ -110,7 +110,7 @@ export default function WIPReportPage() {
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })) as any[];
         setProjects(projectsData);
         console.log("Projects loaded from Firestore:", projectsData.length);
         

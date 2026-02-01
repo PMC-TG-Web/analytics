@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { db } from "@/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -77,6 +77,14 @@ export default function WIPReportPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editableSchedule, setEditableSchedule] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<number, number>>({});
+  const [weeklyModalVisible, setWeeklyModalVisible] = useState(false);
+  const [monthTargetHours, setMonthTargetHours] = useState<number>(0);
   const [customerFilter, setCustomerFilter] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("wipCustomerFilter") || "";
@@ -161,6 +169,199 @@ export default function WIPReportPage() {
       localStorage.setItem("wipYearFilter", yearFilter);
     }
   }, [customerFilter, projectFilter, monthFilter, yearFilter]);
+
+  async function openJobModal(customer: string, projectName: string, projectNumber: string) {
+    const jobKey = `${customer}|${projectNumber}|${projectName}`;
+    const project = projects.find((p) => 
+      p.customer === customer && 
+      p.projectName === projectName && 
+      p.projectNumber === projectNumber
+    );
+    
+    if (!project) {
+      alert("Project not found");
+      return;
+    }
+
+    // Find existing schedule
+    const existingSchedule = schedules.find((s) => s.jobKey === jobKey);
+    
+    // Get all months from schedules
+    const allMonths = new Set<string>();
+    schedules.forEach((s) => {
+      s.allocations.forEach((a) => allMonths.add(a.month));
+    });
+    const sortedMonths = Array.from(allMonths).sort();
+
+    const allocations: Record<string, number> = {};
+    if (existingSchedule) {
+      existingSchedule.allocations.forEach((a) => {
+        allocations[a.month] = a.percent;
+      });
+      // Use the schedule's totalHours if available, otherwise use project hours
+      const totalHours = existingSchedule.totalHours || project.projectedPreconstHours || 0;
+      
+      setSelectedJob({
+        jobKey,
+        customer,
+        projectNumber,
+        projectName,
+        status: project.status || "In Progress",
+        totalHours: totalHours,
+        allocations,
+        months: sortedMonths,
+      });
+    } else {
+      sortedMonths.forEach((m) => {
+        allocations[m] = 0;
+      });
+      
+      setSelectedJob({
+        jobKey,
+        customer,
+        projectNumber,
+        projectName,
+        status: project.status || "In Progress",
+        totalHours: project.projectedPreconstHours || 0,
+        allocations,
+        months: sortedMonths,
+      });
+    }
+    
+    setEditableSchedule(allocations);
+    setModalVisible(true);
+  }
+
+  function updateModalPercent(month: string, percent: number) {
+    const validPercent = Math.max(0, Math.min(100, isNaN(percent) ? 0 : percent));
+    setEditableSchedule((prev: any) => ({
+      ...prev,
+      [month]: validPercent,
+    }));
+  }
+
+  async function openWeeklySchedule(month: string) {
+    if (!selectedJob) return;
+    
+    setSelectedMonth(month);
+    
+    // Calculate target hours for this month
+    const percent = editableSchedule[month] || 0;
+    const targetHours = (selectedJob.totalHours * percent) / 100;
+    setMonthTargetHours(targetHours);
+    
+    // Load existing weekly schedule from Firestore
+    try {
+      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
+      const existingDoc = longTermSnapshot.docs.find(
+        (doc) => doc.data().jobKey === selectedJob.jobKey && doc.data().month === month
+      );
+      
+      if (existingDoc) {
+        const data = existingDoc.data();
+        const weeks: Record<number, number> = {};
+        (data.weeks || []).forEach((w: any) => {
+          weeks[w.weekNumber] = w.hours || 0;
+        });
+        setWeeklySchedule(weeks);
+      } else {
+        // Initialize with empty weeks (4-5 weeks per month)
+        const weeks: Record<number, number> = {};
+        for (let i = 1; i <= 5; i++) {
+          weeks[i] = 0;
+        }
+        setWeeklySchedule(weeks);
+      }
+      
+      setWeeklyModalVisible(true);
+    } catch (error) {
+      console.error("Failed to load weekly schedule:", error);
+      alert("Failed to load weekly schedule");
+    }
+  }
+
+  function updateWeeklyHours(weekNumber: number, hours: number) {
+    const validHours = Math.max(0, isNaN(hours) ? 0 : hours);
+    setWeeklySchedule((prev) => ({
+      ...prev,
+      [weekNumber]: validHours,
+    }));
+  }
+
+  async function saveWeeklySchedule() {
+    if (!selectedJob || !selectedMonth) return;
+    
+    setSaving(true);
+    try {
+      const weeks = Object.entries(weeklySchedule).map(([weekNumber, hours]) => ({
+        weekNumber: Number(weekNumber),
+        hours,
+      }));
+
+      // Save to long term schedual collection
+      const docId = `${selectedJob.jobKey}_${selectedMonth}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      await setDoc(doc(db, "long term schedual", docId), {
+        jobKey: selectedJob.jobKey,
+        customer: selectedJob.customer,
+        projectNumber: selectedJob.projectNumber,
+        projectName: selectedJob.projectName,
+        month: selectedMonth,
+        weeks,
+        totalHours: weeks.reduce((sum, w) => sum + w.hours, 0),
+        updatedAt: new Date().toISOString(),
+      });
+
+      alert("Weekly schedule saved successfully!");
+      setWeeklyModalVisible(false);
+      setSelectedMonth(null);
+    } catch (error) {
+      console.error("Failed to save weekly schedule:", error);
+      alert("Failed to save weekly schedule");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveJobSchedule() {
+    if (!selectedJob) return;
+    
+    setSaving(true);
+    try {
+      const allocations = selectedJob.months.map((month: string) => ({
+        month,
+        percent: editableSchedule[month] || 0,
+      }));
+
+      const response = await fetch("/api/scheduling", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobKey: selectedJob.jobKey,
+          customer: selectedJob.customer,
+          projectNumber: selectedJob.projectNumber,
+          projectName: selectedJob.projectName,
+          status: selectedJob.status,
+          totalHours: selectedJob.totalHours,
+          allocations,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save");
+      }
+
+      alert("Schedule saved successfully!");
+      setModalVisible(false);
+      // Refresh data
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to save schedule:", error);
+      alert("Failed to save schedule");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Aggregate hours by month (excluding management and Complete status)
   const monthlyData: Record<string, MonthlyWIP> = {};
@@ -394,10 +595,6 @@ export default function WIPReportPage() {
     totalQualifyingHours += project.totalHours;
   });
   
-  console.log("=== UNSCHEDULED HOURS DEBUG ===");
-  console.log("Qualifying projects (In Progress status):", qualifyingProjectsMap.size);
-  console.log("Total qualifying hours:", totalQualifyingHours.toFixed(1));
-  
   // Calculate total scheduled hours from schedules (excluding Complete status)
   let totalScheduledHours = 0;
   let excludedCompleteHours = 0;
@@ -418,10 +615,6 @@ export default function WIPReportPage() {
     }, 0);
     totalScheduledHours += scheduledHours;
   });
-  
-  console.log("Total scheduled hours (In Progress only):", totalScheduledHours.toFixed(1));
-  console.log("Excluded scheduled hours (Complete status):", excludedCompleteHours.toFixed(1));
-  console.log("Unscheduled hours calculation:", `${totalQualifyingHours.toFixed(1)} - ${totalScheduledHours.toFixed(1)} = ${(totalQualifyingHours - totalScheduledHours).toFixed(1)}`);
   
   const unscheduledHours = totalQualifyingHours - totalScheduledHours;
 
@@ -479,11 +672,6 @@ export default function WIPReportPage() {
     scheduleSalesMap.set(key, currentTotal + sales);
   });
   
-  console.log("=== SCHEDULED SALES DEBUG ===");
-  console.log("Schedules:", schedules.length);
-  console.log("Unique project keys with qualifying status:", scheduleSalesMap.size);
-  console.log("Total qualifying sales:", Array.from(scheduleSalesMap.values()).reduce((sum, val) => sum + val, 0));
-  
   let matchedCount = 0;
   let unmatchedCount = 0;
   
@@ -510,10 +698,6 @@ export default function WIPReportPage() {
       scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
     });
   });
-  
-  console.log("Matched schedules:", matchedCount);
-  console.log("Unmatched schedules:", unmatchedCount);
-  console.log("Scheduled sales by month:", scheduledSalesByMonth);
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
@@ -560,6 +744,9 @@ export default function WIPReportPage() {
           </a>
           <a href="/scheduling" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Scheduling
+          </a>
+          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#10b981", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+            Long-Term Schedule
           </a>
         </div>
       </div>
@@ -850,7 +1037,26 @@ export default function WIPReportPage() {
                   </div>
                   {data.jobs.length > 0 ? (
                     data.jobs.filter((job) => (job.hours ?? 0) > 0).map((job, idx) => (
-                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 13, color: "#222", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #f0f0f0" }}>
+                      <div 
+                        key={idx} 
+                        onClick={() => openJobModal(job.customer, job.projectName, job.projectNumber)}
+                        style={{ 
+                          display: "grid", 
+                          gridTemplateColumns: "repeat(3, 1fr)", 
+                          gap: 12, 
+                          fontSize: 13, 
+                          color: "#222", 
+                          marginBottom: 8, 
+                          paddingBottom: 8, 
+                          borderBottom: "1px solid #f0f0f0",
+                          cursor: "pointer",
+                          padding: "8px",
+                          borderRadius: "4px",
+                          transition: "background 0.2s"
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#f5f5f5"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                      >
                         <div>{job.customer}</div>
                         <div>{job.projectName}</div>
                         <div style={{ textAlign: "right", color: "#0066CC", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
@@ -877,6 +1083,346 @@ export default function WIPReportPage() {
           to create a schedule.
         </div>
       )}
+
+      {/* Schedule Edit Modal */}
+      {modalVisible && selectedJob && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setModalVisible(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#ffffff",
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 800,
+              maxHeight: "80vh",
+              overflow: "auto",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ color: "#003DA5", margin: 0, marginBottom: 8 }}>
+                {selectedJob.projectName}
+              </h2>
+              <div style={{ color: "#666", fontSize: 14 }}>
+                <div><strong>Customer:</strong> {selectedJob.customer}</div>
+                <div><strong>Project #:</strong> {selectedJob.projectNumber}</div>
+                <div><strong>Total Hours:</strong> {selectedJob.totalHours.toFixed(1)}</div>
+                <div><strong>Status:</strong> {selectedJob.status}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ color: "#003DA5", fontSize: 16, marginBottom: 12 }}>Schedule Allocation</h3>
+              <div style={{ maxHeight: 400, overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #ddd", background: "#f5f5f5" }}>
+                      <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 13, fontWeight: 600 }}>Month</th>
+                      <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>%</th>
+                      <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedJob.months.map((month: string) => {
+                      const percent = editableSchedule[month] || 0;
+                      const hours = (selectedJob.totalHours * percent) / 100;
+                      const [year, m] = month.split("-");
+                      const date = new Date(Number(year), Number(m) - 1, 1);
+                      const monthLabel = date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+
+                      return (
+                        <tr 
+                          key={month} 
+                          style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer", transition: "background 0.2s" }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#f9f9f9"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                        >
+                          <td 
+                            style={{ padding: "8px 12px", fontSize: 13 }}
+                            onClick={() => openWeeklySchedule(month)}
+                          >
+                            {monthLabel}
+                          </td>
+                          <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={percent}
+                              onChange={(e) => updateModalPercent(month, Number(e.target.value))}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: 60,
+                                padding: "4px 8px",
+                                border: "1px solid #ddd",
+                                borderRadius: 4,
+                                textAlign: "right",
+                                fontSize: 13,
+                              }}
+                            />
+                          </td>
+                          <td 
+                            style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC", fontWeight: 600 }}
+                            onClick={() => openWeeklySchedule(month)}
+                          >
+                            {hours.toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: "2px solid #ddd", fontWeight: 600 }}>
+                      <td style={{ padding: "8px 12px", fontSize: 13 }}>Total</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13 }}>
+                        {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (val || 0), 0).toFixed(0)}%
+                      </td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC" }}>
+                        {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (selectedJob.totalHours * (val || 0)) / 100, 0).toFixed(1)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setModalVisible(false)}
+                style={{
+                  padding: "10px 20px",
+                  background: "#f0f0f0",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveJobSchedule}
+                disabled={saving}
+                style={{
+                  padding: "10px 20px",
+                  background: saving ? "#ccc" : "#0066CC",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                {saving ? "Saving..." : "Save Schedule"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Schedule Modal */}
+      {weeklyModalVisible && selectedMonth && selectedJob && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1001,
+          }}
+          onClick={() => setWeeklyModalVisible(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#ffffff",
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 600,
+              maxHeight: "80vh",
+              overflow: "auto",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ color: "#003DA5", margin: 0, marginBottom: 8 }}>
+                Weekly Schedule - {(() => {
+                  const [year, m] = selectedMonth.split("-");
+                  const date = new Date(Number(year), Number(m) - 1, 1);
+                  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+                })()}
+              </h2>
+              <div style={{ color: "#666", fontSize: 14 }}>
+                <div><strong>Project:</strong> {selectedJob.projectName}</div>
+                <div><strong>Customer:</strong> {selectedJob.customer}</div>
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f8ff", borderRadius: 6, border: "1px solid #0066CC" }}>
+                  <strong style={{ color: "#003DA5" }}>Hours to Schedule for this Month:</strong>{" "}
+                  <span style={{ color: "#0066CC", fontSize: 16, fontWeight: 700 }}>
+                    {monthTargetHours.toFixed(1)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid #ddd", background: "#f5f5f5" }}>
+                    <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 13, fontWeight: 600 }}>Week Starting</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>Hours</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Calculate the Mondays for each week in the month
+                    const [year, month] = selectedMonth.split("-");
+                    const firstDay = new Date(Number(year), Number(month) - 1, 1);
+                    const lastDay = new Date(Number(year), Number(month), 0);
+                    
+                    const mondays: Date[] = [];
+                    let currentDate = new Date(firstDay);
+                    
+                    // Find the first Monday (or use first day of month if it comes before first Monday)
+                    const firstDayOfWeek = firstDay.getDay();
+                    if (firstDayOfWeek === 1) {
+                      // First day is Monday
+                      mondays.push(new Date(firstDay));
+                    } else if (firstDayOfWeek === 0) {
+                      // First day is Sunday, next Monday is day 2
+                      mondays.push(new Date(Number(year), Number(month) - 1, 2));
+                    } else {
+                      // First day is Tue-Sat, calculate days until Monday
+                      const daysUntilMonday = (8 - firstDayOfWeek) % 7;
+                      if (daysUntilMonday > 0) {
+                        mondays.push(new Date(Number(year), Number(month) - 1, 1 + daysUntilMonday));
+                      }
+                    }
+                    
+                    // Add remaining Mondays
+                    let nextMonday = new Date(mondays[0]);
+                    while (true) {
+                      nextMonday = new Date(nextMonday);
+                      nextMonday.setDate(nextMonday.getDate() + 7);
+                      if (nextMonday <= lastDay) {
+                        mondays.push(new Date(nextMonday));
+                      } else {
+                        break;
+                      }
+                    }
+                    
+                    return mondays.map((monday, index) => {
+                      const weekNumber = index + 1;
+                      const currentValue = weeklySchedule[weekNumber];
+                      const displayValue = currentValue !== undefined && currentValue !== null ? currentValue : 0;
+                      const dateStr = monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                      
+                      return (
+                        <tr key={weekNumber} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "8px 12px", fontSize: 13 }}>{dateStr}</td>
+                          <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={displayValue}
+                              onChange={(e) => updateWeeklyHours(weekNumber, Number(e.target.value))}
+                              style={{
+                                width: 80,
+                                padding: "4px 8px",
+                                border: "1px solid #ddd",
+                                borderRadius: 4,
+                                textAlign: "right",
+                                fontSize: 13,
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: "2px solid #ddd", fontWeight: 600 }}>
+                    <td style={{ padding: "8px 12px", fontSize: 13 }}>Total Scheduled</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC" }}>
+                      {(() => {
+                        const totalScheduled = Object.values(weeklySchedule).reduce((sum: number, val: any) => sum + (val || 0), 0);
+                        const difference = totalScheduled - monthTargetHours;
+                        const differenceColor = Math.abs(difference) < 0.1 ? "#00aa00" : difference > 0 ? "#ff6600" : "#cc0000";
+                        
+                        return (
+                          <div>
+                            <div>{totalScheduled.toFixed(1)}</div>
+                            {Math.abs(difference) >= 0.1 && (
+                              <div style={{ fontSize: 11, color: differenceColor, fontWeight: 400 }}>
+                                ({difference > 0 ? "+" : ""}{difference.toFixed(1)} hrs)
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setWeeklyModalVisible(false)}
+                style={{
+                  padding: "10px 20px",
+                  background: "#f0f0f0",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveWeeklySchedule}
+                disabled={saving}
+                style={{
+                  padding: "10px 20px",
+                  background: saving ? "#ccc" : "#0066CC",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                {saving ? "Saving..." : "Save Weekly Schedule"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -895,17 +1441,25 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
   const forecastData: (number | null)[] = [];
   const actualData: (number | null)[] = [];
   
-  // Calculate simple linear trend from last 6 months (or all available data)
+  // Calculate linear regression from last 6 months (or all available data)
   const trendPeriod = Math.min(6, hours.length);
   const recentHours = hours.slice(-trendPeriod);
   
   if (recentHours.length >= 2) {
-    // Calculate average change per month
-    const changes = [];
-    for (let i = 1; i < recentHours.length; i++) {
-      changes.push(recentHours[i] - recentHours[i - 1]);
-    }
-    const avgChange = changes.reduce((sum, val) => sum + val, 0) / changes.length;
+    // Linear regression: y = mx + b
+    const n = recentHours.length;
+    const xValues = Array.from({ length: n }, (_, i) => i); // 0, 1, 2, 3...
+    const yValues = recentHours;
+    
+    // Calculate slope (m) and intercept (b)
+    const sumX = xValues.reduce((sum, x) => sum + x, 0);
+    const sumY = yValues.reduce((sum, y) => sum + y, 0);
+    const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+    const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
     const lastValue = hours[hours.length - 1];
     
     // Create actual data (fill with nulls, then add last actual value as connection point)
@@ -915,7 +1469,7 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
     forecastData.push(...Array(hours.length - 1).fill(null));
     forecastData.push(lastValue); // Connection point
     
-    // Generate forecast months
+    // Generate forecast months using the regression line
     const forecastLabels = [];
     const lastMonthParts = sortedMonths[sortedMonths.length - 1].split("-");
     let forecastYear = Number(lastMonthParts[0]);
@@ -927,7 +1481,8 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         forecastMonth = 1;
         forecastYear++;
       }
-      const forecastValue = lastValue + avgChange * (i + 1);
+      // Project using the regression line
+      const forecastValue = slope * (n + i) + intercept;
       forecastData.push(Math.max(0, forecastValue));
       
       const date = new Date(forecastYear, forecastMonth - 1, 1);

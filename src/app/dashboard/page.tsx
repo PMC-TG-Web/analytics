@@ -345,6 +345,9 @@ export default function Dashboard() {
           <a href="/wip" style={{ padding: '8px 16px', background: '#0066CC', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             WIP Report
           </a>
+          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            Long-Term Schedule
+          </a>
         </div>
       </div>
       

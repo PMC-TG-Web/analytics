@@ -83,11 +83,12 @@ export default function SchedulingPage() {
             const [year] = m.split('-');
             return Number(year) >= 2026;
           });
-          if (filtered.length > 0) {
-            months = filtered;
-          } else {
-            months = getNextMonths(12);
-          }
+          
+          // Ensure we have all 12 months of 2026 at minimum
+          const baseMonths = getNextMonths(12);
+          const allMonths = Array.from(new Set([...baseMonths, ...filtered])).sort();
+          
+          months = allMonths;
         } catch {
           months = getNextMonths(12);
         }
@@ -632,6 +633,9 @@ export default function SchedulingPage() {
           </a>
           <a href="/wip" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             WIP Report
+          </a>
+          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#10b981", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+            Long-Term Schedule
           </a>
         </div>
       </div>

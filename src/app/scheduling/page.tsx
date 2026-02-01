@@ -41,13 +41,9 @@ function parseDateValue(value: any): Date | null {
 
 function getNextMonths(count: number) {
   const months: string[] = [];
-  // Start with all of 2025
-  for (let m = 1; m <= 12; m++) {
-    months.push(`2025-${String(m).padStart(2, "0")}`);
-  }
-  // Then add months starting from current date
+  // Start from 2026 onwards, no longer include 2025
   const now = new Date();
-  const startMonth = now.getFullYear() * 12 + now.getMonth();
+  const startMonth = Math.max(2026 * 12, now.getFullYear() * 12 + now.getMonth());
   for (let i = 0; i < count; i++) {
     const monthIndex = startMonth + i;
     const year = Math.floor(monthIndex / 12);
@@ -67,24 +63,27 @@ export default function SchedulingPage() {
   const [months, setMonths] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("schedulingMonths");
-      let months = getNextMonths(6);
+      let months = getNextMonths(12);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // Ensure 2025 is always first
-          const has2025 = parsed.some((m: string) => m.startsWith("2025"));
-          if (!has2025) {
-            months = getNextMonths(6);
+          // Filter out any months before 2026
+          const filtered = parsed.filter((m: string) => {
+            const [year] = m.split('-');
+            return Number(year) >= 2026;
+          });
+          if (filtered.length > 0) {
+            months = filtered;
           } else {
-            months = parsed;
+            months = getNextMonths(12);
           }
         } catch {
-          months = getNextMonths(6);
+          months = getNextMonths(12);
         }
       }
       return months;
     }
-    return getNextMonths(6);
+    return getNextMonths(12);
   });
   const [saving, setSaving] = useState(false);
   const [customerFilter, setCustomerFilter] = useState<string>("");
@@ -119,18 +118,26 @@ export default function SchedulingPage() {
         }));
         setSchedules(schedulesArray);
 
-        // Collect all months that have scheduled hours
+        // Collect all months that have scheduled hours (only 2026 and beyond)
         const scheduledMonths = new Set<string>();
         schedulesArray.forEach((schedule: JobSchedule) => {
           Object.entries(schedule.allocations).forEach(([month, percent]) => {
             if (percent > 0) {
-              scheduledMonths.add(month);
+              const [year] = month.split('-');
+              if (Number(year) >= 2026) {
+                scheduledMonths.add(month);
+              }
             }
           });
         });
 
-        // Merge with existing months and sort
-        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)])).sort();
+        // Merge with existing months and sort, filtering out pre-2026
+        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)]))
+          .filter(m => {
+            const [year] = m.split('-');
+            return Number(year) >= 2026;
+          })
+          .sort();
         if (allMonths.length > months.length) {
           setMonths(allMonths);
         }

@@ -77,9 +77,30 @@ export default function WIPReportPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [customerFilter, setCustomerFilter] = useState<string>("");
-  const [projectFilter, setProjectFilter] = useState<string>("");
-  const [monthFilter, setMonthFilter] = useState<string>("");
+  const [customerFilter, setCustomerFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("wipCustomerFilter") || "";
+    }
+    return "";
+  });
+  const [projectFilter, setProjectFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("wipProjectFilter") || "";
+    }
+    return "";
+  });
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("wipMonthFilter") || "";
+    }
+    return "";
+  });
+  const [yearFilter, setYearFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("wipYearFilter") || "";
+    }
+    return "";
+  });
 
   useEffect(() => {
     async function fetchData() {
@@ -130,6 +151,16 @@ export default function WIPReportPage() {
     }
     fetchData();
   }, []);
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("wipCustomerFilter", customerFilter);
+      localStorage.setItem("wipProjectFilter", projectFilter);
+      localStorage.setItem("wipMonthFilter", monthFilter);
+      localStorage.setItem("wipYearFilter", yearFilter);
+    }
+  }, [customerFilter, projectFilter, monthFilter, yearFilter]);
 
   // Aggregate hours by month (excluding management and Complete status)
   const monthlyData: Record<string, MonthlyWIP> = {};
@@ -183,6 +214,10 @@ export default function WIPReportPage() {
   if (!years.includes("2025")) {
     years = ["2025", ...years];
   }
+  
+  // Apply year filter to years array
+  const filteredYears = yearFilter ? years.filter(year => year === yearFilter) : years;
+  
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // Get unique customers and projects for filters
@@ -192,6 +227,12 @@ export default function WIPReportPage() {
   // Filter monthly data based on selected filters
   const filteredMonthlyData: Record<string, MonthlyWIP> = {};
   months.forEach((month) => {
+    // Apply year filter
+    if (yearFilter) {
+      const [year] = month.split("-");
+      if (year !== yearFilter) return;
+    }
+    
     const originalData = monthlyData[month];
     const filteredJobs = originalData.jobs.filter((job) => {
       const customerMatch = !customerFilter || job.customer === customerFilter;
@@ -408,6 +449,17 @@ export default function WIPReportPage() {
     bidSubmittedSalesYearMonthMap[year][Number(m)] = bidSubmittedSalesByMonth[month];
   });
   const bidSubmittedSalesYears = Object.keys(bidSubmittedSalesYearMonthMap).sort();
+  
+  // Apply year filter to bid submitted sales
+  const filteredBidSubmittedSalesByMonth: Record<string, number> = {};
+  const filteredBidSubmittedSalesMonths = bidSubmittedSalesMonths.filter(month => {
+    if (yearFilter) {
+      const [year] = month.split("-");
+      if (year !== yearFilter) return false;
+    }
+    filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
+    return true;
+  });
 
   const scheduledSalesByMonth: Record<string, number> = {};
   
@@ -473,7 +525,22 @@ export default function WIPReportPage() {
     scheduledSalesYearMonthMap[year][Number(m)] = scheduledSalesByMonth[month];
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
+  
+  // Apply year filter to scheduled sales
+  const filteredScheduledSalesByMonth: Record<string, number> = {};
+  const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {
+    if (yearFilter) {
+      const [year] = month.split("-");
+      if (year !== yearFilter) return false;
+    }
+    filteredScheduledSalesByMonth[month] = scheduledSalesByMonth[month];
+    return true;
+  });
+  
   const combinedSalesYears = Array.from(new Set([...scheduledSalesYears, ...bidSubmittedSalesYears])).filter(year => year !== "2024").sort();
+  
+  // Apply year filter to combined years
+  const filteredCombinedSalesYears = yearFilter ? combinedSalesYears.filter(year => year === yearFilter) : combinedSalesYears;
 
   if (loading) {
     return (
@@ -531,32 +598,32 @@ export default function WIPReportPage() {
       </div>
 
       {/* Hours Line Chart */}
-      {months.length > 0 && (
+      {filteredMonths.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
           <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Hours Trend</h2>
           <div style={{ width: "100%", minHeight: 50 }}>
-            <HoursLineChart months={months} monthlyData={filteredMonthlyData} />
+            <HoursLineChart months={filteredMonths} monthlyData={filteredMonthlyData} />
           </div>
         </div>
       )}
 
       {/* Combined Sales Line Chart */}
-      {(scheduledSalesMonths.length > 0 || bidSubmittedSalesMonths.length > 0) && (
+      {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
           <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled vs Bid Submitted Sales</h2>
           <div style={{ width: "100%", minHeight: 50 }}>
             <CombinedSalesLineChart
-              scheduledMonths={scheduledSalesMonths}
-              scheduledSalesByMonth={scheduledSalesByMonth}
-              bidSubmittedMonths={bidSubmittedSalesMonths}
-              bidSubmittedSalesByMonth={bidSubmittedSalesByMonth}
+              scheduledMonths={filteredScheduledSalesMonths}
+              scheduledSalesByMonth={filteredScheduledSalesByMonth}
+              bidSubmittedMonths={filteredBidSubmittedSalesMonths}
+              bidSubmittedSalesByMonth={filteredBidSubmittedSalesByMonth}
             />
           </div>
         </div>
       )}
 
       {/* Year/Month Matrix Table */}
-      {months.length > 0 && (
+      {filteredYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
           <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Hours by Month</h2>
           <div style={{ overflowX: "auto" }}>
@@ -572,7 +639,7 @@ export default function WIPReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {years.map((year) => (
+                {filteredYears.map((year) => (
                   <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
                     <td style={{ padding: "12px", color: "#e5e7eb", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -592,7 +659,7 @@ export default function WIPReportPage() {
       )}
 
       {/* Combined Sales by Month */}
-      {combinedSalesYears.length > 0 && (
+      {filteredCombinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
           <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled + Bid Submitted Sales by Month</h2>
           <div style={{ overflowX: "auto" }}>
@@ -609,7 +676,7 @@ export default function WIPReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {combinedSalesYears.map((year) => (
+                {filteredCombinedSalesYears.map((year) => (
                   <React.Fragment key={year}>
                     <tr style={{ borderBottom: "1px solid #3a3d42" }}>
                       <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
@@ -653,6 +720,7 @@ export default function WIPReportPage() {
                 setCustomerFilter("");
                 setProjectFilter("");
                 setMonthFilter("");
+                setYearFilter("");
               }}
               style={{
                 padding: "6px 12px",
@@ -669,7 +737,29 @@ export default function WIPReportPage() {
           </div>
 
           {/* Filters */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div>
+              <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Year</label>
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  background: "#1a1d23",
+                  color: "#e5e7eb",
+                  border: "1px solid #3a3d42",
+                  borderRadius: 6,
+                }}
+              >
+                <option value="">All Years</option>
+                {years.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Customer</label>
               <select

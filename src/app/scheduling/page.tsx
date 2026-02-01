@@ -409,30 +409,60 @@ export default function SchedulingPage() {
     try {
       setUpdatingStatus(jobKey);
       
-      // Parse the jobKey to get projectNumber and customer
-      const [projectNumber, customer] = jobKey.split("|");
+      // Parse the jobKey to get customer, projectNumber, and projectName
+      const [customer, projectNumber, projectName] = jobKey.split("|");
       
-      // Query Firestore for all matching documents
+      // Update projects collection
       const projectsRef = collection(db, "projects");
       const q = query(
         projectsRef,
-        where("projectNumber", "==", projectNumber),
-        where("customer", "==", customer)
+        where("customer", "==", customer),
+        where("projectNumber", "==", projectNumber)
       );
       
       const querySnapshot = await getDocs(q);
       
-      // Update all matching documents
+      console.log(`Updating ${querySnapshot.size} project document(s) for ${customer} - ${projectName}`);
+      
+      // Update all matching project documents
       const updatePromises = querySnapshot.docs.map((docSnapshot) => {
         const docRef = doc(db, "projects", docSnapshot.id);
         return updateDoc(docRef, { status: newStatus });
       });
       
       await Promise.all(updatePromises);
+      console.log("Projects updated successfully");
+      
+      // Also update the schedule document
+      try {
+        const scheduleRef = doc(db, "schedules", jobKey);
+        await updateDoc(scheduleRef, { status: newStatus });
+        console.log("Schedule updated successfully");
+      } catch (scheduleError) {
+        console.error("Error updating schedule:", scheduleError);
+        // Continue even if schedule update fails
+      }
       
       // Refresh the projects data
       const allProjects = await getDocs(collection(db, "projects"));
       setProjects(allProjects.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any);
+      
+      // Refresh schedules data
+      const schedulesRes = await fetch("/api/scheduling");
+      const schedulesJson = await schedulesRes.json();
+      const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
+        jobKey: s.jobKey,
+        customer: s.customer,
+        projectName: s.projectName,
+        status: s.status || "Unknown",
+        totalHours: s.totalHours,
+        allocations: s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
+          acc[alloc.month] = alloc.percent;
+          return acc;
+        }, {}),
+      }));
+      setSchedules(schedulesArray);
+      console.log("Schedules refreshed, new status:", schedulesArray.find((s: any) => s.jobKey === jobKey)?.status);
       
       alert(`Status updated to ${newStatus} successfully!`);
     } catch (error) {
@@ -444,24 +474,38 @@ export default function SchedulingPage() {
   }
 
   const allJobs = useMemo(() => {
+    const qualifyingStatuses = ["In Progress"];
+    
     // Ensure all existing schedules have all months initialized and get current status
     const updatedSchedules = schedules.map((schedule) => {
       const allocations: Record<string, number> = {};
       months.forEach((month) => {
         allocations[month] = schedule.allocations[month] ?? 0;
       });
-      // Get current status from uniqueJobs (projects data) to keep it up to date
+      // Get hours and status from uniqueJobs (projects data)
       const currentJob = uniqueJobs.find((j) => j.key === schedule.jobKey);
+      // Use schedule's status if it's explicitly set (not "Unknown"), otherwise use project's status
+      const status = (schedule.status && schedule.status !== "Unknown") 
+        ? schedule.status 
+        : (currentJob?.status || schedule.status || "Unknown");
+      
       return { 
         ...schedule, 
         allocations,
-        status: currentJob?.status || schedule.status || "Unknown",
+        status,
         totalHours: currentJob?.totalHours || schedule.totalHours || 0,
       };
     });
 
-    const existing = new Set(updatedSchedules.map((s) => s.jobKey));
-    const toAdd = uniqueJobs.filter((job) => !existing.has(job.key)).map((job) => {
+    // Check against ALL schedules (before filtering) to prevent re-adding jobs that were marked Complete
+    const allScheduleKeys = new Set(schedules.map((s) => s.jobKey));
+    
+    const filteredSchedules = updatedSchedules.filter((schedule) => {
+      // Only include schedules with qualifying status
+      return qualifyingStatuses.includes(schedule.status);
+    });
+
+    const toAdd = uniqueJobs.filter((job) => !allScheduleKeys.has(job.key)).map((job) => {
       const allocations: Record<string, number> = {};
       months.forEach((month) => {
         allocations[month] = 0;
@@ -475,7 +519,7 @@ export default function SchedulingPage() {
         allocations,
       };
     });
-    return [...updatedSchedules, ...toAdd];
+    return [...filteredSchedules, ...toAdd];
   }, [schedules, uniqueJobs, months]);
 
   const uniqueCustomers = useMemo(() => {
@@ -519,13 +563,17 @@ export default function SchedulingPage() {
   const unscheduledHoursCalc = useMemo(() => {
     const totalQualifyingHours = uniqueJobs.reduce((sum, job) => sum + job.totalHours, 0);
     
-    const totalScheduledHours = allJobs.reduce((sum, job) => {
-      const jobScheduledHours = months.reduce((jobSum, month) => {
-        const allocation = job.allocations[month] || 0;
-        return jobSum + (job.totalHours * (allocation / 100));
+    // Calculate scheduled hours only from schedules that match qualifying jobs
+    const qualifyingJobKeys = new Set(uniqueJobs.map(j => j.key));
+    const totalScheduledHours = schedules
+      .filter(schedule => qualifyingJobKeys.has(schedule.jobKey))
+      .reduce((sum, schedule) => {
+        const allocations: Record<string, number> = schedule.allocations;
+        const jobScheduledHours = Object.values(allocations).reduce((jobSum, percent) => {
+          return jobSum + (schedule.totalHours * (percent / 100));
+        }, 0);
+        return sum + jobScheduledHours;
       }, 0);
-      return sum + jobScheduledHours;
-    }, 0);
     
     return {
       totalQualifying: totalQualifyingHours,

@@ -223,7 +223,7 @@ export default function LongTermSchedulePage() {
                       {weekColumns.map((week) => {
                         const weekKey = week.weekStartDate.toISOString();
                         const hours = job.weekHours[weekKey] || 0;
-                        const fte = hours / 10;
+                        const fte = hours / 50;
                         return (
                           <td key={weekKey} className={`text-center py-3 px-3 text-sm border-r border-gray-200 ${hours > 0 ? 'bg-blue-50' : ''}`}>
                             {hours > 0 ? (
@@ -239,7 +239,7 @@ export default function LongTermSchedulePage() {
                       })}
                       <td className="text-center py-3 px-4 text-sm font-bold bg-gray-100">
                         <div className="text-gray-900">{job.totalHours.toFixed(1)}</div>
-                        <div className="text-xs text-purple-600">{(job.totalHours / 10).toFixed(1)} FTE</div>
+                        <div className="text-xs text-purple-600">{(job.totalHours / 50).toFixed(1)} FTE</div>
                       </td>
                     </tr>
                   ))}
@@ -252,12 +252,12 @@ export default function LongTermSchedulePage() {
                     {weekTotals.map((total, idx) => (
                       <td key={idx} className="text-center py-4 px-3 text-sm text-white border-r border-blue-600">
                         <div className="font-bold">{total.toFixed(1)}</div>
-                        <div className="text-xs text-blue-200">{(total / 10).toFixed(1)} FTE</div>
-                      </td>
-                    ))}
-                    <td className="text-center py-4 px-4 text-sm text-white bg-blue-900">
-                      <div className="font-bold text-lg">{grandTotal.toFixed(1)}</div>
-                      <div className="text-xs text-blue-200">{(grandTotal / 10).toFixed(1)} FTE</div>
+                      <div className="text-xs text-blue-200">{(total / 50).toFixed(1)} FTE</div>
+                    </td>
+                  ))}
+                  <td className="text-center py-4 px-4 text-sm text-white bg-blue-900">
+                    <div className="font-bold text-lg">{grandTotal.toFixed(1)}</div>
+                    <div className="text-xs text-blue-200">{(grandTotal / 50).toFixed(1)} FTE</div>
                     </td>
                   </tr>
                 </tbody>

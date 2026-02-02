@@ -585,7 +585,13 @@ export default function SchedulingPage() {
     // Calculate scheduled hours only from schedules that match qualifying jobs
     const qualifyingJobKeys = new Set(uniqueJobs.map(j => j.key));
     const totalScheduledHours = schedules
-      .filter(schedule => qualifyingJobKeys.has(schedule.jobKey))
+      .filter(schedule => {
+        // Only include schedules for jobs that are currently qualifying (In Progress)
+        if (!qualifyingJobKeys.has(schedule.jobKey)) return false;
+        // Also exclude Complete status schedules
+        if (schedule.status === 'Complete') return false;
+        return true;
+      })
       .reduce((sum, schedule) => {
         const allocations: Record<string, number> = schedule.allocations;
         const jobScheduledHours = Object.values(allocations).reduce((jobSum, percent) => {
@@ -599,7 +605,7 @@ export default function SchedulingPage() {
       totalScheduled: totalScheduledHours,
       unscheduled: totalQualifyingHours - totalScheduledHours,
     };
-  }, [uniqueJobs, allJobs, months]);
+  }, [uniqueJobs, schedules]);
 
   function handleSort(column: string) {
     if (sortColumn === column) {

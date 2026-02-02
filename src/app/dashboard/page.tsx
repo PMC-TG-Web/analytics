@@ -656,6 +656,10 @@ export default function Dashboard() {
         isOpen={jobDetailsOpen}
         onClose={() => setJobDetailsOpen(false)}
         project={selectedJob}
+        onBack={() => {
+          setJobDetailsOpen(false);
+          setJobsListOpen(true);
+        }}
       />
     </main>
   );

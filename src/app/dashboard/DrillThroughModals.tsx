@@ -245,9 +245,10 @@ interface JobDetailsModalProps {
   isOpen: boolean;
   project: Project | null;
   onClose: () => void;
+  onBack?: () => void;
 }
 
-export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalProps) {
+export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetailsModalProps) {
   const [lineItems, setLineItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "cost" | "sales">("name");
@@ -453,13 +454,40 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
             alignItems: "center",
           }}
         >
-          <div>
-            <h2 style={{ margin: "0 0 8px 0", color: "#003DA5", fontSize: 20 }}>
-              {project.projectNumber}
-            </h2>
-            <p style={{ margin: 0, color: "#666", fontSize: 14 }}>
-              {project.projectName}
-            </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {onBack && (
+              <button
+                onClick={onBack}
+                style={{
+                  background: "none",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  color: "#666",
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f3f4f6";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                ← Back
+              </button>
+            )}
+            <div>
+              <h2 style={{ margin: "0 0 8px 0", color: "#003DA5", fontSize: 20 }}>
+                {project.projectNumber}
+              </h2>
+              <p style={{ margin: 0, color: "#666", fontSize: 14 }}>
+                {project.projectName}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}

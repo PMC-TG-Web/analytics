@@ -16,6 +16,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
+import { JobsListModal, JobDetailsModal } from "./DrillThroughModals";
 
 type Project = {
   id: string;
@@ -27,6 +28,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [jobsListOpen, setJobsListOpen] = useState(false);
+  const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Project | null>(null);
+  const [jobsListData, setJobsListData] = useState<Project[]>([]);
+  const [jobsListTitle, setJobsListTitle] = useState("");
 
   useEffect(() => {
     async function fetchData() {
@@ -472,7 +478,16 @@ export default function Dashboard() {
               <dl style={{ margin: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <dt style={{ color: '#666' }}>Sales</dt>
-                  <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC' }}>{`$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}</dd>
+                  <dd 
+                    style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC', cursor: 'pointer' }}
+                    onClick={() => {
+                      setJobsListData(group);
+                      setJobsListTitle(`${status} Projects`);
+                      setJobsListOpen(true);
+                    }}
+                  >
+                    {`$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                  </dd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <dt style={{ color: '#9ca3af' }}>Cost</dt>
@@ -568,6 +583,24 @@ export default function Dashboard() {
         <h2 style={{ marginBottom: 24, color: '#fff', fontSize: 20 }}>Hours by Month/Year (Submitted, In Progress, Accepted)</h2>
         <TimeSeriesChart projects={aggregatedProjects} />
       </div>
+
+      {/* Drill-through Modals */}
+      <JobsListModal
+        isOpen={jobsListOpen}
+        onClose={() => setJobsListOpen(false)}
+        projects={jobsListData}
+        title={jobsListTitle}
+        onSelectProject={(project) => {
+          setSelectedJob(project);
+          setJobsListOpen(false);
+          setJobDetailsOpen(true);
+        }}
+      />
+      <JobDetailsModal
+        isOpen={jobDetailsOpen}
+        onClose={() => setJobDetailsOpen(false)}
+        project={selectedJob}
+      />
     </main>
   );
 }

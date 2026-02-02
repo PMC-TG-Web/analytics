@@ -1,0 +1,1798 @@
+CostItem,CostType,PMCGroup
+Square Feet,Assembly,Assembly
+Interior Slabs ,Assembly,Assembly
+Exterior Slabs ,Assembly,Assembly
+Continuous Footings ,Assembly,Assembly
+"Bollard Sch 40 6""x7'-6"" (primed)",Assembly,Assembly
+Dowel Bar,Assembly,Assembly
+Wood Forming and Labor,Assembly,Assembly
+"Expansion Foam 4""x10'",Assembly,Assembly
+Wood Forming and Labor ,Assembly,Assembly
+Rebar,Assembly,Assembly
+"Nyce Concrete 8"" 4000 psi ",Assembly,Assembly
+Wire Mesh 6ga,Assembly,Assembly
+"Nyce Concrete 2.5"" 3500 psi",Assembly,Assembly
+Nyce Concrete 3500 PSI,Assembly,Assembly
+Includes L&M Cure @ 350 sq ft per gal / 5 hours per 55 gal.,Assembly,Assembly
+Vapor Barrier 6 mil,Assembly,Assembly
+"Expansion Foam 6""x10'",Assembly,Assembly
+Chairs 5' ,Assembly,Assembly
+Concrete SOG,Assembly,Assembly
+"Bollard Sch 40 6""x7'(primed)",Assembly,Assembly
+"4"" Sidewalks (Area of Interest)",Assembly,Assembly
+Concrete For Linear ,Assembly,Assembly
+Concrete For Slabs ,Assembly,Assembly
+Deck Pour,Assembly,Assembly
+"Foundation - 30"" x 12"" Continuous Footing",Assembly,Assembly
+"Poured Wall 8""",Assembly,Equipment
+Somero S-840 (8 hr minimum),Equipment,Equipment
+Telehandler 8000 lb (In-House),Equipment,Equipment
+Somero SRS4 (boom screed) (8 hr minimum),Equipment,Equipment
+Roller Rental,Equipment,Equipment
+Somero S-15R (boom screed) (8 hr minimum),Equipment,Equipment
+Dump Trailer,Equipment,Equipment
+Aluminum Concrete Form Rental ,Equipment,Equipment
+Dump Trailer ,Equipment,Equipment
+Bobcat 595 Skidloader,Equipment,Equipment
+Kubota Excavator KX033,Equipment,Equipment
+Trackhoe Rental,Equipment,Equipment
+Bobcat 450 Skidloader,Equipment,Equipment
+Scissor Lift Rental ,Equipment,Equipment
+Aluminum Concrete Form,Equipment,Equipment
+Somero Power Rake (8 hr minimum),Equipment,Equipment
+Somero 3D Profiler (with or without screed),Equipment,Equipment
+Hammer,Equipment,Equipment
+Somero S-840 Screed,Equipment,Equipment
+Roller Rental / Gap Power roller rental,Equipment,Equipment
+Trackhoe Rental / Gap Power by the week,Equipment,Equipment
+Somero S-840 ,Equipment,Equipment
+Breaker Rental ,Equipment,Equipment
+Man LIft ,Equipment,Equipment
+Manlift ,Equipment,Equipment
+Trackhoe Rental / 1 week Gap Power,Equipment,Equipment
+Saws,Equipment,Equipment
+Telehandler 8000 lb (Rental) Week ,Equipment,Equipment
+Concrete Hopper Rental ,Equipment,Equipment
+Telehandler 8000 lb (Rental) Magni Lift,Equipment,Equipment
+Triaxle To Haul Lift,Equipment,Equipment
+"18"" Auger Attachment",Equipment,Equipment
+Hammer For Excavator,Equipment,Equipment
+Triaxle,Equipment,Equipment
+Triaxle ,Equipment,Equipment
+Roll off dumpster for washout ,Equipment,Equipment
+Roll off dumpster for wash out ,Equipment,Equipment
+Roll off dumpster for wash out,Equipment,Equipment
+Roll off dumpster for concrete washout ,Equipment,Equipment
+Roller Rental / 1 Week ,Equipment,Equipment
+Mobilization,Equipment,Equipment
+Dump Truck,Equipment,Equipment
+Trackhoe Rental / Gap Power 2 Weeks ,Equipment,Equipment
+Roller Rental / Gap Power 2 Weeks  ,Equipment,Equipment
+Trackhoe Rental / Gap Power 1 Week ,Equipment,Equipment
+Roller Rental / Gap Power 1 Week  ,Equipment,Equipment
+Trackhoe Rental / Gap Power 1 month,Equipment,Equipment
+Roller Rental /Gap Power 1 Week ,Equipment,Equipment
+Roller Rental / Gap Power 1 Month ,Equipment,Equipment
+Trackhoe Rental / Gap Power 1 month & 1 Week ,Equipment,Equipment
+Roller Rental /Gap Power 1 Month ,Equipment,Equipment
+Boom lift rental / Gap Power 1 month ,Equipment,Equipment
+Management,Labor,PM
+Travel Labor,Labor,Travel Labor
+7. Management Labor ,Labor,PM
+Foundation Labor ,Labor,Foundation Labor 
+Site Concrete Labor ,Labor,Site Concrete Labor 
+Slab On Grade Labor ,Labor,Slab On Grade Labor 
+8. Travel Labor,Labor,Travel Labor
+ 1. Labor,Labor, 1. Labor
+Spreadfooting Labor ,Labor,Foundation Labor 
+Bollards Labor,Labor,Site Concrete Labor 
+Continuous Footing Labor,Labor,Foundation Labor 
+Supervision ,Labor,PM
+Pier Labor ,Labor,Foundation Labor 
+3. Spreadfooting Labor ,Labor,Foundation Labor 
+Interior Sealer Labor ,Labor,Site Concrete Labor 
+ 2. Continuous Footers Labor ,Labor,Foundation Labor 
+Wall Labor,Labor,Wall Labor
+8. Travel Labor / SUB T&M RATES,Labor,Travel Labor
+6. Poured Walls Labor / SUB T&M RATES,Labor,Wall Labor
+4. Piers Labor ,Labor,Foundation Labor 
+Slab On Deck Labor ,Labor,Slab On Grade Labor 
+Stone Grading Labor,Labor,Stone Grading Labor
+Excavation And Backfill Labor ,Labor,Excavation And Backfill Labor 
+ 1. Labor Prep ,Labor, 1. Labor Prep 
+Labor ,Labor,Labor 
+6. Poured Walls Labor ,Labor,Wall Labor
+ Labor ,Labor,Labor 
+Spread Footing Labor,Labor,Foundation Labor 
+"Slab On Grade, Curb, HouseKeeping Pads Labor ",Labor,Slab On Grade Labor 
+Travel Labor Hourly ,Labor,Travel Labor
+"1 Hr. Per 30 Manhours, 1 In 50 With a Supervisor ",Labor,"1 Hr. Per 30 Manhours, 1 In 50 With a Supervisor "
+General Labor For Slabs On Grade,Labor,Slab On Grade Labor 
+Site Concrete Forms Labor ,Labor,Site Concrete Labor 
+Pour And Finish Labor,Labor,Pour And Finish Labor
+Prep Labor,Labor,Labor 
+Saw Cut Diamond infill Labor,Labor,Slab On Grade Labor 
+Slab on Grade Rebar Labor,Labor,Slab On Grade Labor 
+Slab On Grade Forms Labor ,Labor,Slab On Grade Labor 
+Certified Welder,Labor,welder
+ Labor Pour and Finish,Labor,Pour And Finish Labor
+Pour Smooth Finish Labor,Labor,Pour And Finish Labor
+ Labor,Labor,Labor 
+ Fab Rebar Labor ,Labor,fab labor
+Pour Broom Finish Labor ,Labor,Pour And Finish Labor
+ Prep Labor,Labor,Labor 
+Finish Labor,Labor,Finish Labor
+ 1. Prep Labor,Labor,Labor 
+ 1. Prep Labor ,Labor,Labor 
+5. Sidewalks labor,Labor,Site Concrete Labor 
+  Labor,Labor,Labor 
+6. Travel Labor,Labor,Travel Labor
+Management Labor ,Labor,PM
+ Labor Prep ,Labor,Labor 
+Smooth Finish Concrete,Labor,Finish Labor
+Each ,Part,Part
+V-Seal 102 5 gal,Part,Part
+#4 Rebar - 20' Pc,Part,Part
+Mobilization,Part,Part
+"Expansion Rigid Foam 4""x10'",Part,Part
+Foundation Wood Forms ,Part,Part
+"Chairs 3"" (5' section)",Part,Part
+Foundation Concrete  ,Part,Part
+#6 Rebar - 20' Pc,Part,Part
+#5 Rebar - 20' Pc,Part,Part
+Site Concrete Wood Forms ,Part,Part
+#3 Rebar - 20' Pc,Part,Part
+Precision Non-Shrink Grout 50lb,Part,Part
+Rebar #4 - 20' pc,Part,Part
+Rebar #5 - 20' pc,Part,Part
+Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet,Part,Part
+"Viper Tape 4"" x 180'",Part,Part
+#8 Rebar - 20' Pc,Part,Part
+TK-Floor Hardner and Densifier 55 gal,Part,Part
+Vapor Barrier 6 mil 20'x100',Part,Part
+Wood Forming ,Part,Part
+Wire Mesh 10 ga (1.4x1.4 6x6) 5'x10' Sheet,Part,Part
+Linear ,Part,Part
+Wire Mesh 8 ga (2.1x2.1 6x6) 5'x10' Sheet,Part,Part
+Slab On Grade Concrete  ,Part,Part
+L&M Curing Compound,Part,Part
+Slab On Grade Wood Forms ,Part,Part
+Vapor Barrier 10 mil 20'x100',Part,Part
+P2 Piers ,Part,Part
+F7.0 Spread Footings ,Part,Part
+Site Concrete  ,Part,Part
+Bollards Concrete,Part,Part
+4000 Psi Rohrers Concrete  ,Part,Part
+"Chairs 3""   (5' section)",Part,Part
+3500 Psi DVC Concrete  ,Part,Part
+"6"" Curb Along Exterior of Building ",Part,Part
+4000 Psi DVC Concrete,Part,Part
+Decorative Bollards ,Part,Part
+Expansion ,Part,Part
+Forms ,Part,Part
+"4"" Sidewalks ",Part,Part
+Truck Bollards ,Part,Part
+Wire Mesh 4 ga (4.0x4.0 4x4) 5'x10' Sheet,Part,Part
+4000 Psi DVC Concrete  ,Part,Part
+"8"" Exterior Truck Slabs ",Part,Part
+"6"" Exterior Ramp ",Part,Part
+Seal Hard ,Part,Part
+Non Metallic Floor Hardener 50 lb. Bag,Part,Part
+Hardner ,Part,Part
+"5"" Interior Slab on Deck ",Part,Part
+Pan Steps & Landings ,Part,Part
+"6"" Curb & Curb Infills ",Part,Part
+"Heavy Duty SOG Chair 2-1/2"" - 3""",Part,Part
+"GreenGuard Scoreboard 2""x4'x8'",Part,Part
+ 3500 Psi DVC Concrete  ,Part,Part
+Hardner,Part,Part
+"6"" Interior Slab on Grade ",Part,Part
+Pressure Treated 2x6 for Thermal Break ,Part,Part
+"Heavy Duty SOG Chair 1 1/2"" - 2""",Part,Part
+Freezer ,Part,Part
+Cooler ,Part,Part
+Pressure Treated 2x6's,Part,Part
+Thickened Slab ,Part,Part
+"4"" Interior Slab on Grade ",Part,Part
+"8"" Dock Leveler Pit Sabs ",Part,Part
+Poured Walls,Part,Part
+3000 Psi DVC Concrete  ,Part,Part
+P1 Piers ,Part,Part
+F8.5 Spread Footings ,Part,Part
+F8.0 Spread Footings ,Part,Part
+F6.5 Spread Footings ,Part,Part
+F6.0 Spread Footings ,Part,Part
+F5.5 Spread Footings ,Part,Part
+F5.0 Spread Footings ,Part,Part
+F4.5 Spread Footings ,Part,Part
+F3.5 Spread Footings ,Part,Part
+Bulk Footings ,Part,Part
+5' x 1' Continuous Footings ,Part,Part
+"3'6"" x 1' Continuous Footings ",Part,Part
+2' x 1' Continuous Footings ,Part,Part
+4500 Psi York Concrete  ,Part,Part
+"6"" Condenser Pads ",Part,Part
+Thickened Edges ,Part,Part
+Exterior Stoops ,Part,Part
+S2 Slab on Grade,Part,Part
+4000 Psi York Concrete  ,Part,Part
+"2' 6"" x 8"" Continuous Footings ",Part,Part
+S1 Slab on Grade ,Part,Part
+3000 Psi York Concrete  ,Part,Part
+ 3000 Psi York Concrete  ,Part,Part
+Elevator Footings ,Part,Part
+F-40 Spread Footings ,Part,Part
+F-30 Spread Footings ,Part,Part
+"6' x 1'2"" Continuous Footings ",Part,Part
+4' x 1' Continuous Footings ,Part,Part
+Pc-Concrete Repair Epoxy,Part,Part
+1' x 1' Continuous Footings ,Part,Part
+Light Load,Part,Part
+"Bollard Sch 40 6""x7'6"" (primed)",Part,Part
+ADA Plate 2'x5',Part,Part
+Extension ,Part,Part
+"Chairs 2"" (5' section)",Part,Part
+Wire Mesh 6 ga  (2.9x2.9 6x6) 8'x15' Sheet,Part,Part
+Porches,Part,Part
+15 mil Viper II Plastic Class A Roll (14'x140'),Part,Part
+S2 Slab on Grade ,Part,Part
+TK Kure & Seal WB  5 gal,Part,Part
+"Water Stop Type 3A Ribbed 4""x 3/16"" x 50'",Part,Part
+Foundation Aluminum Forms ,Part,Part
+Elevator Foundations ,Part,Part
+Elevator Foundation Walls ,Part,Part
+#7 Rebar - 20' Pc,Part,Part
+P1 Piers,Part,Part
+F5.0 Spreadfootings ,Part,Part
+F3.0 Spreadfootings ,Part,Part
+"2'4"" x 1' Continuous Footings ",Part,Part
+Shop Drawings,Part,Part
+"Expansion Rigid Foam 6""x10'",Part,Part
+Flush Curb ,Part,Part
+"Bollard Sch 40 6""x78"" with cap (primed)",Part,Part
+Square Feet,Part,Part
+#5 Rebar - 20' Pc - (3) Continuous ,Part,Part
+"#4 Rebar - 20' Pc - Thickened Slab At 24"" On Center",Part,Part
+Thickened Slab Concrete ,Part,Part
+"GreenGuard Scoreboard 2""x4'x8' Under Slab ONLY",Part,Part
+Vapor Barrier 15 mil Viper II Class A Roll (14'x140'),Part,Part
+"Water Stop Type 3A Ribbed 4""x 3/16"" x 100'",Part,Part
+#5 Rebar - (4) Each Way ,Part,Part
+EPS Foam Concrete Adhesive 14 oz,Part,Part
+#5 Rebar - 20' Pc Dowels ,Part,Part
+#5 Rebar - 20' Pc Continuous ,Part,Part
+#4 Rebar - 20' Pc Horizontal ,Part,Part
+Light Load   ,Part,Part
+12 Vertical #6 Rebar - 20' Pc,Part,Part
+"Ties At 6"" On Center #4 Rebar - 20' Pc",Part,Part
+8 each way T&B #8 Rebar - 20' Pc,Part,Part
+Fiber ,Part,Part
+"Expansion Cap (snap cap) 1/2""x10'",Part,Part
+Evaporation Retarder,Part,Part
+2 Each In Thickened Edge #5 Rebar - 20' Pc,Part,Part
+"6"" Square Feet",Part,Part
+"5"" Square Feet",Part,Part
+12 Each Vertical #5 Rebar - 20' Pc,Part,Part
+6 Each Ties #3 Rebar - 20' Pc,Part,Part
+7 Each Ties #3 Rebar - 20' Pc,Part,Part
+8 Each Vertical #5 Rebar - 20' Pc,Part,Part
+8 Each Wat Bottom #5 Rebar - 20' Pc,Part,Part
+7 Each Way Bottom #5 Rebar - 20' Pc,Part,Part
+5 Each Way T&B #5 Rebar - 20' Pc,Part,Part
+4 Each Way Bottom #5 Rebar - 20' Pc,Part,Part
+"Vertical At 32"" On Center #5 Rebar - 20' Pc",Part,Part
+(2) Continuous #5 Rebar - 20' Pc,Part,Part
+4000 Psi Concrete,Part,Part
+4000 Psi Concrete  ,Part,Part
+3500 Psi Concrete  ,Part,Part
+Mechanical Pads ,Part,Part
+Wire Mesh 10 ga (6x6) 5'x10' Sheet,Part,Part
+ Class A Rohrers Concrete,Part,Part
+Class A Rohrers Site Concrete  ,Part,Part
+"6"" Exterior Slab On Grade ",Part,Part
+4500 Psi Rohrers Slab On Grade Concrete  ,Part,Part
+Expansion,Part,Part
+Thickened Slabs ,Part,Part
+TK Gold Form Release,Part,Part
+4000 Psi Rohrers Concrete,Part,Part
+"5"" Poured Foundation Walls",Part,Part
+"8"" Wall Tie",Part,Part
+ 4000 Psi Rohrers Concrete,Part,Part
+"12"" Poured Foundation Walls ",Part,Part
+"Chairs 4""   (5' section)",Part,Part
+Rebar #6 - 20' pc,Part,Part
+Track Mat Foundation Slabs ,Part,Part
+Rebar #3 - 20' pc,Part,Part
+P4 Piers ,Part,Part
+Rebar #8 - 20' pc,Part,Part
+P3 Piers ,Part,Part
+Rebar #9 - 20' pc,Part,Part
+PC3 Pile Caps ,Part,Part
+Pile Caps ,Part,Part
+PC1 Pile Caps ,Part,Part
+TB-1 Grade Beams ,Part,Part
+Rebar #7 - 20' pc,Part,Part
+GB-4 Grade Beams ,Part,Part
+GB-3 Grade Beams ,Part,Part
+GB-2 Grade Beams ,Part,Part
+GB-1 Grade Beams ,Part,Part
+V-Seal 101 5 gal,Part,Part
+Wire Mesh 4 ga (4.0x4.0 6x6) 5'x10' Sheet,Part,Part
+"Chairs 4"" (5' section)",Part,Part
+Expansion Takeoff,Part,Part
+Forming Takeoff,Part,Part
+"Expansion Noma-Flex 4""x10'",Part,Part
+L&M Cure 55 gal,Part,Part
+ADA Plate 2'x4',Part,Part
+2B Stone ,Part,Part
+#5 Rebar - Vertical ,Part,Part
+Wall Forms ,Part,Part
+F4 Spread Footings ,Part,Part
+F3 Spread Footings ,Part,Part
+F11.0 Spread Footings ,Part,Part
+F10.0 Spread Footings ,Part,Part
+F9.0 Spread Footings ,Part,Part
+"5"" 4000 PSI Light Weight Concrete  ",Part,Part
+"Thickened Edge 2'-6"" x 8""",Part,Part
+Thickened Edge Takeoff,Part,Part
+"6"" 4000 PSI Concrete  ",Part,Part
+3000 PSI Foundation Concrete  ,Part,Part
+3000 PSI Foundation Concrete,Part,Part
+4000 PSI Foundation Concrete  ,Part,Part
+Dump Site,Part,Part
+4500 Psi Concrete  ,Part,Part
+HS 200LV Penetrating Sealer  5 gal,Part,Part
+4000 PSI Slab On Grade Concrete  ,Part,Part
+Wall Concrete,Part,Part
+Bollard Sleeve,Part,Part
+"2"" Popcorn Brick Chairs ",Part,Part
+F70 Square Footings ,Part,Part
+F60 Square Footings ,Part,Part
+F55 Square Footings ,Part,Part
+F50 Square Footings ,Part,Part
+F40 Square Footings,Part,Part
+PC-2 Pile Caps ,Part,Part
+GB02 Grade Beams ,Part,Part
+GB01 Grade Beams (Building D) ,Part,Part
+Detail 8,Part,Part
+Detail 6,Part,Part
+"4' x 1'2"" Continuous Footings ",Part,Part
+"2'6"" x 1' Continuous Footings ",Part,Part
+F40 Square Footings ,Part,Part
+F30 Square Footings ,Part,Part
+PC-3 Pile Caps ,Part,Part
+GB04 Grade Beams ,Part,Part
+GB03 Grade Beams ,Part,Part
+GB01 Grade Beam (Building H) ,Part,Part
+F4.0 Spreadfootings ,Part,Part
+F6.0 Spreadfootings ,Part,Part
+Blankets price is 1 coverage only,Part,Part
+Taper Ties,Part,Part
+Wood Wall Forms ,Part,Part
+"Expansion Rigid Foam 12""x10'",Part,Part
+Integral Color,Part,Part
+Touch N Foam 12 oz,Part,Part
+Sika AnchorFix1,Part,Part
+5000 PSI Rohrers Concrete,Part,Part
+ Concrete,Part,Part
+ 4000 psi Concrete,Part,Part
+ 4500 Psi Boger Concrete,Part,Part
+Bollards ,Part,Part
+4500 Psi Boger Concrete,Part,Part
+Exterior Slab under Tile ,Part,Part
+"4"" Exterior Sidewalk and Pool Deck ",Part,Part
+4000 Psi Boger Concrete,Part,Part
+"8"" Dumpster Enclosure Apron ",Part,Part
+Wire Mesh 6 ga (6x6) 5'x10' Sheet,Part,Part
+ 4000 Psi Boger Concrete,Part,Part
+"5"" Dumpster Enclosure Slab on Grade ",Part,Part
+ 3000 Psi Boger Concrete,Part,Part
+2' x 1' Dumpster Enclosure Footings ,Part,Part
+Equipment Slab ,Part,Part
+"2' x 8"" Haunches ",Part,Part
+"4"" Building Slab on Grade ",Part,Part
+Pan Steps and Landings ,Part,Part
+Poured Wall Subcontractor / Groffdale ,Part,Part
+Elevator Foundation ,Part,Part
+3000 Psi Boger Concrete,Part,Part
+F8.0 Spreadfootings ,Part,Part
+F7.0 Spreadfootings ,Part,Part
+F5.0 Spreadfooting,Part,Part
+"2'6"" x 1' Continuous Footings",Part,Part
+"Chairs 2""   (5' section)",Part,Part
+Curb Edge ,Part,Part
+"5"" Sidewalks ",Part,Part
+Poured Concrete Wall ,Part,Part
+Grade Beams ,Part,Part
+F2.0 Column Footings ,Part,Part
+"Standard Wall Construction 18"" x 6'",Part,Part
+Concrete Column Wrap ,Part,Part
+Wire Mesh 6 ga (6x6 2.9x2.9) 8'x15' Sheet,Part,Part
+Frost Footings ,Part,Part
+Exterior Turn down Slabs ,Part,Part
+Thickened Slabs 2 ,Part,Part
+Thickened Slabs 1,Part,Part
+"4"" Slab on Grade ",Part,Part
+F8.6 Column Footings ,Part,Part
+F6.0 Column Footings ,Part,Part
+F5.0 Column Footings ,Part,Part
+F3.0 Column Footings ,Part,Part
+W.F3.0 Continuous Footings ,Part,Part
+W.F.2.5 Continuous Footings ,Part,Part
+W.F2.0 Continuous Footings ,Part,Part
+"Dowels At 24"" On Center Rebar #4 - 20' pc",Part,Part
+4000 PSI Concrete ,Part,Part
+"Vertical Dowels At 48"" On Center Rebar #4 - 20' pc",Part,Part
+"Transverse At 48"" On Center Rebar #4 - 20' pc",Part,Part
+(3) Continuous Rebar #4 - 20' pc,Part,Part
+3000 PSI Concrete,Part,Part
+Ties In Pier Rebar #4 - 20' pc,Part,Part
+Vertical In Pier Rebar #4 - 20' pc,Part,Part
+(3) Each Way In Footer Rebar #4 - 20' pc,Part,Part
+4000 PSI ,Part,Part
+4500 PSI Concrete ,Part,Part
+"4"" 4000 PSI Concrete",Part,Part
+"4"" 4000 PSI Concrete ",Part,Part
+F-90 Spread Footings ,Part,Part
+F-90160 Spread Footings ,Part,Part
+F-80 Spread Footings ,Part,Part
+F-70140 Spread Footings ,Part,Part
+"Expansion Noma-Flex 6""x10'",Part,Part
+"Chairs 1.5"" (5' section)",Part,Part
+Vapor Barrier 20 mil 14'x105',Part,Part
+#11 Rebar - 20' Pc,Part,Part
+#10 Rebar - 20' Pc,Part,Part
+#9 Rebar - 20' Pc,Part,Part
+3000 Psi Concrete  ,Part,Part
+F-70 Spread Footings ,Part,Part
+"1'6"" x 1' Continuous Footings ",Part,Part
+Site Concrete Class AA ,Part,Part
+"#5 Rebar - 20' Pc Vertical Dowels At 24"" On Center",Part,Part
+#5 Rebar - 20' Pc (3) Continuous T&B,Part,Part
+"#4 Rebar - 20' Pc Horizontal At 24"" On Center T&B",Part,Part
+"#4 Rebar - 20' Pc Horizontal At 24"" On Center",Part,Part
+#5 Rebar - 20' Pc (2) Continuous ,Part,Part
+Sq Ft Sealer,Part,Part
+Certi-Vex 244 OW Aim  5 gal,Part,Part
+Slab On Grade Concrete - Rohrers,Part,Part
+#6 Rebar - 20' Pc (6) Vertical ,Part,Part
+"#4 Rebar - 20' Pc Ties At 12"" On Center",Part,Part
+F100 Fiber Mesh,Part,Part
+"#6 (3/4"") X 18"" Smooth Dowels",Part,Part
+Expansion Take Off ,Part,Part
+Dowel Take Off ,Part,Part
+"#5 Rebar - 20' Pc At 16"" OC Vertical Dowels",Part,Part
+"#5 Rebar - 20' Pc At 16"" OC Horizontal ",Part,Part
+#5 Rebar - 20' Pc (3) Continuous ,Part,Part
+#8 Rebar - 20' Pc (8) Vertical ,Part,Part
+#6 Rebar - 20' Pc 5 each way ,Part,Part
+"#5 Rebar - 20' Pc 16"" On Center Each Way ",Part,Part
+"Bollard Sch 40 6"" x 7'-0"" with cap (primed)",Part,Part
+15/301,Part,Part
+1/301,Part,Part
+13/301,Part,Part
+#4 Rebar - 20' Pc Straight Dowels ,Part,Part
+#4 Rebar - 20' Pc 'L' Bars,Part,Part
+#4 Rebar - 20' Pc 3 Continuous ,Part,Part
+Thickened Slab Concrete  ,Part,Part
+Thickened Slab #5 Rebar - 20' Pc,Part,Part
+Concrete Sand,Part,Part
+ #8 Stone,Part,Part
+#3 DEP Sand ,Part,Part
+Cement Type 1 Gray,Part,Part
+Meta Max 3%,Part,Part
+Plasticure 1 L/ Cu M,Part,Part
+Integral Color 3%,Part,Part
+Cement Type 1/2 White,Part,Part
+"#5 Rebar - 20' Pc Vertical At 18"" On Center",Part,Part
+"#5 Rebar - 20' Pc At 18"" On Center Vertical Dowels ",Part,Part
+"#4 Rebar - 20' Pc At 12"" On Center Horizontal Top ",Part,Part
+"#5 Rebar - 20' Pc At 10"" On Center Horizontal Bottom ",Part,Part
+#5 Rebar - 20' Pc (6) Continuous Bottom ,Part,Part
+#4 Rebar - 20' Pc (5) Continuous Top ,Part,Part
+"#4 Rebar - 20' Pc Dowels At Thickend Edge 16"" On Center",Part,Part
+#4 Rebar - 20' Pc Slab To Slab Dowels ,Part,Part
+#4 Rebar - 20' Pc 'L' Dowels ,Part,Part
+#4 Rebar - 20' Pc (3) Continuous ,Part,Part
+#4 Rebar - 20' Pc Ties ,Part,Part
+#7 Rebar - 20' Pc (8) Vertical ,Part,Part
+Slab On Grade Concrete Light Weight ,Part,Part
+#4 Rebar - 20' Pc Dowels ,Part,Part
+#4 Rebar - 20' Pc Stirrups ,Part,Part
+Foundation Concrete Rohrers ,Part,Part
+Thickened Slab Concrete,Part,Part
+#5 Rebar - 20' Pc At Thickened Slab ,Part,Part
+4000 Psi Trans-Fleet Concrete  ,Part,Part
+Dog Sidewalks ,Part,Part
+Condo 2-4 Sidewalks ,Part,Part
+Condo 1 Sidewalks ,Part,Part
+Dump Site ,Part,Part
+Site Concrete - Rohrers,Part,Part
+"Bollard Sch 40 6""x4'-0"" with cap (primed)",Part,Part
+"Bollard Sch 40 6""x7'-0"" with cap (primed)",Part,Part
+#4 Rebar - Horizontal ,Part,Part
+Foundation Concrete Rohrers,Part,Part
+#5 Rebar - 2 Continuous ,Part,Part
+#4 Rebar - 'L' Dowels ,Part,Part
+#4 Rebar - 3 Continuous ,Part,Part
+#4 Rebar - Slab Dowel ,Part,Part
+#4 Rebar - 'L' Bars,Part,Part
+#6 Rebar - Vertical ,Part,Part
+Foundation Concrete  Rohrers,Part,Part
+4000 psi Bollards Concrete,Part,Part
+"Bollard Sch 40 6""x7-0"" with cap (primed)",Part,Part
+"Wood Chamfer Pc. 3/4""x3/4""x10'",Part,Part
+"Foam Expansion Roll 1/2""x8""x50'",Part,Part
+"Foam Expansion Roll 1/4""x4""x100'",Part,Part
+Great Stuff Insulating Foam 12 oz,Part,Part
+"Foam Expansion Roll 1/2""x6""x50'",Part,Part
+"Foam Expansion Roll 1/2""x4""x50'",Part,Part
+"#5 Speed Dowel Base -3/4""",Part,Part
+"Speed Dowel #5 Rebar 3/4"" x 9"" ",Part,Part
+"Speed Dowel #4 Rebar 5/8"" x 9"" ",Part,Part
+Light Load ,Part,Part
+#5 Rebar - 4 each way ,Part,Part
+Foundation Concrete - Hanover,Part,Part
+"#5 Rebar - Horizontal At 16"" On Center ",Part,Part
+"#5 Rebar - 2 Vertical At 16"" On Center",Part,Part
+#5 Rebar - 5 Continuous ,Part,Part
+Light Load Charge ,Part,Part
+3500 psi Concrete Rohrers,Part,Part
+Wall Takeoff,Part,Part
+Calcium Accelerator ,Part,Part
+ Hot Water,Part,Part
+Color Washout  ,Part,Part
+Class A Site Concrete - Rohrers,Part,Part
+"#4 Rebar - 20' Pc Dowels At 12"" On Center",Part,Part
+"#4 Rebar - 20' Pc Horizontal At 24"" On Center ",Part,Part
+#5 Rebar - 20' Pc (4) Continuous ,Part,Part
+Rigid Insulation ,Part,Part
+"GreenGuard Scoreboard 1""x4'x8'",Part,Part
+"8"" Rumble Strips ",Part,Part
+"6"" Hitching Post Pad & 6"" Dumpster Pad",Part,Part
+#4 Rebar - Continuous At Elevator Pit,Part,Part
+"6"" 3500 PSI",Part,Part
+4500 PSI ,Part,Part
+#5 Rebar - Dowels ,Part,Part
+3500 PSI ,Part,Part
+#5 Rebar - Continuous ,Part,Part
+#4 Rebar - Dowels ,Part,Part
+"Bollard Sch 40 6"" x 80"" Stainless Steel with Cap",Part,Part
+"GreenGuard Scoreboard 1.5""x4'x8",Part,Part
+Site Concrete Light Load,Part,Part
+Chairs ,Part,Part
+"Bollard Sch 40 6""x 7'-0"" with cap (primed)",Part,Part
+#6 Rebar - 6 Vertical ,Part,Part
+"#4 Rebar - At 12"" On Center ",Part,Part
+#6 Rebar - 8 Vertical ,Part,Part
+"#4 Rebar - At 12"" On Center",Part,Part
+#6 Rebar - 4 Vertical ,Part,Part
+"#4 Rebar - At 12"" ",Part,Part
+Copy of Square Feet,Part,Part
+"#5 Rebar - 12"" On Center",Part,Part
+"#5 Rebar - 12"" On Center ",Part,Part
+#4 Rebar - L Dowels ,Part,Part
+5000 PSI Concrete  ,Part,Part
+#4 Rebar - Straight Dowels ,Part,Part
+Linear Footer ,Part,Part
+Linear Frost Footer,Part,Part
+V-Seal 102 Exterior Sealer ,Part,Part
+"#4 Rebar At 24"" On Center Each Way In Slab And Frost Footer",Part,Part
+Site Concrete 4000 PSI ,Part,Part
+V-Seal 102 Sealer ,Part,Part
+V-Seal 102 Sealer,Part,Part
+L&M Cure ,Part,Part
+Vapor Barrier 6 mil ,Part,Part
+"Standard Wall Construction 12"" x 12'",Part,Part
+#6 Rebar - 20' Pc 7 Each Way ,Part,Part
+"#3 Rebar - 20' Pc At 18"" On Center Each Way ",Part,Part
+Slab On Grade Concrete - New Enterprise ,Part,Part
+"Expansion Rigid Foam 4""x10' (x2) ",Part,Part
+"Expansion Rigid Foam 4""x10' (x2)",Part,Part
+Class AA DVC Concrete  ,Part,Part
+Depressed Curbs ,Part,Part
+Geotex Fabric ,Part,Part
+Slabs,Part,Part
+Footers ,Part,Part
+Bollards,Part,Part
+5000 Psi DVC Concrete  ,Part,Part
+Mockup ,Part,Part
+Class AA DVC Concrete,Part,Part
+Bollards  ,Part,Part
+Courtyard Bollard Footings ,Part,Part
+Courtyard Trench Drain Concrete ,Part,Part
+Courtyard Concrete Steps ,Part,Part
+Courtyard Putting Green Slab ,Part,Part
+Courtyard Concrete Paving ,Part,Part
+Courtyard Curb,Part,Part
+5000 Psi DVC Concrete,Part,Part
+"8"" x 5'6"" High Walls (West)",Part,Part
+"8"" x 8' High Walls (East)",Part,Part
+"8"" x 6' High Walls (East)",Part,Part
+"8"" x 5' High Walls (East)",Part,Part
+"8"" x 4' High Walls (East)",Part,Part
+"8"" x 3' High Walls (East)",Part,Part
+F6 Footings ,Part,Part
+F5 Footings ,Part,Part
+F4 Footings ,Part,Part
+"F1, F2, F3 Footings",Part,Part
+Bollard Infills ,Part,Part
+CIP Curb on Garage Decks ,Part,Part
+Surecrete Primer / PCS ,Part,Part
+Backer Rod / PCS,Part,Part
+Topping Slabs ,Part,Part
+Fiber 1.5 lb. per yard ,Part,Part
+Wash Slabs ,Part,Part
+"5"" Slab on Grade ",Part,Part
+Corbel ,Part,Part
+"17' x 16'10"" High Walls ",Part,Part
+"17"" x 14'7"" High Walls ",Part,Part
+"14"" x 5'3"" High To 13'6"" High Step wall - Bottom to be 24"" Wide ",Part,Part
+"14"" x 12'9"" High Walls ",Part,Part
+"14"" x 11'3"" High Walls ",Part,Part
+"14"" x 9'9"" High Walls ",Part,Part
+"14"" x 8'4"" High Walls ",Part,Part
+"14"" x 7'5"" High Walls ",Part,Part
+"14"" x 6'9"" High Walls ",Part,Part
+"14"" x 6'6"" High Walls ",Part,Part
+"12"" x 16'8"" High Walls ",Part,Part
+"12"" x 14'11"" High Walls ",Part,Part
+"12"" x 14'8"" High Walls ",Part,Part
+"12"" x 13'6"" High Walls ",Part,Part
+"12"" x 12'8"" High Walls ",Part,Part
+"12"" x 9'8"" High Walls ",Part,Part
+"10"" x 5' High Walls ",Part,Part
+GB1 Grade Beams ,Part,Part
+"Water Stop Type 4B Ribbed - w/Center bulb - Tapered 6""x 3/16"" x 50'",Part,Part
+F6 Spread Footings ,Part,Part
+F5 Spread Footings,Part,Part
+F2 Spread Footings ,Part,Part
+F1 Spread Footings ,Part,Part
+RWF 6 Footings ,Part,Part
+RWF 5 Footings ,Part,Part
+RWF4 Footings ,Part,Part
+RWF3 Footings ,Part,Part
+RWF2 Footings ,Part,Part
+RWF1 Footings ,Part,Part
+WF5 Footings ,Part,Part
+WF4 Footings ,Part,Part
+WF3 Footings ,Part,Part
+WF2 Footings ,Part,Part
+WF1 Footings ,Part,Part
+"5"" Porch Slabs ",Part,Part
+3500 LW DVC Concrete  ,Part,Part
+Perimeter Rebar ,Part,Part
+"6"" LW Slab on Deck ",Part,Part
+Thickened Footings ,Part,Part
+Shearwall Thickened Slabs ,Part,Part
+Insulation ,Part,Part
+"5"" Building Slab on Grade ",Part,Part
+"Dumbbell Waterstop Type DB-2 PVC 6""X 3/8""X 50'",Part,Part
+Walls ,Part,Part
+P5 Piers ,Part,Part
+F7.0 x 15.0 Spead Footings ,Part,Part
+F4.0 x 8.0 Spread Footings ,Part,Part
+F4.0 Spread Footings ,Part,Part
+F3.0 Spread Footings ,Part,Part
+"9' 4"" x 1' Continuous Footings",Part,Part
+3' x 1' Continuous Footings ,Part,Part
+"2' 10"" x 1' Continuous Footings ",Part,Part
+"2' 6"" x 1' Continuous Footings ",Part,Part
+"2' 4"" x 1' Continuous Footings ",Part,Part
+"#4 Rebar - 20' Pc 24"" On Center Vertical ",Part,Part
+"#4 Rebar - 20' Pc 24"" On Center Horizontal ",Part,Part
+"#4 Rebar - Vertical At 16"" On Center",Part,Part
+"#5 Rebar - 20' Pc 4ea in 4.5', 3 ea in 3'",Part,Part
+"#4 Rebar - Horizontal At 16"" On Center",Part,Part
+Short Wall 2' High,Part,Part
+Total Footers,Part,Part
+Total Walls 2' & 9',Part,Part
+V-Seal 102 ,Part,Part
+#4 Rebar ,Part,Part
+4000 Concrete With Hot Water  ,Part,Part
+"Standard Wall Construction 18"" x 12'",Part,Part
+"1/4"" QuicDiamond Flat Plate (includes Plate and Sleeve)",Part,Part
+#5 Rebar Non Taxable ,Part,Part
+Fiber Non Taxable ,Part,Part
+Slab On Grade Concrete Non Taxable ,Part,Part
+Fiber Non Taxable  ,Part,Part
+Slab On Grade Concrete Non Taxable   ,Part,Part
+#5 Rebar ,Part,Part
+TK-Floor Hardner and Densifier,Part,Part
+"Chairs 2"" ",Part,Part
+"Chairs 3"" ",Part,Part
+V-Seal 102,Part,Part
+Site Concrete Non Taxable ,Part,Part
+#7 Rebar Non Taxable ,Part,Part
+#6 Rebar Non Taxable ,Part,Part
+"Chairs 3""",Part,Part
+#6 Rebar,Part,Part
+#4 Rebar,Part,Part
+Wire Mesh 6 ga ,Part,Part
+TK-Floor Hardner and Densifier ,Part,Part
+#5 Rebar Non Taxable,Part,Part
+Pit Leveler Bases,Part,Part
+Vapor Barrier 6 mil,Part,Part
+Box Expand-Tite 200 ,Part,Part
+Expansion Rigid Foam ,Part,Part
+"Chairs 1.5"" ",Part,Part
+TK-Floor Hardner - House Keeping Pads,Part,Part
+L&M Curing Compound - House Keeping Pads,Part,Part
+Slab On Grade Concrete - House Keeping Pads,Part,Part
+Wire Mesh 6 ga - House Keeping Pds,Part,Part
+Slab On Grade Wood Forms - House Keeping Pads,Part,Part
+Linear - House Keeping Pads,Part,Part
+Square Feet - House Keeping Pads,Part,Part
+#5 Rebar - (1) Continuous Curb,Part,Part
+Slab On Grade Wood Forms - Curb ,Part,Part
+Expansion Rigid Foam,Part,Part
+Slab On Grade Concrete,Part,Part
+"#3 Rebar - Ties At 12"" On Center 3 At Top",Part,Part
+#8 Rebar - 6 Vertical ,Part,Part
+"#4 Rebar - 24"" On Center Transverse ",Part,Part
+Foundation Concrete - Rohrers,Part,Part
+#5 Rebar - (2) Continuous ,Part,Part
+"#5 Rebar Vertical Dowels At 24"" On Center",Part,Part
+"#4 Rebar Transverse At 24"" On Center",Part,Part
+#5 Rebar (3) Continuous,Part,Part
+6 ga Wire 5'x10' Sheet,Part,Part
+Use for takeoff counts by square feet ,Part,Part
+Use for takeoff counts by linear feet,Part,Part
+L&M Curing Compound 5 Gal.,Part,Part
+Somero S-15R (boom screed),Part,Part
+Ready Mix Concrete For Slabs On Grade ,Part,Part
+4000 PSI With #8 Stone,Part,Part
+Copy of Concrete Trench Drain W/O Frame and Cover,Part,Part
+#5 Rebar - 20' Pc for Dowels,Part,Part
+Concrete Trench Drain W/O Frame and Cover,Part,Part
+Continuous Footings ,Part,Part
+Turndown Footings ,Part,Part
+Porches ,Part,Part
+1789 Sq Ft TK-Floor Hardner and Densifier 55 gal,Part,Part
+"4"" Porch Slabs & Light Well Slabs ",Part,Part
+3000 Psi Trans-Fleet Concrete  ,Part,Part
+3500 Psi Trans-Fleet Concrete  ,Part,Part
+"3.5"" Slab on Deck ",Part,Part
+Forms,Part,Part
+Insulation at Perimeter,Part,Part
+4000 Psi Trans-Fleet Concrete,Part,Part
+2' High Pilasters ,Part,Part
+11' High Pilasters ,Part,Part
+"37' of 12"" By 13' High Window Well Walls ",Part,Part
+"14' of 8"" By 13' High Window Well Walls ",Part,Part
+"343' of 16"" By 11' High Walls ",Part,Part
+"41' of 16"" By 4' High Walls ",Part,Part
+"52' of 16"" By 2'8"" High Walls ",Part,Part
+"443' of 12"" By 11' High Walls ",Part,Part
+"53' of 12"" By 4' High Walls ",Part,Part
+"72' of 12"" By 4' High Elevator Pit Walls ",Part,Part
+"74' of 12"" By 2'8"" High Walls ",Part,Part
+"35' of 12"" By 2' High Walls ",Part,Part
+"19' of 8"" By 11' High Walls ",Part,Part
+RW1 Continuous Footings ,Part,Part
+4000 Psi Trans- Fleet Concrete  ,Part,Part
+WF2.0 Continuous Footings ,Part,Part
+Thickened Edge Concrete  ,Part,Part
+"6"" Loading Dock Slabs ",Part,Part
+"Exterior Steps, Landings, & Ramp ",Part,Part
+FT6 Spreadfootings ,Part,Part
+FT5.7 Spreadfootings ,Part,Part
+FT5 Spreadfootings ,Part,Part
+BP5 Spreadfootings ,Part,Part
+Vertical Dowels ,Part,Part
+Vertical Dowels,Part,Part
+3500 PSI Concrete With #8 Stone  ,Part,Part
+"Quick Joint zip strip Pc. 1""x10'",Part,Part
+#4 Rebar Dowels ,Part,Part
+Linear Wall Take Off,Part,Part
+Linear Perimeter Forming,Part,Part
+"2"" Rigid Insulation with Taped Seams ",Part,Part
+"5"" Apron ",Part,Part
+"#4 Rebar - Dowels At 18"" On Center",Part,Part
+"Standard Wall Construction 30"" x 12'",Part,Part
+Frost Footer Concrete,Part,Part
+4000 PSI Frost Footer Concrete,Part,Part
+4000 PSI Site Concrete  ,Part,Part
+Freezer Room Slab with Under Slab Insulation on Grade ,Part,Part
+"5"" Interior Ramp on Grade ",Part,Part
+Vapor Barrier ,Part,Part
+Spread Footings ,Part,Part
+"2' 6"" x 8"" Continuous Site Footings ",Part,Part
+2A Modified ,Part,Part
+Vapor Barrier 10 mil 20'x100' Markup Only,Part,Part
+Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet Mark Up Only,Part,Part
+Poured Dock Wall Foundations ,Part,Part
+"10"" Poured Dock Walls ",Part,Part
+Class AA 3500 Psi Concrete,Part,Part
+Class AA 3500 Psi Concrete  ,Part,Part
+Ramps & Landings ,Part,Part
+"Ramps, Landings, & Steps ",Part,Part
+"8"" Poured Walls ",Part,Part
+Slab on Grade ,Part,Part
+Dock Leveler Base Slabs ,Part,Part
+Step in Slab ,Part,Part
+Thickened Footings Takeoff 2 ,Part,Part
+Thickened Footings Takeoff 1 ,Part,Part
+"4"" Interior Slab on Grade Takeoff 2 ",Part,Part
+"4"" Interior Slab on Grade Takeoff 1 ",Part,Part
+MP2 Piers ,Part,Part
+MP1 Piers ,Part,Part
+F10.6,Part,Part
+FT10.2,Part,Part
+FT8.2,Part,Part
+FT6,Part,Part
+FT5.7,Part,Part
+FT5,Part,Part
+BP5,Part,Part
+Continuous Footings 2nd Takeoff,Part,Part
+Continuous Footings 1st Takeoff,Part,Part
+"#4 Rebar - 20' Pc 24"" On Center Each Way ",Part,Part
+"6"" Exterior Apron & Sidewalk ",Part,Part
+"7"" Exterior Load Out & Dump Pit Slab",Part,Part
+"2"" Insulation ",Part,Part
+"6"" Infill Between Posts ",Part,Part
+"12"" Poured Walls at Truck Dump Pit",Part,Part
+"12"" Poured Walls ",Part,Part
+Conveyor Foundations ,Part,Part
+Truck Dump Pit Foundation ,Part,Part
+WF9.0 Continuous Footings ,Part,Part
+Curb on Top of Slab Edge ,Part,Part
+3000 Psi Rohrers Concrete,Part,Part
+Pilasters,Part,Part
+S2 Slabs,Part,Part
+S1 Slabs ,Part,Part
+3000 Psi Rohrers Concrete  ,Part,Part
+S3 Slabs ,Part,Part
+P24 Piers ,Part,Part
+SF78 Spead Footings ,Part,Part
+SF66 Spread Footings ,Part,Part
+SF48 Spread Footing,Part,Part
+WF2412 Continuous Footings ,Part,Part
+"3/8"" CDX Plywood",Part,Part
+2 Layers Wire Mesh 6 ga  (2.9x2.9 6x6) 8'x15' Sheet,Part,Part
+"Chairs 3/4"" (5' section)",Part,Part
+Light Load - Hess Ready Mix,Part,Part
+"Standard Wall Construction 24"" x 12'",Part,Part
+Foundation Concrete - Hess Ready Mix,Part,Part
+Site Concrete - Hess Ready Mix,Part,Part
+Bollards Concrete - Hess Ready Mix,Part,Part
+"4"" Condenser Pads ",Part,Part
+"4"" Slab on Grade",Part,Part
+ 4000 Psi Trans-fleet Concrete  ,Part,Part
+Shear wall Hold downs ,Part,Part
+WF2 Continuous Footings ,Part,Part
+"5"" Foundation Concrete  ",Part,Part
+Steps & Landings ,Part,Part
+"6"" Door Stoops ",Part,Part
+"8"" Exterior Slabs ",Part,Part
+"6"" Warehouse Infill Slabs ",Part,Part
+Stamp Rental ,Part,Part
+Powder Release 5 Gal,Part,Part
+"Fiber 3/4"" Length 1 LB.Bag",Part,Part
+"Bollard Sch 40 4"" x 7' Stainless Steel with Cap ",Part,Part
+Water Proofing Admixture,Part,Part
+Water Proofing Sealer,Part,Part
+F100 Fiber ,Part,Part
+"4"" Stamped Concrete",Part,Part
+"4,734 Sq Ft. - 8"" Concrete Paving ",Part,Part
+"10' x 4' Footers with 2' x 1'4"" Pedestal ",Part,Part
+"5' x 3' Footers with 3' x 1'4"" Pedestal",Part,Part
+"6"" Dumpster Pads ",Part,Part
+#4 Rebar In Frost Footer,Part,Part
+4000 PSI  Concrete  ,Part,Part
+"#4 Rebar At 12"" On Center Each Way T&B",Part,Part
+#5 Rebar - 20' Pc Bolsters,Part,Part
+#5 Rebar - 20' Pc Bolsters 69ea x lwh,Part,Part
+Mat Slab Concrete  ,Part,Part
+Foundation Form Rentals ,Part,Part
+Gradebeam 4 Revised ,Part,Part
+Gradebeam 6 Revised,Part,Part
+Gradebeam 3 Revised ,Part,Part
+Gradebeam 2 Revised,Part,Part
+Gradebeam 1 Revised ,Part,Part
+Mud Slab ,Part,Part
+Mud Slab,Part,Part
+Expanion Takeoff,Part,Part
+"#5 Rebar - 20' Pc Vertical At 24"" On Center ",Part,Part
+"#4 Rebar - 20' Pc Ties At 8"" On Center",Part,Part
+#6 Rebar - 20' Pc (8) Vertical ,Part,Part
+#6 Rebar - 20' Pc (8) Each Way T&B ,Part,Part
+#6 Rebar - 20' Pc 5 Each Way,Part,Part
+Rooms,Part,Part
+"4"" Exterior Slab on Grade ",Part,Part
+F9.5 Spread Footings ,Part,Part
+Plywood,Part,Part
+Plywood ,Part,Part
+Slab On Grade Concrete Markup Only,Part,Part
+#7 Rebar - 20' Pc Markup Only,Part,Part
+"Chairs 3"" (5' section) Markup Only",Part,Part
+Forming,Part,Part
+5000 Psi Rohrers Concrete  ,Part,Part
+"6"" Dock Slab and Pit Leveler ",Part,Part
+Canopy Post Pier ,Part,Part
+Pipe Protection Slab ,Part,Part
+Dock Steps ,Part,Part
+"12"" Dock Foundation Slab ",Part,Part
+"13"" Dock Slab ",Part,Part
+4500 Psi Rohrers Concrete  ,Part,Part
+WF1 Continuous Footings ,Part,Part
+"4"" Interior Slab on Grade with Thickened Footings ",Part,Part
+Concrete Infill Pan Steps and Landings ,Part,Part
+"6"" Slab on Deck ",Part,Part
+4500 Psi Trans-Fleet Concrete  ,Part,Part
+"4"" Porch Slabs with Turndown Edges ",Part,Part
+"2' 6"" x 8"" Thickened Footings ",Part,Part
+"5"" Slab on Deck ",Part,Part
+"5"" Basement ",Part,Part
+"9' x 10"" Poured Wall",Part,Part
+"7' x 10"" Poured Wall ",Part,Part
+12' Poured Wall ,Part,Part
+"3' x 10"" Poured Wall ",Part,Part
+"5"" Garage Slab on Grade ",Part,Part
+"5' x 10"" Poured Wall ",Part,Part
+"2' x 8"" Continuous Footings ",Part,Part
+"4' 6"" x 10"" Continuous Footings ",Part,Part
+ 3500 Psi Rohrers Concrete  ,Part,Part
+White Cement  ,Part,Part
+Washouts  ,Part,Part
+Decorative Mockups ,Part,Part
+"Slab On Grade Concrete  6.5""",Part,Part
+"#6 Rebar At 16"" On Center Each Way - 20' Pc",Part,Part
+"#6 Rebar Vertical At 12"" On Center - 20' Pc",Part,Part
+"#4 Rebar Horizontal At 12"" On Center - 20' Pc",Part,Part
+"#4 Rebar Horizontal At 24"" On Center - 20' Pc",Part,Part
+"#5 Rebar Dowels At 48"" On center- 20' Pc",Part,Part
+#5 Rebar (3) Continuous - 20' Pc,Part,Part
+"#6 Rebar At 12"" On Center Vertical - 20' Pc",Part,Part
+"#4 Rebar 12"" On Center Horizontal - 20' Pc",Part,Part
+Elevator Shaft Poured Wall Linear ,Part,Part
+Footer Forming Linear ,Part,Part
+"#4 Rebar At 12"" On Center Each Way - 20' Pc",Part,Part
+"#5 Rebar Dowels At 48"" On Center - 20' Pc",Part,Part
+"#4 Rebar At 24"" On Center Transverse - 20' Pc",Part,Part
+#6 Rebar (10) Vertical - 20' Pc,Part,Part
+#4 Rebar Ties - 20' Pc,Part,Part
+#6 Rebar (14) Vertical - 20' Pc,Part,Part
+#6 Rebar (20) Vertical - 20' Pc,Part,Part
+#6 Rebar (15) Vertical - 20' Pc,Part,Part
+#6 Rebar (12) Vertical - 20' Pc,Part,Part
+#6 Rebar (8) Each Vertical - 20' Pc,Part,Part
+"#4 Rebar At 12"" On center Each Way ",Part,Part
+Bollards Concrete 4000 PSI ,Part,Part
+Site Concrete ,Part,Part
+V-Seal 102 5 Sealer ,Part,Part
+"#4 Rebar At 24"" On Center Each Way ",Part,Part
+Heavy Duty SOG Chair ,Part,Part
+Site Concrete 4000 PSI,Part,Part
+L&M Dress Seal WB,Part,Part
+Fiber F100,Part,Part
+4500 Psi DVC Concrete  ,Part,Part
+4' x 1' Continuous Perimeter Footings ,Part,Part
+"7"" Trash Enclosure Slab ",Part,Part
+Continuous Footings at Trash Enclosure,Part,Part
+S2 Porch Slabs on Grade with Turndowns ,Part,Part
+S1 Interior Slabs on Grade ,Part,Part
+F60 Spread Footings ,Part,Part
+F30 Spread Footings ,Part,Part
+"1'6"" x 1' Continuous Interior Footings ",Part,Part
+2' x 1' Continuous Perimeter Footings ,Part,Part
+4000 Psi Clayton Concrete  ,Part,Part
+4' Ribbon Slab ,Part,Part
+4500 Psi Clayton Concrete  ,Part,Part
+Trash Enclosure Wall Foundations ,Part,Part
+"Keyway- Screed Key Pc. 3.5""x10' ",Part,Part
+Slab Stone Base ,Part,Part
+Linear Footers ,Part,Part
+Powder Release 5 Gal / Sika,Part,Part
+Integral Color / Sika ,Part,Part
+Steps ,Part,Part
+"6"" Trash Enclosures & Pedestrian Crosswalk ",Part,Part
+"4"" Sidewalks and Bike Pads ",Part,Part
+"4"" Stamped Concrete ",Part,Part
+Fireplace Feature Wall Footings ,Part,Part
+Tree Planter Bench Footing Walls ,Part,Part
+Outdoor Kitchen Footings ,Part,Part
+Spread Footers ,Part,Part
+"3.5"" Interior Slab on Deck",Part,Part
+P2 Pilasters ,Part,Part
+P1 Pilasters ,Part,Part
+"16"" x 6' High Walls ",Part,Part
+"16"" x 9' High Walls ",Part,Part
+7' x 1 Continuous Footings ,Part,Part
+8.0 Spread Footings ,Part,Part
+3500 Psi Clayton Concrete  ,Part,Part
+Lodging and Food ,Part,Part
+Box Expand-Tite 200 (100' per carton),Part,Part
+Shear Wall Hold-down Spots on Perimeter,Part,Part
+Shear Wall Hold-down Spots,Part,Part
+4000 Psi Silvi Concrete  ,Part,Part
+Shear Wall Holdowns ,Part,Part
+Pan Steps ,Part,Part
+"3.5"" Deck Slab ",Part,Part
+"4"" Interior Slab on Grade",Part,Part
+"2' 6"" x 8"" Thickened Footers ",Part,Part
+P2 Piers,Part,Part
+Elevator Walls ,Part,Part
+F13.0 Spread Footings ,Part,Part
+F12.0 Spread Footings ,Part,Part
+F15.0 Spread Footings ,Part,Part
+WF5.0 Continuous Footings ,Part,Part
+WF3.0 Continuous Footings ,Part,Part
+"4"" Slab on Deck ",Part,Part
+Site Steps ,Part,Part
+"Expansion Rigid Foam 4""x10' (x2=8"")",Part,Part
+(4) #5 Rebar Continuous - 20' Pc,Part,Part
+4500 PSI Site Concrete  ,Part,Part
+4500 PSI Bollards Concrete,Part,Part
+Wire Mesh 6x12 D5.5xD4 Epoxy Coated,Part,Part
+Transformer Wall Footer Excavation ,Part,Part
+Monument Sign Footing ,Part,Part
+Stone in Building Slab ,Part,Part
+Spread Footings & Elevator Footings ,Part,Part
+Linear Footer Backfill,Part,Part
+Linear Footer Dig,Part,Part
+Monument Sign Footings ,Part,Part
+Stego Crete Claw Tape ,Part,Part
+"6"" Stem Wall",Part,Part
+2' x 1' Thickened Footer ,Part,Part
+Exterior Steps ,Part,Part
+"4"" Porch Slab ",Part,Part
+CP2 Piers ,Part,Part
+F5 Spread Footings ,Part,Part
+F6C Continuous Footings ,Part,Part
+F4C Continuous Footings ,Part,Part
+F2C Continuous Footings ,Part,Part
+10 Mil,Part,Part
+"6"" Bollards ",Part,Part
+Steps and Landing at Dock ,Part,Part
+5' Sidewalks and Covered Porch ,Part,Part
+"6"" Dock Apron & Dumpster Pad ",Part,Part
+Seal Hard,Part,Part
+"3"" Mezzanine Slab ",Part,Part
+2500 Psi Concrete  ,Part,Part
+"3"" Freezer Base Slabs ",Part,Part
+ 3500 Psi Concrete  ,Part,Part
+"3.5"" Dock Leveler Base Pads ",Part,Part
+"6"" Apron ",Part,Part
+"5"" Shop Floor ",Part,Part
+"4"" Horse Barn Floor ",Part,Part
+4500 Psi Concrete,Part,Part
+Sidewalks ,Part,Part
+Playground Area Slab ,Part,Part
+Dumpster Pad and Apron ,Part,Part
+Continuous Footings at Dumpster Enclosure ,Part,Part
+TS4.0 Spread Footers ,Part,Part
+"2'6"" x 8"" Continuous Footers ",Part,Part
+"1'4"" x 1' Continuous Footings ",Part,Part
+TS30.12 Thickened Footing,Part,Part
+TS26.12 Thickened Footing,Part,Part
+TS20.12 Thickened Footing ,Part,Part
+TS18.12 Thickened Footing ,Part,Part
+TS14.08 Thickened Footing ,Part,Part
+TS36 Spread Footing ,Part,Part
+TS26 Spread Footing ,Part,Part
+TS20 Spread Footing ,Part,Part
+Building Slab on Grade (Building L),Part,Part
+3500 Psi Rohrers Concrete,Part,Part
+Elevator Wall ,Part,Part
+"8"" Foundation Walls ",Part,Part
+Elevator Foundation,Part,Part
+ 3000 Psi Rohrers Concrete  ,Part,Part
+4000 psi Concrete Rohrers,Part,Part
+PennDot Kinsley Concrete  ,Part,Part
+"8"" Driveway Apron ",Part,Part
+"4"" Street Sidewalks ",Part,Part
+5000 Psi Kinsley Concrete,Part,Part
+"8"" Concrete Tarmac ",Part,Part
+4000 Psi Kinsley Concrete  ,Part,Part
+"6"" Dumpster, Generator, UGI Pads ",Part,Part
+5000 Psi Kinsley Concrete  ,Part,Part
+4500 Psi Kinsley Concrete  ,Part,Part
+Haunch Footers ,Part,Part
+3000 Psi Kinsley Concrete  ,Part,Part
+"12"" Interior Slab On Grade ",Part,Part
+Wall Insulation ,Part,Part
+"8.5"" Interior Slab on Grade ",Part,Part
+ 3000 Psi Kinsley Concrete  ,Part,Part
+"2' x 4"" Continuous Footings ",Part,Part
+Trench Drain Footings ,Part,Part
+P18 Piers ,Part,Part
+P12 Piers ,Part,Part
+Spread Footings,Part,Part
+Exterior Patio & Porch with Turndown Edges ,Part,Part
+Exterior Steps & Landings ,Part,Part
+Step walls ,Part,Part
+Step Footings ,Part,Part
+"2'6"" x 8"" Thickened Footings ",Part,Part
+F50 Spread Footings ,Part,Part
+F40A Spread Footings ,Part,Part
+F40 Spread Footings ,Part,Part
+2' x 1' Continuous Footings  ,Part,Part
+"1'6"" x 1'8"" Continuous Footings ",Part,Part
+Cooler Room Curbs ,Part,Part
+Poured Foundations Walls ,Part,Part
+"8"" Exterior Dock Slab ",Part,Part
+Slabs on Deck ,Part,Part
+"8"" Interior Slab on Grade ",Part,Part
+F110110 Spread Footings ,Part,Part
+F100100 Spread Footings ,Part,Part
+F12090 Spread Footing ,Part,Part
+F8080 Spread Footings ,Part,Part
+F7070 Spread Footings ,Part,Part
+"#4 Rebar At 16"" On Center Each Way ",Part,Part
+Pan Steps,Part,Part
+Dock Leveler Pit Slabs,Part,Part
+"#6 At 9"" On Center Each Way ",Part,Part
+"#4 At 9"" On Center Each Way ",Part,Part
+"#4 At 12"" On Center Each Way Thick Slab",Part,Part
+"2'6"" x 1"" Thickened Footings ",Part,Part
+"1"" Insulation ",Part,Part
+Forming ,Part,Part
+"4"" Porches ",Part,Part
+4500 Psi Rohrers Concrete,Part,Part
+Brick Ledge ,Part,Part
+Poured Foundation Walls (Building 1),Part,Part
+F2612 Continuous Footings ,Part,Part
+"1"" Insulation around perimeter",Part,Part
+"2'6"" x 1' Thickened Footer ",Part,Part
+Interior Slab on Grade ,Part,Part
+Poured Foundation Walls ,Part,Part
+ 4500 Psi Rohrers Concrete  ,Part,Part
+"2'6"" x 12"" Thickened Footings ",Part,Part
+"4"" Porches",Part,Part
+Stoops Under Stairs Coming Out Of Buildings ,Part,Part
+F20 Spread footings ,Part,Part
+F2012 Continuous Footings ,Part,Part
+Concrete Pilasters ,Part,Part
+F16x4 Spreadfootings ,Part,Part
+Concrete Paving,Part,Part
+"4"" Site Sidewalks ",Part,Part
+Interior Slabs ,Part,Part
+Framed Ledge Walls,Part,Part
+Door Opening Walls,Part,Part
+Column Isolations ,Part,Part
+"1'2"" x 1' Continuous Footings ",Part,Part
+Framed Ledge Walls ,Part,Part
+Door Opening Walls ,Part,Part
+"8"" Slab on Grade ",Part,Part
+Framing Ledge Walls ,Part,Part
+Exterior Piers ,Part,Part
+ 4000 Psi Rohrers Concrete  ,Part,Part
+"1'2"" x 1' Continuous Footers ",Part,Part
+2' x 1' Continuous Footers ,Part,Part
+Door Opening Wall ,Part,Part
+Framing Ledge Wall,Part,Part
+Concrete Filled Bollards ,Part,Part
+Trench Drain ,Part,Part
+"8"" Dock Slab",Part,Part
+Interior Slab On Deck ,Part,Part
+Interior Pan Steps Infill,Part,Part
+Interior Slabs Around Dock Levelers ,Part,Part
+Dock Leveler Pads ,Part,Part
+Stair Footings ,Part,Part
+"12"" Poured Dock Walls ",Part,Part
+F8x6 Spreadfootings ,Part,Part
+F5.0 Spreadfootings  ,Part,Part
+"6' x 1'4"" Continuous Footings ",Part,Part
+"5' x 1'2"" Continuous Footings ",Part,Part
+3' x 1' Continuous Footings  ,Part,Part
+SpecChem E-Cure,Part,Part
+"12"" Round Piers ",Part,Part
+3' x 3' Spreadfootings ,Part,Part
+"9' x 16"" Continuous footer",Part,Part
+"24"" x 12"" Continuous Footer",Part,Part
+"#4 Rebar - 20' Pc Ties At 48"" On Center",Part,Part
+"#5 Rebar - 20' Pc Vertical Dowels At 18"" On Center",Part,Part
+#4 Rebar - 20' Pc (3) Continuous,Part,Part
+"3'6"" x 1' Continuous Footing",Part,Part
+7' x 1' Continuous Footing ,Part,Part
+"6'8"" High Wall ",Part,Part
+"6'5"" High Wall",Part,Part
+"6'2"" High Wall",Part,Part
+"4'5"" High Wall",Part,Part
+2'2' High Wall ,Part,Part
+Nyce 4000 psi concrete,Part,Part
+Nyce Fibermesh,Part,Part
+Nyce Crete 4000 psi concrete,Part,Part
+Water Feature Top,Part,Part
+Water Feature Footers ,Part,Part
+Water Feature Walls ,Part,Part
+Lighted Seat Wall At Trellis,Part,Part
+Bench Seat Concrete Walls ,Part,Part
+Perforated Lighted Seat Walls ,Part,Part
+Pool And Grill Walls ,Part,Part
+Courtyard Bar Wall,Part,Part
+Fence Posts ,Part,Part
+Fire Feature Footing,Part,Part
+Sculpture Foundation ,Part,Part
+Freestanding Post Base ,Part,Part
+1' x 3' Continuous Pool & Grill Wall Footing ,Part,Part
+"1'2"" x 6"" Continuous Lighted Seat Wall Footer ",Part,Part
+1' x 2' Continuous Bench Wall Footer,Part,Part
+Cobbled Landscape Curb,Part,Part
+Exposed Aggregate ,Part,Part
+Micro Etch Finish ,Part,Part
+Surface Deactivator,Part,Part
+Exposed Aggregate Concrete Paving ,Part,Part
+Decorative Vehicular Paving ,Part,Part
+Slabs Under Paving and Decking ,Part,Part
+H3 Scored Concrete Paving ,Part,Part
+Tree Pit Edge,Part,Part
+H2 Concrete Paving ,Part,Part
+H1 Concrete Paving ,Part,Part
+Trash Enclosure Footings,Part,Part
+Bollards and Posts ,Part,Part
+"7"" Dumpster Pad and Bollards (Site)",Part,Part
+Porch Slabs ,Part,Part
+"8"" Curb on topping Slab ",Part,Part
+5000 Psi Concrete,Part,Part
+"4"" Bollard Fill ",Part,Part
+15 mil Viper II Plastic Class A Roll (14'x140') (BOND BREAK),Part,Part
+ Wash Slabs ,Part,Part
+#8 H Rebar - 20' Pc,Part,Part
+F8 Spread Footings ,Part,Part
+F7 Spread Footings ,Part,Part
+ #8 H Rebar - 20' Pc,Part,Part
+RWF3 Retaining Wall Footings ,Part,Part
+RWF2  Retaining Wall Footings ,Part,Part
+RWF1 Retaining Wall Footings,Part,Part
+ #7 H Rebar - 20' Pc,Part,Part
+ 4000 Psi Concrete  ,Part,Part
+WF3 Wall Footings ,Part,Part
+WF2 Wall Footings ,Part,Part
+WF1 Wall Footings ,Part,Part
+Interior Pan Steps and Landings ,Part,Part
+Edges,Part,Part
+Beams ,Part,Part
+3500 Psi Lightweight Concrete  ,Part,Part
+Minus Stair Areas,Part,Part
+"6"" Slabs on Deck ",Part,Part
+Thickened Edge ,Part,Part
+"4"" Building Slab And Steps ",Part,Part
+Walls,Part,Part
+Foundation,Part,Part
+F13.0 x 20.0 Rectangular Footings ,Part,Part
+F12.0 x 18.0 Rectangular Footings ,Part,Part
+F10.0 x 26.0 Rectangular Footings ,Part,Part
+F10.0 x 14.0 Rectangular Footings ,Part,Part
+F9.0 x 16.0 Rectangular Footings ,Part,Part
+F9.0 x 13.0 Rectangular Footings ,Part,Part
+F8.0 x 12.0 Rectangular Footings ,Part,Part
+F8.0 x 10.0 Rectangular Footings ,Part,Part
+F7.5 x 13.0 Rectangular Footings ,Part,Part
+F7.0 x 18.0 Rectangular Footings ,Part,Part
+F7.0 x 11.0 Rectangular Footings ,Part,Part
+F6.0 x 15.0 Rectangular Footings ,Part,Part
+F6.0 x 9.0 Rectangular Footings ,Part,Part
+F5.0 x 8.0 Rectangular Footings ,Part,Part
+F18.0 Square Footings ,Part,Part
+F16.0 Square Footings ,Part,Part
+F15.0 Square Footings ,Part,Part
+F14.0 Square Footings ,Part,Part
+F13.0 Square Footings ,Part,Part
+F12.0 Square Footings ,Part,Part
+F11.0 Square Footings ,Part,Part
+F10.0 Square Footings ,Part,Part
+F9.0 Square Footings ,Part,Part
+F8.0 Square Footings ,Part,Part
+F7.0 Square Footings ,Part,Part
+F6.0 Square Footings ,Part,Part
+F5.0 Square Footings ,Part,Part
+F4.0 Square Footings ,Part,Part
+"5' x 1'4"" Continuous Footings ",Part,Part
+2' x 1' Continuous Footing ,Part,Part
+Forming Takeoff ,Part,Part
+3500 psi Concrete,Part,Part
+"1 Each Pit Leveler - Materials, Labor",Part,Part
+3500 psi Concrete w/F100 Fiber,Part,Part
+Lean Foundation Concrete  ,Part,Part
+4000 Psi Wall Concrete,Part,Part
+"12"" Interior Curb Along Walls ",Part,Part
+F80 Spreadfootings ,Part,Part
+F70 Spreadfootings ,Part,Part
+F46 Spreadfootings ,Part,Part
+F20.12 Continuous Footings,Part,Part
+"6"" Exterior Slab ",Part,Part
+"6"" Building Slab ",Part,Part
+"3"" Mud Slab On Grade ",Part,Part
+Wall Form Rentals ,Part,Part
+3000 Psi Wall Concrete,Part,Part
+"8"" Poured Foundation Wall ",Part,Part
+P30 Piers ,Part,Part
+F7046 Spreadfootings ,Part,Part
+F66 Spreadfootings ,Part,Part
+F50 Spreadfootings ,Part,Part
+Class AA Rohrers Concrete,Part,Part
+"5"" Dumpster Pads ",Part,Part
+Class AA Concrete,Part,Part
+"10"" Curb at Playground Area ",Part,Part
+Over/Under,Part,Part
+"Rebar #4 - 20' pc Dowels At 24"" OC",Part,Part
+3500 psi Concrete with F100 Fiber,Part,Part
+ 3500 psi Concrete with F100 Fiber,Part,Part
+ Excavation Subcontractor / BN Excavating ,Part,Part
+Pilasters ,Part,Part
+"8""x4' High Walls ",Part,Part
+"8""x3' High Walls ",Part,Part
+ 3500 psi Concrete,Part,Part
+ 3500 psi Concrete with F100 Fiber Mesh,Part,Part
+Wire Mesh 8 ga (6x6) 5'x10' Sheet,Part,Part
+ Class AA Concrete,Part,Part
+Wire Mesh 4 ga (6x6) 5'x10' Sheet,Part,Part
+Class AAA Concrete,Part,Part
+Rohrers Small Load Fee,Part,Part
+"3500 psi 4"" Concrete with F100 Fiber",Part,Part
+RW2 7' High Wall ,Part,Part
+RW3 9' High Wall ,Part,Part
+RW1 3' High Wall ,Part,Part
+RW3 Wall Foundation ,Part,Part
+RW2 Wall Foundation ,Part,Part
+RW1 Wall Foundation,Part,Part
+Trackhoe Subcontractor,Part,Part
+Skidloader Subcontractor ,Part,Part
+Retaining Wall Foundation Excavation ,Part,Part
+ 3000 Psi Trans-Fleet Concrete,Part,Part
+ 3500 Psi Trans-Fleet Concrete,Part,Part
+Roller Rental,Part,Part
+ 3500 Psi Trans- Fleet Concrete,Part,Part
+"8"" Curb on Slab ",Part,Part
+"8"" Poured Foundation Walls ",Part,Part
+F18.24 Continuous Footings (5 Car Garages) ,Part,Part
+3000 Psi Trans-Fleet Concrete,Part,Part
+F18.24 Continuous Footings ,Part,Part
+Slab Subgrade ,Part,Part
+Foundation Excavation ,Part,Part
+Porch Forms ,Part,Part
+"4"" Porch Slabs ",Part,Part
+"12"" Forming ",Part,Part
+TS2 Thickened Footings ,Part,Part
+TS1 Thickened Footings,Part,Part
+F30 Spreadfootings ,Part,Part
+F18.36 Continuous Footings ,Part,Part
+Poured Wall Subcontractor / Weiler Walls ,Part,Part
+ Excavation Subcontractor,Part,Part
+ Excavation ,Part,Part
+Site Bollards ,Part,Part
+"4"" Site Sidewalks",Part,Part
+Wire Mesh 4 ga (4x4) 5'x10' Sheet,Part,Part
+"8"" Site Slabs ",Part,Part
+Concrete Retaining Bins Poured Walls ,Part,Part
+Concrete Retaining Bins Foundation Slab ,Part,Part
+Sealhard,Part,Part
+Curing Sheets ,Part,Part
+"7"" Warehouse Slab on Grade ",Part,Part
+" GreenGuard Scoreboard 2""x4'x8'",Part,Part
+ 3500 Psi Rohrers Concrete,Part,Part
+F4.5 Spreadfootings,Part,Part
+"1' x 4'6"" Continuous Footings ",Part,Part
+1' x 2' Continuous Footings ,Part,Part
+"3'6"" x 2' High Walls ",Part,Part
+"20"" x 12' High Walls ",Part,Part
+"8"" x 6' High Walls ",Part,Part
+"12"" x 10' High Walls ",Part,Part
+"3"" Mat Slab Under Perimeter Footings ",Part,Part
+"10"" x 8' High Walls ",Part,Part
+"12"" x 3' High Walls ",Part,Part
+"18"" x 3' High Walls ",Part,Part
+"18"" x 2' High Walls ",Part,Part
+"10"" x 7' High Walls ",Part,Part
+"12"" x 2' High Walls ",Part,Part
+"8"" x 5' High Walls ",Part,Part
+"8"" x 4' High Walls ",Part,Part
+"8"" x 5' High Elevator Walls ",Part,Part
+"8"" x 12' High Bottom Podium Walls ",Part,Part
+"3"" Matt Slab Under Perimeter Footings ",Part,Part
+Wall Type 2 & 3 / 3' x 1' Footer ,Part,Part
+"Monument Sign 1 Footer / 4' x 1'4"" Footer ",Part,Part
+Fire Feature Footings / 3' x 1' Footing,Part,Part
+"8"" x 3' High Walls ",Part,Part
+1' x 3' Retaining Wall Footings ,Part,Part
+"1'4"" x 4' Retaining Wall Footings ",Part,Part
+"1' x 2'8"" Retaining Wall Footings ",Part,Part
+3000 Psi LW Concrete  ,Part,Part
+LW Slab on Deck ,Part,Part
+F2.5 Spread Footings ,Part,Part
+Slabs ,Part,Part
+Footer Dig,Part,Part
+"3'6"" x 4' High Walls ",Part,Part
+Monument Sign 2 & 3 Footer / 3' x 1' Footer ,Part,Part
+Outdoor Kitchen Footings / 3' x 1' Footing ,Part,Part
+"1' x 2'6"" Wall Footings (Courtyard)",Part,Part
+Shade Structure Footings ,Part,Part
+"6"" Slab on Grade ",Part,Part
+"2' x 4'6"" Continuous Footings ",Part,Part
+Pan Stair Landings ,Part,Part
+"3' x 1'8"" Thickened Footings ",Part,Part
+"2' x 1'8"" Thickened Footings ",Part,Part
+F2.0 Spread Footings ,Part,Part
+2'6' Continuous Footings ,Part,Part
+2' Continuous Footings ,Part,Part
+RC3 Beams ,Part,Part
+CC-2 Columns ,Part,Part
+"8"" x 9'6"" High Upper Podium Walls ",Part,Part
+CC-3 Columns ,Part,Part
+RC2 Beams ,Part,Part
+RC1 Beams ,Part,Part
+"14"" Podium Slab ",Part,Part
+WF11.0 Continuous Footings,Part,Part
+ Porches ,Part,Part
+"2'6"" Continuous Footings ",Part,Part
+F3x6 Spread Footings ,Part,Part
+ Mix 12 Heritage Concrete,Part,Part
+Rebar #4 Continuous - 20' pc,Part,Part
+ 3000 PSI Concrete Footers,Part,Part
+gym floor expansion takeoff,Part,Part
+office expansion takeoff,Part,Part
+" 4"" 3500 psi Concrete with F100 Fiber",Part,Part
+"4"" 3500 psi Concrete with F100 Fiber",Part,Part
+ 3000 PSI Concrete,Part,Part
+Concrete Wall Form Rentals ,Part,Part
+ Class A Concrete,Part,Part
+Forming Apron Takeoff,Part,Part
+Interior Expansion Takeoff,Part,Part
+wood forming takeoff,Part,Part
+ 4000 psi Concrete with F100 Fiber,Part,Part
+"Bollard Sch 40 6""x7' (primed)",Part,Part
+"6"" 3500 PSI With F100 Fiber",Part,Part
+"4"" Class A Concrete",Part,Part
+Penn DOT Class AA,Part,Part
+"8"" 4000 PSI ",Part,Part
+3500 PSI Concrete With F100 Fiber ,Part,Part
+"Galvanized Bollard 4""",Part,Part
+3500 PSI Concrete ,Part,Part
+Line Dragon,Part,Part
+"4"" 3500 PSI Concrete With F100 Fiber ",Part,Part
+"4"" 3500 PSI With F100 Fiber ",Part,Part
+"4"" 3500 PSI Concrete ",Part,Part
+Trench Drain Concrete,Part,Part
+"6"" 3500 PSI Concrete With F100 Fiber ",Part,Part
+4000 PSI Concrete With F100 Fiber ,Part,Part
+L&M Dress Seal WB 5 gal,Part,Part
+"2"" 3500 PSI Concrete",Part,Part
+"8"" 4000 PSI Concrete",Part,Part
+"4"" 3500 PSI Concrete With F100 Fiber #8 Stone ",Part,Part
+ Thickened Slab Concrete,Part,Part
+ 3500 PSI Concrete With F100 Fiber ,Part,Part
+930 Sq Ft Bathroom Slab ,Part,Part
+Garage Slabs ,Part,Part
+Villas Slab ,Part,Part
+3000 Psi Rorhers Concrete,Part,Part
+ 3000 Psi Rohrers Concrete,Part,Part
+F4.0A Spreadfootings  ,Part,Part
+2 - F3.0A Spreadfootings ,Part,Part
+F2.0 A Spreadfootings ,Part,Part
+F3.0 Continuous Footings ,Part,Part
+F2.5 Continuous Footings ,Part,Part
+F1.5 Continuous Footers ,Part,Part
+"Rebar #4 - At 24"" On Center Each Way ",Part,Part
+4000 PSI  Concrete,Part,Part
+"Rebar #4 -  At 12"" On Center Each Way ",Part,Part
+"#4 Rebar - At 12"" On Center Each Way ",Part,Part
+"8"" Thickened Slab Area",Part,Part
+"4000 PSI Concrete, Rohrers",Part,Part
+Concrete Wall Form Rentals / Vimco ,Part,Part
+Concrete Wall Form Rentals / Vimco,Part,Part
+"4' x 10"" High Walls ",Part,Part
+"6' x 10"" High Walls ",Part,Part
+4500 Psi DVC Concrete,Part,Part
+ Excavation Sub - Contractor / B.R. Kreider ,Part,Part
+ 4000 Psi DVC Concrete,Part,Part
+Fireplace Footer ,Part,Part
+Outdoor Kitchen ,Part,Part
+Trellis footer ,Part,Part
+Light Post ,Part,Part
+ 3000 Psi DVC Concrete,Part,Part
+outside ,Part,Part
+inside ,Part,Part
+Interior Stairs and Landings ,Part,Part
+Rebar Epoxy Coated #4 - 20' pc,Part,Part
+Hardscape Curb ,Part,Part
+Thickened Areas ,Part,Part
+Slab Step ,Part,Part
+Interior ,Part,Part
+Perimeter,Part,Part
+ 4500 Psi DVC Concrete,Part,Part
+Bollard Fill ,Part,Part
+Thickened Footer 2 ,Part,Part
+Thickened Footer 4 ,Part,Part
+"Standard Wall Construction 30"" x 6'",Part,Part
+Banquette Seating Footer ,Part,Part
+3000 Psi DVC Concrete,Part,Part
+Misc. Footings ,Part,Part
+Column Encasements ,Part,Part
+"Keyway- Screed Key Pc. 5.5""x10' ",Part,Part
+"4"" Building Slab ",Part,Part
+Curing sheets  ,Part,Part
+Thickened Footer 1 ,Part,Part
+"5"" Building Slab ",Part,Part
+"24' x 20"" High Walls ",Part,Part
+"23' x 20"" High Walls ",Part,Part
+"21'6"" x 20"" High Walls ",Part,Part
+"21' x 20"" High Walls ",Part,Part
+" 7' x 12"" High Walls ",Part,Part
+"5' x 8"" High Walls ",Part,Part
+"7' x 10"" High Walls ",Part,Part
+"3' x 8"" High Walls ",Part,Part
+"2'6"" x 8"" High Walls ",Part,Part
+Stair Footings  ,Part,Part
+Interior Pier ,Part,Part
+AF8.5 Spreadfootings ,Part,Part
+AF9.0 Spreadfootings ,Part,Part
+AF8.0 Spreadfootings ,Part,Part
+AF7.5 Spreadfootings ,Part,Part
+AF7.0 Spreadfootings ,Part,Part
+AF7.0 x 22.0 Spreadfootings ,Part,Part
+AF6.5 Spreadfootings ,Part,Part
+AF6.0 Spreadfootings ,Part,Part
+AF5.5 Spreadfootings ,Part,Part
+AF5.0 Spreadfootings ,Part,Part
+AF4.5 Spreadfootings ,Part,Part
+AF4.0 Spreadfootings ,Part,Part
+AF3.0 Spreadfootings ,Part,Part
+"5' x 1'6"" Continuous Footings ",Part,Part
+"5'9"" x 1'2"" Continuous Footings ",Part,Part
+Sealer ,Part,Part
+Concrete Curb ,Part,Part
+3 x1' Continuous footings ,Part,Part
+ Excavation Sub-Contractor / B.R. Kreider,Part,Part
+Pedestrian Concrete ,Part,Part
+"8"" x 8"" Curb on Topping ",Part,Part
+Slab edge ,Part,Part
+"5' x 10"" High Walls ",Part,Part
+ Excavation Sub-Contractor / B.R. Kreider ,Part,Part
+Rebar #10 - 20' pc,Part,Part
+Rebar #11 - 20' pc,Part,Part
+Tar paper ,Part,Part
+PC5 Pile Caps ,Part,Part
+ 5000 Psi DVC Concrete,Part,Part
+"8 to 3' x 10"" High Walls ",Part,Part
+"8' x 12"" high Walls ",Part,Part
+"7' x 12"" High Walls ",Part,Part
+"6' x 12"" Walls ",Part,Part
+"5' x 12"" High Walls ",Part,Part
+"3' x 12"" High Walls ",Part,Part
+"8' x 10"" High Walls ",Part,Part
+"2' x 10"" High Walls ",Part,Part
+Steps and Landings ,Part,Part
+Garage Washes and Curbs ,Part,Part
+Trash Room Slab ,Part,Part
+Elevator Footing,Part,Part
+WF8.0 Continuous Footings ,Part,Part
+ 5000 Psi Concrete,Part,Part
+WF7.0 Continuous Footings ,Part,Part
+WF6.0A Continuous Footings ,Part,Part
+WF3.0B Continuous Footings ,Part,Part
+WF3.0A Continuous Footings ,Part,Part
+center,Part,Part
+perimeter ,Part,Part
+Thickened Footings 1 ,Part,Part
+Thickened Footings 2,Part,Part
+Thickened Haunch at Step ,Part,Part
+"13' x 10"" High Walls ",Part,Part
+"4'4"" x 12"" High Walls ",Part,Part
+Interior Piers ,Part,Part
+"2'6"" x 10"" High Walls ",Part,Part
+"15' x 10"" High Walls ",Part,Part
+"14'6"" x 10"" High Walls ",Part,Part
+"4'6"" x 10"" High Walls ",Part,Part
+"12'6"" x 10"" High Walls ",Part,Part
+"6'6"" x 10"" High Walls ",Part,Part
+"4' x 8"" High Walls ",Part,Part
+"2"" Balcony Topping Slabs ",Part,Part
+F8.0x21.0 Spreadfootings ,Part,Part
+F8.0x28.0 Spreadfootings ,Part,Part
+F7.0x22.0 Spreadfootings ,Part,Part
+F7.5x21.0 Spreadfootings ,Part,Part
+F7.0x18.0 Spreadfootings ,Part,Part
+F7.0x9.0 Spreadfootings ,Part,Part
+F6.5x35.0 Spreadfootings ,Part,Part
+F6.0x37.0 Spreadfootings ,Part,Part
+F9.0 Spreadfootings ,Part,Part
+F8.5 Spreadfootings ,Part,Part
+F7.5 Spreadfootings ,Part,Part
+F6.5 Spreadfootings ,Part,Part
+F5.5 Spreadfootings ,Part,Part
+F4.5 Spreadfootings ,Part,Part
+F3.5 Spreadfootings ,Part,Part
+F4.0 Spreadfootings,Part,Part
+"8' x 2'6"" Continuous Footings ",Part,Part
+"9' x 1'4"" Continuous Footings ",Part,Part
+"6"" Site Pads ",Part,Part
+ 4000 Psi DVC Concrete ,Part,Part
+"6"" Curb ",Part,Part
+"6"" Curbs (Areas of Interest) ",Part,Part
+Bollards (Area of Interest),Part,Part
+"6"" Site Pads (Area of Interest) ",Part,Part
+Fiber 1.5 lbs. per yard,Part,Part
+Poured Wall Subcontractor (Rubbed walls),Part,Part
+Poured Wall Subcontractor ,Part,Part
+Fiber 4 lbs. per yard,Part,Part
+ 3000 Psi LW Concrete,Part,Part
+Slab on Deck ,Part,Part
+"Poured Walls And 4 - 12' 8"" Piers ",Part,Part
+F14x42 Spreadfooters ,Part,Part
+F13.0 Spreadfootings ,Part,Part
+F12.0 Spreadfootings ,Part,Part
+F10.0 Spreadfootings ,Part,Part
+WF2 Footings,Part,Part
+Trackhoe Rental,Part,Part
+Slab Stone,Part,Part
+Footer dig ,Part,Part
+Rohrers Fiber Reinforcement,Part,Part
+Rohrers Fiber ,Part,Part
+"Slab on Grade 6"" - 10k SF Basis - Perimeter",Part,Part
+Continuous Footers ,Part,Part
+Boom Pump Rental w/Operator,Subcontractor,Subcontractor
+Shop Drawings ,Subcontractor,Subcontractor
+Trailer Pump (Includes 3 hr) ,Subcontractor,Subcontractor
+Line Dragon,Subcontractor,Subcontractor
+Somero S-15R (boom screed) (8 hr minimum),Subcontractor,Subcontractor
+Poured Wall Subcontractor ,Subcontractor,Subcontractor
+ Excavation Subcontractor / BN Excavating ,Subcontractor,Subcontractor
+Poured Wall Subcontractor / Weiler Walls ,Subcontractor,Subcontractor
+Telebelt (4 hr minimum),Subcontractor,Subcontractor
+Somero SRS4 (boom screed) (8 hr minimum),Subcontractor,Subcontractor
+Somero S-840 (8 hr minimum),Subcontractor,Subcontractor
+Dump Truck,Subcontractor,Subcontractor
+Foundation Subcontractor ,Subcontractor,Subcontractor
+ Excavation Subcontractor,Subcontractor,Subcontractor
+Poured Wall Subcontractor / Groffdale ,Subcontractor,Subcontractor
+Trailer Pump ,Subcontractor,Subcontractor
+Dump Site,Subcontractor,Subcontractor
+Form liner option from Groffdale ,Subcontractor,Subcontractor
+Boom Pump,Subcontractor,Subcontractor
+Boom Pump ,Subcontractor,Subcontractor
+Trailer Pump - House Keeping Pads ,Subcontractor,Subcontractor
+Site Concrete Subcontractor ,Subcontractor,Subcontractor
+Slab on Grade Subcontractor ,Subcontractor,Subcontractor
+Trailer Pump,Subcontractor,Subcontractor
+Trackhoe Subcontractor,Subcontractor,Subcontractor
+Skidloader Subcontractor ,Subcontractor,Subcontractor
+Crane With Operator,Subcontractor,Subcontractor
+Scissor Lifts (2),Subcontractor,Subcontractor
+Welder,Subcontractor,Subcontractor
+Crane With Operator Per Day,Subcontractor,Subcontractor
+Scissor Lifts (2) Per Week ,Subcontractor,Subcontractor
+Welder Per Day,Subcontractor,Subcontractor
+JC Drafting Shop Drawings,Subcontractor,Subcontractor
+Groffdale Forming Foundations,Subcontractor,Subcontractor
+Canadochly Supply Install Rebar,Subcontractor,Subcontractor
+Canadochly Supply Supply And Fab,Subcontractor,Subcontractor
+Pre Pour Anchor Bolt Survey,Subcontractor,Subcontractor
+Consultant,Subcontractor,Subcontractor
+Stoltzfus Crane Rental Or Similar  ,Subcontractor,Subcontractor
+Somero S-15R ,Subcontractor,Subcontractor
+Poured Wall Subcontractor \ Groffdale ,Subcontractor,Subcontractor
+Wall Form Rentals ,Subcontractor,Subcontractor
+Pump  ,Subcontractor,Subcontractor
+Pump ,Subcontractor,Subcontractor
+Trailer Pump (4 hr minimum),Subcontractor,Subcontractor
+ Excavation Subcontractor / BN Excavating,Subcontractor,Subcontractor
+Slab on Grade Subcontractor / Groffdale Shoring Package & Install Labor ,Subcontractor,Subcontractor
+Keystone Trailer Pump (Includes 3 hr) ,Subcontractor,Subcontractor
+Boom Pump (4 hr minimum),Subcontractor,Subcontractor
+Somero 3D Profiler (with or without screed),Subcontractor,Subcontractor
+Lodging and Food ,Travel,Travel
+#4 Rebar - 20' Pc (1) Continuous ,Part,Part
+#4 Rebar - 20' Pc 2 Continuous ,Part,Part
+"#4 Rebar - 20' Pc At 12"" On Center",Part,Part
+"#4 Rebar - 20' Pc At 16"" On Center Each Way ",Part,Part
+"#4 Rebar - 20' Pc Horizontal At 18"" On Center",Part,Part
+#4 Rebar - 20' Pc Transverse,Part,Part
+#4 Rebar - 20' Pc Vertical Dowels ,Part,Part
+"#4 Rebar - 20' Pc Vertical Dowels At 18"" On Center",Part,Part
+#5 Rebar - 20' Pc (7) Each Way ,Part,Part
+#5 Rebar - 20' Pc 3 Each Way ,Part,Part
+"#5 Rebar - 20' Pc At 12"" On Center Each Way ",Part,Part
+"#5 Rebar - 20' Pc At 16"" On Center Horizontal ",Part,Part
+"#5 Rebar - 20' Pc At 18"" On Center Each Way ",Part,Part
+"#5 Rebar - 20' Pc At 9"" On Center Each Way ",Part,Part
+#5 Rebar - 20' Pc Continuous (3),Part,Part
+"#5 Rebar - 20' Pc Dowels At 12"" On Center ",Part,Part
+"#5 Rebar - 20' Pc Dowels At 24"" On Center",Part,Part
+"#5 Rebar - 20' Pc Horizontal At 24"" On Center",Part,Part
+"#5 Rebar - 20' Pc Horizontal At 24"" On Center ",Part,Part
+"#5 Rebar - 20' Pc Transverse At 16"" On Center",Part,Part
+"#5 Rebar - 20' Pc Vertical At 24"" On Center [12"" Long] ",Part,Part
+#5 Rebar - 20' Pc Vertical Dowels,Part,Part
+"#5 Rebar - 20' Pc Vertical Dowels At 24"" On Center ",Part,Part
+"#5 Rebar Transverse - 20' Pc At 16"" On Center",Part,Part
+"#6 Rebar - 20' Pc At 16"" On Center Vertical ",Part,Part
+"#8 1"" X 18"" Smooth Dowels",Part,Part
+"#8 X 24"" Smooth Dowels",Part,Part
+1' Thickened Footings ,Part,Part
+"1'4"" x 2'4"" Foundation Walls ",Part,Part
+1st Floor Slab ,Part,Part
+"2' x 6"" Trench Patching ",Part,Part
+"24"" x 10"" Continuous Footings ",Part,Part
+"2'6"" x 2'4"" Foundation Walls ",Part,Part
+"3"" Slab on Deck ",Part,Part
+3000 Psi Schuster Concrete  ,Part,Part
+3000 Psi Shuster Concrete  ,Part,Part
+"3'2"" x 2'4"" Foundation Walls ",Part,Part
+3500 Psi NE Concrete  ,Part,Part
+3500 Psi Rohrers Concrete  ,Part,Part
+"36"" x 36"" Spreadfootings ",Part,Part
+"4' x 1' 6"" Continuous Footings ",Part,Part
+4' x 1' Continuous Footings  ,Part,Part
+"4"" Porch Slab with Turndowns ",Part,Part
+"4"" Sidewalk ",Part,Part
+4000 Psi Concrete with Fiber,Part,Part
+4000 Psi Concrete with Fiber ,Part,Part
+4000 Psi Concrete with Fiber  ,Part,Part
+4000 Psi NE Concrete,Part,Part
+4000 Psi NE Concrete  ,Part,Part
+4000 Psi Shuster Concrete  ,Part,Part
+"42"" x 42"" Spreadfootings ",Part,Part
+4500 Psi Shuster Concrete,Part,Part
+4500 Psi Shuster Concrete  ,Part,Part
+"48"" x 48"" Spreadfootings ",Part,Part
+"5"" & 6"" Interior Slab on Grade ",Part,Part
+6' x 1' Continuous Footings ,Part,Part
+"6"" Area of Slab ",Part,Part
+"6"" Dumpster Slab ",Part,Part
+"7' 3"" x 1' Continuous Footings ",Part,Part
+"7' 9"" x 1' Continuous Footings  ",Part,Part
+"7"" Concrete Paving ",Part,Part
+"8"" Concrete Curb Under Wall ",Part,Part
+"8"" Dock Slab on Grade ",Part,Part
+"8"" Exterior Slab on Grade ",Part,Part
+Basement Slab ,Part,Part
+Basement Walls ,Part,Part
+"Bollard Sch 40 4"" x 80"" Stainless Steel with Cap",Part,Part
+"Bollard Sch 40 4""x4'6"" (primed)",Part,Part
+Color Washout ,Part,Part
+Continuous Footers & Wall at Building Infill ,Part,Part
+Curb Along Walls ,Part,Part
+Disposable Rollers/ Brushes Etc. ,Part,Part
+Dock Leveler Slabs ,Part,Part
+Dura-Kote WB 400,Part,Part
+Enlarge Existing Foundations ,Part,Part
+"Expansion Noma-Flex 12""x10'",Part,Part
+ExpansionTakeoff,Part,Part
+F10.0 Spread Footings  ,Part,Part
+F11.0 Spread Footings  ,Part,Part
+F2.6 Continuous Footings ,Part,Part
+F3.0 Spread Footings  ,Part,Part
+F3.10 Continuous Footings ,Part,Part
+F32x5 Spread Footings ,Part,Part
+F4.2 Spread Footings ,Part,Part
+F4.6 Continuous Footings    ,Part,Part
+F-45 Spread Footings ,Part,Part
+F5.0 Spread Footings  ,Part,Part
+F5.9 Spread Footings ,Part,Part
+F7.0 Spread Footings  ,Part,Part
+F70 Spread Footings ,Part,Part
+F8.0 Spread Footings  ,Part,Part
+F9.0 Spread Footings  ,Part,Part
+Footer Walls ,Part,Part
+Foundation Concrete Continuous,Part,Part
+Instarok Concrete 50 lbs Pail,Part,Part
+Labor Slab On Grade ,Labor,Slab On Grade Labor 
+Linear Expansion,Part,Part
+Linear Forming,Part,Part
+Linear Forming ,Part,Part
+P1.6 Piers ,Part,Part
+P2 Piers  ,Part,Part
+P2.2 Piers ,Part,Part
+P3 Piers  ,Part,Part
+P3 Piers   ,Part,Part
+Piers ,Part,Part
+Poured Basement Foundation Walls ,Part,Part
+Ramp ,Part,Part
+Ramp & Steps Foundation ,Part,Part
+Ramp Walls ,Part,Part
+"Ramp, Steps & Landing ",Part,Part
+Roller Rental / 1 Week Gap Power ,Part,Part
+Roller Rental / 2 Weeks Gap Power,Part,Part
+S2 Slab on Grade  ,Part,Part
+Sealer/ Hardener Take Off ,Part,Part
+Site Concrete 4500 PSI   ,Part,Part
+Slab On Grade Concrete 4000 PSI ,Part,Part
+Slab On Grade Concrete With #8 Stone,Part,Part
+Steps & Landing ,Part,Part
+Topping spreader (attachment on the SRS4 machine) ,Part,Part
+Trackhoe Rental / 28 Days Gap Power ,Part,Part
+Underpinning ,Part,Part
+WF24 Continuous Footings ,Part,Part
+WF4 Continuous Footings (Trash Compound),Part,Part

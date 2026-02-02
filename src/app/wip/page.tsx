@@ -625,11 +625,12 @@ export default function WIPReportPage() {
   const bidSubmittedSalesByMonth: Record<string, number> = {};
   dedupedByCustomer.forEach((project) => {
     if ((project.status || "") !== "Bid Submitted") return;
-    const projectDate = parseDateValue(project.dateCreated);
+    // Try dateCreated first, then dateUpdated as fallback
+    const projectDate = parseDateValue(project.dateCreated) || parseDateValue(project.dateUpdated);
     if (!projectDate) return;
     const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
     const sales = Number(project.sales ?? 0);
-    if (!Number.isFinite(sales)) return;
+    if (!Number.isFinite(sales) || sales === 0) return;
     bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
   });
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();

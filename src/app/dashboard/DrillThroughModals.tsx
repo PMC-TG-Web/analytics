@@ -13,6 +13,12 @@ type Project = {
   hours?: number;
   laborSales?: number;
   laborCost?: number;
+  subsSales?: number;
+  subsCost?: number;
+  partsSales?: number;
+  partsCost?: number;
+  equipmentSales?: number;
+  equipmentCost?: number;
   dateUpdated?: string;
   dateCreated?: string;
   estimator?: string;
@@ -176,19 +182,19 @@ export function JobsListModal({
                       </div>
                     </div>
                   </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: "#666" }}>Project Name</div>
+                    <div style={{ fontSize: 13, color: "#222" }}>
+                      {project.projectName || "N/A"}
+                    </div>
+                  </div>
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gridTemplateColumns: "1fr 1fr 1fr 1fr",
                       gap: 16,
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: 12, color: "#666" }}>Project Name</div>
-                      <div style={{ fontSize: 13, color: "#222" }}>
-                        {project.projectName || "N/A"}
-                      </div>
-                    </div>
                     <div>
                       <div style={{ fontSize: 12, color: "#666" }}>Status</div>
                       <div
@@ -208,6 +214,20 @@ export function JobsListModal({
                       <div style={{ fontSize: 12, color: "#666" }}>Sales</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#0066CC" }}>
                         ${(project.sales ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#666" }}>Cost</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#f59e0b" }}>
+                        ${(project.cost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#666" }}>Markup %</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#10b981" }}>
+                        {project.cost && project.cost > 0
+                          ? (((project.sales ?? 0) - project.cost) / project.cost * 100).toFixed(1)
+                          : "0.0"}%
                       </div>
                     </div>
                   </div>
@@ -245,22 +265,32 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
     try {
       const q = query(
         collection(db, "projects"),
-        where("projectNumber", "==", project.projectNumber)
+        where("projectNumber", "==", project.projectNumber),
+        where("projectName", "==", project.projectName || ""),
+        where("customer", "==", project.customer || "")
       );
       const snapshot = await getDocs(q);
       const projectDocs = snapshot.docs;
       
       if (projectDocs.length > 0) {
-        const projectData = projectDocs[0].data();
-        // Use the items array from the project document if it exists
-        if (projectData.items && Array.isArray(projectData.items)) {
-          setLineItems(projectData.items as Project[]);
+        // Check if first document has items array
+        const firstDocData = projectDocs[0].data();
+        if (firstDocData.items && Array.isArray(firstDocData.items)) {
+          // Use the items array from the consolidated document
+          setLineItems(firstDocData.items as Project[]);
+        } else if (projectDocs.length > 1) {
+          // Multiple documents found - treat each as a separate line item
+          const items = projectDocs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          } as Project));
+          setLineItems(items);
         } else {
-          // Fallback to treating the document itself as a line item
+          // Single document without items array - treat as single line item
           setLineItems([
             {
               id: projectDocs[0].id,
-              ...projectData,
+              ...firstDocData,
             } as Project,
           ]);
         }
@@ -308,6 +338,43 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
     }));
   };
 
+  // Aggregate line items by cost type
+  const aggregateByType = (items: Project[], type: string) => {
+    return items
+      .filter(item => item.costType === type)
+      .reduce(
+        (acc, item) => ({
+          sales: (acc.sales || 0) + (item.sales || 0),
+          cost: (acc.cost || 0) + (item.cost || 0),
+        }),
+        { sales: 0, cost: 0 }
+      );
+  };
+
+  // Aggregate all items except Management/Supervisor
+  const aggregateWithoutManagement = (items: Project[]) => {
+    return items
+      .filter(item => item.costType !== "Management" && item.costType !== "Supervisor")
+      .reduce(
+        (acc, item) => ({
+          sales: (acc.sales || 0) + (item.sales || 0),
+          cost: (acc.cost || 0) + (item.cost || 0),
+        }),
+        { sales: 0, cost: 0 }
+      );
+  };
+
+  // Sum hours without PM
+  const hoursWithoutPM = lineItems
+    .filter(item => item.costType !== "PM")
+    .reduce((sum, item) => sum + (item.hours || 0), 0);
+
+  const laborAgg = aggregateByType(lineItems, "Labor");
+  const subsAgg = aggregateByType(lineItems, "Subcontractor");
+  const withoutMgmtAgg = aggregateWithoutManagement(lineItems);
+  const partsAgg = aggregateByType(lineItems, "Part");
+  const equipmentAgg = aggregateByType(lineItems, "Equipment");
+
   if (!isOpen || !project) return null;
 
   const formatDate = (dateValue: any) => {
@@ -327,8 +394,6 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
     { label: "Estimator", value: project.estimator },
     { label: "Status", value: project.status, isBadge: true },
     { label: "Project Stage", value: project.projectStage },
-    { label: "Cost Item", value: project.costitems },
-    { label: "Cost Type", value: project.costType },
     { label: "Date Created", value: formatDate(project.dateCreated) },
     { label: "Date Updated", value: formatDate(project.dateUpdated) },
   ];
@@ -336,9 +401,15 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
   const metrics = [
     { label: "Sales", value: project.sales, prefix: "$", decimals: 0 },
     { label: "Cost", value: project.cost, prefix: "$", decimals: 0 },
+    { label: "Profit", value: (project.sales ?? 0) - (project.cost ?? 0), prefix: "$", decimals: 0 },
+    { label: "Cost Markup %", value: project.cost && project.cost > 0 ? (((project.sales ?? 0) - project.cost) / project.cost * 100) : 0, suffix: "%", decimals: 1 },
+    { label: "Profit/Hour (w/o Mgmt)", value: hoursWithoutPM > 0 ? (withoutMgmtAgg.sales - withoutMgmtAgg.cost) / hoursWithoutPM : 0, prefix: "$", decimals: 2 },
     { label: "Hours", value: project.hours, decimals: 0 },
-    { label: "Labor Sales", value: project.laborSales, prefix: "$", decimals: 0 },
-    { label: "Labor Cost", value: project.laborCost, prefix: "$", decimals: 0 },
+    { label: "Labor Profit", value: laborAgg.sales - laborAgg.cost, prefix: "$", decimals: 0 },
+    { label: "Labor Markup %", value: laborAgg.cost && laborAgg.cost > 0 ? (((laborAgg.sales ?? 0) - laborAgg.cost) / laborAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
+    { label: "Subs Markup %", value: subsAgg.cost && subsAgg.cost > 0 ? (((subsAgg.sales ?? 0) - subsAgg.cost) / subsAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
+    { label: "Parts Markup %", value: partsAgg.cost && partsAgg.cost > 0 ? (((partsAgg.sales ?? 0) - partsAgg.cost) / partsAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
+    { label: "Equipment Markup %", value: equipmentAgg.cost && equipmentAgg.cost > 0 ? (((equipmentAgg.sales ?? 0) - equipmentAgg.cost) / equipmentAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
     { label: "Quantity", value: project.quantity, decimals: 2 },
   ];
 
@@ -448,11 +519,14 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
                           color:
                             metric.label === "Sales" || metric.label === "Labor Sales"
                               ? "#0066CC"
+                              : metric.label === "Markup %"
+                              ? "#10b981"
                               : "#222",
                         }}
                       >
                         {metric.prefix && metric.prefix}
                         {formatted}
+                        {metric.suffix && metric.suffix}
                       </div>
                     </div>
                   );
@@ -607,6 +681,18 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
                                 >
                                   Margin
                                 </th>
+                                <th
+                                  style={{
+                                    padding: "10px 16px",
+                                    textAlign: "right",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "#666",
+                                    textTransform: "uppercase",
+                                  }}
+                                >
+                                  Markup %
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -669,6 +755,19 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
                                       }}
                                     >
                                       ${margin.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    </td>
+                                    <td
+                                      style={{
+                                        padding: "10px 16px",
+                                        fontSize: 13,
+                                        color: "#10b981",
+                                        fontWeight: 600,
+                                        textAlign: "right",
+                                      }}
+                                    >
+                                      {item.cost && item.cost > 0
+                                        ? (((item.sales ?? 0) - item.cost) / item.cost * 100).toFixed(1)
+                                        : "0.0"}%
                                     </td>
                                   </tr>
                                 );

@@ -308,6 +308,37 @@ export default function Dashboard() {
     return { totalHours, breakdown };
   }, [statusGroupsForLabor]);
 
+  const pmHours = useMemo(() => {
+    const allProjects = (statusGroupsForLabor['Bid Submitted'] || []).filter(
+      p => !p.projectArchived
+    );
+    const pmGroupTotals: Record<string, number> = {};
+    
+    allProjects.forEach((p) => {
+      const groupName = (p.pmcGroup ?? '').toString().trim();
+      const normalized = groupName.toLowerCase();
+      // Only match groups that start with "pm" or are exactly "pm labor", "pm hours", etc.
+      if (!normalized || !(normalized.startsWith('pm ') || normalized === 'pm' || normalized.startsWith('pm-'))) return;
+      
+      const hours = Number(p.hours ?? 0);
+      if (!Number.isFinite(hours)) return;
+      
+      const displayName = p.pmcGroup ?? 'PM (Unassigned)';
+      pmGroupTotals[displayName] = (pmGroupTotals[displayName] ?? 0) + hours;
+    });
+
+    const totalHours = Object.values(pmGroupTotals).reduce((sum, value) => sum + value, 0);
+    const breakdown = Object.entries(pmGroupTotals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, hours]) => ({
+        label,
+        hours,
+        percent: totalHours > 0 ? (hours / totalHours) * 100 : 0,
+      }));
+
+    return { totalHours, breakdown };
+  }, [statusGroupsForLabor]);
+
   // Calculate win rate including archived jobs as lost
   // For win rate, we need to count archived projects with same filters applied
   const archivedProjects = projects.filter(p => {
@@ -562,6 +593,31 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          </div>
+          <div style={{ marginTop: 16, borderTop: '1px solid #ddd', paddingTop: 12 }}>
+            <div style={{ color: '#666', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              PM Hours
+            </div>
+            <dl style={{ margin: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <dt style={{ color: '#666' }}>Total Hours</dt>
+                <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 14, color: '#0066CC' }}>
+                  {pmHours.totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </dd>
+              </div>
+            </dl>
+            {pmHours.breakdown.length > 0 && (
+              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                {pmHours.breakdown.map((item) => (
+                  <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                    <span style={{ color: '#666' }}>{item.label}</span>
+                    <span style={{ color: '#222', fontWeight: 600 }}>
+                      {item.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({item.percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

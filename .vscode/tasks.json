@@ -42,6 +42,13 @@
 			"type": "shell",
 			"command": "npx next build",
 			"group": "build"
+		},
+		{
+			"label": "Next.js Dev Server",
+			"type": "shell",
+			"command": "npm run dev",
+			"isBackground": true,
+			"problemMatcher": []
 		}
 	]
 }

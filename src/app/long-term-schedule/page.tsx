@@ -169,7 +169,7 @@ export default function LongTermSchedulePage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Long-Term Schedule</h1>
-            <p className="text-gray-600 mt-1">Next 12 weeks - Hours and FTE by project</p>
+            <p className="text-gray-600 mt-1">Next 12 weeks - Hours and Weekly FTE by project</p>
           </div>
           <div className="flex gap-3">
             <a href="/dashboard" className="px-4 py-2 bg-blue-800 text-white rounded-lg font-medium hover:bg-blue-900 transition-colors">
@@ -229,7 +229,7 @@ export default function LongTermSchedulePage() {
                             {hours > 0 ? (
                               <div>
                                 <div className="font-semibold text-gray-900">{hours.toFixed(1)}</div>
-                                <div className="text-xs text-purple-600">{fte.toFixed(1)} FTE</div>
+                                <div className="text-xs text-purple-600">{fte.toFixed(1)} Weekly FTE</div>
                               </div>
                             ) : (
                               <span className="text-gray-300">-</span>
@@ -239,7 +239,7 @@ export default function LongTermSchedulePage() {
                       })}
                       <td className="text-center py-3 px-4 text-sm font-bold bg-gray-100">
                         <div className="text-gray-900">{job.totalHours.toFixed(1)}</div>
-                        <div className="text-xs text-purple-600">{(job.totalHours / 50).toFixed(1)} FTE</div>
+                        <div className="text-xs text-purple-600">{(job.totalHours / 50).toFixed(1)} Weekly FTE</div>
                       </td>
                     </tr>
                   ))}
@@ -252,12 +252,12 @@ export default function LongTermSchedulePage() {
                     {weekTotals.map((total, idx) => (
                       <td key={idx} className="text-center py-4 px-3 text-sm text-white border-r border-blue-600">
                         <div className="font-bold">{total.toFixed(1)}</div>
-                      <div className="text-xs text-blue-200">{(total / 50).toFixed(1)} FTE</div>
+                      <div className="text-xs text-blue-200">{(total / 50).toFixed(1)} Weekly FTE</div>
                     </td>
                   ))}
                   <td className="text-center py-4 px-4 text-sm text-white bg-blue-900">
                     <div className="font-bold text-lg">{grandTotal.toFixed(1)}</div>
-                    <div className="text-xs text-blue-200">{(grandTotal / 50).toFixed(1)} FTE</div>
+                    <div className="text-xs text-blue-200">{(grandTotal / 50).toFixed(1)} Weekly FTE</div>
                     </td>
                   </tr>
                 </tbody>

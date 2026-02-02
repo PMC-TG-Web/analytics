@@ -254,13 +254,13 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (isOpen && project?.projectNumber) {
+    if (isOpen && project?.projectNumber && project?.projectName && project?.customer) {
       fetchLineItems();
     }
-  }, [isOpen, project?.projectNumber]);
+  }, [isOpen, project?.projectNumber, project?.projectName, project?.customer]);
 
   const fetchLineItems = async () => {
-    if (!project?.projectNumber) return;
+    if (!project?.projectNumber || !project?.projectName || !project?.customer) return;
     setLoading(true);
     try {
       const q = query(
@@ -365,15 +365,18 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
   };
 
   // Sum hours without PM
-  const hoursWithoutPM = lineItems
-    .filter(item => item.costType !== "PM")
-    .reduce((sum, item) => sum + (item.hours || 0), 0);
+  const hoursWithoutPM = React.useMemo(() => 
+    lineItems
+      .filter(item => item.costType !== "PM")
+      .reduce((sum, item) => sum + (item.hours || 0), 0),
+    [lineItems]
+  );
 
-  const laborAgg = aggregateByType(lineItems, "Labor");
-  const subsAgg = aggregateByType(lineItems, "Subcontractor");
-  const withoutMgmtAgg = aggregateWithoutManagement(lineItems);
-  const partsAgg = aggregateByType(lineItems, "Part");
-  const equipmentAgg = aggregateByType(lineItems, "Equipment");
+  const laborAgg = React.useMemo(() => aggregateByType(lineItems, "Labor"), [lineItems]);
+  const subsAgg = React.useMemo(() => aggregateByType(lineItems, "Subcontractor"), [lineItems]);
+  const withoutMgmtAgg = React.useMemo(() => aggregateWithoutManagement(lineItems), [lineItems]);
+  const partsAgg = React.useMemo(() => aggregateByType(lineItems, "Part"), [lineItems]);
+  const equipmentAgg = React.useMemo(() => aggregateByType(lineItems, "Equipment"), [lineItems]);
 
   if (!isOpen || !project) return null;
 

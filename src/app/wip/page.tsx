@@ -452,6 +452,48 @@ export default function WIPReportPage() {
   });
 
   const filteredMonths = Object.keys(filteredMonthlyData).sort();
+  
+  // Calculate totals from filtered data
+  const filteredTotalHours = Object.values(filteredMonthlyData).reduce((sum, m) => sum + m.hours, 0);
+  const filteredAvgHours = filteredMonths.length > 0 ? filteredTotalHours / filteredMonths.length : 0;
+  
+  // Calculate filtered hours for In Progress jobs only (for unscheduled calculation)
+  const filteredInProgressHours = Object.values(filteredMonthlyData).reduce((sum, monthData) => {
+    const inProgressHours = monthData.jobs
+      .filter((job) => {
+        // Find matching schedule to check status
+        const schedule = schedules.find(s => 
+          s.customer === job.customer && 
+          s.projectName === job.projectName && 
+          s.projectNumber === job.projectNumber
+        );
+        return schedule && schedule.status === 'In Progress';
+      })
+      .reduce((jobSum, job) => jobSum + (job.hours ?? 0), 0);
+    return sum + inProgressHours;
+  }, 0);
+  
+  // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
+  // This is used to properly calculate unscheduled hours
+  const allInProgressScheduledHours = Object.values(monthlyData).reduce((sum, monthData) => {
+    const inProgressHours = monthData.jobs
+      .filter((job) => {
+        // Apply customer/project filters
+        const customerMatch = !customerFilter || job.customer === customerFilter;
+        const projectMatch = !projectFilter || job.projectName === projectFilter;
+        if (!customerMatch || !projectMatch) return false;
+        
+        // Find matching schedule to check status
+        const schedule = schedules.find(s => 
+          s.customer === job.customer && 
+          s.projectName === job.projectName && 
+          s.projectNumber === job.projectNumber
+        );
+        return schedule && schedule.status === 'In Progress';
+      })
+      .reduce((jobSum, job) => jobSum + (job.hours ?? 0), 0);
+    return sum + inProgressHours;
+  }, 0);
 
   // Calculate unscheduled hours from ALL qualifying projects with filters
   const qualifyingStatuses = ["In Progress"];
@@ -595,6 +637,16 @@ export default function WIPReportPage() {
     totalQualifyingHours += project.totalHours;
   });
   
+  // Calculate filtered total qualifying hours (applying customer/project filters)
+  let filteredTotalQualifyingHours = 0;
+  qualifyingProjectsMap.forEach(project => {
+    // Apply customer filter
+    if (customerFilter && project.customer !== customerFilter) return;
+    // Apply project filter
+    if (projectFilter && project.projectName !== projectFilter) return;
+    filteredTotalQualifyingHours += project.totalHours;
+  });
+  
   // Calculate total scheduled hours from schedules (excluding Complete status)
   let totalScheduledHours = 0;
   let excludedCompleteHours = 0;
@@ -616,7 +668,8 @@ export default function WIPReportPage() {
     totalScheduledHours += scheduledHours;
   });
   
-  const unscheduledHours = totalQualifyingHours - totalScheduledHours;
+  // Use ALL In Progress scheduled hours (not just filtered by year) for accurate unscheduled calculation
+  const unscheduledHours = filteredTotalQualifyingHours - allInProgressScheduledHours;
 
   const projectKeyForSchedule = (customer?: string, projectNumber?: string, projectName?: string) => {
     return `${customer ?? ""}|${projectNumber ?? ""}|${projectName ?? ""}`;
@@ -742,6 +795,9 @@ export default function WIPReportPage() {
           <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Dashboard
           </a>
+          <a href="/kpi" style={{ padding: "8px 16px", background: "#8b5cf6", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+            KPI
+          </a>
           <a href="/scheduling" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Scheduling
           </a>
@@ -753,9 +809,9 @@ export default function WIPReportPage() {
 
       {/* Summary Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
-        <SummaryCard label="Total Scheduled Hours" value={totalHours.toFixed(1)} />
-        <SummaryCard label="Average Monthly Hours" value={avgHours.toFixed(1)} />
-        <SummaryCard label="Months Scheduled" value={months.length} />
+        <SummaryCard label="Total Scheduled Hours" value={filteredTotalHours.toFixed(1)} />
+        <SummaryCard label="Average Monthly Hours" value={filteredAvgHours.toFixed(1)} />
+        <SummaryCard label="Months Scheduled" value={filteredMonths.length} />
         <SummaryCard label="Scheduled Jobs" value={schedules.length} />
       </div>
 
@@ -773,13 +829,13 @@ export default function WIPReportPage() {
               {unscheduledHours.toFixed(1)}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-              of {totalQualifyingHours.toFixed(1)} total hours
+              of {filteredTotalQualifyingHours.toFixed(1)} total hours
             </div>
           </div>
         </div>
         {unscheduledHours > 0 && (
           <div style={{ marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-            {((unscheduledHours / totalQualifyingHours) * 100).toFixed(0)}% remaining to schedule
+            {((unscheduledHours / filteredTotalQualifyingHours) * 100).toFixed(0)}% remaining to schedule
           </div>
         )}
       </div>
@@ -789,22 +845,7 @@ export default function WIPReportPage() {
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
           <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Hours Trend</h2>
           <div style={{ width: "100%", minHeight: 50 }}>
-            <HoursLineChart months={filteredMonths} monthlyData={filteredMonthlyData} />
-          </div>
-        </div>
-      )}
-
-      {/* Combined Sales Line Chart */}
-      {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled vs Bid Submitted Sales</h2>
-          <div style={{ width: "100%", minHeight: 50 }}>
-            <CombinedSalesLineChart
-              scheduledMonths={filteredScheduledSalesMonths}
-              scheduledSalesByMonth={filteredScheduledSalesByMonth}
-              bidSubmittedMonths={filteredBidSubmittedSalesMonths}
-              bidSubmittedSalesByMonth={filteredBidSubmittedSalesByMonth}
-            />
+            <HoursLineChart months={filteredMonths} monthlyData={filteredMonthlyData} projects={projects} yearFilter={yearFilter} />
           </div>
         </div>
       )}
@@ -838,58 +879,6 @@ export default function WIPReportPage() {
                       );
                     })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Combined Sales by Month */}
-      {filteredCombinedSalesYears.length > 0 && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled + Bid Submitted Sales by Month</h2>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #3a3d42" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Type</th>
-                  {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
-                      {name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCombinedSalesYears.map((year) => (
-                  <React.Fragment key={year}>
-                    <tr style={{ borderBottom: "1px solid #3a3d42" }}>
-                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
-                      <td style={{ padding: "12px", color: "#FF9500", fontWeight: 700 }}>Scheduled</td>
-                      {monthNames.map((_, idx) => {
-                        const sales = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                        return (
-                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#FF9500" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
-                            {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    <tr style={{ borderBottom: "1px solid #3a3d42" }}>
-                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}></td>
-                      <td style={{ padding: "12px", color: "#0066CC", fontWeight: 700 }}>Bid Submitted</td>
-                      {monthNames.map((_, idx) => {
-                        const sales = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                        return (
-                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
-                            {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -1427,7 +1416,7 @@ export default function WIPReportPage() {
   );
 }
 
-function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData: Record<string, any> }) {
+function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months: string[]; monthlyData: Record<string, any>; projects: any[]; yearFilter: string }) {
   const sortedMonths = months.sort();
   const hours = sortedMonths.map(month => monthlyData[month]?.hours || 0);
   const labels = sortedMonths.map(month => {
@@ -1435,6 +1424,15 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
     const date = new Date(Number(year), Number(m) - 1, 1);
     return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
   });
+
+  // Calculate Leadtime (M) - total scheduled hours from filtered data / 3938
+  // This is a flat line showing months of backlog based on scheduled hours
+  const totalScheduledHours = sortedMonths.reduce((sum, month) => {
+    return sum + (monthlyData[month]?.hours || 0);
+  }, 0);
+  
+  const leadtimeValue = totalScheduledHours / 3938;
+  const leadtimeData = sortedMonths.map(() => leadtimeValue); // Flat line across all months
 
   // Calculate forecast for next 3 months using linear regression
   const numForecastMonths = 3;
@@ -1509,6 +1507,7 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 5,
+        yAxisID: 'y',
         datalabels: {
           display: true,
           color: "#0066CC",
@@ -1533,6 +1532,7 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 4,
+        yAxisID: 'y',
         datalabels: {
           display: false,
         },
@@ -1546,10 +1546,35 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         fill: false,
         pointRadius: 0,
         pointHoverRadius: 0,
+        yAxisID: 'y',
+      },
+      {
+        label: "Leadtime (M)",
+        data: leadtimeData.concat(Array(numForecastMonths).fill(null)),
+        borderColor: "#22c55e",
+        backgroundColor: "rgba(34, 197, 94, 0.1)",
+        tension: 0.3,
+        fill: false,
+        pointBackgroundColor: "#22c55e",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        yAxisID: 'y2',
+        datalabels: {
+          display: true,
+          color: "#22c55e",
+          font: { weight: "bold", size: 14 },
+          formatter: (value: any) => {
+            if (value === null) return "";
+            return value.toFixed(1);
+          },
+        },
       },
     ],
   };
 
+  const maxLeadtime = Math.max(...leadtimeData, 1);
+  
   const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
@@ -1571,6 +1596,8 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
     },
     scales: {
       y: {
+        type: 'linear' as const,
+        position: 'left' as const,
         beginAtZero: true,
         max: maxHours * 1.1,
         ticks: {
@@ -1581,6 +1608,21 @@ function HoursLineChart({ months, monthlyData }: { months: string[]; monthlyData
         },
         grid: {
           color: "#3a3d42",
+        },
+      },
+      y2: {
+        type: 'linear' as const,
+        position: 'right' as const,
+        beginAtZero: true,
+        max: maxLeadtime * 1.2,
+        ticks: {
+          color: "#22c55e",
+          callback: function(value) {
+            return (value as number).toFixed(1);
+          },
+        },
+        grid: {
+          drawOnChartArea: false,
         },
       },
       x: {

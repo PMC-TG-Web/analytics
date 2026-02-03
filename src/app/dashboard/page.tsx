@@ -370,13 +370,16 @@ export default function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ color: '#003DA5', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <a href="/scheduling" style={{ padding: '8px 16px', background: '#003DA5', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            Scheduling
+          <a href="/kpi" style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            KPI
           </a>
           <a href="/wip" style={{ padding: '8px 16px', background: '#0066CC', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             WIP Report
           </a>
-          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            Scheduling
+          </a>
+          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#f59e0b', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Long-Term Schedule
           </a>
         </div>

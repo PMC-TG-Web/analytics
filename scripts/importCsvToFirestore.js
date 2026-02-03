@@ -35,7 +35,7 @@ const db = getFirestore(app);
 async function importCsvToFirestore() {
   try {
     console.log('Reading CSV file...');
-    const csvPath = path.join(__dirname, '../src/Bid_Distro-Preconstruction (1).csv');
+    const csvPath = path.join(__dirname, '../src/Bid_Distro-Preconstruction (3).csv');
     const fileContent = fs.readFileSync(csvPath, 'utf-8');
 
     const records = csv.parse(fileContent, {
@@ -47,7 +47,10 @@ async function importCsvToFirestore() {
 
     // Normalize header names to lowercase and underscores
     const normalizeKey = (key) => {
-      return key.trim().toLowerCase().replace(/\s+/g, '_');
+      return key.trim().toLowerCase()
+        .replace(/\s*>\s*/g, '_')  // Replace " > " with "_"
+        .replace(/\s+/g, '_')       // Replace spaces with "_"
+        .replace(/[()]/g, '');      // Remove parentheses
     };
 
     // Parse and convert values
@@ -57,7 +60,8 @@ async function importCsvToFirestore() {
       if (type === 'number') {
         const str = value.toString().trim();
         if (!str) return null;
-        const num = parseFloat(str.replace(/[$,]/g, ''));
+        // Handle both "$1,234.56" and "1234.56" formats
+        const num = parseFloat(str.replace(/[$,\s]/g, ''));
         return Number.isFinite(num) ? num : null;
       }
 
@@ -121,10 +125,11 @@ async function importCsvToFirestore() {
           normalized[normalizeKey(key)] = value;
         }
 
-        // Build document with all 20 fields
+        // Build document with all fields
         const doc = {
           projectNumber: parseValue(normalized.projectnumber, 'string'),
           dateUpdated: parseValue(normalized.dateupdated, 'date'),
+          projectUpdateDate: parseValue(normalized.projectupdatedate, 'date'),
           reasonForLoss: parseValue(normalized.reasonforloss, 'string'),
           projectStage: parseValue(normalized.projectstage, 'string'),
           costitems: parseValue(normalized.costitems, 'string'),

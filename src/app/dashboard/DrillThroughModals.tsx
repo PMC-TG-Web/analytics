@@ -1,33 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/firebase";
-
-type Project = {
-  id: string;
-  projectNumber?: string;
-  projectName?: string;
-  customer?: string;
-  status?: string;
-  sales?: number;
-  cost?: number;
-  hours?: number;
-  laborSales?: number;
-  laborCost?: number;
-  subsSales?: number;
-  subsCost?: number;
-  partsSales?: number;
-  partsCost?: number;
-  equipmentSales?: number;
-  equipmentCost?: number;
-  dateUpdated?: string;
-  dateCreated?: string;
-  estimator?: string;
-  pmcGroup?: string;
-  costitems?: string;
-  costType?: string;
-  quantity?: number;
-  [key: string]: any;
-};
+import { getProjectLineItems, type Project } from "./projectQueries";
 
 interface JobsListModalProps {
   isOpen: boolean;
@@ -257,44 +229,19 @@ export function JobDetailsModal({ isOpen, project, onClose }: JobDetailsModalPro
     if (isOpen && project?.projectNumber && project?.projectName && project?.customer) {
       fetchLineItems();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, project?.projectNumber, project?.projectName, project?.customer]);
 
   const fetchLineItems = async () => {
     if (!project?.projectNumber || !project?.projectName || !project?.customer) return;
     setLoading(true);
     try {
-      const q = query(
-        collection(db, "projects"),
-        where("projectNumber", "==", project.projectNumber),
-        where("projectName", "==", project.projectName || ""),
-        where("customer", "==", project.customer || "")
+      const items = await getProjectLineItems(
+        project.projectNumber,
+        project.projectName,
+        project.customer
       );
-      const snapshot = await getDocs(q);
-      const projectDocs = snapshot.docs;
-      
-      if (projectDocs.length > 0) {
-        // Check if first document has items array
-        const firstDocData = projectDocs[0].data();
-        if (firstDocData.items && Array.isArray(firstDocData.items)) {
-          // Use the items array from the consolidated document
-          setLineItems(firstDocData.items as Project[]);
-        } else if (projectDocs.length > 1) {
-          // Multiple documents found - treat each as a separate line item
-          const items = projectDocs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          } as Project));
-          setLineItems(items);
-        } else {
-          // Single document without items array - treat as single line item
-          setLineItems([
-            {
-              id: projectDocs[0].id,
-              ...firstDocData,
-            } as Project,
-          ]);
-        }
-      }
+      setLineItems(items);
     } catch (error) {
       console.error("Error fetching line items:", error);
     } finally {

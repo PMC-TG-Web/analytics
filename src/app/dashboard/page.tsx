@@ -14,14 +14,9 @@ import {
   Legend,
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/firebase";
 import { JobsListModal, JobDetailsModal } from "./DrillThroughModals";
+import { getAllProjectsForDashboard, type Project } from "./projectQueries";
 
-type Project = {
-  id: string;
-  [key: string]: any;
-};
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -36,8 +31,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
-      const querySnapshot = await getDocs(collection(db, "projects"));
-      const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const data = await getAllProjectsForDashboard();
       setProjects(data);
       setLoading(false);
     }
@@ -367,8 +361,8 @@ export default function Dashboard() {
     return new Set(group.map(p => getProjectKey(p))).size;
   };
   
-  const wonProjects = getUniqueProjectCount('Complete') + getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
-  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost') + archivedCount;
+  const wonProjects = getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
+  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
   return (

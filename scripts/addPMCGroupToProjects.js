@@ -49,41 +49,49 @@ async function addPMCGroupToProjects() {
     
     console.log(`Loaded ${lookupMap.size} grouping mappings`);
 
-    console.log('Loading projects...');
+    console.log('Loading projects in batches...');
     const projectsSnapshot = await getDocs(collection(db, 'projects'));
-    console.log(`Found ${projectsSnapshot.size} projects to update`);
+    const allProjects = projectsSnapshot.docs;
+    console.log(`Found ${allProjects.length} projects to update`);
 
     let successCount = 0;
     let notFoundCount = 0;
     let errorCount = 0;
+    const batchSize = 100;
 
-    for (const projectDoc of projectsSnapshot.docs) {
-      try {
-        const projectData = projectDoc.data();
-        const costItem = (projectData.costitems || '').trim().toLowerCase();
-        
-        // Look up PMCGroup
-        const pmcGroup = lookupMap.get(costItem) || null;
-        
-        if (pmcGroup) {
-          // Update the project with PMCGroup
-          await updateDoc(doc(db, 'projects', projectDoc.id), {
-            pmcGroup: pmcGroup
-          });
-          successCount++;
-        } else {
-          notFoundCount++;
+    // Process in batches
+    for (let i = 0; i < allProjects.length; i += batchSize) {
+      const batch = allProjects.slice(i, i + batchSize);
+      
+      const updates = batch.map(async (projectDoc) => {
+        try {
+          const projectData = projectDoc.data();
+          const costItem = (projectData.costitems || '').trim().toLowerCase();
+          
+          // Look up PMCGroup
+          const pmcGroup = lookupMap.get(costItem) || null;
+          
+          if (pmcGroup) {
+            // Update the project with PMCGroup
+            await updateDoc(doc(db, 'projects', projectDoc.id), {
+              pmcGroup: pmcGroup
+            });
+            successCount++;
+          } else {
+            notFoundCount++;
+          }
+        } catch (error) {
+          errorCount++;
+          if (errorCount <= 5) {
+            console.error(`Error updating project ${projectDoc.id}:`, error.message);
+          }
         }
+      });
 
-        if ((successCount + notFoundCount + errorCount) % 100 === 0) {
-          console.log(`Progress: ${successCount + notFoundCount + errorCount} processed (${successCount} matched, ${notFoundCount} not found, ${errorCount} errors)`);
-        }
-      } catch (error) {
-        errorCount++;
-        if (errorCount <= 5) {
-          console.error(`Error updating project ${projectDoc.id}:`, error.message);
-        }
-      }
+      await Promise.all(updates);
+      
+      const processed = Math.min(i + batchSize, allProjects.length);
+      console.log(`Progress: ${processed}/${allProjects.length} processed (${successCount} matched, ${notFoundCount} not found, ${errorCount} errors)`);
     }
 
     console.log(`\n✅ Successfully updated ${successCount} projects with PMCGroup`);

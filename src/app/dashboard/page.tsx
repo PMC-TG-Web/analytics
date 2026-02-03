@@ -14,14 +14,9 @@ import {
   Legend,
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/firebase";
 import { JobsListModal, JobDetailsModal } from "./DrillThroughModals";
+import { getAllProjectsForDashboard, type Project } from "./projectQueries";
 
-type Project = {
-  id: string;
-  [key: string]: any;
-};
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -36,8 +31,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
-      const querySnapshot = await getDocs(collection(db, "projects"));
-      const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const data = await getAllProjectsForDashboard();
       setProjects(data);
       setLoading(false);
     }
@@ -367,8 +361,8 @@ export default function Dashboard() {
     return new Set(group.map(p => getProjectKey(p))).size;
   };
   
-  const wonProjects = getUniqueProjectCount('Complete') + getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
-  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost') + archivedCount;
+  const wonProjects = getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
+  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
   return (
@@ -376,13 +370,16 @@ export default function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ color: '#003DA5', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <a href="/scheduling" style={{ padding: '8px 16px', background: '#003DA5', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            Scheduling
+          <a href="/kpi" style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            KPI
           </a>
           <a href="/wip" style={{ padding: '8px 16px', background: '#0066CC', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             WIP Report
           </a>
-          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+            Scheduling
+          </a>
+          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#f59e0b', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Long-Term Schedule
           </a>
         </div>

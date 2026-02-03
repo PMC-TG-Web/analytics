@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDocs, query, where } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDocs, getDoc, query, where } from 'firebase/firestore';
 import { firebaseConfig } from '@/firebaseConfig';
 
 // Initialize Firebase
@@ -16,15 +16,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'jobKey is required' }, { status: 400 });
     }
 
-    // Save to Firestore under 'schedules' collection
+    // Fetch existing schedule to preserve any allocations not included in this update
     const docRef = doc(db, 'schedules', jobKey);
+    const existingDoc = await getDoc(docRef);
+    const existingData = existingDoc.exists() ? existingDoc.data() : null;
+    
+    // Merge existing allocations with new ones (new ones take precedence)
+    const mergedAllocations = {
+      ...(existingData?.allocations || {}),
+      ...allocations
+    };
+
+    // Save to Firestore under 'schedules' collection
     await setDoc(docRef, {
       jobKey,
       customer,
       projectNumber,
       projectName,
       totalHours,
-      allocations,
+      allocations: mergedAllocations,
       updatedAt: new Date().toISOString(),
     });
 

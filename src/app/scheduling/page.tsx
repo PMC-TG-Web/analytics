@@ -117,39 +117,45 @@ export default function SchedulingPage() {
 
         const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
-        const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
-          jobKey: s.jobKey,
-          customer: s.customer,
-          projectName: s.projectName,
-          status: s.status || "Unknown",
-          totalHours: s.totalHours,
-          allocations: s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
-            acc[alloc.month] = alloc.percent;
-            return acc;
-          }, {}),
-        }));
+        const schedulesArray = (schedulesJson.data || []).map((s: any) => {
+          // Handle both object and array formats for allocations
+          let allocations: Record<string, number> = {};
+          if (s.allocations) {
+            if (Array.isArray(s.allocations)) {
+              // Array format: convert to object
+              allocations = s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
+                acc[alloc.month] = alloc.percent;
+                return acc;
+              }, {});
+            } else {
+              // Already an object: use as-is
+              allocations = s.allocations;
+            }
+          }
+          
+          return {
+            jobKey: s.jobKey,
+            customer: s.customer,
+            projectName: s.projectName,
+            status: s.status || "Unknown",
+            totalHours: s.totalHours,
+            allocations,
+          };
+        });
         setSchedules(schedulesArray);
 
-        // Collect all months that have scheduled hours (only 2026 and beyond)
+        // Collect all months that have scheduled hours (including historical months with allocations > 0)
         const scheduledMonths = new Set<string>();
         schedulesArray.forEach((schedule: JobSchedule) => {
           Object.entries(schedule.allocations).forEach(([month, percent]) => {
             if (percent > 0) {
-              const [year] = month.split('-');
-              if (Number(year) >= 2026) {
-                scheduledMonths.add(month);
-              }
+              scheduledMonths.add(month);
             }
           });
         });
 
-        // Merge with existing months and sort, filtering out pre-2026
-        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)]))
-          .filter(m => {
-            const [year] = m.split('-');
-            return Number(year) >= 2026;
-          })
-          .sort();
+        // Merge with existing months and sort (include all months with allocations, even pre-2026)
+        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)])).sort();
         if (allMonths.length > months.length) {
           setMonths(allMonths);
         }
@@ -353,10 +359,8 @@ export default function SchedulingPage() {
         return;
       }
 
-      const allocations = months.map((month) => ({
-        month,
-        percent: job.allocations[month] || 0,
-      }));
+      // Save ALL allocations (including historical months), not just visible ones
+      const allocations = job.allocations;
 
       const projectInfo = uniqueJobs.find((j) => j.key === job.jobKey);
       const projectNumber = projectInfo?.key.split("|")[1] || "";
@@ -393,10 +397,8 @@ export default function SchedulingPage() {
     setSaving(true);
     try {
       for (const schedule of schedules) {
-        const allocations = months.map((month) => ({
-          month,
-          percent: schedule.allocations[month] || 0,
-        }));
+        // Save ALL allocations (including historical months), not just visible ones
+        const allocations = schedule.allocations;
 
         const job = uniqueJobs.find((j) => j.key === schedule.jobKey);
         if (!job) continue;

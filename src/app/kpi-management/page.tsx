@@ -6,12 +6,17 @@ type KPIEntry = {
   year: string;
   month: number;
   monthName: string;
+  estimates?: number;
   scheduledSales?: number;
   bidSubmittedSales?: number;
+  subs?: number;
   scheduledHours?: number;
   bidSubmittedHours?: number;
+  grossProfit?: number;
   cost?: number;
+  leadtimes?: number;
   updatedAt: string;
+  createdAt?: string;
 };
 
 const monthNames = [

@@ -66,11 +66,9 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get('year');
 
     const kpiCollection = collection(db, 'kpi');
-    let kpiQuery = kpiCollection;
-
-    if (year) {
-      kpiQuery = query(kpiCollection, where('year', '==', year));
-    }
+    let kpiQuery = year 
+      ? query(kpiCollection, where('year', '==', year))
+      : kpiCollection;
 
     const querySnapshot = await getDocs(kpiQuery);
     const kpis = querySnapshot.docs.map(doc => ({

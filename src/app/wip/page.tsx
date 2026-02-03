@@ -1607,7 +1607,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
     ],
   };
 
-  const maxLeadtime = Math.max(...leadtimeData, 1);
+  const maxLeadtime = Math.max(...leadtimeData.filter((v): v is number => v !== null), 1);
   
   const options: ChartOptions<'line'> = {
     responsive: true,

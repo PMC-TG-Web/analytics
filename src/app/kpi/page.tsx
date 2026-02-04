@@ -130,6 +130,10 @@ function formatCardValue(cardName: string, rawValue: string) {
   return formatted;
 }
 
+function normalizeCardName(name: string) {
+  return name.replace(/^\uFEFF/, "").trim().toLowerCase();
+}
+
 function getProjectDate(project: any) {
   const updated = parseDateValue(project.dateUpdated);
   const created = parseDateValue(project.dateCreated);
@@ -178,7 +182,7 @@ export default function KPIPage() {
   useEffect(() => {
     async function loadCardData() {
       try {
-        const res = await fetch("/KPICardLoad.csv");
+        const res = await fetch("/KPICardLoad.csv", { cache: "no-store" });
         if (!res.ok) return;
         const text = await res.text();
         const rows = parseCsv(text);
@@ -186,7 +190,7 @@ export default function KPIPage() {
         const dataRows = rows.slice(1);
         const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
         dataRows.forEach((row) => {
-          const cardName = (row[0] ?? "").toString().trim();
+          const cardName = normalizeCardName((row[0] ?? "").toString());
           const kpi = (row[1] ?? "").toString().trim();
           if (!cardName || !kpi) return;
           const values = row.slice(2).map((value) => (value ?? "").toString().trim());
@@ -576,7 +580,7 @@ export default function KPIPage() {
   });
 
   const renderCardRows = (cardName: string, color: string) => {
-    const rows = cardLoadData[cardName] || [];
+    const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return null;
     return rows.map((row) => (
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #ddd" }}>

@@ -940,12 +940,12 @@ export default function KPIPage() {
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "120px", fontSize: 12 }}>Type</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, fontSize: 12 }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name}
                     </th>
                   ))}

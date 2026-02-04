@@ -3,6 +3,8 @@ import React, { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -264,6 +266,53 @@ export default function KPIPage() {
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  return (
+    <ProtectedPage page="kpi">
+      <KPIPageContent
+        schedules={schedules}
+        setSchedules={setSchedules}
+        projects={projects}
+        setProjects={setProjects}
+        kpiData={kpiData}
+        setKpiData={setKpiData}
+        cardLoadData={cardLoadData}
+        setCardLoadData={setCardLoadData}
+        loading={loading}
+        setLoading={setLoading}
+        yearFilter={yearFilter}
+        setYearFilter={setYearFilter}
+        monthFilter={monthFilter}
+        setMonthFilter={setMonthFilter}
+        startDate={startDate}
+        setStartDate={setStartDate}
+        endDate={endDate}
+        setEndDate={setEndDate}
+      />
+    </ProtectedPage>
+  );
+}
+
+function KPIPageContent({
+  schedules,
+  setSchedules,
+  projects,
+  setProjects,
+  kpiData,
+  setKpiData,
+  cardLoadData,
+  setCardLoadData,
+  loading,
+  setLoading,
+  yearFilter,
+  setYearFilter,
+  monthFilter,
+  setMonthFilter,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate,
+}: any) {
 
   // Load year filter from localStorage on mount
   useEffect(() => {
@@ -840,23 +889,7 @@ export default function KPIPage() {
     <main className="p-4" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222", paddingTop: 12, paddingBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
         <h1 style={{ color: "#15616D", fontSize: 24, margin: 0 }}>KPI Dashboard</h1>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <a href="/dashboard" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
-            Dashboard
-          </a>
-          <a href="/wip" style={{ padding: "6px 10px", background: "#E06C00", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
-            WIP
-          </a>
-          <a href="/scheduling" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
-            Scheduling
-          </a>
-          <a href="/long-term-schedule" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
-            Long-Term
-          </a>
-          <a href="/kpi-cards-management" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
-            Manage
-          </a>
-        </div>
+        <Navigation currentPage="kpi" />
       </div>
 
       {/* Year and Date Range Filters */}
@@ -911,7 +944,7 @@ export default function KPIPage() {
           )}
         </div>
 
-        <div style={{ width: "1px", height: "20px", background: "#ddd" }} />
+        <div style={{ width: "1px", height: "20px", background: "#333" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ color: "#666", fontWeight: 600, fontSize: 13 }}>Dates:</div>

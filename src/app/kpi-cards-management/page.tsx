@@ -1,5 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 type KPICardRow = {
   kpi: string;
@@ -20,6 +22,14 @@ const monthNames = [
 ];
 
 export default function KPICardsManagementPage() {
+  return (
+    <ProtectedPage page="kpi-cards-management">
+      <KPICardsManagementContent />
+    </ProtectedPage>
+  );
+}
+
+function KPICardsManagementContent() {
   const [cards, setCards] = useState<KPICard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -270,22 +280,9 @@ export default function KPICardsManagementPage() {
 
   return (
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "20px", marginBottom: "20px" }}>
-        <a
-          href="/kpi"
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#0066cc",
-            color: "white",
-            textDecoration: "none",
-            borderRadius: "4px",
-            fontSize: "14px",
-            fontWeight: 600,
-          }}
-        >
-          ← Back to KPI Page
-        </a>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <h1 style={{ margin: 0 }}>KPI Cards Management</h1>
+        <Navigation currentPage="kpi-cards-management" />
       </div>
       
       <div style={{ marginBottom: "20px", fontSize: "14px", color: "#666" }}>

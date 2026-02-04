@@ -3,6 +3,8 @@ import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { db } from "@/firebase";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -75,6 +77,14 @@ function formatMonthLabel(month: string) {
 }
 
 export default function WIPReportPage() {
+  return (
+    <ProtectedPage page="wip">
+      <WIPReportContent />
+    </ProtectedPage>
+  );
+}
+
+function WIPReportContent() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -799,20 +809,7 @@ export default function WIPReportPage() {
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>WIP Report</h1>
-        <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Dashboard
-          </a>
-          <a href="/kpi" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            KPI
-          </a>
-          <a href="/scheduling" style={{ padding: "8px 16px", background: "#E06C00", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Scheduling
-          </a>
-          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Long-Term Schedule
-          </a>
-        </div>
+        <Navigation currentPage="wip" />
       </div>
 
       {/* Summary Cards */}

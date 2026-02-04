@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 interface WeekData {
   weekNumber: number;
@@ -35,6 +37,14 @@ interface JobRow {
 }
 
 export default function LongTermSchedulePage() {
+  return (
+    <ProtectedPage page="long-term-schedule">
+      <LongTermScheduleContent />
+    </ProtectedPage>
+  );
+}
+
+function LongTermScheduleContent() {
   const [weekColumns, setWeekColumns] = useState<WeekColumn[]>([]);
   const [jobRows, setJobRows] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,20 +181,7 @@ export default function LongTermSchedulePage() {
             <h1 className="text-3xl font-bold text-gray-900">Long-Term Schedule</h1>
             <p className="text-gray-600 mt-1">Next 12 weeks - Hours and Weekly FTE by project</p>
           </div>
-          <div className="flex gap-3">
-            <a href="/dashboard" className="px-4 py-2 bg-teal-800 text-white rounded-lg font-medium hover:bg-teal-900 transition-colors">
-              Dashboard
-            </a>
-            <a href="/kpi" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-medium hover:bg-teal-800 transition-colors">
-              KPI
-            </a>
-            <a href="/scheduling" className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors">
-              Scheduling
-            </a>
-            <a href="/wip" className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition-colors">
-              WIP Report
-            </a>
-          </div>
+          <Navigation currentPage="long-term-schedule" />
         </div>
 
         {weekColumns.length === 0 ? (

@@ -16,9 +16,19 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 import { JobsListModal, JobDetailsModal } from "./DrillThroughModals";
 import { getAllProjectsForDashboard, type Project } from "./projectQueries";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 
 export default function Dashboard() {
+  return (
+    <ProtectedPage page="dashboard">
+      <DashboardContent />
+    </ProtectedPage>
+  );
+}
+
+function DashboardContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState<string>("");
@@ -369,15 +379,7 @@ export default function Dashboard() {
     <main className="p-8" style={{ fontFamily: 'sans-serif', background: '#f5f5f5', minHeight: '100vh', color: '#222' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ color: '#15616D', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <a href="/kpi" style={{ padding: '8px 16px', background: '#15616D', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            KPI
-          </a>
-          <a href="/wip" style={{ padding: '8px 16px', background: '#E06C00', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            WIP Report
-          </a>
-          <a href="/scheduling" style={{ padding: '8px 16px', background: '#15616D', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            Scheduling
+        <Navigation currentPage="dashboard" />
           </a>
           <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#E06C00', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Long-Term Schedule

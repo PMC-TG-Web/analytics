@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, query, where, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 type Project = {
   id: string;
@@ -68,6 +70,14 @@ function getNextMonths(count: number) {
 }
 
 export default function SchedulingPage() {
+  return (
+    <ProtectedPage page="scheduling">
+      <SchedulingContent />
+    </ProtectedPage>
+  );
+}
+
+function SchedulingContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [schedules, setSchedules] = useState<JobSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -635,20 +645,7 @@ export default function SchedulingPage() {
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>Scheduling</h1>
-        <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Dashboard
-          </a>
-          <a href="/kpi" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            KPI
-          </a>
-          <a href="/wip" style={{ padding: "8px 16px", background: "#E06C00", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            WIP Report
-          </a>
-          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Long-Term Schedule
-          </a>
-        </div>
+        <Navigation currentPage="scheduling" />
       </div>
 
       <div style={{ background: "#ffffff", borderRadius: 12, padding: 16, border: "1px solid #ddd", marginBottom: 24 }}>

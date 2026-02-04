@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     
     // Store token in secure httpOnly cookie
     const response = NextResponse.redirect(
-      new URL('/procore?status=authenticated', request.url)
+      new URL('/dashboard', request.url)
     );
     response.cookies.set('procore_access_token', tokenResponse.access_token, {
       httpOnly: true,

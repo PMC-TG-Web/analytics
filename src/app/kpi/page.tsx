@@ -695,8 +695,8 @@ export default function KPIPage() {
   const renderCardRows = (cardName: string, color: string) => {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return null;
-    return rows.map((row) => (
-      <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee" }}>
+    return rows.map((row, rowIndex) => (
+      <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
         <td style={{ padding: "6px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{row.kpi}</td>
         {monthNames.map((_, idx) => {
           const value = row.values[idx] ?? "";
@@ -1005,8 +1005,8 @@ export default function KPIPage() {
                 </tr>
               </thead>
               <tbody>
-                {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Bids Submitted</td>
                     {monthNames.map((_, idx) => {
                       const value = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
@@ -1026,7 +1026,7 @@ export default function KPIPage() {
                     </td>
                   ))}
                 </tr>
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee" }}>
+                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {monthNames.map((_, idx) => {
                     let hours = 0;
@@ -1071,8 +1071,8 @@ export default function KPIPage() {
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledSales || 0;
@@ -1092,7 +1092,7 @@ export default function KPIPage() {
                     </td>
                   ))}
                 </tr>
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee" }}>
+                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {monthNames.map((_, idx) => {
                     let hours = 0;
@@ -1137,8 +1137,8 @@ export default function KPIPage() {
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.bidSubmittedSales || 0;
@@ -1207,8 +1207,8 @@ export default function KPIPage() {
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledHours || 0;

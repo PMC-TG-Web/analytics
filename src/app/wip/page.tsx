@@ -875,8 +875,8 @@ export default function WIPReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredYears.map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42" }}>
+                {filteredYears.map((year, yearIndex) => (
+                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "12px", color: "#e5e7eb", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const hours = yearMonthMap[year][idx + 1] || 0;
@@ -1049,10 +1049,11 @@ export default function WIPReportPage() {
                           cursor: "pointer",
                           padding: "8px",
                           borderRadius: "4px",
+                          backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f9f9f9",
                           transition: "background 0.2s"
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = "#f5f5f5"}
-                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? "#ffffff" : "#f9f9f9"}
                       >
                         <div>{job.customer}</div>
                         <div>{job.projectName}</div>

@@ -943,7 +943,7 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "75px", fontSize: 12 }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "75px", fontSize: 12 }}>KPI</th>
                   <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "75px", fontSize: 12 }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
@@ -956,7 +956,7 @@ export default function KPIPage() {
                 {filteredCombinedSalesYears.map((year, yearIndex) => (
                   <React.Fragment key={year}>
                     <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{year}</td>
+                      <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}></td>
                       <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
                       {monthNames.map((_, idx) => {
                         const sales = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;

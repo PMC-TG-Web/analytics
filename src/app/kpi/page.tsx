@@ -696,11 +696,46 @@ export default function KPIPage() {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return null;
     return rows.map((row, rowIndex) => {
-      // Calculate total for this row
-      const total = row.values.reduce((sum, val) => {
-        const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
-        return sum + (isNaN(numVal) ? 0 : numVal);
-      }, 0);
+      // Check if this is a percentage column (contains % values)
+      const isPercentage = row.values.some(val => String(val).includes("%"));
+      
+      let total: number;
+      if (isPercentage && (cardName.toLowerCase().includes("gross profit") || cardName.toLowerCase().includes("profit"))) {
+        // For GP/Profit percentages, calculate weighted average using Revenue as weights
+        const revenueRow = cardLoadData[normalizeCardName(cardName)]?.find(r => r.kpi === "Revenue" || r.kpi.includes("Revenue"));
+        
+        if (revenueRow) {
+          let numerator = 0;
+          let denominator = 0;
+          
+          row.values.forEach((val, idx) => {
+            const percentStr = String(val).replace("%", "").trim();
+            const percent = parseFloat(percentStr);
+            const revenueStr = String(revenueRow.values[idx]).replace(/[$,]/g, "").trim();
+            const revenue = parseFloat(revenueStr);
+            
+            if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
+              numerator += (percent / 100) * revenue;
+              denominator += revenue;
+            }
+          });
+          
+          total = denominator > 0 ? (numerator / denominator) * 100 : 0;
+        } else {
+          // Fallback: simple average if no revenue row found
+          const percentages = row.values
+            .map(val => parseFloat(String(val).replace("%", "").trim()))
+            .filter(n => !isNaN(n));
+          total = percentages.length > 0 ? percentages.reduce((a, b) => a + b, 0) / percentages.length : 0;
+        }
+      } else {
+        // For non-percentage values, sum as usual
+        const total_val = row.values.reduce((sum, val) => {
+          const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+          return sum + (isNaN(numVal) ? 0 : numVal);
+        }, 0);
+        total = total_val;
+      }
       
       return (
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
@@ -715,7 +750,7 @@ export default function KPIPage() {
           );
         })}
         <td style={{ padding: "6px 6px", textAlign: "center", color: rowIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-          {formatCardValue(cardName, row.kpi, total.toString())}
+          {formatCardValue(cardName, row.kpi, isPercentage ? `${total.toFixed(2)}%` : total.toString())}
         </td>
       </tr>
     );});

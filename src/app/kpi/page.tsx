@@ -1019,7 +1019,7 @@ export default function KPIPage() {
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
                     <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
-                      $6.7M
+                      $6,700,000
                     </td>
                   ))}
                 </tr>
@@ -1043,7 +1043,7 @@ export default function KPIPage() {
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
                   {monthNames.map((_, idx) => (
                     <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
-                      29K
+                      29,000
                     </td>
                   ))}
                 </tr>
@@ -1085,7 +1085,7 @@ export default function KPIPage() {
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
                     <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
-                      $1M
+                      $1,000,000
                     </td>
                   ))}
                 </tr>
@@ -1109,7 +1109,7 @@ export default function KPIPage() {
                   <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>Goal Hours</td>
                   {monthNames.map((_, idx) => (
                     <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#15616D", fontWeight: 700 }}>
-                      4.3K
+                      4,300
                     </td>
                   ))}
                 </tr>

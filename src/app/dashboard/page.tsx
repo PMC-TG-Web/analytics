@@ -766,7 +766,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 28, fontWeight: 700, color: '#ef4444' }}>
-                ${(statusGroups['Lost'].reduce((sum, p) => sum + (p.sales ?? 0), 0) / 1000000).toFixed(1)}M
+                ${statusGroups['Lost'].reduce((sum, p) => sum + (p.sales ?? 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
               <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                 {((new Set(statusGroups['Lost'].map(p => ((p.projectNumber ?? p.id) || "").toString().trim())).size / totalProjects) * 100).toFixed(1)}% dropoff

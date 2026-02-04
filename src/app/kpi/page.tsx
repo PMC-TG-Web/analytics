@@ -124,8 +124,8 @@ function formatCardValue(cardName: string, kpiName: string, rawValue: string) {
     maximumFractionDigits: hasDecimal ? 2 : 0,
   });
 
-  // Format as currency for Revenue rows and Subcontractor Allowance
-  if ((cardName === "Revenue By Month" && kpiName.includes("Revenue")) || kpiName === "Subcontractor Allowance") {
+  // Format as currency for Revenue rows, Goals in Revenue By Month, and Subcontractor Allowance
+  if ((cardName === "Revenue By Month") || kpiName === "Subcontractor Allowance") {
     return `$${formatted}`;
   }
 
@@ -695,7 +695,14 @@ export default function KPIPage() {
   const renderCardRows = (cardName: string, color: string) => {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return null;
-    return rows.map((row, rowIndex) => (
+    return rows.map((row, rowIndex) => {
+      // Calculate total for this row
+      const total = row.values.reduce((sum, val) => {
+        const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+        return sum + (isNaN(numVal) ? 0 : numVal);
+      }, 0);
+      
+      return (
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
         <td style={{ padding: "6px 6px", color: rowIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{row.kpi}</td>
         {monthNames.map((_, idx) => {
@@ -707,8 +714,11 @@ export default function KPIPage() {
             </td>
           );
         })}
+        <td style={{ padding: "6px 6px", textAlign: "center", color: rowIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+          {formatCardValue(cardName, row.kpi, total.toString())}
+        </td>
       </tr>
-    ));
+    );});
   };
 
   const scheduledSalesByMonth: Record<string, number> = {};
@@ -949,13 +959,17 @@ export default function KPIPage() {
                       {name}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, width: "110px", fontSize: 12 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredCombinedSalesYears.map((year, yearIndex) => (
+                {filteredCombinedSalesYears.map((year, yearIndex) => {
+                  const scheduledTotal = monthNames.reduce((sum, _, idx) => sum + (scheduledSalesYearMonthMap[year]?.[idx + 1] || 0), 0);
+                  const bidSubmittedTotal = monthNames.reduce((sum, _, idx) => sum + (bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0), 0);
+                  return (
                   <React.Fragment key={year}>
                     <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
+                      <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Scheduled" : `Scheduled ${year}`}</td>
                       {monthNames.map((_, idx) => {
                         const sales = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
                         return (
@@ -964,9 +978,12 @@ export default function KPIPage() {
                           </td>
                         );
                       })}
+                      <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                        ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
                     </tr>
                     <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
+                      <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bid Subm." : `Bid Subm. ${year}`}</td>
                       {monthNames.map((_, idx) => {
                         const sales = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                         return (
@@ -975,9 +992,12 @@ export default function KPIPage() {
                           </td>
                         );
                       })}
+                      <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                        ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
                     </tr>
                   </React.Fragment>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
@@ -993,18 +1013,21 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, width: "110px", fontSize: 12 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                    <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Bids Submitted</td>
+                    <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
                     {monthNames.map((_, idx) => {
                       const value = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return (
@@ -1013,8 +1036,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                   <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
@@ -1022,6 +1048,9 @@ export default function KPIPage() {
                       $6,700,000
                     </td>
                   ))}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    ${(6700000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
                 </tr>
                 <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
@@ -1038,6 +1067,17 @@ export default function KPIPage() {
                       </td>
                     );
                   })}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {(() => {
+                      let total = 0;
+                      if (yearFilter) {
+                        total = Object.values(bidSubmittedHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                      } else {
+                        total = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                      }
+                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                    })()}
+                  </td>
                 </tr>
                 <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                   <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
@@ -1046,6 +1086,9 @@ export default function KPIPage() {
                       29,000
                     </td>
                   ))}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {(29000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1059,16 +1102,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, width: "110px", fontSize: 12 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledSales || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1079,8 +1125,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                   <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
@@ -1088,6 +1137,9 @@ export default function KPIPage() {
                       $1,000,000
                     </td>
                   ))}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    ${(1000000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
                 </tr>
                 <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
@@ -1104,6 +1156,17 @@ export default function KPIPage() {
                       </td>
                     );
                   })}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {(() => {
+                      let total = 0;
+                      if (yearFilter) {
+                        total = Object.values(inProgressHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                      } else {
+                        total = Object.values(inProgressHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                      }
+                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                    })()}
+                  </td>
                 </tr>
                 <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                   <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700 }}>Goal Hours</td>
@@ -1112,6 +1175,9 @@ export default function KPIPage() {
                       4,300
                     </td>
                   ))}
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {(4300 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1125,16 +1191,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.bidSubmittedSales || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1145,8 +1214,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Revenue By Month", "#E06C00")}
               </tbody>
             </table>
@@ -1160,16 +1232,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.subs || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1180,8 +1255,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      {total.toLocaleString()}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Subs By Month", "#15616D")}
               </tbody>
             </table>
@@ -1195,16 +1273,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledHours || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                     <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1215,8 +1296,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      {total.toLocaleString()}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Revenue Hours by Month", "#15616D")}
               </tbody>
             </table>
@@ -1230,16 +1314,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.grossProfit || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1250,8 +1337,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Gross Profit by Month", "#15616D")}
               </tbody>
             </table>
@@ -1265,16 +1355,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.cost || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1285,8 +1378,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Profit by Month", "#15616D")}
               </tbody>
             </table>
@@ -1300,16 +1396,19 @@ export default function KPIPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
                   {monthNames.map((name, idx) => (
                     <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "110px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
+                {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => {
+                  const total = monthNames.reduce((sum, _, idx) => sum + (kpiData.find(k => k.year === year && k.month === idx + 1)?.leadtimes || 0), 0);
+                  return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
@@ -1320,8 +1419,11 @@ export default function KPIPage() {
                         </td>
                       );
                     })}
+                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                      {total.toLocaleString()}
+                    </td>
                   </tr>
-                ))}
+                );})}
                 {renderCardRows("Leadtimes by Month", "#15616D")}
               </tbody>
             </table>
@@ -1422,7 +1524,7 @@ function CombinedSalesLineChart({
         beginAtZero: true,
         max: maxScheduledSales ? maxScheduledSales * 1.1 : undefined,
         ticks: {
-          color: "#E06C00",
+          color: "#15616D",
           callback: function(value) {
             return `$${Math.round(value as number).toLocaleString()}`;
           },
@@ -1433,7 +1535,7 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Scheduled Sales",
-          color: "#E06C00",
+          color: "#15616D",
           font: { weight: "bold" },
         },
       },
@@ -1445,7 +1547,7 @@ function CombinedSalesLineChart({
           drawOnChartArea: false,
         },
         ticks: {
-          color: "#15616D",
+          color: "#E06C00",
           callback: function(value) {
             return `$${Math.round(value as number).toLocaleString()}`;
           },
@@ -1453,7 +1555,7 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Bid Submitted Sales",
-          color: "#15616D",
+          color: "#E06C00",
           font: { weight: "bold" },
         },
       },

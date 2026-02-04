@@ -368,18 +368,18 @@ export default function Dashboard() {
   return (
     <main className="p-8" style={{ fontFamily: 'sans-serif', background: '#f5f5f5', minHeight: '100vh', color: '#222' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ color: '#003DA5', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
+        <h1 style={{ color: '#15616D', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <a href="/kpi" style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/kpi" style={{ padding: '8px 16px', background: '#15616D', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             KPI
           </a>
-          <a href="/wip" style={{ padding: '8px 16px', background: '#0066CC', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/wip" style={{ padding: '8px 16px', background: '#E06C00', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             WIP Report
           </a>
-          <a href="/scheduling" style={{ padding: '8px 16px', background: '#10b981', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: '8px 16px', background: '#15616D', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Scheduling
           </a>
-          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#f59e0b', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
+          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#E06C00', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
             Long-Term Schedule
           </a>
         </div>
@@ -437,7 +437,7 @@ export default function Dashboard() {
                 setEndDate("");
               }}
               style={{
-                background: '#0066CC',
+                background: '#E06C00',
                 border: 'none',
                 borderRadius: 6,
                 padding: '6px 12px',
@@ -452,7 +452,7 @@ export default function Dashboard() {
           )}
         </div>
         {(startDate || endDate) && (
-          <div style={{ color: '#0066CC', fontSize: 14, marginLeft: 'auto' }}>
+          <div style={{ color: '#E06C00', fontSize: 14, marginLeft: 'auto' }}>
             {Array.from(new Set(aggregatedProjects.map(p => getProjectKey(p)))).length} projects in date range
           </div>
         )}
@@ -466,10 +466,10 @@ export default function Dashboard() {
         <SummaryCard label="Markup %" value={markup} suffix="%" decimals={1} large />
         <SummaryCard label="Win Rate" value={winRate} suffix="%" decimals={1} large />
       </div>
-      <h2 style={{ color: '#003DA5', marginBottom: 24, fontSize: 24 }}>Sales Funnel</h2>
+      <h2 style={{ color: '#15616D', marginBottom: 24, fontSize: 24 }}>Sales Funnel</h2>
       <FunnelChart statusGroups={statusGroups} />
       
-      <h2 style={{ color: '#003DA5', marginBottom: 24, marginTop: 64, fontSize: 24 }}>Status Breakdown</h2>
+      <h2 style={{ color: '#15616D', marginBottom: 24, marginTop: 64, fontSize: 24 }}>Status Breakdown</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 48 }}>
         {Object.entries(statusGroups).map(([status, group]) => {
           const sales = group.reduce((sum, p) => sum + (p.sales ?? 0), 0);
@@ -502,12 +502,12 @@ export default function Dashboard() {
               border: '1px solid #ddd',
               marginBottom: 12,
             }}>
-              <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#003DA5' }}>{status}</div>
+              <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#15616D' }}>{status}</div>
               <dl style={{ margin: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <dt style={{ color: '#666' }}>Sales</dt>
                   <dd 
-                    style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC', cursor: 'pointer' }}
+                    style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#E06C00', cursor: 'pointer' }}
                     onClick={() => {
                       setJobsListData(group);
                       setJobsListTitle(`${status} Projects`);
@@ -565,13 +565,13 @@ export default function Dashboard() {
           border: '1px solid #ddd',
           marginBottom: 12,
         }}>
-          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#003DA5' }}>
+          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: '#15616D' }}>
             Bid Submitted Labor (Hours)
           </div>
           <dl style={{ margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <dt style={{ color: '#666' }}>Total Hours</dt>
-              <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#0066CC' }}>
+              <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 18, color: '#E06C00' }}>
                 {bidSubmittedLabor.totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </dd>
             </div>
@@ -598,7 +598,7 @@ export default function Dashboard() {
             <dl style={{ margin: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <dt style={{ color: '#666' }}>Total Hours</dt>
-                <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 14, color: '#0066CC' }}>
+                <dd style={{ marginLeft: 12, fontWeight: 700, fontSize: 14, color: '#E06C00' }}>
                   {pmHours.totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </dd>
               </div>
@@ -666,10 +666,10 @@ export default function Dashboard() {
 function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) {
   // Define funnel stages in order
   const funnelStages = [
-    { key: 'Estimating', label: 'Estimating', color: '#0066CC' },
-    { key: 'Bid Submitted', label: 'Bid Submitted', color: '#003DA5' },
-    { key: 'Accepted', label: 'Accepted', color: '#10b981' },
-    { key: 'In Progress', label: 'In Progress', color: '#f59e0b' },
+    { key: 'Estimating', label: 'Estimating', color: '#E06C00' },
+    { key: 'Bid Submitted', label: 'Bid Submitted', color: '#15616D' },
+    { key: 'Accepted', label: 'Accepted', color: '#15616D' },
+    { key: 'In Progress', label: 'In Progress', color: '#E06C00' },
     { key: 'Complete', label: 'Complete', color: '#059669' },
   ];
 
@@ -882,7 +882,7 @@ function SummaryCard({ label, value, prefix = '', suffix = '', decimals = 0, lar
       textAlign: 'center',
     }}>
       <div style={{ fontSize: large ? 14 : 16, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: large ? 36 : 28, fontWeight: 700, color: '#0066CC' }}>
+      <div style={{ fontSize: large ? 36 : 28, fontWeight: 700, color: '#E06C00' }}>
         {prefix}{value?.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
       </div>
     </div>

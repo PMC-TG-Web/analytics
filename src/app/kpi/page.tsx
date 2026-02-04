@@ -13,10 +13,11 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
   ChartOptions,
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 type Schedule = {
   id: string;
@@ -110,7 +111,7 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-function formatCardValue(cardName: string, rawValue: string) {
+function formatCardValue(cardName: string, kpiName: string, rawValue: string) {
   const trimmed = (rawValue ?? "").toString().trim();
   if (!trimmed) return "—";
   if (trimmed.endsWith("%")) return trimmed;
@@ -123,7 +124,8 @@ function formatCardValue(cardName: string, rawValue: string) {
     maximumFractionDigits: hasDecimal ? 2 : 0,
   });
 
-  if (cardName === "Revenue By Month" || cardName === "Subs By Month") {
+  // Format as currency for Revenue rows and Subcontractor Allowance
+  if ((cardName === "Revenue By Month" && kpiName.includes("Revenue")) || kpiName === "Subcontractor Allowance") {
     return `$${formatted}`;
   }
 
@@ -133,6 +135,117 @@ function formatCardValue(cardName: string, rawValue: string) {
 function normalizeCardName(name: string) {
   return name.replace(/^\uFEFF/, "").trim().toLowerCase();
 }
+
+const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> = {
+  [normalizeCardName("Revenue By Month")]: [
+    {
+      kpi: "Revenue",
+      values: [
+        "472,632",
+        "541,918",
+        "776,929",
+        "872,151",
+        "576,090",
+        "661,910",
+        "329,087",
+        "83,061",
+        "69,069",
+        "123,833",
+        "52,156",
+        "39,117",
+      ],
+    },
+    {
+      kpi: "Goal",
+      values: [
+        "595,680",
+        "794,240",
+        "694,960",
+        "893,520",
+        "1,191,360",
+        "794,240",
+        "893,520",
+        "794,240",
+        "794,240",
+        "893,520",
+        "893,520",
+        "694,960",
+      ],
+    },
+  ],
+  [normalizeCardName("Subs By Month")]: [
+    {
+      kpi: "Subcontractor Allowance",
+      values: [
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+        "83,333",
+      ],
+    },
+    {
+      kpi: "Sub Actual Hours",
+      values: [
+        "3,059",
+        "3,391",
+        "4,349",
+        "4,178",
+        "2,478",
+        "2,696",
+        "1,281",
+        "423",
+        "465",
+        "706",
+        "230",
+        "172",
+      ],
+    },
+  ],
+  [normalizeCardName("Revenue Hours by Month")]: [
+    {
+      kpi: "Revenue Goal Hours",
+      values: Array(12).fill("3937.5"),
+    },
+    {
+      kpi: "Revenue Actual Hours",
+      values: ["3,059", "", "", "", "", "", "", "", "", "", "", ""],
+    },
+  ],
+  [normalizeCardName("Gross Profit by Month")]: [
+    {
+      kpi: "GP Goal",
+      values: Array(12).fill("31%"),
+    },
+    {
+      kpi: "GP Actual",
+      values: ["45%", "", "", "", "", "", "", "", "", "", "", ""],
+    },
+  ],
+  [normalizeCardName("Profit by Month")]: [
+    {
+      kpi: "Profit Goal",
+      values: ["-4%", "5%", "1%", "8%", "13%", "5%", "8%", "5%", "5%", "8%", "8%", "1%"],
+    },
+    {
+      kpi: "Profit Actual",
+      values: ["2%", "", "", "", "", "", "", "", "", "", "", ""],
+    },
+  ],
+  [normalizeCardName("Leadtimes by Month")]: [
+    {
+      kpi: "Leadtime Hours",
+      values: ["26,692", "", "", "", "", "", "", "", "", "", "", ""],
+    },
+  ],
+};
 
 function getProjectDate(project: any) {
   const updated = parseDateValue(project.dateUpdated);
@@ -145,7 +258,7 @@ export default function KPIPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [kpiData, setKpiData] = useState<any[]>([]);
-  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>({});
+  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>(defaultCardLoadData);
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState<string>("");
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
@@ -179,32 +292,6 @@ export default function KPIPage() {
         const schedulesJson = await schedulesRes.json();
         const schedulesData = schedulesJson.data || schedulesJson.schedules || [];
 
-  useEffect(() => {
-    async function loadCardData() {
-      try {
-        const res = await fetch("/KPICardLoad.csv", { cache: "no-store" });
-        if (!res.ok) return;
-        const text = await res.text();
-        const rows = parseCsv(text);
-        if (rows.length === 0) return;
-        const dataRows = rows.slice(1);
-        const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
-        dataRows.forEach((row) => {
-          const cardName = normalizeCardName((row[0] ?? "").toString());
-          const kpi = (row[1] ?? "").toString().trim();
-          if (!cardName || !kpi) return;
-          const values = row.slice(2).map((value) => (value ?? "").toString().trim());
-          if (!mapped[cardName]) mapped[cardName] = [];
-          mapped[cardName].push({ kpi, values });
-        });
-        setCardLoadData(mapped);
-      } catch (error) {
-        console.error("Error loading KPI card CSV:", error);
-      }
-    }
-    loadCardData();
-  }, []);
-
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
           const matchingProject = projectsData.find((p: any) => {
             const scheduleKey = `${schedule.customer || ""}|${schedule.projectNumber || ""}|${schedule.projectName || ""}`;
@@ -232,6 +319,32 @@ export default function KPIPage() {
       }
     }
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    async function loadCardDataFromFirestore() {
+      try {
+        const res = await fetch("/api/kpi-cards");
+        if (!res.ok) return;
+        const json = await res.json();
+        const cards = json.data || [];
+        
+        if (cards.length === 0) return;
+        
+        const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
+        cards.forEach((card: any) => {
+          const cardNameNormalized = normalizeCardName(card.cardName);
+          mapped[cardNameNormalized] = card.rows || [];
+        });
+        
+        if (Object.keys(mapped).length > 0) {
+          setCardLoadData(mapped);
+        }
+      } catch (error) {
+        console.error("Error loading KPI cards from Firestore:", error);
+      }
+    }
+    loadCardDataFromFirestore();
   }, []);
 
   const getProjectKey = (customer?: string, projectNumber?: string, projectName?: string) => {
@@ -583,13 +696,13 @@ export default function KPIPage() {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return null;
     return rows.map((row) => (
-      <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #ddd" }}>
-        <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{row.kpi}</td>
+      <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee" }}>
+        <td style={{ padding: "6px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{row.kpi}</td>
         {monthNames.map((_, idx) => {
           const value = row.values[idx] ?? "";
-          const formatted = formatCardValue(cardName, value);
+          const formatted = formatCardValue(cardName, row.kpi, value);
           return (
-            <td key={idx} style={{ padding: "12px", textAlign: "center", color: formatted !== "—" ? color : "#999", fontWeight: formatted !== "—" ? 700 : 400 }}>
+            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? color : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
               {formatted}
             </td>
           );
@@ -677,145 +790,139 @@ export default function KPIPage() {
   }
 
   return (
-    <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ color: "#003DA5", fontSize: 32, margin: 0 }}>KPI Dashboard</h1>
-        <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+    <main className="p-4" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222", paddingTop: 12, paddingBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+        <h1 style={{ color: "#15616D", fontSize: 24, margin: 0 }}>KPI Dashboard</h1>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <a href="/dashboard" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
             Dashboard
           </a>
-          <a href="/wip" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            WIP Report
+          <a href="/wip" style={{ padding: "6px 10px", background: "#E06C00", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
+            WIP
           </a>
-          <a href="/scheduling" style={{ padding: "8px 16px", background: "#10b981", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
             Scheduling
           </a>
-          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#8b5cf6", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            Long-Term Schedule
+          <a href="/long-term-schedule" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
+            Long-Term
           </a>
-          <a href="/kpi-management" style={{ padding: "8px 16px", background: "#f59e0b", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
-            KPI Management
+          <a href="/kpi-cards-management" style={{ padding: "6px 10px", background: "#15616D", color: "#fff", borderRadius: 4, textDecoration: "none", fontWeight: 700, fontSize: 12 }}>
+            Manage
           </a>
         </div>
       </div>
 
-      {/* Year Filter Only */}
-      <div style={{ 
-        background: "#ffffff", 
-        borderRadius: 12, 
-        padding: "16px 24px", 
-        marginBottom: 32,
-        border: "1px solid #ddd",
-        display: "flex",
-        alignItems: "center",
-        gap: 20
-      }}>
-        <div style={{ color: "#666", fontWeight: 600 }}>Filter by Year:</div>
-        <select
-          value={yearFilter}
-          onChange={(e) => setYearFilter(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            background: "#fff",
-            color: "#222",
-            border: "1px solid #ddd",
-            borderRadius: 6,
-            fontSize: 14,
-          }}
-        >
-          <option value="">All Years</option>
-          {combinedSalesYears.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-
-        {yearFilter && (
-          <button
-            onClick={() => setYearFilter("")}
-            style={{
-              padding: "6px 12px",
-              background: "transparent",
-              border: "1px solid #ddd",
-              color: "#666",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 12,
-              marginLeft: "auto",
-            }}
-          >
-            Clear Filter
-          </button>
-        )}
-      </div>
-
-      {/* Date Range Filter */}
+      {/* Year and Date Range Filters */}
       <div style={{
-        background: "#f9f9f9",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 24,
+        background: "#ffffff",
+        borderRadius: 8,
+        padding: "8px 12px",
+        marginBottom: 16,
         border: "1px solid #ddd",
         display: "flex",
         alignItems: "center",
-        gap: 20
+        gap: 16,
+        flexWrap: "wrap"
       }}>
-        <div style={{ color: "#666", fontWeight: 600 }}>Date Range:</div>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            background: "#fff",
-            color: "#222",
-            border: "1px solid #ddd",
-            borderRadius: 6,
-            fontSize: 14,
-          }}
-        />
-        <span style={{ color: "#999" }}>to</span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            background: "#fff",
-            color: "#222",
-            border: "1px solid #ddd",
-            borderRadius: 6,
-            fontSize: 14,
-          }}
-        />
-        {(startDate || endDate) && (
-          <button
-            onClick={() => {
-              setStartDate("");
-              setEndDate("");
-            }}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ color: "#666", fontWeight: 600, fontSize: 13 }}>Year:</div>
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
             style={{
-              padding: "6px 12px",
-              background: "transparent",
+              padding: "4px 8px",
+              background: "#fff",
+              color: "#222",
               border: "1px solid #ddd",
-              color: "#666",
-              borderRadius: 6,
-              cursor: "pointer",
+              borderRadius: 4,
               fontSize: 12,
-              marginLeft: "auto",
             }}
           >
-            Clear Dates
-          </button>
-        )}
+            <option value="">All Years</option>
+            {combinedSalesYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+
+          {yearFilter && (
+            <button
+              onClick={() => setYearFilter("")}
+              style={{
+                padding: "4px 8px",
+                background: "transparent",
+                border: "1px solid #ddd",
+                color: "#666",
+                borderRadius: 4,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div style={{ width: "1px", height: "20px", background: "#ddd" }} />
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ color: "#666", fontWeight: 600, fontSize: 13 }}>Dates:</div>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              background: "#fff",
+              color: "#222",
+              border: "1px solid #ddd",
+              borderRadius: 4,
+              fontSize: 12,
+            }}
+          />
+          <span style={{ color: "#999", fontSize: 12 }}>–</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              background: "#fff",
+              color: "#222",
+              border: "1px solid #ddd",
+              borderRadius: 4,
+              fontSize: 12,
+            }}
+          />
+
+          {(startDate || endDate) && (
+            <button
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              style={{
+                padding: "4px 8px",
+                background: "transparent",
+                border: "1px solid #ddd",
+                color: "#666",
+                borderRadius: 4,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Combined Sales Line Chart */}
       {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled vs Bid Submitted Sales</h2>
-          <div style={{ height: 400 }}>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
+          <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales Trend</h2>
+          <div style={{ height: 160 }}>
             <CombinedSalesLineChart
               scheduledMonths={filteredScheduledSalesMonths}
               scheduledSalesByMonth={filteredScheduledSalesByMonth}
@@ -828,16 +935,16 @@ export default function KPIPage() {
 
       {/* Combined Sales by Month Table */}
       {filteredCombinedSalesYears.length > 0 && (
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 32 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled + Bid Submitted Sales by Month</h2>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Year</th>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600 }}>Type</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "75px", fontSize: 12 }}>Year</th>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "75px", fontSize: 12 }}>Type</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name}
                     </th>
                   ))}
@@ -846,25 +953,25 @@ export default function KPIPage() {
               <tbody>
                 {filteredCombinedSalesYears.map((year) => (
                   <React.Fragment key={year}>
-                    <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
-                      <td style={{ padding: "12px", color: "#FF9500", fontWeight: 700 }}>Scheduled</td>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{year}</td>
+                      <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
                       {monthNames.map((_, idx) => {
                         const sales = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
                         return (
-                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#FF9500" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                          <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: sales > 0 ? "#E06C00" : "#999", fontWeight: sales > 0 ? 700 : 400, fontSize: 12 }}>
                             {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                           </td>
                         );
                       })}
                     </tr>
-                    <tr style={{ borderBottom: "1px solid #ddd" }}>
-                      <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}></td>
-                      <td style={{ padding: "12px", color: "#0066CC", fontWeight: 700 }}>Bid Submitted</td>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}></td>
+                      <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
                       {monthNames.map((_, idx) => {
                         const sales = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                         return (
-                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: sales > 0 ? "#0066CC" : "#999", fontWeight: sales > 0 ? 700 : 400 }}>
+                          <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: sales > 0 ? "#E06C00" : "#999", fontWeight: sales > 0 ? 700 : 400, fontSize: 12 }}>
                             {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                           </td>
                         );
@@ -881,15 +988,15 @@ export default function KPIPage() {
       {/* KPI Monthly Data Tables */}
       <div style={{ display: "space-y", gap: 24 }}>
         {/* Estimates Table - using Bid Submitted data */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#003DA5", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Estimates by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Estimates by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -897,28 +1004,28 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Bids Submitted</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Bids Submitted</td>
                     {monthNames.map((_, idx) => {
                       const value = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#003DA5" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400, fontSize: 12 }}>
                           {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                <tr key="goal" style={{ borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Goal</td>
+                <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: 700 }}>
-                      $6,700,000
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
+                      $6.7M
                     </td>
                   ))}
                 </tr>
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #ddd" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Actual Hours</td>
+                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {monthNames.map((_, idx) => {
                     let hours = 0;
                     if (yearFilter) {
@@ -927,17 +1034,17 @@ export default function KPIPage() {
                       hours = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + (yearData[idx + 1] || 0), 0);
                     }
                     return (
-                      <td key={idx} style={{ padding: "12px", textAlign: "center", color: hours > 0 ? "#003DA5" : "#999", fontWeight: hours > 0 ? 700 : 400 }}>
+                      <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? "#15616D" : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
                         {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
                       </td>
                     );
                   })}
                 </tr>
-                <tr key="goal-hours" style={{ borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Goal Hours</td>
+                <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: 700 }}>
-                      29,000
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
+                      29K
                     </td>
                   ))}
                 </tr>
@@ -947,15 +1054,15 @@ export default function KPIPage() {
         </div>
 
         {/* Sales Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#FF9500", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Sales by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Sales by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -963,28 +1070,28 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledSales || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#FF9500" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: value > 0 ? "#E06C00" : "#999", fontWeight: value > 0 ? 700 : 400, fontSize: 12 }}>
                           {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                <tr key="goal" style={{ borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Goal</td>
+                <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: 700 }}>
-                      $1,000,000
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12 }}>
+                      $1M
                     </td>
                   ))}
                 </tr>
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #ddd" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Actual Hours</td>
+                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {monthNames.map((_, idx) => {
                     let hours = 0;
                     if (yearFilter) {
@@ -993,17 +1100,17 @@ export default function KPIPage() {
                       hours = Object.values(inProgressHoursYearMonthMap).reduce((sum, yearData) => sum + (yearData[idx + 1] || 0), 0);
                     }
                     return (
-                      <td key={idx} style={{ padding: "12px", textAlign: "center", color: hours > 0 ? "#FF9500" : "#999", fontWeight: hours > 0 ? 700 : 400 }}>
+                      <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: hours > 0 ? "#E06C00" : "#999", fontWeight: hours > 0 ? 700 : 400 }}>
                         {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
                       </td>
                     );
                   })}
                 </tr>
-                <tr key="goal-hours" style={{ borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>Goal Hours</td>
+                <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>Goal Hours</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: 700 }}>
-                      4,331
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#15616D", fontWeight: 700 }}>
+                      4.3K
                     </td>
                   ))}
                 </tr>
@@ -1013,15 +1120,15 @@ export default function KPIPage() {
         </div>
 
         {/* Revenue Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#0066CC", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Revenue by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Revenue by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1029,34 +1136,34 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.bidSubmittedSales || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#0066CC" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#E06C00" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Revenue By Month", "#0066CC")}
+                {renderCardRows("Revenue By Month", "#E06C00")}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Subs Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#10b981", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Subs by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Subs by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "80px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1064,34 +1171,34 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.subs || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#10b981" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? value.toLocaleString() : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Subs By Month", "#10b981")}
+                {renderCardRows("Subs By Month", "#15616D")}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Revenue Hours Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#8b5cf6", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Revenue Hours by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Revenue Hours by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "80px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1099,34 +1206,34 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.scheduledHours || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#8b5cf6" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? value.toLocaleString() : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Revenue Hours by Month", "#8b5cf6")}
+                {renderCardRows("Revenue Hours by Month", "#15616D")}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Gross Profit Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#f59e0b", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Gross Profit by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Gross Profit by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1134,34 +1241,34 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.grossProfit || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#f59e0b" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Gross Profit by Month", "#f59e0b")}
+                {renderCardRows("Gross Profit by Month", "#15616D")}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Profit Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#06b6d4", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Profit by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Profit by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1169,34 +1276,34 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.cost || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#06b6d4" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Profit by Month", "#06b6d4")}
+                {renderCardRows("Profit by Month", "#15616D")}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Leadtimes Table */}
-        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 24 }}>
-          <h3 style={{ color: "#ec4899", marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Leadtimes by Month</h3>
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
+          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Leadtimes by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "120px" }}>Year</th>
+                <tr style={{ borderBottom: "1px solid #eee" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Year</th>
                   {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "80px" }}>
+                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: "#666", fontWeight: 600, width: "90px" }}>
                       {name.substring(0, 3)}
                     </th>
                   ))}
@@ -1204,19 +1311,19 @@ export default function KPIPage() {
               </thead>
               <tbody>
                 {Array.from(new Set(kpiData.map(k => k.year))).sort().filter(year => !yearFilter || year === yearFilter).map((year) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #ddd" }}>
-                    <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{year}</td>
+                  <tr key={year} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{year}</td>
                     {monthNames.map((_, idx) => {
                       const value = kpiData.find(k => k.year === year && k.month === idx + 1)?.leadtimes || 0;
                       return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: value > 0 ? "#ec4899" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
+                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
                           {value > 0 ? value.toLocaleString() : "—"}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-                {renderCardRows("Leadtimes by Month", "#ec4899")}
+                {renderCardRows("Leadtimes by Month", "#15616D")}
               </tbody>
             </table>
           </div>
@@ -1258,27 +1365,29 @@ function CombinedSalesLineChart({
       {
         label: "Scheduled Sales",
         data: scheduledSales,
-        borderColor: "#FF9500",
-        backgroundColor: "rgba(255, 149, 0, 0.1)",
-        tension: 0.3,
+        borderColor: "#15616D",
+        backgroundColor: "rgba(21, 97, 109, 0.25)",
+        tension: 0.4,
         fill: true,
-        pointBackgroundColor: "#FF9500",
+        pointBackgroundColor: "#15616D",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
-        pointRadius: 4,
+        pointRadius: 5,
+        borderWidth: 2.5,
         yAxisID: "y",
       },
       {
         label: "Bid Submitted Sales",
         data: bidSubmittedSales,
-        borderColor: "#0066CC",
-        backgroundColor: "rgba(0, 102, 204, 0.1)",
-        tension: 0.3,
+        borderColor: "#E06C00",
+        backgroundColor: "rgba(224, 108, 0, 0.25)",
+        tension: 0.4,
         fill: true,
-        pointBackgroundColor: "#0066CC",
+        pointBackgroundColor: "#E06C00",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
-        pointRadius: 4,
+        pointRadius: 5,
+        borderWidth: 2.5,
         yAxisID: "y1",
       },
     ],
@@ -1314,7 +1423,7 @@ function CombinedSalesLineChart({
         beginAtZero: true,
         max: maxScheduledSales ? maxScheduledSales * 1.1 : undefined,
         ticks: {
-          color: "#FF9500",
+          color: "#E06C00",
           callback: function(value) {
             return `$${Math.round(value as number).toLocaleString()}`;
           },
@@ -1325,7 +1434,7 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Scheduled Sales",
-          color: "#FF9500",
+          color: "#E06C00",
           font: { weight: "bold" },
         },
       },
@@ -1337,7 +1446,7 @@ function CombinedSalesLineChart({
           drawOnChartArea: false,
         },
         ticks: {
-          color: "#0066CC",
+          color: "#15616D",
           callback: function(value) {
             return `$${Math.round(value as number).toLocaleString()}`;
           },
@@ -1345,7 +1454,7 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Bid Submitted Sales",
-          color: "#0066CC",
+          color: "#15616D",
           font: { weight: "bold" },
         },
       },
@@ -1362,3 +1471,16 @@ function CombinedSalesLineChart({
 
   return <Line data={chartData} options={options} />;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

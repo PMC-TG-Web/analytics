@@ -13,11 +13,12 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
   ChartOptions,
   Plugin,
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 // Custom plugin to draw data labels on points
 const dataLabelsPlugin: Plugin = {
@@ -791,18 +792,18 @@ export default function WIPReportPage() {
   return (
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ color: "#003DA5", fontSize: 32, margin: 0 }}>WIP Report</h1>
+        <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>WIP Report</h1>
         <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/dashboard" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Dashboard
           </a>
-          <a href="/kpi" style={{ padding: "8px 16px", background: "#8b5cf6", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/kpi" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             KPI
           </a>
-          <a href="/scheduling" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/scheduling" style={{ padding: "8px 16px", background: "#E06C00", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Scheduling
           </a>
-          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#10b981", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Long-Term Schedule
           </a>
         </div>
@@ -844,7 +845,7 @@ export default function WIPReportPage() {
       {/* Hours Line Chart */}
       {filteredMonths.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 12 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Scheduled Hours Trend</h2>
+          <h2 style={{ color: "#15616D", marginBottom: 16 }}>Scheduled Hours Trend</h2>
           <div style={{ width: "100%", height: 400 }}>
             <HoursLineChart months={filteredMonths} monthlyData={filteredMonthlyData} projects={projects} yearFilter={yearFilter} />
           </div>
@@ -854,7 +855,7 @@ export default function WIPReportPage() {
       {/* Year/Month Matrix Table */}
       {filteredYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", marginBottom: 12 }}>
-          <h2 style={{ color: "#003DA5", marginBottom: 16 }}>Hours by Month</h2>
+          <h2 style={{ color: "#15616D", marginBottom: 16 }}>Hours by Month</h2>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
@@ -1014,8 +1015,8 @@ export default function WIPReportPage() {
               return (
                 <div key={month} style={{ background: "#ffffff", borderRadius: 12, border: "1px solid #ddd", padding: 24, marginBottom: 24 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-                    <h3 style={{ color: "#003DA5", fontSize: 20, margin: 0 }}>{formatMonthLabel(month)}</h3>
-                    <div style={{ color: "#0066CC", fontWeight: 700, fontSize: 18 }}>
+                    <h3 style={{ color: "#15616D", fontSize: 20, margin: 0 }}>{formatMonthLabel(month)}</h3>
+                    <div style={{ color: "#E06C00", fontWeight: 700, fontSize: 18 }}>
                       {data.hours.toFixed(1)} hours
                     </div>
                   </div>
@@ -1049,7 +1050,7 @@ export default function WIPReportPage() {
                       >
                         <div>{job.customer}</div>
                         <div>{job.projectName}</div>
-                        <div style={{ textAlign: "right", color: "#0066CC", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
+                        <div style={{ textAlign: "right", color: "#E06C00", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
                       </div>
                     ))
                   ) : (
@@ -1067,7 +1068,7 @@ export default function WIPReportPage() {
       ) : (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd", textAlign: "center", color: "#666" }}>
           No schedules created yet. Go to{" "}
-          <a href="/scheduling" style={{ color: "#0066CC", textDecoration: "underline" }}>
+          <a href="/scheduling" style={{ color: "#E06C00", textDecoration: "underline" }}>
             Scheduling
           </a>{" "}
           to create a schedule.
@@ -1104,7 +1105,7 @@ export default function WIPReportPage() {
             }}
           >
             <div style={{ marginBottom: 24 }}>
-              <h2 style={{ color: "#003DA5", margin: 0, marginBottom: 8 }}>
+              <h2 style={{ color: "#15616D", margin: 0, marginBottom: 8 }}>
                 {selectedJob.projectName}
               </h2>
               <div style={{ color: "#666", fontSize: 14 }}>
@@ -1116,7 +1117,7 @@ export default function WIPReportPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <h3 style={{ color: "#003DA5", fontSize: 16, marginBottom: 12 }}>Schedule Allocation</h3>
+              <h3 style={{ color: "#15616D", fontSize: 16, marginBottom: 12 }}>Schedule Allocation</h3>
               <div style={{ maxHeight: 400, overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
@@ -1166,7 +1167,7 @@ export default function WIPReportPage() {
                             />
                           </td>
                           <td 
-                            style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC", fontWeight: 600 }}
+                            style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00", fontWeight: 600 }}
                             onClick={() => openWeeklySchedule(month)}
                           >
                             {hours.toFixed(1)}
@@ -1181,7 +1182,7 @@ export default function WIPReportPage() {
                       <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13 }}>
                         {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (val || 0), 0).toFixed(0)}%
                       </td>
-                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC" }}>
+                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00" }}>
                         {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (selectedJob.totalHours * (val || 0)) / 100, 0).toFixed(1)}
                       </td>
                     </tr>
@@ -1210,7 +1211,7 @@ export default function WIPReportPage() {
                 disabled={saving}
                 style={{
                   padding: "10px 20px",
-                  background: saving ? "#ccc" : "#0066CC",
+                  background: saving ? "#ccc" : "#E06C00",
                   color: "#fff",
                   border: "none",
                   borderRadius: 6,
@@ -1256,7 +1257,7 @@ export default function WIPReportPage() {
             }}
           >
             <div style={{ marginBottom: 24 }}>
-              <h2 style={{ color: "#003DA5", margin: 0, marginBottom: 8 }}>
+              <h2 style={{ color: "#15616D", margin: 0, marginBottom: 8 }}>
                 Weekly Schedule - {(() => {
                   const [year, m] = selectedMonth.split("-");
                   const date = new Date(Number(year), Number(m) - 1, 1);
@@ -1266,9 +1267,9 @@ export default function WIPReportPage() {
               <div style={{ color: "#666", fontSize: 14 }}>
                 <div><strong>Project:</strong> {selectedJob.projectName}</div>
                 <div><strong>Customer:</strong> {selectedJob.customer}</div>
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f8ff", borderRadius: 6, border: "1px solid #0066CC" }}>
-                  <strong style={{ color: "#003DA5" }}>Hours to Schedule for this Month:</strong>{" "}
-                  <span style={{ color: "#0066CC", fontSize: 16, fontWeight: 700 }}>
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f8ff", borderRadius: 6, border: "1px solid #E06C00" }}>
+                  <strong style={{ color: "#15616D" }}>Hours to Schedule for this Month:</strong>{" "}
+                  <span style={{ color: "#E06C00", fontSize: 16, fontWeight: 700 }}>
                     {monthTargetHours.toFixed(1)}
                   </span>
                 </div>
@@ -1355,7 +1356,7 @@ export default function WIPReportPage() {
                 <tfoot>
                   <tr style={{ borderTop: "2px solid #ddd", fontWeight: 600 }}>
                     <td style={{ padding: "8px 12px", fontSize: 13 }}>Total Scheduled</td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#0066CC" }}>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00" }}>
                       {(() => {
                         const totalScheduled = Object.values(weeklySchedule).reduce((sum: number, val: any) => sum + (val || 0), 0);
                         const difference = totalScheduled - monthTargetHours;
@@ -1398,7 +1399,7 @@ export default function WIPReportPage() {
                 disabled={saving}
                 style={{
                   padding: "10px 20px",
-                  background: saving ? "#ccc" : "#0066CC",
+                  background: saving ? "#ccc" : "#E06C00",
                   color: "#fff",
                   border: "none",
                   borderRadius: 6,
@@ -1524,19 +1525,20 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
       {
         label: "Scheduled Hours",
         data: hours.concat(Array(numForecastMonths).fill(null)),
-        borderColor: "#3366FF",
-        backgroundColor: "rgba(0, 102, 204, 0.1)",
-        tension: 0.3,
+        borderColor: "#15616D",
+        backgroundColor: "rgba(21, 97, 109, 0.25)",
+        tension: 0.4,
         fill: true,
-        pointBackgroundColor: "#3366FF",
+        pointBackgroundColor: "#15616D",
         pointBorderColor: "#fff",
-        pointBorderWidth: 1,
-        pointRadius: 3,
-        pointHoverRadius: 5,
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
         yAxisID: 'y',
         datalabels: {
           display: true,
-          color: "#3366FF",
+          color: "#15616D",
           font: { weight: "bold", size: 11 },
           formatter: (value: any) => {
             if (value === null) return "";
@@ -1550,13 +1552,13 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
       {
         label: "Forecast",
         data: forecastData,
-        borderColor: "#9944FF",
-        backgroundColor: "rgba(139, 92, 246, 0.05)",
+        borderColor: "#E06C00",
+        backgroundColor: "rgba(224, 108, 0, 0.25)",
         borderDash: [8, 4],
-        borderWidth: 2,
-        tension: 0.3,
-        fill: false,
-        pointBackgroundColor: "#9944FF",
+        borderWidth: 2.5,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: "#E06C00",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 4,
@@ -1568,7 +1570,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
       {
         label: "Target (4,800 hours)",
         data: Array(labels.length).fill(4800),
-        borderColor: "#CC5500",
+        borderColor: "#ef4444",
         borderDash: [5, 5],
         borderWidth: 2,
         fill: false,
@@ -1741,11 +1743,11 @@ function CombinedSalesLineChart({
       {
         label: "Bid Submitted Sales",
         data: bidSubmittedSales,
-        borderColor: "#0066CC",
+        borderColor: "#E06C00",
         backgroundColor: "rgba(0, 102, 204, 0.1)",
         tension: 0.3,
         fill: true,
-        pointBackgroundColor: "#0066CC",
+        pointBackgroundColor: "#E06C00",
         pointBorderColor: "#fff",
         pointBorderWidth: 2,
         pointRadius: 4,
@@ -1807,7 +1809,7 @@ function CombinedSalesLineChart({
           drawOnChartArea: false,
         },
         ticks: {
-          color: "#0066CC",
+          color: "#E06C00",
           callback: function(value) {
             return `$${Math.round(value as number).toLocaleString()}`;
           },
@@ -1815,7 +1817,7 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Bid Submitted Sales",
-          color: "#0066CC",
+          color: "#E06C00",
           font: { weight: "bold" },
         },
       },
@@ -1847,3 +1849,4 @@ function SummaryCard({ label, value }: { label: string; value: string | number }
     </div>
   );
 }
+

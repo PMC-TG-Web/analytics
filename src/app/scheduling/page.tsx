@@ -634,15 +634,18 @@ export default function SchedulingPage() {
   return (
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ color: "#003DA5", fontSize: 32, margin: 0 }}>Scheduling</h1>
+        <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>Scheduling</h1>
         <div style={{ display: "flex", gap: 12 }}>
-          <a href="/dashboard" style={{ padding: "8px 16px", background: "#003DA5", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/dashboard" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Dashboard
           </a>
-          <a href="/wip" style={{ padding: "8px 16px", background: "#0066CC", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/kpi" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+            KPI
+          </a>
+          <a href="/wip" style={{ padding: "8px 16px", background: "#E06C00", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             WIP Report
           </a>
-          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#10b981", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
+          <a href="/long-term-schedule" style={{ padding: "8px 16px", background: "#15616D", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>
             Long-Term Schedule
           </a>
         </div>
@@ -654,15 +657,15 @@ export default function SchedulingPage() {
           <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
             <div style={{ textAlign: "right" }}>
               <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Total Qualifying Hours</div>
-              <div style={{ color: "#0066CC", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalQualifying)}</div>
+              <div style={{ color: "#E06C00", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalQualifying)}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Total Scheduled</div>
-              <div style={{ color: "#10b981", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalScheduled)}</div>
+              <div style={{ color: "#15616D", fontSize: 20, fontWeight: 700 }}>{Math.round(unscheduledHoursCalc.totalScheduled)}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ color: "#666", fontSize: 12, marginBottom: 4 }}>Unscheduled Hours</div>
-              <div style={{ color: unscheduledHoursCalc.unscheduled > 0 ? "#ef4444" : "#0066CC", fontSize: 20, fontWeight: 700 }}>
+              <div style={{ color: unscheduledHoursCalc.unscheduled > 0 ? "#ef4444" : "#E06C00", fontSize: 20, fontWeight: 700 }}>
                 {Math.round(unscheduledHoursCalc.unscheduled)}
               </div>
             </div>
@@ -679,7 +682,7 @@ export default function SchedulingPage() {
                 <div style={{ color: "#666", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {formatMonthLabel(month)}
                 </div>
-                <div style={{ color: "#0066CC", fontSize: 24, fontWeight: 700 }}>
+                <div style={{ color: "#E06C00", fontSize: 24, fontWeight: 700 }}>
                   {Math.round(totalHours)}
                 </div>
                 <div style={{ color: "#999", fontSize: 11, marginTop: 2 }}>hours</div>
@@ -691,7 +694,7 @@ export default function SchedulingPage() {
 
       <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ color: "#003DA5", fontSize: 20, margin: 0 }}>Jobs</h2>
+          <h2 style={{ color: "#15616D", fontSize: 20, margin: 0 }}>Jobs</h2>
           <button
             onClick={addMonth}
             style={{
@@ -712,16 +715,16 @@ export default function SchedulingPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
               <tr style={{ borderBottom: "2px solid #ddd", background: "#f9f9f9" }}>
-                <th onClick={() => handleSort("customer")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "customer" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("customer")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "customer" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Customer {sortColumn === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("projectName")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "projectName" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("projectName")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "projectName" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Job Name {sortColumn === "projectName" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("status")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "status" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("status")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "status" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Status {sortColumn === "status" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#0066CC" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
+                <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }}>Scheduled Hours</th>
@@ -735,7 +738,7 @@ export default function SchedulingPage() {
             </thead>
             <tbody>
               {filteredJobs.map((job) => {
-                const statusColor = job.status === "Accepted" ? "#10b981" : job.status === "In Progress" ? "#f59e0b" : "#ef4444";
+                const statusColor = job.status === "Accepted" ? "#15616D" : job.status === "In Progress" ? "#E06C00" : "#ef4444";
                 return (
                   <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.customer}</td>
@@ -761,10 +764,10 @@ export default function SchedulingPage() {
                         <option value="Delayed">Delayed</option>
                       </select>
                     </td>
-                    <td style={{ padding: "12px 8px", color: "#0066CC", fontWeight: 700, textAlign: "right" }}>
+                    <td style={{ padding: "12px 8px", color: "#E06C00", fontWeight: 700, textAlign: "right" }}>
                       {job.totalHours.toLocaleString()}
                     </td>
-                    <td style={{ padding: "12px 8px", color: "#10b981", fontWeight: 700, textAlign: "right" }}>
+                    <td style={{ padding: "12px 8px", color: "#15616D", fontWeight: 700, textAlign: "right" }}>
                       {Math.round(job.totalHours * (Object.values(job.allocations).reduce((sum, val) => sum + (val || 0), 0) / 100))}
                     </td>
                     {months.map((month) => {

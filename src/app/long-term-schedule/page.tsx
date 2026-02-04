@@ -172,13 +172,16 @@ export default function LongTermSchedulePage() {
             <p className="text-gray-600 mt-1">Next 12 weeks - Hours and Weekly FTE by project</p>
           </div>
           <div className="flex gap-3">
-            <a href="/dashboard" className="px-4 py-2 bg-blue-800 text-white rounded-lg font-medium hover:bg-blue-900 transition-colors">
+            <a href="/dashboard" className="px-4 py-2 bg-teal-800 text-white rounded-lg font-medium hover:bg-teal-900 transition-colors">
               Dashboard
             </a>
-            <a href="/scheduling" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+            <a href="/kpi" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-medium hover:bg-teal-800 transition-colors">
+              KPI
+            </a>
+            <a href="/scheduling" className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors">
               Scheduling
             </a>
-            <a href="/wip" className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors">
+            <a href="/wip" className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition-colors">
               WIP Report
             </a>
           </div>
@@ -193,27 +196,27 @@ export default function LongTermSchedulePage() {
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-gradient-to-r from-blue-600 to-blue-700">
-                    <th className="sticky left-0 z-20 bg-blue-600 text-left py-4 px-4 text-sm font-bold text-white border-r border-blue-500">
+                  <tr className="bg-gradient-to-r from-teal-600 to-teal-700">
+                    <th className="sticky left-0 z-20 bg-teal-600 text-left py-4 px-4 text-sm font-bold text-white border-r border-teal-500">
                       Project
                     </th>
-                    <th className="sticky left-0 z-20 bg-blue-600 text-left py-4 px-4 text-sm font-bold text-white border-r border-blue-500" style={{left: '200px'}}>
+                    <th className="sticky left-0 z-20 bg-teal-600 text-left py-4 px-4 text-sm font-bold text-white border-r border-teal-500" style={{left: '200px'}}>
                       Customer
                     </th>
                     {weekColumns.map((week) => (
-                      <th key={week.weekStartDate.toISOString()} className="text-center py-4 px-3 text-sm font-bold text-white border-r border-blue-500">
+                      <th key={week.weekStartDate.toISOString()} className="text-center py-4 px-3 text-sm font-bold text-white border-r border-teal-500">
                         <div>{week.weekLabel}</div>
-                        <div className="text-xs font-normal text-blue-100">Week of</div>
+                        <div className="text-xs font-normal text-teal-100">Week of</div>
                       </th>
                     ))}
-                    <th className="text-center py-4 px-4 text-sm font-bold text-white bg-blue-800">
+                    <th className="text-center py-4 px-4 text-sm font-bold text-white bg-teal-800">
                       Total
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {jobRows.map((job, idx) => (
-                    <tr key={job.jobKey} className={`border-b border-gray-200 hover:bg-blue-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    <tr key={job.jobKey} className={`border-b border-gray-200 hover:bg-teal-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="sticky left-0 z-10 bg-inherit py-3 px-4 text-sm font-medium text-gray-900 border-r border-gray-200">
                         {job.projectName}
                       </td>
@@ -225,11 +228,11 @@ export default function LongTermSchedulePage() {
                         const hours = job.weekHours[weekKey] || 0;
                         const fte = hours / 50;
                         return (
-                          <td key={weekKey} className={`text-center py-3 px-3 text-sm border-r border-gray-200 ${hours > 0 ? 'bg-blue-50' : ''}`}>
+                          <td key={weekKey} className={`text-center py-3 px-3 text-sm border-r border-gray-200 ${hours > 0 ? 'bg-teal-50' : ''}`}>
                             {hours > 0 ? (
                               <div>
                                 <div className="font-semibold text-gray-900">{hours.toFixed(1)}</div>
-                                <div className="text-xs text-purple-600">{fte.toFixed(1)} Weekly FTE</div>
+                                <div className="text-xs text-orange-600">{fte.toFixed(1)} Weekly FTE</div>
                               </div>
                             ) : (
                               <span className="text-gray-300">-</span>
@@ -239,25 +242,25 @@ export default function LongTermSchedulePage() {
                       })}
                       <td className="text-center py-3 px-4 text-sm font-bold bg-gray-100">
                         <div className="text-gray-900">{job.totalHours.toFixed(1)}</div>
-                        <div className="text-xs text-purple-600">{(job.totalHours / 50).toFixed(1)} Weekly FTE</div>
+                        <div className="text-xs text-orange-600">{(job.totalHours / 50).toFixed(1)} Weekly FTE</div>
                       </td>
                     </tr>
                   ))}
                   
                   {/* Totals Row */}
-                  <tr className="bg-gradient-to-r from-blue-700 to-blue-800 font-bold">
-                    <td className="sticky left-0 z-10 bg-blue-700 py-4 px-4 text-sm text-white border-r border-blue-600" colSpan={2}>
+                  <tr className="bg-gradient-to-r from-teal-700 to-teal-800 font-bold">
+                    <td className="sticky left-0 z-10 bg-teal-700 py-4 px-4 text-sm text-white border-r border-teal-600" colSpan={2}>
                       TOTAL PER WEEK
                     </td>
                     {weekTotals.map((total, idx) => (
-                      <td key={idx} className="text-center py-4 px-3 text-sm text-white border-r border-blue-600">
+                      <td key={idx} className="text-center py-4 px-3 text-sm text-white border-r border-teal-600">
                         <div className="font-bold">{total.toFixed(1)}</div>
-                      <div className="text-xs text-blue-200">{(total / 50).toFixed(1)} Weekly FTE</div>
+                      <div className="text-xs text-teal-200">{(total / 50).toFixed(1)} Weekly FTE</div>
                     </td>
                   ))}
-                  <td className="text-center py-4 px-4 text-sm text-white bg-blue-900">
+                  <td className="text-center py-4 px-4 text-sm text-white bg-teal-900">
                     <div className="font-bold text-lg">{grandTotal.toFixed(1)}</div>
-                    <div className="text-xs text-blue-200">{(grandTotal / 50).toFixed(1)} Weekly FTE</div>
+                    <div className="text-xs text-teal-200">{(grandTotal / 50).toFixed(1)} Weekly FTE</div>
                     </td>
                   </tr>
                 </tbody>
@@ -269,4 +272,5 @@ export default function LongTermSchedulePage() {
     </div>
   );
 }
+
 

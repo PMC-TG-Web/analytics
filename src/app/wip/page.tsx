@@ -190,12 +190,14 @@ export default function WIPReportPage() {
     // Get all months from schedules
     const allMonths = new Set<string>();
     schedules.forEach((s) => {
-      s.allocations.forEach((a) => allMonths.add(a.month));
+      if (Array.isArray(s.allocations)) {
+        s.allocations.forEach((a) => allMonths.add(a.month));
+      }
     });
     const sortedMonths = Array.from(allMonths).sort();
 
     const allocations: Record<string, number> = {};
-    if (existingSchedule) {
+    if (existingSchedule && Array.isArray(existingSchedule.allocations)) {
       existingSchedule.allocations.forEach((a) => {
         allocations[a.month] = a.percent;
       });
@@ -371,20 +373,22 @@ export default function WIPReportPage() {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') return;
     
-    schedule.allocations.forEach((alloc) => {
-      if (!monthlyData[alloc.month]) {
-        monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
-      }
+    if (Array.isArray(schedule.allocations)) {
+      schedule.allocations.forEach((alloc) => {
+        if (!monthlyData[alloc.month]) {
+          monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
+        }
 
-      const allocatedHours = schedule.totalHours * (alloc.percent / 100);
-      monthlyData[alloc.month].hours += allocatedHours;
-      monthlyData[alloc.month].jobs.push({
-        customer: schedule.customer || "Unknown",
-        projectNumber: schedule.projectNumber || "N/A",
+        const allocatedHours = schedule.totalHours * (alloc.percent / 100);
+        monthlyData[alloc.month].hours += allocatedHours;
+        monthlyData[alloc.month].jobs.push({
+          customer: schedule.customer || "Unknown",
+          projectNumber: schedule.projectNumber || "N/A",
         projectName: schedule.projectName || "Unnamed",
         hours: allocatedHours,
       });
-    });
+      });
+    }
   });
 
   const months = Object.keys(monthlyData).sort();
@@ -655,17 +659,17 @@ export default function WIPReportPage() {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') {
       const projectHours = schedule.totalHours || 0;
-      const scheduledHours = schedule.allocations.reduce((sum: number, alloc: any) => {
+      const scheduledHours = Array.isArray(schedule.allocations) ? schedule.allocations.reduce((sum: number, alloc: any) => {
         return sum + (projectHours * (alloc.percent / 100));
-      }, 0);
+      }, 0) : 0;
       excludedCompleteHours += scheduledHours;
       return;
     }
     
     const projectHours = schedule.totalHours || 0;
-    const scheduledHours = schedule.allocations.reduce((sum: number, alloc: any) => {
+    const scheduledHours = Array.isArray(schedule.allocations) ? schedule.allocations.reduce((sum: number, alloc: any) => {
       return sum + (projectHours * (alloc.percent / 100));
-    }, 0);
+    }, 0) : 0;
     totalScheduledHours += scheduledHours;
   });
   
@@ -745,13 +749,15 @@ export default function WIPReportPage() {
 
     matchedCount++;
 
-    schedule.allocations.forEach((alloc) => {
-      const percent = Number(alloc.percent ?? 0);
-      if (!Number.isFinite(percent) || percent <= 0) return;
-      const monthKey = alloc.month;
-      const monthlySales = projectSales * (percent / 100);
-      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
-    });
+    if (Array.isArray(schedule.allocations)) {
+      schedule.allocations.forEach((alloc) => {
+        const percent = Number(alloc.percent ?? 0);
+        if (!Number.isFinite(percent) || percent <= 0) return;
+        const monthKey = alloc.month;
+        const monthlySales = projectSales * (percent / 100);
+        scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
+      });
+    }
   });
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
@@ -1542,7 +1548,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
           font: { weight: "bold", size: 11 },
           formatter: (value: any) => {
             if (value === null) return "";
-            return (value / 1000).toFixed(1) + "K";
+            return Math.round(value).toLocaleString();
           },
           offset: 8,
           anchor: "end",
@@ -1599,7 +1605,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
           font: { weight: "bold", size: 11 },
           formatter: (value: any) => {
             if (value === null) return "";
-            return value.toFixed(1) + "M";
+            return Math.round(value).toLocaleString();
           },
           offset: 8,
           anchor: "end",

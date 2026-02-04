@@ -953,9 +953,9 @@ export default function KPIPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredCombinedSalesYears.map((year) => (
+                {filteredCombinedSalesYears.map((year, yearIndex) => (
                   <React.Fragment key={year}>
-                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                       <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}>{year}</td>
                       <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
                       {monthNames.map((_, idx) => {
@@ -967,7 +967,7 @@ export default function KPIPage() {
                         );
                       })}
                     </tr>
-                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                       <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700, fontSize: 13 }}></td>
                       <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
                       {monthNames.map((_, idx) => {

@@ -40,20 +40,21 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
       }}>
         <h1 style={{ fontSize: 24, marginBottom: 16, color: "#15616D" }}>Authentication Required</h1>
         <p style={{ marginBottom: 20, textAlign: "center" }}>
-          Please authenticate with Procore to access this page.
+          Please sign in to access this page.
         </p>
         <a 
-          href="/procore" 
+          href="/login" 
           style={{
             padding: "10px 20px",
             background: "#15616D",
             color: "#fff",
-            borderRadius: 4,
             textDecoration: "none",
-            fontWeight: 700
+            borderRadius: "6px",
+            fontWeight: 600,
+            fontSize: "14px"
           }}
         >
-          Login with Procore
+          Sign In
         </a>
       </div>
     );
@@ -86,9 +87,10 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
             padding: "10px 20px",
             background: "#15616D",
             color: "#fff",
-            borderRadius: 4,
             textDecoration: "none",
-            fontWeight: 700
+            borderRadius: "6px",
+            fontWeight: 600,
+            fontSize: "14px"
           }}
         >
           Go to Dashboard

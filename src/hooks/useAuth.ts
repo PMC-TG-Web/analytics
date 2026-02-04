@@ -2,22 +2,20 @@
 import { useEffect, useState } from "react";
 import { hasPageAccess } from "@/lib/permissions";
 
-interface ProcoreUser {
-  id: number;
+interface User {
   email: string;
-  name: string;
-  company?: any;
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<ProcoreUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchUser() {
+    // Check for email in cookie by making a simple fetch to see if user is logged in
+    async function checkAuth() {
       try {
-        const response = await fetch('/api/procore/me');
+        const response = await fetch('/api/check-auth');
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
@@ -25,13 +23,13 @@ export function useAuth() {
           setError('Not authenticated');
         }
       } catch (err) {
-        setError('Failed to fetch user');
+        setError('Failed to check auth');
       } finally {
         setLoading(false);
       }
     }
 
-    fetchUser();
+    checkAuth();
   }, []);
 
   const checkAccess = (page: string) => {

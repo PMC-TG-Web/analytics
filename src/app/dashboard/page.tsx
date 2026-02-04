@@ -380,11 +380,6 @@ function DashboardContent() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ color: '#15616D', fontSize: 32, margin: 0 }}>Paradise Masonry Estimating Dashboard</h1>
         <Navigation currentPage="dashboard" />
-          </a>
-          <a href="/long-term-schedule" style={{ padding: '8px 16px', background: '#E06C00', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>
-            Long-Term Schedule
-          </a>
-        </div>
       </div>
       
       {/* Date Range Filter */}

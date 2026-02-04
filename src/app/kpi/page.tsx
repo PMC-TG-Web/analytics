@@ -59,6 +59,77 @@ function parseDateValue(value: any) {
   return null;
 }
 
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && text[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(field);
+      field = "";
+      if (row.some((cell) => cell.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      continue;
+    }
+
+    field += char;
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    if (row.some((cell) => cell.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function formatCardValue(cardName: string, rawValue: string) {
+  const trimmed = (rawValue ?? "").toString().trim();
+  if (!trimmed) return "—";
+  if (trimmed.endsWith("%")) return trimmed;
+
+  const numeric = Number(trimmed.replace(/[$,]/g, ""));
+  if (!Number.isFinite(numeric)) return trimmed;
+
+  const hasDecimal = trimmed.includes(".");
+  const formatted = numeric.toLocaleString(undefined, {
+    maximumFractionDigits: hasDecimal ? 2 : 0,
+  });
+
+  if (cardName === "Revenue By Month" || cardName === "Subs By Month") {
+    return `$${formatted}`;
+  }
+
+  return formatted;
+}
+
 function getProjectDate(project: any) {
   const updated = parseDateValue(project.dateUpdated);
   const created = parseDateValue(project.dateCreated);
@@ -70,6 +141,7 @@ export default function KPIPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [kpiData, setKpiData] = useState<any[]>([]);
+  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>({});
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState<string>("");
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
@@ -102,6 +174,32 @@ export default function KPIPage() {
         const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
         const schedulesData = schedulesJson.data || schedulesJson.schedules || [];
+
+  useEffect(() => {
+    async function loadCardData() {
+      try {
+        const res = await fetch("/KPICardLoad.csv");
+        if (!res.ok) return;
+        const text = await res.text();
+        const rows = parseCsv(text);
+        if (rows.length === 0) return;
+        const dataRows = rows.slice(1);
+        const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
+        dataRows.forEach((row) => {
+          const cardName = (row[0] ?? "").toString().trim();
+          const kpi = (row[1] ?? "").toString().trim();
+          if (!cardName || !kpi) return;
+          const values = row.slice(2).map((value) => (value ?? "").toString().trim());
+          if (!mapped[cardName]) mapped[cardName] = [];
+          mapped[cardName].push({ kpi, values });
+        });
+        setCardLoadData(mapped);
+      } catch (error) {
+        console.error("Error loading KPI card CSV:", error);
+      }
+    }
+    loadCardData();
+  }, []);
 
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
           const matchingProject = projectsData.find((p: any) => {
@@ -476,6 +574,25 @@ export default function KPIPage() {
     }
     inProgressHoursYearMonthMap[year][Number(m)] = inProgressHoursByMonth[month];
   });
+
+  const renderCardRows = (cardName: string, color: string) => {
+    const rows = cardLoadData[cardName] || [];
+    if (rows.length === 0) return null;
+    return rows.map((row) => (
+      <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #ddd" }}>
+        <td style={{ padding: "12px", color: "#222", fontWeight: 700 }}>{row.kpi}</td>
+        {monthNames.map((_, idx) => {
+          const value = row.values[idx] ?? "";
+          const formatted = formatCardValue(cardName, value);
+          return (
+            <td key={idx} style={{ padding: "12px", textAlign: "center", color: formatted !== "—" ? color : "#999", fontWeight: formatted !== "—" ? 700 : 400 }}>
+              {formatted}
+            </td>
+          );
+        })}
+      </tr>
+    ));
+  };
 
   const scheduledSalesByMonth: Record<string, number> = {};
   
@@ -920,6 +1037,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Revenue By Month", "#0066CC")}
               </tbody>
             </table>
           </div>
@@ -954,6 +1072,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Subs By Month", "#10b981")}
               </tbody>
             </table>
           </div>
@@ -988,6 +1107,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Revenue Hours by Month", "#8b5cf6")}
               </tbody>
             </table>
           </div>
@@ -1022,6 +1142,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Gross Profit by Month", "#f59e0b")}
               </tbody>
             </table>
           </div>
@@ -1056,6 +1177,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Profit by Month", "#06b6d4")}
               </tbody>
             </table>
           </div>
@@ -1090,6 +1212,7 @@ export default function KPIPage() {
                     })}
                   </tr>
                 ))}
+                {renderCardRows("Leadtimes by Month", "#ec4899")}
               </tbody>
             </table>
           </div>

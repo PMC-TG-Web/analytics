@@ -15,6 +15,8 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
   if (!userEmail) return false;
+
+  if (page === "wip") return true;
   
   const permissions = USER_PERMISSIONS[userEmail.toLowerCase()];
   if (!permissions) return false;

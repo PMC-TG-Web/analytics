@@ -4,6 +4,7 @@ import { hasPageAccess } from "@/lib/permissions";
 
 interface User {
   email: string;
+  name?: string | null;
 }
 
 export function useAuth() {
@@ -12,10 +13,9 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for email in cookie by making a simple fetch to see if user is logged in
     async function checkAuth() {
       try {
-        const response = await fetch('/api/check-auth');
+        const response = await fetch('/api/auth/me');
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);

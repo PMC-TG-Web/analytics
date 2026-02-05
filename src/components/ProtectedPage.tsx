@@ -43,7 +43,7 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
           Please sign in to access this page.
         </p>
         <a 
-          href="/login" 
+          href="/api/auth/login?returnTo=/wip" 
           style={{
             padding: "10px 20px",
             background: "#15616D",

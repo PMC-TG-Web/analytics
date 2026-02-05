@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@auth0/nextjs-auth0": "^4.14.1",
     "chart.js": "^4.4.1",
     "csv-parse": "^6.1.0",
     "csv-parser": "^3.2.0",

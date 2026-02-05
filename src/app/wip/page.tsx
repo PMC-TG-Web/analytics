@@ -48,6 +48,11 @@ const dataLabelsPlugin: Plugin = {
 
 ChartJS.register(dataLabelsPlugin);
 
+type Allocation = {
+  month: string;
+  percent: number;
+};
+
 type Schedule = {
   id: string;
   jobKey: string;
@@ -55,7 +60,7 @@ type Schedule = {
   projectNumber?: string;
   projectName?: string;
   totalHours: number;
-  allocations: Array<{ month: string; percent: number }>;
+  allocations: Allocation[] | Record<string, number>;
   status?: string;
 };
 
@@ -69,6 +74,16 @@ type MonthlyWIP = {
     hours: number;
   }>;
 };
+
+function normalizeAllocations(allocations: Schedule["allocations"] | null | undefined): Allocation[] {
+  if (!allocations) return [];
+  if (Array.isArray(allocations)) return allocations;
+
+  return Object.entries(allocations).map(([month, percent]) => ({
+    month,
+    percent: Number(percent) || 0,
+  }));
+}
 
 function formatMonthLabel(month: string) {
   const [year, m] = month.split("-");
@@ -200,15 +215,13 @@ function WIPReportContent() {
     // Get all months from schedules
     const allMonths = new Set<string>();
     schedules.forEach((s) => {
-      if (Array.isArray(s.allocations)) {
-        s.allocations.forEach((a) => allMonths.add(a.month));
-      }
+      normalizeAllocations(s.allocations).forEach((a) => allMonths.add(a.month));
     });
     const sortedMonths = Array.from(allMonths).sort();
 
     const allocations: Record<string, number> = {};
-    if (existingSchedule && Array.isArray(existingSchedule.allocations)) {
-      existingSchedule.allocations.forEach((a) => {
+    if (existingSchedule) {
+      normalizeAllocations(existingSchedule.allocations).forEach((a) => {
         allocations[a.month] = a.percent;
       });
       // Use the schedule's totalHours if available, otherwise use project hours
@@ -383,22 +396,20 @@ function WIPReportContent() {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') return;
     
-    if (Array.isArray(schedule.allocations)) {
-      schedule.allocations.forEach((alloc) => {
-        if (!monthlyData[alloc.month]) {
-          monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
-        }
+    normalizeAllocations(schedule.allocations).forEach((alloc) => {
+      if (!monthlyData[alloc.month]) {
+        monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
+      }
 
-        const allocatedHours = schedule.totalHours * (alloc.percent / 100);
-        monthlyData[alloc.month].hours += allocatedHours;
-        monthlyData[alloc.month].jobs.push({
-          customer: schedule.customer || "Unknown",
-          projectNumber: schedule.projectNumber || "N/A",
+      const allocatedHours = schedule.totalHours * (alloc.percent / 100);
+      monthlyData[alloc.month].hours += allocatedHours;
+      monthlyData[alloc.month].jobs.push({
+        customer: schedule.customer || "Unknown",
+        projectNumber: schedule.projectNumber || "N/A",
         projectName: schedule.projectName || "Unnamed",
         hours: allocatedHours,
       });
-      });
-    }
+    });
   });
 
   const months = Object.keys(monthlyData).sort();
@@ -669,17 +680,17 @@ function WIPReportContent() {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') {
       const projectHours = schedule.totalHours || 0;
-      const scheduledHours = Array.isArray(schedule.allocations) ? schedule.allocations.reduce((sum: number, alloc: any) => {
+      const scheduledHours = normalizeAllocations(schedule.allocations).reduce((sum: number, alloc: any) => {
         return sum + (projectHours * (alloc.percent / 100));
-      }, 0) : 0;
+      }, 0);
       excludedCompleteHours += scheduledHours;
       return;
     }
     
     const projectHours = schedule.totalHours || 0;
-    const scheduledHours = Array.isArray(schedule.allocations) ? schedule.allocations.reduce((sum: number, alloc: any) => {
+    const scheduledHours = normalizeAllocations(schedule.allocations).reduce((sum: number, alloc: any) => {
       return sum + (projectHours * (alloc.percent / 100));
-    }, 0) : 0;
+    }, 0);
     totalScheduledHours += scheduledHours;
   });
   
@@ -759,15 +770,13 @@ function WIPReportContent() {
 
     matchedCount++;
 
-    if (Array.isArray(schedule.allocations)) {
-      schedule.allocations.forEach((alloc) => {
-        const percent = Number(alloc.percent ?? 0);
-        if (!Number.isFinite(percent) || percent <= 0) return;
-        const monthKey = alloc.month;
-        const monthlySales = projectSales * (percent / 100);
-        scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
-      });
-    }
+    normalizeAllocations(schedule.allocations).forEach((alloc) => {
+      const percent = Number(alloc.percent ?? 0);
+      if (!Number.isFinite(percent) || percent <= 0) return;
+      const monthKey = alloc.month;
+      const monthlySales = projectSales * (percent / 100);
+      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
+    });
   });
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();

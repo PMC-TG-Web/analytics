@@ -22,25 +22,44 @@ export async function GET(request: NextRequest) {
   try {
     const tokenResponse = await getAccessToken(code);
     
+     // Fetch user info from Procore
+     const userInfoResponse = await fetch('https://api.procore.com/rest/v1.0/me', {
+       headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+     });
+   
+     if (!userInfoResponse.ok) {
+       throw new Error('Failed to fetch user info from Procore');
+     }
+   
+     const procoreUser = await userInfoResponse.json();
+   
     // Store token in secure httpOnly cookie
     const response = NextResponse.redirect(
-      new URL('/dashboard', request.url)
+       new URL(state || '/dashboard', request.url)
     );
-    response.cookies.set('procore_access_token', tokenResponse.access_token, {
+   
+     // Store user session (similar to Auth0 session)
+     response.cookies.set('auth_session', JSON.stringify({
+       email: procoreUser.login,
+       name: procoreUser.name,
+       picture: procoreUser.avatar,
+       sub: `procore|${procoreUser.id}`,
+     }), {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: tokenResponse.expires_in,
+       secure: true,
+       sameSite: 'none',
+       maxAge: 60 * 60 * 24 * 180, // 180 days
       path: '/',
     });
 
-    if (tokenResponse.refresh_token) {
-      response.cookies.set('procore_refresh_token', tokenResponse.refresh_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: '/',
-      });
-    }
+     // Also store Procore access token for API calls
+     response.cookies.set('procore_token', tokenResponse.access_token, {
+       httpOnly: true,
+       secure: true,
+       sameSite: 'none',
+       maxAge: tokenResponse.expires_in || 3600,
+       path: '/',
+     });
 
     return response;
   } catch (error) {

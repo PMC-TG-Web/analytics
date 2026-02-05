@@ -11,6 +11,9 @@ interface ProtectedPageProps {
 
 export default function ProtectedPage({ children, page, requireAuth = true }: ProtectedPageProps) {
   const { user, loading, error } = useAuth();
+ 
+ // Detect if we're in an iframe (likely Procore)
+ const inIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   if (loading) {
     return (
@@ -43,23 +46,61 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
         }}>
           <h1 style={{ fontSize: 24, marginBottom: 16, color: "#15616D" }}>Sign In Required</h1>
           <p style={{ marginBottom: 20, textAlign: "center" }}>
-            Please sign in to access this page.
+             {inIframe ? 'Please sign in with Procore to access this page.' : 'Please sign in to access this page.'}
           </p>
-          <a 
-            href={`/api/auth/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
-            style={{
-              padding: "10px 20px",
-              background: "#15616D",
-              color: "#fff",
-              textDecoration: "none",
-              borderRadius: "6px",
-              fontWeight: 600,
-              fontSize: "14px",
-              cursor: "pointer"
-            }}
-          >
-            Sign In
-          </a>
+           <div style={{ display: 'flex', gap: '12px', flexDirection: inIframe ? 'column' : 'row' }}>
+             {inIframe ? (
+               <a 
+                 href={`/api/auth/procore/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
+                 style={{
+                   padding: "10px 20px",
+                   background: "#FF6900",
+                   color: "#fff",
+                   textDecoration: "none",
+                   borderRadius: "6px",
+                   fontWeight: 600,
+                   fontSize: "14px",
+                   cursor: "pointer",
+                   textAlign: "center"
+                 }}
+               >
+                 Sign In with Procore
+               </a>
+             ) : (
+               <>
+                 <a 
+                   href={`/api/auth/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
+                   style={{
+                     padding: "10px 20px",
+                     background: "#15616D",
+                     color: "#fff",
+                     textDecoration: "none",
+                     borderRadius: "6px",
+                     fontWeight: 600,
+                     fontSize: "14px",
+                     cursor: "pointer"
+                   }}
+                 >
+                   Sign In with Email
+                 </a>
+                 <a 
+                   href={`/api/auth/procore/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
+                   style={{
+                     padding: "10px 20px",
+                     background: "#FF6900",
+                     color: "#fff",
+                     textDecoration: "none",
+                     borderRadius: "6px",
+                     fontWeight: 600,
+                     fontSize: "14px",
+                     cursor: "pointer"
+                   }}
+                 >
+                   Sign In with Procore
+                 </a>
+               </>
+             )}
+           </div>
         </div>
       );
     }

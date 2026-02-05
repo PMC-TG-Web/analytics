@@ -16,10 +16,10 @@ export const procoreConfig = {
   clientId: process.env.PROCORE_CLIENT_ID,
   clientSecret: process.env.PROCORE_CLIENT_SECRET,
   companyId: process.env.PROCORE_COMPANY_ID,
-  apiUrl: process.env.PROCORE_API_URL,
-  authUrl: process.env.PROCORE_AUTH_URL,
-  tokenUrl: process.env.PROCORE_TOKEN_URL,
-  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI,
+ apiUrl: process.env.PROCORE_API_URL || 'https://api.procore.com',
+ authUrl: process.env.PROCORE_AUTH_URL || 'https://app.procore.com/oauth/authorize',
+ tokenUrl: process.env.PROCORE_TOKEN_URL || 'https://app.procore.com/oauth/token',
+ redirectUri: `${process.env.AUTH0_BASE_URL || 'http://localhost:3000'}/api/auth/procore/callback`,
 };
 
 // Get OAuth authorization URL

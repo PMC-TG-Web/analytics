@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@auth0/nextjs-auth0/edge';
-
-export const runtime = 'edge';
+import { auth0 } from '@/lib/auth0';
 
 export async function GET() {
-  const session = await getSession();
+  const session = await auth0.getSession();
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

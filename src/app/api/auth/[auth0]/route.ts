@@ -1,4 +1,9 @@
-import { handleAuth } from '@auth0/nextjs-auth0/edge';
+import { auth0 } from '@/lib/auth0';
 
-export const runtime = 'edge';
-export const GET = handleAuth();
+export async function GET(request: Request) {
+	return auth0.middleware(request);
+}
+
+export async function POST(request: Request) {
+	return auth0.middleware(request);
+}

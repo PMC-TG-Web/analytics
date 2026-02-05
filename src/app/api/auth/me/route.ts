@@ -1,20 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * Get current user session from auth_session cookie
+ */
 export async function GET(req: NextRequest) {
-  // Get the session cookie that Auth0 creates after login
-  const authCookie = req.cookies.get('appSession');
+  try {
+    const sessionCookie = req.cookies.get('auth_session');
 
-  if (!authCookie) {
+    if (!sessionCookie?.value) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    const user = JSON.parse(sessionCookie.value);
+
+    return NextResponse.json({
+      email: user.email,
+      name: user.name,
+      nickname: user.nickname,
+      picture: user.picture,
+    });
+  } catch (error) {
+    console.error('Error parsing session:', error);
     return NextResponse.json(
-      { error: 'Not authenticated' },
-      { status: 401 }
+      { error: 'Failed to get session' },
+      { status: 500 }
     );
   }
-
-  // For now, return a placeholder user
-  // The actual user info is decoded in the Auth0 SDK
-  return NextResponse.json({
-    email: 'user@example.com',
-    name: 'User',
-  });
 }

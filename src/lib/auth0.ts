@@ -9,10 +9,6 @@ export const auth0 = new Auth0Client({
   session: {
     rolling: true, // Extend session on each request
     rollingDuration: 60 * 60 * 24 * 180, // 180 days in seconds
-    absoluteDuration: 60 * 60 * 24 * 180, // 180 days maximum
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax" as const
-    }
+    absoluteDuration: 60 * 60 * 24 * 180 // 180 days maximum
   }
 });

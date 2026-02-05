@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { auth0 } from '@/lib/auth0';
+import { getSession } from '@auth0/nextjs-auth0';
 
 export async function GET() {
-  const session = await auth0.getSession();
+  const session = await getSession();
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

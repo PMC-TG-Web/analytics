@@ -1,11 +1,9 @@
-import { withApiAuthRequired } from '@auth0/nextjs-auth0';
+import { handleAuth } from '@auth0/nextjs-auth0/edge';
 
-// The @auth0/nextjs-auth0 SDK handles /api/auth/* routes automatically
-// This file is just a placeholder for type safety
-export const GET = withApiAuthRequired(async () => {
-  return new Response('Auth route', { status: 200 });
-});
-
-export const POST = withApiAuthRequired(async () => {
-  return new Response('Auth route', { status: 200 });
-});
+/**
+ * API route for Auth0 authentication handlers.
+ * Handles /api/auth/login, /api/auth/logout, /api/auth/callback automatically.
+ * The [auth0] dynamic segment catches all auth0 routes.
+ */
+export const GET = handleAuth();
+export const POST = handleAuth();

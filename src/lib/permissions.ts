@@ -10,6 +10,7 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   
   // Full access
   "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "long-term-schedule", "procore"],
+  "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "long-term-schedule", "procore"],
   
   // Add more users here:
   // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],

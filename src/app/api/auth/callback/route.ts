@@ -29,6 +29,13 @@ export async function GET(request: NextRequest) {
     const clientSecret = process.env.AUTH0_CLIENT_SECRET;
     const baseUrl = process.env.AUTH0_BASE_URL;
 
+    // Debug logging
+    console.log('DEBUG: Checking env vars...');
+    console.log('AUTH0_DOMAIN:', auth0Domain ? '✓' : '✗ MISSING');
+    console.log('AUTH0_CLIENT_ID:', clientId ? '✓' : '✗ MISSING');
+    console.log('AUTH0_CLIENT_SECRET:', clientSecret ? '✓' : '✗ MISSING');
+    console.log('AUTH0_BASE_URL:', baseUrl ? '✓' : '✗ MISSING');
+
     if (!auth0Domain || !clientId || !clientSecret || !baseUrl) {
       throw new Error('Auth0 environment variables not configured');
     }

@@ -1,5 +1,4 @@
 "use client";
-import { useAuth } from "@/hooks/useAuth";
 
 interface NavLink {
   href: string;
@@ -18,20 +17,10 @@ const navLinks: NavLink[] = [
 ];
 
 export default function Navigation({ currentPage }: { currentPage?: string }) {
-  const { checkAccess, loading } = useAuth();
-
-  if (loading) {
-    return null; // Don't show navigation while loading
-  }
-
+  // Authentication is temporarily disabled - show all navigation links
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
       {navLinks.map((link) => {
-        // Only show links the user has access to
-        if (!checkAccess(link.page)) {
-          return null;
-        }
-
         const isActive = currentPage === link.page;
         const bgColor = link.color || "#15616D";
 

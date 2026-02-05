@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
         sub: user.sub,
       }),
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true, // Required for sameSite: 'none'
+      sameSite: 'none', // Allow cookies in cross-site iframe (Procore)
       maxAge: 60 * 60 * 24 * 180, // 180 days
       path: '/',
     });

@@ -8,8 +8,8 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   // KPI access
   "levi@pmcdecor.com": ["kpi"],
   
-  // WIP and Dashboard access
-  "isaac@pmcdecor.com": ["wip", "dashboard"],
+  // Full access
+  "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "long-term-schedule", "procore"],
   
   // Add more users here:
   // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],

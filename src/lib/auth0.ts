@@ -4,9 +4,7 @@ export const auth0 = new Auth0Client({
   routes: {
     login: "/api/auth/login",
     logout: "/api/auth/logout",
-    callback: "/api/auth/callback",
-    profile: "/api/auth/profile",
-    accessToken: "/api/auth/access-token"
+    callback: "/api/auth/callback"
   },
   session: {
     rolling: true, // Extend session on each request

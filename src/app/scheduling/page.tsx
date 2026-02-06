@@ -31,6 +31,22 @@ function formatMonthLabel(month: string) {
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
+function isValidMonthKey(month: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+}
+
+function normalizeMonths(list: string[]) {
+  return Array.from(
+    new Set(
+      list.filter((month) => {
+        if (!isValidMonthKey(month)) return false;
+        const [year] = month.split("-");
+        return Number(year) >= 2026;
+      })
+    )
+  ).sort();
+}
+
 function parseDateValue(value: any): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -93,22 +109,18 @@ function SchedulingContent() {
         try {
           const parsed = JSON.parse(saved);
           // Filter out any months before 2026
-          const filtered = parsed.filter((m: string) => {
-            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) return false;
-            const [year] = m.split('-');
-            return Number(year) >= 2026;
-          });
+          const filtered = normalizeMonths(parsed);
           
           // Ensure we have all 12 months of 2026 at minimum
           const baseMonths = getNextMonths(12);
-          const allMonths = Array.from(new Set([...baseMonths, ...filtered])).sort();
+          const allMonths = normalizeMonths([...baseMonths, ...filtered]);
           
           months = allMonths;
         } catch {
           months = getNextMonths(12);
         }
       }
-      return months;
+      return normalizeMonths(months);
     }
     return getNextMonths(12);
   });
@@ -119,6 +131,8 @@ function SchedulingContent() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [savingJobKey, setSavingJobKey] = useState<string>("");
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+
+  const validMonths = useMemo(() => normalizeMonths(months), [months]);
 
   useEffect(() => {
     async function fetchData() {
@@ -159,19 +173,20 @@ function SchedulingContent() {
         });
         setSchedules(schedulesArray);
 
-        // Collect all months that have scheduled hours (including historical months with allocations > 0)
+        // Collect all months that have scheduled hours (valid months only)
         const scheduledMonths = new Set<string>();
         schedulesArray.forEach((schedule: JobSchedule) => {
           Object.entries(schedule.allocations).forEach(([month, percent]) => {
-            if (percent > 0) {
-              scheduledMonths.add(month);
-            }
+            if (!isValidMonthKey(month) || percent <= 0) return;
+            const [year] = month.split("-");
+            if (Number(year) < 2026) return;
+            scheduledMonths.add(month);
           });
         });
 
-        // Merge with existing months and sort (include all months with allocations, even pre-2026)
-        const allMonths = Array.from(new Set([...months, ...Array.from(scheduledMonths)])).sort();
-        if (allMonths.length > months.length) {
+        // Merge with existing months and normalize
+        const allMonths = normalizeMonths([...months, ...Array.from(scheduledMonths)]);
+        if (allMonths.join("|") !== normalizeMonths(months).join("|")) {
           setMonths(allMonths);
         }
       } catch (error) {
@@ -185,7 +200,12 @@ function SchedulingContent() {
 
   useEffect(() => {
     // Save months to localStorage and optionally to database
-    localStorage.setItem("schedulingMonths", JSON.stringify(months));
+    const normalized = normalizeMonths(months);
+    if (normalized.join("|") !== months.join("|")) {
+      setMonths(normalized);
+      return;
+    }
+    localStorage.setItem("schedulingMonths", JSON.stringify(normalized));
   }, [months]);
 
   const uniqueJobs = useMemo(() => {
@@ -337,7 +357,7 @@ function SchedulingContent() {
         if (!job) return prev;
         
         const allocations: Record<string, number> = {};
-        months.forEach((m) => {
+        validMonths.forEach((m) => {
           allocations[m] = m === month ? validPercent : 0;
         });
         
@@ -357,11 +377,11 @@ function SchedulingContent() {
   }
 
   function addMonth() {
-    const last = months[months.length - 1];
+    const last = validMonths[validMonths.length - 1] || getNextMonths(1)[0];
     const [year, m] = last.split("-");
     const next = new Date(Number(year), Number(m), 1);
     const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
-    setMonths((prev) => [...prev, nextMonth]);
+    setMonths((prev) => normalizeMonths([...prev, nextMonth]));
   }
 
   async function saveSchedule(jobKey: string) {
@@ -514,9 +534,9 @@ function SchedulingContent() {
     
     // Ensure all existing schedules have all months initialized and get current status
     const updatedSchedules = schedules.map((schedule) => {
-      const allocations: Record<string, number> = {};
-      months.forEach((month) => {
-        allocations[month] = schedule.allocations[month] ?? 0;
+      const allocations: Record<string, number> = { ...schedule.allocations };
+      validMonths.forEach((month) => {
+        allocations[month] = allocations[month] ?? 0;
       });
       // Get hours and status from uniqueJobs (projects data)
       const currentJob = uniqueJobs.find((j) => j.key === schedule.jobKey);
@@ -543,7 +563,7 @@ function SchedulingContent() {
 
     const toAdd = uniqueJobs.filter((job) => !allScheduleKeys.has(job.key)).map((job) => {
       const allocations: Record<string, number> = {};
-      months.forEach((month) => {
+      validMonths.forEach((month) => {
         allocations[month] = 0;
       });
       return {
@@ -556,7 +576,7 @@ function SchedulingContent() {
       };
     });
     return [...filteredSchedules, ...toAdd];
-  }, [schedules, uniqueJobs, months]);
+  }, [schedules, uniqueJobs, validMonths]);
 
   const uniqueCustomers = useMemo(() => {
     return Array.from(new Set(allJobs.map((j) => j.customer))).sort();
@@ -572,7 +592,7 @@ function SchedulingContent() {
 
     const sorted = [...filtered].sort((a, b) => {
       // Check if sorting by a month column
-      if (months.includes(sortColumn)) {
+      if (validMonths.includes(sortColumn)) {
         const aVal = a.allocations[sortColumn] || 0;
         const bVal = b.allocations[sortColumn] || 0;
         return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
@@ -593,7 +613,7 @@ function SchedulingContent() {
     });
 
     return sorted;
-  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, months]);
+  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, validMonths]);
 
   // Calculate unscheduled hours
   const unscheduledHoursCalc = useMemo(() => {
@@ -610,10 +630,12 @@ function SchedulingContent() {
         return true;
       })
       .reduce((sum, schedule) => {
-        const allocations: Record<string, number> = schedule.allocations;
-        const jobScheduledHours = Object.values(allocations).reduce((jobSum, percent) => {
-          return jobSum + (schedule.totalHours * (percent / 100));
+        const totalPercent = validMonths.reduce((jobSum, month) => {
+          const percent = schedule.allocations[month] ?? 0;
+          return jobSum + percent;
         }, 0);
+        const cappedPercent = Math.min(100, totalPercent);
+        const jobScheduledHours = schedule.totalHours * (cappedPercent / 100);
         return sum + jobScheduledHours;
       }, 0);
     
@@ -674,7 +696,7 @@ function SchedulingContent() {
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-          {months.map((month) => {
+          {validMonths.map((month) => {
             const totalHours = allJobs.reduce((sum, job) => {
               const allocation = job.allocations[month] || 0;
               return sum + (job.totalHours * (allocation / 100));
@@ -730,7 +752,7 @@ function SchedulingContent() {
                   Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }}>Scheduled Hours</th>
-                {months.map((month) => (
+                {validMonths.map((month) => (
                   <th key={month} onClick={() => handleSort(month)} style={{ textAlign: "center", padding: "12px 8px", color: sortColumn === month ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                     {formatMonthLabel(month)} {sortColumn === month && (sortDirection === "asc" ? "↑" : "↓")}
                   </th>
@@ -770,9 +792,15 @@ function SchedulingContent() {
                       {job.totalHours.toLocaleString()}
                     </td>
                     <td style={{ padding: "12px 8px", color: "#15616D", fontWeight: 700, textAlign: "right" }}>
-                      {Math.round(job.totalHours * (Object.values(job.allocations).reduce((sum, val) => sum + (val || 0), 0) / 100))}
+                      {(() => {
+                        const totalPercent = validMonths.reduce((sum, month) => {
+                          return sum + (job.allocations[month] ?? 0);
+                        }, 0);
+                        const cappedPercent = Math.min(100, totalPercent);
+                        return Math.round(job.totalHours * (cappedPercent / 100));
+                      })()}
                     </td>
-                    {months.map((month) => {
+                    {validMonths.map((month) => {
                       const value = job.allocations[month];
                       return (
                         <td key={`${job.jobKey}-${month}`} style={{ padding: "8px", textAlign: "center" }}>

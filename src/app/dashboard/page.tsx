@@ -32,6 +32,7 @@ interface ContractorAggregate {
   name: string;
   sales: number;
   projectCount: number;
+  byStatus: Record<string, { sales: number; count: number }>;
 }
 
 interface TopContractorsCardProps {
@@ -48,16 +49,26 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
     aggregatedProjects.forEach(project => {
       const customerName = project.customer || "Unknown";
       const sales = project.sales || 0;
+      const status = project.status || "Unknown";
       
       if (contractorMap.has(customerName)) {
         const existing = contractorMap.get(customerName)!;
         existing.sales += sales;
         existing.projectCount += 1;
+        
+        if (!existing.byStatus[status]) {
+          existing.byStatus[status] = { sales: 0, count: 0 };
+        }
+        existing.byStatus[status].sales += sales;
+        existing.byStatus[status].count += 1;
       } else {
         contractorMap.set(customerName, {
           name: customerName,
           sales: sales,
           projectCount: 1,
+          byStatus: {
+            [status]: { sales, count: 1 }
+          }
         });
       }
     });
@@ -95,7 +106,7 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
         </select>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
         {topContractors.map((contractor) => (
           <div
             key={contractor.name}
@@ -110,18 +121,40 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
               <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Contractor</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>{contractor.name}</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Sales</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Sales</div>
                 <div style={{ fontSize: 18, fontWeight: 600, color: '#4ade80' }}>
-                  ${(contractor.sales / 1000).toFixed(1)}k
+                  ${contractor.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Projects</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Projects</div>
                 <div style={{ fontSize: 18, fontWeight: 600, color: '#60a5fa' }}>
                   {contractor.projectCount}
                 </div>
+              </div>
+            </div>
+            
+            {/* Status Breakdown */}
+            <div style={{ borderTop: '1px solid #374151', paddingTop: 12 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8, fontWeight: 500 }}>By Status</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {Object.entries(contractor.byStatus)
+                  .sort((a, b) => b[1].sales - a[1].sales)
+                  .map(([status, data]) => (
+                    <div key={status} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <div style={{ color: '#d1d5db' }}>{status}</div>
+                      <div style={{ display: 'flex', gap: 12 }}>
+                        <span style={{ color: '#4ade80' }}>
+                          ${data.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                        <span style={{ color: '#60a5fa', minWidth: 30, textAlign: 'right' }}>
+                          {data.count}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
               </div>
             </div>
           </div>

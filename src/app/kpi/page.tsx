@@ -69,6 +69,15 @@ function isValidMonthKey(month: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
+function normalizeAllocations(allocations: any): Array<{ month: string; percent: number }> {
+  if (!allocations) return [];
+  if (Array.isArray(allocations)) return allocations;
+  return Object.entries(allocations).map(([month, percent]) => ({
+    month,
+    percent: Number(percent) || 0,
+  }));
+}
+
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -815,7 +824,7 @@ function KPIPageContent({
   const scheduledSalesByMonth: Record<string, number> = {};
   
   const scheduleSalesMap = new Map<string, number>();
-  projects.forEach((project: Project) => {
+  dedupedByCustomer.forEach((project: Project) => {
     if (!qualifyingStatuses.includes(project.status || "")) return;
     
     const key = getProjectKey(project.customer, project.projectNumber, project.projectName);
@@ -832,15 +841,14 @@ function KPIPageContent({
     
     if (!projectSales) return;
 
-    if (Array.isArray(schedule.allocations)) {
-      schedule.allocations.forEach((alloc: any) => {
-        const percent = Number(alloc.percent ?? 0);
-        if (!Number.isFinite(percent) || percent <= 0) return;
-        const monthKey = alloc.month;
-        const monthlySales = projectSales * (percent / 100);
-        scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
-      });
-    }
+    normalizeAllocations(schedule.allocations).forEach((alloc: any) => {
+      const percent = Number(alloc.percent ?? 0);
+      if (!Number.isFinite(percent) || percent <= 0) return;
+      const monthKey = alloc.month;
+      if (!isValidMonthKey(monthKey)) return;
+      const monthlySales = projectSales * (percent / 100);
+      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
+    });
   });
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();

@@ -31,8 +31,10 @@ export default function Dashboard() {
 interface ContractorAggregate {
   name: string;
   sales: number;
+  cost: number;
+  hours: number;
   projectCount: number;
-  byStatus: Record<string, { sales: number; count: number }>;
+  byStatus: Record<string, { sales: number; cost: number; hours: number; count: number }>;
 }
 
 interface TopContractorsCardProps {
@@ -49,25 +51,33 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
     aggregatedProjects.forEach(project => {
       const customerName = project.customer || "Unknown";
       const sales = project.sales || 0;
+      const cost = project.cost || 0;
+      const hours = project.hours || 0;
       const status = project.status || "Unknown";
       
       if (contractorMap.has(customerName)) {
         const existing = contractorMap.get(customerName)!;
         existing.sales += sales;
+        existing.cost += cost;
+        existing.hours += hours;
         existing.projectCount += 1;
         
         if (!existing.byStatus[status]) {
-          existing.byStatus[status] = { sales: 0, count: 0 };
+          existing.byStatus[status] = { sales: 0, cost: 0, hours: 0, count: 0 };
         }
         existing.byStatus[status].sales += sales;
+        existing.byStatus[status].cost += cost;
+        existing.byStatus[status].hours += hours;
         existing.byStatus[status].count += 1;
       } else {
         contractorMap.set(customerName, {
           name: customerName,
           sales: sales,
+          cost: cost,
+          hours: hours,
           projectCount: 1,
           byStatus: {
-            [status]: { sales, count: 1 }
+            [status]: { sales, cost, hours, count: 1 }
           }
         });
       }
@@ -134,6 +144,18 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
                   {contractor.projectCount}
                 </div>
               </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Hours</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#fbbf24' }}>
+                  {contractor.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Markup %</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#a78bfa' }}>
+                  {contractor.cost > 0 ? ((contractor.sales - contractor.cost) / contractor.cost * 100).toFixed(1) : '0.0'}%
+                </div>
+              </div>
             </div>
             
             {/* Status Breakdown */}
@@ -142,19 +164,32 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {Object.entries(contractor.byStatus)
                   .sort((a, b) => b[1].sales - a[1].sales)
-                  .map(([status, data]) => (
-                    <div key={status} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                      <div style={{ color: '#d1d5db' }}>{status}</div>
-                      <div style={{ display: 'flex', gap: 12 }}>
-                        <span style={{ color: '#4ade80' }}>
-                          ${data.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                        <span style={{ color: '#60a5fa', minWidth: 30, textAlign: 'right' }}>
-                          {data.count}
-                        </span>
+                  .map(([status, data]) => {
+                    const markup = data.cost > 0 ? ((data.sales - data.cost) / data.cost * 100).toFixed(1) : '0.0';
+                    return (
+                      <div key={status} style={{ fontSize: 11 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <div style={{ color: '#d1d5db', fontWeight: 600 }}>{status}</div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <span style={{ color: '#4ade80' }}>
+                              ${data.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </span>
+                            <span style={{ color: '#60a5fa', minWidth: 25, textAlign: 'right' }}>
+                              {data.count}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingRight: 0, fontSize: 10, color: '#9ca3af' }}>
+                          <span style={{ color: '#fbbf24' }}>
+                            {data.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })} hrs
+                          </span>
+                          <span style={{ color: '#a78bfa', minWidth: 45, textAlign: 'right' }}>
+                            {markup}% markup
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           </div>

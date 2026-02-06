@@ -41,9 +41,10 @@ interface TopContractorsCardProps {
   aggregatedProjects: Project[];
   topContractorLimit: string;
   setTopContractorLimit: (value: string) => void;
+  onOpenJobsList: (customerName: string, status?: string) => void;
 }
 
-function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopContractorLimit }: TopContractorsCardProps) {
+function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopContractorLimit, onOpenJobsList }: TopContractorsCardProps) {
   const topContractors = useMemo(() => {
     // Group by customer name and aggregate
     const contractorMap = new Map<string, ContractorAggregate>();
@@ -130,7 +131,23 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
           >
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contractor</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#333' }}>{contractor.name}</div>
+              <button
+                type="button"
+                onClick={() => onOpenJobsList(contractor.name)}
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: '#333',
+                  padding: 0,
+                  margin: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                {contractor.name}
+              </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
@@ -168,7 +185,20 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
                   .map(([status, data]) => {
                     const markup = data.cost > 0 ? ((data.sales - data.cost) / data.cost * 100).toFixed(1) : '0.0';
                     return (
-                      <div key={status} style={{ fontSize: 11 }}>
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => onOpenJobsList(contractor.name, status)}
+                        style={{
+                          fontSize: 11,
+                          padding: 0,
+                          margin: 0,
+                          border: 'none',
+                          background: 'none',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                           <div style={{ color: '#555', fontWeight: 600 }}>{status}</div>
                           <div style={{ display: 'flex', gap: 8 }}>
@@ -188,7 +218,7 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
                             {markup}% markup
                           </span>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
               </div>
@@ -432,6 +462,22 @@ function DashboardContent() {
   const totalHours = aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
   const markup = totalCost ? ((totalSales - totalCost) / totalCost) * 100 : 0;
+
+  const openContractorJobs = (customerName: string, status?: string) => {
+    const filtered = aggregatedProjects.filter((project) => {
+      const matchesCustomer = (project.customer || "Unknown") === customerName;
+      const matchesStatus = status ? (project.status || "Unknown") === status : true;
+      return matchesCustomer && matchesStatus;
+    });
+
+    const title = status
+      ? `${customerName} - ${status}`
+      : `${customerName} - All Jobs`;
+
+    setJobsListData(filtered);
+    setJobsListTitle(title);
+    setJobsListOpen(true);
+  };
 
   // Group by status
   const statusGroups: Record<string, typeof aggregatedProjects> = {};
@@ -809,6 +855,7 @@ function DashboardContent() {
         aggregatedProjects={aggregatedProjects}
         topContractorLimit={topContractorLimit}
         setTopContractorLimit={setTopContractorLimit}
+        onOpenJobsList={openContractorJobs}
       />
 
       {/* Drill-through Modals */}

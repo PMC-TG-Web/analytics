@@ -85,6 +85,10 @@ function normalizeAllocations(allocations: Schedule["allocations"] | null | unde
   }));
 }
 
+function isValidMonthKey(month: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+}
+
 function formatMonthLabel(month: string) {
   const [year, m] = month.split("-");
   const date = new Date(Number(year), Number(m) - 1, 1);
@@ -158,7 +162,7 @@ function WIPReportContent() {
           const jobKey = schedule.jobKey || '';
           // Find matching project by jobKey
           const matchingProject = projectsData.find((p: any) => {
-            const projectKey = `${p.customer || ''}|${p.projectNumber || ''}|${p.projectName || ''}`;
+            const projectKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
             return projectKey === jobKey;
           }) as any;
           
@@ -197,7 +201,7 @@ function WIPReportContent() {
   }, [customerFilter, projectFilter, monthFilter, yearFilter]);
 
   async function openJobModal(customer: string, projectName: string, projectNumber: string) {
-    const jobKey = `${customer}|${projectNumber}|${projectName}`;
+    const jobKey = `${customer}~${projectNumber}~${projectName}`;
     const project = projects.find((p) => 
       p.customer === customer && 
       p.projectName === projectName && 
@@ -215,7 +219,11 @@ function WIPReportContent() {
     // Get all months from schedules
     const allMonths = new Set<string>();
     schedules.forEach((s) => {
-      normalizeAllocations(s.allocations).forEach((a) => allMonths.add(a.month));
+      normalizeAllocations(s.allocations).forEach((a) => {
+        if (isValidMonthKey(a.month)) {
+          allMonths.add(a.month);
+        }
+      });
     });
     const sortedMonths = Array.from(allMonths).sort();
 
@@ -397,6 +405,7 @@ function WIPReportContent() {
     if (schedule.status === 'Complete') return;
     
     normalizeAllocations(schedule.allocations).forEach((alloc) => {
+      if (!isValidMonthKey(alloc.month)) return;
       if (!monthlyData[alloc.month]) {
         monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
       }
@@ -620,7 +629,7 @@ function WIPReportContent() {
   // Step 5: Group by key
   const keyMap = new Map<string, typeof filteredByStatus>();
   filteredByStatus.forEach((p) => {
-    const key = `${p.customer ?? ""}|${p.projectNumber ?? ""}|${p.projectName ?? ""}`;
+    const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
     if (!keyMap.has(key)) {
       keyMap.set(key, []);
     }

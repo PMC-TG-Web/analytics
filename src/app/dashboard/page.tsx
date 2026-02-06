@@ -1,4 +1,5 @@
 "use client";
+// Trigger redeploy
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 // Dynamically import Chart.js to avoid SSR issues

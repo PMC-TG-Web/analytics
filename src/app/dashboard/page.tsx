@@ -47,7 +47,7 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
     
     aggregatedProjects.forEach(project => {
       const customerName = project.customer || "Unknown";
-      const sales = project.salesAmount || 0;
+      const sales = project.sales || 0;
       
       if (contractorMap.has(customerName)) {
         const existing = contractorMap.get(customerName)!;

@@ -28,6 +28,109 @@ export default function Dashboard() {
   );
 }
 
+interface ContractorAggregate {
+  name: string;
+  sales: number;
+  projectCount: number;
+}
+
+interface TopContractorsCardProps {
+  aggregatedProjects: Project[];
+  topContractorLimit: string;
+  setTopContractorLimit: (value: string) => void;
+}
+
+function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopContractorLimit }: TopContractorsCardProps) {
+  const topContractors = useMemo(() => {
+    // Group by customer name and aggregate
+    const contractorMap = new Map<string, ContractorAggregate>();
+    
+    aggregatedProjects.forEach(project => {
+      const customerName = project.customer || "Unknown";
+      const sales = project.salesAmount || 0;
+      
+      if (contractorMap.has(customerName)) {
+        const existing = contractorMap.get(customerName)!;
+        existing.sales += sales;
+        existing.projectCount += 1;
+      } else {
+        contractorMap.set(customerName, {
+          name: customerName,
+          sales: sales,
+          projectCount: 1,
+        });
+      }
+    });
+    
+    // Sort by sales descending
+    const sorted = Array.from(contractorMap.values())
+      .sort((a, b) => b.sales - a.sales);
+    
+    // Apply limit
+    const limit = topContractorLimit === "all" ? sorted.length : parseInt(topContractorLimit);
+    return sorted.slice(0, limit);
+  }, [aggregatedProjects, topContractorLimit]);
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#fff', margin: 0 }}>Top Contractors</h2>
+        <select
+          value={topContractorLimit}
+          onChange={(e) => setTopContractorLimit(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 6,
+            border: '1px solid #374151',
+            backgroundColor: '#1f2937',
+            color: '#fff',
+            fontSize: 14,
+            cursor: 'pointer',
+          }}
+        >
+          <option value="5">Top 5</option>
+          <option value="10">Top 10</option>
+          <option value="15">Top 15</option>
+          <option value="all">All Contractors</option>
+        </select>
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        {topContractors.map((contractor) => (
+          <div
+            key={contractor.name}
+            style={{
+              backgroundColor: '#111827',
+              border: '1px solid #374151',
+              borderRadius: 8,
+              padding: 16,
+            }}
+          >
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Contractor</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>{contractor.name}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Sales</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#4ade80' }}>
+                  ${(contractor.sales / 1000).toFixed(1)}k
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Projects</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#60a5fa' }}>
+                  {contractor.projectCount}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DashboardContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +141,7 @@ function DashboardContent() {
   const [selectedJob, setSelectedJob] = useState<Project | null>(null);
   const [jobsListData, setJobsListData] = useState<Project[]>([]);
   const [jobsListTitle, setJobsListTitle] = useState("");
+  const [topContractorLimit, setTopContractorLimit] = useState<string>("10");
 
   useEffect(() => {
     async function fetchData() {
@@ -630,6 +734,13 @@ function DashboardContent() {
           ).length
         }
       </div>
+
+      {/* Top Contractors Card */}
+      <TopContractorsCard 
+        aggregatedProjects={aggregatedProjects}
+        topContractorLimit={topContractorLimit}
+        setTopContractorLimit={setTopContractorLimit}
+      />
 
       {/* Drill-through Modals */}
       <JobsListModal

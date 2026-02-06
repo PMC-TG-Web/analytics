@@ -834,21 +834,38 @@ function KPIPageContent({
     const currentTotal = scheduleSalesMap.get(key) || 0;
     scheduleSalesMap.set(key, currentTotal + sales);
   });
+  
+  console.log("🟢 Scheduled Sales Debug:");
+  console.log("In Progress projects found:", scheduleSalesMap.size);
+  console.log("Sales map:", Array.from(scheduleSalesMap.entries()));
 
   schedules.forEach((schedule: Schedule) => {
     const key = schedule.jobKey || getProjectKey(schedule.customer, schedule.projectNumber, schedule.projectName);
     const projectSales = scheduleSalesMap.get(key);
     
-    if (!projectSales) return;
+    if (!projectSales) {
+      console.log("No matching project for schedule:", key);
+      return;
+    }
+    
+    console.log("Processing schedule:", key, "with sales:", projectSales);
+    const allocs = normalizeAllocations(schedule.allocations);
+    console.log("Normalized allocations:", allocs);
 
-    normalizeAllocations(schedule.allocations).forEach((alloc: any) => {
+    allocs.forEach((alloc: any) => {
       const percent = Number(alloc.percent ?? 0);
-      if (!Number.isFinite(percent) || percent <= 0) return;
+      if (!Number.isFinite(percent) || percent <= 0) {
+        console.log("Skipping allocation with invalid percent:", alloc.percent);
+        return;
+      }
       const monthKey = alloc.month;
       const monthlySales = projectSales * (percent / 100);
+      console.log(`  ${monthKey}: ${percent}% × $${projectSales} = $${monthlySales}`);
       scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
     });
   });
+  
+  console.log("Final scheduled sales by month:", scheduledSalesByMonth);
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};

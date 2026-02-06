@@ -121,46 +121,47 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
           <div
             key={contractor.name}
             style={{
-              backgroundColor: '#111827',
-              border: '1px solid #374151',
-              borderRadius: 8,
+              background: '#ffffff',
+              border: '1px solid #ddd',
+              borderRadius: 12,
               padding: 16,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
             }}
           >
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Contractor</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>{contractor.name}</div>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contractor</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#333' }}>{contractor.name}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Sales</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#4ade80' }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Total Sales</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#10b981' }}>
                   ${contractor.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Projects</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#60a5fa' }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Total Projects</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>
                   {contractor.projectCount}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Total Hours</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#fbbf24' }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Total Hours</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#f59e0b' }}>
                   {contractor.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Markup %</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#a78bfa' }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Markup %</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#8b5cf6' }}>
                   {contractor.cost > 0 ? ((contractor.sales - contractor.cost) / contractor.cost * 100).toFixed(1) : '0.0'}%
                 </div>
               </div>
             </div>
             
             {/* Status Breakdown */}
-            <div style={{ borderTop: '1px solid #374151', paddingTop: 12 }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8, fontWeight: 500 }}>By Status</div>
+            <div style={{ borderTop: '1px solid #ddd', paddingTop: 12 }}>
+              <div style={{ fontSize: 11, color: '#666', marginBottom: 8, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>By Status</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {Object.entries(contractor.byStatus)
                   .sort((a, b) => b[1].sales - a[1].sales)
@@ -169,21 +170,21 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
                     return (
                       <div key={status} style={{ fontSize: 11 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                          <div style={{ color: '#d1d5db', fontWeight: 600 }}>{status}</div>
+                          <div style={{ color: '#555', fontWeight: 600 }}>{status}</div>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <span style={{ color: '#4ade80' }}>
+                            <span style={{ color: '#10b981' }}>
                               ${data.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </span>
-                            <span style={{ color: '#60a5fa', minWidth: 25, textAlign: 'right' }}>
+                            <span style={{ color: '#3b82f6', minWidth: 25, textAlign: 'right' }}>
                               {data.count}
                             </span>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingRight: 0, fontSize: 10, color: '#9ca3af' }}>
-                          <span style={{ color: '#fbbf24' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingRight: 0, fontSize: 10, color: '#666' }}>
+                          <span style={{ color: '#f59e0b' }}>
                             {data.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })} hrs
                           </span>
-                          <span style={{ color: '#a78bfa', minWidth: 45, textAlign: 'right' }}>
+                          <span style={{ color: '#8b5cf6', minWidth: 45, textAlign: 'right' }}>
                             {markup}% markup
                           </span>
                         </div>

@@ -489,11 +489,21 @@ function SchedulingContent() {
       await Promise.all(updatePromises);
       console.log("Projects updated successfully");
       
-      // Also update the schedule document
+      // Also update the schedule document - query by projectName instead of using jobKey as doc ID
       try {
-        const scheduleRef = doc(db, "schedules", jobKey);
-        await updateDoc(scheduleRef, { status: newStatus });
-        console.log("Schedule updated successfully");
+        const schedulesRef = collection(db, "schedules");
+        const scheduleQuery = query(schedulesRef, where("projectName", "==", projectName));
+        const scheduleSnapshot = await getDocs(scheduleQuery);
+        
+        if (scheduleSnapshot.docs.length > 0) {
+          const scheduleUpdatePromises = scheduleSnapshot.docs.map((scheduleDoc) => {
+            return updateDoc(scheduleDoc.ref, { status: newStatus });
+          });
+          await Promise.all(scheduleUpdatePromises);
+          console.log(`Schedule updated successfully for ${projectName}`);
+        } else {
+          console.log(`No schedule found for ${projectName}, skipping schedule update`);
+        }
       } catch (scheduleError) {
         console.error("Error updating schedule:", scheduleError);
         // Continue even if schedule update fails

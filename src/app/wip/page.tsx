@@ -483,43 +483,32 @@ function WIPReportContent() {
   const filteredTotalHours = Object.values(filteredMonthlyData).reduce((sum, m) => sum + m.hours, 0);
   const filteredAvgHours = filteredMonths.length > 0 ? filteredTotalHours / filteredMonths.length : 0;
   
-  // Calculate filtered hours for In Progress jobs only (for unscheduled calculation)
-  const filteredInProgressHours = Object.values(filteredMonthlyData).reduce((sum, monthData) => {
-    const inProgressHours = monthData.jobs
-      .filter((job) => {
-        // Find matching schedule to check status
-        const schedule = schedules.find(s => 
-          s.customer === job.customer && 
-          s.projectName === job.projectName && 
-          s.projectNumber === job.projectNumber
-        );
-        return schedule && schedule.status === 'In Progress';
-      })
-      .reduce((jobSum, job) => jobSum + (job.hours ?? 0), 0);
-    return sum + inProgressHours;
-  }, 0);
+  // Calculate filtered hours for In Progress jobs only (using allocations for the filtered months)
+  const filteredInProgressHours = schedules
+    .filter(s => s.status === 'In Progress')
+    .reduce((sum, schedule) => {
+      // For filtered months, sum the allocated hours
+      const normalizedAllocs = normalizeAllocations(schedule.allocations);
+      const scheduledHours = normalizedAllocs
+        .filter(alloc => filteredMonths.includes(alloc.month))
+        .reduce((scheduleSum, alloc) => {
+          return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
+        }, 0);
+      return sum + scheduledHours;
+    }, 0);
   
   // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
   // This is used to properly calculate unscheduled hours
-  const allInProgressScheduledHours = Object.values(monthlyData).reduce((sum, monthData) => {
-    const inProgressHours = monthData.jobs
-      .filter((job) => {
-        // Apply customer/project filters
-        const customerMatch = !customerFilter || job.customer === customerFilter;
-        const projectMatch = !projectFilter || job.projectName === projectFilter;
-        if (!customerMatch || !projectMatch) return false;
-        
-        // Find matching schedule to check status
-        const schedule = schedules.find(s => 
-          s.customer === job.customer && 
-          s.projectName === job.projectName && 
-          s.projectNumber === job.projectNumber
-        );
-        return schedule && schedule.status === 'In Progress';
-      })
-      .reduce((jobSum, job) => jobSum + (job.hours ?? 0), 0);
-    return sum + inProgressHours;
-  }, 0);
+  const allInProgressScheduledHours = schedules
+    .filter(s => s.status === 'In Progress')
+    .reduce((sum, schedule) => {
+      // Sum all allocated hours across all months for this schedule
+      const normalizedAllocs = normalizeAllocations(schedule.allocations);
+      const scheduledHours = normalizedAllocs.reduce((scheduleSum, alloc) => {
+        return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
+      }, 0);
+      return sum + scheduledHours;
+    }, 0);
 
   // Calculate unscheduled hours from ALL qualifying projects with filters
   const qualifyingStatuses = ["In Progress"];
@@ -698,7 +687,7 @@ function WIPReportContent() {
   const unscheduledHours = filteredTotalQualifyingHours - allInProgressScheduledHours;
 
   const projectKeyForSchedule = (customer?: string, projectNumber?: string, projectName?: string) => {
-    return `${customer ?? ""}|${projectNumber ?? ""}|${projectName ?? ""}`;
+    return `${customer ?? ""}~${projectNumber ?? ""}~${projectName ?? ""}`;
   };
 
   const bidSubmittedSalesByMonth: Record<string, number> = {};

@@ -407,7 +407,7 @@ function KPIPageContent({
     return `${customer ?? ""}|${projectNumber ?? ""}|${projectName ?? ""}`;
   };
 
-  const qualifyingStatuses = ["Accepted", "In Progress"];
+  const qualifyingStatuses = ["Accepted", "In Progress", "Complete"];
 
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     const activeProjects = projects;

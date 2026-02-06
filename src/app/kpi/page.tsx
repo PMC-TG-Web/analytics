@@ -359,8 +359,8 @@ function KPIPageContent({
 
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
           const matchingProject = projectsData.find((p: any) => {
-            const scheduleKey = `${schedule.customer || ""}|${schedule.projectNumber || ""}|${schedule.projectName || ""}`;
-            const projectKey = `${p.customer || ""}|${p.projectNumber || ""}|${p.projectName || ""}`;
+            const scheduleKey = `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
+            const projectKey = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
             return scheduleKey === projectKey;
           });
           return {
@@ -413,7 +413,7 @@ function KPIPageContent({
   }, []);
 
   const getProjectKey = (customer?: string, projectNumber?: string, projectName?: string) => {
-    return `${customer ?? ""}|${projectNumber ?? ""}|${projectName ?? ""}`;
+    return `${customer ?? ""}~${projectNumber ?? ""}~${projectName ?? ""}`;
   };
 
   const qualifyingStatuses = ["In Progress"];
@@ -834,38 +834,21 @@ function KPIPageContent({
     const currentTotal = scheduleSalesMap.get(key) || 0;
     scheduleSalesMap.set(key, currentTotal + sales);
   });
-  
-  console.log("🟢 Scheduled Sales Debug:");
-  console.log("In Progress projects found:", scheduleSalesMap.size);
-  console.log("Sales map:", Array.from(scheduleSalesMap.entries()));
 
   schedules.forEach((schedule: Schedule) => {
     const key = schedule.jobKey || getProjectKey(schedule.customer, schedule.projectNumber, schedule.projectName);
     const projectSales = scheduleSalesMap.get(key);
     
-    if (!projectSales) {
-      console.log("No matching project for schedule:", key);
-      return;
-    }
-    
-    console.log("Processing schedule:", key, "with sales:", projectSales);
-    const allocs = normalizeAllocations(schedule.allocations);
-    console.log("Normalized allocations:", allocs);
+    if (!projectSales) return;
 
-    allocs.forEach((alloc: any) => {
+    normalizeAllocations(schedule.allocations).forEach((alloc: any) => {
       const percent = Number(alloc.percent ?? 0);
-      if (!Number.isFinite(percent) || percent <= 0) {
-        console.log("Skipping allocation with invalid percent:", alloc.percent);
-        return;
-      }
+      if (!Number.isFinite(percent) || percent <= 0) return;
       const monthKey = alloc.month;
       const monthlySales = projectSales * (percent / 100);
-      console.log(`  ${monthKey}: ${percent}% × $${projectSales} = $${monthlySales}`);
       scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
     });
   });
-  
-  console.log("Final scheduled sales by month:", scheduledSalesByMonth);
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};

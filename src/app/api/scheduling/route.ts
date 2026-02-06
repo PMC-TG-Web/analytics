@@ -12,14 +12,25 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { jobKey, customer, projectNumber, projectName, totalHours, allocations } = body;
 
-    if (!jobKey) {
-      return NextResponse.json({ error: 'jobKey is required' }, { status: 400 });
+    if (!projectName) {
+      return NextResponse.json({ error: 'projectName is required' }, { status: 400 });
     }
 
-    // Fetch existing schedule to preserve any allocations not included in this update
-    const docRef = doc(db, 'schedules', jobKey);
-    const existingDoc = await getDoc(docRef);
-    const existingData = existingDoc.exists() ? existingDoc.data() : null;
+    // Find existing schedule by projectName (not by jobKey as doc ID, since doc IDs don't match jobKey format)
+    const q = query(collection(db, 'schedules'), where('projectName', '==', projectName));
+    const querySnapshot = await getDocs(q);
+    
+    let docRef;
+    let existingData = null;
+    
+    if (querySnapshot.docs.length > 0) {
+      // Update existing document
+      docRef = querySnapshot.docs[0].ref;
+      existingData = querySnapshot.docs[0].data();
+    } else {
+      // Create new document with jobKey as ID (now safe with tildes instead of pipes)
+      docRef = doc(db, 'schedules', jobKey);
+    }
     
     // Merge existing allocations with new ones (new ones take precedence)
     const mergedAllocations = {
@@ -38,7 +49,7 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, jobKey });
+    return NextResponse.json({ success: true, projectName });
   } catch (error) {
     console.error('Error saving schedule:', error);
     return NextResponse.json({ error: 'Failed to save schedule' }, { status: 500 });

@@ -284,7 +284,7 @@ function SchedulingContent() {
     // Step 5: Group by key (projectNumber + customer)
     const keyMap = new Map<string, typeof filteredByStatus>();
     filteredByStatus.forEach((p) => {
-      const key = `${p.customer ?? ""}|${p.projectNumber ?? ""}|${p.projectName ?? ""}`;
+      const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
       if (!keyMap.has(key)) {
         keyMap.set(key, []);
       }
@@ -373,7 +373,7 @@ function SchedulingContent() {
       const allocations = job.allocations;
 
       const projectInfo = uniqueJobs.find((j) => j.key === job.jobKey);
-      const projectNumber = projectInfo?.key.split("|")[1] || "";
+      const projectNumber = projectInfo?.key.split("~")[1] || "";
 
       const response = await fetch("/api/scheduling", {
         method: "POST",
@@ -419,7 +419,7 @@ function SchedulingContent() {
           body: JSON.stringify({
             jobKey: schedule.jobKey,
             customer: schedule.customer,
-            projectNumber: job.key.split("|")[1],
+            projectNumber: job.key.split("~")[1],
             projectName: schedule.projectName,
             status: schedule.status,
             totalHours: schedule.totalHours,
@@ -441,7 +441,7 @@ function SchedulingContent() {
       setUpdatingStatus(jobKey);
       
       // Parse the jobKey to get customer, projectNumber, and projectName
-      const [customer, projectNumber, projectName] = jobKey.split("|");
+      const [customer, projectNumber, projectName] = jobKey.split("~");
       
       // Update projects collection
       const projectsRef = collection(db, "projects");

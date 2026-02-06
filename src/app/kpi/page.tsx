@@ -824,7 +824,7 @@ function KPIPageContent({
   const scheduledSalesByMonth: Record<string, number> = {};
   
   const scheduleSalesMap = new Map<string, number>();
-  dedupedByCustomer.forEach((project: Project) => {
+  projects.forEach((project: Project) => {
     if (!qualifyingStatuses.includes(project.status || "")) return;
     
     const key = getProjectKey(project.customer, project.projectNumber, project.projectName);

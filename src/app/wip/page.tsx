@@ -670,6 +670,13 @@ function WIPReportContent() {
     if (projectFilter && project.projectName !== projectFilter) return;
     filteredTotalQualifyingHours += project.totalHours;
   });
+
+  const qualifyingKeyHours = new Map<string, number>();
+  qualifyingProjectsMap.forEach((project, key) => {
+    if (customerFilter && project.customer !== customerFilter) return;
+    if (projectFilter && project.projectName !== projectFilter) return;
+    qualifyingKeyHours.set(key, project.totalHours);
+  });
   
   // Calculate total scheduled hours from schedules (excluding Complete status)
   let totalScheduledHours = 0;
@@ -691,9 +698,22 @@ function WIPReportContent() {
     }, 0);
     totalScheduledHours += scheduledHours;
   });
-  
-  // Use ALL In Progress scheduled hours (not just filtered by year) for accurate unscheduled calculation
-  const unscheduledHours = filteredTotalQualifyingHours - allInProgressScheduledHours;
+
+  const scheduledHoursForQualifying = schedules.reduce((sum, schedule) => {
+    if (schedule.status !== "In Progress") return sum;
+    const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
+    const projectHours = schedule.totalHours || qualifyingKeyHours.get(key) || 0;
+    if (!qualifyingKeyHours.has(key) || projectHours <= 0) return sum;
+
+    const scheduledHours = normalizeAllocations(schedule.allocations).reduce((scheduleSum, alloc) => {
+      if (!isValidMonthKey(alloc.month)) return scheduleSum;
+      return scheduleSum + (projectHours * (alloc.percent / 100));
+    }, 0);
+
+    return sum + scheduledHours;
+  }, 0);
+
+  const unscheduledHours = Math.max(0, filteredTotalQualifyingHours - scheduledHoursForQualifying);
 
   const projectKeyForSchedule = (customer?: string, projectNumber?: string, projectName?: string) => {
     return `${customer ?? ""}~${projectNumber ?? ""}~${projectName ?? ""}`;

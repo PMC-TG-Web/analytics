@@ -631,12 +631,6 @@ function DashboardContent() {
         }
       </div>
 
-      {/* Time Series Line Chart by Month/Year for Hours by Status */}
-      <div style={{ marginTop: 64, background: '#2b2d31', borderRadius: 12, boxShadow: '0 4px 6px rgba(0,0,0,0.3)', border: '1px solid #3a3d42', padding: 32 }}>
-        <h2 style={{ marginBottom: 24, color: '#fff', fontSize: 20 }}>Hours by Month/Year (Submitted, In Progress, Accepted)</h2>
-        <TimeSeriesChart projects={aggregatedProjects} />
-      </div>
-
       {/* Drill-through Modals */}
       <JobsListModal
         isOpen={jobsListOpen}

@@ -845,7 +845,6 @@ function KPIPageContent({
       const percent = Number(alloc.percent ?? 0);
       if (!Number.isFinite(percent) || percent <= 0) return;
       const monthKey = alloc.month;
-      if (!isValidMonthKey(monthKey)) return;
       const monthlySales = projectSales * (percent / 100);
       scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
     });

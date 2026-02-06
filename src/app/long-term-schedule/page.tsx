@@ -77,7 +77,7 @@ function LongTermScheduleContent() {
     try {
       const snapshot = await getDocs(collection(db, "long term schedual"));
       
-      // Calculate the date range for next 12 weeks (including current week)
+      // Calculate the date range for next 15 weeks (including current week)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -88,8 +88,8 @@ function LongTermScheduleContent() {
       currentWeekStart.setDate(currentWeekStart.getDate() + daysToMonday);
       currentWeekStart.setHours(0, 0, 0, 0);
       
-      const twelveWeeksFromStart = new Date(currentWeekStart);
-      twelveWeeksFromStart.setDate(twelveWeeksFromStart.getDate() + (12 * 7));
+      const fifteenWeeksFromStart = new Date(currentWeekStart);
+      fifteenWeeksFromStart.setDate(fifteenWeeksFromStart.getDate() + (15 * 7));
       
       // Build week columns and job data
       const weekMap = new Map<string, WeekColumn>();
@@ -106,7 +106,7 @@ function LongTermScheduleContent() {
         weeks.forEach((week: WeekData) => {
           const weekDate = weekDates[week.weekNumber - 1];
           
-          if (!weekDate || weekDate < currentWeekStart || weekDate >= twelveWeeksFromStart) return;
+          if (!weekDate || weekDate < currentWeekStart || weekDate >= fifteenWeeksFromStart) return;
           
           const weekKey = weekDate.toISOString();
           
@@ -180,14 +180,14 @@ function LongTermScheduleContent() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Long-Term Schedule</h1>
-            <p className="text-gray-600 mt-1">Next 12 weeks - Hours and Weekly FTE by project</p>
+            <p className="text-gray-600 mt-1">Next 15 weeks - Hours and Weekly FTE by project</p>
           </div>
           <Navigation currentPage="long-term-schedule" />
         </div>
 
         {weekColumns.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-            No schedules found for the next 12 weeks.
+            No schedules found for the next 15 weeks.
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">

@@ -25,6 +25,7 @@ type JobSchedule = {
 };
 
 function formatMonthLabel(month: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return "";
   const [year, m] = month.split("-");
   const date = new Date(Number(year), Number(m) - 1, 1);
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
@@ -33,7 +34,10 @@ function formatMonthLabel(month: string) {
 function parseDateValue(value: any): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
-  if (typeof value === 'object' && value.toDate) return value.toDate();
+  if (typeof value === 'object' && value.toDate) {
+    const date = value.toDate();
+    return date instanceof Date && !isNaN(date.getTime()) ? date : null;
+  }
   if (typeof value === 'string') {
     const date = new Date(value);
     return isNaN(date.getTime()) ? null : date;
@@ -90,6 +94,7 @@ function SchedulingContent() {
           const parsed = JSON.parse(saved);
           // Filter out any months before 2026
           const filtered = parsed.filter((m: string) => {
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) return false;
             const [year] = m.split('-');
             return Number(year) >= 2026;
           });

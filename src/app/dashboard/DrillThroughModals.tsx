@@ -329,8 +329,13 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
   if (!isOpen || !project) return null;
 
   const formatDate = (dateValue: any) => {
-    if (!dateValue) return "N/A";
-    const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    if (!dateValue) return "—";
+    const d = typeof dateValue === "object" && typeof dateValue.toDate === "function"
+      ? dateValue.toDate()
+      : dateValue instanceof Date
+        ? dateValue
+        : new Date(dateValue);
+    if (!(d instanceof Date) || isNaN(d.getTime())) return "—";
     return d.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",

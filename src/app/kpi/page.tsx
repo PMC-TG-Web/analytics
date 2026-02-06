@@ -50,7 +50,10 @@ type Project = {
 function parseDateValue(value: any) {
   if (!value) return null;
   if (value instanceof Date) return value;
-  if (typeof value === "number") return new Date(value);
+  if (typeof value === "number") {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
   if (typeof value === "string") {
     const d = new Date(value);
     return isNaN(d.getTime()) ? null : d;
@@ -60,6 +63,10 @@ function parseDateValue(value: any) {
     return d instanceof Date && !isNaN(d.getTime()) ? d : null;
   }
   return null;
+}
+
+function isValidMonthKey(month: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
 function parseCsv(text: string): string[][] {
@@ -1514,7 +1521,9 @@ function CombinedSalesLineChart({
   bidSubmittedSalesByMonth: Record<string, number>;
 }) {
   const monthSet = new Set<string>([...scheduledMonths, ...bidSubmittedMonths]);
-  const sortedMonths = Array.from(monthSet).filter(month => !month.startsWith("2024")).sort();
+  const sortedMonths = Array.from(monthSet)
+    .filter(month => isValidMonthKey(month) && !month.startsWith("2024"))
+    .sort();
 
   const scheduledSales = sortedMonths.map(month => scheduledSalesByMonth[month] || 0);
   const bidSubmittedSales = sortedMonths.map(month => bidSubmittedSalesByMonth[month] || 0);
@@ -1522,7 +1531,7 @@ function CombinedSalesLineChart({
   const labels = sortedMonths.map(month => {
     const [year, m] = month.split("-");
     const date = new Date(Number(year), Number(m) - 1, 1);
-    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    return isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
   });
 
   const maxScheduledSales = Math.max(...scheduledSales, 0);

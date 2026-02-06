@@ -90,9 +90,17 @@ function isValidMonthKey(month: string) {
 }
 
 function formatMonthLabel(month: string) {
+  if (!isValidMonthKey(month)) return "";
   const [year, m] = month.split("-");
   const date = new Date(Number(year), Number(m) - 1, 1);
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
+function formatMonthLabelShort(month: string) {
+  if (!isValidMonthKey(month)) return "";
+  const [year, m] = month.split("-");
+  const date = new Date(Number(year), Number(m) - 1, 1);
+  return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
 }
 
 export default function WIPReportPage() {
@@ -1162,9 +1170,7 @@ function WIPReportContent() {
                     {selectedJob.months.map((month: string) => {
                       const percent = editableSchedule[month] || 0;
                       const hours = (selectedJob.totalHours * percent) / 100;
-                      const [year, m] = month.split("-");
-                      const date = new Date(Number(year), Number(m) - 1, 1);
-                      const monthLabel = date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+                      const monthLabel = formatMonthLabel(month) || "—";
 
                       return (
                         <tr 
@@ -1290,9 +1296,8 @@ function WIPReportContent() {
             <div style={{ marginBottom: 24 }}>
               <h2 style={{ color: "#15616D", margin: 0, marginBottom: 8 }}>
                 Weekly Schedule - {(() => {
-                  const [year, m] = selectedMonth.split("-");
-                  const date = new Date(Number(year), Number(m) - 1, 1);
-                  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+                  const label = formatMonthLabel(selectedMonth);
+                  return label ? label : "—";
                 })()}
               </h2>
               <div style={{ color: "#666", fontSize: 14 }}>
@@ -1357,7 +1362,9 @@ function WIPReportContent() {
                       const weekNumber = index + 1;
                       const currentValue = weeklySchedule[weekNumber];
                       const displayValue = currentValue !== undefined && currentValue !== null ? currentValue : 0;
-                      const dateStr = monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                      const dateStr = isNaN(monday.getTime())
+                        ? "—"
+                        : monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
                       
                       return (
                         <tr key={weekNumber} style={{ borderBottom: "1px solid #f0f0f0" }}>
@@ -1453,9 +1460,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
   const sortedMonths = months.sort();
   const hours = sortedMonths.map(month => monthlyData[month]?.hours || 0);
   const labels = sortedMonths.map(month => {
-    const [year, m] = month.split("-");
-    const date = new Date(Number(year), Number(m) - 1, 1);
-    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    return formatMonthLabelShort(month) || "";
   });
 
   // Determine current month (today's month/year)
@@ -1541,7 +1546,7 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
       forecastData.push(Math.max(0, forecastValue));
       
       const date = new Date(forecastYear, forecastMonth - 1, 1);
-      forecastLabels.push(date.toLocaleDateString(undefined, { month: "short", year: "2-digit" }));
+      forecastLabels.push(isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", year: "2-digit" }));
     }
     
     labels.push(...forecastLabels);
@@ -1747,9 +1752,7 @@ function CombinedSalesLineChart({
   const bidSubmittedSales = sortedMonths.map(month => bidSubmittedSalesByMonth[month] || 0);
 
   const labels = sortedMonths.map(month => {
-    const [year, m] = month.split("-");
-    const date = new Date(Number(year), Number(m) - 1, 1);
-    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    return formatMonthLabelShort(month) || "";
   });
 
   const maxScheduledSales = Math.max(...scheduledSales, 0);

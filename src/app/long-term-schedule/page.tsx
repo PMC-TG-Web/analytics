@@ -54,6 +54,7 @@ function LongTermScheduleContent() {
   }, []);
 
   function getMonthWeekDates(monthStr: string): Date[] {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthStr)) return [];
     const [year, month] = monthStr.split("-").map(Number);
     const dates: Date[] = [];
     

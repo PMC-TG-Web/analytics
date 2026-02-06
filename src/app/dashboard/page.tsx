@@ -96,7 +96,7 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
   return (
     <div style={{ marginBottom: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#fff', margin: 0 }}>Top Contractors</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#333', margin: 0 }}>Top Contractors</h2>
         <select
           value={topContractorLimit}
           onChange={(e) => setTopContractorLimit(e.target.value)}
@@ -1109,3 +1109,4 @@ function SummaryCard({ label, value, prefix = '', suffix = '', decimals = 0, lar
     </div>
   );
 }
+

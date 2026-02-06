@@ -10,7 +10,7 @@ const db = getFirestore(app);
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobKey, customer, projectNumber, projectName, totalHours, allocations } = body;
+    const { jobKey, customer, projectNumber, projectName, status, totalHours, allocations } = body;
 
     if (!projectName) {
       return NextResponse.json({ error: 'projectName is required' }, { status: 400 });
@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       customer,
       projectNumber,
       projectName,
+      status: status || existingData?.status || 'In Progress', // Preserve existing status or default to In Progress
       totalHours,
       allocations: mergedAllocations,
       updatedAt: new Date().toISOString(),

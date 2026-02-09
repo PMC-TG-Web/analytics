@@ -490,7 +490,7 @@ function ProjectScheduleContent() {
           consider(parseScopeDate(scope.endDate) || parseScopeDate(scope.startDate));
         });
       });
-    } else {
+    } else if (viewMode === "month") {
       monthJobs.forEach((job) => {
         const range = getMonthRange(job.month);
         if (range) consider(range.end);
@@ -500,7 +500,7 @@ function ProjectScheduleContent() {
       });
     }
 
-    if (!maxDate || maxDate.getTime() < startDate.getTime()) {
+    if (!maxDate || (maxDate as Date).getTime() < startDate.getTime()) {
       return addDays(startDate, 30);
     }
 

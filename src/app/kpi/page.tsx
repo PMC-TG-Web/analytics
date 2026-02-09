@@ -45,6 +45,7 @@ type Project = {
   dateUpdated?: any;
   projectArchived?: boolean;
   estimator?: string;
+  projectManager?: string;
 };
 
 function parseDateValue(value: any) {

@@ -24,6 +24,7 @@ export type Project = {
   dateCreated?: any;
   projectArchived?: boolean;
   estimator?: string;
+  projectManager?: string;
   [key: string]: any;
 };
 

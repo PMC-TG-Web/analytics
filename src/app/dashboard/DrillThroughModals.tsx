@@ -348,6 +348,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
     { label: "Project Name", value: project.projectName },
     { label: "Customer", value: project.customer },
     { label: "Estimator", value: project.estimator },
+    { label: "Project Manager", value: project.projectManager },
     { label: "Status", value: project.status, isBadge: true },
     { label: "Project Stage", value: project.projectStage },
     { label: "Date Created", value: formatDate(project.dateCreated) },

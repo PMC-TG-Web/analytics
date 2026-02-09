@@ -13,6 +13,7 @@ type Project = {
   hours?: number;
   status?: string;
   pmcgroup?: boolean;
+  projectManager?: string;
 };
 
 type JobSchedule = {

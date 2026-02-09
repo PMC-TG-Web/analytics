@@ -14,7 +14,10 @@ const navLinks: NavLink[] = [
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip", color: "#E06C00" },
   { href: "/scheduling", label: "Scheduling", page: "scheduling" },
+  { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule", color: "#E06C00" },
   { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },
+  { href: "/project-schedule", label: "Project Gantt", page: "project-schedule", color: "#E06C00" },
+  { href: "/employees", label: "Employees", page: "employees" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
 ];
 

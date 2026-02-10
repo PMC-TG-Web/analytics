@@ -1,0 +1,662 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { collection, getDocs, doc, setDoc, getDoc, query, where } from "firebase/firestore";
+import { db } from "@/firebase";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
+import { Scope, Project } from "@/types";
+import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
+
+interface DayData {
+  dayNumber: number; // 1-7 for Mon-Sun
+  hours: number;
+  foreman?: string; // Employee ID of assigned foreman
+  employees?: string[]; // Employee IDs assigned to this day
+}
+
+interface WeekData {
+  weekNumber: number;
+  days: DayData[];
+}
+
+interface ScheduleDoc {
+  jobKey: string;
+  customer: string;
+  projectNumber: string;
+  projectName: string;
+  month: string;
+  weeks: WeekData[];
+}
+
+interface DayColumn {
+  date: Date;
+  dayLabel: string;
+  weekNumber: number;
+}
+
+interface DayProject {
+  jobKey: string;
+  customer: string;
+  projectNumber: string;
+  projectName: string;
+  hours: number;
+  foreman?: string;
+  employees?: string[]; 
+  month: string;
+  weekNumber: number;
+  dayNumber: number;
+}
+
+interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  isActive?: boolean;
+}
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export default function DailyCrewDispatchBoardPage() {
+  return (
+    <ProtectedPage page="short-term-schedule">
+      <DailyCrewDispatchBoardContent />
+    </ProtectedPage>
+  );
+}
+
+function DailyCrewDispatchBoardContent() {
+  const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
+  const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
+  const [foremen, setForemen] = useState<Employee[]>([]);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadSchedules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function getWeekDates(weekStart: Date): Date[] {
+    const dates: Date[] = [];
+    for (let i = 0; i < 5; i++) {
+      const date = new Date(weekStart);
+      date.setDate(date.getDate() + i);
+      dates.push(date);
+    }
+    return dates;
+  }
+
+  function getMonthWeekStarts(monthStr: string): Date[] {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthStr)) return [];
+    const [year, month] = monthStr.split("-").map(Number);
+    const dates: Date[] = [];
+    const startDate = new Date(year, month - 1, 1);
+    while (startDate.getDay() !== 1) {
+      startDate.setDate(startDate.getDate() + 1);
+    }
+    while (startDate.getMonth() === month - 1) {
+      dates.push(new Date(startDate));
+      startDate.setDate(startDate.getDate() + 7);
+    }
+    return dates;
+  }
+
+  function getWeekDayPositionForDate(monthStr: string, targetDate: Date): { weekNumber: number; dayNumber: number } | null {
+    const monthWeekStarts = getMonthWeekStarts(monthStr);
+    for (let i = 0; i < monthWeekStarts.length; i++) {
+      const weekDates = getWeekDates(monthWeekStarts[i]);
+      for (let d = 0; d < weekDates.length; d++) {
+        if (weekDates[d].toDateString() === targetDate.toDateString()) {
+          return { weekNumber: i + 1, dayNumber: d + 1 };
+        }
+      }
+    }
+    return null;
+  }
+
+  async function loadSchedules() {
+    try {
+      const employeesSnapshot = await getDocs(collection(db, "employees"));
+      const allEmps = employeesSnapshot.docs
+        .map(doc => ({ 
+          id: doc.id, 
+          firstName: doc.data().firstName || '',
+          lastName: doc.data().lastName || '',
+          role: doc.data().role || '',
+          isActive: doc.data().isActive !== false
+        } as Employee))
+        .sort((a, b) => {
+          const nameA = `${a.firstName} ${a.lastName}`;
+          const nameB = `${b.firstName} ${b.lastName}`;
+          return nameA.localeCompare(nameB);
+        });
+      setAllEmployees(allEmps);
+      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman"));
+      setForemen(foremenList);
+
+      const shortTermSnapshot = await getDocs(collection(db, "short term schedual"));
+      const projectScopesSnapshot = await getDocs(collection(db, "projectScopes"));
+      const projectsSnapshot = await getDocs(query(
+        collection(db, "projects"),
+        where("status", "not-in", ["Bid Submitted", "Lost"])
+      ));
+      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
+      
+      const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      setAllProjects(projs);
+      
+      const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      const enrichedScopes = getEnrichedScopes(rawScopes, projs);
+      const scopesObj: Record<string, Scope[]> = {};
+      enrichedScopes.forEach(scope => {
+        if (scope.jobKey) {
+          if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
+          scopesObj[scope.jobKey].push(scope);
+        }
+      });
+
+      const today = new Date();
+      today.setHours(today.getHours(), today.getMinutes(), today.getSeconds(), today.getMilliseconds());
+      const displayDate = new Date(today);
+      displayDate.setHours(0, 0, 0, 0);
+      
+      const currentWeekStart = new Date(displayDate);
+      const fiveWeeksFromStart = new Date(displayDate);
+      fiveWeeksFromStart.setDate(fiveWeeksFromStart.getDate() + 1);
+
+      const dayMap = new Map<string, DayColumn>();
+      const projectsByDay: Record<string, DayProject[]> = {};
+      const projectsWithGanttData = new Set<string>();
+
+      const dateKey = formatDateKey(displayDate);
+      dayMap.set(dateKey, {
+        date: displayDate,
+        dayLabel: displayDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        weekNumber: 1,
+      });
+      projectsByDay[dateKey] = [];
+
+      Object.entries(scopesObj).forEach(([jobKey, scopes]) => {
+        const jobProjects = projs.filter(p => {
+          const pKey = getProjectKey(p);
+          return pKey === jobKey;
+        });
+        if (jobProjects.length === 0) return;
+        const validScopes = scopes.filter(s => s.startDate && s.endDate);
+        if (validScopes.length > 0) {
+          projectsWithGanttData.add(jobKey);
+          validScopes.forEach(scope => {
+              // Parse YYYY-MM-DD as local date to avoid timezone shift
+              const [sY, sM, sD] = scope.startDate!.split('-').map(Number);
+              const [eY, eM, eD] = scope.endDate!.split('-').map(Number);
+              const start = new Date(sY, sM - 1, sD);
+              const end = new Date(eY, eM - 1, eD);
+              
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+            const title = (scope.title || "Scope").trim().toLowerCase();
+            const titleWithoutQty = title.replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "").trim();
+            const projectCostItems = jobProjects.map(p => ({
+              costitems: (p.costitems || "").toLowerCase(),
+              hours: typeof p.hours === "number" ? p.hours : 0,
+              costType: typeof p.costType === "string" ? p.costType : "",
+            }));
+            const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
+            const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
+            if (scopeHours <= 0) return;
+            let workDaysInRange = 0;
+            let current = new Date(start);
+            while (current <= end) {
+              if (current.getDay() !== 0 && current.getDay() !== 6) workDaysInRange++;
+              current.setDate(current.getDate() + 1);
+            }
+            if (workDaysInRange === 0) return;
+            const dailyHours = scopeHours / workDaysInRange;
+            current = new Date(start);
+            while (current <= end) {
+              if (current.getDay() !== 0 && current.getDay() !== 6) {
+                const dKey = formatDateKey(current);
+                if (projectsByDay[dKey]) {
+                  const monthStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+                  const position = getWeekDayPositionForDate(monthStr, current);
+                  projectsByDay[dKey].push({
+                    jobKey,
+                    customer: jobProjects[0].customer || "",
+                    projectNumber: jobProjects[0].projectNumber || "",
+                    projectName: jobProjects[0].projectName || "",
+                    hours: dailyHours,
+                    foreman: "",
+                    employees: [],
+                    month: monthStr,
+                    weekNumber: position?.weekNumber || 1,
+                    dayNumber: position?.dayNumber || (current.getDay() || 7),
+                  });
+                }
+              }
+              current.setDate(current.getDate() + 1);
+            }
+          });
+        }
+      });
+
+      shortTermSnapshot.docs.forEach((doc) => {
+        const docData = doc.data() as ScheduleDoc;
+        if (doc.id === "_placeholder" || !docData.jobKey) return;
+        const normalizedJobKey = docData.jobKey.replace(/\s+/g, ' '); // Ensure consistent key format
+        const weeks = docData.weeks || [];
+        const monthWeekStarts = getMonthWeekStarts(docData.month);
+        weeks.forEach((week: WeekData) => {
+          const weekStart = monthWeekStarts[week.weekNumber - 1];
+          if (!weekStart) return;
+          const weekDates = getWeekDates(weekStart);
+          (week.days || []).forEach((day: DayData) => {
+            const dayDate = weekDates[day.dayNumber - 1];
+            if (!dayDate || dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
+            const dKey = formatDateKey(dayDate);
+            if (projectsByDay[dKey]) {
+              // Update ALL matching scopes for this project on this day
+              let foundExisting = false;
+              projectsByDay[dKey].forEach(p => {
+                if (p.jobKey === normalizedJobKey || p.jobKey === docData.jobKey) {
+                  p.foreman = day.foreman || "";
+                  p.employees = day.employees || [];
+                  // Only override hours if manually scheduled hours are provided (> 0)
+                  if (day.hours > 0) p.hours = day.hours;
+                  foundExisting = true;
+                }
+              });
+
+              if (!foundExisting) {
+                projectsByDay[dKey].push({
+                  jobKey: docData.jobKey,
+                  customer: docData.customer || "",
+                  projectNumber: docData.projectNumber || "",
+                  projectName: docData.projectName || "",
+                  hours: day.hours,
+                  foreman: day.foreman || "",
+                  employees: day.employees || [],
+                  month: docData.month,
+                  weekNumber: week.weekNumber,
+                  dayNumber: day.dayNumber,
+                });
+              }
+            }
+          });
+        });
+      });
+
+      longTermSnapshot.docs.forEach((doc) => {
+        const docData = doc.data();
+        if (doc.id === "_placeholder" || !docData.jobKey) return;
+        if (projectsWithGanttData.has(docData.jobKey)) return;
+        const weeks = docData.weeks || [];
+        const monthWeekStarts = getMonthWeekStarts(docData.month);
+        weeks.forEach((week: { weekNumber: number; hours: number }) => {
+          const weekStart = monthWeekStarts[week.weekNumber - 1];
+          if (!weekStart) return;
+          const weekDates = getWeekDates(weekStart);
+          const hoursPerDay = (week.hours || 0) / 5;
+          if (hoursPerDay <= 0) return;
+          weekDates.forEach((dayDate, dayIndex) => {
+            if (dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
+            const dKey = formatDateKey(dayDate);
+            if (projectsByDay[dKey]) {
+              const exists = projectsByDay[dKey].some(p => p.jobKey === docData.jobKey);
+              if (!exists) {
+                projectsByDay[dKey].push({
+                  jobKey: docData.jobKey,
+                  customer: docData.customer || "",
+                  projectNumber: docData.projectNumber || "",
+                  projectName: docData.projectName || "",
+                  hours: hoursPerDay,
+                  foreman: "",
+                  employees: [],
+                  month: docData.month,
+                  weekNumber: week.weekNumber,
+                  dayNumber: dayIndex + 1,
+                });
+              }
+            }
+          });
+        });
+      });
+
+      const columns = Array.from(dayMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+      setDayColumns(columns);
+
+      const foremanDateMap: Record<string, Record<string, DayProject[]>> = {};
+      foremenList.forEach(foreman => {
+        foremanDateMap[foreman.id] = {};
+        columns.forEach(col => {
+          const dateKey = col.date.toISOString().split('T')[0];
+          foremanDateMap[foreman.id][dateKey] = [];
+        });
+      });
+      foremanDateMap.__unassigned__ = {};
+      columns.forEach(col => {
+        const dateKey = col.date.toISOString().split('T')[0];
+        foremanDateMap.__unassigned__[dateKey] = [];
+      });
+
+      Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
+        projects.forEach(project => {
+          if (project.foreman) {
+            if (!foremanDateMap[project.foreman]) foremanDateMap[project.foreman] = {};
+            if (!foremanDateMap[project.foreman][dateKey]) foremanDateMap[project.foreman][dateKey] = [];
+            foremanDateMap[project.foreman][dateKey].push(project);
+          } else {
+            foremanDateMap.__unassigned__[dateKey].push(project);
+          }
+        });
+      });
+      setForemanDateProjects(foremanDateMap);
+
+      const crewMap: Record<string, Record<string, string[]>> = {};
+      Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
+        if (!crewMap[dateKey]) crewMap[dateKey] = {};
+        projects.forEach(project => {
+          const foremanId = project.foreman;
+          if (foremanId) {
+            if (!crewMap[dateKey][foremanId]) crewMap[dateKey][foremanId] = [];
+            if (project.employees && Array.isArray(project.employees)) {
+              project.employees.forEach((empId: string) => {
+                if (!crewMap[dateKey][foremanId].includes(empId)) crewMap[dateKey][foremanId].push(empId);
+              });
+            }
+          }
+        });
+      });
+      setCrewAssignments(crewMap);
+    } catch (error) {
+      console.error("Failed to load schedules:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getAssignedEmployeesForDate(dateKey: string): string[] {
+    const assigned: string[] = [];
+    if (crewAssignments[dateKey]) {
+      Object.values(crewAssignments[dateKey]).forEach(employees => {
+        employees.forEach(empId => {
+          if (!assigned.includes(empId)) assigned.push(empId);
+        });
+      });
+    }
+    return assigned;
+  }
+
+  function getAvailableEmployeesForForeman(dateKey: string, currentForemanId: string): Employee[] {
+    const assignedToOthers: string[] = [];
+    if (crewAssignments[dateKey]) {
+      Object.entries(crewAssignments[dateKey]).forEach(([foremanId, employees]) => {
+        if (foremanId !== currentForemanId) {
+          employees.forEach(empId => {
+            if (!assignedToOthers.includes(empId)) assignedToOthers.push(empId);
+          });
+        }
+      });
+    }
+    return allEmployees.filter(e => e.isActive && e.role === "Field Worker" && !assignedToOthers.includes(e.id));
+  }
+
+  async function updateCrewAssignment(dateKey: string, foremanId: string, selectedEmployeeIds: string[]) {
+    const assignedToOthers: string[] = [];
+    if (crewAssignments[dateKey]) {
+      Object.entries(crewAssignments[dateKey]).forEach(([fId, employees]) => {
+        if (fId !== foremanId) {
+          employees.forEach(empId => {
+            if (!assignedToOthers.includes(empId)) assignedToOthers.push(empId);
+          });
+        }
+      });
+    }
+    const validEmployeeIds = selectedEmployeeIds.filter(empId => !assignedToOthers.includes(empId));
+    setCrewAssignments((prev) => ({
+      ...prev,
+      [dateKey]: { ...prev[dateKey], [foremanId]: validEmployeeIds }
+    }));
+
+    setSaving(true);
+    try {
+      const projects = foremanDateProjects[foremanId]?.[dateKey] || [];
+      for (const project of projects) {
+        const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber, hours, foreman } = project;
+        const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+        const docRef = doc(db, "short term schedual", docId);
+        const docSnapshot = await getDoc(docRef);
+        const existingData = docSnapshot.exists() ? (docSnapshot.data() as ScheduleDoc) : null;
+        let docData: ScheduleDoc & { updatedAt?: string };
+        if (existingData) {
+          docData = { ...existingData };
+          if (!docData.weeks) docData.weeks = [];
+          let weekFound = false;
+          docData.weeks = docData.weeks.map((week: WeekData) => {
+            if (week.weekNumber === weekNumber) {
+              weekFound = true;
+              const updatedDays = (week.days || []).map((day: DayData) => {
+                if (day.dayNumber === dayNumber) return { ...day, hours, foreman: foreman || "", employees: selectedEmployeeIds };
+                return day;
+              });
+              if (!updatedDays.some((d: DayData) => d.dayNumber === dayNumber)) {
+                updatedDays.push({ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds });
+              }
+              return { ...week, days: updatedDays };
+            }
+            return week;
+          });
+          if (!weekFound) docData.weeks.push({ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds }] });
+        } else {
+          docData = { jobKey, customer, projectNumber, projectName, month, weeks: [{ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds }] }] };
+        }
+        docData.updatedAt = new Date().toISOString();
+        await setDoc(docRef, docData, { merge: true });
+      }
+    } catch (error) {
+      console.error("Failed to save crew assignment:", error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+        <div className="text-xl font-semibold text-gray-600 italic">Initializing Dispatch Board...</div>
+      </div>
+    );
+  }
+
+  const today = dayColumns[0];
+  const dateKey = today ? formatDateKey(today.date) : "";
+  
+  // Totals for the whole company today
+  let globalScheduledHours = 0;
+  Object.values(foremanDateProjects).forEach(dateMap => {
+    if (dateMap[dateKey]) {
+      dateMap[dateKey].forEach(proj => {
+        globalScheduledHours += proj.hours;
+      });
+    }
+  });
+  
+  const totalFieldWorkers = allEmployees.filter(e => e.role === "Field Worker" && e.isActive).length;
+  const globalCapacityHours = totalFieldWorkers * 10;
+  const globalAssignedCount = getAssignedEmployeesForDate(dateKey).length;
+  const globalActualHours = globalAssignedCount * 10;
+
+  return (
+    <div className="h-screen overflow-hidden bg-gray-50 flex flex-col p-2 md:p-4 text-gray-900">
+      <div className="max-w-full mx-auto w-full flex flex-col h-full bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200">
+        
+        {/* Kiosk-Style Header - Light */}
+        <div className="flex flex-row justify-between items-center p-4 gap-6 bg-gray-100/50 border-b border-gray-200">
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-center justify-center bg-teal-600 px-5 py-2 rounded-2xl shadow-lg shadow-teal-600/20">
+              <span className="text-xs font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-teal-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
+              <span className="text-3xl font-black leading-none text-white">{today?.date.getDate()}</span>
+            </div>
+            <div>
+              <h1 className="text-3xl font-black tracking-tighter text-gray-900 uppercase italic">Daily Crew Dispatch</h1>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="text-xs font-bold text-teal-600 uppercase tracking-widest">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Active Operations</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
+              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Total Sched</span>
+              <span className="text-2xl font-black text-teal-600">{globalScheduledHours.toFixed(0)} <span className="text-xs font-bold opacity-40">H</span></span>
+            </div>
+            <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
+              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Manpower</span>
+              <span className="text-2xl font-black text-orange-600">{globalActualHours.toFixed(0)} <span className="text-xs font-bold opacity-40">H</span></span>
+            </div>
+            <div className="w-px bg-gray-200 mx-2"></div>
+            <Navigation currentPage="daily-crew-dispatch-board" />
+          </div>
+        </div>
+
+        {/* Dispatch Grid - Balanced 3-Column Layout for TV */}
+        <div className="flex-1 overflow-auto p-4 bg-gray-50 custom-scrollbar">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {foremen.map((foreman) => {
+              const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
+              const scheduledHrs = projects.reduce((sum, p) => sum + p.hours, 0);
+              const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
+              const actualHrs = currentEmployees.length * 10;
+              const availableEmployees = getAvailableEmployeesForForeman(dateKey, foreman.id);
+              
+              const diff = actualHrs - scheduledHrs;
+              const statusColor = Math.abs(diff) < 2 ? 'bg-green-500' : diff > 0 ? 'bg-blue-500' : 'bg-red-500';
+              const statusBorder = Math.abs(diff) < 2 ? 'border-green-500/30' : diff > 0 ? 'border-blue-500/30' : 'border-red-500/40';
+
+              return (
+                <div 
+                  key={foreman.id} 
+                  className={`bg-white rounded-3xl border-2 ${statusBorder} flex flex-col overflow-hidden shadow-md transition-all hover:shadow-lg min-h-[350px]`}
+                >
+                  {/* Card Header - Foreman Focus */}
+                  <div className="p-4 flex justify-between items-center bg-gray-50 border-b border-gray-100">
+                    <h3 className="text-2xl font-black text-gray-900 truncate">{foreman.firstName} {foreman.lastName}</h3>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-2xl font-black text-gray-900 leading-none">{actualHrs}h</div>
+                        <div className="text-[10px] font-black uppercase text-gray-400 mt-1">Actual</div>
+                      </div>
+                      <div className="w-px h-8 bg-gray-200"></div>
+                      <div className="text-right">
+                        <div className="text-2xl font-black text-gray-500 leading-none">{scheduledHrs}h</div>
+                        <div className="text-[10px] font-black uppercase text-gray-300 mt-1">Sched</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-4 flex-1 flex flex-col">
+                    {/* Projects Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`}></div>
+                        <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Job Assignments</h4>
+                      </div>
+                      <div className="space-y-1.5">
+                        {projects.map((p, pIdx) => (
+                          <div key={pIdx} className="bg-gray-50 px-3 py-2 rounded-xl flex justify-between items-center border border-gray-100">
+                            <div className="overflow-hidden">
+                              <div className="font-black text-gray-800 text-xs truncate leading-tight uppercase">{p.projectName}</div>
+                              <div className="text-[10px] text-teal-600 font-bold tracking-tight opacity-70 truncate uppercase">{p.customer}</div>
+                            </div>
+                            <div className="bg-white px-2 py-1 rounded-lg text-teal-600 font-black text-[10px] ml-2 border border-teal-50">
+                              {p.hours.toFixed(0)} <span className="opacity-50 uppercase">h</span>
+                            </div>
+                          </div>
+                        ))}
+                        {projects.length === 0 && <div className="text-xs text-gray-400 italic py-2">No projects assigned</div>}
+                      </div>
+                    </div>
+
+                    {/* Crew Selection - Light styling */}
+                    <div className="flex-1 flex flex-col min-h-0 pt-2">
+                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Personnel ({currentEmployees.length})</h4>
+                      <select
+                        multiple
+                        size={5}
+                        value={currentEmployees}
+                        onChange={(e) => {
+                          const selected = Array.from(e.target.selectedOptions, option => option.value);
+                          updateCrewAssignment(dateKey, foreman.id, selected);
+                        }}
+                        disabled={saving}
+                        className="flex-1 w-full px-3 py-2 text-xs font-bold border-2 border-gray-100 rounded-2xl bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all custom-scrollbar outline-none"
+                      >
+                        {availableEmployees.map((emp) => (
+                          <option key={emp.id} value={emp.id} className="py-1">{emp.firstName} {emp.lastName}</option>
+                        ))}
+                        {currentEmployees.map(empId => {
+                          const emp = allEmployees.find(e => e.id === empId);
+                          if (emp && !availableEmployees.find(ae => ae.id === empId)) {
+                            return <option key={empId} value={empId} className="py-1 text-teal-600 font-black">{emp.firstName} {emp.lastName} (Assigned)</option>;
+                          }
+                          return null;
+                        })}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Utilization Indicator */}
+                  <div className="h-1.5 w-full bg-gray-100">
+                    <div 
+                      className={`h-full opacity-80 ${statusColor}`} 
+                      style={{ width: `${Math.min(100, (actualHrs / (scheduledHrs || 1)) * 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Unassigned Projects - Tray-style Footer (Light) */}
+        {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
+          <div className="p-3 bg-orange-50 border-t border-orange-100 flex items-center gap-4">
+            <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-white px-2 py-1 rounded-lg animate-pulse">Action Required</span>
+            <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar">
+              {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
+                <Link 
+                  key={pIdx} 
+                  href={`/short-term-schedule?search=${encodeURIComponent(p.projectName)}`}
+                  className="bg-white border border-orange-200 rounded-xl px-3 py-1.5 flex items-center gap-3 flex-shrink-0 shadow-sm hover:border-orange-500 transition-colors group"
+                >
+                  <span className="text-xs font-black text-gray-800 group-hover:text-orange-600">{p.projectName}</span>
+                  <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 rounded-lg">{p.hours.toFixed(0)}h</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style jsx global>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}</style>
+    </div>
+  );
+}

@@ -113,14 +113,16 @@ function FieldTrackingContent() {
     const project = projects.find(p => p.id === selectedProject);
     const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
 
-    // Matching logic similar to projectUtils
+    // Precise matching logic
     const scopeTitleLower = (scope.title || "").trim().toLowerCase();
+    
+    // Extract significant words including measurements like 4", 6", etc.
     const cleanScope = scopeTitleLower
       .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf|ea)?\s*([-–]\s*)?/i, "")
-      .replace(/\d+\s*"/g, "") // Remove thickness like 4"
       .trim();
     
-    const scopeWords = cleanScope.split(/\s+/).filter(w => w.length > 2 && w !== "and" && w !== "with" && w !== "for");
+    // Split into words, keeping things like 4" or 6"
+    const scopeWords = cleanScope.split(/\s+/).filter(w => w.length >= 2 && w !== "and" && w !== "with" && w !== "for");
 
     const matchedProjectItems = fullProjectList.filter(p => {
       const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
@@ -129,22 +131,30 @@ function FieldTrackingContent() {
       const costItemName = (p.costitems || "").toLowerCase();
       const pmcGroupName = (p.pmcGroup || "").toString().toLowerCase();
       
-      // Global labor categories that should always show up
-      const isGlobalLabor = pmcGroupName.includes("travel") || 
-                            pmcGroupName === "pm" || 
-                            pmcGroupName.includes("management") ||
-                            pmcGroupName.includes("mobilization") ||
-                            costItemName.includes("travel") ||
-                            costItemName.includes("management");
+      // Global labor/management categories
+      const isGlobalCategory = pmcGroupName.includes("travel") || 
+                               pmcGroupName === "pm" || 
+                               pmcGroupName.includes("management") ||
+                               pmcGroupName.includes("mobilization") ||
+                               costItemName.includes("travel") ||
+                               costItemName.includes("management") ||
+                               costItemName.includes("mobilization");
 
-      if (isGlobalLabor) return true;
+      if (isGlobalCategory) return true;
 
-      // Fuzzy match: check if significant words from scope are in the category name
-      const matchesScope = scopeWords.some(word => 
+      // For specific items (like Concrete, Rebar, or specific Scope line items), 
+      // we want a tighter match to avoid pulling in other slabs.
+      // We check how many words from the scope title appear in the cost item or its group.
+      const matchCount = scopeWords.filter(word => 
         costItemName.includes(word) || pmcGroupName.includes(word)
-      );
+      ).length;
 
-      return matchesScope;
+      // If the scope has multiple words (e.g., "Interior Slab on Grade"), 
+      // we require at least 2 words to match to avoid category bleed (like "Slab" matching all slabs).
+      // If the scope only has 1 word, we allow 1.
+      const threshold = scopeWords.length >= 2 ? 2 : 1;
+      
+      return matchCount >= threshold;
     });
 
     if (matchedProjectItems.length > 0) {

@@ -115,25 +115,51 @@ function FieldTrackingContent() {
       .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
       .trim();
 
-    const matchedItems = fullProjectList.filter(p => {
+    const matchedProjectItems = fullProjectList.filter(p => {
       const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
       if (pJobKey !== jobKey) return false;
       
       const costItemName = (p.costitems || "").toLowerCase();
-      return costItemName.includes(titleWithoutQty) || titleWithoutQty.includes(costItemName);
+      const pmcGroupName = (p.pmcGroup || "").toString().toLowerCase();
+      
+      // Match if the cost item name or the PMC group name relates to the scope title
+      return costItemName.includes(titleWithoutQty) || 
+             titleWithoutQty.includes(costItemName) ||
+             (pmcGroupName && (pmcGroupName.includes(titleWithoutQty) || titleWithoutQty.includes(pmcGroupName)));
     });
 
-    if (matchedItems.length > 0) {
-      // Total hours from matched items
-      const totalHours = matchedItems.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-      setHours(totalHours > 0 ? totalHours.toString() : "");
+    if (matchedProjectItems.length > 0) {
+      // Group by PMCGroup (or costitem if no group) to aggregate labor/items
+      const groupMap = new Map<string, { name: string; hours: number; quantity: number }>();
+      
+      matchedProjectItems.forEach(item => {
+        const groupName = item.pmcGroup || item.costitems || "Unknown Item";
+        const current = groupMap.get(groupName) || { name: groupName, hours: 0, quantity: 0 };
+        
+        current.hours += Number(item.hours) || 0;
+        current.quantity += 1;
+        groupMap.set(groupName, current);
+      });
 
-      // Populate materials with the cost item names
-      const materialList = matchedItems.map(item => ({
-        item: item.costitems || "Unknown Item",
-        quantity: "1" 
-      }));
-      setMaterials(materialList);
+      const aggregatedItems = Array.from(groupMap.values());
+      
+      // Separate labor groups for the display
+      const laborGroups = aggregatedItems.filter(g => g.name.toLowerCase().includes("labor"));
+      const nonLaborGroups = aggregatedItems.filter(g => !g.name.toLowerCase().includes("labor"));
+
+      // Total hours from LABOR items only (as requested "hours tracked... labor PMCGroups")
+      const totalLaborHours = laborGroups.reduce((sum, g) => sum + g.hours, 0);
+      
+      // If we have total labor hours > 0, use it. Otherwise fallback to all matched items' hours
+      setHours(totalLaborHours > 0 ? totalLaborHours.toString() : aggregatedItems.reduce((sum, g) => sum + g.hours, 0).toString());
+
+      // Populate materials with both labor categories and non-labor items
+      const displayMaterials = [
+        ...laborGroups.map(g => ({ item: g.name, quantity: g.hours.toString() + " hrs" })),
+        ...nonLaborGroups.map(g => ({ item: g.name, quantity: "1" }))
+      ];
+      
+      setMaterials(displayMaterials.length > 0 ? displayMaterials : [{ item: "", quantity: "" }]);
     } else {
       // Fallback to scope's own hours if no cost items matched
       setHours(scope.hours ? scope.hours.toString() : "");

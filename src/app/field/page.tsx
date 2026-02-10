@@ -144,37 +144,53 @@ function FieldTrackingContent() {
     });
 
     if (matchedProjectItems.length > 0) {
-      // Group by PMCGroup (or costitem if no group) to aggregate labor/items
-      const groupMap = new Map<string, { name: string; hours: number; quantity: number }>();
-      
+      // Separate maps for Labor categories and Material items
+      const laborMap = new Map<string, { name: string; hours: number }>();
+      const materialMap = new Map<string, { name: string; quantity: string }>();
+
       matchedProjectItems.forEach(item => {
-        const groupName = item.pmcGroup || item.costitems || "Unknown Item";
-        const current = groupMap.get(groupName) || { name: groupName, hours: 0, quantity: 0 };
-        
-        current.hours += Number(item.hours) || 0;
-        current.quantity += 1;
-        groupMap.set(groupName, current);
+        const pmcGroup = (item.pmcGroup || "").toString();
+        const costItem = (item.costitems || "").toString();
+        const pmcLower = pmcGroup.toLowerCase();
+        const costLower = costItem.toLowerCase();
+
+        // Categorize as labor if it's PM, Travel, or contains "labor"
+        const isLabor = pmcLower.includes("labor") || 
+                        costLower.includes("labor") || 
+                        pmcLower === "pm" || 
+                        pmcLower.includes("management") ||
+                        pmcLower.includes("mobilization");
+
+        if (isLabor) {
+          const groupName = pmcGroup || costItem || "General Labor";
+          const current = laborMap.get(groupName) || { name: groupName, hours: 0 };
+          current.hours += Number(item.hours) || 0;
+          laborMap.set(groupName, current);
+        } else {
+          // Material/Part - use costitems name specifically as requested
+          const itemName = item.costitems || pmcGroup || "Unknown Item";
+          // We use a Map to deduplicate items if they appear multiple times in the list
+          if (!materialMap.has(itemName)) {
+            materialMap.set(itemName, { name: itemName, quantity: "1" });
+          }
+        }
       });
 
-      const aggregatedItems = Array.from(groupMap.values());
-      
-      // Separate labor groups for the display
-      const laborGroups = aggregatedItems.filter(g => g.name.toLowerCase().includes("labor"));
-      const nonLaborGroups = aggregatedItems.filter(g => !g.name.toLowerCase().includes("labor"));
+      const laborEntriesList = Array.from(laborMap.values());
+      const materialEntriesList = Array.from(materialMap.values());
 
-      // Set labor entries from matched groups
-      if (laborGroups.length > 0) {
-        setLaborEntries(laborGroups.map(g => ({ category: g.name, hours: g.hours.toString() })));
-      } else if (aggregatedItems.length > 0) {
-        // Fallback to all aggregated items if no "labor" keywords found but we have matches
-        setLaborEntries(aggregatedItems.map(g => ({ category: g.name, hours: g.hours.toString() })));
+      // Set labor entries
+      if (laborEntriesList.length > 0) {
+        setLaborEntries(laborEntriesList.map(l => ({ category: l.name, hours: l.hours.toString() })));
       } else {
-        setLaborEntries([{ category: "General Labor", hours: "" }]);
+        setLaborEntries([{ category: "General Labor", hours: scope.hours ? scope.hours.toString() : "" }]);
       }
 
-      // Populate materials with non-labor items predominantly
-      const displayMaterials = nonLaborGroups.map(g => ({ item: g.name, quantity: "1" }));
-      setMaterials(displayMaterials.length > 0 ? displayMaterials : [{ item: "", quantity: "" }]);
+      // Set materials using actual cost items
+      setMaterials(materialEntriesList.length > 0 
+        ? materialEntriesList.map(m => ({ item: m.name, quantity: m.quantity })) 
+        : [{ item: "", quantity: "" }]
+      );
     } else {
       // Fallback to scope's own hours if no cost items matched
       setLaborEntries([{ category: "General Labor", hours: scope.hours ? scope.hours.toString() : "" }]);

@@ -18,6 +18,7 @@ function FieldTrackingContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [fullProjectList, setFullProjectList] = useState<Project[]>([]);
   const [scopes, setScopes] = useState<Scope[]>([]);
+  const [projectCostItems, setProjectCostItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -87,9 +88,12 @@ function FieldTrackingContent() {
         const uniqueScopes = Array.from(new Map(scopesData.map(s => [s.title, s])).values())
           .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
           
-        if (uniqueScopes.length === 0) {
-          console.log("No scopes found for jobKey:", jobKey);
-        }
+        const projectItems = fullProjectList.filter(p => {
+          const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+          return pJobKey === jobKey;
+        });
+        const allItemNames = Array.from(new Set(projectItems.map(p => p.costitems || "").filter(Boolean))).sort();
+        setProjectCostItems(allItemNames);
           
         setScopes(uniqueScopes);
       } catch (error) {
@@ -97,7 +101,7 @@ function FieldTrackingContent() {
       }
     }
     fetchScopes();
-  }, [selectedProject, projects]);
+  }, [selectedProject, projects, fullProjectList]);
 
   // Handle Scope Selection and Auto-population
   useEffect(() => {
@@ -162,14 +166,14 @@ function FieldTrackingContent() {
                         pmcLower.includes("mobilization");
 
         if (isLabor) {
-          const groupName = pmcGroup || costItem || "General Labor";
-          const current = laborMap.get(groupName) || { name: groupName, hours: 0 };
+          // Use costitems as the name for Labor as well, per user preference
+          const itemName = costItem || pmcGroup || "General Labor";
+          const current = laborMap.get(itemName) || { name: itemName, hours: 0 };
           current.hours += Number(item.hours) || 0;
-          laborMap.set(groupName, current);
+          laborMap.set(itemName, current);
         } else {
-          // Material/Part - use costitems name specifically as requested
-          const itemName = item.costitems || pmcGroup || "Unknown Item";
-          // We use a Map to deduplicate items if they appear multiple times in the list
+          // Use costitems for parts
+          const itemName = costItem || pmcGroup || "Unknown Item";
           if (!materialMap.has(itemName)) {
             materialMap.set(itemName, { name: itemName, quantity: "1" });
           }
@@ -386,11 +390,17 @@ function FieldTrackingContent() {
         {/* Materials Entry */}
         <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", marginBottom: "16px", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
           <label style={{ ...labelStyle, fontSize: "18px", borderBottom: "1px solid #eee", paddingBottom: "8px", marginBottom: "16px" }}>Materials / Items used</label>
+          <datalist id="project-items">
+            {projectCostItems.map(name => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
           {materials.map((m, index) => (
             <div key={index} style={{ display: "flex", gap: "8px", marginBottom: "12px", alignItems: "flex-start" }}>
               <div style={{ flex: 2 }}>
                 <input 
                   placeholder="Item name" 
+                  list="project-items"
                   value={m.item} 
                   onChange={(e) => updateMaterial(index, "item", e.target.value)}
                   style={{ ...inputStyle, marginBottom: 0 }}

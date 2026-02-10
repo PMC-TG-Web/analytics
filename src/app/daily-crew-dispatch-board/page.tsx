@@ -57,6 +57,15 @@ interface Employee {
   isActive?: boolean;
 }
 
+interface TimeOffRequest {
+  id: string;
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  type: "Vacation" | "Sick" | "Personal" | "Other" | "Company timeoff";
+  hours?: number;
+}
+
 const formatDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -77,7 +86,7 @@ function DailyCrewDispatchBoardContent() {
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -145,16 +154,21 @@ function DailyCrewDispatchBoardContent() {
       const foremenList = allEmps.filter((emp) => emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman"));
       setForemen(foremenList);
 
-      const shortTermSnapshot = await getDocs(collection(db, "short term schedual"));
-      const projectScopesSnapshot = await getDocs(collection(db, "projectScopes"));
-      const projectsSnapshot = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Bid Submitted", "Lost"])
-      ));
-      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
+      const [shortTermSnapshot, projectScopesSnapshot, projectsSnapshot, longTermSnapshot, timeOffSnapshot] = await Promise.all([
+        getDocs(collection(db, "short term schedual")),
+        getDocs(collection(db, "projectScopes")),
+        getDocs(query(
+          collection(db, "projects"),
+          where("status", "not-in", ["Bid Submitted", "Lost"])
+        )),
+        getDocs(collection(db, "long term schedual")),
+        getDocs(collection(db, "timeOffRequests"))
+      ]);
+
+      const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
+      setTimeOffRequests(requests);
       
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
-      setAllProjects(projs);
       
       const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
@@ -407,7 +421,18 @@ function DailyCrewDispatchBoardContent() {
         }
       });
     }
-    return allEmployees.filter(e => e.isActive && e.role === "Field Worker" && !assignedToOthers.includes(e.id));
+
+    return allEmployees.filter(e => {
+      const isBasicFilter = e.isActive && (e.role === "Field Worker" || e.role === "Field worker") && !assignedToOthers.includes(e.id);
+      if (!isBasicFilter) return false;
+
+      // Check time off
+      const totalHoursOff = timeOffRequests
+        .filter(req => req.employeeId === e.id && dateKey >= req.startDate && dateKey <= req.endDate)
+        .reduce((sum, req) => sum + (req.hours || 10), 0);
+
+      return totalHoursOff < 10; // Only hide if they are off for the full day (10h+)
+    });
   }
 
   async function updateCrewAssignment(dateKey: string, foremanId: string, selectedEmployeeIds: string[]) {
@@ -490,8 +515,28 @@ function DailyCrewDispatchBoardContent() {
     }
   });
   
-  const totalFieldWorkers = allEmployees.filter(e => e.role === "Field Worker" && e.isActive).length;
-  const globalCapacityHours = totalFieldWorkers * 10;
+  let totalHoursOff = 0;
+  let workersOffCount = 0;
+  const peopleOffToday: { name: string, hours: number, type: string }[] = [];
+  const fieldWorkers = allEmployees.filter(e => (e.role === "Field Worker" || e.role === "Field worker") && e.isActive);
+
+  fieldWorkers.forEach(worker => {
+    const matchingReq = timeOffRequests.find(req => 
+      req.employeeId === worker.id && dateKey >= req.startDate && dateKey <= req.endDate
+    );
+    if (matchingReq) {
+      const hrs = matchingReq.hours || 10;
+      totalHoursOff += hrs;
+      workersOffCount++;
+      peopleOffToday.push({ 
+        name: `${worker.firstName} ${worker.lastName}`, 
+        hours: hrs,
+        type: matchingReq.type 
+      });
+    }
+  });
+  
+  const globalCapacityHours = (fieldWorkers.length * 10) - totalHoursOff;
   const globalAssignedCount = getAssignedEmployeesForDate(dateKey).length;
   const globalActualHours = globalAssignedCount * 10;
 
@@ -517,13 +562,17 @@ function DailyCrewDispatchBoardContent() {
           </div>
           
           <div className="flex gap-3">
+            <div className="px-4 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[80px] shadow-sm">
+              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Away</span>
+              <span className="text-2xl font-black text-gray-400">{workersOffCount}</span>
+            </div>
             <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
               <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Total Sched</span>
               <span className="text-2xl font-black text-teal-600">{globalScheduledHours.toFixed(0)} <span className="text-xs font-bold opacity-40">H</span></span>
             </div>
             <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
-              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Manpower</span>
-              <span className="text-2xl font-black text-orange-600">{globalActualHours.toFixed(0)} <span className="text-xs font-bold opacity-40">H</span></span>
+              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Manpower / Cap</span>
+              <span className="text-2xl font-black text-orange-600">{globalActualHours.toFixed(0)}<span className="text-xs font-bold opacity-40"> / {globalCapacityHours}H</span></span>
             </div>
             <div className="w-px bg-gray-200 mx-2"></div>
             <Navigation currentPage="daily-crew-dispatch-board" />
@@ -602,9 +651,14 @@ function DailyCrewDispatchBoardContent() {
                         disabled={saving}
                         className="flex-1 w-full px-3 py-2 text-xs font-bold border-2 border-gray-100 rounded-2xl bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all custom-scrollbar outline-none"
                       >
-                        {availableEmployees.map((emp) => (
-                          <option key={emp.id} value={emp.id} className="py-1">{emp.firstName} {emp.lastName}</option>
-                        ))}
+                        {availableEmployees.map((emp) => {
+                          const hoursOff = timeOffRequests
+                            .filter(req => req.employeeId === emp.id && dateKey >= req.startDate && dateKey <= req.endDate)
+                            .reduce((sum, req) => sum + (req.hours || 10), 0);
+                          
+                          const label = hoursOff > 0 ? `${emp.firstName} ${emp.lastName} (-${hoursOff}h)` : `${emp.firstName} ${emp.lastName}`;
+                          return <option key={emp.id} value={emp.id} className={`py-1 ${hoursOff > 0 ? 'text-orange-600' : ''}`}>{label}</option>;
+                        })}
                         {currentEmployees.map(empId => {
                           const emp = allEmployees.find(e => e.id === empId);
                           if (emp && !availableEmployees.find(ae => ae.id === empId)) {
@@ -648,6 +702,18 @@ function DailyCrewDispatchBoardContent() {
           </div>
         )}
       </div>
+
+      {/* People Off Today - Ultra-small footer */}
+      {peopleOffToday.length > 0 && (
+        <div className="mt-2 px-4 flex flex-wrap gap-x-2 gap-y-1 items-center justify-center opacity-40">
+          <span className="text-[9px] font-black uppercase tracking-tighter text-gray-500 mr-2">Personnel Away:</span>
+          {peopleOffToday.map((person, idx) => (
+            <span key={idx} className="text-[9px] font-bold text-gray-500">
+              {person.name}{idx < peopleOffToday.length - 1 ? "," : ""}
+            </span>
+          ))}
+        </div>
+      )}
 
       <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }

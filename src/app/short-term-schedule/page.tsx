@@ -50,6 +50,15 @@ interface DayProject {
   dayNumber: number;
 }
 
+interface TimeOffRequest {
+  id: string;
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  type: "Vacation" | "Sick" | "Personal" | "Other" | "Company timeoff";
+  hours?: number;
+}
+
 interface Employee {
   id: string;
   firstName: string;
@@ -82,6 +91,7 @@ function ShortTermScheduleContent() {
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [companyCapacity, setCompanyCapacity] = useState<number>(210); // Standard 210, will be dynamic
+  const [dailyCapacity, setDailyCapacity] = useState<Record<string, number>>({});
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
   const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
@@ -495,11 +505,14 @@ function ShortTermScheduleContent() {
       );
       setForemen(foremenList);
       
-      const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot] = await Promise.all([
-        getDocs(collection(db, "long term schedual")),
-        getDocs(collection(db, "short term schedual")),
-        getDocs(collection(db, "projectScopes"))
-      ]);
+const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapshot] = await Promise.all([
+          getDocs(collection(db, "long term schedual")),
+          getDocs(collection(db, "short term schedual")),
+          getDocs(collection(db, "projectScopes")),
+          getDocs(collection(db, "timeOffRequests"))
+        ]);
+
+        const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
 
       // Optimization: Fetch only active projects. 
       // Excluding "Bid Submitted" and "Lost" saves ~18,000 document reads.
@@ -749,6 +762,27 @@ function ShortTermScheduleContent() {
       );
       
       setDayColumns(columns);
+      
+      // Calculate daily capacity based on time off
+      const capacityMap: Record<string, number> = {};
+      columns.forEach(col => {
+        const dKey = formatDateKey(col.date);
+        const dateStr = dKey; 
+        
+        let totalHoursOff = 0;
+        activeFieldStaff.forEach(emp => {
+          const matchingRequest = timeOffRequests.find(req => {
+            if (req.employeeId !== emp.id) return false;
+            return dateStr >= req.startDate && dateStr <= req.endDate;
+          });
+          if (matchingRequest) {
+            totalHoursOff += matchingRequest.hours || 10;
+          }
+        });
+        
+        capacityMap[dKey] = (activeFieldStaff.length * 10) - totalHoursOff;
+      });
+      setDailyCapacity(capacityMap);
       
       // Reorganize projects by foreman and date for table view
       const foremanDateMap: Record<string, Record<string, DayProject[]>> = {};
@@ -1171,22 +1205,45 @@ function ShortTermScheduleContent() {
                       }
                     });
                     const headCount = totalHours / 10;
+                    const dayCapacity = dailyCapacity[dateKey] || companyCapacity;
+                    const availabilityHeads = dayCapacity / 10;
+                    const availabilityPercent = dayCapacity > 0 ? (totalHours / dayCapacity) * 100 : 0;
+                    
+                    // Determine color based on capacity
+                    let capacityColor = "bg-white/20";
+                    if (availabilityPercent > 105) capacityColor = "bg-red-500/40 text-red-100";
+                    else if (availabilityPercent > 90) capacityColor = "bg-yellow-500/40 text-yellow-100";
 
                     return (
                       <th 
                         key={dateKey} 
                         className="text-center py-3 px-3 text-sm font-bold text-white border-r border-orange-500 min-w-[250px]"
                       >
-                        <div>{day.dayLabel}</div>
-                        <div className="text-[10px] font-normal text-orange-100 flex flex-col items-center mt-1">
-                          <div className="flex gap-2 items-center">
-                            <span>{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
-                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
-                              {totalHours.toFixed(0)} hrs
-                            </span>
-                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
-                              {headCount.toFixed(1)} heads
-                            </span>
+                        <div className="flex flex-col items-center">
+                          <div className="text-lg">{day.dayLabel}</div>
+                          <div className="text-[10px] font-normal text-orange-100 flex flex-col items-center mt-1">
+                            <div className="flex gap-1.5 items-center mb-1">
+                              <span>{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                              <span className="bg-blue-500/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                {availabilityHeads} Avail
+                              </span>
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className={`px-1.5 py-0.5 rounded font-black border border-white/10 ${capacityColor}`}>
+                                {totalHours.toFixed(0)}h / {dayCapacity}h
+                              </span>
+                            </div>
+                            {/* Capacity Bar */}
+                            <div className="w-full h-1.5 bg-black/20 rounded-full mt-2 overflow-hidden border border-white/5">
+                              <div 
+                                className={`h-full transition-all duration-500 ${
+                                  availabilityPercent > 100 ? 'bg-red-500' : 
+                                  availabilityPercent > 85 ? 'bg-yellow-400' : 
+                                  'bg-green-400'
+                                }`}
+                                style={{ width: `${Math.min(availabilityPercent, 100)}%` }}
+                              />
+                            </div>
                           </div>
                         </div>
                       </th>

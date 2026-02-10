@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, deleteDoc, query, where, addDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -22,6 +22,16 @@ interface Employee {
   updatedAt: string;
 }
 
+interface TimeOffRequest {
+  id: string;
+  employeeId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  reason: string;
+  type: "Vacation" | "Sick" | "Personal" | "Other" | "Company timeoff";
+  hours?: number;     // Hours off per day
+}
+
 export default function EmployeesPage() {
   return (
     <ProtectedPage page="employees">
@@ -38,6 +48,18 @@ function EmployeesContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
+
+  // Time off state
+  const [timeOffModalVisible, setTimeOffModalVisible] = useState(false);
+  const [selectedEmployeeForTimeOff, setSelectedEmployeeForTimeOff] = useState<Employee | null>(null);
+  const [employeeTimeOffRequests, setEmployeeTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [newTimeOff, setNewTimeOff] = useState({
+    startDate: "",
+    endDate: "",
+    reason: "",
+    type: "Vacation" as const,
+    hours: 10, // Default to full day
+  });
 
   // Form state
   const [formData, setFormData] = useState<Partial<Employee>>({
@@ -221,6 +243,94 @@ function EmployeesContent() {
     return true;
   });
 
+  async function openTimeOffModal(employee: Employee) {
+    setSelectedEmployeeForTimeOff(employee);
+    setNewTimeOff({
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      reason: "",
+      type: "Vacation",
+    });
+    
+    // Load existing time off for this employee
+    try {
+      const q = query(
+        collection(db, "timeOffRequests"),
+        where("employeeId", "==", employee.id)
+      );
+      const snapshot = await getDocs(q);
+      const requests = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as TimeOffRequest[];
+      
+      // Sort by start date desc
+      requests.sort((a, b) => b.startDate.localeCompare(a.startDate));
+      setEmployeeTimeOffRequests(requests);
+      setTimeOffModalVisible(true);
+    } catch (error) {
+      console.error("Failed to load time off requests:", error);
+      alert("Failed to load time off records");
+    }
+  }
+
+  async function addTimeOff() {
+    if (!selectedEmployeeForTimeOff) return;
+    if (!newTimeOff.startDate || !newTimeOff.endDate) {
+      alert("Please provide start and end dates");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const docRef = await addDoc(collection(db, "timeOffRequests"), {
+        employeeId: selectedEmployeeForTimeOff.id,
+        startDate: newTimeOff.startDate,
+        endDate: newTimeOff.endDate,
+        reason: newTimeOff.reason,
+        type: newTimeOff.type,
+        hours: newTimeOff.hours,
+        createdAt: new Date().toISOString(),
+      });
+
+      const newRequest: TimeOffRequest = {
+        id: docRef.id,
+        employeeId: selectedEmployeeForTimeOff.id,
+        startDate: newTimeOff.startDate,
+        endDate: newTimeOff.endDate,
+        reason: newTimeOff.reason,
+        type: newTimeOff.type,
+        hours: newTimeOff.hours,
+      };
+
+      setEmployeeTimeOffRequests([newRequest, ...employeeTimeOffRequests]);
+      setNewTimeOff({
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+        reason: "",
+        type: "Vacation",
+        hours: 10,
+      });
+    } catch (error) {
+      console.error("Failed to add time off:", error);
+      alert("Failed to save time off record");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteTimeOff(id: string) {
+    if (!confirm("Are you sure you want to delete this time off record?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "timeOffRequests", id));
+      setEmployeeTimeOffRequests(employeeTimeOffRequests.filter(r => r.id !== id));
+    } catch (error) {
+      console.error("Failed to delete time off:", error);
+      alert("Failed to delete record");
+    }
+  }
+
   const activeCount = employees.filter((e) => e.isActive).length;
   const inactiveCount = employees.filter((e) => !e.isActive).length;
 
@@ -361,6 +471,12 @@ function EmployeesContent() {
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex gap-2 justify-center">
+                          <button
+                            onClick={() => openTimeOffModal(employee)}
+                            className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors font-medium"
+                          >
+                            Time Off
+                          </button>
                           <button
                             onClick={() => openEditModal(employee)}
                             className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700 transition-colors font-medium"
@@ -566,6 +682,151 @@ function EmployeesContent() {
                 >
                   {saving ? "Saving..." : editingEmployee ? "Update Employee" : "Add Employee"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Time Off Modal */}
+      {timeOffModalVisible && selectedEmployeeForTimeOff && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setTimeOffModalVisible(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6 border-b pb-4">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Time Off: {selectedEmployeeForTimeOff.firstName} {selectedEmployeeForTimeOff.lastName}
+                </h2>
+                <button 
+                  onClick={() => setTimeOffModalVisible(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Add New Time Off Form */}
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 mb-8">
+                <h3 className="text-sm font-black uppercase tracking-widest text-amber-800 mb-4 italic">Log New Time Off</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-amber-900/50 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={newTimeOff.startDate}
+                      onChange={(e) => setNewTimeOff({ ...newTimeOff, startDate: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl focus:ring-0 focus:border-amber-500 outline-none text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-amber-900/50 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={newTimeOff.endDate}
+                      onChange={(e) => setNewTimeOff({ ...newTimeOff, endDate: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl focus:ring-0 focus:border-amber-500 outline-none text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-amber-900/50 mb-1">Type</label>
+                    <select
+                      value={newTimeOff.type}
+                      onChange={(e) => setNewTimeOff({ ...newTimeOff, type: e.target.value as any })}
+                      className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl focus:ring-0 focus:border-amber-500 outline-none text-sm font-bold"
+                    >
+                      <option value="Vacation">Vacation</option>
+                      <option value="Sick">Sick</option>
+                      <option value="Personal">Personal</option>
+                      <option value="Company timeoff">Company timeoff</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-amber-900/50 mb-1">Hours / Day</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="10"
+                      value={newTimeOff.hours}
+                      onChange={(e) => setNewTimeOff({ ...newTimeOff, hours: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl focus:ring-0 focus:border-amber-500 outline-none text-sm font-bold"
+                    />
+                  </div>
+                  <button
+                    onClick={addTimeOff}
+                    disabled={saving}
+                    className="w-full bg-amber-600 text-white font-black uppercase text-[10px] tracking-widest py-3 rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "SAVING..." : "ADD TIME OFF"}
+                  </button>
+                  <div className="md:col-span-4">
+                    <label className="block text-[10px] font-black uppercase text-amber-900/50 mb-1">Reason/Notes (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="Family trip, appointment, etc."
+                      value={newTimeOff.reason}
+                      onChange={(e) => setNewTimeOff({ ...newTimeOff, reason: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl focus:ring-0 focus:border-amber-500 outline-none text-sm font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Existing Time Off List */}
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 italic">Request History</h3>
+                <div className="space-y-2">
+                  {employeeTimeOffRequests.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400 text-xs italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      No time off history found for this employee
+                    </div>
+                  ) : (
+                    employeeTimeOffRequests.map((request) => (
+                      <div key={request.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-all group">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-gray-50 px-3 py-1 rounded-lg border border-gray-100 flex flex-col items-center justify-center min-w-[100px]">
+                            <span className="text-[10px] font-black text-gray-400 uppercase leading-tight">Dates</span>
+                            <span className="text-xs font-black text-gray-700 leading-tight">
+                              {new Date(request.startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} 
+                              - {new Date(request.endDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              request.type === 'Vacation' ? 'bg-blue-100 text-blue-700' :
+                              request.type === 'Sick' ? 'bg-red-100 text-red-700' :
+                              request.type === 'Company timeoff' ? 'bg-orange-100 text-orange-700' :
+                              'bg-purple-100 text-purple-700'
+                            }`}>
+                              {request.type}
+                            </span>
+                            <span className="ml-2 text-[10px] font-bold text-gray-400">
+                              ({request.hours || 10}h per day)
+                            </span>
+                            {request.reason && (
+                              <p className="text-xs font-medium text-gray-500 mt-1">{request.reason}</p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteTimeOff(request.id)}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs font-black uppercase tracking-tighter p-2 transition-all"
+                        >
+                          DELETE
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>

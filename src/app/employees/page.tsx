@@ -181,6 +181,25 @@ function EmployeesContent() {
     }
   }
 
+  async function toggleEmployeeStatus(employee: Employee) {
+    const newStatus = !employee.isActive;
+    try {
+      const now = new Date().toISOString();
+      const employeeData = { 
+        ...employee, 
+        isActive: newStatus,
+        updatedAt: now 
+      };
+      await setDoc(doc(db, "employees", employee.id), employeeData);
+      setEmployees((prev) =>
+        prev.map((emp) => (emp.id === employee.id ? employeeData : emp))
+      );
+    } catch (error) {
+      console.error("Failed to toggle status:", error);
+      alert("Failed to update status");
+    }
+  }
+
   // Filter employees
   const filteredEmployees = employees.filter((emp) => {
     // Active filter
@@ -328,15 +347,17 @@ function EmployeesContent() {
                         {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "—"}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                        <button
+                          onClick={() => toggleEmployeeStatus(employee)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
                             employee.isActive
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
+                              ? "bg-green-100 text-green-800 hover:bg-green-200"
+                              : "bg-red-100 text-red-800 hover:bg-red-200"
                           }`}
+                          title={`Click to set as ${employee.isActive ? 'Inactive' : 'Active'}`}
                         >
                           {employee.isActive ? "Active" : "Inactive"}
-                        </span>
+                        </button>
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex gap-2 justify-center">
@@ -500,16 +521,18 @@ function EmployeesContent() {
                 </div>
 
                 {/* Status */}
-                <div className="col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="w-5 h-5 text-teal-600 focus:ring-2 focus:ring-teal-500 rounded"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Active Employee</span>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Status
                   </label>
+                  <select
+                    value={formData.isActive ? "active" : "inactive"}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.value === "active" })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
                 </div>
 
                 {/* Notes */}

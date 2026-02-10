@@ -2,10 +2,12 @@
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { db } from "@/firebase";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, query, where } from "firebase/firestore";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
-const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
+import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
+import { ProjectInfo, Scope, Project } from "@/types";
+import { getEnrichedScopes } from "@/utils/projectUtils";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,9 +18,10 @@ import {
   Tooltip,
   Legend,
   Filler,
-  ChartOptions,
   Plugin,
-} from 'chart.js';
+  ChartOptions
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -123,6 +126,11 @@ function WIPReportContent() {
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, number>>({});
   const [weeklyModalVisible, setWeeklyModalVisible] = useState(false);
   const [monthTargetHours, setMonthTargetHours] = useState<number>(0);
+  
+  // Gantt / Scopes state
+  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
+  const [selectedGanttProject, setSelectedGanttProject] = useState<ProjectInfo | null>(null);
+
   const [customerFilter, setCustomerFilter] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("wipCustomerFilter") || "";
@@ -152,7 +160,10 @@ function WIPReportContent() {
     async function fetchData() {
       try {
         // Fetch projects directly from Firestore
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsSnapshot = await getDocs(query(
+          collection(db, "projects"),
+          where("status", "not-in", ["Bid Submitted", "Lost"])
+        ));
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -189,6 +200,20 @@ function WIPReportContent() {
         
         setSchedules(schedulesWithStatus);
         console.log("Schedules loaded from API:", schedulesWithStatus.length);
+
+        // Fetch scopes for Gantt feed
+        const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
+        const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+        const enrichedScopes = getEnrichedScopes(rawScopes, projectsData);
+        
+        const scopesMap: Record<string, Scope[]> = {};
+        enrichedScopes.forEach((scope) => {
+          if (scope.jobKey) {
+            if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
+            scopesMap[scope.jobKey].push(scope);
+          }
+        });
+        setScopesByJobKey(scopesMap);
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -272,6 +297,28 @@ function WIPReportContent() {
     
     setEditableSchedule(allocations);
     setModalVisible(true);
+  }
+
+  async function openGanttModal(customer: string, projectName: string, projectNumber: string) {
+    const jobKey = `${customer}~${projectNumber}~${projectName}`;
+    const project = projects.find((p) => 
+      p.customer === customer && 
+      p.projectName === projectName && 
+      p.projectNumber === projectNumber
+    );
+    
+    if (!project) {
+      alert("Project not found");
+      return;
+    }
+
+    setSelectedGanttProject({
+      jobKey,
+      customer,
+      projectNumber,
+      projectName,
+      projectDocId: project.id
+    });
   }
 
   function updateModalPercent(month: string, percent: number) {
@@ -407,11 +454,131 @@ function WIPReportContent() {
 
   // Aggregate hours by month (excluding management and Complete status)
   const monthlyData: Record<string, MonthlyWIP> = {};
+  const scheduledSalesByMonth: Record<string, number> = {};
+  let inProgressScheduledHoursForGantt = 0;
+  let filteredInProgressHoursFromGantt = 0;
+
+  // First, find projects with Gantt scopes and dates
+  const projectsWithGanttData = new Set<string>();
+
+  // Helper to distribute a value over a date range
+  const distributeValue = (totalValue: number, startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return {};
+
+    const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1);
+    const dailyRate = totalValue / totalDays;
+    const distribution: Record<string, number> = {};
+
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    while (current <= last) {
+      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+      const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+
+      const overlapStart = start > monthStart ? start : monthStart;
+      const overlapEnd = end < monthEnd ? end : monthEnd;
+      const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24) + 1);
+      
+      if (overlapDays > 0) {
+        distribution[monthKey] = dailyRate * overlapDays;
+      }
+      current.setMonth(current.getMonth() + 1);
+    }
+    return distribution;
+  };
+
+  Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
+    const validScopes = scopes.filter(s => s.startDate && s.endDate);
+    if (validScopes.length > 0) {
+      projectsWithGanttData.add(jobKey);
+      
+      const jobProjects = projects.filter(p => {
+        const pKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
+        return pKey === jobKey;
+      });
+
+      if (jobProjects.length === 0) return;
+
+      const projectCostItems = jobProjects.map(p => ({
+        costitems: (p.costitems || "").toLowerCase(),
+        hours: typeof p.hours === "number" ? p.hours : 0,
+        costType: typeof p.costType === "string" ? p.costType : "",
+      }));
+
+      const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
+      const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
+      const isInProgress = jobProjects.some(p => p.status === "In Progress");
+
+      validScopes.forEach(scope => {
+        const title = (scope.title || "Scope").trim().toLowerCase();
+        const titleWithoutQty = title
+          .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "")
+          .trim();
+
+        const matchedItems = projectCostItems.filter((item) =>
+          item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems)
+        );
+
+        const scopeHours = matchedItems.reduce(
+          (acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc,
+          0
+        ) || (typeof scope.hours === "number" ? scope.hours : 0);
+
+        if (scopeHours <= 0) return;
+
+        // Distribute hours
+        const hourDist = distributeValue(scopeHours, scope.startDate!, scope.endDate!);
+        Object.entries(hourDist).forEach(([monthKey, hours]) => {
+          if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = { month: monthKey, hours: 0, jobs: [] };
+          }
+          monthlyData[monthKey].hours += hours;
+          
+          if (isInProgress) {
+            inProgressScheduledHoursForGantt += hours;
+            if (!yearFilter || monthKey.startsWith(yearFilter)) {
+              filteredInProgressHoursFromGantt += hours;
+            }
+          }
+
+          const existingJob = monthlyData[monthKey].jobs.find(j => 
+            j.projectName === jobProjects[0].projectName && j.customer === jobProjects[0].customer
+          );
+          if (existingJob) {
+            existingJob.hours += hours;
+          } else {
+            monthlyData[monthKey].jobs.push({
+              customer: jobProjects[0].customer || "Unknown",
+              projectNumber: jobProjects[0].projectNumber || "N/A",
+              projectName: jobProjects[0].projectName || "Unnamed",
+              hours: hours,
+            });
+          }
+        });
+
+        // Distribute sales proportionately to hours if totalProjectHours > 0
+        if (totalProjectSales > 0 && totalProjectHours > 0) {
+          const scopeSales = (scopeHours / totalProjectHours) * totalProjectSales;
+          const salesDist = distributeValue(scopeSales, scope.startDate!, scope.endDate!);
+          Object.entries(salesDist).forEach(([monthKey, sales]) => {
+            scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + sales;
+          });
+        }
+      });
+    }
+  });
 
   schedules.forEach((schedule) => {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') return;
     
+    // Skip if we already used Gantt data for this project
+    if (projectsWithGanttData.has(schedule.jobKey)) return;
+
     normalizeAllocations(schedule.allocations).forEach((alloc) => {
       if (!isValidMonthKey(alloc.month)) return;
       if (!monthlyData[alloc.month]) {
@@ -501,8 +668,8 @@ function WIPReportContent() {
   const filteredAvgHours = filteredMonths.length > 0 ? filteredTotalHours / filteredMonths.length : 0;
   
   // Calculate filtered hours for In Progress jobs only (using allocations for the filtered months)
-  const filteredInProgressHours = schedules
-    .filter(s => s.status === 'In Progress')
+  const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
+    .filter(s => s.status === 'In Progress' && !projectsWithGanttData.has(s.jobKey))
     .reduce((sum, schedule) => {
       // For filtered months, sum the allocated hours
       const normalizedAllocs = normalizeAllocations(schedule.allocations);
@@ -516,8 +683,8 @@ function WIPReportContent() {
   
   // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
   // This is used to properly calculate unscheduled hours
-  const allInProgressScheduledHours = schedules
-    .filter(s => s.status === 'In Progress')
+  const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
+    .filter(s => s.status === 'In Progress' && !projectsWithGanttData.has(s.jobKey))
     .reduce((sum, schedule) => {
       // Sum all allocated hours across all months for this schedule
       const normalizedAllocs = normalizeAllocations(schedule.allocations);
@@ -707,9 +874,10 @@ function WIPReportContent() {
     totalScheduledHours += scheduledHours;
   });
 
-  const scheduledHoursForQualifying = schedules.reduce((sum, schedule) => {
+  const scheduledHoursForQualifying = inProgressScheduledHoursForGantt + schedules.reduce((sum, schedule) => {
     if (schedule.status !== "In Progress") return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
+    if (projectsWithGanttData.has(key)) return sum;
     const projectHours = schedule.totalHours || qualifyingKeyHours.get(key) || 0;
     if (!qualifyingKeyHours.has(key) || projectHours <= 0) return sum;
 
@@ -760,8 +928,6 @@ function WIPReportContent() {
     return true;
   });
 
-  const scheduledSalesByMonth: Record<string, number> = {};
-  
   // Build a map of schedule keys to TOTAL project sales (sum of all matching projects)
   // Note: Each project key might have multiple projects, we need to sum them all
   const scheduleSalesMap = new Map<string, number>();
@@ -778,23 +944,21 @@ function WIPReportContent() {
     scheduleSalesMap.set(key, currentTotal + sales);
   });
   
-  let matchedCount = 0;
-  let unmatchedCount = 0;
-  
   // For each schedule, distribute sales across months based on allocation percentages
   schedules.forEach((schedule) => {
     // Skip Complete status jobs
     if (schedule.status === 'Complete') return;
     
     const key = schedule.jobKey || projectKeyForSchedule(schedule.customer, schedule.projectNumber, schedule.projectName);
+    
+    // Skip if we already used Gantt data for this project
+    if (projectsWithGanttData.has(key)) return;
+
     const projectSales = scheduleSalesMap.get(key);
     
     if (!projectSales) {
-      unmatchedCount++;
       return;
     }
-
-    matchedCount++;
 
     normalizeAllocations(schedule.allocations).forEach((alloc) => {
       const percent = Number(alloc.percent ?? 0);
@@ -1068,7 +1232,7 @@ function WIPReportContent() {
                     data.jobs.filter((job) => (job.hours ?? 0) > 0).map((job, idx) => (
                       <div 
                         key={idx} 
-                        onClick={() => openJobModal(job.customer, job.projectName, job.projectNumber)}
+                        onClick={() => openGanttModal(job.customer, job.projectName, job.projectNumber)}
                         style={{ 
                           display: "grid", 
                           gridTemplateColumns: "repeat(3, 1fr)", 
@@ -1114,343 +1278,17 @@ function WIPReportContent() {
         </div>
       )}
 
-      {/* Schedule Edit Modal */}
-      {modalVisible && selectedJob && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
+      {selectedGanttProject && (
+        <ProjectScopesModal
+          project={selectedGanttProject}
+          scopes={scopesByJobKey[selectedGanttProject.jobKey] || []}
+          selectedScopeId={null}
+          onClose={() => setSelectedGanttProject(null)}
+          onScopesUpdated={(jobKey, updatedScopes) => {
+            const enriched = getEnrichedScopes(updatedScopes, projects);
+            setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
           }}
-          onClick={() => setModalVisible(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#ffffff",
-              borderRadius: 12,
-              padding: 32,
-              maxWidth: 800,
-              maxHeight: "80vh",
-              overflow: "auto",
-              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
-            }}
-          >
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ color: "#15616D", margin: 0, marginBottom: 8 }}>
-                {selectedJob.projectName}
-              </h2>
-              <div style={{ color: "#666", fontSize: 14 }}>
-                <div><strong>Customer:</strong> {selectedJob.customer}</div>
-                <div><strong>Project #:</strong> {selectedJob.projectNumber}</div>
-                <div><strong>Total Hours:</strong> {selectedJob.totalHours.toFixed(1)}</div>
-                <div><strong>Status:</strong> {selectedJob.status}</div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ color: "#15616D", fontSize: 16, marginBottom: 12 }}>Schedule Allocation</h3>
-              <div style={{ maxHeight: 400, overflow: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "2px solid #ddd", background: "#f5f5f5" }}>
-                      <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 13, fontWeight: 600 }}>Month</th>
-                      <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>%</th>
-                      <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedJob.months.map((month: string) => {
-                      const percent = editableSchedule[month] || 0;
-                      const hours = (selectedJob.totalHours * percent) / 100;
-                      const monthLabel = formatMonthLabel(month) || "—";
-
-                      return (
-                        <tr 
-                          key={month} 
-                          style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer", transition: "background 0.2s" }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "#f9f9f9"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                        >
-                          <td 
-                            style={{ padding: "8px 12px", fontSize: 13 }}
-                            onClick={() => openWeeklySchedule(month)}
-                          >
-                            {monthLabel}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={percent}
-                              onChange={(e) => updateModalPercent(month, Number(e.target.value))}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                width: 60,
-                                padding: "4px 8px",
-                                border: "1px solid #ddd",
-                                borderRadius: 4,
-                                textAlign: "right",
-                                fontSize: 13,
-                              }}
-                            />
-                          </td>
-                          <td 
-                            style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00", fontWeight: 600 }}
-                            onClick={() => openWeeklySchedule(month)}
-                          >
-                            {hours.toFixed(1)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ borderTop: "2px solid #ddd", fontWeight: 600 }}>
-                      <td style={{ padding: "8px 12px", fontSize: 13 }}>Total</td>
-                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13 }}>
-                        {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (val || 0), 0).toFixed(0)}%
-                      </td>
-                      <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00" }}>
-                        {Object.values(editableSchedule).reduce((sum: number, val: any) => sum + (selectedJob.totalHours * (val || 0)) / 100, 0).toFixed(1)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setModalVisible(false)}
-                style={{
-                  padding: "10px 20px",
-                  background: "#f0f0f0",
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveJobSchedule}
-                disabled={saving}
-                style={{
-                  padding: "10px 20px",
-                  background: saving ? "#ccc" : "#E06C00",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                {saving ? "Saving..." : "Save Schedule"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Weekly Schedule Modal */}
-      {weeklyModalVisible && selectedMonth && selectedJob && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1001,
-          }}
-          onClick={() => setWeeklyModalVisible(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#ffffff",
-              borderRadius: 12,
-              padding: 32,
-              maxWidth: 600,
-              maxHeight: "80vh",
-              overflow: "auto",
-              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
-            }}
-          >
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ color: "#15616D", margin: 0, marginBottom: 8 }}>
-                Weekly Schedule - {(() => {
-                  const label = formatMonthLabel(selectedMonth);
-                  return label ? label : "—";
-                })()}
-              </h2>
-              <div style={{ color: "#666", fontSize: 14 }}>
-                <div><strong>Project:</strong> {selectedJob.projectName}</div>
-                <div><strong>Customer:</strong> {selectedJob.customer}</div>
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f8ff", borderRadius: 6, border: "1px solid #E06C00" }}>
-                  <strong style={{ color: "#15616D" }}>Hours to Schedule for this Month:</strong>{" "}
-                  <span style={{ color: "#E06C00", fontSize: 16, fontWeight: 700 }}>
-                    {monthTargetHours.toFixed(1)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid #ddd", background: "#f5f5f5" }}>
-                    <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 13, fontWeight: 600 }}>Week Starting</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, fontWeight: 600 }}>Hours</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    // Calculate the Mondays for each week in the month
-                    const [year, month] = selectedMonth.split("-");
-                    const firstDay = new Date(Number(year), Number(month) - 1, 1);
-                    const lastDay = new Date(Number(year), Number(month), 0);
-                    
-                    const mondays: Date[] = [];
-                    let currentDate = new Date(firstDay);
-                    
-                    // Find the first Monday (or use first day of month if it comes before first Monday)
-                    const firstDayOfWeek = firstDay.getDay();
-                    if (firstDayOfWeek === 1) {
-                      // First day is Monday
-                      mondays.push(new Date(firstDay));
-                    } else if (firstDayOfWeek === 0) {
-                      // First day is Sunday, next Monday is day 2
-                      mondays.push(new Date(Number(year), Number(month) - 1, 2));
-                    } else {
-                      // First day is Tue-Sat, calculate days until Monday
-                      const daysUntilMonday = (8 - firstDayOfWeek) % 7;
-                      if (daysUntilMonday > 0) {
-                        mondays.push(new Date(Number(year), Number(month) - 1, 1 + daysUntilMonday));
-                      }
-                    }
-                    
-                    // Add remaining Mondays
-                    let nextMonday = new Date(mondays[0]);
-                    while (true) {
-                      nextMonday = new Date(nextMonday);
-                      nextMonday.setDate(nextMonday.getDate() + 7);
-                      if (nextMonday <= lastDay) {
-                        mondays.push(new Date(nextMonday));
-                      } else {
-                        break;
-                      }
-                    }
-                    
-                    return mondays.map((monday, index) => {
-                      const weekNumber = index + 1;
-                      const currentValue = weeklySchedule[weekNumber];
-                      const displayValue = currentValue !== undefined && currentValue !== null ? currentValue : 0;
-                      const dateStr = isNaN(monday.getTime())
-                        ? "—"
-                        : monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                      
-                      return (
-                        <tr key={weekNumber} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                          <td style={{ padding: "8px 12px", fontSize: 13 }}>{dateStr}</td>
-                          <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              value={displayValue}
-                              onChange={(e) => updateWeeklyHours(weekNumber, Number(e.target.value))}
-                              style={{
-                                width: 80,
-                                padding: "4px 8px",
-                                border: "1px solid #ddd",
-                                borderRadius: 4,
-                                textAlign: "right",
-                                fontSize: 13,
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: "2px solid #ddd", fontWeight: 600 }}>
-                    <td style={{ padding: "8px 12px", fontSize: 13 }}>Total Scheduled</td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 13, color: "#E06C00" }}>
-                      {(() => {
-                        const totalScheduled = Object.values(weeklySchedule).reduce((sum: number, val: any) => sum + (val || 0), 0);
-                        const difference = totalScheduled - monthTargetHours;
-                        const differenceColor = Math.abs(difference) < 0.1 ? "#00aa00" : difference > 0 ? "#ff6600" : "#cc0000";
-                        
-                        return (
-                          <div>
-                            <div>{totalScheduled.toFixed(1)}</div>
-                            {Math.abs(difference) >= 0.1 && (
-                              <div style={{ fontSize: 11, color: differenceColor, fontWeight: 400 }}>
-                                ({difference > 0 ? "+" : ""}{difference.toFixed(1)} hrs)
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setWeeklyModalVisible(false)}
-                style={{
-                  padding: "10px 20px",
-                  background: "#f0f0f0",
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveWeeklySchedule}
-                disabled={saving}
-                style={{
-                  padding: "10px 20px",
-                  background: saving ? "#ccc" : "#E06C00",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                {saving ? "Saving..." : "Save Weekly Schedule"}
-              </button>
-            </div>
-          </div>
-        </div>
+        />
       )}
     </main>
   );

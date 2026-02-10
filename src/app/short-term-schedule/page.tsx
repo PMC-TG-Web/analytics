@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
+import React, { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { collection, getDocs, doc, setDoc, getDoc, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
+import { Scope, Project, ProjectInfo } from "@/types";
+import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
+import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -51,29 +55,350 @@ interface Employee {
   firstName: string;
   lastName: string;
   role: string;
+  isActive?: boolean;
 }
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function ShortTermSchedulePage() {
   return (
     <ProtectedPage page="short-term-schedule">
-      <ShortTermScheduleContent />
+      <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule Systems...</div>}>
+        <ShortTermScheduleContent />
+      </Suspense>
     </ProtectedPage>
   );
 }
 
 function ShortTermScheduleContent() {
+  const searchParams = useSearchParams();
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [companyCapacity, setCompanyCapacity] = useState<number>(210); // Standard 210, will be dynamic
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
   const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedGanttProject, setSelectedGanttProject] = useState<ProjectInfo | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [isAddingProject, setIsAddingProject] = useState<boolean>(false);
+  const [targetingCell, setTargetingCell] = useState<{ date: Date; foremanId: string } | null>(null);
+  const [draggedProject, setDraggedProject] = useState<{
+    project: DayProject | Project;
+    sourceDateKey?: string;
+    sourceForemanId?: string;
+    isNew?: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const search = searchParams.get("search");
+    if (search) {
+      setProjectSearch(search);
+      setIsAddingProject(true); // Ensure the search tray is open when clicking from the dispatch board
+      // Wait for render, then find and scroll to highlighted elements
+      setTimeout(() => {
+        const highlighted = document.querySelector('.ring-yellow-400');
+        if (highlighted) {
+          highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 800);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadSchedules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function openGanttModal(customer: string, projectName: string, projectNumber: string) {
+    const jobKey = getProjectKey({ customer, projectName, projectNumber } as Project);
+    const project = allProjects.find((p) => {
+      const pKey = getProjectKey(p);
+      return pKey === jobKey;
+    });
+
+    if (project) {
+      setSelectedGanttProject({
+        jobKey,
+        customer: project.customer || "",
+        projectName: project.projectName || "",
+        projectNumber: project.projectNumber || "",
+        projectDocId: project.id
+      });
+    } else {
+      console.warn("Project not found for key:", jobKey);
+    }
+  }
+
+  function handleDragStart(project: DayProject | Project, dateKey?: string, foremanId?: string) {
+    if ('jobKey' in project && dateKey && foremanId) {
+      // It's an existing DayProject
+      setDraggedProject({ project, sourceDateKey: dateKey, sourceForemanId: foremanId, isNew: false });
+    } else {
+      // It's a raw Project from the search list
+      setDraggedProject({ project, isNew: true });
+    }
+  }
+
+  async function handleDrop(e: React.DragEvent, targetDate: Date, targetForemanId: string) {
+    e.preventDefault();
+    if (!draggedProject) return;
+
+    const targetDateKey = formatDateKey(targetDate);
+
+    // Case 1: Dragging from Search List (New Entry)
+    if (draggedProject.isNew) {
+      const p = draggedProject.project as Project;
+      const jobKey = getProjectKey(p);
+      const targetMonthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+      const position = getWeekDayPositionForDate(targetMonthStr, targetDate);
+
+      if (position) {
+        setSaving(true);
+        try {
+          const newProject: DayProject = {
+            jobKey,
+            customer: p.customer || "",
+            projectNumber: p.projectNumber || "",
+            projectName: p.projectName || "",
+            hours: 8, // Default 8 hours for new drops
+            foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId,
+            employees: [],
+            month: targetMonthStr,
+            weekNumber: position.weekNumber,
+            dayNumber: position.dayNumber
+          };
+          await updateProjectAssignment(newProject, targetDateKey, targetForemanId, targetForemanId, 8);
+          await loadSchedules();
+        } finally {
+          setSaving(false);
+          setDraggedProject(null);
+        }
+      }
+      return;
+    }
+
+    // Case 2: Rescheduling existing card
+    const sourceProject = draggedProject.project as DayProject;
+    const { sourceDateKey, sourceForemanId } = draggedProject;
+
+    if (sourceDateKey === targetDateKey && sourceForemanId === targetForemanId) {
+      setDraggedProject(null);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const targetMonthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+      const position = getWeekDayPositionForDate(targetMonthStr, targetDate);
+
+      await moveProject(
+        sourceProject, 
+        sourceDateKey!, 
+        sourceForemanId!, 
+        targetDateKey, 
+        targetForemanId, 
+        position?.weekNumber || 1, 
+        position?.dayNumber || 1
+      );
+
+      await loadSchedules();
+    } catch (error) {
+      console.error("Failed to move project:", error);
+    } finally {
+      setSaving(false);
+      setDraggedProject(null);
+    }
+  }
+
+  async function handleSearchProjectClick(p: Project) {
+    if (!targetingCell) return;
+    
+    const { date, foremanId } = targetingCell;
+    const dateKey = formatDateKey(date);
+    const jobKey = getProjectKey(p);
+    const targetMonthStr = dateKey.substring(0, 7);
+    const position = getWeekDayPositionForDate(targetMonthStr, date);
+
+    if (position) {
+      setSaving(true);
+      try {
+        const newProject: DayProject = {
+          jobKey,
+          customer: p.customer || "",
+          projectNumber: p.projectNumber || "",
+          projectName: p.projectName || "",
+          hours: 8,
+          foreman: foremanId === "__unassigned__" ? "" : foremanId,
+          employees: [],
+          month: targetMonthStr,
+          weekNumber: position.weekNumber,
+          dayNumber: position.dayNumber
+        };
+        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, 8);
+        await loadSchedules();
+        setTargetingCell(null);
+        setIsAddingProject(false);
+      } finally {
+        setSaving(false);
+      }
+    }
+  }
+
+  async function moveProject(
+    project: DayProject,
+    sourceDateKey: string,
+    sourceForemanId: string,
+    targetDateKey: string,
+    targetForemanId: string,
+    targetWeekNum: number,
+    targetDayNum: number
+  ) {
+    const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber, hours } = project;
+    const targetMonthStr = targetDateKey.substring(0, 7); // YYYY-MM
+    
+    // 1. Update/Remove Source (if in same month doc)
+    // 2. Add/Update Target (if in same month doc)
+    
+    const sourceDocId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const targetDocId = `${jobKey}_${targetMonthStr}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    if (sourceDocId === targetDocId) {
+      // SAME DOCUMENT - Update both days in one write
+      const docRef = doc(db, "short term schedual", sourceDocId);
+      const docSnapshot = await getDoc(docRef);
+      let docData: ScheduleDoc;
+
+      if (docSnapshot.exists()) {
+        docData = docSnapshot.data() as ScheduleDoc;
+        if (!docData.weeks) docData.weeks = [];
+        
+        // Update source day to 0
+        let sourceWeekFound = false;
+        docData.weeks = docData.weeks.map(w => {
+          if (w.weekNumber === weekNumber) {
+            sourceWeekFound = true;
+            w.days = (w.days || []).map(d => d.dayNumber === dayNumber ? { ...d, hours: 0 } : d);
+          }
+          return w;
+        });
+
+        // Update/Add target day
+        let targetWeekFound = false;
+        docData.weeks = docData.weeks.map(w => {
+          if (w.weekNumber === targetWeekNum) {
+            targetWeekFound = true;
+            const updatedDays = (w.days || []).map(d => 
+              d.dayNumber === targetDayNum ? { ...d, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId } : d
+            );
+            if (!updatedDays.some(d => d.dayNumber === targetDayNum)) {
+              updatedDays.push({ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId });
+            }
+            return { ...w, days: updatedDays };
+          }
+          return w;
+        });
+
+        if (!targetWeekFound) {
+          docData.weeks.push({
+            weekNumber: targetWeekNum,
+            days: [{ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId }]
+          });
+        }
+      } else {
+        // Doc doesn't exist (e.g. moving a Gantt project that had no override)
+        docData = {
+          jobKey, customer, projectNumber, projectName, month: targetMonthStr,
+          weeks: [
+            { weekNumber, days: [{ dayNumber, hours: 0, foreman: "" }] },
+            { weekNumber: targetWeekNum, days: [{ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId }] }
+          ]
+        };
+      }
+      await setDoc(docRef, { ...docData, updatedAt: new Date().toISOString() }, { merge: true });
+    } else {
+      // DIFFERENT DOCUMENTS - Sequenced writes
+      await updateProjectAssignment(project, sourceDateKey, sourceForemanId, null, 0);
+      const targetProject = { ...project, month: targetMonthStr, weekNumber: targetWeekNum, dayNumber: targetDayNum };
+      await updateProjectAssignment(targetProject, targetDateKey, targetForemanId, targetForemanId, hours);
+    }
+  }
+
+  async function updateProjectAssignment(
+    project: DayProject, 
+    dateKey: string, 
+    currentForemanId: string,
+    newForemanId: string | null,
+    newHours: number
+  ) {
+    const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber } = project;
+    const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const docRef = doc(db, "short term schedual", docId);
+    
+    const docSnapshot = await getDoc(docRef);
+    const existingData = docSnapshot.exists() ? (docSnapshot.data() as ScheduleDoc) : null;
+    
+    let docData: ScheduleDoc & { updatedAt?: string };
+    const foremanValue = newForemanId === "__unassigned__" || !newForemanId ? "" : newForemanId;
+
+    if (existingData) {
+      docData = { ...existingData };
+      if (!docData.weeks) docData.weeks = [];
+      
+      let weekFound = false;
+      docData.weeks = docData.weeks.map((week: WeekData) => {
+        if (week.weekNumber === weekNumber) {
+          weekFound = true;
+          const updatedDays = (week.days || []).map((day: DayData) => {
+            if (day.dayNumber === dayNumber) {
+              return { ...day, hours: newHours, foreman: foremanValue };
+            }
+            return day;
+          });
+          
+          if (!updatedDays.some((d: DayData) => d.dayNumber === dayNumber)) {
+            updatedDays.push({ dayNumber, hours: newHours, foreman: foremanValue });
+          }
+          return { ...week, days: updatedDays };
+        }
+        return week;
+      });
+      
+      if (!weekFound) {
+        docData.weeks.push({
+          weekNumber,
+          days: [{ dayNumber, hours: newHours, foreman: foremanValue }]
+        });
+      }
+    } else {
+      docData = {
+        jobKey,
+        customer,
+        projectNumber,
+        projectName,
+        month,
+        weeks: [{
+          weekNumber,
+          days: [{
+            dayNumber,
+            hours: newHours,
+            foreman: foremanValue,
+          }]
+        }],
+      };
+    }
+    
+    docData.updatedAt = new Date().toISOString();
+    await setDoc(docRef, docData, { merge: true });
+  }
 
   function getWeekDates(weekStart: Date): Date[] {
     const dates: Date[] = [];
@@ -143,7 +468,8 @@ function ShortTermScheduleContent() {
           id: doc.id, 
           firstName: doc.data().firstName || '',
           lastName: doc.data().lastName || '',
-          role: doc.data().role || ''
+          role: doc.data().role || '',
+          isActive: doc.data().isActive !== false
         } as Employee))
         .sort((a, b) => {
           const nameA = `${a.firstName} ${a.lastName}`;
@@ -152,14 +478,58 @@ function ShortTermScheduleContent() {
         });
       
       setAllEmployees(allEmps);
+
+      // Dynamic Capacity: Count active field staff (foremen + workers)
+      const activeFieldStaff = allEmps.filter(e => 
+        e.isActive && (
+          e.role === "Foreman" || 
+          e.role === "Lead foreman" || 
+          e.role === "Field Worker" || 
+          e.role === "Field worker"
+        )
+      );
+      setCompanyCapacity(activeFieldStaff.length * 10);
       
-      const foremenList = allEmps.filter((emp) => emp.role === "Foreman" || emp.role === "Lead foreman");
+      const foremenList = allEmps.filter((emp) => 
+        emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman")
+      );
       setForemen(foremenList);
       
-      // Load from both collections
-      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
-      const shortTermSnapshot = await getDocs(collection(db, "short term schedual"));
+      const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot] = await Promise.all([
+        getDocs(collection(db, "long term schedual")),
+        getDocs(collection(db, "short term schedual")),
+        getDocs(collection(db, "projectScopes"))
+      ]);
+
+      // Optimization: Fetch only active projects. 
+      // Excluding "Bid Submitted" and "Lost" saves ~18,000 document reads.
+      const projectsSnapshot = await getDocs(query(
+        collection(db, "projects"),
+        where("status", "not-in", ["Bid Submitted", "Lost"])
+      ));
       
+      const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      setAllProjects(projs);
+      
+      // OPTIMIZATION: pre-group projects by JobKey
+      const projectsByJobKey: Record<string, Project[]> = {};
+      projs.forEach(p => {
+        const pKey = getProjectKey(p);
+        if (!projectsByJobKey[pKey]) projectsByJobKey[pKey] = [];
+        projectsByJobKey[pKey].push(p);
+      });
+
+      const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      const enrichedScopes = getEnrichedScopes(rawScopes, projs);
+      const scopesObj: Record<string, Scope[]> = {};
+      enrichedScopes.forEach(scope => {
+        if (scope.jobKey) {
+          if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
+          scopesObj[scope.jobKey].push(scope);
+        }
+      });
+      setScopesByJobKey(scopesObj);
+
       // Calculate the date range for next 5 weeks (including current week)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -177,7 +547,7 @@ function ShortTermScheduleContent() {
       // Build day columns for next 5 weeks
       const dayMap = new Map<string, DayColumn>();
       const projectsByDay: Record<string, DayProject[]> = {};
-      const dailyScheduleKeys = new Set<string>();
+      const projectsWithGanttData = new Set<string>();
       
       // Generate all work days (Mon-Fri) for next 5 weeks
       for (let weekNum = 0; weekNum < 5; weekNum++) {
@@ -186,7 +556,7 @@ function ShortTermScheduleContent() {
         
         const weekDates = getWeekDates(weekStart);
         weekDates.forEach((date) => {
-          const dateKey = date.toISOString().split('T')[0];
+          const dateKey = formatDateKey(date);
           dayMap.set(dateKey, {
             date,
             dayLabel: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -195,15 +565,99 @@ function ShortTermScheduleContent() {
           projectsByDay[dateKey] = [];
         });
       }
+
+      // Process Gantt Scopes first
+      Object.entries(scopesObj).forEach(([jobKey, scopes]) => {
+        const jobProjects = projectsByJobKey[jobKey] || [];
+        if (jobProjects.length === 0) return;
+
+        const validScopes = scopes.filter(s => s.startDate && s.endDate);
+        if (validScopes.length > 0) {
+          projectsWithGanttData.add(jobKey);
+
+          validScopes.forEach(scope => {
+            // Fix: Use a date parsing helper or append T00:00:00 to ensure local date
+            const start = new Date(scope.startDate! + 'T00:00:00');
+            const end = new Date(scope.endDate! + 'T00:00:00');
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
+            // Prioritize manpower for daily calculation (1 man = 10 hours)
+            let dailyHours = 0;
+            const manpower = scope.manpower ? parseFloat(String(scope.manpower)) : 0;
+            const totalHours = scope.hours ? parseFloat(String(scope.hours)) : 0;
+
+            if (!isNaN(manpower) && manpower > 0) {
+              dailyHours = manpower * 10;
+            } else if (!isNaN(totalHours) && totalHours > 0) {
+              // Fallback to distributing total hours over work days
+              let workDaysInRange = 0;
+              let currentDist = new Date(start);
+              
+              // Safety break for extremely long ranges (max 3 years)
+              const maxDate = new Date(start);
+              maxDate.setFullYear(maxDate.getFullYear() + 3);
+              const actualEnd = end > maxDate ? maxDate : end;
+
+              while (currentDist <= actualEnd) {
+                if (currentDist.getDay() !== 0 && currentDist.getDay() !== 6) workDaysInRange++;
+                currentDist.setDate(currentDist.getDate() + 1);
+              }
+              if (workDaysInRange > 0) {
+                dailyHours = totalHours / workDaysInRange;
+              }
+            }
+
+            if (dailyHours <= 0) return;
+
+            if (jobKey.includes('Washburn') || jobKey.includes('Berg')) {
+              console.log(`Processing Washburn Scope: ${scope.title}, Daily Hrs: ${dailyHours}, Start: ${scope.startDate}`);
+            }
+
+            // Add to projectsByDay for days within our 5-week window
+            let currentDay = new Date(start);
+            // Optimization: Skip days before our 5-week window
+            if (currentDay < currentWeekStart) {
+              currentDay = new Date(currentWeekStart);
+            }
+
+            while (currentDay <= end && currentDay < fiveWeeksFromStart) {
+              if (currentDay.getDay() !== 0 && currentDay.getDay() !== 6) {
+                const dateKey = formatDateKey(currentDay);
+                if (projectsByDay[dateKey]) {
+                  const monthStr = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}`;
+                  const position = getWeekDayPositionForDate(monthStr, currentDay);
+                  
+                  // AGGREGATION: Instead of multiple cards per scope, we sum them into one project card per day
+                  const existing = projectsByDay[dateKey].find(p => p.jobKey === jobKey);
+                  if (existing) {
+                    existing.hours += dailyHours;
+                  } else {
+                    projectsByDay[dateKey].push({
+                      jobKey,
+                      customer: jobProjects[0].customer || "",
+                      projectNumber: jobProjects[0].projectNumber || "",
+                      projectName: jobProjects[0].projectName || "",
+                      hours: dailyHours,
+                      foreman: "",
+                      employees: [],
+                      month: monthStr,
+                      weekNumber: position?.weekNumber || 1,
+                      dayNumber: position?.dayNumber || (currentDay.getDay() || 7),
+                    });
+                  }
+                }
+              }
+              currentDay.setDate(currentDay.getDate() + 1);
+            }
+          });
+        }
+      });
       
       // Load existing short-term schedules (daily) with foreman assignments
       shortTermSnapshot.docs.forEach((doc) => {
         const docData = doc.data() as ScheduleDoc;
         if (doc.id === "_placeholder" || !docData.jobKey) return;
 
-        const scheduleKey = `${docData.jobKey}_${docData.month}`;
-        let hasAnyDay = false;
-        
         const weeks = docData.weeks || [];
         const monthWeekStarts = getMonthWeekStarts(docData.month);
         
@@ -217,65 +671,47 @@ function ShortTermScheduleContent() {
             const dayDate = weekDates[day.dayNumber - 1];
             if (!dayDate || dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
 
-            hasAnyDay = true;
-            
-            const dateKey = dayDate.toISOString().split('T')[0];
+            const dateKey = formatDateKey(dayDate);
             
             if (projectsByDay[dateKey]) {
-              projectsByDay[dateKey].push({
-                jobKey: docData.jobKey,
-                customer: docData.customer || "",
-                projectNumber: docData.projectNumber || "",
-                projectName: docData.projectName || "",
-                hours: day.hours,
-                foreman: day.foreman || "",
-                employees: day.employees || [],
-                month: docData.month,
-                weekNumber: week.weekNumber,
-                dayNumber: day.dayNumber,
-              });
+              // Priority: If we have short-term data (overrides), it takes priority over Gantt/Long-term
+              const existingProjectIndex = projectsByDay[dateKey].findIndex(p => p.jobKey === docData.jobKey);
+              
+              if (existingProjectIndex !== -1) {
+                // Update the existing project
+                // If hours is 0 in short-term, but we have Gantt hours, we only overwrite if a foreman is assigned
+                // This allows a "deleted" project to reapppear if a new Scope is added/updated
+                if (day.hours > 0 || day.foreman) {
+                  projectsByDay[dateKey][existingProjectIndex].foreman = day.foreman || "";
+                  projectsByDay[dateKey][existingProjectIndex].hours = day.hours; 
+                }
+              } else if (day.hours > 0) {
+                // Add as a new project for this day
+                projectsByDay[dateKey].push({
+                  jobKey: docData.jobKey,
+                  customer: docData.customer || "",
+                  projectNumber: docData.projectNumber || "",
+                  projectName: docData.projectName || "",
+                  hours: day.hours,
+                  foreman: day.foreman || "",
+                  employees: day.employees || [],
+                  month: docData.month,
+                  weekNumber: week.weekNumber,
+                  dayNumber: day.dayNumber,
+                });
+              }
             }
           });
         });
-
-        if (hasAnyDay) {
-          dailyScheduleKeys.add(scheduleKey);
-        }
       });
       
-      // Then, distribute weekly hours from long-term schedule if no daily data exists
+      // Then, distribute weekly hours from long-term schedule if no daily/Gantt data exists
       longTermSnapshot.docs.forEach((doc) => {
         const docData = doc.data();
         if (doc.id === "_placeholder" || !docData.jobKey) return;
+        if (projectsWithGanttData.has(docData.jobKey)) return;
 
-        const scheduleKey = `${docData.jobKey}_${docData.month || ""}`;
-        
         const weeks = docData.weeks || [];
-        const hasWeeklyHours = Array.isArray(weeks) && weeks.some((week: { weekNumber: number; hours: number }) => (week.hours || 0) > 0);
-
-        if (!hasWeeklyHours && docData.month && !dailyScheduleKeys.has(scheduleKey)) {
-          const firstWorkday = getFirstWorkdayOfMonth(docData.month);
-          if (firstWorkday && firstWorkday >= currentWeekStart && firstWorkday < fiveWeeksFromStart) {
-            const dateKey = firstWorkday.toISOString().split("T")[0];
-            const position = getWeekDayPositionForDate(docData.month, firstWorkday);
-            const alreadyExists = projectsByDay[dateKey]?.some(p => p.jobKey === docData.jobKey);
-
-            if (projectsByDay[dateKey] && position && !alreadyExists) {
-              projectsByDay[dateKey].push({
-                jobKey: docData.jobKey,
-                customer: docData.customer || "",
-                projectNumber: docData.projectNumber || "",
-                projectName: docData.projectName || "",
-                hours: docData.totalHours || 0,
-                foreman: "",
-                employees: [],
-                month: docData.month,
-                weekNumber: position.weekNumber,
-                dayNumber: position.dayNumber,
-              });
-            }
-          }
-        }
         const monthWeekStarts = getMonthWeekStarts(docData.month);
         
         weeks.forEach((week: { weekNumber: number; hours: number }) => {
@@ -283,34 +719,25 @@ function ShortTermScheduleContent() {
           if (!weekStart) return;
           
           const weekDates = getWeekDates(weekStart);
-          const weekHours = week.hours || 0;
-          const hoursPerDay = weekHours / 5; // Distribute evenly across 5 work days
+          const hoursPerDay = (week.hours || 0) / 5;
           
           weekDates.forEach((dayDate, dayIndex) => {
             if (dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
+            const dateKey = formatDateKey(dayDate);
             
-            const dateKey = dayDate.toISOString().split('T')[0];
-            
-            // Only add if no daily data exists for this project on this day
-            if (projectsByDay[dateKey]) {
-              const exists = projectsByDay[dateKey].some(
-                p => p.jobKey === docData.jobKey
-              );
-              
-              if (!exists) {
-                projectsByDay[dateKey].push({
-                  jobKey: docData.jobKey,
-                  customer: docData.customer || "",
-                  projectNumber: docData.projectNumber || "",
-                  projectName: docData.projectName || "",
-                  hours: hoursPerDay,
-                  foreman: "",
-                  employees: [],
-                  month: docData.month,
-                  weekNumber: week.weekNumber,
-                  dayNumber: dayIndex + 1,
-                });
-              }
+            if (projectsByDay[dateKey] && !projectsByDay[dateKey].some(p => p.jobKey === docData.jobKey)) {
+              projectsByDay[dateKey].push({
+                jobKey: docData.jobKey,
+                customer: docData.customer || "",
+                projectNumber: docData.projectNumber || "",
+                projectName: docData.projectName || "",
+                hours: hoursPerDay,
+                foreman: "",
+                employees: [],
+                month: docData.month,
+                weekNumber: week.weekNumber,
+                dayNumber: dayIndex + 1,
+              });
             }
           });
         });
@@ -328,34 +755,27 @@ function ShortTermScheduleContent() {
       foremenList.forEach(foreman => {
         foremanDateMap[foreman.id] = {};
         columns.forEach(col => {
-          const dateKey = col.date.toISOString().split('T')[0];
+          const dateKey = formatDateKey(col.date);
           foremanDateMap[foreman.id][dateKey] = [];
         });
       });
       // Unassigned bucket for projects without a foreman
       foremanDateMap.__unassigned__ = {};
       columns.forEach(col => {
-        const dateKey = col.date.toISOString().split('T')[0];
+        const dateKey = formatDateKey(col.date);
         foremanDateMap.__unassigned__[dateKey] = [];
       });
       
-      // Populate with assigned projects
       Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
         projects.forEach(project => {
-          if (project.foreman) {
-            if (!foremanDateMap[project.foreman]) {
-              foremanDateMap[project.foreman] = {};
-            }
-            if (!foremanDateMap[project.foreman][dateKey]) {
-              foremanDateMap[project.foreman][dateKey] = [];
-            }
-            foremanDateMap[project.foreman][dateKey].push(project);
-          } else {
-            foremanDateMap.__unassigned__[dateKey].push(project);
-          }
+          if (project.hours <= 0) return; // SKIP zero-hour projects (deleted/moved)
+          
+          const fid = project.foreman || "__unassigned__";
+          if (!foremanDateMap[fid]) foremanDateMap[fid] = {};
+          if (!foremanDateMap[fid][dateKey]) foremanDateMap[fid][dateKey] = [];
+          foremanDateMap[fid][dateKey].push(project);
         });
       });
-      
       setForemanDateProjects(foremanDateMap);
       
       // Load crew assignments from projects
@@ -420,7 +840,9 @@ function ShortTermScheduleContent() {
     }
     
     return allEmployees.filter(e => 
-      e.role === "Field Worker" && !assignedToOthers.includes(e.id)
+      e.isActive && 
+      (e.role === "Field Worker" || e.role === "Field worker") && 
+      !assignedToOthers.includes(e.id)
     );
   }
 
@@ -614,8 +1036,116 @@ function ShortTermScheduleContent() {
             <h1 className="text-3xl font-bold text-gray-900">Short-Term Schedule</h1>
             <p className="text-gray-600 mt-1">Foremen and projects by date - Assign employees to jobs</p>
           </div>
-          <Navigation currentPage="short-term-schedule" />
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsAddingProject(!isAddingProject)}
+              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+                isAddingProject 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-orange-600 hover:bg-orange-700 text-white'
+              }`}
+            >
+              {isAddingProject ? 'Cancel' : 'Add Project'}
+            </button>
+            <Navigation currentPage="short-term-schedule" />
+          </div>
         </div>
+
+        {isAddingProject && (
+          <div className="mb-8 bg-white rounded-lg shadow-lg border border-orange-200 overflow-hidden">
+            <div className={`p-4 border-b flex items-center justify-between ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+              <h2 className="text-lg font-bold text-gray-900">
+                {targetingCell 
+                  ? `Add Project to ${targetingCell.date.toLocaleDateString()} for ${
+                    [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
+                  }`
+                  : 'Search Projects to Add'
+                }
+              </h2>
+              <div className="relative w-96 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Search by name, customer, or number..."
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 rounded-md border border-orange-200 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                    autoFocus
+                  />
+                  <svg className="absolute left-3 top-2.5 h-4 w-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsAddingProject(false);
+                    setTargetingCell(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-4 max-h-[300px] overflow-y-auto">
+              {projectSearch.length < 2 ? (
+                <div className="text-center py-8 text-gray-500 italic">
+                  Type at least 2 characters to search...
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {allProjects
+                    .filter(p => 
+                      p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                      p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                      p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
+                    )
+                    .slice(0, 50) // Limit results for performance
+                    .map((p, idx) => {
+                      const jobKey = getProjectKey(p);
+                      // Use a composite key to ensure uniqueness even if multiple projects share a name/customer/number
+                      const uniqueKey = `${jobKey}-${p.id || idx}`;
+                      return (
+                        <div
+                          key={uniqueKey}
+                          draggable
+                          onDragStart={() => handleDragStart(p)}
+                          onClick={() => handleSearchProjectClick(p)}
+                          className={`flex items-center p-3 border rounded-lg transition-all cursor-grab active:cursor-grabbing group shadow-sm bg-white ${
+                            targetingCell ? 'hover:border-green-500 hover:bg-green-50' : 'hover:border-orange-500 hover:bg-orange-50'
+                          } border-gray-200`}
+                        >
+                          <div className="flex-1 overflow-hidden">
+                            <div className="font-bold text-gray-900 truncate">{p.projectName}</div>
+                            <div className="text-xs text-gray-600 truncate">{p.customer} | {p.projectNumber}</div>
+                          </div>
+                          <div className={`ml-2 opacity-50 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-400'}`}>
+                            {targetingCell ? (
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            ) : (
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+            <div className="bg-gray-50 p-3 text-xs text-gray-500 border-t border-gray-100">
+              <span className="font-bold text-orange-600">Tip:</span> {targetingCell 
+                ? 'Click a project card above to add it to the selected cell, or drag it wherever you like.'
+                : 'Drag a project card from here and drop it onto a foreman\'s row under a specific date.'
+              }
+            </div>
+          </div>
+        )}
 
         {dayColumns.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
@@ -629,17 +1159,39 @@ function ShortTermScheduleContent() {
                   <th className="sticky left-0 z-20 bg-orange-600 text-left py-3 px-4 text-sm font-bold text-white border-r border-orange-500 w-40">
                     Foreman / Date
                   </th>
-                  {dayColumns.map((day) => (
-                    <th 
-                      key={day.date.toISOString()} 
-                      className="text-center py-3 px-3 text-sm font-bold text-white border-r border-orange-500 min-w-[250px]"
-                    >
-                      <div>{day.dayLabel}</div>
-                      <div className="text-xs font-normal text-orange-100">
-                        {day.date.toLocaleDateString("en-US", { weekday: "short" })}
-                      </div>
-                    </th>
-                  ))}
+                  {dayColumns.map((day) => {
+                    const dateKey = formatDateKey(day.date);
+                    // Calculate total for this day across all foremen
+                    let totalHours = 0;
+                    Object.values(foremanDateProjects).forEach(dateMap => {
+                      if (dateMap[dateKey]) {
+                        dateMap[dateKey].forEach(proj => {
+                          totalHours += proj.hours;
+                        });
+                      }
+                    });
+                    const headCount = totalHours / 10;
+
+                    return (
+                      <th 
+                        key={dateKey} 
+                        className="text-center py-3 px-3 text-sm font-bold text-white border-r border-orange-500 min-w-[250px]"
+                      >
+                        <div>{day.dayLabel}</div>
+                        <div className="text-[10px] font-normal text-orange-100 flex flex-col items-center mt-1">
+                          <div className="flex gap-2 items-center">
+                            <span>{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
+                              {totalHours.toFixed(0)} hrs
+                            </span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
+                              {headCount.toFixed(1)} heads
+                            </span>
+                          </div>
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -648,13 +1200,13 @@ function ShortTermScheduleContent() {
                   
                   return (
                     <React.Fragment key={foreman.id}>
-                      {/* Foreman Row */}
+                      {/* Projects Row */}
                       <tr className={`border-b border-gray-300 ${foremanIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                         <td className="sticky left-0 z-10 bg-inherit py-3 px-4 text-sm font-bold text-gray-900 border-r border-gray-300">
                           {foreman.firstName} {foreman.lastName}
                         </td>
                         {dayColumns.map((day) => {
-                          const dateKey = day.date.toISOString().split('T')[0];
+                          const dateKey = formatDateKey(day.date);
                           const projects = (foremanProjects[dateKey] || []).filter(p => p.hours > 0);
                           const dayTotal = projects.reduce((sum, p) => sum + p.hours, 0);
                           const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
@@ -662,90 +1214,114 @@ function ShortTermScheduleContent() {
                           return (
                             <td
                               key={dateKey}
-                              className={`py-3 px-3 text-xs border-r border-gray-300 align-top ${isWeekend ? 'bg-gray-100' : ''}`}
+                              className={`py-3 px-3 text-xs border-r border-gray-300 align-top transition-colors ${isWeekend ? 'bg-gray-100' : ''} ${saving ? 'opacity-50 pointer-events-none' : ''}`}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.add('bg-orange-50');
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove('bg-orange-50');
+                              }}
+                              onDrop={(e) => {
+                                e.currentTarget.classList.remove('bg-orange-50');
+                                handleDrop(e, day.date, foreman.id);
+                              }}
                             >
-                              {projects.length > 0 ? (
-                                <div className="space-y-2">
-                                  {projects.map((project, projIdx) => (
-                                    <div key={projIdx} className="bg-orange-50 border border-orange-200 rounded p-2">
-                                      <div className="font-semibold text-gray-900 text-xs truncate" title={project.projectName}>
-                                        {project.projectName}
+                              <div className="flex flex-col h-full">
+                                {projects.length > 0 ? (
+                                  <div className="space-y-2 mb-2">
+                                    {projects.map((project, projIdx) => {
+                                      const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
+                                      return (
+                                        <div 
+                                          key={projIdx} 
+                                          draggable={!saving}
+                                          onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
+                                          className={`${isHighlighted ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-400 scale-105 z-10' : 'bg-orange-50 border-orange-200'} border rounded p-2 cursor-grab active:cursor-grabbing hover:bg-orange-100 transition-all shadow-sm relative group`}
+                                          onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber)}
+                                        >
+                                        {/* Delete Button */}
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (confirm(`Remove ${project.projectName} from ${day.dayLabel}?`)) {
+                                              setSaving(true);
+                                              try {
+                                                await updateProjectAssignment(project, dateKey, foreman.id, null, 0);
+                                                await loadSchedules();
+                                              } finally {
+                                                setSaving(false);
+                                              }
+                                            }
+                                          }}
+                                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-orange-400 hover:text-red-500 transition-opacity bg-white/50 rounded"
+                                          title="Remove project from this day"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                        </button>
+
+                                        <div className="font-semibold text-gray-900 text-xs truncate pr-4" title={project.projectName}>
+                                          {project.projectName}
+                                        </div>
+                                        <div className="text-gray-600 text-xs truncate" title={project.customer}>
+                                          {project.customer}
+                                        </div>
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <input
+                                            type="number"
+                                            step="0.5"
+                                            defaultValue={project.hours.toFixed(1)}
+                                            onBlur={async (e) => {
+                                              const newHrs = parseFloat(e.target.value);
+                                              if (!isNaN(newHrs) && newHrs !== project.hours) {
+                                                setSaving(true);
+                                                try {
+                                                  await updateProjectAssignment(project, dateKey, foreman.id, foreman.id, newHrs);
+                                                  await loadSchedules();
+                                                } finally {
+                                                  setSaving(false);
+                                                }
+                                              }
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-12 px-1 py-0.5 text-[10px] font-bold text-orange-700 bg-white border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                          />
+                                          <span className="text-[10px] text-orange-600 font-semibold">hrs</span>
+                                        </div>
                                       </div>
-                                      <div className="text-gray-600 text-xs truncate" title={project.customer}>
-                                        {project.customer}
-                                      </div>
-                                      <div className="text-orange-600 font-bold text-xs mt-1">
-                                        {project.hours.toFixed(1)} hrs
-                                      </div>
+                                      );
+                                    })}
+                                    <div className="text-center py-1 font-bold text-orange-700 bg-orange-100 rounded">
+                                      Total: {dayTotal.toFixed(1)} hrs
                                     </div>
-                                  ))}
-                                  <div className="text-center py-1 font-bold text-orange-700 bg-orange-100 rounded">
-                                    Total: {dayTotal.toFixed(1)} hrs
                                   </div>
-                                </div>
-                              ) : (
-                                <div className="text-gray-300 text-xs text-center py-4">—</div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                      
-                      {/* Employees Sub-Row */}
-                      <tr className={`border-b border-gray-200 ${foremanIdx % 2 === 0 ? 'bg-gray-50' : 'bg-gray-100'}`}>
-                        <td className="sticky left-0 z-10 bg-inherit py-2 px-4 text-xs font-semibold text-gray-600 border-r border-gray-300">
-                          Crew
-                        </td>
-                        {dayColumns.map((day) => {
-                          const dateKey = day.date.toISOString().split('T')[0];
-                          const isUnassigned = foreman.id === "__unassigned__";
-                          const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
-                          const availableEmployees = getAvailableEmployeesForForeman(dateKey, foreman.id);
-                          const totalAssigned = getAssignedEmployeesForDate(dateKey).length;
-                          const totalFieldWorkers = allEmployees.filter(e => e.role === "Field Worker").length;
-                          
-                          return (
-                            <td key={dateKey} className="py-2 px-3 text-xs border-r border-gray-300">
-                              <div className="space-y-1">
-                                <div className={`text-xs font-semibold text-center px-1 py-0.5 rounded ${
-                                  totalAssigned === totalFieldWorkers 
-                                    ? 'bg-red-100 text-red-700' 
-                                    : totalAssigned > 0 
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-500'
-                                }`}>
-                                  {totalAssigned}/{totalFieldWorkers} assigned
-                                </div>
-                                {isUnassigned ? (
-                                  <div className="text-xs text-gray-400 text-center py-2">
-                                    Assign foreman first
-                                  </div>
-                                ) : (availableEmployees.length > 0 || currentEmployees.length > 0 ? (
-                                  <select
-                                    multiple
-                                    size={3}
-                                    value={currentEmployees}
-                                    onChange={(e) => {
-                                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                                      updateCrewAssignment(dateKey, foreman.id, selected);
-                                    }}
-                                    disabled={saving}
-                                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
-                                  >
-                                    {availableEmployees.length === 0 && currentEmployees.length === 0 && (
-                                      <option disabled>No employees available</option>
-                                    )}
-                                    {availableEmployees.map((emp) => (
-                                      <option key={emp.id} value={emp.id}>
-                                        {emp.firstName} {emp.lastName}
-                                      </option>
-                                    ))}
-                                  </select>
                                 ) : (
-                                  <div className="text-xs text-red-500 text-center py-2">
-                                    All crew assigned
+                                  <div className="flex-1 flex items-center justify-center text-gray-300 italic min-h-[40px]">
+                                    —
                                   </div>
-                                ))}
+                                )}
+                                
+                                {/* Quick Add Button in Cell */}
+                                <button
+                                  onClick={() => {
+                                    setTargetingCell({ date: day.date, foremanId: foreman.id });
+                                    setIsAddingProject(true);
+                                    setProjectSearch("");
+                                  }}
+                                  className={`mt-auto py-1 border-t border-dashed transition-colors flex items-center justify-center gap-1 ${
+                                    targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
+                                    ? 'border-green-300 text-green-600 bg-green-50'
+                                    : 'border-gray-200 text-gray-400 hover:text-orange-500 hover:bg-orange-50 opacity-0 group-hover:opacity-100'
+                                  }`}
+                                  title="Add project to this date/foreman"
+                                >
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span className="text-[9px] font-semibold">Add Project</span>
+                                </button>
                               </div>
                             </td>
                           );
@@ -757,6 +1333,84 @@ function ShortTermScheduleContent() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {selectedGanttProject && (
+          <ProjectScopesModal
+            project={selectedGanttProject}
+            scopes={scopesByJobKey[selectedGanttProject.jobKey || ""] || []}
+            allScopes={scopesByJobKey}
+            selectedScopeId={null}
+            companyCapacity={companyCapacity}
+            onClose={() => {
+              setSelectedGanttProject(null);
+              setTargetingCell(null);
+            }}
+            onScopesUpdated={async (jobKey, updatedScopes) => {
+              const enriched = getEnrichedScopes(updatedScopes, allProjects);
+              setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
+              
+              // If we were targeting a specific cell, try to auto-stamp the scope to that foreman
+              if (targetingCell) {
+                const { date, foremanId } = targetingCell;
+                const dateKey = formatDateKey(date);
+                
+                // Find the first scope that covers either our targeted date OR is simply the one we just added/modified
+                const targetScope = updatedScopes.find(s => {
+                  if (!s.startDate || !s.endDate) return false;
+                  return dateKey >= s.startDate && dateKey <= s.endDate;
+                }) || updatedScopes[updatedScopes.length - 1];
+                
+                if (targetScope && targetScope.startDate && targetScope.endDate) {
+                  const start = new Date(targetScope.startDate + 'T00:00:00');
+                  const end = new Date(targetScope.endDate + 'T00:00:00');
+                  
+                  // If the targeted date is within the range of the scope, stamp it to that foreman
+                  if (date >= start && date <= end) {
+                    const monthStr = dateKey.substring(0, 7);
+                    const position = getWeekDayPositionForDate(monthStr, date);
+                    
+                    if (position) {
+                      const newProject: DayProject = {
+                        jobKey,
+                        customer: selectedGanttProject?.customer || "",
+                        projectNumber: selectedGanttProject?.projectNumber || "",
+                        projectName: selectedGanttProject?.projectName || "",
+                        hours: 0,
+                        foreman: foremanId === "__unassigned__" ? "" : foremanId,
+                        employees: [],
+                        month: monthStr,
+                        weekNumber: position.weekNumber,
+                        dayNumber: position.dayNumber
+                      };
+
+                      // Distribution logic
+                      if (targetScope.manpower && targetScope.manpower > 0) {
+                        newProject.hours = targetScope.manpower * 10;
+                      } else {
+                        let workDaysInRange = 0;
+                        let curr = new Date(start);
+                        while (curr <= end) {
+                          if (curr.getDay() !== 0 && curr.getDay() !== 6) workDaysInRange++;
+                          curr.setDate(curr.getDate() + 1);
+                        }
+                        if (workDaysInRange > 0) {
+                          newProject.hours = (targetScope.hours || 0) / workDaysInRange;
+                        }
+                      }
+
+                      if (newProject.hours > 0) {
+                        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, newProject.hours);
+                      }
+                    }
+                  }
+                }
+              }
+              
+              // Full reload to ensure everything is recalculated correctly
+              await loadSchedules();
+            }}
+          />
         )}
       </div>
     </div>

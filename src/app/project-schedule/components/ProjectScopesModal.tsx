@@ -6,14 +6,39 @@ import { ProjectInfo, Scope } from "@/types";
 interface ProjectScopesModalProps {
   project: ProjectInfo;
   scopes: Scope[];
+  allScopes?: Record<string, Scope[]>; // Map of jobKey -> Scope[] for company-wide capacity
+  companyCapacity?: number; // Total available hours per day
   selectedScopeId: string | null;
   onClose: () => void;
   onScopesUpdated: (jobKey: string, scopes: Scope[]) => void;
 }
 
+const calculateWorkDays = (startStr?: string, endStr?: string) => {
+  if (!startStr || !endStr) return 0;
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+  
+  let count = 0;
+  const current = new Date(start);
+  
+  // Safety break for extremely long ranges (max 3 years)
+  const maxDate = new Date(start);
+  maxDate.setFullYear(maxDate.getFullYear() + 3);
+  const actualEnd = end > maxDate ? maxDate : end;
+
+  while (current <= actualEnd) {
+    if (current.getDay() !== 0 && current.getDay() !== 6) count++;
+    current.setDate(current.getDate() + 1);
+  }
+  return count;
+};
+
 export function ProjectScopesModal({
   project,
   scopes,
+  allScopes,
+  companyCapacity = 210, // Default to 210 if not provided
   selectedScopeId,
   onClose,
   onScopesUpdated,
@@ -41,6 +66,7 @@ export function ProjectScopesModal({
         startDate: "",
         endDate: "",
         manpower: undefined,
+        hours: undefined,
         description: "",
         tasks: [],
       });
@@ -52,6 +78,7 @@ export function ProjectScopesModal({
       startDate: scope.startDate || "",
       endDate: scope.endDate || "",
       manpower: scope.manpower,
+      hours: scope.hours,
       description: scope.description || "",
       tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
     });
@@ -83,6 +110,7 @@ export function ProjectScopesModal({
         startDate: scopeDetail.startDate || "",
         endDate: scopeDetail.endDate || "",
         manpower: scopeDetail.manpower,
+        hours: typeof scopeDetail.hours === 'number' ? scopeDetail.hours : 0,
         description: scopeDetail.description || "",
         tasks: (scopeDetail.tasks || []).filter((task) => task.trim()),
       };
@@ -123,7 +151,12 @@ export function ProjectScopesModal({
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-4 rounded">
             <div><span className="font-semibold">Project #:</span><p className="mt-1">{project.projectNumber || "—"}</p></div>
-            <div><span className="font-semibold">Customer:</span><p className="mt-1">{project.customer || "—"}</p></div>
+            <div>
+              <span className="font-semibold">Total Budgeted Hours:</span>
+              <p className="mt-1 text-orange-700 font-bold text-base">
+                {scopes.reduce((sum, s) => sum + (s.hours || 0), 0).toFixed(1)}
+              </p>
+            </div>
             <div className="col-span-2"><span className="font-semibold">Job Key:</span><p className="mt-1">{project.jobKey || "—"}</p></div>
           </div>
 
@@ -133,12 +166,32 @@ export function ProjectScopesModal({
               <button type="button" onClick={() => setActiveScopeId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-md border border-orange-300 text-orange-700 hover:bg-orange-50">+ Add Scope</button>
             </div>
             <div className="grid gap-2 max-h-40 overflow-y-auto">
-              {scopes.length === 0 ? <div className="text-sm text-gray-500">No scopes yet.</div> : scopes.map((scope) => (
-                <button key={scope.id} type="button" onClick={() => setActiveScopeId(scope.id)} className={`text-left border rounded-md px-3 py-2 transition-colors ${activeScopeId === scope.id ? "border-orange-400 bg-orange-50" : "border-gray-200 hover:border-orange-200"}`}>
-                  <div className="text-sm font-semibold">{scope.title || "Scope"}</div>
-                  <div className="text-xs text-gray-500">{scope.startDate || "No start"} - {scope.endDate || "No end"}</div>
-                </button>
-              ))}
+              {scopes.length === 0 ? (
+                <div className="text-sm text-gray-500">No scopes yet.</div>
+              ) : (
+                scopes.map((scope) => (
+                  <button
+                    key={scope.id}
+                    type="button"
+                    onClick={() => setActiveScopeId(scope.id)}
+                    className={`text-left border rounded-md px-3 py-2 transition-colors ${
+                      activeScopeId === scope.id ? "border-orange-400 bg-orange-50" : "border-gray-200 hover:border-orange-200"
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm font-semibold">{scope.title || "Scope"}</div>
+                      {scope.hours !== undefined && (
+                        <div className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                          {scope.hours.toFixed(1)} hrs
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {scope.startDate || "No start"} - {scope.endDate || "No end"}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
@@ -157,10 +210,98 @@ export function ProjectScopesModal({
                 <input type="date" value={scopeDetail.endDate || ""} onChange={(e) => setScopeDetail(p => ({ ...p, endDate: e.target.value }))} className="w-full px-3 py-2 border rounded-md text-sm" />
               </div>
             </div>
-            <div className="mb-4">
-              <label className="block text-sm font-semibold mb-1">Manpower</label>
-              <input type="number" min="0" step="0.5" value={scopeDetail.manpower ?? ""} onChange={(e) => setScopeDetail(p => ({ ...p, manpower: e.target.value ? parseFloat(e.target.value) : undefined }))} className="w-full px-3 py-2 border rounded-md text-sm" />
+
+            <div className="bg-orange-50 border border-orange-100 rounded-md p-4 mb-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Manpower</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    step="0.5" 
+                    value={scopeDetail.manpower ?? ""} 
+                    onChange={(e) => {
+                      const mp = e.target.value ? parseFloat(e.target.value) : 0;
+                      const days = calculateWorkDays(scopeDetail.startDate, scopeDetail.endDate);
+                      // Auto-calculate Budgeted Hours: Manpower * 10 hrs * Days
+                      setScopeDetail(p => ({ ...p, manpower: mp, hours: mp * 10 * days }));
+                    }} 
+                    className="w-full px-3 py-2 border rounded-md text-sm bg-white font-bold" 
+                    placeholder="e.g. 2.0" 
+                  />
+                  <p className="mt-1 text-[10px] text-gray-400">Heads assigned</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Budgeted Hours</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    step="0.5" 
+                    value={scopeDetail.hours ?? ""} 
+                    onChange={(e) => setScopeDetail(p => ({ ...p, hours: e.target.value ? parseFloat(e.target.value) : undefined }))} 
+                    className="w-full px-3 py-2 border rounded-md text-sm bg-white font-bold text-orange-900" 
+                    placeholder="Total hours" 
+                  />
+                  <p className="mt-1 text-[10px] text-gray-400">Total (Manpower x 10 x Days)</p>
+                </div>
+              </div>
+              
+              {scopeDetail.startDate && scopeDetail.endDate && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                  {(() => {
+                    const days = calculateWorkDays(scopeDetail.startDate, scopeDetail.endDate);
+                    const manpowerRequested = scopeDetail.manpower || 0;
+                    const dailyUsage = manpowerRequested * 10;
+                    const companyLimit = companyCapacity; 
+                    
+                    // Sum up all OTHER scopes for the start date to give a real-time snapshot
+                    let companyWideManpowerOnDay = 0;
+                    if (allScopes && scopeDetail.startDate) {
+                      const targetDateStr = scopeDetail.startDate;
+                      Object.values(allScopes).forEach(projectScopes => {
+                        projectScopes.forEach(s => {
+                          // Skip the one we are currently editing to avoid double counting
+                          if (activeScopeId && s.id === activeScopeId) return;
+                          
+                          if (s.startDate && s.endDate) {
+                            if (targetDateStr >= s.startDate && targetDateStr <= s.endDate) {
+                              companyWideManpowerOnDay += (s.manpower || 0);
+                            }
+                          }
+                        });
+                      });
+                    }
+
+                    const otherUsage = companyWideManpowerOnDay * 10;
+                    const remaining = companyLimit - otherUsage - dailyUsage;
+                    
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-sm font-bold text-green-800">
+                          <span>Total Company Availability ({scopeDetail.startDate}):</span>
+                          <span>{companyLimit} hrs ({companyLimit/10} heads)</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-gray-600">
+                          <span>Other Scheduled Jobs:</span>
+                          <span>-{otherUsage.toFixed(1)} hrs</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-red-700 font-semibold">
+                          <span>This Scope's Requirement:</span>
+                          <span>-{dailyUsage.toFixed(1)} hrs</span>
+                        </div>
+                        <div className="border-t border-green-200 mt-2 pt-1 flex justify-between items-center text-sm font-bold text-green-900">
+                          <span>Remaining Company Capacity:</span>
+                          <span className={remaining < 0 ? "text-red-600" : "text-green-900"}>
+                            {remaining.toFixed(1)} hrs
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
+
             <div className="mb-4">
               <label className="block text-sm font-semibold mb-1">Description</label>
               <textarea value={scopeDetail.description || ""} onChange={(e) => setScopeDetail(p => ({ ...p, description: e.target.value }))} className="w-full px-3 py-2 border rounded-md text-sm" rows={4} />

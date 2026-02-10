@@ -25,8 +25,8 @@ function ProjectScheduleContent() {
     setStartFilter,
     units,
     displayTasks,
-    collapsedProjects,
-    setCollapsedProjects,
+    expandedProjects,
+    setExpandedProjects,
     scopesByJobKey,
     setScopesByJobKey,
   } = useProjectSchedule();
@@ -35,11 +35,11 @@ function ProjectScheduleContent() {
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
 
   const toggleProjectScopes = useCallback((jobKey: string) => {
-    setCollapsedProjects((prev) => ({
+    setExpandedProjects((prev) => ({
       ...prev,
       [jobKey]: !prev[jobKey],
     }));
-  }, [setCollapsedProjects]);
+  }, [setExpandedProjects]);
 
   const handleOpenTask = useCallback((task: GanttTask) => {
     setSelectedProject({
@@ -110,7 +110,7 @@ function ProjectScheduleContent() {
                     unitWidth={unitWidth}
                     unitsCount={units.length}
                     scopesByJobKey={scopesByJobKey}
-                    collapsedProjects={collapsedProjects}
+                    expandedProjects={expandedProjects}
                     onToggleProject={toggleProjectScopes}
                     onOpenTask={handleOpenTask}
                   />

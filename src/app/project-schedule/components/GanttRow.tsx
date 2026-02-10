@@ -6,7 +6,7 @@ interface GanttRowProps {
   unitWidth: number;
   unitsCount: number;
   scopesByJobKey: Record<string, Scope[]>;
-  collapsedProjects: Record<string, boolean>;
+  expandedProjects: Record<string, boolean>;
   onToggleProject: (jobKey: string) => void;
   onOpenTask: (task: GanttTask) => void;
 }
@@ -16,7 +16,7 @@ export function GanttRow({
   unitWidth,
   unitsCount,
   scopesByJobKey,
-  collapsedProjects,
+  expandedProjects,
   onToggleProject,
   onOpenTask,
 }: GanttRowProps) {
@@ -43,7 +43,7 @@ export function GanttRow({
                   onClick={() => onToggleProject(task.jobKey)}
                   className="text-[11px] font-semibold text-orange-600 hover:text-orange-700"
                 >
-                  {collapsedProjects[task.jobKey] ? "+" : "–"}
+                  {expandedProjects[task.jobKey] ? "–" : "+"}
                 </button>
                 <div className="text-[11px] text-gray-400">
                   {scopesByJobKey[task.jobKey].length} scope{scopesByJobKey[task.jobKey].length === 1 ? "" : "s"}

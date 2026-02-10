@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import { Scope, ViewMode, GanttTask } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";
@@ -21,7 +21,7 @@ export function useProjectSchedule() {
   const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [startFilter, setStartFilter] = useState(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -31,7 +31,10 @@ export function useProjectSchedule() {
   const loadSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const projectsSnapshot = await getDocs(collection(db, "projects"));
+      const projectsSnapshot = await getDocs(query(
+        collection(db, "projects"),
+        where("status", "not-in", ["Bid Submitted", "Lost"])
+      ));
       const docMap: Record<string, string> = {};
       const projectCostItems: Record<string, Array<{ costitems: string; sales: number; cost: number; hours: number; costType: string }>> = {};
 
@@ -201,6 +204,10 @@ export function useProjectSchedule() {
     }
   }, []);
 
+  useEffect(() => {
+    loadSchedules();
+  }, [loadSchedules]);
+
   const parseScopeDate = (value?: string) => {
     if (!value) return null;
     const dateOnly = parseDateInput(value);
@@ -246,7 +253,16 @@ export function useProjectSchedule() {
     }
 
     const resultDate = maxDate as (Date | null);
-    return (!resultDate || resultDate.getTime() < startDateRange.getTime()) ? addDays(startDateRange, 30) : resultDate;
+    
+    // Safety check: Don't allow range to exceed 1 year from start
+    const oneYearFromStart = addDays(startDateRange, 365);
+    const cappedDate = (resultDate && resultDate.getTime() > oneYearFromStart.getTime()) 
+      ? oneYearFromStart 
+      : resultDate;
+
+    return (!cappedDate || cappedDate.getTime() < startDateRange.getTime()) 
+      ? addDays(startDateRange, 30) 
+      : cappedDate;
   }, [viewMode, shortTermJobs, longTermJobs, monthJobs, startDateRange]);
 
   const ganttTasks = useMemo(() => {
@@ -354,14 +370,14 @@ export function useProjectSchedule() {
         }
         return { ...task, startIndex, endIndex };
       })
-      .filter((task) => task.type === "project" || !collapsedProjects[task.jobKey])
+      .filter((task) => task.type === "project" || expandedProjects[task.jobKey])
       .sort((a, b) => {
         const nameCompare = a.projectName.localeCompare(b.projectName);
         if (nameCompare !== 0) return nameCompare;
         if (a.type !== b.type) return a.type === "project" ? -1 : 1;
         return (a.title || "").localeCompare(b.title || "");
       });
-  }, [ganttTasks, startDateRange, latestDateRange, viewMode, collapsedProjects]);
+  }, [ganttTasks, startDateRange, latestDateRange, viewMode, expandedProjects]);
 
   return {
     loading,
@@ -371,8 +387,8 @@ export function useProjectSchedule() {
     setStartFilter,
     units,
     displayTasks,
-    collapsedProjects,
-    setCollapsedProjects,
+    expandedProjects,
+    setExpandedProjects,
     loadSchedules,
     scopesByJobKey,
     setScopesByJobKey,

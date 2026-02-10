@@ -138,7 +138,10 @@ function SchedulingContent() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsSnapshot = await getDocs(query(
+          collection(db, "projects"),
+          where("status", "not-in", ["Bid Submitted", "Lost"])
+        ));
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as Omit<Project, "id">),
@@ -511,7 +514,10 @@ function SchedulingContent() {
       }
       
       // Refresh the projects data
-      const allProjects = await getDocs(collection(db, "projects"));
+      const allProjects = await getDocs(query(
+        collection(db, "projects"),
+        where("status", "not-in", ["Bid Submitted", "Lost"])
+      ));
       setProjects(allProjects.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any);
       
       // Refresh schedules data

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { initializeApp } = require('firebase/app');
-const { getFirestore, collection, getDocs, addDoc, query, where, deleteDoc } = require('firebase/firestore');
+const { getFirestore, collection, getDocs, doc, writeBatch } = require('firebase/firestore');
 
 const firebaseConfig = require('../src/firebaseConfig.json');
 initializeApp(firebaseConfig);
@@ -25,54 +25,14 @@ async function importScopes() {
     process.exit(1);
   }
 
-  // Parse header line properly (handling quoted commas)
-  const headerParts = [];
-  let current = '';
-  let inQuotes = false;
-  const headerLine = lines[0];
-  
-  for (let i = 0; i < headerLine.length; i++) {
-    const char = headerLine[i];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
-      headerParts.push(current.trim().replace(/^"|"$/g, ''));
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  headerParts.push(current.trim().replace(/^"|"$/g, ''));
-
-  const projectNameIdx = headerParts.findIndex(h => h.toLowerCase() === 'projectname');
-  const projectNumberIdx = headerParts.findIndex(h => h.toLowerCase() === 'projectnumber');
-  const customerIdx = headerParts.findIndex(h => h.toLowerCase() === 'customer');
-  const scopeIdx = headerParts.findIndex(h => h.toLowerCase() === 'scopeofwork');
-  const hoursIdx = headerParts.findIndex(h => h.toLowerCase() === 'hours');
-  const salesIdx = headerParts.findIndex(h => h.toLowerCase() === 'sales');
-  const costIdx = headerParts.findIndex(h => h.toLowerCase() === 'cost');
-  const costTypeIdx = headerParts.findIndex(h => h.toLowerCase() === 'costtype');
-  const costItemsIdx = headerParts.findIndex(h => h.toLowerCase() === 'costitems');
-
-  console.log(`CSV Headers: ${headerParts.length} columns`);
-  if (projectNameIdx === -1 || customerIdx === -1 || scopeIdx === -1) {
-    console.error('Column indices:', { projectNameIdx, customerIdx, scopeIdx, hoursIdx, salesIdx, costIdx, costTypeIdx });
-    console.error('First 10 headers:', headerParts.slice(0, 10).join(', '));
-    process.exit(1);
-  }
-
-  console.log(`Using columns - projectName[${projectNameIdx}], customer[${customerIdx}], scope[${scopeIdx}], hours[${hoursIdx}], sales[${salesIdx}], cost[${costIdx}], costType[${costTypeIdx}]`);
-
-  // Parse CSV data lines using proper CSV parser
   const parseCSVLine = (line) => {
     const parts = [];
     let current = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
+      if (char === '"') inQuotes = !inQuotes;
+      else if (char === ',' && !inQuotes) {
         parts.push(current.trim().replace(/^"|"$/g, ''));
         current = '';
       } else {
@@ -83,7 +43,22 @@ async function importScopes() {
     return parts;
   };
 
-  // Group by customer + projectName + scopeOfWork (one document per unique scope)
+  const headerParts = parseCSVLine(lines[0]);
+
+  const projectNameIdx = headerParts.findIndex(h => h.toLowerCase() === 'projectname');
+  const projectNumberIdx = headerParts.findIndex(h => h.toLowerCase() === 'projectnumber');
+  const customerIdx = headerParts.findIndex(h => h.toLowerCase() === 'customer');
+  const scopeIdx = headerParts.findIndex(h => h.toLowerCase() === 'scopeofwork');
+  const hoursIdx = headerParts.findIndex(h => h.toLowerCase() === 'hours');
+  const salesIdx = headerParts.findIndex(h => h.toLowerCase() === 'sales');
+  const costIdx = headerParts.findIndex(h => h.toLowerCase() === 'cost');
+  const costItemsIdx = headerParts.findIndex(h => h.toLowerCase() === 'costitems');
+
+  if (projectNameIdx === -1 || customerIdx === -1 || scopeIdx === -1) {
+    console.error('Required columns missing.');
+    process.exit(1);
+  }
+
   const grouped = {};
   for (let i = 1; i < lines.length; i++) {
     const parts = parseCSVLine(lines[i]);
@@ -91,102 +66,82 @@ async function importScopes() {
     const projectName = parts[projectNameIdx]?.trim() || '';
     const projectNumber = parts[projectNumberIdx]?.trim() || '';
     const scopeOfWork = parts[scopeIdx]?.trim() || '';
-    const hoursStr = parts[hoursIdx]?.trim() || '0';
-    const salesStr = parts[salesIdx]?.trim() || '0';
-    const costStr = parts[costIdx]?.trim() || '0';
-    const costType = (parts[costTypeIdx]?.trim() || '').toLowerCase();
+    const hours = parseFloat(parts[hoursIdx]?.trim() || '0') || 0;
+    const sales = parseFloat(parts[salesIdx]?.trim() || '0') || 0;
+    const cost = parseFloat(parts[costIdx]?.trim() || '0') || 0;
     const costItems = (parts[costItemsIdx]?.trim() || '').toLowerCase();
-    const hours = parseFloat(hoursStr) || 0;
-    const sales = parseFloat(salesStr) || 0;
-    const cost = parseFloat(costStr) || 0;
 
     if (!customer || !projectName || !scopeOfWork) continue;
 
-    // Use customer|projectName|scopeOfWork as unique key
     const key = `${customer}|${projectName}|${scopeOfWork}`;
-    
     if (!grouped[key]) {
-      grouped[key] = {
-        customer,
-        projectNumber,
-        projectName,
-        scopeOfWork,
-        totalHours: 0,
-        totalSales: 0,
-        totalCost: 0,
-      };
+      grouped[key] = { customer, projectNumber, projectName, scopeOfWork, totalHours: 0, totalSales: 0, totalCost: 0 };
     }
-    // Sum hours for this scope (exclude Management cost items)
-    if (costItems !== 'management') {
-      grouped[key].totalHours += hours;
-    }
+    if (costItems !== 'management') grouped[key].totalHours += hours;
     grouped[key].totalSales += sales;
     grouped[key].totalCost += cost;
   }
 
-  console.log(`CSV: Found ${Object.keys(grouped).length} unique customer|projectName|scope combinations`);
+  console.log(`CSV processed: ${Object.keys(grouped).length} unique scopes found.`);
 
-  // NO need to look up in Firestore - we'll just create jobKey ourselves
-  // Format: customer~projectNumber~projectName
-  
-  let imported = 0;
-  let skipped = 0;
-  let duplicates = 0;
-
-  // Load existing scopes
   const existingScopesSnapshot = await getDocs(collection(db, 'projectScopes'));
   const existingScopeKeys = new Set();
   existingScopesSnapshot.docs.forEach((doc) => {
     const data = doc.data();
-    const key = `${data.jobKey}|${data.title}`;
-    existingScopeKeys.add(key);
+    existingScopeKeys.add(`${data.jobKey}|${data.title}`);
   });
 
-  console.log(`\nFound ${existingScopeKeys.size} existing scopes`);
+  console.log(`Checking against ${existingScopeKeys.size} existing scopes.`);
 
-  for (const [key, group] of Object.entries(grouped)) {
-    // Generate jobKey using the same format as existing Firestore documents
+  let batch = writeBatch(db);
+  let batchCount = 0;
+  let imported = 0;
+  let duplicates = 0;
+
+  for (const group of Object.values(grouped)) {
     const jobKey = `${group.customer}~${group.projectNumber}~${group.projectName}`;
     const scopeKey = `${jobKey}|${group.scopeOfWork}`;
 
-    // Skip if already exists
     if (existingScopeKeys.has(scopeKey)) {
       duplicates++;
       continue;
     }
 
-    try {
-      // Create one scope document per unique scope
-      const scopePayload = {
-        jobKey,
-        title: group.scopeOfWork,
-        description: group.scopeOfWork,
-        startDate: '',
-        endDate: '',
-        tasks: [],
-        hours: group.totalHours,
-        sales: group.totalSales,
-        cost: group.totalCost,
-      };
+    const scopeRef = doc(collection(db, 'projectScopes'));
+    batch.set(scopeRef, {
+      jobKey,
+      title: group.scopeOfWork,
+      description: group.scopeOfWork,
+      startDate: '',
+      endDate: '',
+      tasks: [],
+      hours: group.totalHours,
+      sales: group.totalSales,
+      cost: group.totalCost,
+    });
 
-      await addDoc(collection(db, 'projectScopes'), scopePayload);
-      imported++;
-      if (imported <= 10) {
-        console.log(`✓ ${group.projectName}: ${group.scopeOfWork.substring(0, 60)} (${group.totalHours.toFixed(1)} hrs)`);
-      }
-    } catch (error) {
-      console.error(`✗ Failed for ${group.projectName}:`, error.message);
-      skipped++;
+    batchCount++;
+    imported++;
+
+    if (batchCount >= 500) {
+      await batch.commit();
+      console.log(`Committed batch of ${batchCount} scopes...`);
+      batch = writeBatch(db);
+      batchCount = 0;
     }
   }
 
-  console.log(`\nImport complete: ${imported} imported, ${duplicates} skipped (existing), ${skipped} failed`);
+  if (batchCount > 0) {
+    await batch.commit();
+    console.log(`Committed final batch of ${batchCount} scopes.`);
+  }
 
-  console.log(
-    `\n✅ Import complete: ${imported} new scopes, ${duplicates} duplicates skipped, ${skipped} failed`
-  );
+  console.log(`\n✅ Import complete: ${imported} imported, ${duplicates} duplicates skipped.`);
   process.exit(0);
 }
+
+importScopes().catch(console.error);
+
 
 importScopes().catch((error) => {
   console.error('Import failed:', error);

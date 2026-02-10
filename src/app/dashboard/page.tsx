@@ -15,7 +15,8 @@ import {
   Legend,
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
-import { JobsListModal, JobDetailsModal } from "./DrillThroughModals";
+import { JobsListModal } from "./components/JobsListModal";
+import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, type Project } from "./projectQueries";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";

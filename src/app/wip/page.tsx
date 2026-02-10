@@ -1068,23 +1068,46 @@ function WIPReportContent() {
                       {name}
                     </th>
                   ))}
+                  <th style={{ padding: "12px", textAlign: "center", color: "#666", fontWeight: 600 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredYears.map((year, yearIndex) => (
-                  <tr key={year} style={{ borderBottom: "1px solid #3a3d42", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                    <td style={{ padding: "12px", color: "#e5e7eb", fontWeight: 700 }}>{year}</td>
-                    {monthNames.map((_, idx) => {
-                      const hours = yearMonthMap[year][idx + 1] || 0;
-                      return (
-                        <td key={idx} style={{ padding: "12px", textAlign: "center", color: hours > 0 ? "#22c55e" : "#6b7280", fontWeight: hours > 0 ? 700 : 400 }}>
-                          {hours > 0 ? hours.toFixed(0) : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {filteredYears.map((year, yearIndex) => {
+                  const yearTotal = Object.values(yearMonthMap[year] || {}).reduce((sum, h) => sum + (h || 0), 0);
+                  return (
+                    <tr key={year} style={{ borderBottom: "1px solid #3a3d42", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                      <td style={{ padding: "12px", color: "#333", fontWeight: 700 }}>{year}</td>
+                      {monthNames.map((_, idx) => {
+                        const hours = yearMonthMap[year][idx + 1] || 0;
+                        return (
+                          <td key={idx} style={{ padding: "12px", textAlign: "center", color: hours > 0 ? "#22c55e" : "#6b7280", fontWeight: hours > 0 ? 700 : 400 }}>
+                            {hours > 0 ? hours.toFixed(0) : "—"}
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: "12px", textAlign: "center", color: "#15616D", fontWeight: 700, backgroundColor: 'rgba(21, 97, 109, 0.05)' }}>
+                        {yearTotal.toFixed(0)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              <tfoot>
+                <tr style={{ borderTop: "2px solid #3a3d42", fontWeight: 700, backgroundColor: "#f3f4f6" }}>
+                  <td style={{ padding: "12px", color: "#333" }}>Total</td>
+                  {monthNames.map((_, idx) => {
+                    const monthTotal = filteredYears.reduce((sum, year) => sum + (yearMonthMap[year][idx + 1] || 0), 0);
+                    return (
+                      <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#15616D" }}>
+                        {monthTotal > 0 ? monthTotal.toFixed(0) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td style={{ padding: "12px", textAlign: "center", color: "#15616D", fontSize: "16px", backgroundColor: 'rgba(21, 97, 109, 0.1)' }}>
+                    {filteredTotalHours.toFixed(0)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1094,7 +1117,7 @@ function WIPReportContent() {
       {months.length > 0 ? (
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <h2 style={{ color: "#fff", margin: 0 }}>Monthly Breakdown</h2>
+            <h2 style={{ color: "#15616D", margin: 0 }}>Monthly Breakdown</h2>
             <button
               onClick={() => {
                 setCustomerFilter("");

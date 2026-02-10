@@ -111,9 +111,12 @@ function FieldTrackingContent() {
 
     // Matching logic similar to projectUtils
     const scopeTitleLower = (scope.title || "").trim().toLowerCase();
-    const titleWithoutQty = scopeTitleLower
-      .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
+    const cleanScope = scopeTitleLower
+      .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf|ea)?\s*([-–]\s*)?/i, "")
+      .replace(/\d+\s*"/g, "") // Remove thickness like 4"
       .trim();
+    
+    const scopeWords = cleanScope.split(/\s+/).filter(w => w.length > 2 && w !== "and" && w !== "with" && w !== "for");
 
     const matchedProjectItems = fullProjectList.filter(p => {
       const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
@@ -122,10 +125,22 @@ function FieldTrackingContent() {
       const costItemName = (p.costitems || "").toLowerCase();
       const pmcGroupName = (p.pmcGroup || "").toString().toLowerCase();
       
-      // Match if the cost item name or the PMC group name relates to the scope title
-      return costItemName.includes(titleWithoutQty) || 
-             titleWithoutQty.includes(costItemName) ||
-             (pmcGroupName && (pmcGroupName.includes(titleWithoutQty) || titleWithoutQty.includes(pmcGroupName)));
+      // Global labor categories that should always show up
+      const isGlobalLabor = pmcGroupName.includes("travel") || 
+                            pmcGroupName === "pm" || 
+                            pmcGroupName.includes("management") ||
+                            pmcGroupName.includes("mobilization") ||
+                            costItemName.includes("travel") ||
+                            costItemName.includes("management");
+
+      if (isGlobalLabor) return true;
+
+      // Fuzzy match: check if significant words from scope are in the category name
+      const matchesScope = scopeWords.some(word => 
+        costItemName.includes(word) || pmcGroupName.includes(word)
+      );
+
+      return matchesScope;
     });
 
     if (matchedProjectItems.length > 0) {

@@ -250,6 +250,7 @@ function EmployeesContent() {
       endDate: new Date().toISOString().split('T')[0],
       reason: "",
       type: "Vacation",
+      hours: 10,
     });
     
     // Load existing time off for this employee

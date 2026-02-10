@@ -16,6 +16,7 @@ export default function FieldTrackingPage() {
 
 function FieldTrackingContent() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [fullProjectList, setFullProjectList] = useState<Project[]>([]);
   const [scopes, setScopes] = useState<Scope[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +35,7 @@ function FieldTrackingContent() {
         const q = query(collection(db, "projects"), where("status", "==", "In Progress"));
         const snapshot = await getDocs(q);
         const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
+        setFullProjectList(projectsData);
         
         // Deduplicate projects by their natural key (customer~projectNumber~projectName)
         const dedupedMap = new Map<string, Project>();
@@ -65,6 +67,9 @@ function FieldTrackingContent() {
   useEffect(() => {
     async function fetchScopes() {
       setSelectedScope(""); // Reset selected scope when project changes
+      setHours("");
+      setMaterials([{ item: "", quantity: "" }]);
+
       if (!selectedProject) {
         setScopes([]);
         return;
@@ -93,6 +98,48 @@ function FieldTrackingContent() {
     }
     fetchScopes();
   }, [selectedProject, projects]);
+
+  // Handle Scope Selection and Auto-population
+  useEffect(() => {
+    if (!selectedScope) return;
+
+    const scope = scopes.find(s => s.id === selectedScope);
+    if (!scope) return;
+
+    const project = projects.find(p => p.id === selectedProject);
+    const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
+
+    // Matching logic similar to projectUtils
+    const scopeTitleLower = (scope.title || "").trim().toLowerCase();
+    const titleWithoutQty = scopeTitleLower
+      .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
+      .trim();
+
+    const matchedItems = fullProjectList.filter(p => {
+      const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+      if (pJobKey !== jobKey) return false;
+      
+      const costItemName = (p.costitems || "").toLowerCase();
+      return costItemName.includes(titleWithoutQty) || titleWithoutQty.includes(costItemName);
+    });
+
+    if (matchedItems.length > 0) {
+      // Total hours from matched items
+      const totalHours = matchedItems.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+      setHours(totalHours > 0 ? totalHours.toString() : "");
+
+      // Populate materials with the cost item names
+      const materialList = matchedItems.map(item => ({
+        item: item.costitems || "Unknown Item",
+        quantity: "1" 
+      }));
+      setMaterials(materialList);
+    } else {
+      // Fallback to scope's own hours if no cost items matched
+      setHours(scope.hours ? scope.hours.toString() : "");
+      setMaterials([{ item: "", quantity: "" }]);
+    }
+  }, [selectedScope, scopes, fullProjectList, selectedProject, projects]);
 
   const addMaterialRow = () => {
     setMaterials([...materials, { item: "", quantity: "" }]);

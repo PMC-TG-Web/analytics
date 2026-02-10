@@ -25,7 +25,7 @@ function FieldTrackingContent() {
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedScope, setSelectedScope] = useState<string>("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [hours, setHours] = useState<string>("");
+  const [laborEntries, setLaborEntries] = useState<{ category: string; hours: string }[]>([{ category: "General Labor", hours: "" }]);
   const [materials, setMaterials] = useState<{ item: string; quantity: string }[]>([{ item: "", quantity: "" }]);
   const [notes, setNotes] = useState("");
 
@@ -67,7 +67,7 @@ function FieldTrackingContent() {
   useEffect(() => {
     async function fetchScopes() {
       setSelectedScope(""); // Reset selected scope when project changes
-      setHours("");
+      setLaborEntries([{ category: "General Labor", hours: "" }]);
       setMaterials([{ item: "", quantity: "" }]);
 
       if (!selectedProject) {
@@ -147,25 +147,39 @@ function FieldTrackingContent() {
       const laborGroups = aggregatedItems.filter(g => g.name.toLowerCase().includes("labor"));
       const nonLaborGroups = aggregatedItems.filter(g => !g.name.toLowerCase().includes("labor"));
 
-      // Total hours from LABOR items only (as requested "hours tracked... labor PMCGroups")
-      const totalLaborHours = laborGroups.reduce((sum, g) => sum + g.hours, 0);
-      
-      // If we have total labor hours > 0, use it. Otherwise fallback to all matched items' hours
-      setHours(totalLaborHours > 0 ? totalLaborHours.toString() : aggregatedItems.reduce((sum, g) => sum + g.hours, 0).toString());
+      // Set labor entries from matched groups
+      if (laborGroups.length > 0) {
+        setLaborEntries(laborGroups.map(g => ({ category: g.name, hours: g.hours.toString() })));
+      } else if (aggregatedItems.length > 0) {
+        // Fallback to all aggregated items if no "labor" keywords found but we have matches
+        setLaborEntries(aggregatedItems.map(g => ({ category: g.name, hours: g.hours.toString() })));
+      } else {
+        setLaborEntries([{ category: "General Labor", hours: "" }]);
+      }
 
-      // Populate materials with both labor categories and non-labor items
-      const displayMaterials = [
-        ...laborGroups.map(g => ({ item: g.name, quantity: g.hours.toString() + " hrs" })),
-        ...nonLaborGroups.map(g => ({ item: g.name, quantity: "1" }))
-      ];
-      
+      // Populate materials with non-labor items predominantly
+      const displayMaterials = nonLaborGroups.map(g => ({ item: g.name, quantity: "1" }));
       setMaterials(displayMaterials.length > 0 ? displayMaterials : [{ item: "", quantity: "" }]);
     } else {
       // Fallback to scope's own hours if no cost items matched
-      setHours(scope.hours ? scope.hours.toString() : "");
+      setLaborEntries([{ category: "General Labor", hours: scope.hours ? scope.hours.toString() : "" }]);
       setMaterials([{ item: "", quantity: "" }]);
     }
   }, [selectedScope, scopes, fullProjectList, selectedProject, projects]);
+
+  const addLaborRow = () => {
+    setLaborEntries([...laborEntries, { category: "", hours: "" }]);
+  };
+
+  const updateLabor = (index: number, field: "category" | "hours", value: string) => {
+    const newLabor = [...laborEntries];
+    newLabor[index][field] = value;
+    setLaborEntries(newLabor);
+  };
+
+  const removeLabor = (index: number) => {
+    setLaborEntries(laborEntries.filter((_, i) => i !== index));
+  };
 
   const addMaterialRow = () => {
     setMaterials([...materials, { item: "", quantity: "" }]);
@@ -183,8 +197,9 @@ function FieldTrackingContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProject || !selectedScope || !hours) {
-      alert("Please fill in Project, Scope, and Hours.");
+    const hasHours = laborEntries.some(l => l.hours && parseFloat(l.hours) > 0);
+    if (!selectedProject || !selectedScope || !hasHours) {
+      alert("Please fill in Project, Scope, and at least some Labor hours.");
       return;
     }
 
@@ -201,7 +216,8 @@ function FieldTrackingContent() {
         scopeId: selectedScope,
         scopeTitle: scope?.title,
         date,
-        hours: parseFloat(hours),
+        labor: laborEntries.filter(l => l.hours && l.category),
+        totalHours: laborEntries.reduce((sum, l) => sum + (parseFloat(l.hours) || 0), 0),
         materials: materials.filter(m => m.item && m.quantity),
         notes,
         submittedAt: serverTimestamp(),
@@ -210,7 +226,7 @@ function FieldTrackingContent() {
       alert("Log submitted successfully!");
       // Reset form
       setSelectedScope("");
-      setHours("");
+      setLaborEntries([{ category: "General Labor", hours: "" }]);
       setMaterials([{ item: "", quantity: "" }]);
       setNotes("");
     } catch (error) {
@@ -295,16 +311,45 @@ function FieldTrackingContent() {
         {/* Labor Entry */}
         <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", marginBottom: "16px", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
           <label style={{ ...labelStyle, fontSize: "18px", borderBottom: "1px solid #eee", paddingBottom: "8px", marginBottom: "16px" }}>Labor</label>
-          <label style={labelStyle}>Hours Tracked</label>
-          <input 
-            type="number" 
-            step="0.5"
-            placeholder="e.g. 8.0" 
-            value={hours} 
-            onChange={(e) => setHours(e.target.value)}
-            style={inputStyle}
-            required
-          />
+          
+          {laborEntries.map((l, index) => (
+            <div key={index} style={{ marginBottom: "20px", background: "#f9fafb", padding: "12px", borderRadius: "8px", border: "1px solid #f3f4f6" }}>
+              <label style={labelStyle}>Category</label>
+              <input 
+                placeholder="e.g. Slab On Grade Labor" 
+                value={l.category} 
+                onChange={(e) => updateLabor(index, "category", e.target.value)}
+                style={inputStyle}
+              />
+              <label style={labelStyle}>Hours Tracked</label>
+              <input 
+                type="number" 
+                step="0.5"
+                placeholder="e.g. 8.0" 
+                value={l.hours} 
+                onChange={(e) => updateLabor(index, "hours", e.target.value)}
+                style={{ ...inputStyle, marginBottom: 0 }}
+                required={index === 0}
+              />
+              {laborEntries.length > 1 && (
+                <button 
+                  type="button" 
+                  onClick={() => removeLabor(index)}
+                  style={{ marginTop: "8px", padding: "8px", background: "none", border: "none", color: "#ef4444", fontSize: "12px", textDecoration: "underline" }}
+                >
+                  Remove Category
+                </button>
+              )}
+            </div>
+          ))}
+
+          <button 
+            type="button" 
+            onClick={addLaborRow}
+            style={{ width: "100%", padding: "12px", background: "#f3f4f6", border: "1px dashed #ccc", borderRadius: "8px", color: "#666", fontWeight: 600 }}
+          >
+            + Add Another Labor Category
+          </button>
         </div>
 
         {/* Materials Entry */}

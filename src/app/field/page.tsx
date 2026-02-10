@@ -166,13 +166,13 @@ function FieldTrackingContent() {
                         pmcLower.includes("mobilization");
 
         if (isLabor) {
-          // Use costitems as the name for Labor as well, per user preference
-          const itemName = costItem || pmcGroup || "General Labor";
-          const current = laborMap.get(itemName) || { name: itemName, hours: 0 };
+          // Reverting Labor to use PMC Group for grouping as requested
+          const groupName = pmcGroup || costItem || "General Labor";
+          const current = laborMap.get(groupName) || { name: groupName, hours: 0 };
           current.hours += Number(item.hours) || 0;
-          laborMap.set(itemName, current);
+          laborMap.set(groupName, current);
         } else {
-          // Use costitems for parts
+          // Keep Materials using the specific costitems field names
           const itemName = costItem || pmcGroup || "Unknown Item";
           if (!materialMap.has(itemName)) {
             materialMap.set(itemName, { name: itemName, quantity: "1" });

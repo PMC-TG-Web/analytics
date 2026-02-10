@@ -34,7 +34,25 @@ function FieldTrackingContent() {
         const q = query(collection(db, "projects"), where("status", "==", "In Progress"));
         const snapshot = await getDocs(q);
         const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
-        setProjects(projectsData.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
+        
+        // Deduplicate projects by their natural key (customer~projectNumber~projectName)
+        const dedupedMap = new Map<string, Project>();
+        projectsData.forEach(p => {
+          const key = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+          // Key check to avoid repeats, prioritizing entries that might already have a jobKey
+          if (!dedupedMap.has(key) || (!dedupedMap.get(key)?.jobKey && p.jobKey)) {
+            dedupedMap.set(key, {
+              ...p,
+              // Ensure jobKey is consistently populated
+              jobKey: p.jobKey || key
+            });
+          }
+        });
+
+        const dedupedList = Array.from(dedupedMap.values())
+          .sort((a, b) => (a.projectName || "").localeCompare(b.projectName || ""));
+          
+        setProjects(dedupedList);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching projects:", error);
@@ -46,18 +64,29 @@ function FieldTrackingContent() {
 
   useEffect(() => {
     async function fetchScopes() {
+      setSelectedScope(""); // Reset selected scope when project changes
       if (!selectedProject) {
         setScopes([]);
         return;
       }
       const project = projects.find(p => p.id === selectedProject);
-      if (!project?.jobKey) return;
-
+      // Construct jobKey if it's not present (matching the format used in projectScopes)
+      const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
+      
       try {
-        const q = query(collection(db, "projectScopes"), where("jobKey", "==", project.jobKey));
+        const q = query(collection(db, "projectScopes"), where("jobKey", "==", jobKey));
         const snapshot = await getDocs(q);
         const scopesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Scope[];
-        setScopes(scopesData);
+        
+        // Filter out any duplicates if they exist and sort alphabetically
+        const uniqueScopes = Array.from(new Map(scopesData.map(s => [s.title, s])).values())
+          .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+          
+        if (uniqueScopes.length === 0) {
+          console.log("No scopes found for jobKey:", jobKey);
+        }
+          
+        setScopes(uniqueScopes);
       } catch (error) {
         console.error("Error fetching scopes:", error);
       }
@@ -90,11 +119,12 @@ function FieldTrackingContent() {
     try {
       const project = projects.find(p => p.id === selectedProject);
       const scope = scopes.find(s => s.id === selectedScope);
+      const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
 
       await addDoc(collection(db, "fieldLogs"), {
         projectId: selectedProject,
         projectName: project?.projectName,
-        jobKey: project?.jobKey,
+        jobKey: jobKey,
         scopeId: selectedScope,
         scopeTitle: scope?.title,
         date,

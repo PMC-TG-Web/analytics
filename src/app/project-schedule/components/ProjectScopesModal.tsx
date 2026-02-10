@@ -249,7 +249,6 @@ export function ProjectScopesModal({
               {scopeDetail.startDate && scopeDetail.endDate && (
                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
                   {(() => {
-                    const days = calculateWorkDays(scopeDetail.startDate, scopeDetail.endDate);
                     const manpowerRequested = scopeDetail.manpower || 0;
                     const dailyUsage = manpowerRequested * 10;
                     const companyLimit = companyCapacity; 
@@ -286,7 +285,7 @@ export function ProjectScopesModal({
                           <span>-{otherUsage.toFixed(1)} hrs</span>
                         </div>
                         <div className="flex justify-between items-center text-xs text-red-700 font-semibold">
-                          <span>This Scope's Requirement:</span>
+                          <span>This Scope&apos;s Requirement:</span>
                           <span>-{dailyUsage.toFixed(1)} hrs</span>
                         </div>
                         <div className="border-t border-green-200 mt-2 pt-1 flex justify-between items-center text-sm font-bold text-green-900">

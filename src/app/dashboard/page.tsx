@@ -1,20 +1,6 @@
 "use client";
 // Trigger redeploy
 import React, { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-// Dynamically import Chart.js to avoid SSR issues
-const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, type Project } from "./projectQueries";
@@ -232,6 +218,40 @@ function TopContractorsCard({ aggregatedProjects, topContractorLimit, setTopCont
   );
 }
 
+const parseDateValue = (value: unknown) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "number") {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "object" && value !== null && "toDate" in value) {
+    const hasToDate = value as { toDate: () => unknown };
+    if (typeof hasToDate.toDate === "function") {
+      const d = hasToDate.toDate();
+      return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+    }
+  }
+  return null;
+};
+
+const getProjectDate = (project: Project) => {
+  const updated = parseDateValue(project.dateUpdated);
+  const created = parseDateValue(project.dateCreated);
+  if (updated && created) return updated > created ? updated : created;
+  return updated || created || null;
+};
+
+const getProjectKey = (project: Project) => {
+  const number = (project.projectNumber ?? "").toString().trim();
+  const customer = (project.customer ?? "").toString().trim();
+  return `${number}|${customer}` || `__noKey__${project.id}`;
+};
+
 function DashboardContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -252,46 +272,6 @@ function DashboardContent() {
     }
     fetchData();
   }, []);
-
-
-  if (loading) {
-    return (
-      <main className="p-8" style={{ background: '#1a1d23', minHeight: '100vh', color: '#e5e7eb' }}>
-        <div>Loading...</div>
-      </main>
-    );
-  }
-
-  const parseDateValue = (value: any) => {
-    if (!value) return null;
-    if (value instanceof Date) return value;
-    if (typeof value === "number") {
-      const d = new Date(value);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof value === "string") {
-      const d = new Date(value);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof value === "object" && typeof value.toDate === "function") {
-      const d = value.toDate();
-      return d instanceof Date && !isNaN(d.getTime()) ? d : null;
-    }
-    return null;
-  };
-
-  const getProjectDate = (project: Project) => {
-    const updated = parseDateValue(project.dateUpdated);
-    const created = parseDateValue(project.dateCreated);
-    if (updated && created) return updated > created ? updated : created;
-    return updated || created || null;
-  };
-
-  const getProjectKey = (project: Project) => {
-    const number = (project.projectNumber ?? "").toString().trim();
-    const customer = (project.customer ?? "").toString().trim();
-    return `${number}|${customer}` || `__noKey__${project.id}`;
-  };
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
@@ -349,7 +329,7 @@ function DashboardContent() {
     
     // For each project identifier, keep only the most recent customer version
     const dedupedByCustomer: Project[] = [];
-    projectIdentifierMap.forEach((projectList, identifier) => {
+    projectIdentifierMap.forEach((projectList) => {
       // Group by customer
       const customerMap = new Map<string, Project[]>();
       projectList.forEach(p => {
@@ -363,15 +343,13 @@ function DashboardContent() {
       // If multiple customers, prioritize by status first, then by date
       if (customerMap.size > 1) {
         const priorityStatuses = ["Accepted", "In Progress", "Complete"];
-        let selectedCustomer: string = "";
         let selectedProjects: Project[] = [];
         
         // First, check if any customer has priority status
         let foundPriorityCustomer = false;
-        customerMap.forEach((projs, customer) => {
+        customerMap.forEach((projs) => {
           const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
           if (hasPriorityStatus && !foundPriorityCustomer) {
-            selectedCustomer = customer;
             selectedProjects = projs;
             foundPriorityCustomer = true;
           }
@@ -379,10 +357,10 @@ function DashboardContent() {
         
         // If no priority status found, use date logic
         if (!foundPriorityCustomer) {
-          let latestCustomer: string = "";
           let latestDate: Date | null = null;
+          let latestCustomerProjs: Project[] = [];
           
-          customerMap.forEach((projs, customer) => {
+          customerMap.forEach((projs) => {
             const mostRecentProj = projs.reduce((latest, current) => {
               const currentDate = parseDateValue(current.dateCreated);
               const latestDateVal = parseDateValue(latest.dateCreated);
@@ -394,12 +372,11 @@ function DashboardContent() {
             const projDate = parseDateValue(mostRecentProj.dateCreated);
             if (projDate && (!latestDate || projDate > latestDate)) {
               latestDate = projDate;
-              latestCustomer = customer;
+              latestCustomerProjs = projs;
             }
           });
           
-          selectedCustomer = latestCustomer;
-          selectedProjects = customerMap.get(latestCustomer) || [];
+          selectedProjects = latestCustomerProjs;
         }
         
         // Only keep projects from the selected customer
@@ -567,29 +544,14 @@ function DashboardContent() {
     return { totalHours, breakdown };
   }, [statusGroupsForLabor]);
 
-  // Calculate win rate including archived jobs as lost
-  // For win rate, we need to count archived projects with same filters applied
-  const archivedProjects = projects.filter(p => {
-    if (!p.projectArchived) return false;
-    // Apply same exclusion filters as activeProjects
-    const customer = (p.customer ?? "").toString().toLowerCase();
-    if (customer.includes("sop inc")) return false;
-    const projectName = (p.projectName ?? "").toString().toLowerCase();
-    if (projectName === "pmc operations") return false;
-    if (projectName === "pmc shop time") return false;
-    if (projectName === "pmc test project") return false;
-    if (projectName.includes("sandbox")) return false;
-    if (projectName.includes("raymond king")) return false;
-    if (projectName === "alexander drive addition latest") return false;
-    const estimator = (p.estimator ?? "").toString().trim();
-    if (!estimator) return false;
-    if (estimator.toLowerCase() === "todd gilmore") return false;
-    const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
-    if (projectNumber === "701 poplar church rd") return false;
-    return true;
-  });
-  const archivedCount = new Set(archivedProjects.map(p => getProjectKey(p))).size;
-  
+  if (loading) {
+    return (
+      <main className="p-8" style={{ background: '#1a1d23', minHeight: '100vh', color: '#e5e7eb' }}>
+        <div>Loading...</div>
+      </main>
+    );
+  }
+
   const getUniqueProjectCount = (statusKey: string) => {
     const group = statusGroups[statusKey] || [];
     return new Set(group.map(p => getProjectKey(p))).size;
@@ -886,7 +848,7 @@ function DashboardContent() {
 }
 
 // Funnel Chart Component
-function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) {
+function FunnelChart({ statusGroups }: { statusGroups: Record<string, Project[]> }) {
   // Define funnel stages in order
   const funnelStages = [
     { key: 'Estimating', label: 'Estimating', color: '#E06C00' },
@@ -917,7 +879,7 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
       {/* Metrics Row */}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: 24 }}>
         {funnelStages.map((stage) => {
-          const { sales, count } = getFunnelData(stage.key);
+          const { count } = getFunnelData(stage.key);
           const percentage = totalProjects > 0 ? ((count / totalProjects) * 100).toFixed(1) : '0.0';
           return (
             <div key={stage.key} style={{ textAlign: 'center' }}>
@@ -998,88 +960,6 @@ function FunnelChart({ statusGroups }: { statusGroups: Record<string, any[]> }) 
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// Time series chart component
-function TimeSeriesChart({ projects }: { projects: any[] }) {
-  // Helper to get YYYY-MM from a date string
-  function getMonthYear(dateStr: string) {
-    if (!dateStr) return 'Unknown';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Unknown';
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  // Aggregate hours by month/year and status
-  const statusKeys = [
-    { key: 'In Progress', color: 'rgba(255, 206, 86, 1)' },
-    { key: 'Accepted', color: 'rgba(75, 192, 192, 1)' },
-    { key: 'Bid Submitted', color: 'rgba(153, 102, 255, 1)' },
-  ];
-  const dataByStatus: Record<string, Record<string, number>> = {};
-  statusKeys.forEach(({ key }) => (dataByStatus[key] = {}));
-
-  projects.forEach((p) => {
-    const status = p.status;
-    const date = p.dateCreated || p.dateUpdated;
-    const monthYear = getMonthYear(date);
-    const hours = Number(p.hours ?? 0);
-    statusKeys.forEach(({ key }) => {
-      if (status === key) {
-        dataByStatus[key][monthYear] = (dataByStatus[key][monthYear] || 0) + hours;
-      }
-    });
-  });
-
-  // Get all unique month/year labels, sorted
-  const allMonths = Array.from(
-    new Set(
-      statusKeys.flatMap(({ key }) => Object.keys(dataByStatus[key]))
-    )
-  ).filter(m => m !== 'Unknown').sort();
-
-  const chartData = {
-    labels: allMonths,
-    datasets: statusKeys.map(({ key, color }) => ({
-      label: key,
-      data: allMonths.map(month => dataByStatus[key][month] || 0),
-      borderColor: color,
-      backgroundColor: color.replace('1)', '0.2)'),
-      tension: 0.3,
-      fill: false,
-      yAxisID: key === 'Bid Submitted' ? 'y1' : 'y',
-    })),
-  };
-
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: { position: 'top' as const },
-      title: { display: false },
-    },
-    scales: {
-      y: {
-        type: 'linear' as const,
-        beginAtZero: true,
-        title: { display: true, text: 'Hours (Submitted, In Progress, Accepted)' },
-        position: 'left' as const,
-      },
-      y1: {
-        type: 'linear' as const,
-        beginAtZero: true,
-        title: { display: true, text: 'Hours (Bid Submitted)' },
-        position: 'right' as const,
-        grid: { drawOnChartArea: false },
-      },
-      x: { title: { display: true, text: 'Month/Year' } },
-    },
-  };
-
-  return (
-    <div style={{ width: '100%', minHeight: 400 }}>
-      <Line data={chartData} options={options} />
     </div>
   );
 }

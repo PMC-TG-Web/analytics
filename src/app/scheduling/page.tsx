@@ -611,9 +611,9 @@ function SchedulingContent() {
     
     const filteredSchedules = updatedSchedules.filter((schedule) => {
       // Must be a qualifying job (not excluded by global filters)
-      if (!qualifyingKeys.has(schedule.jobKey)) return false;
+      if (!qualifyingKeys.has(schedule.jobKey || "")) return false;
       // Only include schedules with qualifying status
-      return qualifyingStatuses.includes(schedule.status);
+      return qualifyingStatuses.includes(schedule.status || "");
     });
 
     const toAdd = uniqueJobs.filter((job) => !allScheduleKeys.has(job.key)).map((job) => {
@@ -731,9 +731,9 @@ function SchedulingContent() {
     // 2. Calculate scheduled hours for jobs WITHOUT Gantt data
     const totalManualScheduledHours = schedules
       .filter(schedule => {
-        if (!qualifyingJobKeys.has(schedule.jobKey)) return false;
+        if (!qualifyingJobKeys.has(schedule.jobKey || "")) return false;
         if (schedule.status === 'Complete') return false;
-        if (projectsWithGanttData.has(schedule.jobKey)) return false;
+        if (projectsWithGanttData.has(schedule.jobKey || "")) return false;
         return true;
       })
       .reduce((sum, schedule) => {

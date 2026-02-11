@@ -576,7 +576,7 @@ function WIPReportContent() {
         }));
         const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
         const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
-        const isQualifying = jobProjects.some(p => ["In Progress", "Accepted"].includes(p.status));
+        const isQualifying = jobProjects.some(p => ["In Progress", "Accepted"].includes(p.status || ""));
 
         validScopes.forEach(scope => {
           const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
@@ -607,10 +607,10 @@ function WIPReportContent() {
     });
 
     schedules.forEach((schedule) => {
-      if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey)) return;
+      if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey || "")) return;
       
       // Skip if this project is excluded by global filters
-      if (!qualifyingJobKeys.has(schedule.jobKey)) return;
+      if (!qualifyingJobKeys.has(schedule.jobKey || "")) return;
 
       normalizeAllocations(schedule.allocations).forEach((alloc) => {
         if (!isValidMonthKey(alloc.month)) return;
@@ -707,7 +707,7 @@ function WIPReportContent() {
   
   // Calculate filtered hours for In Progress jobs only (using allocations for the filtered months)
   const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
-    .filter(s => qualifyingStatuses.includes(s.status) && !projectsWithGanttData.has(s.jobKey))
+    .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
     .reduce((sum, schedule) => {
       // For filtered months, sum the allocated hours
       const normalizedAllocs = normalizeAllocations(schedule.allocations);
@@ -722,7 +722,7 @@ function WIPReportContent() {
   // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
   // This is used to properly calculate unscheduled hours
   const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
-    .filter(s => qualifyingStatuses.includes(s.status) && !projectsWithGanttData.has(s.jobKey))
+    .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
     .reduce((sum, schedule) => {
       // Sum all allocated hours across all months for this schedule
       const normalizedAllocs = normalizeAllocations(schedule.allocations);

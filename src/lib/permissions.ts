@@ -10,6 +10,7 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore"],
   "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants"],
   "shelly@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants"],
+  "jane@pmcdecor.com": ["dashboard", "short-term-schedule", "employees"],
   
   // Add more users here:
   // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],

@@ -8,6 +8,7 @@ import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -54,6 +55,7 @@ interface Employee {
   firstName: string;
   lastName: string;
   role: string;
+  email?: string;
   isActive?: boolean;
 }
 
@@ -82,6 +84,7 @@ export default function DailyCrewDispatchBoardPage() {
 }
 
 function DailyCrewDispatchBoardContent() {
+  const { user } = useAuth();
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
@@ -90,6 +93,13 @@ function DailyCrewDispatchBoardContent() {
   const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Absence Alert State
+  const [showSickModal, setShowSickModal] = useState(false);
+  const [sickEmployeeId, setSickEmployeeId] = useState("");
+  const [sickReason, setSickReason] = useState<"Sick" | "Personal" | "Late" | "No Show">("Sick");
+  const [sickNotes, setSickNotes] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   useEffect(() => {
     loadSchedules();
@@ -143,6 +153,7 @@ function DailyCrewDispatchBoardContent() {
           firstName: doc.data().firstName || '',
           lastName: doc.data().lastName || '',
           role: doc.data().role || '',
+          email: doc.data().email || '',
           isActive: doc.data().isActive !== false
         } as Employee))
         .sort((a, b) => {
@@ -494,6 +505,75 @@ function DailyCrewDispatchBoardContent() {
     }
   }
 
+  async function sendAbsenceNotification() {
+    if (!sickEmployeeId) {
+      alert("Please select an employee.");
+      return;
+    }
+
+    const employee = allEmployees.find(e => e.id === sickEmployeeId);
+    if (!employee) return;
+
+    setSendingEmail(true);
+    try {
+      // Find recipients: Management, PMs, Office, Foremen
+      const recipientRoles = ["Office Staff", "Foreman", "Lead foreman", "Project Manager", "Executive", "General Manager"];
+      
+      console.log("Debug - All active employees:", allEmployees.filter(e => e.isActive).length);
+      console.log("Debug - Searching for roles:", recipientRoles);
+      
+      const recipients = allEmployees
+        .filter(e => {
+          const roleNormalized = (e.role || "").toLowerCase();
+          const hasRole = recipientRoles.some(r => r.toLowerCase() === roleNormalized);
+          const hasEmail = !!e.email && e.email.includes("@");
+          const isActive = e.isActive !== false;
+          if (hasRole) {
+             console.log(`Checking ${e.firstName} ${e.lastName}: Active=${isActive}, HasEmail=${hasEmail}, Email="${e.email}", Role="${e.role}"`);
+          }
+          return isActive && hasEmail && hasRole;
+        })
+        .map(e => e.email!);
+
+      if (recipients.length === 0) {
+        // Fallback: If no managers found, at least notify the current user if they have an email
+        if (user?.email) {
+          console.log("No recipients found, falling back to current user:", user.email);
+          recipients.push(user.email);
+        } else {
+          throw new Error("No recipients found with valid emails. Please check employee records for roles like Office, Foreman, or PM.");
+        }
+      }
+
+      const response = await fetch("/api/notify-absence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          reason: sickReason,
+          notes: sickNotes,
+          recipients: recipients,
+          reportedBy: user?.email || "Unknown User"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to send email");
+      }
+
+      alert(`Notification sent to ${recipients.length} team members.`);
+      setShowSickModal(false);
+      setSickEmployeeId("");
+      setSickNotes("");
+    } catch (error) {
+      console.error("Error sending absence notification:", error);
+      alert("Error: " + (error instanceof Error ? error.message : "Unknown error"));
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
@@ -552,7 +632,16 @@ function DailyCrewDispatchBoardContent() {
               <span className="text-3xl font-black leading-none text-white">{today?.date.getDate()}</span>
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tighter text-gray-900 uppercase italic">Daily Crew Dispatch</h1>
+              <div className="flex items-center gap-4">
+                <h1 className="text-3xl font-black tracking-tighter text-gray-900 uppercase italic">Daily Crew Dispatch</h1>
+                <button
+                  onClick={() => setShowSickModal(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                  Report Absence
+                </button>
+              </div>
               <div className="flex items-center gap-3 mt-1">
                 <span className="text-xs font-bold text-teal-600 uppercase tracking-widest">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
@@ -712,6 +801,88 @@ function DailyCrewDispatchBoardContent() {
               {person.name}{idx < peopleOffToday.length - 1 ? "," : ""}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Sick Call Modal */}
+      {showSickModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => !sendingEmail && setShowSickModal(false)}></div>
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100">
+            <div className="bg-red-600 p-6 text-white text-center">
+              <h2 className="text-2xl font-black uppercase italic tracking-tight">Report Personnel Absence</h2>
+              <p className="text-red-100 text-xs font-bold uppercase tracking-widest mt-1">This will notify the distribution list</p>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 block">Select Employee</label>
+                <select
+                  value={sickEmployeeId}
+                  onChange={(e) => setSickEmployeeId(e.target.value)}
+                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 appearance-none"
+                >
+                  <option value="">-- Choose Employee --</option>
+                  {allEmployees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 block">Reason</label>
+                  <select
+                    value={sickReason}
+                    onChange={(e) => setSickReason(e.target.value as "Sick" | "Personal" | "Late" | "No Show")}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 appearance-none"
+                  >
+                    <option value="Sick">Sick</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Late">Late</option>
+                    <option value="No Show">No Show</option>
+                  </select>
+                </div>
+                <div className="flex flex-col justify-end">
+                   <div className="text-[10px] font-bold text-gray-400 italic mb-2 leading-tight">* Email will be sent to Management & Foremen</div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 block">Additional Notes</label>
+                <textarea
+                  value={sickNotes}
+                  onChange={(e) => setSickNotes(e.target.value)}
+                  placeholder="e.g. 'Clinic visit at 10am', 'Car won't start'"
+                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 h-24 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  disabled={sendingEmail}
+                  onClick={() => setShowSickModal(false)}
+                  className="flex-1 px-4 py-3 rounded-2xl font-black uppercase tracking-widest text-xs text-gray-400 hover:bg-gray-100 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={sendingEmail || !sickEmployeeId}
+                  onClick={sendAbsenceNotification}
+                  className={`flex-[2] px-4 py-3 rounded-2xl font-black uppercase tracking-widest text-xs text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                    sendingEmail || !sickEmployeeId ? 'bg-gray-300 shadow-none' : 'bg-red-600 hover:bg-red-700 shadow-red-600/20'
+                  }`}
+                >
+                  {sendingEmail ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      Sending...
+                    </>
+                  ) : 'Send Notification'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

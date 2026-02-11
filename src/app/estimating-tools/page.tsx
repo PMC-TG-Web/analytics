@@ -308,7 +308,7 @@ function EstimatingToolsContent() {
     const totalFormsSF = ((l * 2) + (w * 2)) * h * qty;
 
     // Rebar - Load stick length from constants
-    const stickLength = constants.find(c => c.name === "Rebar Stick Length")?.value || 20;
+    const stickLength = Number(constants.find(c => c.name === "Rebar Stick Length")?.value || 20);
     const rebarSpec = rebarConstants.find(r => r.size?.toString().trim() === pierVerticalSize?.toString().trim());
     
     let totalVerticalLF = 0;
@@ -350,7 +350,7 @@ function EstimatingToolsContent() {
     const spacing = parseFloat(rebarSpacing) / 12; // convert to ft
     
     // Load stick length from constants
-    const stickLength = constants.find(c => c.name === "Rebar Stick Length")?.value || 20;
+    const stickLength = Number(constants.find(c => c.name === "Rebar Stick Length")?.value || 20);
     
     if (l <= 0 || w <= 0 || isNaN(spacing) || spacing === 0) {
       setRebarQuantity(0);
@@ -394,10 +394,10 @@ function EstimatingToolsContent() {
     const rebarCount = parseInt(footerRebarCount);
     
     // Load constants from state
-    const stickLength = constants.find(c => c.name === "Rebar Stick Length")?.value || 20;
-    const endsCount = constants.find(c => c.name === "Ends")?.value || 2;
-    const cornerDowelMult = constants.find(c => c.name === "Corner Dowels")?.value || 1;
-    const pierDowelMult = constants.find(c => c.name === "Pier Dowels")?.value || 2;
+    const stickLength = Number(constants.find(c => c.name === "Rebar Stick Length")?.value || 20);
+    const endsCount = Number(constants.find(c => c.name === "Ends")?.value || 2);
+    const cornerDowelMult = Number(constants.find(c => c.name === "Corner Dowels")?.value || 1);
+    const pierDowelMult = Number(constants.find(c => c.name === "Pier Dowels")?.value || 2);
 
     if (isNaN(lf) || isNaN(w) || isNaN(h)) return;
 

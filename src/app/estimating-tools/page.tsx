@@ -209,7 +209,7 @@ function EstimatingToolsContent() {
         calcQuery = query(
           collection(db, "savedCalculations"), 
           orderBy("timestamp", "desc"), 
-          limit(50)
+          limit(15) // Fetch enough to de-duplicate down to 5
         );
       }
       
@@ -260,10 +260,11 @@ function EstimatingToolsContent() {
       });
 
       const uniqueCalcs = Array.from(uniqueCalcsMap.values()) as Calculation[];
-      setRecentCalcs(uniqueCalcs.slice(0, 50)); // Show up to 50 unique records
+      const displayedCalcs = uniqueCalcs.slice(0, selectedProjectId ? 50 : 5);
+      setRecentCalcs(displayedCalcs); // Limit global to 5, project to 50
 
-      // Calculate aggregates from the unique (latest) set
-      const totals = uniqueCalcs.reduce((acc, current) => {
+      // Calculate aggregates from the visible set
+      const totals = displayedCalcs.reduce((acc, current) => {
         acc.cy += (current.totalCY || 0);
         acc.tons += (current.totalTons || 0);
         return acc;
@@ -715,7 +716,7 @@ function EstimatingToolsContent() {
       <p style={{ fontSize: "10px", marginTop: "12px", opacity: 0.7, fontStyle: "italic" }}>
         {selectedProjectId 
           ? "* Sum of all current estimates for this project." 
-          : "* Showing latest 10 estimates globally."}
+          : "* Showing latest 5 estimates globally."}
       </p>
     </div>
   );

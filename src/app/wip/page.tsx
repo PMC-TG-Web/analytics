@@ -935,7 +935,7 @@ function WIPReportContent() {
 
   // Calculate scheduled hours specifically for In Progress jobs used in unscheduled calculation
   const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
-    if (!qualifyingStatuses.includes(schedule.status)) return sum;
+    if (!qualifyingStatuses.includes(schedule.status || "")) return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
     if (projectsWithGanttData.has(key)) return sum;
     const projectHours = schedule.totalHours || qualifyingKeyHours.get(key) || 0;

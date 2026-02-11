@@ -56,6 +56,7 @@ interface Employee {
   lastName: string;
   role: string;
   email?: string;
+  phone?: string;
   isActive?: boolean;
 }
 
@@ -154,6 +155,7 @@ function DailyCrewDispatchBoardContent() {
           lastName: doc.data().lastName || '',
           role: doc.data().role || '',
           email: doc.data().email || '',
+          phone: doc.data().phone || '',
           isActive: doc.data().isActive !== false
         } as Employee))
         .sort((a, b) => {
@@ -524,6 +526,12 @@ function DailyCrewDispatchBoardContent() {
       
       // FOR TESTING: Distro restricted to Todd only
       const recipients = ["todd@pmcdecor.com"];
+
+      const recipientPhones = Array.from(new Set(
+        recipients
+          .map(email => allEmployees.find(e => e.email?.toLowerCase() === email.toLowerCase())?.phone)
+          .filter((phone): phone is string => !!phone)
+      ));
       
       /* 
       // Original dynamic distribution logic (Re-enable after testing)
@@ -556,16 +564,21 @@ function DailyCrewDispatchBoardContent() {
           reason: sickReason,
           notes: sickNotes,
           recipients: recipients,
+          recipientPhones: recipientPhones,
           reportedBy: user?.email || "Unknown User"
         }),
       });
 
+      const responseData = await response.json();
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to send email");
+        throw new Error(responseData.error || "Failed to send email");
       }
 
-      alert(`Notification sent to ${recipients.length} team members.`);
+      const smsSent = responseData?.sms?.sent || 0;
+      const smsError = responseData?.sms?.error;
+      const smsSummary = smsSent > 0 ? ` and texted ${smsSent} number${smsSent > 1 ? "s" : ""}` : "";
+      const smsWarning = smsError ? ` SMS error: ${smsError}` : "";
+      alert(`Notification sent to ${recipients.length} team members${smsSummary}.${smsWarning}`);
       setShowSickModal(false);
       setSickEmployeeId("");
       setSickNotes("");

@@ -567,7 +567,7 @@ function WIPReportContent() {
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length > 0) {
         projectsWithGanttData.add(jobKey);
-        const jobProjects = projects.filter(p => (p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey);
+        const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
         if (jobProjects.length === 0) return;
         const projectCostItems = jobProjects.map(p => ({
           costitems: (p.costitems || "").toLowerCase(),

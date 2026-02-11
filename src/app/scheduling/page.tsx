@@ -687,7 +687,7 @@ function SchedulingContent() {
         
         projectsWithGanttData.add(jobKey);
 
-        const jobProjects = projects.filter(p => (p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey);
+        const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
         const projectCostItems = jobProjects.map(p => ({
           costitems: (p.costitems || "").toLowerCase(),
           hours: typeof p.hours === "number" ? p.hours : 0,
@@ -763,7 +763,7 @@ function SchedulingContent() {
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length === 0) return;
 
-      const jobProjects = projects.filter(p => (p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey);
+      const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
       const projectCostItems = jobProjects.map(p => ({
         costitems: (p.costitems || "").toLowerCase(),
         hours: typeof p.hours === "number" ? p.hours : 0,
@@ -852,7 +852,7 @@ function SchedulingContent() {
                 const jobInfo = uniqueJobs.find(j => j.key === jobKey);
                 if (!jobInfo || !["In Progress", "Accepted"].includes(jobInfo.status || "")) return;
 
-                const jobProjects = projects.filter(p => (p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey);
+                const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
                 const projectCostItems = jobProjects.map(p => ({
                   costitems: (p.costitems || "").toLowerCase(),
                   hours: typeof p.hours === "number" ? p.hours : 0,

@@ -639,9 +639,48 @@ function DailyCrewDispatchBoardContent() {
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex flex-col p-2 md:p-4 text-gray-900">
       <div className="max-w-full mx-auto w-full flex flex-col h-full bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200">
-        
+
+        <div className="md:hidden border-b border-gray-200 bg-gray-50 px-4 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center justify-center bg-teal-600 px-4 py-2 rounded-2xl shadow-lg shadow-teal-600/20">
+                <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-teal-50">
+                  {today?.date.toLocaleDateString("en-US", { month: "short" })}
+                </span>
+                <span className="text-2xl font-black leading-none text-white">{today?.date.getDate()}</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-black tracking-tight text-gray-900 uppercase italic">Crew Dispatch</h1>
+                <div className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">
+                  {today?.date.toLocaleDateString("en-US", { weekday: "long" })}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSickModal(true)}
+              className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm transition-all"
+            >
+              Report
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1">Away</span>
+              <span className="text-lg font-black text-gray-400">{workersOffCount}</span>
+            </div>
+            <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1">Total</span>
+              <span className="text-lg font-black text-teal-600">{globalScheduledHours.toFixed(0)}h</span>
+            </div>
+            <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1">Manpower</span>
+              <span className="text-lg font-black text-orange-600">{globalActualHours.toFixed(0)}h</span>
+            </div>
+          </div>
+        </div>
+
         {/* Kiosk-Style Header - Light */}
-        <div className="flex flex-row justify-between items-center p-4 gap-6 bg-gray-100/50 border-b border-gray-200">
+        <div className="hidden md:flex flex-row justify-between items-center p-4 gap-6 bg-gray-100/50 border-b border-gray-200">
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-center justify-center bg-teal-600 px-5 py-2 rounded-2xl shadow-lg shadow-teal-600/20">
               <span className="text-xs font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-teal-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
@@ -684,8 +723,88 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
+        <div className="md:hidden flex-1 overflow-auto p-3 bg-gray-50 custom-scrollbar">
+          <div className="space-y-4">
+            {foremen.map((foreman) => {
+              const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
+              const scheduledHrs = projects.reduce((sum, p) => sum + p.hours, 0);
+              const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
+              const actualHrs = currentEmployees.length * 10;
+              const diff = actualHrs - scheduledHrs;
+              const statusColor = Math.abs(diff) < 2 ? 'bg-green-500' : diff > 0 ? 'bg-blue-500' : 'bg-red-500';
+              const crewList = currentEmployees
+                .map(empId => allEmployees.find(e => e.id === empId))
+                .filter((emp): emp is Employee => !!emp)
+                .map(emp => `${emp.firstName} ${emp.lastName}`);
+
+              return (
+                <div key={foreman.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+                    <div>
+                      <div className="text-lg font-black text-gray-900">{foreman.firstName} {foreman.lastName}</div>
+                      <div className="text-[10px] font-black uppercase text-gray-400">Actual {actualHrs}h · Sched {scheduledHrs}h</div>
+                    </div>
+                    <div className={`w-2.5 h-2.5 rounded-full ${statusColor}`}></div>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <div className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Job Assignments</div>
+                      <div className="space-y-2">
+                        {projects.map((p, pIdx) => (
+                          <div key={pIdx} className="bg-gray-50 px-3 py-2 rounded-xl flex justify-between items-center border border-gray-100">
+                            <div className="overflow-hidden">
+                              <div className="font-black text-gray-800 text-xs truncate leading-tight uppercase">{p.projectName}</div>
+                              <div className="text-[10px] text-teal-600 font-bold tracking-tight opacity-70 truncate uppercase">{p.customer}</div>
+                            </div>
+                            <div className="bg-white px-2 py-1 rounded-lg text-teal-600 font-black text-[10px] ml-2 border border-teal-50">
+                              {p.hours.toFixed(0)} <span className="opacity-50 uppercase">h</span>
+                            </div>
+                          </div>
+                        ))}
+                        {projects.length === 0 && <div className="text-xs text-gray-400 italic">No projects assigned</div>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Crew</div>
+                      {crewList.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {crewList.map((name) => (
+                            <span key={name} className="px-2 py-1 text-[10px] font-bold bg-gray-100 rounded-full text-gray-700">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-400 italic">No crew assigned</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
+              <div className="p-3 bg-orange-50 border border-orange-100 rounded-2xl">
+                <div className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-2">Unassigned</div>
+                <div className="flex flex-col gap-2">
+                  {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
+                    <Link 
+                      key={pIdx} 
+                      href={`/short-term-schedule?search=${encodeURIComponent(p.projectName)}`}
+                      className="bg-white border border-orange-200 rounded-xl px-3 py-2 flex items-center justify-between gap-3 shadow-sm hover:border-orange-500 transition-colors"
+                    >
+                      <span className="text-xs font-black text-gray-800">{p.projectName}</span>
+                      <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 rounded-lg">{p.hours.toFixed(0)}h</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Dispatch Grid - Balanced 3-Column Layout for TV */}
-        <div className="flex-1 overflow-auto p-4 bg-gray-50 custom-scrollbar">
+        <div className="hidden md:block flex-1 overflow-auto p-4 bg-gray-50 custom-scrollbar">
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {foremen.map((foreman) => {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
@@ -790,7 +909,7 @@ function DailyCrewDispatchBoardContent() {
 
         {/* Unassigned Projects - Tray-style Footer (Light) */}
         {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
-          <div className="p-3 bg-orange-50 border-t border-orange-100 flex items-center gap-4">
+          <div className="hidden md:flex p-3 bg-orange-50 border-t border-orange-100 items-center gap-4">
             <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-white px-2 py-1 rounded-lg animate-pulse">Action Required</span>
             <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar">
               {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (

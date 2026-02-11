@@ -90,12 +90,12 @@ function EstimatingToolsContent() {
     try {
       // Fetch Constants
       const constSnapshot = await getDocs(collection(db, "estimatingConstants"));
-      const constData = constSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const constData = constSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
       setConstants(constData);
 
       // Fetch Rebar Constants
       const rebarSnapshot = await getDocs(collection(db, "rebarConstants"));
-      const rData = rebarSnapshot.docs.map(doc => doc.data());
+      const rData = rebarSnapshot.docs.map(doc => doc.data()) as any[];
       
       if (rData.length > 0) {
         // Sort once by numeric size
@@ -130,7 +130,7 @@ function EstimatingToolsContent() {
       // Fetch Recent Calculations
       const calcQuery = query(collection(db, "savedCalculations"), orderBy("timestamp", "desc"), limit(5));
       const calcSnapshot = await getDocs(calcQuery);
-      setRecentCalcs(calcSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecentCalcs(calcSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[]);
 
       setLoading(false);
     } catch (error) {

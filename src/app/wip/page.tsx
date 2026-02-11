@@ -118,6 +118,10 @@ function WIPReportContent() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const qualifyingStatuses = ["In Progress", "Accepted"];
+  const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editableSchedule, setEditableSchedule] = useState<any>(null);
@@ -460,6 +464,80 @@ function WIPReportContent() {
 
     const projectsWithGanttData = new Set<string>();
 
+    // Step 0: Identify qualifying projects/jobs using global production filters and deduplication
+    const activeProjects = projects.filter((p) => {
+      if ((p as any).projectArchived) return false;
+      const customer = (p.customer ?? "").toString().toLowerCase();
+      if (customer.includes("sop inc")) return false;
+      const projectName = (p.projectName ?? "").toString().toLowerCase();
+      if (projectName === "pmc operations") return false;
+      if (projectName === "pmc shop time") return false;
+      if (projectName === "pmc test project") return false;
+      if (projectName.includes("sandbox")) return false;
+      if (projectName.includes("raymond king")) return false;
+      if (projectName === "alexander drive addition latest") return false;
+      const estimator = ((p as any).estimator ?? "").toString().trim();
+      if (!estimator) return false;
+      if (estimator.toLowerCase() === "todd gilmore") return false;
+      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+      if (projectNumber === "701 poplar church rd") return false;
+      return true;
+    });
+
+    // Deduplicate by project identifier (matches scheduling/page.tsx logic)
+    const projectIdentifierMap = new Map<string, any[]>();
+    activeProjects.forEach((project) => {
+      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      if (!identifier) return;
+      if (!projectIdentifierMap.has(identifier)) projectIdentifierMap.set(identifier, []);
+      projectIdentifierMap.get(identifier)!.push(project);
+    });
+
+    const dedupedByCustomer: any[] = [];
+    projectIdentifierMap.forEach((projectList) => {
+      const customerMap = new Map<string, any[]>();
+      projectList.forEach(p => {
+        const customer = (p.customer ?? "").toString().trim();
+        if (!customerMap.has(customer)) customerMap.set(customer, []);
+        customerMap.get(customer)!.push(p);
+      });
+      
+      if (customerMap.size > 1) {
+        let selectedCustomer = "";
+        let foundPriorityCustomer = false;
+        customerMap.forEach((projs, customer) => {
+          if (projs.some(p => priorityStatuses.includes(p.status || "")) && !foundPriorityCustomer) {
+            selectedCustomer = customer;
+            foundPriorityCustomer = true;
+          }
+        });
+        if (!foundPriorityCustomer) {
+          let latestDate: Date | null = null;
+          customerMap.forEach((projs, customer) => {
+            const mostRecentProj = projs.reduce((latest, current) => {
+              const currentDate = parseDateValue(current.dateCreated);
+              const latestDateVal = parseDateValue(latest.dateCreated);
+              if (!currentDate) return latest;
+              if (!latestDateVal) return current;
+              return currentDate > latestDateVal ? current : latest;
+            }, projs[0]);
+            const projDate = parseDateValue(mostRecentProj.dateCreated);
+            if (projDate && (!latestDate || projDate > latestDate)) {
+              latestDate = projDate;
+              selectedCustomer = customer;
+            }
+          });
+        }
+        dedupedByCustomer.push(...(customerMap.get(selectedCustomer) || []));
+      } else {
+        projectList.forEach(p => dedupedByCustomer.push(p));
+      }
+    });
+
+    const qualifyingJobKeys = new Set(dedupedByCustomer.map(p => 
+      p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`
+    ));
+
     const internalDistributeValue = (totalValue: number, startDate: string, endDate: string) => {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -483,6 +561,9 @@ function WIPReportContent() {
     };
 
     Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
+      // Skip if this project is excluded by global filters
+      if (!qualifyingJobKeys.has(jobKey)) return;
+
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length > 0) {
         projectsWithGanttData.add(jobKey);
@@ -495,7 +576,7 @@ function WIPReportContent() {
         }));
         const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
         const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
-        const isInProgress = jobProjects.some(p => p.status === "In Progress");
+        const isQualifying = jobProjects.some(p => ["In Progress", "Accepted"].includes(p.status));
 
         validScopes.forEach(scope => {
           const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
@@ -506,7 +587,7 @@ function WIPReportContent() {
           Object.entries(hourDist).forEach(([monthKey, hours]) => {
             if (!monthlyData[monthKey]) monthlyData[monthKey] = { month: monthKey, hours: 0, jobs: [] };
             monthlyData[monthKey].hours += hours;
-            if (isInProgress) {
+            if (isQualifying) {
               inProgressScheduledHoursForGantt += hours;
               if (!yearFilter || monthKey.startsWith(yearFilter)) filteredInProgressHoursFromGantt += hours;
             }
@@ -527,6 +608,10 @@ function WIPReportContent() {
 
     schedules.forEach((schedule) => {
       if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey)) return;
+      
+      // Skip if this project is excluded by global filters
+      if (!qualifyingJobKeys.has(schedule.jobKey)) return;
+
       normalizeAllocations(schedule.allocations).forEach((alloc) => {
         if (!isValidMonthKey(alloc.month)) return;
         if (!monthlyData[alloc.month]) monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
@@ -622,7 +707,7 @@ function WIPReportContent() {
   
   // Calculate filtered hours for In Progress jobs only (using allocations for the filtered months)
   const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
-    .filter(s => s.status === 'In Progress' && !projectsWithGanttData.has(s.jobKey))
+    .filter(s => qualifyingStatuses.includes(s.status) && !projectsWithGanttData.has(s.jobKey))
     .reduce((sum, schedule) => {
       // For filtered months, sum the allocated hours
       const normalizedAllocs = normalizeAllocations(schedule.allocations);
@@ -637,7 +722,7 @@ function WIPReportContent() {
   // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
   // This is used to properly calculate unscheduled hours
   const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
-    .filter(s => s.status === 'In Progress' && !projectsWithGanttData.has(s.jobKey))
+    .filter(s => qualifyingStatuses.includes(s.status) && !projectsWithGanttData.has(s.jobKey))
     .reduce((sum, schedule) => {
       // Sum all allocated hours across all months for this schedule
       const normalizedAllocs = normalizeAllocations(schedule.allocations);
@@ -648,8 +733,6 @@ function WIPReportContent() {
     }, 0);
 
   // Calculate unscheduled hours from ALL qualifying projects with filters
-  const qualifyingStatuses = ["In Progress"];
-  const priorityStatuses = ["Accepted", "In Progress", "Complete"];
   
   function parseDateValue(value: any): Date | null {
     if (!value) return null;
@@ -852,7 +935,7 @@ function WIPReportContent() {
 
   // Calculate scheduled hours specifically for In Progress jobs used in unscheduled calculation
   const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
-    if (schedule.status !== "In Progress") return sum;
+    if (!qualifyingStatuses.includes(schedule.status)) return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
     if (projectsWithGanttData.has(key)) return sum;
     const projectHours = schedule.totalHours || qualifyingKeyHours.get(key) || 0;

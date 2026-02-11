@@ -522,8 +522,8 @@ function DailyCrewDispatchBoardContent() {
       console.log("Debug - All active employees:", allEmployees.filter(e => e.isActive).length);
       console.log("Debug - Searching for roles:", recipientRoles);
       
-      // FOR TESTING: Distro restricted to Todd and Jane
-      const recipients = ["todd@pmcdecor.com", "jane@pmcdecor.com"];
+      // FOR TESTING: Distro restricted to Todd only
+      const recipients = ["todd@pmcdecor.com"];
       
       /* 
       // Original dynamic distribution logic (Re-enable after testing)

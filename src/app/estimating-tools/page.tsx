@@ -25,17 +25,18 @@ interface Project {
 
 interface Calculation {
   id?: string;
-  type: string;
+  type: string; // "Pier", "Spread Footer", "Rebar", "Footer", etc.
   label: string;
   name?: string;
   projectId: string;
   projectName: string;
   customer: string;
-  inputs: Record<string, any>;
+  inputs: Record<string, string | number | boolean | undefined>;
   result: string | number;
   summary?: string;
   totalCY?: number;
   totalTons?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   timestamp: any;
 }
 
@@ -46,6 +47,26 @@ interface Constant {
   size?: string;
   overlap?: number;
   weightPerFoot?: number;
+}
+
+interface PierResult {
+  volume: number;
+  formsSF: number;
+  verticalLF: number;
+  tiesLF: number;
+  totalSticks: number;
+  weightTons: number;
+  weightLbs: number;
+}
+
+interface SpreadFooterResult {
+  volume: number;
+  formsSF: number;
+  totalLF: number;
+  weightTons: number;
+  weightLbs: number;
+  sticks: number;
+  chairs: number;
 }
 
 function EstimatingToolsContent() {
@@ -65,6 +86,9 @@ function EstimatingToolsContent() {
   const [loading, setLoading] = useState(false);
   const [recentCalcs, setRecentCalcs] = useState<Calculation[]>([]);
   const [aggregateTotals, setAggregateTotals] = useState({ cy: 0, tons: 0 });
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<{ type: string; label: string; data: any } | null>(null);
   
   // Project Search State
   const [projectsList, setProjectsList] = useState<Project[]>([]);
@@ -83,18 +107,19 @@ function EstimatingToolsContent() {
   const [pierExtraTies, setPierExtraTies] = useState("3");
   const [pierQuantity, setPierQuantity] = useState("1");
   const [waste, setWaste] = useState("10"); // Default 10%
-  const [pierResult, setPierResult] = useState<Record<string, any> | null>(null);
+  const [pierResult, setPierResult] = useState<PierResult | null>(null);
   const [pierCalcName, setPierCalcName] = useState("");
 
-  // Rebar Calculator State
-  const [rebarSize, setRebarSize] = useState("#4");
-  const [rebarGridLength, setRebarGridLength] = useState("");
-  const [rebarGridWidth, setRebarGridWidth] = useState("");
-  const [rebarSpacing, setRebarSpacing] = useState("12"); // inches
-  const [rebarQuantity, setRebarQuantity] = useState<number | null>(null);
-  const [rebarWeight, setRebarWeight] = useState<number | null>(null);
-  const [rebarChairs, setRebarChairs] = useState<number | null>(null);
-  const [rebarSticks, setRebarSticks] = useState<number | null>(null);
+  // Spread Footer Calculator State
+  const [spreadFooterLength, setSpreadFooterLength] = useState("");
+  const [spreadFooterWidth, setSpreadFooterWidth] = useState("");
+  const [spreadFooterThickness, setSpreadFooterThickness] = useState("");
+  const [spreadFooterQuantity, setSpreadFooterQuantity] = useState("1");
+  const [spreadFooterRebarSize, setSpreadFooterRebarSize] = useState("#4");
+  const [spreadFooterSpacing, setSpreadFooterSpacing] = useState("12"); // inches
+  const [spreadFooterChairsPerFooting, setSpreadFooterChairsPerFooting] = useState("4");
+  const [spreadFooterResult, setSpreadFooterResult] = useState<SpreadFooterResult | null>(null);
+  const [spreadFooterCalcName, setSpreadFooterCalcName] = useState("");
 
   // Footer Calculator State
   const [footerLF, setFooterLF] = useState("");
@@ -107,7 +132,7 @@ function EstimatingToolsContent() {
   const [footerCornerCount, setFooterCornerCount] = useState("0");
   const [footerPierCount, setFooterPierCount] = useState("0");
   const [footerRebarSize, setFooterRebarSize] = useState("#4");
-  const [footerResult, setFooterResult] = useState<Record<string, any> | null>(null);
+  const [footerResult, setFooterResult] = useState<any | null>(null);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -158,8 +183,8 @@ function EstimatingToolsContent() {
         setRebarConstants(rData);
 
         // Set defaults if state is currently empty or doesn't match a size
-        if (!rebarSize || !rData.find(r => r.size === rebarSize)) {
-          setRebarSize(rData[0].size || "#4");
+        if (!spreadFooterRebarSize || !rData.find(r => r.size === spreadFooterRebarSize)) {
+          setSpreadFooterRebarSize(rData[0].size || "#4");
         }
         if (!footerRebarSize || !rData.find(r => r.size === footerRebarSize)) {
           setFooterRebarSize(rData[0].size || "#4");
@@ -189,7 +214,7 @@ function EstimatingToolsContent() {
       }
       
       const calcSnapshot = await getDocs(calcQuery);
-      let allCalcs = calcSnapshot.docs.map(doc => {
+      const allCalcs = calcSnapshot.docs.map(doc => {
         const data = doc.data();
         let totalCY = data.totalCY || 0;
         let totalTons = data.totalTons || 0;
@@ -250,7 +275,7 @@ function EstimatingToolsContent() {
       console.error("Error fetching data:", error);
       setLoading(false);
     }
-  }, [selectedProjectId]); // Added selectedProjectId to re-fetch when project changes
+  }, [selectedProjectId, spreadFooterRebarSize, footerRebarSize]); // Added selectedProjectId to re-fetch when project changes
 
   useEffect(() => {
     fetchData();
@@ -282,6 +307,17 @@ function EstimatingToolsContent() {
       setPierTieLength("");
     }
   }, [pierLength, pierWidth]);
+
+  useEffect(() => {
+    if (spreadFooterLength && spreadFooterWidth) {
+      const l = parseFloat(spreadFooterLength);
+      const w = parseFloat(spreadFooterWidth);
+      if (!isNaN(l) && !isNaN(w)) {
+        // formula: length * width / 16 + 1 rounded up
+        setSpreadFooterChairsPerFooting(Math.ceil((l * w) / 16 + 1).toString());
+      }
+    }
+  }, [spreadFooterLength, spreadFooterWidth]);
 
   const calculatePiers = React.useCallback(() => {
     const l = parseFloat(pierLength);
@@ -344,48 +380,63 @@ function EstimatingToolsContent() {
     pierExtraTies, waste, constants, rebarConstants
   ]);
 
-  const calculateRebar = React.useCallback(() => {
-    const l = parseFloat(rebarGridLength) || 0;
-    const w = parseFloat(rebarGridWidth) || 0;
-    const spacing = parseFloat(rebarSpacing) / 12; // convert to ft
+  const calculateSpreadFooter = React.useCallback(() => {
+    const l = parseFloat(spreadFooterLength);
+    const w = parseFloat(spreadFooterWidth);
+    const t = parseFloat(spreadFooterThickness);
+    const qty = parseFloat(spreadFooterQuantity);
+    const spacing = parseFloat(spreadFooterSpacing) / 12; // convert to ft
+    const chairsPerFooting = parseFloat(spreadFooterChairsPerFooting) || 0;
+    const wst = parseFloat(waste) / 100;
     
-    // Load stick length from constants
-    const stickLength = Number(constants.find(c => c.name === "Rebar Stick Length")?.value || 20);
-    
-    if (l <= 0 || w <= 0 || isNaN(spacing) || spacing === 0) {
-      setRebarQuantity(0);
-      setRebarWeight(0);
+    if (isNaN(l) || isNaN(w) || isNaN(t) || isNaN(qty)) {
+      setSpreadFooterResult(null);
       return;
     }
 
-    const rebarSpec = rebarConstants.find(r => r.size?.toString().trim() === rebarSize?.toString().trim());
-    if (!rebarSpec) return;
+    // 1. Concrete Volume (CY)
+    const volumeCuFt = l * w * t;
+    const totalVolumeCY = Math.ceil((volumeCuFt * qty * (1 + wst)) / 27);
 
-    const overlap = rebarSpec.overlap || 0;
-    const effectiveStickLength = stickLength - overlap;
+    // 2. Form S.F. calculation: Perimeter (ft) * Thickness (ft) * Quantity
+    const totalFormsSF = ((l * 2) + (w * 2)) * t * qty;
 
-    // Longitudinal bars runs
-    const countL = Math.ceil(w / spacing) + 1;
-    const runL = l;
-    const sticksNeededL = runL / effectiveStickLength;
-    const totalFtL = countL * (sticksNeededL * stickLength);
+    // 3. Rebar calculation (Grid)
+    const stickLength = Number(constants.find(c => c.name === "Rebar Stick Length")?.value || 20);
+    const rebarSpec = rebarConstants.find(r => r.size?.toString().trim() === spreadFooterRebarSize?.toString().trim());
+    
+    let totalLF = 0;
+    let weightLbs = 0;
+    let sticks = 0;
+    const chairs = chairsPerFooting * qty;
 
-    // Transverse bars runs
-    const countW = Math.ceil(l / spacing) + 1;
-    const runW = w;
-    const sticksNeededW = runW / effectiveStickLength;
-    const totalFtW = countW * (sticksNeededW * stickLength);
+    if (rebarSpec && spacing > 0) {
+      // Rebar runs in Length direction (spaced across width)
+      const rowsL = Math.floor(w / spacing) + 1;
+      const feetL = rowsL * l;
 
-    const totalFt = totalFtL + totalFtW;
-    const totalSticks = (countL * sticksNeededL) + (countW * sticksNeededW);
-    const totalWeight = totalFt * (rebarSpec.weightPerFoot || 0);
-    const chairs = Math.ceil((l * w) / 16);
+      // Rebar runs in Width direction (spaced across length)
+      const rowsW = Math.floor(l / spacing) + 1;
+      const feetW = rowsW * w;
 
-    setRebarQuantity(totalFt);
-    setRebarWeight(totalWeight);
-    setRebarChairs(chairs);
-    setRebarSticks(totalSticks);
-  }, [rebarGridLength, rebarGridWidth, rebarSpacing, constants, rebarConstants, rebarSize]);
+      totalLF = (feetL + feetW) * qty;
+      weightLbs = totalLF * (rebarSpec.weightPerFoot || 0);
+      sticks = Math.ceil(totalLF / stickLength);
+    }
+    
+    setSpreadFooterResult({
+      volume: totalVolumeCY,
+      formsSF: totalFormsSF,
+      totalLF,
+      weightTons: weightLbs / 2000,
+      weightLbs,
+      sticks,
+      chairs
+    });
+  }, [
+    spreadFooterLength, spreadFooterWidth, spreadFooterThickness, spreadFooterQuantity, 
+    spreadFooterSpacing, spreadFooterRebarSize, spreadFooterChairsPerFooting, waste, constants, rebarConstants
+  ]);
 
   const calculateFooter = React.useCallback(() => {
     const lf = parseFloat(footerLF);
@@ -493,16 +544,19 @@ function EstimatingToolsContent() {
   }, [calculatePiers]);
 
   useEffect(() => {
-    calculateRebar();
-  }, [calculateRebar]);
+    calculateSpreadFooter();
+  }, [calculateSpreadFooter]);
 
   useEffect(() => {
     calculateFooter();
   }, [calculateFooter]);
 
-  const saveCalculation = async (type: "Pier" | "Rebar" | "Footer", label: string, data: { inputs: any; result: string; summary?: string; totalCY?: number; totalTons?: number }) => {
-    if (!selectedProjectId) {
-      alert("Please select a project first.");
+  const saveCalculation = async (type: string, label: string, data: { inputs: Record<string, unknown>; result: string; summary?: string; totalCY?: number; totalTons?: number }, overrideProjectId?: string) => {
+    const projectIdToUse = overrideProjectId || selectedProjectId;
+
+    if (!projectIdToUse) {
+      setPendingSaveData({ type, label, data });
+      setShowProjectModal(true);
       return;
     }
     if (!label) {
@@ -510,13 +564,13 @@ function EstimatingToolsContent() {
       return;
     }
 
-    const project = projectsList.find(p => p.id === selectedProjectId);
+    const project = projectsList.find(p => p.id === projectIdToUse);
     
     setSaving(true);
     try {
       await addDoc(collection(db, "savedCalculations"), {
         projectName: project?.projectName || "Unknown",
-        projectId: selectedProjectId,
+        projectId: projectIdToUse,
         customer: project?.customer || "Unknown",
         label: label,
         type: type,
@@ -534,6 +588,7 @@ function EstimatingToolsContent() {
       alert("Failed to save.");
     } finally {
       setSaving(false);
+      setPendingSaveData(null);
     }
   };
 
@@ -561,21 +616,25 @@ function EstimatingToolsContent() {
     setPierCalcName("");
   };
 
-  const [rebarCalcName, setRebarCalcName] = useState("");
-  const handleSaveRebar = () => {
-    saveCalculation("Rebar", rebarCalcName, {
+  const handleSaveSpreadFooter = () => {
+    saveCalculation("Spread Footer", spreadFooterCalcName, {
       inputs: { 
-        length: rebarGridLength, 
-        width: rebarGridWidth, 
-        spacing: rebarSpacing, 
-        size: rebarSize,
-        label: rebarCalcName 
+        length: spreadFooterLength, 
+        width: spreadFooterWidth, 
+        thickness: spreadFooterThickness,
+        quantity: spreadFooterQuantity,
+        rebarSize: spreadFooterRebarSize,
+        spacing: spreadFooterSpacing,
+        chairsPerFooting: spreadFooterChairsPerFooting,
+        waste,
+        label: spreadFooterCalcName 
       },
-      result: `${Math.ceil(rebarSticks || 0)} sticks`,
-      summary: `${rebarWeight?.toFixed(0)} lbs, ${rebarChairs} chairs`,
-      totalTons: (rebarWeight || 0) / 2000
+      result: `${spreadFooterResult?.sticks} sticks`,
+      summary: `${spreadFooterResult?.volume} CY, ${spreadFooterResult?.formsSF?.toFixed(0)} SF Form, ${spreadFooterResult?.weightTons.toFixed(2)} tons rebar, ${spreadFooterResult?.chairs} chairs`,
+      totalCY: spreadFooterResult?.volume || 0,
+      totalTons: spreadFooterResult?.weightTons || 0
     });
-    setRebarCalcName("");
+    setSpreadFooterCalcName("");
   };
 
   const [footerCalcName, setFooterCalcName] = useState("");
@@ -603,12 +662,70 @@ function EstimatingToolsContent() {
     setFooterCalcName("");
   };
 
+  const renderTotalsCard = (isFloating = false) => (
+    <div style={{ 
+      ...cardStyle, 
+      background: "#15616D", 
+      color: "white", 
+      borderColor: "#0e4048",
+      ...(isFloating ? { boxShadow: "0 10px 25px rgba(0,0,0,0.2)" } : {})
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ ...cardTitleStyle, color: "white", marginBottom: "4px" }}>
+            {selectedProjectId ? "Project Totals" : "Global Recent Totals"}
+          </h2>
+          {selectedProjectId && (
+            <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
+              {projectsList.find(p => p.id === selectedProjectId)?.projectName}
+            </div>
+          )}
+        </div>
+        {!isFloating && (
+          <button 
+            onClick={downloadBreakdown}
+            style={{
+              background: "white",
+              color: "#15616D",
+              border: "none",
+              borderRadius: "6px",
+              padding: "6px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px"
+            }}
+          >
+            <span>Download Report</span>
+          </button>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+        <div style={{ background: "rgba(255,255,255,0.1)", padding: "15px", borderRadius: "8px", textAlign: "center" }}>
+          <div style={{ fontSize: "10px", opacity: 0.8, textTransform: "uppercase" }}>Conc. Sum</div>
+          <div style={{ fontSize: "24px", fontWeight: 800 }}>{aggregateTotals.cy.toFixed(0)} <span style={{ fontSize: "12px", fontWeight: 400 }}>CY</span></div>
+        </div>
+        <div style={{ background: "rgba(255,255,255,0.1)", padding: "15px", borderRadius: "8px", textAlign: "center" }}>
+          <div style={{ fontSize: "10px", opacity: 0.8, textTransform: "uppercase" }}>Rebar Sum</div>
+          <div style={{ fontSize: "24px", fontWeight: 800 }}>{aggregateTotals.tons.toFixed(2)} <span style={{ fontSize: "12px", fontWeight: 400 }}>TONS</span></div>
+        </div>
+      </div>
+      <p style={{ fontSize: "10px", marginTop: "12px", opacity: 0.7, fontStyle: "italic" }}>
+        {selectedProjectId 
+          ? "* Sum of all current estimates for this project." 
+          : "* Showing latest 10 estimates globally."}
+      </p>
+    </div>
+  );
+
   const formatTimestamp = (ts: any) => {
     if (!ts) return "Just now";
     try {
       const date = ts.toDate ? ts.toDate() : new Date(ts);
       return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    } catch (e) {
+    } catch {
       return "";
     }
   };
@@ -617,41 +734,44 @@ function EstimatingToolsContent() {
     setSelectedProjectId(calc.projectId);
     
     if (calc.type === "Pier" || calc.type === "Concrete") {
-      setPierLength(calc.inputs.length || calc.inputs.diameter || "");
-      setPierWidth(calc.inputs.width || calc.inputs.diameter || "");
-      setPierHeight(calc.inputs.height || calc.inputs.depth || "");
-      setPierDowelLength(calc.inputs.dowelLength || "");
-      setPierTieLength(calc.inputs.tieLength || "");
-      setPierVerticalCount(calc.inputs.verticalCount || "4");
-      setPierVerticalSize(calc.inputs.verticalSize || "#4");
-      setPierTiesSpacing(calc.inputs.tiesSpacing || "12");
-      setPierExtraTies(calc.inputs.extraTies || "3");
-      setPierQuantity(calc.inputs.quantity || "1");
-      setWaste(calc.inputs.waste || "10");
-      setPierCalcName(calc.inputs.label || calc.label || "");
-    } else if (calc.type === "Rebar") {
-      setRebarGridLength(calc.inputs.length || "");
-      setRebarGridWidth(calc.inputs.width || "");
-      setRebarSpacing(calc.inputs.spacing || "12");
-      setRebarSize(calc.inputs.size || "#4");
-      setRebarCalcName(calc.inputs.label || calc.label || "");
+      setPierLength(String(calc.inputs.length || calc.inputs.diameter || ""));
+      setPierWidth(String(calc.inputs.width || calc.inputs.diameter || ""));
+      setPierHeight(String(calc.inputs.height || calc.inputs.depth || ""));
+      setPierDowelLength(String(calc.inputs.dowelLength || ""));
+      setPierTieLength(String(calc.inputs.tieLength || ""));
+      setPierVerticalCount(String(calc.inputs.verticalCount || "4"));
+      setPierVerticalSize(String(calc.inputs.verticalSize || "#4"));
+      setPierTiesSpacing(String(calc.inputs.tiesSpacing || "12"));
+      setPierExtraTies(String(calc.inputs.extraTies || "3"));
+      setPierQuantity(String(calc.inputs.quantity || "1"));
+      setWaste(String(calc.inputs.waste || "10"));
+      setPierCalcName(String(calc.inputs.label || calc.label || ""));
+    } else if (calc.type === "Spread Footer" || calc.type === "Rebar") {
+      setSpreadFooterLength(String(calc.inputs.length || ""));
+      setSpreadFooterWidth(String(calc.inputs.width || ""));
+      setSpreadFooterThickness(String(calc.inputs.thickness || ""));
+      setSpreadFooterQuantity(String(calc.inputs.quantity || "1"));
+      setSpreadFooterRebarSize(String(calc.inputs.rebarSize || calc.inputs.size || "#4"));
+      setSpreadFooterSpacing(String(calc.inputs.spacing || "12"));
+      setSpreadFooterChairsPerFooting(String(calc.inputs.chairsPerFooting || "4"));
+      setWaste(String(calc.inputs.waste || "10"));
+      setSpreadFooterCalcName(String(calc.inputs.label || calc.label || ""));
     } else if (calc.type === "Footer") {
-      setFooterLF(calc.inputs.lf || "");
-      setFooterWidth(calc.inputs.width || "");
-      setFooterHeight(calc.inputs.height || "");
-      setFooterRebarCount(calc.inputs.rebarCount || "4");
-      setFooterRebarSize(calc.inputs.rebarSize || "#4");
-      setFooterHorizontalsSpacing(calc.inputs.horizontalsSpacing || "2");
-      setFooterDowelsSpacing(calc.inputs.dowelsSpacing || "1");
-      setFooterDowelLength(calc.inputs.dowelLength || "1.5");
-      setFooterCornerCount(calc.inputs.cornerCount || "0");
-      setFooterPierCount(calc.inputs.pierCount || "0");
-      setWaste(calc.inputs.waste || "10");
-      setFooterCalcName(calc.inputs.label || calc.label || "");
+      setFooterLF(String(calc.inputs.lf || ""));
+      setFooterWidth(String(calc.inputs.width || ""));
+      setFooterHeight(String(calc.inputs.height || ""));
+      setFooterRebarCount(String(calc.inputs.rebarCount || "4"));
+      setFooterRebarSize(String(calc.inputs.rebarSize || "#4"));
+      setFooterHorizontalsSpacing(String(calc.inputs.horizontalsSpacing || "2"));
+      setFooterDowelsSpacing(String(calc.inputs.dowelsSpacing || "1"));
+      setFooterDowelLength(String(calc.inputs.dowelLength || "1.5"));
+      setFooterCornerCount(String(calc.inputs.cornerCount || "0"));
+      setFooterPierCount(String(calc.inputs.pierCount || "0"));
+      setWaste(String(calc.inputs.waste || "10"));
+      setFooterCalcName(String(calc.inputs.label || calc.label || ""));
     }
     
-    // Smooth scroll to top or to the relevant section if needed, 
-    // but usually user just wants the fields filled.
+    // Smooth scroll to top
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -736,12 +856,138 @@ function EstimatingToolsContent() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))", gap: "24px" }}>
+        {/* Backdrop for expanded view */}
+        {expandedCard && <div style={backdropStyle} onClick={() => setExpandedCard(null)} />}
+
+        {/* Project Selection Modal */}
+        {showProjectModal && (
+          <div style={{ ...backdropStyle, zIndex: 10000 }} onClick={() => setShowProjectModal(false)}>
+            <div 
+              style={{
+                position: "fixed",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "white",
+                padding: "32px",
+                borderRadius: "12px",
+                width: "600px",
+                maxWidth: "90vw",
+                maxHeight: "80vh",
+                display: "flex",
+                flexDirection: "column",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                zIndex: 10001
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <h2 style={{ margin: 0, color: "#15616D" }}>Select Project for Calculation</h2>
+                <button 
+                  onClick={() => setShowProjectModal(false)}
+                  style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#666" }}
+                >
+                  &times;
+                </button>
+              </div>
+              
+              <p style={{ fontSize: "14px", color: "#666", marginBottom: "16px" }}>
+                Please select which project you would like to save this <strong>{pendingSaveData?.type}</strong> calculation ({pendingSaveData?.label}) to:
+              </p>
+
+              <input 
+                placeholder="Search projects by name, customer, or number..." 
+                value={projectSearch}
+                onChange={e => setProjectSearch(e.target.value)}
+                style={{ ...inputStyle, marginBottom: "16px", background: "#f8f9fa" }}
+                autoFocus
+              />
+
+              <div style={{ flex: 1, overflowY: "auto", border: "1px solid #eee", borderRadius: "8px" }}>
+                {projectsList
+                  .filter(p => {
+                    if (!projectSearch) return true;
+                    const search = projectSearch.toLowerCase();
+                    return (p.projectName || "").toLowerCase().includes(search) || 
+                           (p.customer || "").toLowerCase().includes(search) || 
+                           (p.projectNumber || "").toLowerCase().includes(search);
+                  })
+                  .slice(0, 50) // Limit displayed results for performance
+                  .map(p => (
+                    <div 
+                      key={p.id}
+                      onClick={() => {
+                        setSelectedProjectId(p.id);
+                        setShowProjectModal(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                        if (pendingSaveData) {
+                          saveCalculation(pendingSaveData.type, pendingSaveData.label, pendingSaveData.data, p.id);
+                        }
+                      }}
+                      style={{
+                        padding: "16px",
+                        borderBottom: "1px solid #eee",
+                        cursor: "pointer",
+                        transition: "background 0.2s"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: "14px", color: "#15616D" }}>{p.projectName}</div>
+                          <div style={{ fontSize: "12px", color: "#666" }}>{p.customer}</div>
+                        </div>
+                        <div style={{ fontSize: "11px", background: "#eee", padding: "2px 6px", borderRadius: "4px", color: "#666", fontWeight: 700 }}>
+                          {p.projectNumber}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+              
+              <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
+                <button 
+                  onClick={() => setShowProjectModal(false)}
+                  style={{ 
+                    padding: "10px 20px", 
+                    background: "#f3f4f6", 
+                    color: "#374151", 
+                    border: "none", 
+                    borderRadius: "6px", 
+                    fontWeight: 600, 
+                    cursor: "pointer" 
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Piers Calculator Card */}
-        <div style={cardStyle}>
-          <h2 style={cardTitleStyle}>Advanced Piers Calculator</h2>
+        <div 
+          style={expandedCard === 'piers' ? expandedCardStyle : { ...cardStyle, position: "relative", cursor: !expandedCard ? "pointer" : "default" }}
+          onClick={() => !expandedCard && setExpandedCard('piers')}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ ...cardTitleStyle, marginBottom: 0 }}>Advanced Piers Calculator</h2>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {expandedCard === 'piers' && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setExpandedCard(null); }}
+                  style={{ background: "#666", color: "white", border: "none", borderRadius: "4px", padding: "4px 12px", fontSize: "12px", cursor: "pointer" }}
+                >
+                  Close &times;
+                </button>
+              )}
+            </div>
+          </div>
           
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-            <div style={{ gridColumn: "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: expandedCard === 'piers' ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ gridColumn: expandedCard === 'piers' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>PIER DIMENSIONS (FEET)</span>
             </div>
             
@@ -762,7 +1008,7 @@ function EstimatingToolsContent() {
               <input type="number" value={pierQuantity} onChange={e => setPierQuantity(e.target.value)} style={inputStyle} placeholder="1" />
             </div>
 
-            <div style={{ gridColumn: "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", margin: "10px 0" }}>
+            <div style={{ gridColumn: expandedCard === 'piers' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", margin: "10px 0" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>REINFORCEMENT</span>
             </div>
 
@@ -856,105 +1102,124 @@ function EstimatingToolsContent() {
           )}
         </div>
 
-        {/* Rebar Calculator Card */}
-        <div style={cardStyle}>
-          <h2 style={cardTitleStyle}>Rebar Grid Calculator</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-            <div>
-              <label style={labelStyle}>Slab Length (ft)</label>
-              <input type="number" value={rebarGridLength} onChange={e => setRebarGridLength(e.target.value)} style={inputStyle} placeholder="0" />
+        {/* Spread Footer Calculator Card */}
+        <div 
+          style={expandedCard === 'spread' ? expandedCardStyle : { ...cardStyle, position: "relative", cursor: !expandedCard ? "pointer" : "default" }}
+          onClick={() => !expandedCard && setExpandedCard('spread')}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ ...cardTitleStyle, marginBottom: 0 }}>Spread Footer Calculator</h2>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {expandedCard === 'spread' && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setExpandedCard(null); }}
+                  style={{ background: "#666", color: "white", border: "none", borderRadius: "4px", padding: "4px 12px", fontSize: "12px", cursor: "pointer" }}
+                >
+                  Close &times;
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: expandedCard === 'spread' ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ gridColumn: expandedCard === 'spread' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>FOOTER DIMENSIONS (FEET)</span>
             </div>
             <div>
-              <label style={labelStyle}>Slab Width (ft)</label>
-              <input type="number" value={rebarGridWidth} onChange={e => setRebarGridWidth(e.target.value)} style={inputStyle} placeholder="0" />
+              <label style={labelStyle}>Length (FT)</label>
+              <input type="number" value={spreadFooterLength} onChange={e => setSpreadFooterLength(e.target.value)} style={inputStyle} placeholder="2" />
             </div>
+            <div>
+              <label style={labelStyle}>Width (FT)</label>
+              <input type="number" value={spreadFooterWidth} onChange={e => setSpreadFooterWidth(e.target.value)} style={inputStyle} placeholder="2" />
+            </div>
+            <div>
+              <label style={labelStyle}>Thickness (FT)</label>
+              <input type="number" value={spreadFooterThickness} onChange={e => setSpreadFooterThickness(e.target.value)} style={inputStyle} placeholder="1" />
+            </div>
+            <div>
+              <label style={labelStyle}>Total Footers</label>
+              <input type="number" value={spreadFooterQuantity} onChange={e => setSpreadFooterQuantity(e.target.value)} style={inputStyle} placeholder="1" />
+            </div>
+
+            <div style={{ gridColumn: expandedCard === 'spread' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", margin: "10px 0" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>REINFORCEMENT</span>
+            </div>
+
             <div>
               <label style={labelStyle}>Rebar Size</label>
               <select 
-                value={rebarSize} 
-                onChange={e => setRebarSize(e.target.value)} 
+                value={spreadFooterRebarSize} 
+                onChange={e => setSpreadFooterRebarSize(e.target.value)} 
                 style={{...inputStyle, background: "#fff", cursor: "pointer"}}
               >
                 {rebarConstants.map(r => (
-                  <option key={r.id || r.size} value={r.size}>{r.size} (Weight: {r.weightPerFoot})</option>
+                  <option key={r.id || r.size} value={r.size}>{r.size} ({r.weightPerFoot} lbs/ft)</option>
                 ))}
               </select>
             </div>
             <div>
               <label style={labelStyle}>Spacing (in o.c.)</label>
-              <input type="number" value={rebarSpacing} onChange={e => setRebarSpacing(e.target.value)} style={inputStyle} placeholder="12" />
+              <input type="number" value={spreadFooterSpacing} onChange={e => setSpreadFooterSpacing(e.target.value)} style={inputStyle} placeholder="12" />
+            </div>
+            <div>
+              <label style={labelStyle}>Chairs per Footing</label>
+              <input type="number" value={spreadFooterChairsPerFooting} onChange={e => setSpreadFooterChairsPerFooting(e.target.value)} style={inputStyle} placeholder="4" />
+            </div>
+
+            <div style={{ gridColumn: expandedCard === 'spread' ? "span 3" : "span 2" }}>
+              <label style={labelStyle}>Waste (%)</label>
+              <input type="number" value={waste} onChange={e => setWaste(e.target.value)} style={inputStyle} placeholder="10" />
             </div>
           </div>
           
           <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>
-            Calculates a grid of rebar with overlaps for the dimensions specified.
+            Calculates concrete volume, form square footage, and a bottom rebar mat for spread footers.
           </p>
 
-          {rebarQuantity !== null && (
-            <div style={{ marginTop: "12px", background: "#fff", borderRadius: "8px", border: "1px solid #ddd", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                <thead style={{ background: "#f8f9fa" }}>
-                  <tr>
-                    <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "1px solid #eee" }}>Item</th>
-                    <th style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid #eee" }}>Qty</th>
-                    <th style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid #eee" }}>Feet</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: "8px 10px", fontWeight: 400 }}>Main Grid (Total LF)</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right" }}>-</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right" }}>{rebarQuantity.toFixed(0)}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: "8px 10px", fontWeight: 400 }}>20&apos; Sticks</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right" }}>{Math.ceil(rebarSticks || 0)}</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right" }}>{(Math.ceil(rebarSticks || 0) * 20).toFixed(0)}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: "8px 10px", fontWeight: 400 }}>Total Weight (LBS)</td>
-                    <td colSpan={2} style={{ padding: "8px 10px", textAlign: "right" }}>{rebarWeight?.toFixed(0)}</td>
-                  </tr>
-                  <tr style={{ borderTop: "1px solid #eee" }}>
-                    <td style={{ padding: "8px 10px", fontWeight: 400 }}>Chairs</td>
-                    <td colSpan={2} style={{ padding: "8px 10px", textAlign: "right" }}>{rebarChairs}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div style={{ marginTop: "16px", padding: "12px", background: "#f8f9fa", borderTop: "1px solid #ddd" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                  <span style={{ fontWeight: 700, fontSize: "16px" }}>SUMMARY</span>
+          {spreadFooterResult !== null && (
+            <div style={{ marginTop: "12px" }}>
+              {/* Results Summary */}
+              <div style={{ background: "#f8f9fa", borderRadius: "8px", border: "1px solid #0369a1", padding: "16px", marginBottom: "16px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0369a1", textTransform: "uppercase", marginBottom: "12px" }}>Spread Footer Summary</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Concrete Volume</div>
+                    <div style={{ fontSize: "24px", fontWeight: 800, color: "#0369a1" }}>{spreadFooterResult.volume} <span style={{ fontSize: "12px" }}>CY</span></div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Rebar Weight</div>
+                    <div style={{ fontSize: "24px", fontWeight: 800, color: "#0369a1" }}>{spreadFooterResult.weightTons.toFixed(2)} <span style={{ fontSize: "12px" }}>TONS</span></div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #ddd", paddingTop: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Form Area</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700 }}>{spreadFooterResult.formsSF.toFixed(0)} <span style={{ fontSize: "12px" }}>S.F.</span></div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #ddd", paddingTop: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>20&apos; Sticks</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700 }}>{spreadFooterResult.sticks} <span style={{ fontSize: "12px" }}>PCS</span></div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #ddd", paddingTop: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Total LF</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700 }}>{spreadFooterResult.totalLF.toFixed(0)} <span style={{ fontSize: "12px" }}>FT</span></div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #ddd", paddingTop: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Chairs</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700 }}>{spreadFooterResult.chairs} <span style={{ fontSize: "12px" }}>PCS</span></div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>20&apos; Sticks:</span>
-                  <span style={{ fontWeight: 700 }}>{Math.ceil(rebarSticks || 0)} PCS</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Total Tons:</span>
-                  <span style={{ fontWeight: 700 }}>{((rebarWeight || 0) / 2000).toFixed(2)} TONS</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Total Chairs:</span>
-                  <span style={{ fontWeight: 700 }}>{rebarChairs} PCS</span>
-                </div>
-              </div>
-              
-              <div style={{ padding: "8px 12px", fontSize: "11px", color: "#666", fontStyle: "italic" }}>
-                * Includes lapped 20&apos; sticks ({rebarConstants.find(r => r.size === rebarSize)?.overlap}&apos; overlap).
               </div>
 
               <div style={{ padding: "16px", borderTop: "1px solid #ddd", background: "#f0f9ff" }}>
-                <label style={labelStyle}>Save Rebar Breakdown</label>
+                <label style={labelStyle}>Save Footer Breakdown</label>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <input 
-                    placeholder="e.g. Building 2 Slab..." 
-                    value={rebarCalcName} 
-                    onChange={e => setRebarCalcName(e.target.value)} 
-                    onKeyDown={e => e.key === "Enter" && handleSaveRebar()}
+                    placeholder="e.g. Pad Footers F1..." 
+                    value={spreadFooterCalcName} 
+                    onChange={e => setSpreadFooterCalcName(e.target.value)} 
+                    onKeyDown={e => e.key === "Enter" && handleSaveSpreadFooter()}
                     style={{ ...inputStyle, marginBottom: 0 }} 
                   />
-                  <button onClick={handleSaveRebar} disabled={saving} style={{ ...primaryButtonStyle, width: "auto", background: "#0369a1" }}>
+                  <button onClick={handleSaveSpreadFooter} disabled={saving} style={{ ...primaryButtonStyle, width: "auto", background: "#0369a1" }}>
                     {saving ? "..." : "Save to Project"}
                   </button>
                 </div>
@@ -964,15 +1229,30 @@ function EstimatingToolsContent() {
         </div>
 
         {/* Continuous Footer Calculator Card */}
-        <div style={cardStyle}>
-          <h2 style={cardTitleStyle}>Advanced Continuous Footer Calculator</h2>
+        <div 
+          style={expandedCard === 'footer' ? expandedCardStyle : { ...cardStyle, position: "relative", cursor: !expandedCard ? "pointer" : "default" }}
+          onClick={() => !expandedCard && setExpandedCard('footer')}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ ...cardTitleStyle, marginBottom: 0 }}>Advanced Continuous Footer Calculator</h2>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {expandedCard === 'footer' && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setExpandedCard(null); }}
+                  style={{ background: "#666", color: "white", border: "none", borderRadius: "4px", padding: "4px 12px", fontSize: "12px", cursor: "pointer" }}
+                >
+                  Close &times;
+                </button>
+              )}
+            </div>
+          </div>
           
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-            <div style={{ gridColumn: "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: expandedCard === 'footer' ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ gridColumn: expandedCard === 'footer' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>DIMENSIONS (FEET)</span>
             </div>
             
-            <div style={{ gridColumn: "span 2" }}>
+            <div style={{ gridColumn: expandedCard === 'footer' ? "span 3" : "span 2" }}>
               <label style={labelStyle}>Total Linear Feet (LF)</label>
               <input type="number" value={footerLF} onChange={e => setFooterLF(e.target.value)} style={inputStyle} placeholder="100" />
             </div>
@@ -986,7 +1266,7 @@ function EstimatingToolsContent() {
               <input type="number" value={footerHeight} onChange={e => setFooterHeight(e.target.value)} style={inputStyle} placeholder="3" />
             </div>
 
-            <div style={{ gridColumn: "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", margin: "10px 0" }}>
+            <div style={{ gridColumn: expandedCard === 'footer' ? "span 3" : "span 2", borderBottom: "1px solid #eee", paddingBottom: "10px", margin: "10px 0" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#15616D" }}>REINFORCEMENT</span>
             </div>
 
@@ -1159,54 +1439,7 @@ function EstimatingToolsContent() {
 
         {/* Recent Calculations Sidebar */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Totals Summary Card */}
-          <div style={{ ...cardStyle, background: "#15616D", color: "white", borderColor: "#0e4048" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div style={{ flex: 1 }}>
-                <h2 style={{ ...cardTitleStyle, color: "white", marginBottom: "4px" }}>
-                  {selectedProjectId ? "Project Totals" : "Global Recent Totals"}
-                </h2>
-                {selectedProjectId && (
-                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
-                    {projectsList.find(p => p.id === selectedProjectId)?.projectName}
-                  </div>
-                )}
-              </div>
-              <button 
-                onClick={downloadBreakdown}
-                style={{
-                  background: "white",
-                  color: "#15616D",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}
-              >
-                <span>Download Report</span>
-              </button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div style={{ background: "rgba(255,255,255,0.1)", padding: "15px", borderRadius: "8px", textAlign: "center" }}>
-                <div style={{ fontSize: "10px", opacity: 0.8, textTransform: "uppercase" }}>Conc. Sum</div>
-                <div style={{ fontSize: "24px", fontWeight: 800 }}>{aggregateTotals.cy.toFixed(0)} <span style={{ fontSize: "12px", fontWeight: 400 }}>CY</span></div>
-              </div>
-              <div style={{ background: "rgba(255,255,255,0.1)", padding: "15px", borderRadius: "8px", textAlign: "center" }}>
-                <div style={{ fontSize: "10px", opacity: 0.8, textTransform: "uppercase" }}>Rebar Sum</div>
-                <div style={{ fontSize: "24px", fontWeight: 800 }}>{aggregateTotals.tons.toFixed(2)} <span style={{ fontSize: "12px", fontWeight: 400 }}>TONS</span></div>
-              </div>
-            </div>
-            <p style={{ fontSize: "10px", marginTop: "12px", opacity: 0.7, fontStyle: "italic" }}>
-              {selectedProjectId 
-                ? "* Sum of all current estimates for this project." 
-                : "* Showing latest 10 estimates globally."}
-            </p>
-          </div>
+          {renderTotalsCard()}
 
           <div style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "20px" }}>
@@ -1290,6 +1523,18 @@ function EstimatingToolsContent() {
           </div>
         </div>
       </div>
+
+      {expandedCard && (
+        <div style={{
+          position: "fixed",
+          top: "40px",
+          right: "40px",
+          width: "calc(33vw - 60px)",
+          zIndex: 1100
+        }}>
+          {renderTotalsCard(true)}
+        </div>
+      )}
     </main>
   );
 }
@@ -1307,6 +1552,32 @@ const cardTitleStyle: React.CSSProperties = {
   fontWeight: 600,
   color: "#333",
   margin: "0 0 20px 0",
+};
+
+const expandedCardStyle: React.CSSProperties = {
+  position: "fixed",
+  top: "40px",
+  left: "40px",
+  width: "calc(66vw - 60px)",
+  height: "calc(100vh - 80px)",
+  zIndex: 1100,
+  overflowY: "auto",
+  background: "#fff",
+  borderRadius: "16px",
+  padding: "32px",
+  boxShadow: "0 20px 50px rgba(0,0,0,0.15)",
+  border: "1px solid #ddd",
+};
+
+const backdropStyle: React.CSSProperties = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100vw",
+  height: "100vh",
+  background: "rgba(255,255,255,0.8)",
+  backdropFilter: "blur(4px)",
+  zIndex: 1000,
 };
 
 const labelStyle = { display: "block", marginBottom: "4px", fontSize: "12px", fontWeight: 600, color: "#666", textTransform: "uppercase" as const };

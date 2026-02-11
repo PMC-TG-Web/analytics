@@ -634,34 +634,50 @@ function SchedulingContent() {
 
   // Calculate unscheduled hours
   const unscheduledHoursCalc = useMemo(() => {
-    const totalQualifyingHours = uniqueJobs.reduce((sum, job) => sum + job.totalHours, 0);
+    // Only include jobs that are currently qualifying (In Progress)
+    const qualifyingJobKeys = new Set(uniqueJobs.map(j => j.key));
+
+    const totalQualifyingHours = uniqueJobs.reduce((sum, job) => {
+      // Find the schedule for this job to see if it has hours in 2025
+      const schedule = schedules.find(s => s.jobKey === job.key);
+      let excludedHours = 0;
+      if (schedule) {
+        Object.entries(schedule.allocations).forEach(([month, percent]) => {
+          const [year] = month.split("-");
+          // If year is 2025 or before, exclude it from the "Qualifying" budget for this 2026+ view
+          if (parseInt(year) < 2026) {
+            excludedHours += (schedule.totalHours * (percent / 100));
+          }
+        });
+      }
+      // Return remaining budget (Budget - 2025 hours)
+      return sum + Math.max(0, job.totalHours - excludedHours);
+    }, 0);
     
     // Calculate scheduled hours only from schedules that match qualifying jobs
-    const qualifyingJobKeys = new Set(uniqueJobs.map(j => j.key));
     const totalScheduledHours = schedules
       .filter(schedule => {
-        // Only include schedules for jobs that are currently qualifying (In Progress)
         if (!qualifyingJobKeys.has(schedule.jobKey)) return false;
-        // Also exclude Complete status schedules
         if (schedule.status === 'Complete') return false;
         return true;
       })
       .reduce((sum, schedule) => {
+        // Only count hours in our valid (2026+) months
         const totalPercent = validMonths.reduce((jobSum, month) => {
           const percent = schedule.allocations[month] ?? 0;
           return jobSum + percent;
         }, 0);
-        const cappedPercent = Math.min(100, totalPercent);
-        const jobScheduledHours = schedule.totalHours * (cappedPercent / 100);
+        // We don't cap here because we want to see the real scheduled hours for 2026
+        const jobScheduledHours = schedule.totalHours * (totalPercent / 100);
         return sum + jobScheduledHours;
       }, 0);
     
     return {
       totalQualifying: totalQualifyingHours,
       totalScheduled: totalScheduledHours,
-      unscheduled: totalQualifyingHours - totalScheduledHours,
+      unscheduled: Math.max(0, totalQualifyingHours - totalScheduledHours),
     };
-  }, [uniqueJobs, schedules]);
+  }, [uniqueJobs, schedules, validMonths]);
 
   function handleSort(column: string) {
     if (sortColumn === column) {

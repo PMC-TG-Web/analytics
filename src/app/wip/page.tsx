@@ -789,45 +789,69 @@ function WIPReportContent() {
     totalQualifyingHours += project.totalHours;
   });
   
-  // Calculate filtered total qualifying hours (applying customer/project filters)
+  // Calculate filtered total qualifying hours (applying customer/project/year filters)
   let filteredTotalQualifyingHours = 0;
-  qualifyingProjectsMap.forEach(project => {
+  qualifyingProjectsMap.forEach((project, key) => {
     // Apply customer filter
     if (customerFilter && project.customer !== customerFilter) return;
     // Apply project filter
     if (projectFilter && project.projectName !== projectFilter) return;
-    filteredTotalQualifyingHours += project.totalHours;
+    
+    // If year filter is set, subtract hours scheduled in other years
+    let budget = project.totalHours;
+    if (yearFilter) {
+      const schedule = schedules.find(s => s.jobKey === key);
+      if (schedule) {
+        let otherYearHours = 0;
+        normalizeAllocations(schedule.allocations).forEach(alloc => {
+          if (!alloc.month.startsWith(yearFilter)) {
+            otherYearHours += (schedule.totalHours * (alloc.percent / 100));
+          }
+        });
+        budget = Math.max(0, budget - otherYearHours);
+      }
+    }
+    
+    filteredTotalQualifyingHours += budget;
   });
 
   const qualifyingKeyHours = new Map<string, number>();
   qualifyingProjectsMap.forEach((project, key) => {
     if (customerFilter && project.customer !== customerFilter) return;
     if (projectFilter && project.projectName !== projectFilter) return;
-    qualifyingKeyHours.set(key, project.totalHours);
+    
+    let budget = project.totalHours;
+    if (yearFilter) {
+      const schedule = schedules.find(s => s.jobKey === key);
+      if (schedule) {
+        let otherYearHours = 0;
+        normalizeAllocations(schedule.allocations).forEach(alloc => {
+          if (!alloc.month.startsWith(yearFilter)) {
+            otherYearHours += (schedule.totalHours * (alloc.percent / 100));
+          }
+        });
+        budget = Math.max(0, budget - otherYearHours);
+      }
+    }
+    qualifyingKeyHours.set(key, budget);
   });
   
-  // Calculate total scheduled hours from schedules (excluding Complete status)
+  // Calculate total scheduled hours from schedules (respecting year filter and excluding Complete)
   let totalScheduledHours = 0;
-  let excludedCompleteHours = 0;
   schedules.forEach(schedule => {
-    // Skip Complete status jobs
-    if (schedule.status === 'Complete') {
-      const projectHours = schedule.totalHours || 0;
-      const scheduledHours = normalizeAllocations(schedule.allocations).reduce((sum: number, alloc: any) => {
-        return sum + (projectHours * (alloc.percent / 100));
-      }, 0);
-      excludedCompleteHours += scheduledHours;
-      return;
-    }
+    if (schedule.status === 'Complete') return;
     
     const projectHours = schedule.totalHours || 0;
     const scheduledHours = normalizeAllocations(schedule.allocations).reduce((sum: number, alloc: any) => {
+      // Apply year filter if set
+      if (yearFilter && !alloc.month.startsWith(yearFilter)) return sum;
       return sum + (projectHours * (alloc.percent / 100));
     }, 0);
     totalScheduledHours += scheduledHours;
   });
 
-  const scheduledHoursForQualifying = inProgressScheduledHoursForGantt + schedules.reduce((sum, schedule) => {
+  // Calculate scheduled hours specifically for In Progress jobs used in unscheduled calculation
+  const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
     if (schedule.status !== "In Progress") return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
     if (projectsWithGanttData.has(key)) return sum;
@@ -836,6 +860,8 @@ function WIPReportContent() {
 
     const scheduledHours = normalizeAllocations(schedule.allocations).reduce((scheduleSum, alloc) => {
       if (!isValidMonthKey(alloc.month)) return scheduleSum;
+      // Apply year filter if set
+      if (yearFilter && !alloc.month.startsWith(yearFilter)) return scheduleSum;
       return scheduleSum + (projectHours * (alloc.percent / 100));
     }, 0);
 

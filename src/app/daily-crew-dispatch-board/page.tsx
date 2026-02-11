@@ -522,18 +522,21 @@ function DailyCrewDispatchBoardContent() {
       console.log("Debug - All active employees:", allEmployees.filter(e => e.isActive).length);
       console.log("Debug - Searching for roles:", recipientRoles);
       
-      const recipients = allEmployees
+      // FOR TESTING: Distro restricted to Todd only
+      const recipients = ["todd@pmcdecor.com"];
+      
+      /* 
+      // Original dynamic distribution logic (Re-enable after testing)
+      const dynamicRecipients = allEmployees
         .filter(e => {
           const roleNormalized = (e.role || "").toLowerCase();
           const hasRole = recipientRoles.some(r => r.toLowerCase() === roleNormalized);
           const hasEmail = !!e.email && e.email.includes("@");
           const isActive = e.isActive !== false;
-          if (hasRole) {
-             console.log(`Checking ${e.firstName} ${e.lastName}: Active=${isActive}, HasEmail=${hasEmail}, Email="${e.email}", Role="${e.role}"`);
-          }
           return isActive && hasEmail && hasRole;
         })
         .map(e => e.email!);
+      */
 
       if (recipients.length === 0) {
         // Fallback: If no managers found, at least notify the current user if they have an email

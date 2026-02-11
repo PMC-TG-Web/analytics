@@ -3,12 +3,13 @@
 
 export const USER_PERMISSIONS: Record<string, string[]> = {
   // Admin - full access
-  "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "field"],
+  "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "field", "estimating-tools", "constants"],
   
   // Full access
   "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore"],
   "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore"],
   "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore"],
+  "shelly@pmcdecor.com": ["dashboard", "kpi"],
   
   // Add more users here:
   // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],

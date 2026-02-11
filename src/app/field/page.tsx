@@ -5,6 +5,74 @@ import { collection, getDocs, addDoc, query, where, serverTimestamp } from "fire
 import ProtectedPage from "@/components/ProtectedPage";
 import { Project, Scope } from "@/types";
 import Navigation from "@/components/Navigation";
+import { getProjectKey } from "@/utils/projectUtils";
+
+// Optimized matching logic for auto-populating labor/materials based on scope selection
+function findMatchingItems(scope: Scope, fullProjectList: any[], jobKey: string, allScopes: Scope[]) {
+  const scopeTitleLower = (scope.title || "").trim().toLowerCase();
+  const cleanScope = scopeTitleLower
+    .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf|ea)?\s*([-–]\s*)?/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const scopeWords = cleanScope.split(/\s+/).filter(w => w.length >= 2 && w !== "and" && w !== "with" && w !== "for" && w !== "psi");
+  const measurements = scopeTitleLower.match(/\d+(\s*(?:\"|\'|in|mil|ga|psi))/g) || [];
+
+  return fullProjectList.filter(p => {
+    const pJobKey = p.jobKey || getProjectKey(p);
+    if (pJobKey !== jobKey) return false;
+    
+    const costItemName = (p.costitems || "").toLowerCase();
+    const pmcGroupName = (p.pmcGroup || "").toString().toLowerCase();
+    const status = (p.status || "").toString();
+
+    // If we have an "In Progress" item, ignore "Lost" or "Bid Submitted" ones for this specific list
+    const hasInProgress = fullProjectList.some(item => 
+      (item.jobKey || getProjectKey(item)) === jobKey && 
+      item.status === "In Progress" && 
+      item.costitems === p.costitems
+    );
+    if (hasInProgress && status !== "In Progress") return false;
+    
+    // Check for measurement mismatches (e.g. 4" vs 8", or 3000 PSI vs 4000 PSI)
+    for (const m of measurements) {
+      const value = m.match(/\d+/)?.[0];
+      const unit = m.replace(/\d+/g, "").trim();
+      if (value) {
+        const itemMeasurements = costItemName.match(/\d+(\s*(?:\"|\'|in|mil|ga|psi))/g) || [];
+        for (const im of itemMeasurements) {
+          if (im.replace(/\d+/g, "").trim() === unit && im.match(/\d+/)?.[0] !== value) return false;
+        }
+      }
+    }
+
+    // Global overhead matches - only if scope is generic or specifically for overhead
+    if (pmcGroupName.includes("travel") || pmcGroupName === "pm" || pmcGroupName.includes("management")) {
+      return scopeTitleLower.includes("overhead") || scopeTitleLower.includes("travel") || scopeWords.length < 2;
+    }
+
+    // Avoid pulling in other scope titles as materials
+    if (allScopes.some(s => s.id !== scope.id && (s.title || "").toLowerCase() === costItemName)) return false;
+
+    // Keyword matching - Strictness increases with scope complexity
+    const matchCount = scopeWords.filter(word => costItemName.includes(word) || pmcGroupName.includes(word)).length;
+    const requiredMatches = scopeWords.length >= 3 ? 2 : 1;
+    if (matchCount < requiredMatches) return false;
+    if (matchCount >= Math.min(requiredMatches + 1, scopeWords.length)) return true;
+    if (matchCount >= 1 && scopeWords.length === 1) return true;
+
+    // Labor/Material heuristics
+    if (scopeTitleLower.includes("slab") && !costItemName.includes("footing")) {
+      const slabMaterials = ["concrete", "wire mesh", "vapor barrier", "viper tape", "curing compound", "foam", "rebar", "chair", "hardener", "forms"];
+      if (slabMaterials.some(m => costItemName.includes(m))) return true;
+    }
+    if ((scopeTitleLower.includes("footing") || scopeTitleLower.includes("foundation")) && !costItemName.includes("slab")) {
+      const foundationMaterials = ["concrete", "rebar", "forms", "anchor bolt", "ties"];
+      if (foundationMaterials.some(m => costItemName.includes(m))) return true;
+    }
+
+    return false;
+  });
+}
 
 export default function FieldTrackingPage() {
   return (
@@ -18,7 +86,6 @@ function FieldTrackingContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [fullProjectList, setFullProjectList] = useState<Project[]>([]);
   const [scopes, setScopes] = useState<Scope[]>([]);
-  const [projectCostItems, setProjectCostItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -30,32 +97,49 @@ function FieldTrackingContent() {
   const [materials, setMaterials] = useState<{ item: string; quantity: string }[]>([{ item: "", quantity: "" }]);
   const [notes, setNotes] = useState("");
 
+  // Memoized derived properties
+  const activeProject = React.useMemo(() => projects.find(p => p.id === selectedProject), [projects, selectedProject]);
+  const activeJobKey = React.useMemo(() => activeProject ? (activeProject.jobKey || getProjectKey(activeProject)) : "", [activeProject]);
+  
+  const projectCostItems = React.useMemo(() => {
+    if (!activeJobKey) return [];
+    
+    // Filter out items that are from "Lost" or "Bid Submitted" versions if "In Progress" exists for same jobKey+costitem
+    const jobItems = fullProjectList.filter(p => (p.jobKey || getProjectKey(p)) === activeJobKey);
+    
+    return Array.from(new Set(jobItems
+      .filter(p => {
+        const hasInProgress = jobItems.some(item => 
+          item.status === "In Progress" && 
+          item.costitems === p.costitems
+        );
+        return hasInProgress ? p.status === "In Progress" : true;
+      })
+      .map(p => p.costitems || "")
+      .filter(Boolean)
+    )).sort();
+  }, [activeJobKey, fullProjectList]);
+
+  // Initial Data Load
   useEffect(() => {
     async function fetchData() {
       try {
-        const q = query(collection(db, "projects"), where("status", "==", "In Progress"));
+        const q = query(collection(db, "projects"), where("projectArchived", "==", false));
         const snapshot = await getDocs(q);
-        const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
-        setFullProjectList(projectsData);
-        
-        // Deduplicate projects by their natural key (customer~projectNumber~projectName)
-        const dedupedMap = new Map<string, Project>();
-        projectsData.forEach(p => {
-          const key = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-          // Key check to avoid repeats, prioritizing entries that might already have a jobKey
-          if (!dedupedMap.has(key) || (!dedupedMap.get(key)?.jobKey && p.jobKey)) {
-            dedupedMap.set(key, {
-              ...p,
-              // Ensure jobKey is consistently populated
-              jobKey: p.jobKey || key
-            });
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
+        setFullProjectList(data);
+
+        // Deduplicate for project selection - Prefer "In Progress" status
+        const dedupedMap = new Map();
+        data.forEach(p => {
+          const key = p.jobKey || getProjectKey(p);
+          const existing = dedupedMap.get(key);
+          if (!existing || (existing.status !== "In Progress" && p.status === "In Progress")) {
+            dedupedMap.set(key, { ...p, jobKey: key });
           }
         });
 
-        const dedupedList = Array.from(dedupedMap.values())
-          .sort((a, b) => (a.projectName || "").localeCompare(b.projectName || ""));
-          
-        setProjects(dedupedList);
+        setProjects(Array.from(dedupedMap.values()).sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
         setLoading(false);
       } catch (error) {
         console.error("Error fetching projects:", error);
@@ -65,152 +149,78 @@ function FieldTrackingContent() {
     fetchData();
   }, []);
 
+  // Fetch Scopes when Project changes
   useEffect(() => {
-    async function fetchScopes() {
-      setSelectedScope(""); // Reset selected scope when project changes
-      setLaborEntries([{ category: "General Labor", hours: "" }]);
-      setMaterials([{ item: "", quantity: "" }]);
+    setSelectedScope(""); 
+    setLaborEntries([{ category: "General Labor", hours: "" }]);
+    setMaterials([{ item: "", quantity: "" }]);
 
-      if (!selectedProject) {
-        setScopes([]);
-        return;
-      }
-      const project = projects.find(p => p.id === selectedProject);
-      // Construct jobKey if it's not present (matching the format used in projectScopes)
-      const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
-      
+    if (!activeJobKey) {
+      setScopes([]);
+      return;
+    }
+    
+    async function fetchScopes() {
       try {
-        const q = query(collection(db, "projectScopes"), where("jobKey", "==", jobKey));
+        const q = query(collection(db, "projectScopes"), where("jobKey", "==", activeJobKey));
         const snapshot = await getDocs(q);
         const scopesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Scope[];
         
-        // Filter out any duplicates if they exist and sort alphabetically
-        const uniqueScopes = Array.from(new Map(scopesData.map(s => [s.title, s])).values())
-          .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-          
-        const projectItems = fullProjectList.filter(p => {
-          const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-          return pJobKey === jobKey;
-        });
-        const allItemNames = Array.from(new Set(projectItems.map(p => p.costitems || "").filter(Boolean))).sort();
-        setProjectCostItems(allItemNames);
-          
-        setScopes(uniqueScopes);
+        setScopes(Array.from(new Map(scopesData.map(s => [s.title, s])).values())
+          .sort((a, b) => (a.title || "").localeCompare(b.title || "")));
       } catch (error) {
         console.error("Error fetching scopes:", error);
       }
     }
     fetchScopes();
-  }, [selectedProject, projects, fullProjectList]);
+  }, [activeJobKey]);
 
   // Handle Scope Selection and Auto-population
   useEffect(() => {
     if (!selectedScope) return;
-
     const scope = scopes.find(s => s.id === selectedScope);
-    if (!scope) return;
+    if (!scope || !activeJobKey) return;
 
-    const project = projects.find(p => p.id === selectedProject);
-    const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
-
-    // Precise matching logic
-    const scopeTitleLower = (scope.title || "").trim().toLowerCase();
-    
-    // Extract significant words including measurements like 4", 6", etc.
-    const cleanScope = scopeTitleLower
-      .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf|ea)?\s*([-–]\s*)?/i, "")
-      .trim();
-    
-    // Split into words, keeping things like 4" or 6"
-    const scopeWords = cleanScope.split(/\s+/).filter(w => w.length >= 2 && w !== "and" && w !== "with" && w !== "for");
-
-    const matchedProjectItems = fullProjectList.filter(p => {
-      const pJobKey = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-      if (pJobKey !== jobKey) return false;
-      
-      const costItemName = (p.costitems || "").toLowerCase();
-      const pmcGroupName = (p.pmcGroup || "").toString().toLowerCase();
-      
-      // Global labor/management categories
-      const isGlobalCategory = pmcGroupName.includes("travel") || 
-                               pmcGroupName === "pm" || 
-                               pmcGroupName.includes("management") ||
-                               pmcGroupName.includes("mobilization") ||
-                               costItemName.includes("travel") ||
-                               costItemName.includes("management") ||
-                               costItemName.includes("mobilization");
-
-      if (isGlobalCategory) return true;
-
-      // For specific items (like Concrete, Rebar, or specific Scope line items), 
-      // we want a tighter match to avoid pulling in other slabs.
-      // We check how many words from the scope title appear in the cost item or its group.
-      const matchCount = scopeWords.filter(word => 
-        costItemName.includes(word) || pmcGroupName.includes(word)
-      ).length;
-
-      // If the scope has multiple words (e.g., "Interior Slab on Grade"), 
-      // we require at least 2 words to match to avoid category bleed (like "Slab" matching all slabs).
-      // If the scope only has 1 word, we allow 1.
-      const threshold = scopeWords.length >= 2 ? 2 : 1;
-      
-      return matchCount >= threshold;
-    });
+    const matchedProjectItems = findMatchingItems(scope, fullProjectList, activeJobKey, scopes);
 
     if (matchedProjectItems.length > 0) {
-      // Separate maps for Labor categories and Material items
       const laborMap = new Map<string, { name: string; hours: number }>();
       const materialMap = new Map<string, { name: string; quantity: string }>();
 
       matchedProjectItems.forEach(item => {
         const pmcGroup = (item.pmcGroup || "").toString();
         const costItem = (item.costitems || "").toString();
-        const pmcLower = pmcGroup.toLowerCase();
-        const costLower = costItem.toLowerCase();
-
-        // Categorize as labor if it's PM, Travel, or contains "labor"
-        const isLabor = pmcLower.includes("labor") || 
-                        costLower.includes("labor") || 
-                        pmcLower === "pm" || 
-                        pmcLower.includes("management") ||
-                        pmcLower.includes("mobilization");
+        
+        const isLabor = pmcGroup.toLowerCase().includes("labor") || 
+                        costItem.toLowerCase().includes("labor") || 
+                        ["pm", "management", "mobilization", "travel"].some(word => pmcGroup.toLowerCase().includes(word));
 
         if (isLabor) {
-          // Reverting Labor to use PMC Group for grouping as requested
           const groupName = pmcGroup || costItem || "General Labor";
           const current = laborMap.get(groupName) || { name: groupName, hours: 0 };
           current.hours += Number(item.hours) || 0;
           laborMap.set(groupName, current);
         } else {
-          // Keep Materials using the specific costitems field names
           const itemName = costItem || pmcGroup || "Unknown Item";
-          if (!materialMap.has(itemName)) {
-            materialMap.set(itemName, { name: itemName, quantity: "1" });
-          }
+          if (!materialMap.has(itemName)) materialMap.set(itemName, { name: itemName, quantity: "1" });
         }
       });
 
       const laborEntriesList = Array.from(laborMap.values());
       const materialEntriesList = Array.from(materialMap.values());
 
-      // Set labor entries
-      if (laborEntriesList.length > 0) {
-        setLaborEntries(laborEntriesList.map(l => ({ category: l.name, hours: l.hours.toString() })));
-      } else {
-        setLaborEntries([{ category: "General Labor", hours: scope.hours ? scope.hours.toString() : "" }]);
-      }
+      setLaborEntries(laborEntriesList.length > 0 
+        ? laborEntriesList.map(l => ({ category: l.name, hours: l.hours.toString() })) 
+        : [{ category: "General Labor", hours: scope.hours?.toString() || "" }]);
 
-      // Set materials using actual cost items
       setMaterials(materialEntriesList.length > 0 
         ? materialEntriesList.map(m => ({ item: m.name, quantity: m.quantity })) 
-        : [{ item: "", quantity: "" }]
-      );
+        : [{ item: "", quantity: "" }]);
     } else {
-      // Fallback to scope's own hours if no cost items matched
-      setLaborEntries([{ category: "General Labor", hours: scope.hours ? scope.hours.toString() : "" }]);
+      setLaborEntries([{ category: "General Labor", hours: scope.hours?.toString() || "" }]);
       setMaterials([{ item: "", quantity: "" }]);
     }
-  }, [selectedScope, scopes, fullProjectList, selectedProject, projects]);
+  }, [selectedScope, scopes, fullProjectList, activeJobKey]);
 
   const addLaborRow = () => {
     setLaborEntries([...laborEntries, { category: "", hours: "" }]);

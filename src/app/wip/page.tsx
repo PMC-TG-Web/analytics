@@ -452,149 +452,102 @@ function WIPReportContent() {
     }
   }
 
-  // Aggregate hours by month (excluding management and Complete status)
-  const monthlyData: Record<string, MonthlyWIP> = {};
-  const scheduledSalesByMonth: Record<string, number> = {};
-  let inProgressScheduledHoursForGantt = 0;
-  let filteredInProgressHoursFromGantt = 0;
+  const { monthlyData, scheduledSalesByMonth, inProgressScheduledHoursForGantt, filteredInProgressHoursFromGantt, projectsWithGanttData } = React.useMemo(() => {
+    const monthlyData: Record<string, MonthlyWIP> = {};
+    const scheduledSalesByMonth: Record<string, number> = {};
+    let inProgressScheduledHoursForGantt = 0;
+    let filteredInProgressHoursFromGantt = 0;
 
-  // First, find projects with Gantt scopes and dates
-  const projectsWithGanttData = new Set<string>();
+    const projectsWithGanttData = new Set<string>();
 
-  // Helper to distribute a value over a date range
-  const distributeValue = (totalValue: number, startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return {};
-
-    const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1);
-    const dailyRate = totalValue / totalDays;
-    const distribution: Record<string, number> = {};
-
-    let current = new Date(start.getFullYear(), start.getMonth(), 1);
-    const last = new Date(end.getFullYear(), end.getMonth(), 1);
-
-    while (current <= last) {
-      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-      const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
-      const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-
-      const overlapStart = start > monthStart ? start : monthStart;
-      const overlapEnd = end < monthEnd ? end : monthEnd;
-      const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24) + 1);
-      
-      if (overlapDays > 0) {
-        distribution[monthKey] = dailyRate * overlapDays;
+    const internalDistributeValue = (totalValue: number, startDate: string, endDate: string) => {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return {};
+      const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1);
+      const dailyRate = totalValue / totalDays;
+      const distribution: Record<string, number> = {};
+      let current = new Date(start.getFullYear(), start.getMonth(), 1);
+      const last = new Date(end.getFullYear(), end.getMonth(), 1);
+      while (current <= last) {
+        const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+        const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+        const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+        const overlapStart = start > monthStart ? start : monthStart;
+        const overlapEnd = end < monthEnd ? end : monthEnd;
+        const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24) + 1);
+        if (overlapDays > 0) distribution[monthKey] = dailyRate * overlapDays;
+        current.setMonth(current.getMonth() + 1);
       }
-      current.setMonth(current.getMonth() + 1);
-    }
-    return distribution;
-  };
+      return distribution;
+    };
 
-  Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
-    const validScopes = scopes.filter(s => s.startDate && s.endDate);
-    if (validScopes.length > 0) {
-      projectsWithGanttData.add(jobKey);
-      
-      const jobProjects = projects.filter(p => {
-        const pKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
-        return pKey === jobKey;
-      });
+    Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
+      const validScopes = scopes.filter(s => s.startDate && s.endDate);
+      if (validScopes.length > 0) {
+        projectsWithGanttData.add(jobKey);
+        const jobProjects = projects.filter(p => (p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey);
+        if (jobProjects.length === 0) return;
+        const projectCostItems = jobProjects.map(p => ({
+          costitems: (p.costitems || "").toLowerCase(),
+          hours: typeof p.hours === "number" ? p.hours : 0,
+          costType: typeof p.costType === "string" ? p.costType : "",
+        }));
+        const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
+        const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
+        const isInProgress = jobProjects.some(p => p.status === "In Progress");
 
-      if (jobProjects.length === 0) return;
-
-      const projectCostItems = jobProjects.map(p => ({
-        costitems: (p.costitems || "").toLowerCase(),
-        hours: typeof p.hours === "number" ? p.hours : 0,
-        costType: typeof p.costType === "string" ? p.costType : "",
-      }));
-
-      const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
-      const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
-      const isInProgress = jobProjects.some(p => p.status === "In Progress");
-
-      validScopes.forEach(scope => {
-        const title = (scope.title || "Scope").trim().toLowerCase();
-        const titleWithoutQty = title
-          .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "")
-          .trim();
-
-        const matchedItems = projectCostItems.filter((item) =>
-          item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems)
-        );
-
-        const scopeHours = matchedItems.reduce(
-          (acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc,
-          0
-        ) || (typeof scope.hours === "number" ? scope.hours : 0);
-
-        if (scopeHours <= 0) return;
-
-        // Distribute hours
-        const hourDist = distributeValue(scopeHours, scope.startDate!, scope.endDate!);
-        Object.entries(hourDist).forEach(([monthKey, hours]) => {
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { month: monthKey, hours: 0, jobs: [] };
-          }
-          monthlyData[monthKey].hours += hours;
-          
-          if (isInProgress) {
-            inProgressScheduledHoursForGantt += hours;
-            if (!yearFilter || monthKey.startsWith(yearFilter)) {
-              filteredInProgressHoursFromGantt += hours;
+        validScopes.forEach(scope => {
+          const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
+          const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
+          const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
+          if (scopeHours <= 0) return;
+          const hourDist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
+          Object.entries(hourDist).forEach(([monthKey, hours]) => {
+            if (!monthlyData[monthKey]) monthlyData[monthKey] = { month: monthKey, hours: 0, jobs: [] };
+            monthlyData[monthKey].hours += hours;
+            if (isInProgress) {
+              inProgressScheduledHoursForGantt += hours;
+              if (!yearFilter || monthKey.startsWith(yearFilter)) filteredInProgressHoursFromGantt += hours;
             }
-          }
-
-          const existingJob = monthlyData[monthKey].jobs.find(j => 
-            j.projectName === jobProjects[0].projectName && j.customer === jobProjects[0].customer
-          );
-          if (existingJob) {
-            existingJob.hours += hours;
-          } else {
-            monthlyData[monthKey].jobs.push({
-              customer: jobProjects[0].customer || "Unknown",
-              projectNumber: jobProjects[0].projectNumber || "N/A",
-              projectName: jobProjects[0].projectName || "Unnamed",
-              hours: hours,
+            const existingJob = monthlyData[monthKey].jobs.find(j => j.projectName === jobProjects[0].projectName && j.customer === jobProjects[0].customer);
+            if (existingJob) existingJob.hours += hours;
+            else monthlyData[monthKey].jobs.push({ customer: jobProjects[0].customer || "Unknown", projectNumber: jobProjects[0].projectNumber || "N/A", projectName: jobProjects[0].projectName || "Unnamed", hours: hours });
+          });
+          if (totalProjectSales > 0 && totalProjectHours > 0) {
+            const scopeSales = (scopeHours / totalProjectHours) * totalProjectSales;
+            const salesDist = internalDistributeValue(scopeSales, scope.startDate!, scope.endDate!);
+            Object.entries(salesDist).forEach(([monthKey, sales]) => {
+              scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + sales;
             });
           }
         });
-
-        // Distribute sales proportionately to hours if totalProjectHours > 0
-        if (totalProjectSales > 0 && totalProjectHours > 0) {
-          const scopeSales = (scopeHours / totalProjectHours) * totalProjectSales;
-          const salesDist = distributeValue(scopeSales, scope.startDate!, scope.endDate!);
-          Object.entries(salesDist).forEach(([monthKey, sales]) => {
-            scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + sales;
-          });
-        }
-      });
-    }
-  });
-
-  schedules.forEach((schedule) => {
-    // Skip Complete status jobs
-    if (schedule.status === 'Complete') return;
-    
-    // Skip if we already used Gantt data for this project
-    if (projectsWithGanttData.has(schedule.jobKey)) return;
-
-    normalizeAllocations(schedule.allocations).forEach((alloc) => {
-      if (!isValidMonthKey(alloc.month)) return;
-      if (!monthlyData[alloc.month]) {
-        monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
       }
+    });
 
-      const allocatedHours = schedule.totalHours * (alloc.percent / 100);
-      monthlyData[alloc.month].hours += allocatedHours;
-      monthlyData[alloc.month].jobs.push({
-        customer: schedule.customer || "Unknown",
-        projectNumber: schedule.projectNumber || "N/A",
-        projectName: schedule.projectName || "Unnamed",
-        hours: allocatedHours,
+    schedules.forEach((schedule) => {
+      if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey)) return;
+      normalizeAllocations(schedule.allocations).forEach((alloc) => {
+        if (!isValidMonthKey(alloc.month)) return;
+        if (!monthlyData[alloc.month]) monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
+        const allocatedHours = schedule.totalHours * (alloc.percent / 100);
+        monthlyData[alloc.month].hours += allocatedHours;
+        monthlyData[alloc.month].jobs.push({
+          customer: schedule.customer || "Unknown",
+          projectNumber: schedule.projectNumber || "N/A",
+          projectName: schedule.projectName || "Unnamed",
+          hours: allocatedHours,
+        });
       });
     });
-  });
+
+    return { monthlyData, scheduledSalesByMonth, inProgressScheduledHoursForGantt, filteredInProgressHoursFromGantt, projectsWithGanttData };
+  }, [scopesByJobKey, projects, schedules, yearFilter]);
+
+
+
+
+
 
   const months = Object.keys(monthlyData).sort();
   const totalHours = Object.values(monthlyData).reduce((sum, m) => sum + m.hours, 0);

@@ -37,7 +37,9 @@ export async function POST(request: Request) {
           <p><strong>Reason:</strong> ${reason}</p>
           <p><strong>Notes:</strong> ${notes || 'No additional notes provided.'}</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #666;">Reported by ${reportedBy} via Crew Dispatch Board at ${new Date().toLocaleString()}</p>
+          <p style="font-size: 12px; color: #666;">
+            Reported by ${reportedBy} via Crew Dispatch Board at ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })}
+          </p>
         </div>
       `,
     });

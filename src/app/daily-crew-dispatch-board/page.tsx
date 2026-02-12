@@ -92,6 +92,7 @@ function DailyCrewDispatchBoardContent() {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [crewAssignments, setCrewAssignments] = useState<Record<string, Record<string, string[]>>>({}); // dateKey -> foremanId -> employee IDs
+  const [personnelSearch, setPersonnelSearch] = useState<Record<string, string>>({}); // foremanId -> search string
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -680,46 +681,44 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
-        {/* Kiosk-Style Header - Light */}
-        <div className="hidden md:flex flex-row justify-between items-center p-4 gap-6 bg-gray-100/50 border-b border-gray-200">
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col items-center justify-center bg-teal-600 px-5 py-2 rounded-2xl shadow-lg shadow-teal-600/20">
-              <span className="text-xs font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-teal-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
-              <span className="text-3xl font-black leading-none text-white">{today?.date.getDate()}</span>
+        {/* Kiosk-Style Header - Ultra Compact */}
+        <div className="hidden md:flex flex-row justify-between items-center px-4 py-2 bg-gray-100/50 border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center justify-center bg-teal-600 px-3 py-1 rounded-xl shadow-lg shadow-teal-600/20">
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-80 leading-none mb-0.5 text-teal-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
+              <span className="text-xl font-black leading-none text-white">{today?.date.getDate()}</span>
             </div>
             <div>
-              <div className="flex items-center gap-4">
-                <h1 className="text-3xl font-black tracking-tighter text-gray-900 uppercase italic">Daily Crew Dispatch</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black tracking-tighter text-gray-900 uppercase italic">Daily Crew Dispatch</h1>
                 <button
                   onClick={() => setShowSickModal(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-2"
+                  className="bg-red-600 hover:bg-red-700 text-white text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md shadow-sm transition-all"
                 >
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
                   Report Absence
                 </button>
               </div>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-xs font-bold text-teal-600 uppercase tracking-widest">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Active Operations</span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">| Active Ops</span>
               </div>
             </div>
           </div>
           
-          <div className="flex gap-3">
-            <div className="px-4 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[80px] shadow-sm">
-              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Away</span>
-              <span className="text-2xl font-black text-gray-400">{workersOffCount}</span>
+          <div className="flex gap-2">
+            <div className="px-3 py-1 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[60px] shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">Away</span>
+              <span className="text-lg font-black text-gray-400">{workersOffCount}</span>
             </div>
-            <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
-              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Total Sched</span>
-              <span className="text-2xl font-black text-teal-600">{globalScheduledHours.toFixed(0)} <span className="text-xs font-bold opacity-40">H</span></span>
+            <div className="px-4 py-1 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[90px] shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">Total Sched</span>
+              <span className="text-lg font-black text-teal-600">{globalScheduledHours.toFixed(0)} <span className="text-[10px] font-bold opacity-40">H</span></span>
             </div>
-            <div className="px-6 py-2 rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
-              <span className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-1">Manpower / Cap</span>
-              <span className="text-2xl font-black text-orange-600">{globalActualHours.toFixed(0)}<span className="text-xs font-bold opacity-40"> / {globalCapacityHours}H</span></span>
+            <div className="px-4 py-1 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center min-w-[100px] shadow-sm">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">Manpower</span>
+              <span className="text-lg font-black text-orange-600">{globalActualHours.toFixed(0)}<span className="text-[10px] font-bold opacity-40">/{globalCapacityHours}</span></span>
             </div>
-            <div className="w-px bg-gray-200 mx-2"></div>
+            <div className="w-px bg-gray-200 mx-1"></div>
             <Navigation currentPage="daily-crew-dispatch-board" />
           </div>
         </div>
@@ -804,9 +803,12 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
-        {/* Dispatch Grid - Balanced 3-Column Layout for TV */}
-        <div className="hidden md:block flex-1 overflow-auto p-4 bg-gray-50 custom-scrollbar">
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* Dispatch Grid - Compressed "No-Scroll" Layout */}
+        <div className="hidden md:block flex-1 overflow-hidden p-2 bg-gray-50">
+          <div 
+            className="grid grid-rows-2 grid-flow-col gap-2 h-full"
+            style={{ gridTemplateColumns: `repeat(${Math.ceil(foremen.length / 2)}, minmax(0, 1fr))` }}
+          >
             {foremen.map((foreman) => {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
               const scheduledHrs = projects.reduce((sum, p) => sum + p.hours, 0);
@@ -821,82 +823,130 @@ function DailyCrewDispatchBoardContent() {
               return (
                 <div 
                   key={foreman.id} 
-                  className={`bg-white rounded-3xl border-2 ${statusBorder} flex flex-col overflow-hidden shadow-md transition-all hover:shadow-lg min-h-[350px]`}
+                  className={`bg-white rounded-xl border-2 ${statusBorder} flex flex-col overflow-hidden shadow-sm h-full`}
                 >
-                  {/* Card Header - Foreman Focus */}
-                  <div className="p-4 flex justify-between items-center bg-gray-50 border-b border-gray-100">
-                    <h3 className="text-2xl font-black text-gray-900 truncate">{foreman.firstName} {foreman.lastName}</h3>
-                    <div className="flex items-center gap-3">
+                  {/* Card Header - Ultra Compact */}
+                  <div className="px-2 py-1.5 flex justify-between items-center bg-gray-50 border-b border-gray-100">
+                    <h3 className="text-sm font-black text-gray-900 truncate max-w-[100px]">{foreman.firstName}</h3>
+                    <div className="flex items-center gap-2">
                       <div className="text-right">
-                        <div className="text-2xl font-black text-gray-900 leading-none">{actualHrs}h</div>
-                        <div className="text-[10px] font-black uppercase text-gray-400 mt-1">Actual</div>
+                        <div className="text-sm font-black text-gray-900 leading-none">{actualHrs}</div>
                       </div>
-                      <div className="w-px h-8 bg-gray-200"></div>
+                      <div className="w-px h-4 bg-gray-300"></div>
                       <div className="text-right">
-                        <div className="text-2xl font-black text-gray-500 leading-none">{scheduledHrs}h</div>
-                        <div className="text-[10px] font-black uppercase text-gray-300 mt-1">Sched</div>
+                        <div className="text-sm font-black text-gray-500 leading-none">{scheduledHrs}</div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-4 space-y-4 flex-1 flex flex-col">
-                    {/* Projects Section */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 space-y-2 flex-1 flex flex-col min-h-0">
+                    {/* Projects Section - More Pronounced */}
+                    <div className="flex-none pb-1">
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`}></div>
-                        <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Job Assignments</h4>
+                        <h4 className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Assignments</h4>
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-1 max-h-[120px] overflow-y-auto no-scrollbar">
                         {projects.map((p, pIdx) => (
-                          <div key={pIdx} className="bg-gray-50 px-3 py-2 rounded-xl flex justify-between items-center border border-gray-100">
+                          <div key={pIdx} className="bg-gray-100/50 px-2 py-2 rounded-lg flex justify-between items-center border border-gray-200">
                             <div className="overflow-hidden">
-                              <div className="font-black text-gray-800 text-xs truncate leading-tight uppercase">{p.projectName}</div>
-                              <div className="text-[10px] text-teal-600 font-bold tracking-tight opacity-70 truncate uppercase">{p.customer}</div>
+                              <div className="font-black text-gray-900 text-xs truncate max-w-[150px] uppercase leading-tight">{p.projectName}</div>
+                              <div className="text-[9px] font-bold text-teal-600 truncate uppercase opacity-70 tracking-tighter mt-0.5">{p.customer}</div>
                             </div>
-                            <div className="bg-white px-2 py-1 rounded-lg text-teal-600 font-black text-[10px] ml-2 border border-teal-50">
-                              {p.hours.toFixed(0)} <span className="opacity-50 uppercase">h</span>
+                            <div className="bg-white px-1.5 py-1 rounded shadow-sm border border-teal-50 text-teal-600 font-black text-[10px] ml-2">
+                              {p.hours.toFixed(0)}h
                             </div>
                           </div>
                         ))}
-                        {projects.length === 0 && <div className="text-xs text-gray-400 italic py-2">No projects assigned</div>}
                       </div>
                     </div>
 
-                    {/* Crew Selection - Light styling */}
-                    <div className="flex-1 flex flex-col min-h-0 pt-2">
-                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Personnel ({currentEmployees.length})</h4>
-                      <select
-                        multiple
-                        size={5}
-                        value={currentEmployees}
-                        onChange={(e) => {
-                          const selected = Array.from(e.target.selectedOptions, option => option.value);
-                          updateCrewAssignment(dateKey, foreman.id, selected);
-                        }}
-                        disabled={saving}
-                        className="flex-1 w-full px-3 py-2 text-xs font-bold border-2 border-gray-100 rounded-2xl bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all custom-scrollbar outline-none"
-                      >
-                        {availableEmployees.map((emp) => {
-                          const hoursOff = timeOffRequests
-                            .filter(req => req.employeeId === emp.id && dateKey >= req.startDate && dateKey <= req.endDate)
-                            .reduce((sum, req) => sum + (req.hours || 10), 0);
+                    {/* Personnel Selection - Interactive Toggle UI */}
+                    <div className="flex-1 flex flex-col min-h-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <h4 className="text-[8px] uppercase font-black text-gray-400">Crew ({currentEmployees.length})</h4>
+                      </div>
+                      
+                      <div className="flex-1 bg-gray-50 border border-gray-100 rounded-lg overflow-hidden flex flex-col min-h-0">
+                        <div className="px-1.5 py-1 border-b border-gray-100 bg-white">
+                          <div className="relative">
+                            <input 
+                              type="text"
+                              placeholder="Search..."
+                              value={personnelSearch[foreman.id] || ""}
+                              onChange={(e) => setPersonnelSearch(prev => ({ ...prev, [foreman.id]: e.target.value }))}
+                              className="w-full pl-6 pr-2 py-0.5 text-[10px] font-bold bg-gray-50 border border-gray-100 rounded focus:outline-none"
+                            />
+                            <svg className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-0.5 bg-gray-50/50">
+                          {/* Currently Assigned */}
+                          {currentEmployees.map(empId => {
+                            const emp = allEmployees.find(e => e.id === empId);
+                            if (!emp) return null;
+                            return (
+                              <button
+                                key={emp.id}
+                                onClick={() => {
+                                  const newSelected = currentEmployees.filter(id => id !== empId);
+                                  updateCrewAssignment(dateKey, foreman.id, newSelected);
+                                }}
+                                disabled={saving}
+                                className="w-full flex items-center justify-between px-1.5 py-1 bg-teal-600 text-white rounded text-[10px] font-black hover:bg-teal-700 transition-all text-left"
+                              >
+                                <span className="truncate">{emp.firstName} {emp.lastName}</span>
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </button>
+                            );
+                          })}
                           
-                          const label = hoursOff > 0 ? `${emp.firstName} ${emp.lastName} (-${hoursOff}h)` : `${emp.firstName} ${emp.lastName}`;
-                          return <option key={emp.id} value={emp.id} className={`py-1 ${hoursOff > 0 ? 'text-orange-600' : ''}`}>{label}</option>;
-                        })}
-                        {currentEmployees.map(empId => {
-                          const emp = allEmployees.find(e => e.id === empId);
-                          if (emp && !availableEmployees.find(ae => ae.id === empId)) {
-                            return <option key={empId} value={empId} className="py-1 text-teal-600 font-black">{emp.firstName} {emp.lastName} (Assigned)</option>;
+                          {/* Available to Assign */}
+                          {availableEmployees
+                            .filter(emp => !currentEmployees.includes(emp.id))
+                            .filter(emp => {
+                              const search = (personnelSearch[foreman.id] || "").toLowerCase();
+                              if (!search) return true;
+                              return `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(search);
+                            })
+                            .map(emp => {
+                              const hoursOff = timeOffRequests
+                                .filter(req => req.employeeId === emp.id && dateKey >= req.startDate && dateKey <= req.endDate)
+                                .reduce((sum, req) => sum + (req.hours || 10), 0);
+                              
+                              return (
+                                <button
+                                  key={emp.id}
+                                  onClick={() => {
+                                    const newSelected = [...currentEmployees, emp.id];
+                                    updateCrewAssignment(dateKey, foreman.id, newSelected);
+                                  }}
+                                  disabled={saving}
+                                  className="w-full flex items-center justify-between px-1.5 py-1 bg-white border border-gray-200 text-gray-700 rounded text-[10px] font-bold hover:border-teal-500 hover:text-teal-600 transition-all text-left group"
+                                >
+                                  <div className="flex flex-col truncate">
+                                    <span className="truncate">{emp.firstName} {emp.lastName}</span>
+                                    {hoursOff > 0 && <span className="text-[7px] text-orange-600 font-extrabold leading-none">OFF</span>}
+                                  </div>
+                                  <svg className="opacity-0 group-hover:opacity-100 text-teal-600" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                  </svg>
+                                </button>
+                              );
+                            })
                           }
-                          return null;
-                        })}
-                      </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
                   {/* Utilization Indicator */}
-                  <div className="h-1.5 w-full bg-gray-100">
+                  <div className="h-1 w-full bg-gray-100">
                     <div 
                       className={`h-full opacity-80 ${statusColor}`} 
                       style={{ width: `${Math.min(100, (actualHrs / (scheduledHrs || 1)) * 100)}%` }}
@@ -908,19 +958,19 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
-        {/* Unassigned Projects - Tray-style Footer (Light) */}
+        {/* Unassigned Projects - Compact Tray */}
         {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
-          <div className="hidden md:flex p-3 bg-orange-50 border-t border-orange-100 items-center gap-4">
-            <span className="text-[10px] font-black uppercase tracking-widest bg-orange-500 text-white px-2 py-1 rounded-lg animate-pulse">Action Required</span>
-            <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar">
+          <div className="hidden md:flex p-1.5 bg-orange-50 border-t border-orange-100 items-center gap-2">
+            <span className="text-[8px] font-black uppercase tracking-widest bg-orange-500 text-white px-1.5 py-0.5 rounded shadow-sm">Unassigned</span>
+            <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar">
               {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
                 <Link 
                   key={pIdx} 
                   href={`/short-term-schedule?search=${encodeURIComponent(p.projectName)}`}
-                  className="bg-white border border-orange-200 rounded-xl px-3 py-1.5 flex items-center gap-3 flex-shrink-0 shadow-sm hover:border-orange-500 transition-colors group"
+                  className="bg-white border border-orange-200 rounded-lg px-2 py-0.5 flex items-center gap-2 flex-shrink-0 shadow-sm hover:border-orange-500 transition-colors group"
                 >
-                  <span className="text-xs font-black text-gray-800 group-hover:text-orange-600">{p.projectName}</span>
-                  <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 rounded-lg">{p.hours.toFixed(0)}h</span>
+                  <span className="text-[9px] font-black text-gray-800 group-hover:text-orange-600 truncate max-w-[150px]">{p.projectName}</span>
+                  <span className="text-[9px] font-black text-orange-600 bg-orange-50 px-1 rounded-md">{p.hours.toFixed(0)}h</span>
                 </Link>
               ))}
             </div>
@@ -930,10 +980,10 @@ function DailyCrewDispatchBoardContent() {
 
       {/* People Off Today - Ultra-small footer */}
       {peopleOffToday.length > 0 && (
-        <div className="mt-2 px-4 flex flex-wrap gap-x-2 gap-y-1 items-center justify-center opacity-40">
-          <span className="text-[9px] font-black uppercase tracking-tighter text-gray-500 mr-2">Personnel Away:</span>
+        <div className="mt-1 px-4 flex flex-wrap gap-x-2 gap-y-0.5 items-center justify-center opacity-40">
+          <span className="text-[8px] font-black uppercase tracking-tighter text-gray-500 mr-1">Away:</span>
           {peopleOffToday.map((person, idx) => (
-            <span key={idx} className="text-[9px] font-bold text-gray-500">
+            <span key={idx} className="text-[8px] font-bold text-gray-500 leading-none">
               {person.name}{idx < peopleOffToday.length - 1 ? "," : ""}
             </span>
           ))}

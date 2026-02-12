@@ -92,30 +92,149 @@ function TopContractorsCard({ aggregatedProjects, summaryContractors, topContrac
     // Apply limit
     const limit = topContractorLimit === "all" ? sorted.length : parseInt(topContractorLimit);
     return sorted.slice(0, limit);
-  }, [aggregatedProjects, topContractorLimit]);
+  }, [aggregatedProjects, summaryContractors, topContractorLimit]);
+
+  const handleDownloadCSV = () => {
+    const headers = ["Contractor", "Sales", "Cost", "Hours", "Project Count", "Markup %"];
+    const rows = topContractors.map(c => [
+      `"${c.name}"`,
+      c.sales.toFixed(2),
+      c.cost.toFixed(2),
+      c.hours.toFixed(1),
+      c.projectCount.toString(),
+      (c.cost > 0 ? ((c.sales - c.cost) / c.cost * 100).toFixed(1) : '0.0')
+    ]);
+
+    let csvContent = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    
+    // Add status breakdown per contractor
+    csvContent += "\n\nContractor Status Breakdown\n";
+    csvContent += "Contractor,Status,Sales,Cost,Hours,Count,Markup %\n";
+    topContractors.forEach(c => {
+      Object.entries(c.byStatus).forEach(([status, data]: [string, unknown]) => {
+        const d = data as { sales: number; cost: number; hours: number; count: number };
+        const markup = d.cost > 0 ? ((d.sales - d.cost) / d.cost * 100).toFixed(1) : '0.0';
+        csvContent += `"${c.name}","${status}",${d.sales.toFixed(2)},${d.cost.toFixed(2)},${d.hours.toFixed(1)},${d.count},${markup}\n`;
+      });
+    });
+
+    // Add comprehensive Project List for all displayed contractors
+    csvContent += "\n\nAll Projects for Selected Contractors\n";
+    csvContent += "Contractor,Project Number,Project Name,Status,Sales,Cost,Hours,Preconst Hours,Date Updated\n";
+    topContractors.forEach(c => {
+      const contractorProjects = aggregatedProjects.filter(p => (p.customer ?? "Unknown") === c.name);
+      contractorProjects.forEach(p => {
+        csvContent += `"${c.name}","${p.projectNumber || ''}","${p.projectName || ''}","${p.status || ''}",${(p.sales || 0).toFixed(2)},${(p.cost || 0).toFixed(2)},${(p.hours || 0).toFixed(1)},${(p.projectedPreconstHours || 0).toFixed(1)},"${p.dateUpdated || ''}"\n`;
+      });
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `contractor_data_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadSingleCSV = (contractor: ContractorAggregate) => {
+    // 1. Status Breakdown
+    const headersBreakdown = ["Contractor", "Status", "Sales", "Cost", "Hours", "Count", "Markup %"];
+    const rowsBreakdown = Object.entries(contractor.byStatus).map(([status, data]: [string, unknown]) => {
+      const d = data as { sales: number; cost: number; hours: number; count: number };
+      const markup = d.cost > 0 ? ((d.sales - d.cost) / d.cost * 100).toFixed(1) : '0.0';
+      return [
+        `"${contractor.name}"`,
+        `"${status}"`,
+        d.sales.toFixed(2),
+        d.cost.toFixed(2),
+        d.hours.toFixed(1),
+        d.count.toString(),
+        markup
+      ];
+    });
+
+    // 2. Project List
+    const headersProjects = ["Contractor", "Project Number", "Project Name", "Status", "Sales", "Cost", "Hours", "Preconst Hours", "Date Updated"];
+    const rowsProjects = aggregatedProjects
+      .filter(p => (p.customer ?? "Unknown") === contractor.name)
+      .map(p => [
+        `"${contractor.name}"`,
+        `"${p.projectNumber || ''}"`,
+        `"${p.projectName || ''}"`,
+        `"${p.status || ''}"`,
+        (Number(p.sales) || 0).toFixed(2),
+        (Number(p.cost) || 0).toFixed(2),
+        (Number(p.hours) || 0).toFixed(1),
+        (Number(p.projectedPreconstHours) || 0).toFixed(1),
+        `"${p.dateUpdated || ''}"`
+      ]);
+
+    let csvContent = "CONTRACTOR SUMMARY\n";
+    csvContent += headersBreakdown.join(",") + "\n" + rowsBreakdown.map(e => e.join(",")).join("\n");
+    csvContent += "\n\nPROJECT LIST\n";
+    csvContent += headersProjects.join(",") + "\n" + rowsProjects.map(e => e.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${contractor.name.replace(/[^a-z0-9]/gi, '_')}_data_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div style={{ marginBottom: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, color: '#333', margin: 0 }}>Top Contractors</h2>
-        <select
-          value={topContractorLimit}
-          onChange={(e) => setTopContractorLimit(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: 6,
-            border: '1px solid #374151',
-            backgroundColor: '#1f2937',
-            color: '#fff',
-            fontSize: 14,
-            cursor: 'pointer',
-          }}
-        >
-          <option value="5">Top 5</option>
-          <option value="10">Top 10</option>
-          <option value="15">Top 15</option>
-          <option value="all">All Contractors</option>
-        </select>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button
+            onClick={handleDownloadCSV}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              border: 'none',
+              backgroundColor: '#10b981',
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Download All CSV
+          </button>
+          <select
+            value={topContractorLimit}
+            onChange={(e) => setTopContractorLimit(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: '1px solid #374151',
+              backgroundColor: '#1f2937',
+              color: '#fff',
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            <option value="5">Top 5</option>
+            <option value="10">Top 10</option>
+            <option value="15">Top 15</option>
+            <option value="all">All Contractors</option>
+          </select>
+        </div>
       </div>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
@@ -130,24 +249,47 @@ function TopContractorsCard({ aggregatedProjects, summaryContractors, topContrac
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
             }}
           >
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contractor</div>
+            <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contractor</div>
+                <button
+                  type="button"
+                  onClick={() => onOpenJobsList(contractor.name)}
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: '#333',
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  {contractor.name}
+                </button>
+              </div>
               <button
-                type="button"
-                onClick={() => onOpenJobsList(contractor.name)}
+                onClick={() => handleDownloadSingleCSV(contractor)}
+                title="Download CSV for this contractor"
                 style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: '#333',
-                  padding: 0,
-                  margin: 0,
-                  border: 'none',
                   background: 'none',
+                  border: 'none',
                   cursor: 'pointer',
-                  textAlign: 'left',
+                  padding: 4,
+                  borderRadius: 4,
+                  color: '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                {contractor.name}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
               </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -355,6 +497,7 @@ function calculateAggregated(projects: Project[]) {
       baseProject.sales = sortedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
       baseProject.cost = sortedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
       baseProject.hours = sortedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+      baseProject.projectedPreconstHours = sortedProjects.reduce((sum, p) => sum + (Number(p.projectedPreconstHours) || 0), 0);
       baseProject.laborSales = sortedProjects.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
       baseProject.laborCost = sortedProjects.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
       
@@ -456,7 +599,7 @@ function DashboardContent() {
       if (projectNumber === "701 poplar church rd") return false;
       return true;
     });
-  }, [projects, startDate, endDate]);
+  }, [projects, startDate, endDate, isFullScan]);
 
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     return calculateAggregated(filteredProjects);

@@ -1177,7 +1177,53 @@ function WIPReportContent() {
       {/* Pool Breakdown for debugging target hours */}
       {poolBreakdown.length > 0 && (
         <div style={{ marginTop: 40, padding: 20, background: "#fff", borderRadius: 12, border: "1px solid #ddd" }}>
-          <h3 style={{ color: "#15616D", marginBottom: 16 }}>Labor Pool Breakdown (Top 20)</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ color: "#15616D", margin: 0 }}>Labor Pool Breakdown (Top 50)</h3>
+            <button
+              onClick={() => {
+                const headers = ["Customer", "Project Name", "Job Key", "Source", "Contract Hr", "Proj PreHr", "Total Budget"];
+                const rows = poolBreakdown.map(item => [
+                  `"${item.customer}"`,
+                  `"${item.projectName}"`,
+                  `"${item.jobKey}"`,
+                  `"${(item.hasSchedule ? "SCHED" : "NO-SCH") + " " + (item.hasGantt ? "GANTT" : "BASE")}"`,
+                  item.p_hours.toFixed(0),
+                  item.p_proj.toFixed(0),
+                  item.budget.toFixed(0)
+                ]);
+                const csvContent = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", `wip_labor_pool_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 4,
+                border: 'none',
+                backgroundColor: '#10b981',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download Pool CSV
+            </button>
+          </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
             This list shows the projects contributing to the {totalPoolHours.toFixed(0)} hour pool.
           </div>

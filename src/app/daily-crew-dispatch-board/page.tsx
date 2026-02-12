@@ -524,8 +524,8 @@ function DailyCrewDispatchBoardContent() {
       console.log("Debug - All active employees:", allEmployees.filter(e => e.isActive).length);
       console.log("Debug - Searching for roles:", recipientRoles);
       
-      // FOR TESTING: Distro restricted to Todd and Rick
-      const recipients = ["todd@pmcdecor.com", "rick@pmcdecor.com"];
+      // FOR TESTING: Distro restricted to Todd only
+      const recipients = ["todd@pmcdecor.com"];
 
       const recipientPhones = Array.from(new Set(
         recipients

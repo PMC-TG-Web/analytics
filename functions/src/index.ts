@@ -27,7 +27,6 @@ export const aggregateProjectData = functions.firestore
       return;
 /*
       const summary: any = summaryDoc.data();
-*/
 
       // Ensure fields exist
       if (!summary.statusGroups) summary.statusGroups = {};
@@ -118,6 +117,7 @@ export const aggregateProjectData = functions.firestore
         ...summary,
         lastUpdated: admin.firestore.FieldValue.serverTimestamp()
       });
+*/
     });
 
     return null;

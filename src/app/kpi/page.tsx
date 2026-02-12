@@ -347,11 +347,7 @@ function KPIPageContent({
   useEffect(() => {
     async function fetchData() {
       try {
-        const q = query(
-          collection(db, "projects"),
-          where("projectArchived", "==", false)
-        );
-        const projectsSnapshot = await getDocs(q);
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),

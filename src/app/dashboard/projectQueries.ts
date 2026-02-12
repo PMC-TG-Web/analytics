@@ -36,13 +36,7 @@ export type Project = {
  * Filters out Bid Submitted and Lost statuses to significantly reduce Firebase reads (estimated 80% reduction).
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
-  const q = query(
-    collection(db, "projects"),
-    where("status", "not-in", ["Bid Submitted", "Lost"]),
-    where("projectArchived", "==", false)
-  );
-  
-  const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(collection(db, "projects"));
   return querySnapshot.docs.map((doc) => ({ 
     id: doc.id, 
     ...doc.data() 

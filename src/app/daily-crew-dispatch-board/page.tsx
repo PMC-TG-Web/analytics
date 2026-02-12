@@ -172,7 +172,8 @@ function DailyCrewDispatchBoardContent() {
         getDocs(collection(db, "projectScopes")),
         getDocs(query(
           collection(db, "projects"),
-          where("status", "not-in", ["Bid Submitted", "Lost"])
+          where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
+          where("projectArchived", "==", false)
         )),
         getDocs(collection(db, "long term schedual")),
         getDocs(collection(db, "timeOffRequests"))

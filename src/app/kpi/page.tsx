@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -347,7 +347,11 @@ function KPIPageContent({
   useEffect(() => {
     async function fetchData() {
       try {
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const q = query(
+          collection(db, "projects"),
+          where("projectArchived", "==", false)
+        );
+        const projectsSnapshot = await getDocs(q);
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),

@@ -63,13 +63,12 @@ export async function GET(request: NextRequest) {
     const jobKey = searchParams.get('jobKey');
 
     if (jobKey) {
-      // Get specific schedule
+      // Get specific schedule directly by doc ID (jobKey)
       const docRef = doc(db, 'schedules', jobKey);
-      const docSnap = await getDocs(collection(db, 'schedules'));
-      const schedule = docSnap.docs.find(d => d.id === jobKey);
+      const docSnap = await getDoc(docRef);
       
-      if (schedule) {
-        return NextResponse.json({ data: schedule.data() });
+      if (docSnap.exists()) {
+        return NextResponse.json({ data: docSnap.data() });
       } else {
         return NextResponse.json({ data: null });
       }

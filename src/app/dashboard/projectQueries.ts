@@ -29,18 +29,20 @@ export type Project = {
 };
 
 /**
- * DASHBOARD: Fetch all project documents for aggregation
+ * DASHBOARD: Fetch all relevant project documents for aggregation
  * 
  * Used by: src/app/dashboard/page.tsx
- * Purpose: Gets ALL project documents to be aggregated by the dashboard logic
- * 
- * Note: This returns ALL documents, including 829 separate Giant line items.
- * The dashboard will group these by projectNumber + customer and aggregate.
- * 
- * DO NOT add filters here - the dashboard handles filtering in memory.
+ * Purpose: Gets active project documents to be aggregated by the dashboard logic.
+ * Filters out Bid Submitted and Lost statuses to significantly reduce Firebase reads (estimated 80% reduction).
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
-  const querySnapshot = await getDocs(collection(db, "projects"));
+  const q = query(
+    collection(db, "projects"),
+    where("status", "not-in", ["Bid Submitted", "Lost"]),
+    where("projectArchived", "==", false)
+  );
+  
+  const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map((doc) => ({ 
     id: doc.id, 
     ...doc.data() 

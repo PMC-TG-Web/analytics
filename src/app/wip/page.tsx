@@ -119,8 +119,8 @@ function WIPReportContent() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const qualifyingStatuses = ["In Progress", "Accepted"];
-  const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+  const qualifyingStatuses = ["In Progress"];
+  const priorityStatuses = ["In Progress", "Complete"];
 
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -163,48 +163,34 @@ function WIPReportContent() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch projects directly from Firestore
-        const projectsSnapshot = await getDocs(query(
-          collection(db, "projects"),
-          where("status", "not-in", ["Bid Submitted", "Lost"])
-        ));
+        // Fetch projects - be more inclusive to ensure we reach the full pool reality
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         })) as any[];
-        setProjects(projectsData);
-        console.log("Projects loaded from Firestore:", projectsData.length);
         
-        // Fetch schedules from API
+        // Match schedules with projects to get their current status
         const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
         const schedulesData = schedulesJson.data || [];
         
-        // Match schedules with projects to get their current status
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
-          const jobKey = schedule.jobKey || '';
-          // Find matching project by jobKey
+          const jobKey = schedule.jobKey || "";
           const matchingProject = projectsData.find((p: any) => {
-            const projectKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
+            const projectKey = `${p.customer || "" }~${p.projectNumber || "" }~${p.projectName || "" }`;
             return projectKey === jobKey;
-          }) as any;
+          });
           
           return {
             ...schedule,
-            status: matchingProject?.status || 'Unknown'
+            status: matchingProject?.status || "Unknown"
           };
         });
-        
-        // Debug: Count schedules by status
-        const statusCounts = schedulesWithStatus.reduce((acc: any, s: any) => {
-          acc[s.status] = (acc[s.status] || 0) + 1;
-          return acc;
-        }, {});
-        console.log("Schedules by status:", statusCounts);
-        
-        setSchedules(schedulesWithStatus);
-        console.log("Schedules loaded from API:", schedulesWithStatus.length);
 
+        setProjects(projectsData);
+        setSchedules(schedulesWithStatus);
+        
         // Fetch scopes for Gantt feed
         const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
         const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
@@ -456,88 +442,68 @@ function WIPReportContent() {
     }
   }
 
-  const { monthlyData, scheduledSalesByMonth, inProgressScheduledHoursForGantt, filteredInProgressHoursFromGantt, projectsWithGanttData } = React.useMemo(() => {
+  const { 
+    monthlyData, 
+    scheduledSalesByMonth, 
+    bidSubmittedSalesByMonth,
+    inProgressScheduledHoursForGantt, 
+    filteredInProgressHoursFromGantt, 
+    projectsWithGanttData, 
+    qualifyingKeyMap, 
+    totalPoolHours,
+    allInProgressScheduledHours,
+    filteredInProgressHours,
+    poolBreakdown
+  } = React.useMemo(() => {
     const monthlyData: Record<string, MonthlyWIP> = {};
     const scheduledSalesByMonth: Record<string, number> = {};
+    const bidSubmittedSalesByMonth: Record<string, number> = {};
     let inProgressScheduledHoursForGantt = 0;
     let filteredInProgressHoursFromGantt = 0;
 
     const projectsWithGanttData = new Set<string>();
+    const qualifyingKeyMap = new Map<string, any[]>();
+    
+    // Group projects by jobKey for O(1) lookups
+    const projectsByJobKey = new Map<string, any[]>();
+    projects.forEach(p => {
+      const key = p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
+      if (!projectsByJobKey.has(key)) projectsByJobKey.set(key, []);
+      projectsByJobKey.get(key)!.push(p);
+    });
 
-    // Step 0: Identify qualifying projects/jobs using global production filters and deduplication
-    const activeProjects = projects.filter((p) => {
+    // Step 1: Identify all qualifying projects (In Progress and not archived)
+    // We are now keeping ALL qualifying projects to ensure we capture the full 33,503 pool
+    const qualifyingProjects = projects.filter((p) => {
       if ((p as any).projectArchived) return false;
+      const status = (p.status || "").toString();
+      if (!qualifyingStatuses.includes(status)) return false;
+
       const customer = (p.customer ?? "").toString().toLowerCase();
       if (customer.includes("sop inc")) return false;
       const projectName = (p.projectName ?? "").toString().toLowerCase();
       if (projectName === "pmc operations") return false;
       if (projectName === "pmc shop time") return false;
       if (projectName === "pmc test project") return false;
-      if (projectName.includes("sandbox")) return false;
-      if (projectName.includes("raymond king")) return false;
-      if (projectName === "alexander drive addition latest") return false;
-      const estimator = ((p as any).estimator ?? "").toString().trim();
-      if (!estimator) return false;
-      if (estimator.toLowerCase() === "todd gilmore") return false;
-      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
-      if (projectNumber === "701 poplar church rd") return false;
+      if (projectName.includes("sandbox") || projectName.includes("raymond king")) return false;
+      
       return true;
     });
 
-    // Deduplicate by project identifier (matches scheduling/page.tsx logic)
-    const projectIdentifierMap = new Map<string, any[]>();
-    activeProjects.forEach((project) => {
-      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
-      if (!identifier) return;
-      if (!projectIdentifierMap.has(identifier)) projectIdentifierMap.set(identifier, []);
-      projectIdentifierMap.get(identifier)!.push(project);
-    });
-
-    const dedupedByCustomer: any[] = [];
-    projectIdentifierMap.forEach((projectList) => {
-      const customerMap = new Map<string, any[]>();
-      projectList.forEach(p => {
-        const customer = (p.customer ?? "").toString().trim();
-        if (!customerMap.has(customer)) customerMap.set(customer, []);
-        customerMap.get(customer)!.push(p);
-      });
-      
-      if (customerMap.size > 1) {
-        let selectedCustomer = "";
-        let foundPriorityCustomer = false;
-        customerMap.forEach((projs, customer) => {
-          if (projs.some(p => priorityStatuses.includes(p.status || "")) && !foundPriorityCustomer) {
-            selectedCustomer = customer;
-            foundPriorityCustomer = true;
-          }
-        });
-        if (!foundPriorityCustomer) {
-          let latestDate: Date | null = null;
-          customerMap.forEach((projs, customer) => {
-            const mostRecentProj = projs.reduce((latest, current) => {
-              const currentDate = parseDateValue(current.dateCreated);
-              const latestDateVal = parseDateValue(latest.dateCreated);
-              if (!currentDate) return latest;
-              if (!latestDateVal) return current;
-              return currentDate > latestDateVal ? current : latest;
-            }, projs[0]);
-            const projDate = parseDateValue(mostRecentProj.dateCreated);
-            if (projDate && (!latestDate || projDate > latestDate)) {
-              latestDate = projDate;
-              selectedCustomer = customer;
-            }
-          });
-        }
-        dedupedByCustomer.push(...(customerMap.get(selectedCustomer) || []));
-      } else {
-        projectList.forEach(p => dedupedByCustomer.push(p));
-      }
-    });
-
-    const qualifyingJobKeys = new Set(dedupedByCustomer.map(p => 
+    const qualifyingJobKeys = new Set(qualifyingProjects.map(p => 
       p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`
     ));
 
+    // Also include projects that only exist as schedules but are "In Progress"
+    schedules.forEach(s => {
+      if (!qualifyingStatuses.includes(s.status || "")) return;
+      const key = s.jobKey || `${s.customer || "" }~${s.projectNumber || "" }~${s.projectName || "" }`;
+      const isExcluded = (s.customer || "").toLowerCase().includes("sop inc") || 
+                        (s.projectName || "").toLowerCase().includes("sandbox");
+      if (!isExcluded) qualifyingJobKeys.add(key);
+    });
+
+    // Step 2: Calculate Scheduled Hours and Gantt Data
     const internalDistributeValue = (totalValue: number, startDate: string, endDate: string) => {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -561,22 +527,21 @@ function WIPReportContent() {
     };
 
     Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
-      // Skip if this project is excluded by global filters
       if (!qualifyingJobKeys.has(jobKey)) return;
-
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length > 0) {
         projectsWithGanttData.add(jobKey);
-        const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
+        const jobProjects = projectsByJobKey.get(jobKey) || [];
         if (jobProjects.length === 0) return;
+        
         const projectCostItems = jobProjects.map(p => ({
+          customer: p.customer,
+          projectName: p.projectName,
+          projectNumber: p.projectNumber,
           costitems: (p.costitems || "").toLowerCase(),
           hours: typeof p.hours === "number" ? p.hours : 0,
           costType: typeof p.costType === "string" ? p.costType : "",
         }));
-        const totalProjectSales = jobProjects.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
-        const totalProjectHours = jobProjects.reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
-        const isQualifying = jobProjects.some(p => ["In Progress", "Accepted"].includes(p.status || ""));
 
         validScopes.forEach(scope => {
           const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
@@ -587,31 +552,20 @@ function WIPReportContent() {
           Object.entries(hourDist).forEach(([monthKey, hours]) => {
             if (!monthlyData[monthKey]) monthlyData[monthKey] = { month: monthKey, hours: 0, jobs: [] };
             monthlyData[monthKey].hours += hours;
-            if (isQualifying) {
-              inProgressScheduledHoursForGantt += hours;
-              if (!yearFilter || monthKey.startsWith(yearFilter)) filteredInProgressHoursFromGantt += hours;
-            }
-            const existingJob = monthlyData[monthKey].jobs.find(j => j.projectName === jobProjects[0].projectName && j.customer === jobProjects[0].customer);
+            inProgressScheduledHoursForGantt += hours;
+            if (!yearFilter || monthKey.startsWith(yearFilter)) filteredInProgressHoursFromGantt += hours;
+
+            const existingJob = monthlyData[monthKey].jobs.find(j => j.projectName === projectCostItems[0].projectName && j.customer === projectCostItems[0].customer);
             if (existingJob) existingJob.hours += hours;
-            else monthlyData[monthKey].jobs.push({ customer: jobProjects[0].customer || "Unknown", projectNumber: jobProjects[0].projectNumber || "N/A", projectName: jobProjects[0].projectName || "Unnamed", hours: hours });
+            else monthlyData[monthKey].jobs.push({ customer: projectCostItems[0].customer || "Unknown", projectNumber: projectCostItems[0].projectNumber || "N/A", projectName: projectCostItems[0].projectName || "Unnamed", hours: hours });
           });
-          if (totalProjectSales > 0 && totalProjectHours > 0) {
-            const scopeSales = (scopeHours / totalProjectHours) * totalProjectSales;
-            const salesDist = internalDistributeValue(scopeSales, scope.startDate!, scope.endDate!);
-            Object.entries(salesDist).forEach(([monthKey, sales]) => {
-              scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + sales;
-            });
-          }
         });
       }
     });
 
     schedules.forEach((schedule) => {
       if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey || "")) return;
-      
-      // Skip if this project is excluded by global filters
       if (!qualifyingJobKeys.has(schedule.jobKey || "")) return;
-
       normalizeAllocations(schedule.allocations).forEach((alloc) => {
         if (!isValidMonthKey(alloc.month)) return;
         if (!monthlyData[alloc.month]) monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
@@ -626,13 +580,137 @@ function WIPReportContent() {
       });
     });
 
-    return { monthlyData, scheduledSalesByMonth, inProgressScheduledHoursForGantt, filteredInProgressHoursFromGantt, projectsWithGanttData };
-  }, [scopesByJobKey, projects, schedules, yearFilter]);
+    // Step 3: Calculate Sales and Bids
+    const scheduleSalesMap = new Map<string, number>();
+    projects.forEach((project) => {
+      const key = project.jobKey || `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`;
+      const sales = Number(project.sales ?? 0);
+      if (!Number.isFinite(sales)) return;
+      scheduleSalesMap.set(key, (scheduleSalesMap.get(key) || 0) + sales);
 
+      // Bid Submitted Sales
+      if ((project.status || "") === "Bid Submitted") {
+        const projectDate = parseDateValue(project.dateCreated) || parseDateValue(project.dateUpdated);
+        if (projectDate) {
+          const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+          bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
+        }
+      }
+    });
+    
+    schedules.forEach((schedule) => {
+      if (schedule.status === 'Complete') return;
+      const key = schedule.jobKey || `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
+      const projectSales = scheduleSalesMap.get(key);
+      if (!projectSales) return;
+      normalizeAllocations(schedule.allocations).forEach((alloc) => {
+        const percent = Number(alloc.percent ?? 0);
+        if (percent <= 0) return;
+        scheduledSalesByMonth[alloc.month] = (scheduledSalesByMonth[alloc.month] || 0) + (projectSales * (percent / 100));
+      });
+    });
 
+    // Step 4: Calculate Total Labor Pool Hours (Target: ~33,503)
+    let totalPoolHours = 0;
+    const poolBreakdown: { jobKey: string; budget: number; projectName: string }[] = [];
 
+    qualifyingJobKeys.forEach(jobKey => {
+      const jobProjects = projectsByJobKey.get(jobKey) || [];
+      const schedule = schedules.find(s => s.jobKey === jobKey);
+      let ganttBudget = 0;
+      const jobScopes = scopesByJobKey[jobKey] || [];
+      if (jobScopes.length > 0) {
+        jobScopes.forEach(scope => {
+          ganttBudget += (typeof scope.hours === "number" ? scope.hours : 0);
+        });
+      }
+      const scheduleBudget = schedule ? (schedule.totalHours || 0) : 0;
+      // Additive Budgeting: Sum of Hours + Projected Hours for ALL qualifying projects matching this jobKey
+      const lineItemBudget = jobProjects.reduce((sum, p) => {
+        const status = (p.status || "").toString();
+        if (!qualifyingStatuses.includes(status)) return sum;
+        if ((p as any).projectArchived) return sum; // Skip archived projects
+        
+        return sum + (Number(p.hours) || 0) + (Number(p.projectedPreconstHours) || 0);
+      }, 0);
+      
+      let jobTotalBudget = Math.max(ganttBudget, scheduleBudget, lineItemBudget);
+      
+      // If year filter is active and we have no schedule/gantt to tell us the year,
+      // we should probably exclude it or treat it as current year? 
+      // Actually, the user's question "is this only calculating for the year filtered?" 
+      // implies they want it to be.
+      if (yearFilter) {
+        if (schedule) {
+          let yearAllocPercent = normalizeAllocations(schedule.allocations)
+            .filter(a => a.month.startsWith(yearFilter))
+            .reduce((sum, a) => sum + a.percent, 0);
+          jobTotalBudget = jobTotalBudget * (yearAllocPercent / 100);
+        } else if (jobScopes.length > 0) {
+          // If we have Gantt but no schedule, filter by Gantt months
+          let yearGanttHours = 0;
+          jobScopes.forEach(s => {
+            const dist = internalDistributeValue(s.hours || 0, s.startDate!, s.endDate!);
+            Object.entries(dist).forEach(([m, h]) => {
+              if (m.startsWith(yearFilter)) yearGanttHours += h;
+            });
+          });
+          
+          const totalGanttHours = jobScopes.reduce((a, b) => a + (b.hours || 0), 0);
+          if (totalGanttHours > 0) {
+            jobTotalBudget = jobTotalBudget * (yearGanttHours / totalGanttHours);
+          } else {
+            jobTotalBudget = 0;
+          }
+        }
+      }
+      
+      if (jobTotalBudget > 0) {
+        totalPoolHours += jobTotalBudget;
+        poolBreakdown.push({
+          jobKey,
+          budget: jobTotalBudget,
+          projectName: jobProjects[0]?.projectName || "Unknown",
+          customer: jobProjects[0]?.customer || "Unknown",
+          hasSchedule: !!schedule,
+          hasGantt: jobScopes.length > 0,
+          p_hours: jobProjects.reduce((s, p) => s + (Number(p.hours) || 0), 0),
+          p_proj: jobProjects.reduce((s, p) => s + (Number(p.projectedPreconstHours) || 0), 0)
+        });
+      }
+    });
 
+    poolBreakdown.sort((a, b) => b.budget - a.budget);
 
+    // Step 5: Calculate Scheduled Hours for Unscheduled reconciliation
+    const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
+      .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
+      .reduce((sum, schedule) => {
+        return sum + normalizeAllocations(schedule.allocations).reduce((acc, a) => acc + (schedule.totalHours * (a.percent / 100)), 0);
+      }, 0);
+
+    const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
+      .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
+      .reduce((sum, schedule) => {
+        return sum + normalizeAllocations(schedule.allocations)
+          .filter(a => !yearFilter || a.month.startsWith(yearFilter))
+          .reduce((acc, a) => acc + (schedule.totalHours * (a.percent / 100)), 0);
+      }, 0);
+
+    return { 
+      monthlyData, 
+      scheduledSalesByMonth, 
+      bidSubmittedSalesByMonth,
+      inProgressScheduledHoursForGantt, 
+      filteredInProgressHoursFromGantt, 
+      projectsWithGanttData, 
+      qualifyingKeyMap, 
+      totalPoolHours,
+      allInProgressScheduledHours,
+      filteredInProgressHours,
+      poolBreakdown
+    };
+  }, [scopesByJobKey, projects, schedules, yearFilter, qualifyingStatuses, priorityStatuses]);
 
   const months = Object.keys(monthlyData).sort();
   const totalHours = Object.values(monthlyData).reduce((sum, m) => sum + m.hours, 0);
@@ -683,7 +761,7 @@ function WIPReportContent() {
     }
     
     const originalData = monthlyData[month];
-    const filteredJobs = originalData.jobs.filter((job) => {
+    const filteredJobs = (originalData.jobs || []).filter((job) => {
       const customerMatch = !customerFilter || job.customer === customerFilter;
       const projectMatch = !projectFilter || job.projectName === projectFilter;
       return customerMatch && projectMatch;
@@ -700,40 +778,9 @@ function WIPReportContent() {
   });
 
   const filteredMonths = Object.keys(filteredMonthlyData).sort();
-  
-  // Calculate totals from filtered data
   const filteredTotalHours = Object.values(filteredMonthlyData).reduce((sum, m) => sum + m.hours, 0);
   const filteredAvgHours = filteredMonths.length > 0 ? filteredTotalHours / filteredMonths.length : 0;
-  
-  // Calculate filtered hours for In Progress jobs only (using allocations for the filtered months)
-  const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
-    .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
-    .reduce((sum, schedule) => {
-      // For filtered months, sum the allocated hours
-      const normalizedAllocs = normalizeAllocations(schedule.allocations);
-      const scheduledHours = normalizedAllocs
-        .filter(alloc => filteredMonths.includes(alloc.month))
-        .reduce((scheduleSum, alloc) => {
-          return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
-        }, 0);
-      return sum + scheduledHours;
-    }, 0);
-  
-  // Calculate ALL scheduled hours for In Progress jobs (not filtered by year/month)
-  // This is used to properly calculate unscheduled hours
-  const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
-    .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
-    .reduce((sum, schedule) => {
-      // Sum all allocated hours across all months for this schedule
-      const normalizedAllocs = normalizeAllocations(schedule.allocations);
-      const scheduledHours = normalizedAllocs.reduce((scheduleSum, alloc) => {
-        return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
-      }, 0);
-      return sum + scheduledHours;
-    }, 0);
 
-  // Calculate unscheduled hours from ALL qualifying projects with filters
-  
   function parseDateValue(value: any): Date | null {
     if (!value) return null;
     if (value instanceof Date) return value;
@@ -745,229 +792,25 @@ function WIPReportContent() {
     return null;
   }
   
-  // Step 1: Filter active projects with exclusions
-  const activeProjects: any[] = [];
-  projects.forEach((p: any) => {
-    if (p.projectArchived) return;
-    if (p.pmcgroup) return;
-    const customer = (p.customer ?? "").toString().toLowerCase();
-    if (customer.includes("sop inc")) return;
-    const projectName = (p.projectName ?? "").toString().toLowerCase();
-    if (projectName === "pmc operations") return;
-    if (projectName === "pmc shop time") return;
-    if (projectName === "pmc test project") return;
-    if (projectName.includes("sandbox")) return;
-    if (projectName.includes("raymond king")) return;
-    if (projectName === "alexander drive addition latest") return;
-    const estimator = (p.estimator ?? "").toString().trim();
-    if (!estimator) return;
-    if (estimator.toLowerCase() === "todd gilmore") return;
-    const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
-    if (projectNumber === "701 poplar church rd") return;
-    activeProjects.push(p);
-  });
-  
-  // Step 2: Group by project identifier to find duplicates with different customers
-  const projectIdentifierMap = new Map<string, typeof activeProjects>();
-  activeProjects.forEach((project) => {
-    const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
-    if (!identifier) return;
-    if (!projectIdentifierMap.has(identifier)) {
-      projectIdentifierMap.set(identifier, []);
-    }
-    projectIdentifierMap.get(identifier)!.push(project);
-  });
-  
-  // Step 3: Deduplicate by customer
-  const dedupedByCustomer: typeof activeProjects = [];
-  projectIdentifierMap.forEach((projectList) => {
-    const customerMap = new Map<string, typeof projectList>();
-    projectList.forEach(p => {
-      const customer = (p.customer ?? "").toString().trim();
-      if (!customerMap.has(customer)) {
-        customerMap.set(customer, []);
-      }
-      customerMap.get(customer)!.push(p);
-    });
-    
-    if (customerMap.size > 1) {
-      let selectedCustomer = "";
-      let selectedProjects: typeof projectList = [];
-      let foundPriorityCustomer = false;
-      
-      customerMap.forEach((projs, customer) => {
-        const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
-        if (hasPriorityStatus && !foundPriorityCustomer) {
-          selectedCustomer = customer;
-          selectedProjects = projs;
-          foundPriorityCustomer = true;
-        }
-      });
-      
-      if (!foundPriorityCustomer) {
-        let latestCustomer = "";
-        let latestDate: Date | null = null;
-        
-        customerMap.forEach((projs, customer) => {
-          const mostRecentProj = projs.reduce((latest, current) => {
-            const currentDate = parseDateValue(current.dateCreated);
-            const latestDateVal = parseDateValue(latest.dateCreated);
-            if (!currentDate) return latest;
-            if (!latestDateVal) return current;
-            return currentDate > latestDateVal ? current : latest;
-          }, projs[0]);
-          
-          const projDate = parseDateValue(mostRecentProj.dateCreated);
-          if (projDate && (!latestDate || projDate > latestDate)) {
-            latestDate = projDate;
-            latestCustomer = customer;
-          }
-        });
-        
-        selectedCustomer = latestCustomer;
-        selectedProjects = customerMap.get(latestCustomer) || [];
-      }
-      
-      dedupedByCustomer.push(...selectedProjects);
-    } else {
-      projectList.forEach(p => dedupedByCustomer.push(p));
-    }
-  });
-  
-  // Step 4: Filter by qualifying statuses
-  const filteredByStatus = dedupedByCustomer.filter(p => qualifyingStatuses.includes(p.status || ""));
-  
-  // Step 5: Group by key
-  const keyMap = new Map<string, typeof filteredByStatus>();
-  filteredByStatus.forEach((p) => {
-    const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
-    if (!keyMap.has(key)) {
-      keyMap.set(key, []);
-    }
-    keyMap.get(key)!.push(p);
-  });
-  
-  // Step 6: Apply alphabetic tiebreaker and aggregate
-  const qualifyingProjectsMap = new Map<string, { customer: string; projectName: string; totalHours: number }>();
-  keyMap.forEach((projectGroup, key) => {
-    const sorted = projectGroup.sort((a, b) => {
-      const nameA = (a.projectName ?? "").toString().toLowerCase();
-      const nameB = (b.projectName ?? "").toString().toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-    
-    const representative = sorted[0];
-    const totalHours = projectGroup.reduce((sum, p) => sum + (p.hours ?? 0), 0);
-    
-    qualifyingProjectsMap.set(key, {
-      customer: representative.customer ?? "Unknown",
-      projectName: representative.projectName ?? "Unnamed",
-      totalHours,
-    });
-  });
-  
-  // Calculate total hours from all qualifying projects
-  let totalQualifyingHours = 0;
-  qualifyingProjectsMap.forEach(project => {
-    totalQualifyingHours += project.totalHours;
-  });
-  
-  // Calculate filtered total qualifying hours (applying customer/project/year filters)
-  let filteredTotalQualifyingHours = 0;
-  qualifyingProjectsMap.forEach((project, key) => {
-    // Apply customer filter
-    if (customerFilter && project.customer !== customerFilter) return;
-    // Apply project filter
-    if (projectFilter && project.projectName !== projectFilter) return;
-    
-    // If year filter is set, subtract hours scheduled in other years
-    let budget = project.totalHours;
-    if (yearFilter) {
-      const schedule = schedules.find(s => s.jobKey === key);
-      if (schedule) {
-        let otherYearHours = 0;
-        normalizeAllocations(schedule.allocations).forEach(alloc => {
-          if (!alloc.month.startsWith(yearFilter)) {
-            otherYearHours += (schedule.totalHours * (alloc.percent / 100));
-          }
-        });
-        budget = Math.max(0, budget - otherYearHours);
-      }
-    }
-    
-    filteredTotalQualifyingHours += budget;
-  });
-
-  const qualifyingKeyHours = new Map<string, number>();
-  qualifyingProjectsMap.forEach((project, key) => {
-    if (customerFilter && project.customer !== customerFilter) return;
-    if (projectFilter && project.projectName !== projectFilter) return;
-    
-    let budget = project.totalHours;
-    if (yearFilter) {
-      const schedule = schedules.find(s => s.jobKey === key);
-      if (schedule) {
-        let otherYearHours = 0;
-        normalizeAllocations(schedule.allocations).forEach(alloc => {
-          if (!alloc.month.startsWith(yearFilter)) {
-            otherYearHours += (schedule.totalHours * (alloc.percent / 100));
-          }
-        });
-        budget = Math.max(0, budget - otherYearHours);
-      }
-    }
-    qualifyingKeyHours.set(key, budget);
-  });
-  
-  // Calculate total scheduled hours from schedules (respecting year filter and excluding Complete)
-  let totalScheduledHours = 0;
-  schedules.forEach(schedule => {
-    if (schedule.status === 'Complete') return;
-    
-    const projectHours = schedule.totalHours || 0;
-    const scheduledHours = normalizeAllocations(schedule.allocations).reduce((sum: number, alloc: any) => {
-      // Apply year filter if set
-      if (yearFilter && !alloc.month.startsWith(yearFilter)) return sum;
-      return sum + (projectHours * (alloc.percent / 100));
-    }, 0);
-    totalScheduledHours += scheduledHours;
-  });
-
-  // Calculate scheduled hours specifically for In Progress jobs used in unscheduled calculation
+  // Unscheduled calculation uses the unified pool from useMemo
   const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
     if (!qualifyingStatuses.includes(schedule.status || "")) return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
     if (projectsWithGanttData.has(key)) return sum;
-    const projectHours = schedule.totalHours || qualifyingKeyHours.get(key) || 0;
-    if (!qualifyingKeyHours.has(key) || projectHours <= 0) return sum;
+    if (customerFilter && schedule.customer !== customerFilter) return sum;
+    if (projectFilter && schedule.projectName !== projectFilter) return sum;
 
     const scheduledHours = normalizeAllocations(schedule.allocations).reduce((scheduleSum, alloc) => {
       if (!isValidMonthKey(alloc.month)) return scheduleSum;
-      // Apply year filter if set
       if (yearFilter && !alloc.month.startsWith(yearFilter)) return scheduleSum;
-      return scheduleSum + (projectHours * (alloc.percent / 100));
+      return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
     }, 0);
 
     return sum + scheduledHours;
   }, 0);
 
-  const unscheduledHours = Math.max(0, filteredTotalQualifyingHours - scheduledHoursForQualifying);
+  const unscheduledHours = Math.max(0, totalPoolHours - scheduledHoursForQualifying);
 
-  const projectKeyForSchedule = (customer?: string, projectNumber?: string, projectName?: string) => {
-    return `${customer ?? ""}~${projectNumber ?? ""}~${projectName ?? ""}`;
-  };
-
-  const bidSubmittedSalesByMonth: Record<string, number> = {};
-  dedupedByCustomer.forEach((project) => {
-    if ((project.status || "") !== "Bid Submitted") return;
-    // Try dateCreated first, then dateUpdated as fallback
-    const projectDate = parseDateValue(project.dateCreated) || parseDateValue(project.dateUpdated);
-    if (!projectDate) return;
-    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
-    const sales = Number(project.sales ?? 0);
-    if (!Number.isFinite(sales) || sales === 0) return;
-    bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
-  });
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
   bidSubmittedSalesMonths.forEach((month) => {
@@ -981,56 +824,14 @@ function WIPReportContent() {
   
   // Apply year filter to bid submitted sales
   const filteredBidSubmittedSalesByMonth: Record<string, number> = {};
-  const filteredBidSubmittedSalesMonths = bidSubmittedSalesMonths.filter(month => {
+  bidSubmittedSalesMonths.forEach(month => {
     if (yearFilter) {
       const [year] = month.split("-");
-      if (year !== yearFilter) return false;
+      if (year !== yearFilter) return;
     }
     filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
-    return true;
-  });
-
-  // Build a map of schedule keys to TOTAL project sales (sum of all matching projects)
-  // Note: Each project key might have multiple projects, we need to sum them all
-  const scheduleSalesMap = new Map<string, number>();
-  projects.forEach((project) => {
-    // Only include qualifying projects
-    if (!qualifyingStatuses.includes(project.status || "")) return;
-    
-    const key = projectKeyForSchedule(project.customer, project.projectNumber, project.projectName);
-    const sales = Number(project.sales ?? 0);
-    if (!Number.isFinite(sales)) return;
-    
-    // Add to existing or create new entry
-    const currentTotal = scheduleSalesMap.get(key) || 0;
-    scheduleSalesMap.set(key, currentTotal + sales);
   });
   
-  // For each schedule, distribute sales across months based on allocation percentages
-  schedules.forEach((schedule) => {
-    // Skip Complete status jobs
-    if (schedule.status === 'Complete') return;
-    
-    const key = schedule.jobKey || projectKeyForSchedule(schedule.customer, schedule.projectNumber, schedule.projectName);
-    
-    // Skip if we already used Gantt data for this project
-    if (projectsWithGanttData.has(key)) return;
-
-    const projectSales = scheduleSalesMap.get(key);
-    
-    if (!projectSales) {
-      return;
-    }
-
-    normalizeAllocations(schedule.allocations).forEach((alloc) => {
-      const percent = Number(alloc.percent ?? 0);
-      if (!Number.isFinite(percent) || percent <= 0) return;
-      const monthKey = alloc.month;
-      const monthlySales = projectSales * (percent / 100);
-      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
-    });
-  });
-
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
   scheduledSalesMonths.forEach((month) => {
@@ -1042,23 +843,11 @@ function WIPReportContent() {
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
   
-  // Apply year filter to scheduled sales
-  const filteredScheduledSalesByMonth: Record<string, number> = {};
-  const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {
-    if (yearFilter) {
-      const [year] = month.split("-");
-      if (year !== yearFilter) return false;
-    }
-    filteredScheduledSalesByMonth[month] = scheduledSalesByMonth[month];
-    return true;
-  });
-  
   const combinedSalesYears = Array.from(new Set([...scheduledSalesYears, ...bidSubmittedSalesYears])).filter(year => year !== "2024").sort();
-  
-  // Apply year filter to combined years
   const filteredCombinedSalesYears = yearFilter ? combinedSalesYears.filter(year => year === yearFilter) : combinedSalesYears;
 
   if (loading) {
+
     return (
       <main className="p-8" style={{ background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
         <div>Loading...</div>
@@ -1095,13 +884,13 @@ function WIPReportContent() {
               {unscheduledHours.toFixed(1)}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-              of {filteredTotalQualifyingHours.toFixed(1)} total hours
+              of {totalPoolHours.toFixed(1)} total hours
             </div>
           </div>
         </div>
         {unscheduledHours > 0 && (
           <div style={{ marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-            {((unscheduledHours / filteredTotalQualifyingHours) * 100).toFixed(0)}% remaining to schedule
+            {((unscheduledHours / totalPoolHours) * 100).toFixed(0)}% remaining to schedule
           </div>
         )}
       </div>
@@ -1374,6 +1163,48 @@ function WIPReportContent() {
             setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
           }}
         />
+      )}
+
+      {/* Pool Breakdown for debugging target hours */}
+      {poolBreakdown.length > 0 && (
+        <div style={{ marginTop: 40, padding: 20, background: "#fff", borderRadius: 12, border: "1px solid #ddd" }}>
+          <h3 style={{ color: "#15616D", marginBottom: 16 }}>Labor Pool Breakdown (Top 20)</h3>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            This list shows the projects contributing to the {totalPoolHours.toFixed(0)} hour pool.
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
+                <th style={{ padding: 8 }}>Customer / Project</th>
+                <th style={{ padding: 8, textAlign: "center" }}>Source</th>
+                <th style={{ padding: 8, textAlign: "right" }}>Contract Hr</th>
+                <th style={{ padding: 8, textAlign: "right" }}>Proj PreHr</th>
+                <th style={{ padding: 8, textAlign: "right" }}>Total Budget</th>
+              </tr>
+            </thead>
+            <tbody>
+              {poolBreakdown.slice(0, 50).map((item, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid #f9f9f9" }}>
+                  <td style={{ padding: 8 }}>
+                    <div style={{ fontWeight: 600 }}>{item.customer}</div>
+                    <div style={{ fontSize: 11, color: "#666" }}>{item.projectName}</div>
+                  </td>
+                  <td style={{ padding: 8, textAlign: "center" }}>
+                    <span style={{ fontSize: 10, padding: "2px 4px", borderRadius: 4, background: item.hasSchedule ? "#dcfce7" : "#fee2e2", color: item.hasSchedule ? "#166534" : "#991b1b", marginRight: 4 }}>
+                      {item.hasSchedule ? "SCHED" : "NO-SCH"}
+                    </span>
+                    <span style={{ fontSize: 10, padding: "2px 4px", borderRadius: 4, background: item.hasGantt ? "#dbeafe" : "#f1f5f9", color: item.hasGantt ? "#1e40af" : "#64748b" }}>
+                      {item.hasGantt ? "GANTT" : "BASE"}
+                    </span>
+                  </td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{item.p_hours.toFixed(0)}</td>
+                  <td style={{ padding: 8, textAlign: "right", color: "#666" }}>{item.p_proj.toFixed(0)}</td>
+                  <td style={{ padding: 8, textAlign: "right", fontWeight: 700 }}>{item.budget.toFixed(0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </main>
   );

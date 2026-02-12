@@ -13,6 +13,7 @@
     "chart.js": "^4.4.1",
     "csv-parse": "^6.1.0",
     "csv-parser": "^3.2.0",
+    "dotenv": "^17.2.4",
     "firebase": "^12.7.0",
     "next": "16.1.1",
     "react": "19.2.3",
@@ -22,6 +23,7 @@
     "twilio": "^5.12.1"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -29,7 +31,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
-    "firebase-admin": "^13.6.0",
+    "firebase-admin": "^13.6.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

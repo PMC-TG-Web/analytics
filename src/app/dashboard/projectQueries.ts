@@ -6,7 +6,7 @@
  * considering its impact on all pages that use it.
  */
 
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 
 export type Project = {
@@ -28,12 +28,50 @@ export type Project = {
   [key: string]: any;
 };
 
+export type DashboardSummary = {
+  totalSales: number;
+  totalCost: number;
+  totalHours: number;
+  statusGroups: Record<string, { 
+    sales: number; 
+    cost: number; 
+    hours: number; 
+    count: number;
+    laborByGroup?: Record<string, number>;
+  }>;
+  contractors: Record<string, { 
+    sales: number; 
+    cost: number; 
+    hours: number; 
+    count: number;
+    byStatus: Record<string, { sales: number; cost: number; hours: number; count: number }>;
+  }>;
+  pmcGroupHours: Record<string, number>;
+  laborBreakdown?: Record<string, number>;
+  lastUpdated: any;
+};
+
+/**
+ * DASHBOARD: Fetch the pre-aggregated summary document
+ */
+export async function getProjectsByCustomer(customerName: string): Promise<Project[]> {
+  const projectsRef = collection(db, "projects");
+  const q = query(projectsRef, where("customer", "==", customerName));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+}
+
+export async function getDashboardSummary(): Promise<DashboardSummary | null> {
+  const summaryRef = doc(db, "metadata", "dashboard_summary");
+  const snap = await getDoc(summaryRef);
+  if (snap.exists()) {
+    return snap.data() as DashboardSummary;
+  }
+  return null;
+}
+
 /**
  * DASHBOARD: Fetch all relevant project documents for aggregation
- * 
- * Used by: src/app/dashboard/page.tsx
- * Purpose: Gets active project documents to be aggregated by the dashboard logic.
- * Filters out Bid Submitted and Lost statuses to significantly reduce Firebase reads (estimated 80% reduction).
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
   const querySnapshot = await getDocs(collection(db, "projects"));

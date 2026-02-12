@@ -49,6 +49,46 @@
 			"command": "npm run dev",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Run Bootstrap Aggregation",
+			"type": "shell",
+			"command": "node scripts/bootstrapAdmin.js"
+		},
+		{
+			"label": "Run Bootstrap Web SDK",
+			"type": "shell",
+			"command": "node scripts/bootstrapSummary.mjs"
+		},
+		{
+			"label": "Run Correct Bootstrap",
+			"type": "shell",
+			"command": "node scripts/bootstrapCorrect.mjs"
+		},
+		{
+			"label": "Run Correct Bootstrap Final",
+			"type": "shell",
+			"command": "node scripts/bootstrapCorrect.mjs"
+		},
+		{
+			"label": "Check Summary Data",
+			"type": "shell",
+			"command": "node scripts/check_summary.mjs"
+		},
+		{
+			"label": "Run Correct Bootstrap Final V2",
+			"type": "shell",
+			"command": "node scripts/bootstrapCorrect.mjs"
+		},
+		{
+			"label": "Update Summary with Labor Breakdown",
+			"type": "shell",
+			"command": "node scripts/bootstrapCorrect.mjs"
+		},
+		{
+			"label": "Update Summary - Remove Invitations",
+			"type": "shell",
+			"command": "node scripts/bootstrapCorrect.mjs"
 		}
 	]
 }

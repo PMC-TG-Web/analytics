@@ -182,8 +182,8 @@ function TopContractorsCard({ aggregatedProjects, summaryContractors, topContrac
               <div style={{ fontSize: 11, color: '#666', marginBottom: 8, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>By Status</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {Object.entries(contractor.byStatus)
-                  .sort((a, b) => b[1].sales - a[1].sales)
-                  .map(([status, data]) => {
+                  .sort((a, b) => (b[1] as any).sales - (a[1] as any).sales)
+                  .map(([status, data]: [string, any]) => {
                     const markup = data.cost > 0 ? ((data.sales - data.cost) / data.cost * 100).toFixed(1) : '0.0';
                     return (
                       <button

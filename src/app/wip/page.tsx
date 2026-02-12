@@ -612,7 +612,16 @@ function WIPReportContent() {
 
     // Step 4: Calculate Total Labor Pool Hours (Target: ~33,503)
     let totalPoolHours = 0;
-    const poolBreakdown: { jobKey: string; budget: number; projectName: string }[] = [];
+    const poolBreakdown: { 
+      jobKey: string; 
+      budget: number; 
+      projectName: string;
+      customer: string;
+      hasSchedule: boolean;
+      hasGantt: boolean;
+      p_hours: number;
+      p_proj: number;
+    }[] = [];
 
     qualifyingJobKeys.forEach(jobKey => {
       const jobProjects = projectsByJobKey.get(jobKey) || [];

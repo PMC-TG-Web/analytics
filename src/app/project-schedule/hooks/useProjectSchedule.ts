@@ -3,7 +3,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import { Scope, ViewMode, GanttTask, ProjectInfo } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";
-import { getProjectKey } from "@/utils/projectUtils";
+import { getProjectKey, parseDateValue } from "@/utils/projectUtils";
 import { 
   addDays, 
   diffInDays, 
@@ -64,8 +64,10 @@ export function useProjectSchedule() {
             customer,
             projectNumber,
             projectName,
-            projectDocId: doc.id
-          });
+            projectDocId: doc.id,
+            dateCreated: data.dateCreated,
+            dateUpdated: data.dateUpdated
+          } as any);
         }
 
         if (!projectCostItems[itemJobKey]) projectCostItems[itemJobKey] = [];
@@ -403,10 +405,14 @@ export function useProjectSchedule() {
         }
       });
 
-      // If still no dates but has scopes, default to a 2-week window starting at the filter date
-      if ((!projectStart || !projectEnd) && jobScopes.length > 0) {
-        projectStart = startDateRange;
-        projectEnd = addDays(startDateRange, 14);
+      // FALLBACK: If no scheduling dates found, use project's creation/update dates
+      if (!projectStart || !projectEnd) {
+        const fallbackDate = parseDateValue((project as any).dateUpdated) || 
+                             parseDateValue((project as any).dateCreated);
+        if (fallbackDate) {
+          projectStart = fallbackDate;
+          projectEnd = addDays(fallbackDate, 7); // Show as a 1-week block at creation time
+        }
       }
 
       // If still no dates, this project doesn't have a timeline yet or any scopes to show

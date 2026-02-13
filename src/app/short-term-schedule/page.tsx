@@ -9,6 +9,7 @@ import Navigation from "@/components/Navigation";
 import { Scope, Project, ProjectInfo } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
+import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -334,11 +335,14 @@ function ShortTermScheduleContent() {
         };
       }
       await setDoc(docRef, { ...docData, updatedAt: new Date().toISOString() }, { merge: true });
+      await syncProjectWIP(jobKey);
+      await syncGanttWithShortTerm(jobKey);
     } else {
       // DIFFERENT DOCUMENTS - Sequenced writes
       await updateProjectAssignment(project, sourceDateKey, sourceForemanId, null, 0);
       const targetProject = { ...project, month: targetMonthStr, weekNumber: targetWeekNum, dayNumber: targetDayNum };
       await updateProjectAssignment(targetProject, targetDateKey, targetForemanId, targetForemanId, hours);
+      // sync methods called inside updateProjectAssignment for the target
     }
   }
 
@@ -408,6 +412,8 @@ function ShortTermScheduleContent() {
     
     docData.updatedAt = new Date().toISOString();
     await setDoc(docRef, docData, { merge: true });
+    await syncProjectWIP(jobKey);
+    await syncGanttWithShortTerm(jobKey);
   }
 
   function getWeekDates(weekStart: Date): Date[] {

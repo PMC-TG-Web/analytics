@@ -8,6 +8,7 @@ import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
+import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 import { useAuth } from "@/hooks/useAuth";
 
 interface DayData {
@@ -501,6 +502,8 @@ function DailyCrewDispatchBoardContent() {
         }
         docData.updatedAt = new Date().toISOString();
         await setDoc(docRef, docData, { merge: true });
+        await syncProjectWIP(jobKey);
+        await syncGanttWithShortTerm(jobKey);
       }
     } catch (error) {
       console.error("Failed to save crew assignment:", error);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { addDoc, collection, doc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { ProjectInfo, Scope } from "@/types";
+import { syncProjectWIP } from "@/utils/scheduleSync";
 
 interface ProjectScopesModalProps {
   project: ProjectInfo;
@@ -128,6 +129,7 @@ export function ProjectScopesModal({
         setActiveScopeId(docRef.id);
       }
 
+      await syncProjectWIP(project.jobKey);
       alert("Scope saved successfully!");
     } catch (error) {
       console.error("Failed to save scope:", error);

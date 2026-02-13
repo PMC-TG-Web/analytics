@@ -420,16 +420,6 @@ export function useProjectSchedule() {
         }
       }
 
-      // SECOND FALLBACK: Use project's creation/update dates
-      if (!projectStart || !projectEnd) {
-        const fallbackDate = parseDateValue((project as any).dateUpdated) || 
-                             parseDateValue((project as any).dateCreated);
-        if (fallbackDate) {
-          projectStart = fallbackDate;
-          projectEnd = addDays(fallbackDate, 7);
-        }
-      }
-
       // If still no dates, this project doesn't have a timeline yet or any scopes to show
       if (!projectStart || !projectEnd) return [];
 

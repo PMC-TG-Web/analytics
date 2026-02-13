@@ -262,7 +262,7 @@ function FieldTrackingContent() {
     try {
       const project = projects.find(p => p.id === selectedProject);
       const scope = scopes.find(s => s.id === selectedScope);
-      const jobKey = project?.jobKey || `${project?.customer || ""}~${project?.projectNumber || ""}~${project?.projectName || ""}`;
+      const jobKey = project?.jobKey || getProjectKey(project as Project);
 
       await addDoc(collection(db, "fieldLogs"), {
         projectId: selectedProject,

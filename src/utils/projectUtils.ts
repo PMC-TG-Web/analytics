@@ -22,12 +22,125 @@ export const getProjectDate = (project: Project): Date | null => {
 };
 
 export const getProjectKey = (project: Project): string => {
-  const number = String(project.projectNumber ?? "").trim();
-  const customer = String(project.customer ?? "").trim();
-  const name = String(project.projectName ?? "").trim();
-  // Using a consistent grouping key
-  return `${customer}~${number}~${name}`.replace(/\s+/g, ' ');
+  const customer = (project.customer ?? "").toString().trim();
+  const number = (project.projectNumber ?? "").toString().trim();
+  const name = (project.projectName ?? "").toString().trim();
+
+  if (!customer && !number && !name) {
+    return `__noKey__${project.id || Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  return `${customer}~${number}~${name}`;
 };
+
+export function calculateAggregated(projects: Project[]): { aggregated: Project[]; dedupedByCustomer: Project[] } {
+  // Group by project identifier (number or name) to find duplicates across different customers
+  const projectIdentifierMap = new Map<string, Project[]>();
+  projects.forEach((project) => {
+    const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+    if (!identifier) return;
+    
+    if (!projectIdentifierMap.has(identifier)) {
+      projectIdentifierMap.set(identifier, []);
+    }
+    projectIdentifierMap.get(identifier)!.push(project);
+  });
+  
+  // For each project identifier, keep only the most recent/relevant customer version
+  const dedupedByCustomer: Project[] = [];
+  projectIdentifierMap.forEach((projectList) => {
+    const customerMap = new Map<string, Project[]>();
+    projectList.forEach(p => {
+      const customer = (p.customer ?? "").toString().trim();
+      if (!customerMap.has(customer)) {
+        customerMap.set(customer, []);
+      }
+      customerMap.get(customer)!.push(p);
+    });
+    
+    if (customerMap.size > 1) {
+      const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+      let selectedProjects: Project[] = [];
+      
+      let foundPriorityCustomer = false;
+      customerMap.forEach((projs) => {
+        const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
+        if (hasPriorityStatus && !foundPriorityCustomer) {
+          selectedProjects = projs;
+          foundPriorityCustomer = true;
+        }
+      });
+      
+      if (!foundPriorityCustomer) {
+        let latestDate: Date | null = null;
+        let latestCustomerProjs: Project[] = [];
+        
+        customerMap.forEach((projs) => {
+          const mostRecentProj = projs.reduce((latest, current) => {
+            const currentDate = parseDateValue(current.dateCreated);
+            const latestDateVal = parseDateValue(latest.dateCreated);
+            if (!currentDate) return latest;
+            if (!latestDateVal) return current;
+            return currentDate > latestDateVal ? current : latest;
+          }, projs[0]);
+          
+          const projDate = parseDateValue(mostRecentProj.dateCreated);
+          if (projDate && (!latestDate || projDate > latestDate)) {
+            latestDate = projDate;
+            latestCustomerProjs = projs;
+          }
+        });
+        
+        selectedProjects = latestCustomerProjs;
+      }
+      dedupedByCustomer.push(...selectedProjects);
+    } else {
+      projectList.forEach(p => dedupedByCustomer.push(p));
+    }
+  });
+  
+  // Aggregate multiple line items for the same project number + customer
+  const keyGroupMap = new Map<string, Project[]>();
+  dedupedByCustomer.forEach((project) => {
+    const key = getProjectKey(project);
+    if (!keyGroupMap.has(key)) {
+      keyGroupMap.set(key, []);
+    }
+    keyGroupMap.get(key)!.push(project);
+  });
+  
+  const aggregated: Project[] = [];
+  keyGroupMap.forEach((groupProjects) => {
+    const sorted = groupProjects.sort((a, b) => {
+      const nameA = (a.projectName ?? "").toString().toLowerCase();
+      const nameB = (b.projectName ?? "").toString().toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    
+    const baseProject = { ...sorted[0] };
+    baseProject.sales = sorted.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+    baseProject.cost = sorted.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+    baseProject.hours = sorted.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+    baseProject.projectedPreconstHours = sorted.reduce((sum, p) => sum + (Number(p.projectedPreconstHours) || 0), 0);
+    baseProject.laborSales = sorted.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
+    baseProject.laborCost = sorted.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
+
+    const mostRecentProject = sorted.reduce((latest, current) => {
+      const latestDate = getProjectDate(latest);
+      const currentDate = getProjectDate(current);
+      if (!currentDate) return latest;
+      if (!latestDate) return current;
+      return currentDate > latestDate ? current : latest;
+    }, sorted[0]);
+    
+    baseProject.dateUpdated = mostRecentProject.dateUpdated;
+    baseProject.dateCreated = mostRecentProject.dateCreated;
+    
+    aggregated.push(baseProject);
+  });
+  
+  return { aggregated, dedupedByCustomer };
+}
 
 export const getEnrichedScopes = (scopes: Scope[], projects: Project[]): Scope[] => {
   const projectCostItems: Record<string, Array<{ costitems: string; sales: number; cost: number; hours: number; costType: string }>> = {};

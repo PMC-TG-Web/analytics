@@ -18,23 +18,10 @@ export function SummaryCard({
   large = false,
 }: SummaryCardProps) {
   return (
-    <div style={{
-      background: '#ffffff',
-      borderRadius: 12,
-      padding: large ? '24px 32px' : '16px 20px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      border: '1px solid #ddd',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center'
-    }}>
-      <div style={{ color: '#666', fontSize: 13, marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ 
-        fontSize: large ? 28 : 20, 
-        fontWeight: 800, 
-        color: label.includes('Sales') ? '#10b981' : '#E06C00'
-      }}>
-        {prefix}{value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
+    <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 flex flex-col items-center justify-center hover:shadow-xl transition-all duration-300 hover:-translate-y-1 w-full">
+      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-center">{label}</div>
+      <div className="text-2xl md:text-3xl font-black text-teal-800 tracking-tight text-center">
+        {prefix}{value?.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
       </div>
     </div>
   );

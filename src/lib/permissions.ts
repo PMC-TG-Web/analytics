@@ -6,7 +6,7 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "field", "estimating-tools", "constants"],
   
   // Full access
-  "isaac@pmcdecor.com": ["dashboard", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "procore"],
+  "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "procore"],
   "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore"],
   "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants"],
   "shelly@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants"],

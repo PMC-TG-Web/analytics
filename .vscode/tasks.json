@@ -89,6 +89,36 @@
 			"label": "Update Summary - Remove Invitations",
 			"type": "shell",
 			"command": "node scripts/bootstrapCorrect.mjs"
+		},
+		{
+			"label": "Check Job Key Formats",
+			"type": "shell",
+			"command": "node scripts/checkJobKeyFormats.mjs"
+		},
+		{
+			"label": "Check Job Key Formats V2",
+			"type": "shell",
+			"command": "node scripts/checkJobKeyFormats.mjs"
+		},
+		{
+			"label": "Count Project Scopes",
+			"type": "shell",
+			"command": "node scripts/countProjectScopes.js"
+		},
+		{
+			"label": "Check Long Term Schedule",
+			"type": "shell",
+			"command": "node -e \"import { initializeApp } from 'firebase/app'; import { getFirestore, collection, getDocs, limit, query } from 'firebase/firestore'; import { readFileSync } from 'fs'; const firebaseConfig = JSON.parse(readFileSync('src/firebaseConfig.json', 'utf8')); const app = initializeApp(firebaseConfig); const db = getFirestore(app); async function check() { const q = query(collection(db, 'long term schedual'), limit(1)); const snap = await getDocs(q); if (!snap.empty) { console.log('Found long term schedual documents'); console.log('jobKey:', snap.docs[0].data().jobKey); } else { console.log('long term schedual is empty'); } process.exit(0); } check();\""
+		},
+		{
+			"label": "Check Job Key Formats Final",
+			"type": "shell",
+			"command": "node scripts/checkJobKeyFormats.mjs"
+		},
+		{
+			"label": "Check Job Key Formats Deep Search",
+			"type": "shell",
+			"command": "node scripts/checkJobKeyFormats.mjs"
 		}
 	]
 }

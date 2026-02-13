@@ -405,13 +405,28 @@ export function useProjectSchedule() {
         }
       });
 
-      // FALLBACK: If no scheduling dates found, use project's creation/update dates
+      // FALLBACK: Default to first Monday of the first month with hours in WIP
+      if (!projectStart || !projectEnd) {
+        const mj = monthJobs.find(j => j.jobKey === project.jobKey);
+        if (mj && mj.month) {
+          const [year, month] = mj.month.split("-").map(Number);
+          const firstOfMonth = new Date(year, month - 1, 1);
+          // Find first Monday
+          while (firstOfMonth.getDay() !== 1) {
+            firstOfMonth.setDate(firstOfMonth.getDate() + 1);
+          }
+          projectStart = firstOfMonth;
+          projectEnd = addDays(firstOfMonth, 7);
+        }
+      }
+
+      // SECOND FALLBACK: Use project's creation/update dates
       if (!projectStart || !projectEnd) {
         const fallbackDate = parseDateValue((project as any).dateUpdated) || 
                              parseDateValue((project as any).dateCreated);
         if (fallbackDate) {
           projectStart = fallbackDate;
-          projectEnd = addDays(fallbackDate, 7); // Show as a 1-week block at creation time
+          projectEnd = addDays(fallbackDate, 7);
         }
       }
 

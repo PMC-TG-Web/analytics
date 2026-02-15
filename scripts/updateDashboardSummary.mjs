@@ -48,8 +48,7 @@ const isExcludedFromDashboard = (project) => {
   const excludedNames = [
     "pmc operations",
     "pmc shop time",
-    "pmc test project",
-    "alexander drive addition latest"
+    "pmc test project"
   ];
   if (excludedNames.includes(projectName)) return true;
   if (projectName.includes("sandbox")) return true;

@@ -3,13 +3,13 @@
 
 export const USER_PERMISSIONS: Record<string, string[]> = {
   // Admin - full access
-  "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "field", "estimating-tools", "constants", "equipment"],
+  "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "field", "estimating-tools", "constants", "equipment"],
   
   // Full access
-  "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "procore", "equipment"],
-  "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "equipment"],
-  "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants", "equipment"],
-  "shelly@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "employees", "procore", "estimating-tools", "constants", "equipment"],
+  "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "procore", "equipment"],
+  "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "equipment"],
+  "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "estimating-tools", "constants", "equipment"],
+  "shelly@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "estimating-tools", "constants", "equipment"],
   
   // Add more users here:
   // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],

@@ -12,6 +12,7 @@ interface NavLink {
 
 const navLinks: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", page: "dashboard" },
+  { href: "/projects", label: "Projects", page: "projects", color: "bg-teal-700" },
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip", color: "bg-orange-600" },
   { href: "/scheduling", label: "Scheduling", page: "scheduling" },

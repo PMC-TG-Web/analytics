@@ -21,6 +21,8 @@ export interface EquipmentAssignment {
   projectId: string; // Firestore ID
   projectName: string;
   jobKey: string;
+  scopeId?: string;
+  scopeTitle?: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   notes?: string;

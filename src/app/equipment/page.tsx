@@ -342,18 +342,18 @@ function EquipmentContent() {
                     <input
                       required
                       type="text"
-                      value={formData.name}
+                      value={formData.name || ""}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g. Ford F-350 #12"
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl text-sm font-bold outline-none transition-all"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all placeholder:text-gray-300"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Type</label>
                     <select
-                      value={formData.type}
+                      value={formData.type || "Truck"}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl text-sm font-bold outline-none transition-all cursor-pointer appearance-none"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all cursor-pointer appearance-none"
                     >
                       <option value="Truck">Truck</option>
                       <option value="Excavator">Excavator</option>
@@ -367,18 +367,18 @@ function EquipmentContent() {
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Daily Rate ($)</label>
                     <input
                       type="number"
-                      value={formData.dailyRate}
+                      value={formData.dailyRate || 0}
                       onChange={(e) => setFormData({ ...formData, dailyRate: parseFloat(e.target.value) })}
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl text-sm font-bold outline-none transition-all"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Serial Number</label>
                     <input
                       type="text"
-                      value={formData.serialNumber}
+                      value={formData.serialNumber || ""}
                       onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl text-sm font-bold outline-none transition-all"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -421,9 +421,9 @@ function EquipmentContent() {
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Project</label>
                   <select
                     required
-                    value={assignData.projectId}
+                    value={assignData.projectId || ""}
                     onChange={(e) => setAssignData({ ...assignData, projectId: e.target.value })}
-                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
+                    className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
                   >
                     <option value="">Choose a Project...</option>
                     {projects.map(p => (
@@ -438,9 +438,9 @@ function EquipmentContent() {
                     <input
                       required
                       type="date"
-                      value={assignData.startDate}
+                      value={assignData.startDate || ""}
                       onChange={(e) => setAssignData({ ...assignData, startDate: e.target.value })}
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 rounded-2xl text-sm font-bold outline-none"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none"
                     />
                   </div>
                   <div className="space-y-2">
@@ -448,9 +448,9 @@ function EquipmentContent() {
                     <input
                       required
                       type="date"
-                      value={assignData.endDate}
+                      value={assignData.endDate || ""}
                       onChange={(e) => setAssignData({ ...assignData, endDate: e.target.value })}
-                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 rounded-2xl text-sm font-bold outline-none"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none"
                     />
                   </div>
                 </div>
@@ -458,9 +458,9 @@ function EquipmentContent() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assignment Notes</label>
                   <textarea
-                    value={assignData.notes}
+                    value={assignData.notes || ""}
                     onChange={(e) => setAssignData({ ...assignData, notes: e.target.value })}
-                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-teal-500 rounded-2xl text-sm font-bold outline-none h-24 resize-none"
+                    className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none h-24 resize-none"
                   />
                 </div>
 

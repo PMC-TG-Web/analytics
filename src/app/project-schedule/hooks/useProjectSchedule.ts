@@ -383,30 +383,43 @@ export function useProjectSchedule() {
       const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
       const mjs = monthJobs.filter(j => j.jobKey === project.jobKey);
 
+      let foundDates: Date[] = [];
+
       // 1. Check ALL schedules for dates
       if (sj && sj.dates.length > 0) {
-        const sorted = [...sj.dates].sort((a, b) => a.getTime() - b.getTime());
-        if (!projectStart || sorted[0].getTime() < projectStart.getTime()) projectStart = sorted[0];
-        if (!projectEnd || sorted[sorted.length - 1].getTime() > projectEnd.getTime()) projectEnd = sorted[sorted.length - 1];
+        foundDates.push(...sj.dates);
         if (viewMode === "day") totalHours = sj.totalHours;
       }
       
       if (lj && lj.weekStarts.length > 0) {
-        const sorted = [...lj.weekStarts].sort((a, b) => a.getTime() - b.getTime());
-        if (!projectStart || sorted[0].getTime() < projectStart.getTime()) projectStart = sorted[0];
-        const weekEnd = addDays(sorted[sorted.length - 1], 6);
-        if (!projectEnd || weekEnd.getTime() > projectEnd.getTime()) projectEnd = weekEnd;
+        foundDates.push(...lj.weekStarts);
+        // Add endpoints for weeks
+        lj.weekStarts.forEach(ws => foundDates.push(addDays(ws, 6)));
         if (viewMode === "week") totalHours = lj.totalHours;
       }
 
       mjs.forEach(mj => {
         const range = getMonthRange(mj.month);
         if (range) {
-          if (!projectStart || range.start.getTime() < projectStart.getTime()) projectStart = range.start;
-          if (!projectEnd || range.end.getTime() > projectEnd.getTime()) projectEnd = range.end;
+          foundDates.push(range.start);
+          foundDates.push(range.end);
           if (viewMode === "month") totalHours = mj.totalHours;
         }
       });
+
+      // 2. Check scopes for dates
+      jobScopes.forEach(scope => {
+        const s = parseScopeDate(scope.startDate);
+        const e = parseScopeDate(scope.endDate);
+        if (s) foundDates.push(s);
+        if (e) foundDates.push(e);
+      });
+
+      if (foundDates.length > 0) {
+        const sorted = foundDates.sort((a, b) => a.getTime() - b.getTime());
+        projectStart = sorted[0];
+        projectEnd = sorted[sorted.length - 1];
+      }
 
       // If no hours for current viewMode, but we have them elsewhere, pick any for display
       if (totalHours === 0) {
@@ -414,20 +427,6 @@ export function useProjectSchedule() {
         else if (viewMode === "week" && sj) totalHours = sj.totalHours;
         else if (mjs.length > 0) totalHours = mjs[0].totalHours;
       }
-
-      // 2. Check scopes for dates
-      jobScopes.forEach(scope => {
-        const s = parseScopeDate(scope.startDate);
-        const e = parseScopeDate(scope.endDate);
-        if (s) {
-          if (!projectStart || s.getTime() < projectStart.getTime()) projectStart = s;
-          if (!projectEnd || s.getTime() > projectEnd.getTime()) projectEnd = s;
-        }
-        if (e) {
-          if (!projectStart || e.getTime() < projectStart.getTime()) projectStart = e;
-          if (!projectEnd || e.getTime() > projectEnd.getTime()) projectEnd = e;
-        }
-      });
 
       // FALLBACK: Default to first Monday of the first month with hours in WIP
       if (!projectStart || !projectEnd) {

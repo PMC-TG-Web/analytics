@@ -24,6 +24,7 @@ const navLinks: NavLink[] = [
   { href: "/constants", label: "Constants", page: "constants", color: "bg-gray-700" },
   { href: "/employees", label: "Employees", page: "employees" },
   { href: "/certifications", label: "Certifications", page: "employees" },
+  { href: "/equipment", label: "Equipment", page: "equipment", color: "bg-teal-700" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "employees", color: "bg-teal-700" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
 ];

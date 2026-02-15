@@ -6,7 +6,8 @@ import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
-import { Project } from "@/types";
+import { Project, Scope } from "@/types";
+import { getProjectKey } from "@/utils/projectUtils";
 
 export default function EquipmentPage() {
   return (
@@ -20,6 +21,8 @@ function EquipmentContent() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [assignments, setAssignments] = useState<EquipmentAssignment[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [scopesData, setScopesData] = useState<Scope[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
@@ -44,6 +47,7 @@ function EquipmentContent() {
 
   const [assignData, setAssignData] = useState<Partial<EquipmentAssignment>>({
     projectId: "",
+    scopeId: "",
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     notes: "",
@@ -56,20 +60,26 @@ function EquipmentContent() {
   async function loadData() {
     setLoading(true);
     try {
-      const eqSnapshot = await getDocs(collection(db, "equipment"));
-      const eqData = eqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Equipment[];
-      setEquipment(eqData.sort((a, b) => a.name.localeCompare(b.name)));
+      const [eqSnap, assignSnap, projSnap, scopeSnap] = await Promise.all([
+        getDocs(collection(db, "equipment")),
+        getDocs(collection(db, "equipment_assignments")),
+        getDocs(collection(db, "projects")),
+        getDocs(collection(db, "projectScopes"))
+      ]);
 
-      const assignSnapshot = await getDocs(collection(db, "equipment_assignments"));
-      const assignData = assignSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EquipmentAssignment[];
-      setAssignments(assignData);
+      setEquipment(eqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Equipment)).sort((a,b) => a.name.localeCompare(b.name)));
+      setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EquipmentAssignment)));
+      
+      const pData = projSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      setAllProjects(pData);
+      
+      // Filter for active/relevant projects for the dropdown
+      const activeProjects = pData.filter(p => !["Lost", "Archived"].includes(p.status || ""));
+      // Group by name for the dropdown to avoid clutter, though usually we want specific project docs
+      // For equipment assignment, we need the specific project doc or at least the jobKey
+      setProjects(activeProjects.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
 
-      const projectsSnapshot = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Bid Submitted", "Lost", "Archived"])
-      ));
-      const pData = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
-      setProjects(pData.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
+      setScopesData(scopeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope)));
 
     } catch (error) {
       console.error("Error loading equipment data:", error);
@@ -113,12 +123,20 @@ function EquipmentContent() {
     setSaving(true);
     try {
       const project = projects.find(p => p.id === assignData.projectId);
+      const jobKey = project ? getProjectKey(project) : "";
+      
+      // Find scope title if selected
+      const currentAvailableScopes = project ? getProjectStages(project) : [];
+      const scope = currentAvailableScopes.find(s => s.id === assignData.scopeId);
+
       const newAssign = {
         equipmentId: selectedEqForAssign.id,
         equipmentName: selectedEqForAssign.name,
         projectId: assignData.projectId,
         projectName: project?.projectName || "Unknown Project",
-        jobKey: project?.jobKey || "",
+        jobKey: jobKey,
+        scopeId: assignData.scopeId || null,
+        scopeTitle: scope?.title || null,
         startDate: assignData.startDate,
         endDate: assignData.endDate,
         notes: assignData.notes || "",
@@ -135,11 +153,42 @@ function EquipmentContent() {
 
       await loadData();
       setAssignModalVisible(false);
+      setAssignData({ ...assignData, scopeId: "", notes: "" });
     } catch (error) {
+      console.error("Assignment error:", error);
       alert("Error assigning equipment");
     } finally {
       setSaving(false);
     }
+  }
+
+  function getProjectStages(project: Project): Scope[] {
+    const jobKey = getProjectKey(project);
+    if (jobKey === "__noKey__") return [];
+
+    // 1. Formal scopes
+    const formal = scopesData.filter(s => s.jobKey === jobKey);
+
+    // 2. Virtual scopes from line items
+    const lineItems = allProjects.filter(p => getProjectKey(p) === jobKey);
+    const uniqueSOWs = new Set<string>();
+    lineItems.forEach(item => {
+      const sow = item.scopeOfWork || item.pmcGroup || item.costType;
+      if (sow && sow !== "Unassigned") uniqueSOWs.add(sow);
+    });
+
+    const virtual: Scope[] = Array.from(uniqueSOWs)
+      .filter(sow => !formal.some(fs => fs.title.toLowerCase() === sow.toLowerCase()))
+      .map((sow, idx) => ({
+        id: `virtual-${jobKey}-${idx}`,
+        jobKey: jobKey,
+        title: sow,
+        startDate: "",
+        endDate: "",
+        tasks: []
+      }));
+
+    return [...formal, ...virtual];
   }
 
   async function handleDeleteAssignment(id: string) {
@@ -417,19 +466,49 @@ function EquipmentContent() {
               <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mb-8">Scheduling: {selectedEqForAssign.name}</p>
 
               <form onSubmit={handleAssignEquipment} className="text-left space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Project</label>
-                  <select
-                    required
-                    value={assignData.projectId || ""}
-                    onChange={(e) => setAssignData({ ...assignData, projectId: e.target.value })}
-                    className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
-                  >
-                    <option value="">Choose a Project...</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>{p.projectName}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Project</label>
+                    <select
+                      required
+                      value={assignData.projectId || ""}
+                      onChange={(e) => setAssignData({ ...assignData, projectId: e.target.value, scopeId: "" })}
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-100 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
+                    >
+                      <option value="">Choose a Project...</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>{p.projectName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Stage (Optional)</label>
+                    <select
+                      value={assignData.scopeId || ""}
+                      onChange={(e) => {
+                        const sId = e.target.value;
+                        const proj = projects.find(p => p.id === assignData.projectId);
+                        const stages = proj ? getProjectStages(proj) : [];
+                        const stag = stages.find(s => s.id === sId);
+                        
+                        setAssignData({ 
+                          ...assignData, 
+                          scopeId: sId,
+                          startDate: (stag?.startDate && stag.startDate !== "—") ? stag.startDate : assignData.startDate,
+                          endDate: (stag?.endDate && stag.endDate !== "—") ? stag.endDate : assignData.endDate
+                        });
+                      }}
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-100 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
+                      disabled={!assignData.projectId}
+                    >
+                      <option value="">General Project Use</option>
+                      {assignData.projectId && projects.find(p => p.id === assignData.projectId) && 
+                        getProjectStages(projects.find(p => p.id === assignData.projectId)!).map(s => (
+                          <option key={s.id} value={s.id}>{s.title}</option>
+                        ))
+                      }
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

@@ -111,7 +111,31 @@ function ProjectsContent() {
 
     // Attach scopes and dates
     map.forEach(agg => {
-      agg.scopes = scopesData.filter(s => s.jobKey === agg.jobKey);
+      // 1. Get formal scopes from projectScopes collection
+      const formalScopes = scopesData.filter(s => s.jobKey === agg.jobKey);
+      
+      // 2. Extract "Scope of Works" from raw project line items
+      const lineItems = projectsData.filter(p => getProjectKey(p) === agg.jobKey);
+      const uniqueSOWs = new Set<string>();
+      
+      lineItems.forEach(item => {
+        const sow = item.scopeOfWork || item.pmcGroup || item.costType;
+        if (sow && sow !== "Unassigned") uniqueSOWs.add(sow);
+      });
+
+      // 3. Create virtual scopes for any SOW not already in formal scopes
+      const virtualScopes: Scope[] = Array.from(uniqueSOWs)
+        .filter(sow => !formalScopes.some(fs => fs.title.toLowerCase() === sow.toLowerCase()))
+        .map((sow, idx) => ({
+          id: `virtual-${agg.jobKey}-${idx}`,
+          jobKey: agg.jobKey,
+          title: sow,
+          startDate: "",
+          endDate: "",
+          tasks: []
+        }));
+
+      agg.scopes = [...formalScopes, ...virtualScopes];
       
       // Determine project range from scopes
       let minDate: Date | null = null;
@@ -121,12 +145,12 @@ function ProjectsContent() {
         const start = s.startDate ? new Date(s.startDate) : null;
         const end = s.endDate ? new Date(s.endDate) : null;
 
-        if (start && (!minDate || start < minDate)) minDate = start;
-        if (end && (!maxDate || end > maxDate)) maxDate = end;
+        if (start && (!minDate || (start.getTime() > 0 && start < minDate))) minDate = start;
+        if (end && (!maxDate || (end.getTime() > 0 && end > maxDate))) maxDate = end;
       });
 
-      if (minDate) agg.startDate = minDate.toISOString().split('T')[0];
-      if (maxDate) agg.endDate = maxDate.toISOString().split('T')[0];
+      if (minDate && minDate.getTime() > 0) agg.startDate = minDate.toISOString().split('T')[0];
+      if (maxDate && maxDate.getTime() > 0) agg.endDate = maxDate.toISOString().split('T')[0];
     });
 
     return Array.from(map.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));

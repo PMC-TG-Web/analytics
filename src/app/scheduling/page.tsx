@@ -143,12 +143,12 @@ function SchedulingContent() {
     const distribution: Record<string, number> = {};
     let current = new Date(start.getFullYear(), start.getMonth(), 1);
     const last = new Date(end.getFullYear(), end.getMonth(), 1);
-    while (current <= last) {
+    while (current.getTime() <= last.getTime()) {
       const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
       const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
       const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-      const overlapStart = start > monthStart ? start : monthStart;
-      const overlapEnd = end < monthEnd ? end : monthEnd;
+      const overlapStart = start.getTime() > monthStart.getTime() ? start : monthStart;
+      const overlapEnd = end.getTime() < monthEnd.getTime() ? end : monthEnd;
       const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24) + 1);
       if (overlapDays > 0) distribution[monthKey] = dailyRate * overlapDays;
       current.setMonth(current.getMonth() + 1);
@@ -318,11 +318,11 @@ function SchedulingContent() {
               const latestDateVal = parseDateValue((latest as any).dateCreated);
               if (!currentDate) return latest;
               if (!latestDateVal) return current;
-              return currentDate > latestDateVal ? current : latest;
+              return currentDate.getTime() > latestDateVal.getTime() ? current : latest;
             }, projs[0]);
             
             const projDate = parseDateValue((mostRecentProj as any).dateCreated);
-            if (projDate && (!latestDate || projDate > latestDate)) {
+            if (projDate && (!latestDate || projDate.getTime() > latestDate.getTime())) {
               latestDate = projDate;
               latestCustomer = customer;
             }

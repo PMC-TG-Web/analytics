@@ -386,24 +386,24 @@ export function useProjectSchedule() {
       // 1. Check ALL schedules for dates
       if (sj && sj.dates.length > 0) {
         const sorted = [...sj.dates].sort((a, b) => a.getTime() - b.getTime());
-        if (!projectStart || sorted[0] < projectStart) projectStart = sorted[0];
-        if (!projectEnd || sorted[sorted.length - 1] > projectEnd) projectEnd = sorted[sorted.length - 1];
+        if (!projectStart || sorted[0].getTime() < projectStart.getTime()) projectStart = sorted[0];
+        if (!projectEnd || sorted[sorted.length - 1].getTime() > projectEnd.getTime()) projectEnd = sorted[sorted.length - 1];
         if (viewMode === "day") totalHours = sj.totalHours;
       }
       
       if (lj && lj.weekStarts.length > 0) {
         const sorted = [...lj.weekStarts].sort((a, b) => a.getTime() - b.getTime());
-        if (!projectStart || sorted[0] < projectStart) projectStart = sorted[0];
+        if (!projectStart || sorted[0].getTime() < projectStart.getTime()) projectStart = sorted[0];
         const weekEnd = addDays(sorted[sorted.length - 1], 6);
-        if (!projectEnd || weekEnd > projectEnd) projectEnd = weekEnd;
+        if (!projectEnd || weekEnd.getTime() > projectEnd.getTime()) projectEnd = weekEnd;
         if (viewMode === "week") totalHours = lj.totalHours;
       }
 
       mjs.forEach(mj => {
         const range = getMonthRange(mj.month);
         if (range) {
-          if (!projectStart || range.start < projectStart) projectStart = range.start;
-          if (!projectEnd || range.end > projectEnd) projectEnd = range.end;
+          if (!projectStart || range.start.getTime() < projectStart.getTime()) projectStart = range.start;
+          if (!projectEnd || range.end.getTime() > projectEnd.getTime()) projectEnd = range.end;
           if (viewMode === "month") totalHours = mj.totalHours;
         }
       });
@@ -420,12 +420,12 @@ export function useProjectSchedule() {
         const s = parseScopeDate(scope.startDate);
         const e = parseScopeDate(scope.endDate);
         if (s) {
-          if (!projectStart || s < projectStart) projectStart = s;
-          if (!projectEnd || s > projectEnd) projectEnd = s;
+          if (!projectStart || s.getTime() < projectStart.getTime()) projectStart = s;
+          if (!projectEnd || s.getTime() > projectEnd.getTime()) projectEnd = s;
         }
         if (e) {
-          if (!projectStart || e < projectStart) projectStart = e;
-          if (!projectEnd || e > projectEnd) projectEnd = e;
+          if (!projectStart || e.getTime() < projectStart.getTime()) projectStart = e;
+          if (!projectEnd || e.getTime() > projectEnd.getTime()) projectEnd = e;
         }
       });
 
@@ -512,9 +512,9 @@ export function useProjectSchedule() {
   const displayTasks = useMemo(() => {
     return ganttTasks
       .map((task) => {
-        const clampedStart = task.start > startDateRange ? task.start : startDateRange;
-        const clampedEnd = task.end < latestDateRange ? task.end : latestDateRange;
-        if (clampedEnd < clampedStart) return { ...task, startIndex: 0, endIndex: 0, outOfRange: true };
+        const clampedStart = task.start.getTime() > startDateRange.getTime() ? task.start : startDateRange;
+        const clampedEnd = task.end.getTime() < latestDateRange.getTime() ? task.end : latestDateRange;
+        if (clampedEnd.getTime() < clampedStart.getTime()) return { ...task, startIndex: 0, endIndex: 0, outOfRange: true };
 
         let startIndex = 0, endIndex = 0;
         if (viewMode === "day") {

@@ -23,12 +23,14 @@ const navLinks: NavLink[] = [
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools", color: "bg-red-800" },
   { href: "/constants", label: "Constants", page: "constants", color: "bg-gray-700" },
   { href: "/employees", label: "Employees", page: "employees" },
+  { href: "/certifications", label: "Certifications", page: "employees" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
 ];
 
 export default function Navigation({ currentPage }: { currentPage?: string }) {
   const { user, loading } = useAuth();
-
+  // We can use window.location.pathname if we want, but sticking to existing pattern
+  
   if (loading || !user) {
     return null;
   }
@@ -40,7 +42,8 @@ export default function Navigation({ currentPage }: { currentPage?: string }) {
           return null;
         }
 
-        const isActive = currentPage === link.page;
+        // Improved active check
+        const isActive = currentPage === link.page || (typeof window !== 'undefined' && window.location.pathname === link.href);
         const bgColor = link.color || "bg-teal-800";
 
         return (

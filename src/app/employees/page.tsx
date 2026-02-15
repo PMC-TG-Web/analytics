@@ -5,6 +5,7 @@ import { collection, getDocs, doc, setDoc, deleteDoc, query, where, addDoc } fro
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
+import { Certification } from "@/types/certifications";
 
 interface Employee {
   id: string;
@@ -59,6 +60,17 @@ function EmployeesContent() {
     reason: "",
     type: "Vacation" as const,
     hours: 10, // Default to full day
+  });
+
+  // Certification state
+  const [certModalVisible, setCertModalVisible] = useState(false);
+  const [selectedEmployeeForCert, setSelectedEmployeeForCert] = useState<Employee | null>(null);
+  const [employeeCertifications, setEmployeeCertifications] = useState<Certification[]>([]);
+  const [newCert, setNewCert] = useState({
+    type: "",
+    issueDate: "",
+    expirationDate: "",
+    notes: "",
   });
 
   // Form state
@@ -332,6 +344,88 @@ function EmployeesContent() {
     }
   }
 
+  async function openCertModal(employee: Employee) {
+    setSelectedEmployeeForCert(employee);
+    setNewCert({
+      type: "",
+      issueDate: "",
+      expirationDate: "",
+      notes: "",
+    });
+    
+    try {
+      const q = query(
+        collection(db, "certifications"),
+        where("employeeId", "==", employee.id)
+      );
+      const snapshot = await getDocs(q);
+      const certs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Certification[];
+      
+      certs.sort((a, b) => b.expirationDate.localeCompare(a.expirationDate));
+      setEmployeeCertifications(certs);
+      setCertModalVisible(true);
+    } catch (error) {
+      console.error("Failed to load certifications:", error);
+      alert("Failed to load certification records");
+    }
+  }
+
+  async function addCert() {
+    if (!selectedEmployeeForCert) return;
+    if (!newCert.type || !newCert.expirationDate) {
+      alert("Please provide certification type and expiration date");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const certData = {
+        employeeId: selectedEmployeeForCert.id,
+        employeeName: `${selectedEmployeeForCert.firstName} ${selectedEmployeeForCert.lastName}`,
+        type: newCert.type,
+        issueDate: newCert.issueDate,
+        expirationDate: newCert.expirationDate,
+        notes: newCert.notes,
+        createdAt: new Date().toISOString(),
+      };
+
+      const docRef = await addDoc(collection(db, "certifications"), certData);
+
+      const createdCert: Certification = {
+        id: docRef.id,
+        ...certData
+      };
+
+      setEmployeeCertifications([createdCert, ...employeeCertifications]);
+      setNewCert({
+        type: "",
+        issueDate: "",
+        expirationDate: "",
+        notes: "",
+      });
+    } catch (error) {
+      console.error("Failed to add certification:", error);
+      alert("Failed to save certification record");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteCert(id: string) {
+    if (!confirm("Are you sure you want to delete this certification?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "certifications", id));
+      setEmployeeCertifications(employeeCertifications.filter(c => c.id !== id));
+    } catch (error) {
+      console.error("Failed to delete certification:", error);
+      alert("Failed to delete record");
+    }
+  }
+
   const activeCount = employees.filter((e) => e.isActive).length;
   const inactiveCount = employees.filter((e) => !e.isActive).length;
 
@@ -347,16 +441,51 @@ function EmployeesContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+    <div className="min-h-screen bg-gray-50 p-8 flex flex-col font-sans">
+      <div className="max-w-7xl mx-auto w-full">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-4xl font-black text-gray-950 uppercase tracking-tighter">Employees</h1>
+            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-1 italic">
               {activeCount} active, {inactiveCount} inactive • Total: {employees.length}
             </p>
           </div>
-          <Navigation currentPage="employees" />
+          <div className="flex flex-wrap items-center gap-3">
+            <a 
+              href="/onboarding/submissions" 
+              className="px-6 py-3 bg-white border-2 border-teal-800 text-teal-800 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-teal-50 transition-all flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Onboarding Submissions
+            </a>
+            <button 
+              onClick={() => {
+                setEditingEmployee(null);
+                setFormData({
+                  firstName: "",
+                  lastName: "",
+                  email: "",
+                  phone: "",
+                  role: "Field Worker",
+                  department: "",
+                  hourlyRate: 0,
+                  isActive: true,
+                  hireDate: new Date().toISOString().split('T')[0],
+                  notes: "",
+                });
+                setModalVisible(true);
+              }}
+              className="px-6 py-3 bg-teal-800 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-teal-900 transition-all shadow-lg shadow-teal-900/20 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Add Employee
+            </button>
+            <Navigation currentPage="employees" />
+          </div>
         </div>
 
         {/* Controls */}
@@ -404,30 +533,23 @@ function EmployeesContent() {
                 </button>
               </div>
             </div>
-
-            <button
-              onClick={openAddModal}
-              className="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition-colors"
-            >
-              + Add Employee
-            </button>
           </div>
         </div>
 
         {/* Employee Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-teal-600 to-teal-700">
-                <tr>
-                  <th className="text-left py-4 px-4 text-sm font-bold text-white">Name</th>
-                  <th className="text-left py-4 px-4 text-sm font-bold text-white">Email</th>
-                  <th className="text-left py-4 px-4 text-sm font-bold text-white">Phone</th>
-                  <th className="text-left py-4 px-4 text-sm font-bold text-white">Role</th>
-                  <th className="text-left py-4 px-4 text-sm font-bold text-white">Department</th>
-                  <th className="text-center py-4 px-4 text-sm font-bold text-white">Rate</th>
-                  <th className="text-center py-4 px-4 text-sm font-bold text-white">Status</th>
-                  <th className="text-center py-4 px-4 text-sm font-bold text-white">Actions</th>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-950">
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Name</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Email</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Phone</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Role</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Department</th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Rate</th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Status</th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -472,6 +594,12 @@ function EmployeesContent() {
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex gap-2 justify-center">
+                          <button
+                            onClick={() => openCertModal(employee)}
+                            className="px-3 py-1 bg-teal-800 text-white text-xs rounded hover:bg-teal-900 transition-colors font-black uppercase tracking-tighter"
+                          >
+                            Certs
+                          </button>
                           <button
                             onClick={() => openTimeOffModal(employee)}
                             className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors font-medium"
@@ -826,6 +954,137 @@ function EmployeesContent() {
                         </button>
                       </div>
                     ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certification Modal */}
+      {certModalVisible && selectedEmployeeForCert && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-teal-800 p-6 flex justify-between items-center shrink-0">
+              <div>
+                <h2 className="text-xl font-black text-white uppercase tracking-tighter">Certification Management</h2>
+                <p className="text-teal-200 text-xs font-bold">{selectedEmployeeForCert.firstName} {selectedEmployeeForCert.lastName}</p>
+              </div>
+              <button 
+                onClick={() => setCertModalVisible(false)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-8 overflow-y-auto custom-scrollbar">
+              {/* New Certification Form */}
+              <div className="bg-teal-50 rounded-2xl p-6 mb-8 border border-teal-200 shadow-sm">
+                <h3 className="text-xs font-black uppercase tracking-widest text-teal-900 mb-4 flex items-center gap-2 italic">
+                  <span className="w-2 h-2 bg-teal-600 rounded-full animate-pulse"></span>
+                  Log New Certification
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black uppercase text-teal-950 mb-1">Certification Type</label>
+                    <input
+                      type="text"
+                      placeholder="OSHA 30, Forklift, CPR, etc."
+                      value={newCert.type}
+                      onChange={(e) => setNewCert({ ...newCert, type: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-teal-200 rounded-xl focus:ring-0 focus:border-teal-500 outline-none text-sm font-bold text-teal-950 placeholder:text-teal-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-teal-950 mb-1">Issue Date (Opt)</label>
+                    <input
+                      type="date"
+                      value={newCert.issueDate}
+                      onChange={(e) => setNewCert({ ...newCert, issueDate: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-teal-200 rounded-xl focus:ring-0 focus:border-teal-500 outline-none text-sm font-bold text-teal-950"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-teal-950 mb-1">Expiration Date</label>
+                    <input
+                      type="date"
+                      value={newCert.expirationDate}
+                      onChange={(e) => setNewCert({ ...newCert, expirationDate: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-teal-200 rounded-xl focus:ring-0 focus:border-teal-500 outline-none text-sm font-bold text-teal-950"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="block text-[10px] font-black uppercase text-teal-950 mb-1">Notes (Optional)</label>
+                    <input
+                      type="text"
+                      value={newCert.notes}
+                      onChange={(e) => setNewCert({ ...newCert, notes: e.target.value })}
+                      className="w-full px-3 py-2 border-2 border-teal-200 rounded-xl focus:ring-0 focus:border-teal-500 outline-none text-sm font-bold text-teal-950 placeholder:text-teal-300"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={addCert}
+                      disabled={saving}
+                      className="w-full bg-teal-600 text-white font-black uppercase text-[10px] tracking-widest py-3 rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "ADD CERT"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Existing Certifications List */}
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-700 mb-4 italic">Certification History</h3>
+                <div className="space-y-2">
+                  {employeeCertifications.length === 0 ? (
+                    <div className="text-center py-8 text-gray-600 text-xs italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      No certifications on file for this employee
+                    </div>
+                  ) : (
+                    employeeCertifications.map((cert) => {
+                      const isExpired = cert.expirationDate && new Date(cert.expirationDate) < new Date();
+                      return (
+                        <div key={cert.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl hover:shadow-md transition-all group">
+                          <div className="flex items-center gap-4">
+                            <div className={`px-3 py-1 rounded-lg border flex flex-col items-center justify-center min-w-[100px] ${
+                              isExpired ? 'bg-red-50 border-red-200 shadow-sm shadow-red-100' : 'bg-green-50 border-green-200 shadow-sm shadow-green-100'
+                            }`}>
+                              <span className={`text-[10px] font-black uppercase leading-tight ${
+                                isExpired ? 'text-red-600' : 'text-green-600'
+                              }`}>Expires</span>
+                              <span className={`text-sm font-black leading-tight ${
+                                isExpired ? 'text-red-900' : 'text-green-900'
+                              }`}>
+                                {cert.expirationDate}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-sm font-black text-gray-950 uppercase tracking-tight">{cert.type}</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                {cert.issueDate && (
+                                  <span className="text-[10px] font-black text-gray-600 uppercase">Issued: {cert.issueDate}</span>
+                                )}
+                                {cert.notes && (
+                                  <span className="text-[10px] font-bold text-gray-700 italic border-l-2 border-gray-300 pl-2 ml-1">— {cert.notes}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteCert(cert.id)}
+                            className="opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-600 text-[10px] font-black uppercase tracking-tighter p-2 transition-all"
+                          >
+                            REMOVE
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

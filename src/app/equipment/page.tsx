@@ -227,7 +227,7 @@ function EquipmentContent() {
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 sm:mb-12">
             <div>
               <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter">Equipment Management</h1>
-              <p className="text-gray-500 font-bold uppercase text-[10px] sm:text-xs tracking-widest mt-1">Inventory and Project Scheduling</p>
+              <p className="text-gray-700 font-black uppercase text-[10px] sm:text-xs tracking-widest mt-1">Inventory and Project Scheduling</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative flex-1 min-w-[200px]">
@@ -236,9 +236,9 @@ function EquipmentContent() {
                   placeholder="SEARCH EQUIPMENT..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white border-2 border-gray-100 rounded-2xl text-xs font-bold uppercase tracking-widest focus:border-teal-500 outline-none transition-all shadow-sm"
+                  className="w-full pl-10 pr-4 py-3 bg-white border-2 border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:border-teal-500 outline-none transition-all shadow-sm placeholder:text-gray-500"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs">🔍</span>
               </div>
               <button
                 onClick={() => {
@@ -271,9 +271,9 @@ function EquipmentContent() {
                     <div key={eq.id} className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 hover:shadow-md transition-all group border-l-4 border-l-teal-600">
                       <div className="flex justify-between items-start mb-4">
                         <div>
-                          <span className="text-[10px] font-black text-teal-600 uppercase tracking-widest mb-1 block">{eq.type}</span>
+                          <span className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-1 block">{eq.type}</span>
                           <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight leading-none">{eq.name}</h3>
-                          {eq.model && <p className="text-xs font-bold text-gray-400 uppercase mt-1">{eq.make} {eq.model}</p>}
+                          {eq.model && <p className="text-xs font-black text-gray-500 uppercase mt-1 tracking-widest">{eq.make} {eq.model}</p>}
                         </div>
                         <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
                           eq.status === 'Available' ? 'bg-green-100 text-green-700' : 
@@ -286,12 +286,12 @@ function EquipmentContent() {
 
                       <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-gray-50 rounded-xl p-3">
-                          <span className="text-[9px] font-black text-gray-400 uppercase block mb-1">SN</span>
-                          <span className="text-[11px] font-bold text-gray-700">{eq.serialNumber || 'N/A'}</span>
+                          <span className="text-[9px] font-black text-gray-500 uppercase block mb-1">SN</span>
+                          <span className="text-[11px] font-black text-gray-900">{eq.serialNumber || 'N/A'}</span>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3">
-                          <span className="text-[9px] font-black text-gray-400 uppercase block mb-1">Rates</span>
-                          <span className="text-[11px] font-bold text-gray-700">${eq.dailyRate}/day</span>
+                          <span className="text-[9px] font-black text-gray-500 uppercase block mb-1">Rates</span>
+                          <span className="text-[11px] font-black text-gray-900">${eq.dailyRate}/day</span>
                         </div>
                       </div>
 
@@ -340,24 +340,24 @@ function EquipmentContent() {
                         <div key={assign.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-orange-200 transition-colors relative group">
                           <button 
                             onClick={() => handleDeleteAssignment(assign.id)}
-                            className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all font-bold text-lg"
+                            className="absolute top-4 right-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all font-black text-lg"
                           >
                             ×
                           </button>
-                          <span className="text-[9px] font-black text-orange-600 uppercase tracking-widest block mb-1">{assign.equipmentName}</span>
+                          <span className="text-[9px] font-black text-orange-700 uppercase tracking-widest block mb-1">{assign.equipmentName}</span>
                           <h4 className="text-sm font-black text-gray-950 uppercase mb-2 leading-tight">{assign.projectName}</h4>
                           <div className="flex items-center gap-4">
                             <div className="flex flex-col">
-                              <span className="text-[9px] font-black text-gray-400 uppercase">From</span>
-                              <span className="text-[11px] font-bold text-gray-700">{assign.startDate}</span>
+                              <span className="text-[9px] font-black text-gray-500 uppercase">From</span>
+                              <span className="text-[11px] font-black text-gray-900">{assign.startDate}</span>
                             </div>
                             <div className="flex flex-col">
-                              <span className="text-[9px] font-black text-gray-400 uppercase">To</span>
-                              <span className="text-[11px] font-bold text-gray-700">{assign.endDate}</span>
+                              <span className="text-[9px] font-black text-gray-500 uppercase">To</span>
+                              <span className="text-[11px] font-black text-gray-900">{assign.endDate}</span>
                             </div>
                           </div>
                           {assign.notes && (
-                            <p className="mt-3 text-[10px] italic text-gray-500 font-medium">"{assign.notes}"</p>
+                            <p className="mt-3 text-[10px] italic text-gray-600 font-extrabold">"{assign.notes}"</p>
                           )}
                         </div>
                       ))
@@ -377,9 +377,9 @@ function EquipmentContent() {
               <div className="flex justify-between items-center mb-10">
                 <div>
                   <h2 className="text-2xl font-black text-gray-950 uppercase tracking-tight">{editingEquipment ? 'Edit Equipment' : 'Add New Equipment'}</h2>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Configure asset details</p>
+                  <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">Configure asset details</p>
                 </div>
-                <button onClick={() => setModalVisible(false)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                <button onClick={() => setModalVisible(false)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-950">
                   <span className="text-xl">×</span>
                 </button>
               </div>
@@ -387,22 +387,22 @@ function EquipmentContent() {
               <form onSubmit={handleSaveEquipment} className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Asset Name</label>
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Asset Name</label>
                     <input
                       required
                       type="text"
                       value={formData.name || ""}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g. Ford F-350 #12"
-                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all placeholder:text-gray-300"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-black outline-none transition-all placeholder:text-gray-400"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Type</label>
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Type</label>
                     <select
                       value={formData.type || "Truck"}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all cursor-pointer appearance-none"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-black outline-none transition-all cursor-pointer appearance-none"
                     >
                       <option value="Truck">Truck</option>
                       <option value="Excavator">Excavator</option>
@@ -413,21 +413,21 @@ function EquipmentContent() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Daily Rate ($)</label>
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Daily Rate ($)</label>
                     <input
                       type="number"
                       value={formData.dailyRate || 0}
                       onChange={(e) => setFormData({ ...formData, dailyRate: parseFloat(e.target.value) })}
-                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-black outline-none transition-all"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Serial Number</label>
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Serial Number</label>
                     <input
                       type="text"
                       value={formData.serialNumber || ""}
                       onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
-                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none transition-all"
+                      className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-black outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -535,11 +535,12 @@ function EquipmentContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assignment Notes</label>
+                  <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest ml-1">Assignment Notes</label>
                   <textarea
                     value={assignData.notes || ""}
                     onChange={(e) => setAssignData({ ...assignData, notes: e.target.value })}
-                    className="w-full px-5 py-4 bg-white border-2 border-gray-200 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none h-24 resize-none"
+                    className="w-full px-5 py-4 bg-white border-2 border-gray-100 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-black outline-none h-24 resize-none placeholder:text-gray-400"
+                    placeholder="Add details about this assignment..."
                   />
                 </div>
 

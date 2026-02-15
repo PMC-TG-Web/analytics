@@ -54,9 +54,9 @@ export default function Navigation({ currentPage }: { currentPage?: string }) {
             key={link.href}
             href={link.href}
             className={`
-              px-2.5 py-1.5 rounded text-[11px] font-bold text-white no-underline transition-all
+              px-2.5 py-1.5 rounded text-[11px] font-black text-white no-underline transition-all
               ${bgColor} 
-              ${isActive ? "ring-2 ring-white ring-inset opacity-100" : "opacity-85 hover:opacity-100"}
+              ${isActive ? "ring-2 ring-white ring-inset opacity-100 scale-105" : "opacity-95 hover:opacity-100"}
             `}
           >
             {link.label}
@@ -66,7 +66,7 @@ export default function Navigation({ currentPage }: { currentPage?: string }) {
       
       <a
         href="/api/auth/logout"
-        className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-bold text-white bg-gray-500 hover:bg-gray-600 no-underline opacity-80 transition-all"
+        className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-gray-800 hover:bg-black no-underline transition-all shadow-sm"
       >
         Sign Out
       </a>

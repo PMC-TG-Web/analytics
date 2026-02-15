@@ -520,11 +520,12 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
 
         const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
 
-      // Optimization: Fetch only active projects. 
-      // Excluding "Bid Submitted" and "Lost" saves ~18,000 document reads.
+      // Optimization: Fetch only active, non-archived projects. 
+      // Excluding "Bid Submitted", "Lost", and Archived saves ~18,000 document reads.
       const projectsSnapshot = await getDocs(query(
         collection(db, "projects"),
-        where("status", "not-in", ["Bid Submitted", "Lost"])
+        where("status", "not-in", ["Bid Submitted", "Lost"]),
+        where("projectArchived", "==", false)
       ));
       
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);

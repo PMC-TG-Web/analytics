@@ -71,13 +71,30 @@ function ProjectsContent() {
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [showArchived]);
 
   async function loadAllData() {
     setLoading(true);
     try {
+      // Optimize: Only fetch non-Lost, non-Invitations, and active projects by default
+      // This combined with the "showArchived" toggle will significantly reduce reads
+      let projectsQuery;
+      
+      if (showArchived) {
+        projectsQuery = query(
+          collection(db, "projects"), 
+          where("status", "not-in", ["Lost", "Invitations"])
+        );
+      } else {
+        projectsQuery = query(
+          collection(db, "projects"), 
+          where("status", "not-in", ["Lost", "Invitations"]),
+          where("projectArchived", "==", false)
+        );
+      }
+
       const [projSnap, scopeSnap, eqSnap, assignSnap] = await Promise.all([
-        getDocs(collection(db, "projects")),
+        getDocs(projectsQuery),
         getDocs(collection(db, "projectScopes")),
         getDocs(collection(db, "equipment")),
         getDocs(collection(db, "equipment_assignments"))

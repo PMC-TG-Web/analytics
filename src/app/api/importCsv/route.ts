@@ -8,7 +8,7 @@ import { parse } from 'csv-parse/sync';
 export async function GET() {
   try {
     // Path to the CSV file
-    const csvPath = path.join(process.cwd(), 'Bid_Distro_Hours.csv');
+    const csvPath = path.join(process.cwd(), 'src', 'Bid_Distro-Preconstruction.csv');
     let fileContent;
     try {
       fileContent = fs.readFileSync(csvPath, 'utf8');
@@ -56,22 +56,28 @@ export async function GET() {
     // Import all rows with correct field names
     let imported = 0;
     for (const row of records as Array<Record<string, string>>) {
-      const hours = parseFloat((row["Hours"] || "0").replace(/[^\d.\-]/g, ""));
-      const cost = parseFloat((row["Total Cost"] || "0").replace(/[^\d.\-]/g, ""));
-      const sales = parseFloat((row["Total Sales"] || "0").replace(/[^\d.\-]/g, ""));
-      const costitems = (typeof row["Costitems"] === "undefined" || row["Costitems"] === "") ? null : row["Costitems"];
-      const costType = (typeof row["CostType"] === "undefined" || row["CostType"] === "") ? null : row["CostType"];
-      const quantity = parseFloat((row["Quantity"] || "0").replace(/[^\d.\-]/g, ""));
-      const status = (typeof row["Status"] === "undefined" || row["Status"] === "") ? null : row["Status"];
-      const projectName = (typeof row["Estimate Project Name"] === "undefined" || row["Estimate Project Name"] === "") ? null : row["Estimate Project Name"];
-      const projectNumber = (typeof row["Project Number"] === "undefined" || row["Project Number"] === "") ? null : row["Project Number"];
-      const customer = (typeof row["Customer Company"] === "undefined" || row["Customer Company"] === "") ? null : row["Customer Company"];
-      const estimator = (typeof row["Estimator"] === "undefined" || row["Estimator"] === "") ? null : row["Estimator"];
-      const dateCreated = (typeof row["Date Created"] === "undefined" || row["Date Created"] === "") ? null : row["Date Created"];
-      const dateUpdated = (typeof row["Date Updated"] === "undefined" || row["Date Updated"] === "") ? null : row["Date Updated"];
+      const hours = parseFloat(String(row["hours"] || "0").replace(/[^\d.\-]/g, "")) || 0;
+      const cost = parseFloat(String(row["cost"] || "0").replace(/[^\d.\-]/g, "")) || 0;
+      const sales = parseFloat(String(row["sales"] || "0").replace(/[^\d.\-]/g, "")) || 0;
+      
+      const status = row["status"] ? String(row["status"]).trim() : null;
+      const projectName = row["projectName"] ? String(row["projectName"]).trim() : null;
+      const projectNumber = row["projectNumber"] ? String(row["projectNumber"]).trim() : null;
+      const customer = row["customer"] ? String(row["customer"]).trim() : null;
+      const estimator = row["estimator"] ? String(row["estimator"]).trim() : null;
+      const costitems = row["Costitems"] ? String(row["Costitems"]).trim() : null;
+      const costType = row["CostType"] ? String(row["CostType"]).trim() : null;
+      const quantity = parseFloat(String(row["Quantity"] || "0").replace(/[^\d.\-]/g, "")) || 0;
+      const pmcGroup = row["PMCGroup"] ? String(row["PMCGroup"]).trim() : null;
+      
+      const dateCreated = row["dateCreated"] || null;
+      const dateUpdated = row["dateUpdated"] || null;
+      const scopeOfWork = row["ScopeOfWork"] || null;
+      const projectArchived = row["ProjectArchived"] === "Yes";
+      
       try {
         // Use dateUpdated if available, else dateCreated, as the status timestamp
-        let statusTimestamp = row["Date Updated"] || row["Date Created"] || null;
+        let statusTimestamp = row["dateUpdated"] || row["dateCreated"] || null;
         if (statusTimestamp) {
           const d = new Date(statusTimestamp);
           if (!isNaN(d.getTime())) statusTimestamp = d.toISOString();
@@ -88,9 +94,12 @@ export async function GET() {
           projectNumber,
           customer,
           estimator,
+          pmcGroup,
           dateCreated,
           dateUpdated,
           statusTimestamp,
+          scopeOfWork,
+          projectArchived
         });
         imported++;
       } catch (e) {

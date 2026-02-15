@@ -38,7 +38,7 @@ export function useProjectSchedule() {
         where("status", "not-in", ["Lost"])
       ));
       const docMap: Record<string, string> = {};
-      const projectCostItems: Record<string, Array<{ costitems: string; pmcGroup: string; sales: number; cost: number; hours: number; costType: string }>> = {};
+      const projectCostItems: Record<string, Array<{ costitems: string; scopeOfWork: string; pmcGroup: string; sales: number; cost: number; hours: number; costType: string }>> = {};
       const allProjects: ProjectInfo[] = [];
 
       projectsSnapshot.docs.forEach((doc) => {
@@ -74,6 +74,7 @@ export function useProjectSchedule() {
 
         projectCostItems[itemJobKey].push({
           costitems: (data.costitems || "").toString(),
+          scopeOfWork: (data.scopeOfWork || "").toString(),
           pmcGroup: (data.pmcGroup || data.pmcgroup || "").toString(),
           sales: typeof data.sales === "number" ? data.sales : 0,
           cost: typeof data.cost === "number" ? data.cost : 0,
@@ -103,11 +104,14 @@ export function useProjectSchedule() {
         const costItems = projectCostItems[jobKey] || [];
         const titleLower = title.toLowerCase();
         const titleWithoutQty = titleLower
-          .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "")
+          .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
           .trim();
 
         const matchedItems = costItems.filter((item) =>
-          item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems)
+          item.scopeOfWork.includes(titleWithoutQty) || 
+          titleWithoutQty.includes(item.scopeOfWork) ||
+          item.costitems.includes(titleWithoutQty) || 
+          titleWithoutQty.includes(item.costitems)
         );
 
         const totals = matchedItems.reduce(
@@ -149,7 +153,7 @@ export function useProjectSchedule() {
           
           costItems.forEach(item => {
             if (item.hours <= 0 && item.sales <= 0) return;
-            const groupName = item.pmcGroup || item.costType || "Other";
+            const groupName = item.scopeOfWork || item.pmcGroup || item.costType || "Other";
             if (!groups[groupName]) {
               groups[groupName] = { title: groupName, hours: 0, sales: 0 };
             }
@@ -178,7 +182,15 @@ export function useProjectSchedule() {
         const docData = doc.data() as ShortTermDoc;
         if (doc.id === "_placeholder" || !docData.jobKey) return;
 
-        const jobKey = docData.jobKey;
+        let jobKey = docData.jobKey;
+        // Normalize jobKey to Customer~Number~Name format
+        const parts = jobKey.split(/[~|]/).map(p => p.trim());
+        if (parts.length >= 3) {
+          jobKey = `${parts[0]}~${parts[1]}~${parts[2]}`;
+        } else if (jobKey.includes('|')) {
+          jobKey = jobKey.replace(/\|/g, '~');
+        }
+
         if (!shortTermMap.has(jobKey)) {
           shortTermMap.set(jobKey, {
             jobKey,
@@ -216,7 +228,15 @@ export function useProjectSchedule() {
         const docData = doc.data() as LongTermDoc;
         if (doc.id === "_placeholder" || !docData.jobKey) return;
 
-        const jobKey = docData.jobKey;
+        let jobKey = docData.jobKey;
+        // Normalize jobKey to Customer~Number~Name format
+        const parts = jobKey.split(/[~|]/).map(p => p.trim());
+        if (parts.length >= 3) {
+          jobKey = `${parts[0]}~${parts[1]}~${parts[2]}`;
+        } else if (jobKey.includes('|')) {
+          jobKey = jobKey.replace(/\|/g, '~');
+        }
+
         if (!longTermMap.has(jobKey)) {
           longTermMap.set(jobKey, {
             jobKey,
@@ -299,20 +319,18 @@ export function useProjectSchedule() {
     };
 
     projects.forEach((project) => {
-      // Consider schedules
-      if (viewMode === "day") {
-        const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
-        sj?.dates.forEach(date => consider(date));
-      } else if (viewMode === "week") {
-        const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
-        lj?.weekStarts.forEach(ws => consider(addDays(ws, 6)));
-      } else {
-        const mj = monthJobs.find(j => j.jobKey === project.jobKey);
-        if (mj) {
-          const range = getMonthRange(mj.month);
-          if (range) consider(range.end);
-        }
-      }
+      // Consider ALL schedules regardless of viewMode to set the chart range
+      const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
+      sj?.dates.forEach(date => consider(date));
+      
+      const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
+      lj?.weekStarts.forEach(ws => consider(addDays(ws, 6)));
+
+      const mjs = monthJobs.filter(j => j.jobKey === project.jobKey);
+      mjs.forEach(mj => {
+        const range = getMonthRange(mj.month);
+        if (range) consider(range.end);
+      });
 
       // Consider scopes
       const rawScopes = [
@@ -360,38 +378,44 @@ export function useProjectSchedule() {
 
       // If we have virtual scopes but also real schedules, ensure those virtual scopes 
       // appear even if their dates are empty by giving them a fallback timeline
-      const hasRealSchedule = projectStart && projectEnd;
       
-      // Check schedules for dates
-      if (viewMode === "day") {
-        const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
-        if (sj && sj.dates.length > 0) {
-          const sorted = [...sj.dates].sort((a, b) => a.getTime() - b.getTime());
-          projectStart = sorted[0];
-          projectEnd = sorted[sorted.length - 1];
-          totalHours = sj.totalHours;
-        }
-      } else if (viewMode === "week") {
-        const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
-        if (lj && lj.weekStarts.length > 0) {
-          const sorted = [...lj.weekStarts].sort((a, b) => a.getTime() - b.getTime());
-          projectStart = sorted[0];
-          projectEnd = addDays(sorted[sorted.length - 1], 6);
-          totalHours = lj.totalHours;
-        }
-      } else {
-        const mj = monthJobs.find(j => j.jobKey === project.jobKey);
-        if (mj) {
-          const range = getMonthRange(mj.month);
-          if (range) {
-            projectStart = range.start;
-            projectEnd = range.end;
-            totalHours = mj.totalHours;
-          }
-        }
+      const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
+      const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
+      const mjs = monthJobs.filter(j => j.jobKey === project.jobKey);
+
+      // 1. Check ALL schedules for dates
+      if (sj && sj.dates.length > 0) {
+        const sorted = [...sj.dates].sort((a, b) => a.getTime() - b.getTime());
+        if (!projectStart || sorted[0] < projectStart) projectStart = sorted[0];
+        if (!projectEnd || sorted[sorted.length - 1] > projectEnd) projectEnd = sorted[sorted.length - 1];
+        if (viewMode === "day") totalHours = sj.totalHours;
+      }
+      
+      if (lj && lj.weekStarts.length > 0) {
+        const sorted = [...lj.weekStarts].sort((a, b) => a.getTime() - b.getTime());
+        if (!projectStart || sorted[0] < projectStart) projectStart = sorted[0];
+        const weekEnd = addDays(sorted[sorted.length - 1], 6);
+        if (!projectEnd || weekEnd > projectEnd) projectEnd = weekEnd;
+        if (viewMode === "week") totalHours = lj.totalHours;
       }
 
-      // Check scopes for dates if none found in schedules
+      mjs.forEach(mj => {
+        const range = getMonthRange(mj.month);
+        if (range) {
+          if (!projectStart || range.start < projectStart) projectStart = range.start;
+          if (!projectEnd || range.end > projectEnd) projectEnd = range.end;
+          if (viewMode === "month") totalHours = mj.totalHours;
+        }
+      });
+
+      // If no hours for current viewMode, but we have them elsewhere, pick any for display
+      if (totalHours === 0) {
+        if (viewMode === "day" && lj) totalHours = lj.totalHours;
+        else if (viewMode === "week" && sj) totalHours = sj.totalHours;
+        else if (mjs.length > 0) totalHours = mjs[0].totalHours;
+      }
+
+      // 2. Check scopes for dates
       jobScopes.forEach(scope => {
         const s = parseScopeDate(scope.startDate);
         const e = parseScopeDate(scope.endDate);
@@ -407,9 +431,9 @@ export function useProjectSchedule() {
 
       // FALLBACK: Default to first Monday of the first month with hours in WIP
       if (!projectStart || !projectEnd) {
-        const mj = monthJobs.find(j => j.jobKey === project.jobKey);
-        if (mj && mj.month) {
-          const [year, month] = mj.month.split("-").map(Number);
+        const firstMj = mjs[0];
+        if (firstMj && firstMj.month) {
+          const [year, month] = firstMj.month.split("-").map(Number);
           const firstOfMonth = new Date(year, month - 1, 1);
           // Find first Monday
           while (firstOfMonth.getDay() !== 1) {

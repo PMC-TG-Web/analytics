@@ -248,8 +248,8 @@ function SchedulingContent() {
   }, [months]);
 
   const uniqueJobs = useMemo(() => {
-    const qualifyingStatuses = ["In Progress", "Accepted"];
-    const priorityStatuses = ["Accepted", "In Progress", "Complete"];
+    const qualifyingStatuses = ["In Progress"];
+    const priorityStatuses = ["In Progress"];
     
     // Step 1: Filter active projects with exclusions
     const activeProjects = projects.filter((p) => {
@@ -582,7 +582,7 @@ function SchedulingContent() {
   }
 
   const allJobs = useMemo(() => {
-    const qualifyingStatuses = ["In Progress", "Accepted"];
+    const qualifyingStatuses = ["In Progress"];
     
     // Ensure all existing schedules have all months initialized and get current status
     const updatedSchedules = schedules.map((schedule) => {
@@ -683,7 +683,7 @@ function SchedulingContent() {
       if (validScopes.length > 0) {
         // Find if this job is qualifying
         const jobInfo = uniqueJobs.find(j => j.key === jobKey);
-        if (!jobInfo || !["In Progress", "Accepted"].includes(jobInfo.status || "")) return;
+        if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
         
         projectsWithGanttData.add(jobKey);
 
@@ -848,9 +848,9 @@ function SchedulingContent() {
               if (validScopes.length > 0) {
                 projectsWithGanttData.add(jobKey);
                 
-                // Only include if the job is In Progress or Accepted
+                // Only include if the job is In Progress
                 const jobInfo = uniqueJobs.find(j => j.key === jobKey);
-                if (!jobInfo || !["In Progress", "Accepted"].includes(jobInfo.status || "")) return;
+                if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
 
                 const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
                 const projectCostItems = jobProjects.map(p => ({
@@ -946,7 +946,7 @@ function SchedulingContent() {
             </thead>
             <tbody>
               {filteredJobs.map((job) => {
-                const statusColor = job.status === "Accepted" ? "#15616D" : job.status === "In Progress" ? "#E06C00" : "#ef4444";
+                const statusColor = job.status === "In Progress" ? "#E06C00" : "#ef4444";
                 return (
                   <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.customer}</td>
@@ -966,7 +966,6 @@ function SchedulingContent() {
                           cursor: "pointer",
                         }}
                       >
-                        <option value="Accepted">Accepted</option>
                         <option value="In Progress">In Progress</option>
                         <option value="Complete">Complete</option>
                         <option value="Delayed">Delayed</option>

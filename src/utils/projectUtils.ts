@@ -142,8 +142,34 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
   return { aggregated, dedupedByCustomer };
 }
 
+export const isExcludedFromDashboard = (project: Project): boolean => {
+  if (project.projectArchived) return true;
+  
+  const status = (project.status || "").toString().toLowerCase().trim();
+  if (status === "invitations" || status === "to do" || status === "todo" || status === "to-do") return true;
+
+  const customer = (project.customer ?? "").toString().toLowerCase();
+  if (customer.includes("sop inc")) return true;
+
+  const projectName = (project.projectName ?? "").toString().toLowerCase();
+  const excludedNames = [
+    "pmc operations",
+    "pmc shop time",
+    "pmc test project",
+    "alexander drive addition latest"
+  ];
+  if (excludedNames.includes(projectName)) return true;
+  if (projectName.includes("sandbox")) return true;
+  if (projectName.includes("raymond king")) return true;
+
+  const projectNumber = (project.projectNumber ?? "").toString().toLowerCase();
+  if (projectNumber === "701 poplar church rd") return true;
+
+  return false;
+};
+
 export const getEnrichedScopes = (scopes: Scope[], projects: Project[]): Scope[] => {
-  const projectCostItems: Record<string, Array<{ costitems: string; sales: number; cost: number; hours: number; costType: string }>> = {};
+  const projectCostItems: Record<string, Array<{ costitems: string; scopeOfWork: string; sales: number; cost: number; hours: number; costType: string }>> = {};
 
   projects.forEach((p) => {
     const jobKey = p.jobKey || getProjectKey(p);
@@ -152,6 +178,7 @@ export const getEnrichedScopes = (scopes: Scope[], projects: Project[]): Scope[]
 
     projectCostItems[jobKey].push({
       costitems: (p.costitems || "").toLowerCase(),
+      scopeOfWork: (p.scopeOfWork || "").toLowerCase(),
       sales: typeof p.sales === "number" ? p.sales : 0,
       cost: typeof p.cost === "number" ? p.cost : 0,
       hours: typeof p.hours === "number" ? p.hours : 0,
@@ -170,7 +197,10 @@ export const getEnrichedScopes = (scopes: Scope[], projects: Project[]): Scope[]
 
     const costItems = projectCostItems[jobKey] || [];
     const matchedItems = costItems.filter((item) =>
-      item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems)
+      item.scopeOfWork.includes(titleWithoutQty) || 
+      titleWithoutQty.includes(item.scopeOfWork) ||
+      item.costitems.includes(titleWithoutQty) || 
+      titleWithoutQty.includes(item.costitems)
     );
 
     const totals = matchedItems.reduce(

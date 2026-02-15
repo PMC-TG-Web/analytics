@@ -119,8 +119,7 @@ function WIPReportContent() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const qualifyingStatuses = ["In Progress"];
-  const priorityStatuses = ["In Progress", "Complete"];
+  const qualifyingStatus = "In Progress";
 
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -476,8 +475,8 @@ function WIPReportContent() {
     // We are now keeping ALL qualifying projects to ensure we capture the full 33,503 pool
     const qualifyingProjects = projects.filter((p) => {
       if ((p as any).projectArchived) return false;
-      const status = (p.status || "").toString();
-      if (!qualifyingStatuses.includes(status)) return false;
+      const status = (p.status || "").toString().toLowerCase().trim();
+      if (status !== "in progress") return false;
 
       const customer = (p.customer ?? "").toString().toLowerCase();
       if (customer.includes("sop inc")) return false;
@@ -496,7 +495,8 @@ function WIPReportContent() {
 
     // Also include projects that only exist as schedules but are "In Progress"
     schedules.forEach(s => {
-      if (!qualifyingStatuses.includes(s.status || "")) return;
+      const status = (s.status || "").toString().toLowerCase().trim();
+      if (status !== "in progress") return;
       const key = s.jobKey || `${s.customer || "" }~${s.projectNumber || "" }~${s.projectName || "" }`;
       const isExcluded = (s.customer || "").toLowerCase().includes("sop inc") || 
                         (s.projectName || "").toLowerCase().includes("sandbox");
@@ -539,13 +539,19 @@ function WIPReportContent() {
           projectName: p.projectName,
           projectNumber: p.projectNumber,
           costitems: (p.costitems || "").toLowerCase(),
+          scopeOfWork: (p.scopeOfWork || "").toLowerCase(),
           hours: typeof p.hours === "number" ? p.hours : 0,
           costType: typeof p.costType === "string" ? p.costType : "",
         }));
 
         validScopes.forEach(scope => {
           const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
-          const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
+          const matchedItems = projectCostItems.filter((item) => 
+            item.scopeOfWork.includes(titleWithoutQty) || 
+            titleWithoutQty.includes(item.scopeOfWork) ||
+            item.costitems.includes(titleWithoutQty) || 
+            titleWithoutQty.includes(item.costitems)
+          );
           const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
           if (scopeHours <= 0) return;
           const hourDist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
@@ -564,7 +570,8 @@ function WIPReportContent() {
     });
 
     schedules.forEach((schedule) => {
-      if (schedule.status === 'Complete' || projectsWithGanttData.has(schedule.jobKey || "")) return;
+      const status = (schedule.status || "").toString().toLowerCase().trim();
+      if (status !== "in progress" || projectsWithGanttData.has(schedule.jobKey || "")) return;
       if (!qualifyingJobKeys.has(schedule.jobKey || "")) return;
       normalizeAllocations(schedule.allocations).forEach((alloc) => {
         if (!isValidMonthKey(alloc.month)) return;
@@ -589,7 +596,7 @@ function WIPReportContent() {
       scheduleSalesMap.set(key, (scheduleSalesMap.get(key) || 0) + sales);
 
       // Bid Submitted Sales
-      if ((project.status || "") === "Bid Submitted") {
+      if ((project.status || "").toString().toLowerCase().trim() === "bid submitted") {
         const projectDate = parseDateValue(project.dateCreated) || parseDateValue(project.dateUpdated);
         if (projectDate) {
           const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
@@ -599,7 +606,8 @@ function WIPReportContent() {
     });
     
     schedules.forEach((schedule) => {
-      if (schedule.status === 'Complete') return;
+      const status = (schedule.status || "").toString().toLowerCase().trim();
+      if (status !== "in progress") return;
       const key = schedule.jobKey || `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
       const projectSales = scheduleSalesMap.get(key);
       if (!projectSales) return;
@@ -636,8 +644,8 @@ function WIPReportContent() {
       const scheduleBudget = schedule ? (schedule.totalHours || 0) : 0;
       // Additive Budgeting: Sum of Hours + Projected Hours for ALL qualifying projects matching this jobKey
       const lineItemBudget = jobProjects.reduce((sum, p) => {
-        const status = (p.status || "").toString();
-        if (!qualifyingStatuses.includes(status)) return sum;
+        const status = (p.status || "").toString().toLowerCase().trim();
+        if (status !== "in progress") return sum;
         if ((p as any).projectArchived) return sum; // Skip archived projects
         
         return sum + (Number(p.hours) || 0) + (Number(p.projectedPreconstHours) || 0);
@@ -693,13 +701,13 @@ function WIPReportContent() {
 
     // Step 5: Calculate Scheduled Hours for Unscheduled reconciliation
     const allInProgressScheduledHours = inProgressScheduledHoursForGantt + schedules
-      .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
+      .filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress" && !projectsWithGanttData.has(s.jobKey || ""))
       .reduce((sum, schedule) => {
         return sum + normalizeAllocations(schedule.allocations).reduce((acc, a) => acc + (schedule.totalHours * (a.percent / 100)), 0);
       }, 0);
 
     const filteredInProgressHours = filteredInProgressHoursFromGantt + schedules
-      .filter(s => qualifyingStatuses.includes(s.status || "") && !projectsWithGanttData.has(s.jobKey || ""))
+      .filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress" && !projectsWithGanttData.has(s.jobKey || ""))
       .reduce((sum, schedule) => {
         return sum + normalizeAllocations(schedule.allocations)
           .filter(a => !yearFilter || a.month.startsWith(yearFilter))
@@ -719,7 +727,7 @@ function WIPReportContent() {
       filteredInProgressHours,
       poolBreakdown
     };
-  }, [scopesByJobKey, projects, schedules, yearFilter, qualifyingStatuses, priorityStatuses]);
+  }, [scopesByJobKey, projects, schedules, yearFilter, qualifyingStatus]);
 
   const months = Object.keys(monthlyData).sort();
   const totalHours = Object.values(monthlyData).reduce((sum, m) => sum + m.hours, 0);
@@ -756,9 +764,12 @@ function WIPReportContent() {
   
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+  // Filter schedules to ONLY include In Progress for the rest of the UI (counts, filters)
+  const qualifyingSchedules = schedules.filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress");
+
   // Get unique customers and projects for filters
-  const uniqueCustomers = Array.from(new Set(schedules.map(s => s.customer || "Unknown"))).sort();
-  const uniqueProjects = Array.from(new Set(schedules.map(s => s.projectName || "Unnamed"))).sort();
+  const uniqueCustomers = Array.from(new Set(qualifyingSchedules.map(s => s.customer || "Unknown"))).sort();
+  const uniqueProjects = Array.from(new Set(qualifyingSchedules.map(s => s.projectName || "Unnamed"))).sort();
 
   // Filter monthly data based on selected filters
   const filteredMonthlyData: Record<string, MonthlyWIP> = {};
@@ -803,7 +814,8 @@ function WIPReportContent() {
   
   // Unscheduled calculation uses the unified pool from useMemo
   const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
-    if (!qualifyingStatuses.includes(schedule.status || "")) return sum;
+    const status = (schedule.status || "").toString().toLowerCase().trim();
+    if (status !== "in progress") return sum;
     const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
     if (projectsWithGanttData.has(key)) return sum;
     if (customerFilter && schedule.customer !== customerFilter) return sum;
@@ -876,7 +888,7 @@ function WIPReportContent() {
         <SummaryCard label="Total Scheduled Hours" value={filteredTotalHours.toFixed(1)} />
         <SummaryCard label="Average Monthly Hours" value={filteredAvgHours.toFixed(1)} />
         <SummaryCard label="Months Scheduled" value={filteredMonths.length} />
-        <SummaryCard label="Scheduled Jobs" value={schedules.length} />
+        <SummaryCard label="Scheduled Jobs" value={qualifyingSchedules.length} />
       </div>
 
       {/* Unscheduled Hours Container */}
@@ -885,7 +897,7 @@ function WIPReportContent() {
           <div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Unscheduled Hours</div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)" }}>
-              {qualifyingStatuses.join(", ")} Jobs
+              {qualifyingStatus} Jobs
             </div>
           </div>
           <div style={{ textAlign: "right" }}>

@@ -1,0 +1,25 @@
+Column Name,Description
+projectName,The name of the project.
+projectNumber,Unique identifier/number for the project.
+customer,The customer associated with the project.
+status,Current status (Accepted\, In Progress\, Bid Submitted\, Lost).
+projectStage,Current stage (e.g.\, Bidding).
+estimator,The primary estimator assigned.
+projectManager,The assigned Project Manager.
+dateCreated,Original creation date.
+dateUpdated,Last substantial data update.
+projectUpdateDate,Standardized update timestamp.
+sales,Total sales value.
+cost,Total cost value.
+hours,Budgeted hours for the record.
+laborSales,Sales specifically for labor.
+laborCost,Cost specifically for labor.
+quantity,Quantitative work unit.
+pmcGroup,The PMC classification group (e.g.\, Slab On Grade Labor).
+costitems,The specific item being tracked (e.g.\, Bollards\, Square Feet).
+costType,Classification of cost (e.g.\, Labor\, Part).
+active,Boolean flag for active status.
+projectArchived,Boolean flag for project archiving.
+testProject,Boolean flag for test data.
+reasonForLoss,Object containing details if the bid was lost.
+jobKey,Generated standardized key as Customer~Number~Name.

@@ -9,7 +9,8 @@ import Navigation from "@/components/Navigation";
 import { 
   calculateAggregated, 
   getProjectDate, 
-  getProjectKey 
+  getProjectKey,
+  isExcludedFromDashboard
 } from "@/utils/projectUtils";
 import { SummaryCard } from "./components/SummaryCard";
 import { FunnelChart } from "./components/FunnelChart";
@@ -74,9 +75,9 @@ function DashboardContent() {
   const filteredProjects = useMemo(() => {
     if (!isFullScan && !startDate && !endDate) return [];
     return projects.filter(p => {
-      if (p.projectArchived) return false;
-      if (p.status === "Invitations") return false;
-      
+      // Apply centralized dashboard exclusions
+      if (isExcludedFromDashboard(p)) return false;
+
       // Apply date range filter
       if (startDate || endDate) {
         const projectDate = getProjectDate(p);
@@ -94,20 +95,9 @@ function DashboardContent() {
           if (projectDate > end) return false;
         }
       }
-      const customer = (p.customer ?? "").toString().toLowerCase();
-      if (customer.includes("sop inc")) return false;
-      const projectName = (p.projectName ?? "").toString().toLowerCase();
-      if (projectName === "pmc operations") return false;
-      if (projectName === "pmc shop time") return false;
-      if (projectName === "pmc test project") return false;
-      if (projectName.includes("sandbox")) return false;
-      if (projectName.includes("raymond king")) return false;
-      if (projectName === "alexander drive addition latest") return false;
-      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
-      if (projectNumber === "701 poplar church rd") return false;
       return true;
     });
-  }, [projects, startDate, endDate, isFullScan]);
+  }, [projects, isFullScan, startDate, endDate]);
 
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     return calculateAggregated(filteredProjects);
@@ -131,7 +121,7 @@ function DashboardContent() {
       const rawCustomerProjects = await getProjectsByCustomer(customerName);
       // We must apply the same aggregation logic to these raw records
       const { aggregated } = calculateAggregated(
-        rawCustomerProjects.filter(p => p.status !== "Invitations")
+        rawCustomerProjects.filter(p => !isExcludedFromDashboard(p))
       );
       customerProjects = aggregated;
       setLoading(false);
@@ -159,7 +149,9 @@ function DashboardContent() {
     if (useSummary && summary) {
       // Map summary data to the format components expect
       return Object.entries(summary.statusGroups).reduce((acc, [status, data]) => {
-        if (status === "Invitations") return acc;
+        const norm = status.toLowerCase().trim();
+        const excluded = ["invitations", "to do", "todo", "to-do", "unknown"];
+        if (excluded.includes(norm)) return acc;
         acc[status] = data;
         return acc;
       }, {} as Record<string, any>);
@@ -169,7 +161,7 @@ function DashboardContent() {
     const groups: Record<string, any> = {};
     aggregatedProjects.forEach((p) => {
       const status = p.status || 'Unknown';
-      if (status === "Invitations") return;
+      if (isExcludedFromDashboard(p)) return;
       if (!groups[status]) groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {} };
       groups[status].sales += (p.sales ?? 0);
       groups[status].cost += (p.cost ?? 0);
@@ -291,10 +283,60 @@ function DashboardContent() {
   const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
+  const handleExportCSV = () => {
+    // Collect projects to export - prefer the full list if available
+    const dataToExport = projects.length > 0 ? projects : (dedupedByCustomer || []);
+    if (dataToExport.length === 0) {
+      alert("No data available to export. Try applying a date range to trigger a full scan.");
+      return;
+    }
+
+    const headers = [
+      "Job Key", "Project Number", "Project Name", "Customer", "Status", 
+      "Estimator", "PMC Group", "Hours", "Sales", "Cost", "Date Created", "Date Updated"
+    ];
+
+    const rows = dataToExport.map(p => {
+      const jobKey = getProjectKey(p);
+      return [
+        `"${jobKey}"`,
+        `"${p.projectNumber || ""}"`,
+        `"${p.projectName || ""}"`,
+        `"${p.customer || ""}"`,
+        `"${p.status || ""}"`,
+        `"${p.estimator || ""}"`,
+        `"${p.pmcGroup || ""}"`,
+        p.hours || 0,
+        p.sales || 0,
+        p.cost || 0,
+        `"${p.dateCreated || ""}"`,
+        `"${p.dateUpdated || ""}"`
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `PMC_Projects_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <main className="p-8 bg-gray-50 min-h-screen text-gray-900 font-sans">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-teal-800 text-3xl font-black tracking-tight uppercase italic">Paradise Estimating Dashboard</h1>
+        <div>
+          <h1 className="text-teal-800 text-3xl font-black tracking-tight uppercase italic">Paradise Estimating Dashboard</h1>
+          <button 
+            onClick={handleExportCSV}
+            className="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded shadow transition-colors flex items-center gap-1"
+          >
+            <span>↓</span> Export Projects to CSV
+          </button>
+        </div>
         <Navigation currentPage="dashboard" />
       </div>
       

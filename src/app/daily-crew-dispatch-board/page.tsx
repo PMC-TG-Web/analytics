@@ -79,7 +79,7 @@ const formatDateKey = (date: Date) => {
 
 export default function DailyCrewDispatchBoardPage() {
   return (
-    <ProtectedPage page="short-term-schedule">
+    <ProtectedPage page="crew-dispatch">
       <DailyCrewDispatchBoardContent />
     </ProtectedPage>
   );

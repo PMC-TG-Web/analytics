@@ -34,7 +34,7 @@ async function bootstrap() {
 
     snapshot.docs.forEach(projectDoc => {
       const data = projectDoc.data();
-      if (data.projectArchived === true) return;
+      if (data.projectArchived === true || data.status === "Invitations") return;
 
       const sales = Number(data.sales) || 0;
       const cost = Number(data.cost) || 0;

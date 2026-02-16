@@ -1,33 +1,75 @@
 // User permissions configuration
-// Map Procore email addresses to allowed pages
+// Define groups for easier management
+export const PERMISSION_GROUPS: Record<string, string[]> = {
+  "ADMIN": [
+    "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "long-term-schedule", "project-schedule", "projects", "employees", 
+    "procore", "field", "estimating-tools", "constants", "equipment", 
+    "certifications", "onboarding", "kpi-cards-management"
+  ],
+  "ESTIMATOR": [
+    "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
+    "crew-dispatch", "short-term-schedule", "long-term-schedule","constants"
+  ],
+  "OPERATIONS": [
+    "dashboard", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "long-term-schedule", "project-schedule", "projects", "field", "equipment"
+  ],
+  "FIELD": [
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule"
+  ],
+  "HR": [
+    "employees", "certifications", "onboarding"
+  ]
+};
 
+// Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
   // Admin - full access
-  "todd@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "field", "estimating-tools", "constants", "equipment"],
+  "todd@pmcdecor.com": ["ADMIN"],
   
   // Full access
-  "isaac@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "procore", "equipment"],
-  "levi@paradise-concrete.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "equipment"],
-  "rick@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "estimating-tools", "constants", "equipment"],
-  "shelly@pmcdecor.com": ["dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "long-term-schedule", "project-schedule", "projects", "employees", "procore", "estimating-tools", "constants", "equipment"],
+  "isaac@pmcdecor.com": ["ESTIMATOR"],
+  "levi@paradise-concrete.com": ["ADMIN"],
+  "rick@pmcdecor.com": ["ADMIN"],
+  "shelly@pmcdecor.com": ["ADMIN"],
   
   // Add more users here:
-  // "manager@pmcdecor.com": ["dashboard", "kpi", "scheduling"],
-  // "viewer@pmcdecor.com": ["dashboard"],
+  // "estimator@pmcdecor.com": ["ESTIMATOR"],
 };
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
   if (!userEmail) return false;
 
+  // Global access check (if applicable)
   if (page === "wip") return true;
   
-  const permissions = USER_PERMISSIONS[userEmail.toLowerCase()];
-  if (!permissions) return false;
+  const userPerms = USER_PERMISSIONS[userEmail.toLowerCase()];
+  if (!userPerms) return false;
+
+  // Get all pages including those from groups
+  const allAllowedPages = getUserPermissions(userEmail);
   
-  return permissions.includes(page);
+  return allAllowedPages.includes(page);
 }
 
 export function getUserPermissions(userEmail: string | null): string[] {
   if (!userEmail) return [];
-  return USER_PERMISSIONS[userEmail.toLowerCase()] || [];
+  
+  const userPerms = USER_PERMISSIONS[userEmail.toLowerCase()];
+  if (!userPerms) return [];
+
+  const allPages = new Set<string>();
+  
+  userPerms.forEach(perm => {
+    if (PERMISSION_GROUPS[perm]) {
+      // It's a group, add all pages from it
+      PERMISSION_GROUPS[perm].forEach(page => allPages.add(page));
+    } else {
+      // It's a specific page
+      allPages.add(perm);
+    }
+  });
+
+  return Array.from(allPages);
 }

@@ -42,6 +42,7 @@ async function bootstrap() {
 
       const isExcluded = 
         data.projectArchived === true ||
+        data.status === "Invitations" ||
         customerLower.includes("sop inc") ||
         ["pmc operations", "pmc shop time", "pmc test project"].includes(projectName) ||
         projectName.includes("sandbox") ||

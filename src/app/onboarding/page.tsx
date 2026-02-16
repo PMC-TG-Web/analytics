@@ -22,9 +22,15 @@ export default function OnboardingPage() {
     routingNumber: "",
     accountNumber: "",
     accountType: "Checking",
+    claimDependentsAmount: 0,
+    otherIncomeAmount: 0,
+    deductionsAmount: 0,
+    extraWithholdingAmount: 0,
     dependents: [],
     emergencyContacts: [{ name: "", relationship: "", phone: "" }],
     status: "pending",
+    signatureName: "",
+    signatureDate: "",
   });
 
   const [submitted, setSubmitted] = useState(false);
@@ -54,9 +60,21 @@ export default function OnboardingPage() {
     e.preventDefault();
     setSaving(true);
     try {
+      // Basic Audit Trail capturing
+      let ip = "Unknown";
+      try {
+        const ipRes = await fetch("https://api.ipify.org?format=json");
+        const ipJson = await ipRes.json();
+        ip = ipJson.ip;
+      } catch (err) {
+        console.warn("Could not capture IP address for audit trail");
+      }
+
       const submission = {
         ...formData,
         submittedAt: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : "Unknown",
+        ipAddress: ip,
       };
       await addDoc(collection(db, "onboarding_submissions"), submission);
       setSubmitted(true);
@@ -267,21 +285,61 @@ export default function OnboardingPage() {
               <div className="bg-teal-800 px-6 sm:px-8 py-4">
                 <h2 className="text-white text-[10px] sm:text-xs font-black uppercase tracking-widest italic flex items-center gap-2">
                   <span className="w-2 h-2 bg-teal-400 rounded-full"></span>
-                  5. Direct Deposit Information
+                  5. Direct Deposit Information (Optional)
                 </h2>
               </div>
               <div className="p-6 sm:p-8 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div>
                   <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Bank Name</label>
-                  <input required type="text" value={formData.bankName} onChange={e => setFormData({...formData, bankName: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
+                  <input type="text" value={formData.bankName} onChange={e => setFormData({...formData, bankName: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Routing Number</label>
-                  <input required type="text" value={formData.routingNumber} onChange={e => setFormData({...formData, routingNumber: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
+                  <input type="text" value={formData.routingNumber} onChange={e => setFormData({...formData, routingNumber: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Account Number</label>
-                  <input required type="text" value={formData.accountNumber} onChange={e => setFormData({...formData, accountNumber: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
+                  <input type="text" value={formData.accountNumber} onChange={e => setFormData({...formData, accountNumber: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" />
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Digital Signature */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-teal-800 px-6 sm:px-8 py-4">
+                <h2 className="text-white text-[10px] sm:text-xs font-black uppercase tracking-widest italic flex items-center gap-2">
+                  <span className="w-2 h-2 bg-teal-400 rounded-full"></span>
+                  6. Certification & Digital Signature
+                </h2>
+              </div>
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="bg-orange-50 border border-orange-100 p-4 rounded-xl">
+                  <p className="text-[11px] sm:text-xs font-bold text-orange-950 leading-relaxed uppercase tracking-tight">
+                    Under penalties of perjury, I declare that this certificate, to the best of my knowledge and belief, is true, correct, and complete. I understand that my electronic signature below is the legal equivalent of a manual/wet signature.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Digital Signature (Type Full Name)</label>
+                    <input 
+                      required 
+                      type="text" 
+                      value={formData.signatureName} 
+                      onChange={e => setFormData({...formData, signatureName: e.target.value})} 
+                      placeholder="Enter your full legal name"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm italic" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Signature Date</label>
+                    <input 
+                      required 
+                      type="date" 
+                      value={formData.signatureDate} 
+                      onChange={e => setFormData({...formData, signatureDate: e.target.value})} 
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-teal-500 outline-none font-bold text-gray-900 text-base sm:text-sm" 
+                    />
+                  </div>
                 </div>
               </div>
             </div>

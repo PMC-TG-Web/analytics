@@ -34,6 +34,13 @@ export interface Scope {
   hours?: number;
 }
 
+export interface Holiday {
+  id?: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  isPaid?: boolean;
+}
+
 export interface ProjectInfo {
   jobKey: string;
   customer: string;

@@ -7,6 +7,31 @@ import { OnboardingSubmission } from "@/types/onboarding";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
+function MaskedValue({ value, isDark = false }: { value: string; isDark?: boolean }) {
+  const [show, setShow] = useState(false);
+  
+  if (!value) return <span className={`text-[10px] font-bold italic ${isDark ? "text-gray-600" : "text-gray-400"}`}>Not Provided</span>;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-xs font-mono tracking-widest transition-all duration-200 ${show ? (isDark ? 'text-white' : 'text-gray-950') : 'blur-[3px] select-none opacity-40'}`}>
+        {show ? value : "••••••••••"}
+      </span>
+      <button 
+        type="button"
+        onClick={() => setShow(!show)}
+        className={`p-1 rounded-md transition-all ${isDark ? 'hover:bg-white/10 text-teal-400' : 'hover:bg-gray-200 text-teal-700'}`}
+      >
+        {show ? (
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function OnboardingSubmissionsPage() {
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +163,11 @@ export default function OnboardingSubmissionsPage() {
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[9px] font-black text-gray-500 uppercase leading-none mb-1">Social Security</span>
-                            <span className="text-xs sm:text-sm font-black text-gray-950">{sub.ssn}</span>
+                            <MaskedValue value={sub.ssn} />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-black text-gray-500 uppercase leading-none mb-1">Phone Number</span>
+                            <span className="text-xs sm:text-sm font-black text-gray-950">{sub.phone}</span>
                           </div>
                           <div className="flex items-center gap-3 mt-4">
                             <a href={`tel:${sub.phone}`} className="w-10 h-10 bg-white rounded-xl border border-gray-200 flex items-center justify-center text-teal-800 hover:bg-teal-50 transition-all shadow-sm">
@@ -177,9 +206,21 @@ export default function OnboardingSubmissionsPage() {
                               </span>
                             </li>
                             <li className="flex justify-between items-center border-b border-gray-50 pb-1.5">
-                              <span className="text-[10px] font-black text-gray-500 uppercase">Dependents</span>
-                              <span className="text-xs font-black text-gray-950">${(sub.claimDependentsAmount || 0).toLocaleString()}</span>
+                              <span className="text-[10px] font-black text-gray-500 uppercase">Dependents (Step 3)</span>
+                              <span className="text-xs font-black text-gray-950">{(sub.claimDependentsAmount || 0).toLocaleString()}</span>
                             </li>
+                            {typeof sub.otherIncomeAmount === 'number' && sub.otherIncomeAmount > 0 && (
+                              <li className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                                <span className="text-[10px] font-black text-gray-500 uppercase">Other Income</span>
+                                <span className="text-xs font-black text-gray-950">${sub.otherIncomeAmount.toLocaleString()}</span>
+                              </li>
+                            )}
+                            {typeof sub.deductionsAmount === 'number' && sub.deductionsAmount > 0 && (
+                              <li className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                                <span className="text-[10px] font-black text-gray-500 uppercase">Deductions</span>
+                                <span className="text-xs font-black text-gray-950">${sub.deductionsAmount.toLocaleString()}</span>
+                              </li>
+                            )}
                             <li className="flex justify-between items-center">
                               <span className="text-[10px] font-black text-gray-500 uppercase">Extra Withholding</span>
                               <span className="text-xs font-black text-gray-950">${(sub.extraWithholdingAmount || 0).toLocaleString()}</span>
@@ -199,11 +240,67 @@ export default function OnboardingSubmissionsPage() {
                           <div className="space-y-3">
                             <div className="flex flex-col">
                               <span className="text-[8px] font-black text-gray-400 uppercase leading-none mb-1">Routing Number</span>
-                              <span className="text-xs font-mono font-black text-white tracking-widest">{sub.routingNumber}</span>
+                              <MaskedValue value={sub.routingNumber || ""} isDark />
                             </div>
                             <div className="flex flex-col">
                               <span className="text-[8px] font-black text-gray-400 uppercase leading-none mb-1">Account Number</span>
-                              <span className="text-xs font-mono font-black text-white tracking-widest">{sub.accountNumber}</span>
+                              <MaskedValue value={sub.accountNumber || ""} isDark />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Digital Signature & Audit Trail Section */}
+                    <div className="bg-white border-t border-gray-100 p-6 sm:p-8">
+                      <div className="flex flex-col lg:flex-row gap-8">
+                        <div className="flex-1">
+                          <h4 className="text-[10px] font-black uppercase text-gray-600 tracking-widest mb-4 italic flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-teal-500 rounded-full"></span>
+                            Digital Signature Certification
+                          </h4>
+                          <div className="bg-teal-50 border border-teal-100 p-4 rounded-2xl relative">
+                            <div className="mb-4">
+                              <p className="text-[9px] font-black text-teal-800/60 uppercase mb-1 tracking-tighter">Legal Declaration</p>
+                              <p className="text-[10px] font-bold text-teal-900 leading-tight italic">
+                                "Under penalties of perjury, I declare that this certificate, to the best of my knowledge and belief, is true, correct, and complete."
+                              </p>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="border-b-2 border-teal-800/20 pb-1 flex-1">
+                                <p className="text-[8px] font-black text-teal-800/40 uppercase mb-0.5">Electronic Signature</p>
+                                <p className="text-xl font-black text-teal-900 tracking-tight italic font-serif select-none">{sub.signatureName}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[8px] font-black text-teal-800/40 uppercase mb-0.5">Signature Date</p>
+                                <p className="text-xs font-black text-teal-900">{sub.signatureDate}</p>
+                              </div>
+                            </div>
+                            <div className="absolute top-2 right-4">
+                              <span className="text-[8px] font-black text-teal-600/30 uppercase tracking-[0.3em] font-mono">VERIFIED DIGITAL</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="lg:w-1/3">
+                          <h4 className="text-[10px] font-black uppercase text-gray-600 tracking-widest mb-4 italic flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                            Security Audit Trail
+                          </h4>
+                          <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
+                            <div className="flex justify-between items-center group">
+                              <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter">IP Address</span>
+                              <span className="text-[10px] font-mono font-black text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-100">{sub.ipAddress || "Not Captured"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter mb-1">Device/Browser Agent</span>
+                              <div className="text-[9px] font-medium text-gray-400 leading-tight bg-white p-2 rounded border border-gray-100 break-all line-clamp-2" title={sub.userAgent}>
+                                {sub.userAgent || "Unknown"}
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-gray-100 pt-2">
+                              <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter">Binding Timestamp</span>
+                              <span className="text-[10px] font-black text-gray-950">{new Date(sub.submittedAt).toISOString()}</span>
                             </div>
                           </div>
                         </div>
@@ -228,7 +325,7 @@ export default function OnboardingSubmissionsPage() {
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="text-[9px] font-black text-orange-900 uppercase">SSN</span>
-                                  <span className="text-xs font-black text-gray-700">{dep.ssn}</span>
+                                  <MaskedValue value={dep.ssn} />
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="text-[9px] font-black text-orange-900 uppercase">Rel</span>

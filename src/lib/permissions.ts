@@ -5,10 +5,10 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
     "procore", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "onboarding", "kpi-cards-management"
+    "certifications", "onboarding", "kpi-cards-management", "holidays"
   ],
   "HR": [
-    "home", "employees", "certifications", "onboarding","Crew Dispatch"
+    "home", "employees", "certifications", "onboarding","Crew Dispatch", "holidays"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",

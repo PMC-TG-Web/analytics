@@ -35,10 +35,10 @@ export interface OnboardingSubmission {
   stateTaxExemptions?: number;
 
   // Direct Deposit
-  bankName: string;
-  routingNumber: string;
-  accountNumber: string;
-  accountType: 'Checking' | 'Savings';
+  bankName?: string;
+  routingNumber?: string;
+  accountNumber?: string;
+  accountType?: 'Checking' | 'Savings';
 
   // Emergency Contacts
   emergencyContacts: {
@@ -50,4 +50,10 @@ export interface OnboardingSubmission {
   // Metadata
   submittedAt: string;
   status: 'pending' | 'processed' | 'completed';
+
+  // Digital Signature & Audit Trail
+  signatureName: string;
+  signatureDate: string;
+  ipAddress?: string;
+  userAgent?: string;
 }

@@ -6,7 +6,7 @@ import { collection, getDocs, doc, setDoc, getDoc, query, where, addDoc } from "
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
-import { Scope, Project } from "@/types";
+import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 import { useAuth } from "@/hooks/useAuth";
@@ -96,6 +96,13 @@ function DailyCrewDispatchBoardContent() {
   const [personnelSearch, setPersonnelSearch] = useState<Record<string, string>>({}); // foremanId -> search string
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+
+  const isHoliday = React.useMemo(() => {
+    if (!dayColumns[0] || holidays.length === 0) return null;
+    const dateStr = formatDateKey(dayColumns[0].date);
+    return holidays.find(h => h.date === dateStr);
+  }, [dayColumns, holidays]);
 
   // Find the employee record for the logged-in user
   const currentUserEmployee = React.useMemo(() => {
@@ -198,7 +205,7 @@ function DailyCrewDispatchBoardContent() {
       const foremenList = allEmps.filter((emp) => emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman"));
       setForemen(foremenList);
 
-      const [shortTermSnapshot, projectScopesSnapshot, projectsSnapshot, longTermSnapshot, timeOffSnapshot] = await Promise.all([
+      const [shortTermSnapshot, projectScopesSnapshot, projectsSnapshot, longTermSnapshot, timeOffSnapshot, holidaysSnapshot] = await Promise.all([
         getDocs(collection(db, "short term schedual")),
         getDocs(collection(db, "projectScopes")),
         getDocs(query(
@@ -207,11 +214,15 @@ function DailyCrewDispatchBoardContent() {
           where("projectArchived", "==", false)
         )),
         getDocs(collection(db, "long term schedual")),
-        getDocs(collection(db, "timeOffRequests"))
+        getDocs(collection(db, "timeOffRequests")),
+        getDocs(collection(db, "holidays"))
       ]);
 
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
       setTimeOffRequests(requests);
+
+      const holidayListData = holidaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Holiday[];
+      setHolidays(holidayListData);
       
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
       
@@ -781,6 +792,12 @@ function DailyCrewDispatchBoardContent() {
                 <h1 className="text-2xl font-black tracking-tighter text-gray-900 uppercase italic leading-none">
                   Crew Dispatch <span className="text-red-900">Board</span>
                 </h1>
+                {isHoliday && (
+                  <div className="bg-orange-500 text-white px-3 py-1 rounded-lg flex items-center gap-2 animate-bounce shadow-lg shadow-orange-500/20">
+                    <span className="text-[10px] font-black uppercase tracking-widest">{isHoliday.name}</span>
+                    {isHoliday.isPaid && <span className="bg-white/20 text-[8px] px-1 rounded font-bold">PAID</span>}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowTimeOffModal(true)}

@@ -97,6 +97,12 @@ function DailyCrewDispatchBoardContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Find the employee record for the logged-in user
+  const currentUserEmployee = React.useMemo(() => {
+    if (!user?.email || allEmployees.length === 0) return null;
+    return allEmployees.find(e => e.email?.toLowerCase() === user.email.toLowerCase());
+  }, [user, allEmployees]);
+
   // Absence Alert State
   const [showSickModal, setShowSickModal] = useState(false);
   const [sickEmployeeId, setSickEmployeeId] = useState("");
@@ -114,6 +120,18 @@ function DailyCrewDispatchBoardContent() {
     reason: ""
   });
   const [selectedPersonnelId, setSelectedPersonnelId] = useState("");
+
+  useEffect(() => {
+    if (showSickModal && currentUserEmployee) {
+      setSickEmployeeId(currentUserEmployee.id);
+    }
+  }, [showSickModal, currentUserEmployee]);
+
+  useEffect(() => {
+    if (showTimeOffModal && currentUserEmployee) {
+      setSelectedPersonnelId(currentUserEmployee.id);
+    }
+  }, [showTimeOffModal, currentUserEmployee]);
 
   useEffect(() => {
     loadSchedules();
@@ -713,7 +731,7 @@ function DailyCrewDispatchBoardContent() {
                 <span className="text-2xl font-black leading-none text-white">{today?.date.getDate()}</span>
               </div>
               <div>
-                <h1 className="text-xl font-black tracking-tight text-gray-900 uppercase italic">Dispatch <span className="text-red-900">Ops</span></h1>
+                <h1 className="text-xl font-black tracking-tight text-gray-900 uppercase italic">Crew <span className="text-red-900">Dispatch</span></h1>
                 <div className="text-[10px] font-bold text-red-900/40 uppercase tracking-widest">
                   {today?.date.toLocaleDateString("en-US", { weekday: "long" })}
                 </div>
@@ -761,7 +779,7 @@ function DailyCrewDispatchBoardContent() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-black tracking-tighter text-gray-900 uppercase italic leading-none">
-                  Crew Dispatch <span className="text-red-900">Control Board</span>
+                  Crew Dispatch <span className="text-red-900">Board</span>
                 </h1>
                 <div className="flex gap-2">
                   <button
@@ -833,7 +851,7 @@ function DailyCrewDispatchBoardContent() {
                   </div>
                   <div className="p-5 space-y-5">
                     <div>
-                      <div className="text-[9px] uppercase font-black text-stone-400 tracking-[0.2em] mb-3 italic">Active Mission Assignments</div>
+                      <div className="text-[9px] uppercase font-black text-stone-400 tracking-[0.2em] mb-3 italic">Assigned Projects</div>
                       <div className="space-y-3">
                         {projects.map((p, pIdx) => (
                           <div key={pIdx} className="bg-gray-50 px-4 py-3 rounded-2xl flex justify-between items-center border border-gray-100 shadow-sm">
@@ -854,7 +872,7 @@ function DailyCrewDispatchBoardContent() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase font-black text-stone-400 tracking-[0.2em] mb-3 italic">Crew Deployment ({crewList.length})</div>
+                      <div className="text-[9px] uppercase font-black text-stone-400 tracking-[0.2em] mb-3 italic">Crew Members ({crewList.length})</div>
                       {crewList.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                           {crewList.map((name) => (
@@ -935,7 +953,7 @@ function DailyCrewDispatchBoardContent() {
                     <div className="flex-none pb-1">
                       <div className="flex items-center gap-2 mb-2">
                         <div className={`w-2 h-2 rounded-full ${statusColor} shadow-lg shadow-black/10`}></div>
-                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Mission Assignments</h4>
+                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Project Assignments</h4>
                       </div>
                       <div className="space-y-1.5 max-h-[140px] overflow-y-auto no-scrollbar">
                         {projects.map((p, pIdx) => (
@@ -955,7 +973,7 @@ function DailyCrewDispatchBoardContent() {
                     {/* Personnel Selection - Interactive Toggle UI */}
                     <div className="flex-1 flex flex-col min-h-0">
                       <div className="flex justify-between items-center mb-1.5 px-1">
-                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Tactical Crew ({currentEmployees.length})</h4>
+                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Assigned Crew ({currentEmployees.length})</h4>
                         <div className="w-1.5 h-1.5 rounded-full bg-red-900 shadow-sm animate-pulse"></div>
                       </div>
                       
@@ -964,7 +982,7 @@ function DailyCrewDispatchBoardContent() {
                           <div className="relative">
                             <input 
                               type="text"
-                              placeholder="SEARCH ASSETS..."
+                              placeholder="SEARCH EMPLOYEES..."
                               value={personnelSearch[foreman.id] || ""}
                               onChange={(e) => setPersonnelSearch(prev => ({ ...prev, [foreman.id]: e.target.value }))}
                               className="w-full pl-7 pr-2 py-1 text-[9px] font-black bg-gray-50 border-none rounded-lg focus:outline-none focus:ring-1 focus:ring-red-900 uppercase tracking-widest placeholder:text-gray-300 transition-all"
@@ -1050,10 +1068,10 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
-        {/* Unassigned Projects - Branded tray */}
+        {/* Unassigned Projects tray */}
         {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
           <div className="hidden md:flex px-6 py-2.5 bg-stone-50 border-t border-stone-200 items-center gap-4">
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] bg-stone-800 text-white px-3 py-1 rounded-lg shadow-md italic">Unassigned Operations</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] bg-stone-800 text-white px-3 py-1 rounded-lg shadow-md italic">Unassigned Projects</span>
             <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar py-1">
               {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
                 <Link 
@@ -1090,29 +1108,34 @@ function DailyCrewDispatchBoardContent() {
             <div className="bg-red-900 p-8 text-white text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.1),transparent)] pointer-events-none"></div>
               <h2 className="text-2xl font-black uppercase italic tracking-tighter">Report <span className="text-red-400">Absence</span></h2>
-              <p className="text-red-200/60 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Field Operations Protocol</p>
+              <p className="text-red-200/60 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Field Operations</p>
             </div>
             
             <div className="p-8 space-y-6">
               <div>
-                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Select Asset</label>
+                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Select Employee</label>
                 <div className="relative">
                   <select
                     value={sickEmployeeId}
                     onChange={(e) => setSickEmployeeId(e.target.value)}
-                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-[1.5rem] px-5 py-4 text-sm font-black text-stone-800 focus:outline-none focus:border-red-900/30 focus:bg-white appearance-none transition-all uppercase tracking-tight"
+                    disabled={!!currentUserEmployee}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-[1.5rem] px-5 py-4 text-sm font-black text-stone-800 focus:outline-none focus:border-red-900/30 focus:bg-white appearance-none transition-all uppercase tracking-tight disabled:opacity-75"
                   >
-                    <option value="">-- CHOOSE PERSONNEL --</option>
-                    {allEmployees.sort((a,b) => a.firstName.localeCompare(b.firstName)).map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                    ))}
+                    {!currentUserEmployee && <option value="">-- CHOOSE EMPLOYEE --</option>}
+                    {allEmployees
+                      .filter(emp => !currentUserEmployee || emp.id === currentUserEmployee.id)
+                      .sort((a,b) => a.firstName.localeCompare(b.firstName))
+                      .map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                      ))
+                    }
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Disruption Reason</label>
+                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Reason</label>
                   <div className="grid grid-cols-2 gap-2">
                     {["Sick", "Personal", "Late", "No Show"].map((reason) => (
                       <button
@@ -1132,11 +1155,11 @@ function DailyCrewDispatchBoardContent() {
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Tactical Notes</label>
+                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Notes</label>
                 <textarea
                   value={sickNotes}
                   onChange={(e) => setSickNotes(e.target.value)}
-                  placeholder="ADDITIONAL INTELLIGENCE..."
+                  placeholder="ADDITIONAL NOTES..."
                   className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-900 h-24 resize-none uppercase tracking-tight"
                 />
               </div>
@@ -1152,16 +1175,16 @@ function DailyCrewDispatchBoardContent() {
                   {sendingEmail ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      Transmitting...
+                      Sending...
                     </>
-                  ) : 'Broadcast Report'}
+                  ) : 'Send Notification'}
                 </button>
                 <button
                   disabled={sendingEmail}
                   onClick={() => setShowSickModal(false)}
                   className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-stone-600 transition-all"
                 >
-                  Abort Mission
+                  Cancel
                 </button>
               </div>
             </div>
@@ -1177,7 +1200,7 @@ function DailyCrewDispatchBoardContent() {
             <div className="bg-stone-800 p-8 text-white text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.1),transparent)] pointer-events-none"></div>
               <h2 className="text-2xl font-black uppercase italic tracking-tighter">Time Off <span className="text-red-600">Request</span></h2>
-              <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Personnel Resource Planning</p>
+              <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Personnel Planning</p>
             </div>
             
             <div className="p-8 space-y-6">
@@ -1186,12 +1209,17 @@ function DailyCrewDispatchBoardContent() {
                 <select
                   value={selectedPersonnelId}
                   onChange={(e) => setSelectedPersonnelId(e.target.value)}
-                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-3 text-sm font-black text-stone-800 focus:outline-none focus:border-stone-800/30 appearance-none uppercase tracking-tight transition-all"
+                  disabled={!!currentUserEmployee}
+                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-3 text-sm font-black text-stone-800 focus:outline-none focus:border-stone-800/30 appearance-none uppercase tracking-tight transition-all disabled:opacity-75"
                 >
-                  <option value="">-- CHOOSE PERSONNEL --</option>
-                  {allEmployees.sort((a,b) => a.firstName.localeCompare(b.firstName)).map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                  ))}
+                  {!currentUserEmployee && <option value="">-- CHOOSE EMPLOYEE --</option>}
+                  {allEmployees
+                    .filter(emp => !currentUserEmployee || emp.id === currentUserEmployee.id)
+                    .sort((a,b) => a.firstName.localeCompare(b.firstName))
+                    .map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                    ))
+                  }
                 </select>
               </div>
 

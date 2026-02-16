@@ -72,7 +72,7 @@ function ProjectScheduleContent() {
               Project <span className="text-orange-600">Gantt</span>
             </h1>
             <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-orange-600/30 pl-3">
-              Lifecycle Visualization & Scope Control
+              Project Lifecycle & Scope
             </p>
           </div>
           <div className="flex flex-col md:flex-row items-end md:items-center gap-4 w-full md:w-auto">
@@ -112,7 +112,7 @@ function ProjectScheduleContent() {
                   
                   <div className="bg-white rounded-xl p-3 border border-orange-50 space-y-2">
                      <div className="flex justify-between items-center text-[10px] font-bold">
-                        <span className="text-gray-400 uppercase tracking-tighter">Engagement Window</span>
+                        <span className="text-gray-400 uppercase tracking-tighter">Timeline</span>
                         <span className="text-orange-600 uppercase tracking-widest">Active</span>
                      </div>
                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -127,7 +127,7 @@ function ProjectScheduleContent() {
                           <polyline points="9 18 15 12 9 6"></polyline>
                        </svg>
                     </button>
-                    <div className="text-[8px] font-black text-gray-300 uppercase italic">PMC Analytics x Field Ops</div>
+                    <div className="text-[8px] font-black text-gray-300 uppercase italic">PMC Analytics</div>
                   </div>
                 </div>
               ))}
@@ -140,7 +140,7 @@ function ProjectScheduleContent() {
                   {/* Header */}
                   <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: `320px repeat(${units.length}, ${unitWidth}px)` }}>
                     <div className="sticky left-0 z-40 bg-stone-800 py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 shadow-xl">
-                      Project Matrix
+                      Project Name
                     </div>
                     {units.map((unit) => (
                       <div

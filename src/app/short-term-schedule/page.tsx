@@ -78,7 +78,7 @@ const formatDateKey = (date: Date) => {
 export default function ShortTermSchedulePage() {
   return (
     <ProtectedPage page="short-term-schedule">
-      <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule Systems...</div>}>
+      <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>}>
         <ShortTermScheduleContent />
       </Suspense>
     </ProtectedPage>
@@ -1067,7 +1067,7 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
               Short-Term <span className="text-orange-600">Schedule</span>
             </h1>
             <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-orange-600/30 pl-3">
-              Foremen & Assignment Control Matrix
+              Foremen & Project Assignments
             </p>
           </div>
           <div className="flex items-center gap-3 self-end md:self-center">
@@ -1173,7 +1173,7 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
               )}
             </div>
             <div className="bg-gray-50 p-4 text-[10px] font-black uppercase tracking-widest text-gray-400 border-t border-gray-100 italic">
-              <span className="text-orange-600 ml-2">Proprietary Scheduling System v2.0</span>
+              <span className="text-orange-600 ml-2">Scheduling System v2.0</span>
             </div>
           </div>
         )}
@@ -1255,7 +1255,7 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-stone-800">
                       <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg">
-                        Capacity Matrix
+                        Capacity
                       </th>
                       {dayColumns.map((day) => {
                         const dateKey = formatDateKey(day.date);

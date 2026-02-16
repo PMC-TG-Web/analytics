@@ -326,7 +326,7 @@ function LongTermScheduleContent() {
               Long-Term <span className="text-teal-600">Schedule</span>
             </h1>
             <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-teal-600/30 pl-3">
-              15-Week Project Forecast & FTE Analysis
+              15-Week Project Forecast
             </p>
           </div>
           <Navigation currentPage="long-term-schedule" />
@@ -375,7 +375,7 @@ function LongTermScheduleContent() {
                   
                   {job.totalHours > 0 && (
                      <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-teal-600">Project Vital Signs</span>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-teal-600">Project Status</span>
                         <div className="flex items-center gap-1.5">
                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                            <span className="text-[9px] font-bold text-gray-400 uppercase">Active Schedule</span>
@@ -393,7 +393,7 @@ function LongTermScheduleContent() {
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-stone-800">
                       <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg">
-                        Project Matrix
+                        Project Name
                       </th>
                       <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg" style={{left: '192px'}}>
                         Customer

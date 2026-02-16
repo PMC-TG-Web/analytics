@@ -8,19 +8,19 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "certifications", "onboarding", "kpi-cards-management", "holidays"
   ],
   "HR": [
-    "home", "employees", "certifications", "onboarding","Crew Dispatch", "holidays"
+    "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
-    "crew-dispatch", "short-term-schedule", "long-term-schedule","constants"
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule","WIP","projects", "field", "equipment","Certifications","Dashboard","kpi"
+    "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi"
   ],
   "PMs": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule","WIP","projects", "equipment"
+    "long-term-schedule", "project-schedule", "wip", "projects", "equipment"
   ],
   "FIELD": [
     "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule"
@@ -30,7 +30,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  "todd@pmcdecor.com": ["ADMIN"], // Full access
+  "todd@pmcdecor.com": ["HR"], // Testing HR Access
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
@@ -51,8 +51,9 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
 };
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
-  // All access granted globally
-  return true;
+  if (!userEmail) return false;
+  const permissions = getUserPermissions(userEmail);
+  return permissions.some(p => p.toLowerCase() === page.toLowerCase());
 }
 
 export function getUserPermissions(userEmail: string | null): string[] {

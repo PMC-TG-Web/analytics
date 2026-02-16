@@ -5,9 +5,15 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(req: NextRequest) {
   try {
-    const sessionCookie = req.cookies.get('auth_session');
+    let sessionCookie = req.cookies.get('auth_session');
+    
+    // If no main auth session, check for procore specific session
+    if (!sessionCookie) {
+      sessionCookie = req.cookies.get('procore_session');
+    }
 
     if (!sessionCookie?.value) {
+      console.log('No auth_session cookie found');
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
@@ -15,6 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     const user = JSON.parse(sessionCookie.value);
+    console.log('Authenticated user:', user.email);
 
     return NextResponse.json({
       email: user.email,

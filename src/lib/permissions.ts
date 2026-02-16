@@ -5,32 +5,32 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
     "procore", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "onboarding", "kpi-cards-management", "holidays"
+    "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
   ],
   "HR": [
-    "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays"
+    "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
-    "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants"
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants", "handbook"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi"
+    "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
   ],
   "PMs": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "wip", "projects", "equipment"
+    "long-term-schedule", "project-schedule", "wip", "projects", "equipment", "handbook"
   ],
   "FIELD": [
-    "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule"
+    "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule", "handbook"
   ],
  
 };
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  "todd@pmcdecor.com": ["HR"], // Testing HR Access
+  "todd@pmcdecor.com": ["ADMIN"],
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],

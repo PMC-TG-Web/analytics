@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { GanttTask, Scope } from "@/types";
 
 interface GanttRowProps {
@@ -11,7 +11,7 @@ interface GanttRowProps {
   onOpenTask: (task: GanttTask) => void;
 }
 
-export function GanttRow({
+export const GanttRow = memo(function GanttRow({
   task,
   unitWidth,
   unitsCount,
@@ -91,4 +91,4 @@ export function GanttRow({
       </div>
     </div>
   );
-}
+});

@@ -185,7 +185,33 @@ function DailyCrewDispatchBoardContent() {
 
   async function loadSchedules() {
     try {
-      const employeesSnapshot = await getDocs(collection(db, "employees"));
+      setLoading(true);
+      const start = Date.now();
+      
+      const [
+        employeesSnapshot,
+        shortTermSnapshot, 
+        projectScopesSnapshot, 
+        projectsSnapshot, 
+        longTermSnapshot, 
+        timeOffSnapshot, 
+        holidaysSnapshot
+      ] = await Promise.all([
+        getDocs(collection(db, "employees")),
+        getDocs(collection(db, "short term schedual")),
+        getDocs(collection(db, "projectScopes")),
+        getDocs(query(
+          collection(db, "projects"),
+          where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
+          where("projectArchived", "==", false)
+        )),
+        getDocs(collection(db, "long term schedual")),
+        getDocs(collection(db, "timeOffRequests")),
+        getDocs(collection(db, "holidays"))
+      ]);
+
+      console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
+
       const allEmps = employeesSnapshot.docs
         .map(doc => ({ 
           id: doc.id, 
@@ -204,19 +230,6 @@ function DailyCrewDispatchBoardContent() {
       setAllEmployees(allEmps);
       const foremenList = allEmps.filter((emp) => emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman"));
       setForemen(foremenList);
-
-      const [shortTermSnapshot, projectScopesSnapshot, projectsSnapshot, longTermSnapshot, timeOffSnapshot, holidaysSnapshot] = await Promise.all([
-        getDocs(collection(db, "short term schedual")),
-        getDocs(collection(db, "projectScopes")),
-        getDocs(query(
-          collection(db, "projects"),
-          where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
-          where("projectArchived", "==", false)
-        )),
-        getDocs(collection(db, "long term schedual")),
-        getDocs(collection(db, "timeOffRequests")),
-        getDocs(collection(db, "holidays"))
-      ]);
 
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
       setTimeOffRequests(requests);

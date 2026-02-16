@@ -32,11 +32,28 @@ export function useProjectSchedule() {
 
   const loadSchedules = useCallback(async () => {
     setLoading(true);
+    const start = Date.now();
     try {
-      const projectsSnapshot = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Lost"])
-      ));
+      console.log("[useProjectSchedule] Starting data fetch...");
+      
+      // Parallelize all Firestore fetches
+      const [
+        projectsSnapshot,
+        scopesSnapshot,
+        shortTermSnapshot,
+        longTermSnapshot
+      ] = await Promise.all([
+        getDocs(query(
+          collection(db, "projects"),
+          where("status", "not-in", ["Lost"])
+        )),
+        getDocs(collection(db, "projectScopes")),
+        getDocs(collection(db, "short term schedual")),
+        getDocs(collection(db, "long term schedual"))
+      ]);
+
+      console.log(`[useProjectSchedule] Fetched all snapshots in ${Date.now() - start}ms`);
+      
       const docMap: Record<string, string> = {};
       const projectCostItems: Record<string, Array<{ costitems: string; scopeOfWork: string; pmcGroup: string; sales: number; cost: number; hours: number; costType: string }>> = {};
       const allProjects: ProjectInfo[] = [];
@@ -83,7 +100,6 @@ export function useProjectSchedule() {
         });
       });
 
-      const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
       const scopesMap: Record<string, Scope[]> = {};
 
       scopesSnapshot.docs.forEach((docSnap) => {
@@ -144,6 +160,8 @@ export function useProjectSchedule() {
         scopesMap[jobKey].push(scope);
       });
 
+      console.log(`[useProjectSchedule] Processed projects and scopes at ${Date.now() - start}ms`);
+
       // BACKFILL: If a project has no explicit scopes in projectScopes, 
       // generate "Virtual Scopes" from its PMC Groups / CostItems
       allProjects.forEach(project => {
@@ -173,9 +191,6 @@ export function useProjectSchedule() {
           }));
         }
       });
-
-      const shortTermSnapshot = await getDocs(collection(db, "short term schedual"));
-      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
 
       const shortTermMap = new Map<string, ShortTermJob>();
       shortTermSnapshot.docs.forEach((doc) => {
@@ -318,15 +333,24 @@ export function useProjectSchedule() {
       if (!maxDate || value.getTime() > maxDate.getTime()) maxDate = value;
     };
 
+    // Use Maps for O(1) lookups
+    const stMap = new Map(shortTermJobs.map(j => [j.jobKey, j]));
+    const ltMap = new Map(longTermJobs.map(j => [j.jobKey, j]));
+    const mMap = new Map<string, MonthJob[]>();
+    monthJobs.forEach(mj => {
+      if (!mMap.has(mj.jobKey)) mMap.set(mj.jobKey, []);
+      mMap.get(mj.jobKey)!.push(mj);
+    });
+
     projects.forEach((project) => {
-      // Consider ALL schedules regardless of viewMode to set the chart range
-      const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
+      // Consider ALL schedules
+      const sj = stMap.get(project.jobKey);
       sj?.dates.forEach(date => consider(date));
       
-      const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
+      const lj = ltMap.get(project.jobKey);
       lj?.weekStarts.forEach(ws => consider(addDays(ws, 6)));
 
-      const mjs = monthJobs.filter(j => j.jobKey === project.jobKey);
+      const mjs = mMap.get(project.jobKey) || [];
       mjs.forEach(mj => {
         const range = getMonthRange(mj.month);
         if (range) consider(range.end);
@@ -339,7 +363,13 @@ export function useProjectSchedule() {
         ...(scopesByJobKey[`${project.projectNumber}|${project.customer}`] || []),
         ...(scopesByJobKey[`${project.projectNumber}~${project.customer}`] || [])
       ];
-      const jobScopes = Array.from(new Map(rawScopes.map(s => [s.id, s])).values());
+      // Quick unique by ID
+      const seenIds = new Set();
+      const jobScopes = rawScopes.filter(s => {
+        if (seenIds.has(s.id)) return false;
+        seenIds.add(s.id);
+        return true;
+      });
 
       jobScopes.forEach(scope => {
         consider(parseScopeDate(scope.startDate));
@@ -361,27 +391,38 @@ export function useProjectSchedule() {
   }, [viewMode, projects, shortTermJobs, longTermJobs, monthJobs, startDateRange, scopesByJobKey]);
 
   const ganttTasks = useMemo(() => {
+    // Use Maps for O(1) lookups
+    const stMap = new Map(shortTermJobs.map(j => [j.jobKey, j]));
+    const ltMap = new Map(longTermJobs.map(j => [j.jobKey, j]));
+    const mMap = new Map<string, MonthJob[]>();
+    monthJobs.forEach(mj => {
+      if (!mMap.has(mj.jobKey)) mMap.set(mj.jobKey, []);
+      mMap.get(mj.jobKey)!.push(mj);
+    });
+
     // Helper to extract range and create tasks for a project
     const getProjectTasks = (project: ProjectInfo): GanttTask[] => {
       let projectStart: Date | null = null;
       let projectEnd: Date | null = null;
       let totalHours = 0;
       
-      // Try multiple possible keys for scopes (new format, old pipe format, and old swapped format)
+      // Try multiple possible keys for scopes
       const rawScopes = [
         ...(scopesByJobKey[project.jobKey] || []),
         ...(scopesByJobKey[project.projectName] || []),
         ...(scopesByJobKey[`${project.projectNumber}|${project.customer}`] || []),
         ...(scopesByJobKey[`${project.projectNumber}~${project.customer}`] || [])
       ];
-      const jobScopes = Array.from(new Map(rawScopes.map(s => [s.id, s])).values());
+      const seenIds = new Set();
+      const jobScopes = rawScopes.filter(s => {
+        if (seenIds.has(s.id)) return false;
+        seenIds.add(s.id);
+        return true;
+      });
 
-      // If we have virtual scopes but also real schedules, ensure those virtual scopes 
-      // appear even if their dates are empty by giving them a fallback timeline
-      
-      const sj = shortTermJobs.find(j => j.jobKey === project.jobKey);
-      const lj = longTermJobs.find(j => j.jobKey === project.jobKey);
-      const mjs = monthJobs.filter(j => j.jobKey === project.jobKey);
+      const sj = stMap.get(project.jobKey);
+      const lj = ltMap.get(project.jobKey);
+      const mjs = mMap.get(project.jobKey) || [];
 
       let foundDates: Date[] = [];
 

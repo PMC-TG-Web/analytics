@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 interface ProcoreData {
   user?: any;
@@ -13,6 +15,14 @@ interface ProcoreData {
 }
 
 export default function ProcorePage() {
+  return (
+    <ProtectedPage page="procore" requireAuth={false}>
+      <ProcoreContent />
+    </ProtectedPage>
+  );
+}
+
+function ProcoreContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [data, setData] = useState<ProcoreData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,25 +30,40 @@ export default function ProcorePage() {
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
   useEffect(() => {
+    const checkProcoreAuth = async () => {
+      try {
+        console.log("ProcorePage: Checking auth...");
+        const response = await fetch("/api/procore/me");
+        if (response.ok) {
+          console.log("ProcorePage: Auth OK");
+          setIsAuthenticated(true);
+        } else {
+          const data = await response.json();
+          console.log("ProcorePage: Auth Failed", data.error);
+          // Don't set error state here to avoid showing it on initial load
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.error("Error checking Procore auth:", err);
+      }
+    };
+
     const params = new URLSearchParams(window.location.search);
     if (params.get("status") === "authenticated") {
       setIsAuthenticated(true);
       window.history.replaceState({}, "", "/procore");
+    } else {
+      checkProcoreAuth();
     }
+    
     if (params.get("error")) {
       setError(params.get("error"));
     }
   }, []);
 
-  const handleLogin = async () => {
-    try {
-      const response = await fetch("/api/procore/auth-url");
-      const { authUrl } = await response.json();
-      console.log('Authorization URL:', authUrl);
-      window.location.href = authUrl;
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to get auth URL");
-    }
+  const handleLogin = () => {
+    // Standard OAuth flow: redirect to the registered login route
+    window.location.href = "/api/auth/procore/login?returnTo=/procore";
   };
 
   const handleExplore = async () => {
@@ -111,12 +136,32 @@ export default function ProcorePage() {
   return (
     <main className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Procore Integration Explorer</h1>
-        <p className="text-gray-600 mb-8">
-          Connect to your Procore account and explore available data
-        </p>
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Procore Integration Explorer</h1>
+            <p className="text-gray-600">
+              Connect to your Procore account and explore available data
+            </p>
+          </div>
+          <Navigation currentPage="procore" />
+        </div>
 
-        {!isAuthenticated ? (
+        {error && (
+        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+          {error.includes("expired") && (
+            <button 
+              onClick={() => window.location.href = '/api/auth/procore/logout'}
+              className="ml-4 underline font-bold"
+            >
+              Click here to Re-login
+            </button>
+          )}
+        </div>
+      )}
+
+      {!isAuthenticated ? (
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <h2 className="text-xl font-semibold mb-4">Authenticate with Procore</h2>
             <p className="text-gray-600 mb-6">
@@ -124,10 +169,13 @@ export default function ProcorePage() {
             </p>
             <button
               onClick={handleLogin}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded mb-4"
             >
               Login with Procore
             </button>
+            <div className="mt-4 pt-4 border-t border-gray-100 italic text-xs text-gray-400">
+               Note: This will redirect to your configured Procore Auth URL.
+            </div>
           </div>
         ) : (
           <div>

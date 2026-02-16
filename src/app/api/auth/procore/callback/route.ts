@@ -20,47 +20,75 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    console.log('Procore Callback received with code:', code?.substring(0, 5) + '...');
     const tokenResponse = await getAccessToken(code);
+    console.log('Procore Access Token received');
     
-     // Fetch user info from Procore
-     const userInfoResponse = await fetch('https://api.procore.com/rest/v1.0/me', {
+     // Fetch user info from Procore using the configured API URL
+     const apiUrl = process.env.PROCORE_API_URL || 'https://api.procore.com';
+     console.log('Fetching user info from:', `${apiUrl}/rest/v1.0/me`);
+
+     const userInfoResponse = await fetch(`${apiUrl}/rest/v1.0/me`, {
        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
      });
    
      if (!userInfoResponse.ok) {
-       throw new Error('Failed to fetch user info from Procore');
+       const errorText = await userInfoResponse.text();
+       console.error('Failed to fetch user info:', errorText);
+       throw new Error(`Failed to fetch user info from Procore: ${userInfoResponse.status}`);
      }
    
      const procoreUser = await userInfoResponse.json();
+     console.log('Success! Procore User:', procoreUser.login);
+    console.log('Procore User received:', procoreUser.login);
    
     // Store token in secure httpOnly cookie
+    // Append status=authenticated if we're going back to the procore page
+    let redirectPath = state || '/dashboard';
+    if (redirectPath.includes('/procore')) {
+      const url = new URL(redirectPath, request.url);
+      url.searchParams.set('status', 'authenticated');
+      redirectPath = url.pathname + url.search;
+    }
+
+    console.log('Redirecting to:', redirectPath);
+
     const response = NextResponse.redirect(
-       new URL(state || '/dashboard', request.url)
+       new URL(redirectPath, request.url)
     );
    
-     // Store user session (similar to Auth0 session)
+     // Store user session (dedicated procore_session to avoid Auth0 conflicts)
+     // Use auth_session to satisfy hook requirements, but with lax security for localhost
+     const cookieOptions = {
+      httpOnly: true,
+      secure: false, // Force false for localhost
+      path: '/',
+      sameSite: 'lax' as const,
+      maxAge: 60 * 60 * 24 * 180,
+    };
+
      response.cookies.set('auth_session', JSON.stringify({
        email: procoreUser.login,
        name: procoreUser.name,
        picture: procoreUser.avatar,
        sub: `procore|${procoreUser.id}`,
-     }), {
-      httpOnly: true,
-       secure: true,
-       sameSite: 'none',
-       maxAge: 60 * 60 * 24 * 180, // 180 days
-      path: '/',
-    });
+     }), cookieOptions);
+
+     // Also store procore_session as backup
+     response.cookies.set('procore_session', JSON.stringify({
+       email: procoreUser.login,
+       name: procoreUser.name,
+       picture: procoreUser.avatar,
+       sub: `procore|${procoreUser.id}`,
+     }), cookieOptions);
 
      // Also store Procore access token for API calls
-     response.cookies.set('procore_token', tokenResponse.access_token, {
-       httpOnly: true,
-       secure: true,
-       sameSite: 'none',
+     response.cookies.set('procore_access_token', tokenResponse.access_token, {
+       ...cookieOptions,
        maxAge: tokenResponse.expires_in || 3600,
-       path: '/',
      });
 
+    console.log('Cookies set, sending redirect...');
     return response;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

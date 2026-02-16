@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
       new URL(decodeURIComponent(state || '/dashboard'), request.url)
     );
 
+    // Set secure session cookie
+    const isProd = process.env.NODE_ENV === 'production';
+    
     // Set httpOnly cookie with user session
     response.cookies.set({
       name: 'auth_session',
@@ -79,8 +82,8 @@ export async function GET(request: NextRequest) {
         sub: user.sub,
       }),
       httpOnly: true,
-      secure: true, // Required for sameSite: 'none'
-      sameSite: 'none', // Allow cookies in cross-site iframe (Procore)
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax', // Use lax on localhost, none for production if in iframe
       maxAge: 60 * 60 * 24 * 180, // 180 days
       path: '/',
     });

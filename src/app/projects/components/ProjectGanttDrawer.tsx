@@ -54,8 +54,14 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
     try {
       const { jobKey } = project;
       
-      // 1. Load Scopes
-      const scopesSnap = await getDocs(query(collection(db, "projectScopes"), where("jobKey", "==", jobKey)));
+      // Load all schedule data in parallel
+      const [scopesSnap, stSnap, ltSnap] = await Promise.all([
+        getDocs(query(collection(db, "projectScopes"), where("jobKey", "==", jobKey))),
+        getDocs(query(collection(db, "short term schedual"), where("jobKey", "==", jobKey))),
+        getDocs(query(collection(db, "long term schedual"), where("jobKey", "==", jobKey)))
+      ]);
+
+      // 1. Process Scopes
       const formalScopes = scopesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
       
       // Merge with virtual scopes from hub to ensure everything shows up
@@ -70,8 +76,7 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
       }
       setScopes(mergedScopes);
 
-      // 2. Load Short Term
-      const stSnap = await getDocs(query(collection(db, "short term schedual"), where("jobKey", "==", jobKey)));
+      // 2. Process Short Term
       if (!stSnap.empty) {
         const docData = stSnap.docs[0].data() as ShortTermDoc;
         const monthWeekStarts = getMonthWeekStarts(docData.month);
@@ -103,8 +108,7 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
         });
       }
 
-      // 3. Load Long Term
-      const ltSnap = await getDocs(query(collection(db, "long term schedual"), where("jobKey", "==", jobKey)));
+      // 3. Process Long Term
       if (!ltSnap.empty) {
         const docData = ltSnap.docs[0].data() as LongTermDoc;
         const monthWeekStarts = getMonthWeekStarts(docData.month);

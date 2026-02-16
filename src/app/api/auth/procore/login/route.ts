@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   
   // Get Procore OAuth URL with state parameter for return path
   const authUrl = getAuthorizationUrl(returnTo);
+  console.log('Redirecting to Procore Login:', authUrl);
   
   return NextResponse.redirect(authUrl);
 }

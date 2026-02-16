@@ -162,24 +162,37 @@ function WIPReportContent() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch projects - be more inclusive to ensure we reach the full pool reality
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        setLoading(true);
+        console.log("[WIP] Starting data fetch...");
+        const start = Date.now();
+
+        // Parallelize all primary data fetches
+        const [projectsSnapshot, schedulesRes, scopesSnapshot] = await Promise.all([
+          getDocs(collection(db, "projects")),
+          fetch("/api/scheduling"),
+          getDocs(collection(db, "projectScopes"))
+        ]);
+
+        console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
+        
         const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         })) as any[];
         
-        // Match schedules with projects to get their current status
-        const schedulesRes = await fetch("/api/scheduling");
         const schedulesJson = await schedulesRes.json();
         const schedulesData = schedulesJson.data || [];
         
+        // Use a map for faster project lookups
+        const projectLookup = new Map();
+        projectsData.forEach(p => {
+          const key = `${p.customer || "" }~${p.projectNumber || "" }~${p.projectName || "" }`;
+          projectLookup.set(key, p);
+        });
+
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
           const jobKey = schedule.jobKey || "";
-          const matchingProject = projectsData.find((p: any) => {
-            const projectKey = `${p.customer || "" }~${p.projectNumber || "" }~${p.projectName || "" }`;
-            return projectKey === jobKey;
-          });
+          const matchingProject = projectLookup.get(jobKey);
           
           return {
             ...schedule,
@@ -191,7 +204,6 @@ function WIPReportContent() {
         setSchedules(schedulesWithStatus);
         
         // Fetch scopes for Gantt feed
-        const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
         const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
         const enrichedScopes = getEnrichedScopes(rawScopes, projectsData);
         
@@ -203,6 +215,7 @@ function WIPReportContent() {
           }
         });
         setScopesByJobKey(scopesMap);
+        console.log(`[WIP] Processed all data in ${Date.now() - start}ms`);
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {

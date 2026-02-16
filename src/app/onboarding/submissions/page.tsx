@@ -34,25 +34,50 @@ function MaskedValue({ value, isDark = false }: { value: string; isDark?: boolea
 
 export default function OnboardingSubmissionsPage() {
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([]);
+  const [signoffs, setSignoffs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'payroll' | 'handbook'>('payroll');
 
   useEffect(() => {
-    loadSubmissions();
+    loadData();
   }, []);
 
-  async function loadSubmissions() {
+  async function loadData() {
+    setLoading(true);
     try {
-      const snapshot = await getDocs(collection(db, "onboarding_submissions"));
-      const data = snapshot.docs.map(doc => ({
+      const submissionsPromise = getDocs(collection(db, "onboarding_submissions"));
+      const signoffsPromise = getDocs(collection(db, "handbook-signoffs"));
+      
+      const [submissionsSnapshot, signoffsSnapshot] = await Promise.all([
+        submissionsPromise,
+        signoffsPromise
+      ]);
+
+      const submissionsData = submissionsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as OnboardingSubmission[];
-      setSubmissions(data.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
+      setSubmissions(submissionsData.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
+
+      const signoffsData = signoffsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
+      setSignoffs(signoffsData.sort((a, b) => {
+        const dateA = a.signedAt?.toDate() || new Date(0);
+        const dateB = b.signedAt?.toDate() || new Date(0);
+        return dateB - dateA;
+      }));
     } catch (error) {
-      console.error("Error loading submissions:", error);
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadSubmissions() {
+    // Kept for backward compatibility if needed, but loadData is preferred
+    loadData();
   }
 
   async function handleDelete(id: string) {
@@ -84,10 +109,32 @@ export default function OnboardingSubmissionsPage() {
             {/* Header */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 sm:mb-12">
               <div>
-                <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter">Onboarding Submissions</h1>
-                <p className="text-gray-700 font-black uppercase text-[10px] sm:text-xs tracking-widest mt-1">Review new hire payroll & personnel data</p>
+                <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter">Personnel Management</h1>
+                <p className="text-gray-700 font-black uppercase text-[10px] sm:text-xs tracking-widest mt-1">Review new hire payroll & company compliance</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex bg-white rounded-2xl p-1 border border-gray-100 shadow-sm mr-4">
+                  <button
+                    onClick={() => setActiveTab('payroll')}
+                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      activeTab === 'payroll' 
+                        ? 'bg-teal-800 text-white shadow-lg shadow-teal-900/20' 
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    Payroll
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('handbook')}
+                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      activeTab === 'handbook' 
+                        ? 'bg-teal-800 text-white shadow-lg shadow-teal-900/20' 
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    Handbook
+                  </button>
+                </div>
                 <a href="/onboarding" target="_blank" className="flex-1 sm:flex-none text-center px-6 py-3 bg-white border-2 border-teal-800 text-teal-800 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-teal-50 transition-all shadow-sm">
                   Open Public Form
                 </a>
@@ -97,18 +144,20 @@ export default function OnboardingSubmissionsPage() {
             {loading ? (
               <div className="bg-white rounded-[2rem] p-12 text-center border border-gray-100 shadow-sm mt-12">
                 <div className="animate-spin w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest">Loading Submissions...</p>
+                <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest">Loading Records...</p>
               </div>
-            ) : submissions.length === 0 ? (
-              <div className="bg-white rounded-[2rem] p-20 text-center border border-gray-100 shadow-sm mt-12">
-                <p className="text-gray-400 font-bold uppercase text-xs tracking-[0.2em]">No submissions found</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-6 sm:gap-8">
-                {submissions.map((sub) => (
-                  <div key={sub.id} className="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
-                    {/* Summary Row */}
-                    <div className="p-6 sm:p-8 flex flex-col md:flex-row md:items-center gap-6">
+            ) : activeTab === 'payroll' ? (
+              <>
+                {submissions.length === 0 ? (
+                  <div className="bg-white rounded-[2rem] p-20 text-center border border-gray-100 shadow-sm mt-12">
+                    <p className="text-gray-400 font-bold uppercase text-xs tracking-[0.2em]">No payroll submissions found</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 sm:gap-8">
+                    {submissions.map((sub) => (
+                      <div key={sub.id} className="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
+                        {/* Summary Row */}
+                        <div className="p-6 sm:p-8 flex flex-col md:flex-row md:items-center gap-6">
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
                           <h3 className="text-xl sm:text-2xl font-black text-gray-950 uppercase tracking-tight">
@@ -339,6 +388,68 @@ export default function OnboardingSubmissionsPage() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </>
+        ) : (
+              /* Handbook Sign-offs Tab Content */
+              <div className="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-stone-900 p-8 border-b border-stone-800">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-black text-white uppercase tracking-tight">Handbook Compliance Report</h2>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mt-1">Audit trail for employee signature acknowledgment</p>
+                    </div>
+                    <div className="bg-stone-800 border border-stone-700 px-4 py-2 rounded-xl">
+                      <span className="text-[9px] font-black text-stone-500 uppercase tracking-widest block mb-0.5">Total Signatures</span>
+                      <span className="text-lg font-black text-white">{signoffs.length}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {signoffs.length === 0 ? (
+                  <div className="p-20 text-center">
+                    <p className="text-gray-400 font-bold uppercase text-xs tracking-[0.2em]">No signatures recorded yet</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-8 py-5 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Employee</th>
+                          <th className="px-8 py-5 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Email Address</th>
+                          <th className="px-8 py-5 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Signed Date</th>
+                          <th className="px-8 py-5 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {signoffs.map((sig, idx) => (
+                          <tr key={sig.id || idx} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-8 py-4">
+                              <span className="text-sm font-black text-gray-900 uppercase italic tracking-tight">{sig.displayName}</span>
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className="text-xs font-bold text-gray-500 tracking-tight">{sig.email}</span>
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className="text-xs font-black text-gray-700">
+                                {sig.signedAt?.toDate ? sig.signedAt.toDate().toLocaleDateString() : 'N/A'}
+                                <span className="text-[9px] text-gray-400 ml-2">
+                                  {sig.signedAt?.toDate ? sig.signedAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-widest">
+                                Compliant
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>

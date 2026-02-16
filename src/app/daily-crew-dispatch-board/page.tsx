@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, doc, setDoc, getDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, getDoc, query, where, addDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -103,6 +103,17 @@ function DailyCrewDispatchBoardContent() {
   const [sickReason, setSickReason] = useState<"Sick" | "Personal" | "Late" | "No Show">("Sick");
   const [sickNotes, setSickNotes] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
+
+  // Time Off Request State
+  const [showTimeOffModal, setShowTimeOffModal] = useState(false);
+  const [newTimeOff, setNewTimeOff] = useState({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    type: "Vacation" as const,
+    hours: 10,
+    reason: ""
+  });
+  const [selectedPersonnelId, setSelectedPersonnelId] = useState("");
 
   useEffect(() => {
     loadSchedules();
@@ -595,6 +606,52 @@ function DailyCrewDispatchBoardContent() {
     }
   }
 
+  async function submitTimeOff() {
+    if (!selectedPersonnelId) {
+      alert("Please select an employee.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const docRef = await addDoc(collection(db, "timeOffRequests"), {
+        employeeId: selectedPersonnelId,
+        startDate: newTimeOff.startDate,
+        endDate: newTimeOff.endDate,
+        type: newTimeOff.type,
+        hours: newTimeOff.hours,
+        reason: newTimeOff.reason,
+        createdAt: new Date().toISOString()
+      });
+
+      const newRequest: TimeOffRequest = {
+        id: docRef.id,
+        employeeId: selectedPersonnelId,
+        startDate: newTimeOff.startDate,
+        endDate: newTimeOff.endDate,
+        type: newTimeOff.type,
+        hours: newTimeOff.hours
+      };
+
+      setTimeOffRequests(prev => [newRequest, ...prev]);
+      setShowTimeOffModal(false);
+      setSelectedPersonnelId("");
+      setNewTimeOff({
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+        type: "Vacation",
+        hours: 10,
+        reason: ""
+      });
+      alert("Time off request recorded successfully.");
+    } catch (error) {
+      console.error("Error saving time off:", error);
+      alert("Failed to save time off request.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
@@ -662,12 +719,20 @@ function DailyCrewDispatchBoardContent() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setShowSickModal(true)}
-              className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md shadow-red-600/20 transition-all font-sans"
-            >
-              Report
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setShowTimeOffModal(true)}
+                className="bg-stone-800 hover:bg-stone-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md transition-all font-sans"
+              >
+                Time Off
+              </button>
+              <button
+                onClick={() => setShowSickModal(true)}
+                className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md shadow-red-600/20 transition-all font-sans"
+              >
+                Report
+              </button>
+            </div>
           </div>
           <div className="mt-5 grid grid-cols-3 gap-3">
             <div className="px-3 py-2.5 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shadow-sm">
@@ -698,12 +763,20 @@ function DailyCrewDispatchBoardContent() {
                 <h1 className="text-2xl font-black tracking-tighter text-gray-900 uppercase italic leading-none">
                   Crew Dispatch <span className="text-red-900">Control Board</span>
                 </h1>
-                <button
-                  onClick={() => setShowSickModal(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg shadow-red-600/30 transition-all"
-                >
-                  Report Personnel Absence
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowTimeOffModal(true)}
+                    className="bg-stone-800 hover:bg-stone-900 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg shadow-stone-800/20 transition-all font-sans"
+                  >
+                    Request Time Off
+                  </button>
+                  <button
+                    onClick={() => setShowSickModal(true)}
+                    className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg shadow-red-600/30 transition-all font-sans"
+                  >
+                    Report Personnel Absence
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="text-[10px] font-black text-red-900 uppercase tracking-[0.2em]">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
@@ -1089,6 +1162,112 @@ function DailyCrewDispatchBoardContent() {
                   className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-stone-600 transition-all"
                 >
                   Abort Mission
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Time Off Request Modal */}
+      {showTimeOffModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => !saving && setShowTimeOffModal(false)}></div>
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100">
+            <div className="bg-stone-800 p-8 text-white text-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.1),transparent)] pointer-events-none"></div>
+              <h2 className="text-2xl font-black uppercase italic tracking-tighter">Time Off <span className="text-red-600">Request</span></h2>
+              <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Personnel Resource Planning</p>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-3 block italic">Select Employee</label>
+                <select
+                  value={selectedPersonnelId}
+                  onChange={(e) => setSelectedPersonnelId(e.target.value)}
+                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-3 text-sm font-black text-stone-800 focus:outline-none focus:border-stone-800/30 appearance-none uppercase tracking-tight transition-all"
+                >
+                  <option value="">-- CHOOSE PERSONNEL --</option>
+                  {allEmployees.sort((a,b) => a.firstName.localeCompare(b.firstName)).map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-2 block italic">Start Date</label>
+                  <input
+                    type="date"
+                    value={newTimeOff.startDate}
+                    onChange={(e) => setNewTimeOff(prev => ({ ...prev, startDate: e.target.value }))}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none focus:border-stone-800/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-2 block italic">End Date</label>
+                  <input
+                    type="date"
+                    value={newTimeOff.endDate}
+                    onChange={(e) => setNewTimeOff(prev => ({ ...prev, endDate: e.target.value }))}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none focus:border-stone-800/30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-2 block italic">Category</label>
+                  <select
+                    value={newTimeOff.type}
+                    onChange={(e) => setNewTimeOff(prev => ({ ...prev, type: e.target.value as any }))}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none focus:border-stone-800/30"
+                  >
+                    <option value="Vacation">Vacation</option>
+                    <option value="Sick">Sick</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Company timeoff">Company timeoff</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-2 block italic">Daily Hours</label>
+                  <input
+                    type="number"
+                    value={newTimeOff.hours}
+                    onChange={(e) => setNewTimeOff(prev => ({ ...prev, hours: parseInt(e.target.value) }))}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none focus:border-stone-800/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-2 block italic">Internal Notes</label>
+                <textarea
+                  value={newTimeOff.reason}
+                  onChange={(e) => setNewTimeOff(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="REASON FOR TIME OFF..."
+                  className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-3 text-sm font-bold focus:outline-none h-20 resize-none uppercase tracking-tight"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 pt-2">
+                <button
+                  disabled={saving || !selectedPersonnelId}
+                  onClick={submitTimeOff}
+                  className={`w-full py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-sm text-white shadow-xl transition-all flex items-center justify-center gap-3 italic ${
+                    saving || !selectedPersonnelId ? 'bg-gray-300 shadow-none' : 'bg-stone-800 hover:bg-stone-900 shadow-stone-900/30 active:scale-95'
+                  }`}
+                >
+                  {saving ? 'Processing...' : 'Record Time Off'}
+                </button>
+                <button
+                  disabled={saving}
+                  onClick={() => setShowTimeOffModal(false)}
+                  className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-stone-600 transition-all font-sans"
+                >
+                  Cancel
                 </button>
               </div>
             </div>

@@ -25,9 +25,10 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  // Admin - full access
-  "todd@pmcdecor.com": ["ADMIN"],
+  // Temporary restricted access (requested Home only)
+  "todd@pmcdecor.com": [],
   
+  // Admin - full access
   // Full access
  
   "levi@paradise-concrete.com": ["ADMIN"],
@@ -42,8 +43,8 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
   if (!userEmail) return false;
 
-  // Global access check (if applicable)
-  if (page === "wip") return true;
+  // Global access check
+  if (page === "home") return true;
   
   const userPerms = USER_PERMISSIONS[userEmail.toLowerCase()];
   if (!userPerms) return false;

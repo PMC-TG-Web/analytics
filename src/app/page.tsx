@@ -413,60 +413,6 @@ function HomeContent() {
 
           {/* Sidebar Column */}
           <div className="order-1 lg:order-2 lg:col-span-4 xl:col-span-3 space-y-6 md:space-y-8">
-            {/* Weather / Site Status Card */}
-            <div className={`rounded-3xl p-6 md:p-8 shadow-lg transition-all ${weather?.condition.includes('Rain') || weather?.condition.includes('Storm') ? 'bg-blue-600' : 'bg-orange-600'} text-white`}>
-                <div className="flex items-center justify-between mb-6 md:mb-8">
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <div className="text-5xl md:text-6xl drop-shadow-md">{weather?.icon || "☀"}</div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-black text-3xl md:text-4xl tracking-tighter">{weather?.temp ?? "--"}°F</p>
-                        <span className="text-[8px] md:text-[10px] bg-white/20 px-1.5 md:px-2 py-0.5 md:py-1 rounded font-black uppercase tracking-widest">{weather?.condition ?? "..."}</span>
-                      </div>
-                      <p className="text-white/70 text-[8px] md:text-[10px] font-bold uppercase tracking-widest leading-none mt-1.5 md:mt-2">{weather?.location ?? "Local Site"}</p>
-                    </div>
-                  </div>
-                  <div className="text-right hidden sm:block">
-                    <p className="font-black text-[9px] md:text-[10px] uppercase tracking-widest text-white/50 mb-1">Status</p>
-                    <p className="bg-white/20 px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest">Active</p>
-                  </div>
-                </div>
-
-                {/* Hourly Forecast */}
-                <div className="mb-6 md:mb-8 overflow-hidden">
-                  <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white/50 mb-3 italic">Next 8 Hours</p>
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x">
-                    {weather?.hourly?.map((h, i) => (
-                      <div key={i} className="flex flex-col items-center min-w-[48px] md:min-w-[50px] bg-white/10 rounded-xl py-2 md:py-3 px-1 border border-white/5 snap-center">
-                        <span className="text-[8px] font-black uppercase text-white/60 mb-1">{h.time}</span>
-                        <span className="text-lg md:text-xl mb-1">{h.icon}</span>
-                        <span className="text-xs font-black">{h.temp}°</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 7-Day Forecast */}
-                <div className="pt-4 md:pt-6 border-t border-white/10">
-                  <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white/50 mb-4 italic">7-Day Outlook</p>
-                  <div className="space-y-3">
-                    {weather?.daily?.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between text-[10px] md:text-xs">
-                        <span className="w-8 md:w-10 font-black uppercase text-white/60">{d.date}</span>
-                        <span className="text-lg md:text-xl">{d.icon}</span>
-                        <div className="flex-1 h-1 bg-white/10 rounded-full mx-3 md:mx-4 hidden xs:block">
-                           <div className="absolute inset-y-0 bg-white/20 rounded-full" style={{ left: '25%', right: '25%' }}></div>
-                        </div>
-                        <div className="flex gap-2 md:gap-3 w-14 md:w-16 justify-end">
-                          <span className="font-black text-white">{d.high}°</span>
-                          <span className="font-bold text-white/40">{d.low}°</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-            </div>
-
             {/* Employee Anniversaries */}
             <section className="bg-stone-800 rounded-3xl p-6 md:p-8 shadow-xl text-white relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-red-900/10 rounded-full -mr-16 -mt-16"></div>
@@ -530,6 +476,61 @@ function HomeContent() {
             </section>
           </div>
         </div>
+
+        {/* Weather / Site Status (Full Width at Bottom) */}
+        <section className="mt-8 md:mt-10">
+          <div className={`rounded-3xl p-6 md:p-8 shadow-lg transition-all ${weather?.condition.includes('Rain') || weather?.condition.includes('Storm') ? 'bg-blue-600' : 'bg-orange-600'} text-white`}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 md:gap-12">
+                <div className="flex items-center gap-4 md:gap-6">
+                  <div className="text-6xl md:text-8xl drop-shadow-md">{weather?.icon || "☀"}</div>
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <p className="font-black text-4xl md:text-6xl tracking-tighter">{weather?.temp ?? "--"}°F</p>
+                      <span className="text-[10px] md:text-xs bg-white/20 px-2 py-1 rounded font-black uppercase tracking-widest">{weather?.condition ?? "..."}</span>
+                    </div>
+                    <p className="text-white/70 text-[10px] md:text-xs font-bold uppercase tracking-widest leading-none mt-2">{weather?.location ?? "Local Site"}</p>
+                  </div>
+                </div>
+
+                {/* Hourly Forecast (Expanded for better readability at bottom) */}
+                <div className="flex-1 w-full overflow-hidden">
+                  <p className="text-[10px] md:text-xs font-black uppercase tracking-widest text-white/50 mb-4 italic flex items-center gap-2">
+                    <span className="w-4 h-px bg-white/20"></span>
+                    Next 8 Hours
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x justify-between">
+                    {weather?.hourly?.map((h, i) => (
+                      <div key={i} className="flex flex-col items-center min-w-[60px] md:min-w-[80px] bg-white/10 rounded-2xl py-3 px-2 border border-white/5 snap-center transition-transform hover:scale-110">
+                        <span className="text-[10px] font-black uppercase text-white/60 mb-1">{h.time}</span>
+                        <span className="text-2xl mb-1">{h.icon}</span>
+                        <span className="text-sm md:text-base font-black">{h.temp}°</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 7-Day Forecast (Side-by-side on desktop) */}
+                <div className="w-full md:w-auto md:min-w-[280px] pt-6 md:pt-0 border-t md:border-t-0 md:border-l border-white/10 md:pl-8">
+                  <p className="text-[10px] md:text-xs font-black uppercase tracking-widest text-white/50 mb-4 italic flex items-center gap-2">
+                    <span className="w-4 h-px bg-white/20"></span>
+                    7-Day Outlook
+                  </p>
+                  <div className="space-y-3">
+                    {weather?.daily?.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="w-10 font-black uppercase text-white/60">{d.date}</span>
+                        <span className="text-xl">{d.icon}</span>
+                        <div className="flex gap-3 w-20 justify-end">
+                          <span className="font-black text-white">{d.high}°</span>
+                          <span className="font-bold text-white/40">{d.low}°</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+          </div>
+        </section>
 
         {/* Footer */}
         <div className="mt-12 md:mt-16 pt-6 md:pt-8 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 italic text-center">

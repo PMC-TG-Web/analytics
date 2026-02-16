@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 import { useProjectSchedule } from "./hooks/useProjectSchedule";
 import { ProjectScopesModal } from "./components/ProjectScopesModal";
 import { GanttToolbar } from "./components/GanttToolbar";
@@ -62,63 +63,116 @@ function ProjectScheduleContent() {
   const unitWidth = viewMode === "day" ? 70 : viewMode === "week" ? 90 : 120;
   const unitLabel = viewMode === "day" ? "Day" : viewMode === "week" ? "Week" : "Month";
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
-        <div className="text-xl font-semibold text-gray-600">Loading schedules...</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-full mx-auto">
-        <GanttToolbar
-          startFilter={startFilter}
-          setStartFilter={setStartFilter}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-        />
-
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-max">
-              {/* Header */}
-              <div className="grid" style={{ gridTemplateColumns: `260px repeat(${units.length}, ${unitWidth}px)` }}>
-                <div className="sticky left-0 z-10 bg-orange-600 text-white text-sm font-bold px-4 py-3 border-r border-orange-500">
-                  Project
-                </div>
-                {units.map((unit) => (
-                  <div
-                    key={unit.key}
-                    className="bg-orange-600 text-white text-xs font-semibold text-center py-3 border-r border-orange-500"
-                  >
-                    <div>{unit.label}</div>
-                    <div className="text-[10px] text-orange-100">{unitLabel}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Rows */}
-              {displayTasks.length === 0 ? (
-                <div className="px-6 py-10 text-center text-gray-500">No scheduled projects in this range.</div>
-              ) : (
-                displayTasks.map((task, idx) => (
-                  <GanttRow
-                    key={`${task.jobKey}-${task.type}-${task.scopeId || idx}`}
-                    task={task}
-                    unitWidth={unitWidth}
-                    unitsCount={units.length}
-                    scopesByJobKey={scopesByJobKey}
-                    expandedProjects={expandedProjects}
-                    onToggleProject={toggleProjectScopes}
-                    onOpenTask={handleOpenTask}
-                  />
-                ))
-              )}
-            </div>
+    <main className="min-h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900">
+      <div className="w-full flex flex-col min-h-[calc(100vh-2rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-4 md:p-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 pb-4 border-b border-gray-100">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 uppercase italic leading-none">
+              Project <span className="text-orange-600">Gantt</span>
+            </h1>
+            <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-orange-600/30 pl-3">
+              Lifecycle Visualization & Scope Control
+            </p>
+          </div>
+          <div className="flex flex-col md:flex-row items-end md:items-center gap-4 w-full md:w-auto">
+             <GanttToolbar
+               startFilter={startFilter}
+               setStartFilter={setStartFilter}
+               viewMode={viewMode}
+               setViewMode={setViewMode}
+             />
+             <Navigation currentPage="project-schedule" />
           </div>
         </div>
+
+        {displayTasks.length === 0 ? (
+          <div className="bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-12 text-center">
+             <p className="text-gray-400 font-black uppercase tracking-[0.2em]">No Active Projects in Range</p>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Mobile View: Timeline Cards */}
+            <div className="md:hidden flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-10">
+              {displayTasks.filter(t => t.type === 'project').map((task, idx) => (
+                <div 
+                  key={`${task.jobKey}-${idx}`}
+                  onClick={() => handleOpenTask(task)}
+                  className="bg-gray-50 rounded-2xl p-5 border border-gray-100 shadow-sm active:scale-95 transition-all group"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-black text-gray-900 text-sm uppercase leading-tight italic truncate pr-4">{task.projectName}</h3>
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{task.customer}</p>
+                    </div>
+                    <div className="bg-orange-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black">
+                      #{task.projectNumber}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white rounded-xl p-3 border border-orange-50 space-y-2">
+                     <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-gray-400 uppercase tracking-tighter">Engagement Window</span>
+                        <span className="text-orange-600 uppercase tracking-widest">Active</span>
+                     </div>
+                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-orange-600" style={{ width: '60%', marginLeft: '10%' }}></div>
+                     </div>
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-between">
+                    <button className="text-[9px] font-black uppercase tracking-widest text-orange-600 flex items-center gap-1.5">
+                       View Scopes 
+                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                       </svg>
+                    </button>
+                    <div className="text-[8px] font-black text-gray-300 uppercase italic">PMC Analytics x Field Ops</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop View: Gantt Grid */}
+            <div className="hidden md:block flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="overflow-x-auto h-full custom-scrollbar">
+                <div className="min-w-max">
+                  {/* Header */}
+                  <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: `320px repeat(${units.length}, ${unitWidth}px)` }}>
+                    <div className="sticky left-0 z-40 bg-stone-800 py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 shadow-xl">
+                      Project Matrix
+                    </div>
+                    {units.map((unit) => (
+                      <div
+                        key={unit.key}
+                        className="bg-stone-800 text-center py-5 border-r border-stone-700"
+                      >
+                        <div className="text-[10px] text-orange-500 uppercase tracking-[0.2em] font-black mb-1">{unitLabel}</div>
+                        <div className="text-sm font-black text-white italic tracking-tighter">{unit.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Rows */}
+                  <div className="bg-white">
+                    {displayTasks.map((task, idx) => (
+                      <GanttRow
+                        key={`${task.jobKey}-${task.type}-${task.scopeId || idx}`}
+                        task={task}
+                        unitWidth={unitWidth}
+                        unitsCount={units.length}
+                        scopesByJobKey={scopesByJobKey}
+                        expandedProjects={expandedProjects}
+                        onToggleProject={toggleProjectScopes}
+                        onOpenTask={handleOpenTask}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedProject && (
@@ -133,6 +187,13 @@ function ProjectScheduleContent() {
           onScopesUpdated={handleScopesUpdated}
         />
       )}
-    </div>
+      
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+      `}</style>
+    </main>
   );
 }

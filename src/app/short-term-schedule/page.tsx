@@ -1058,63 +1058,56 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
     await setDoc(docRef, docData, { merge: true });
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-full mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Short-Term Schedule</h1>
-          <div className="text-center py-12">Loading schedules...</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-full mx-auto">
-        <div className="flex justify-between items-center mb-8">
+    <main className="min-h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900">
+      <div className="w-full flex flex-col min-h-[calc(100vh-2rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-4 md:p-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 pb-8 border-b border-gray-100">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Short-Term Schedule</h1>
-            <p className="text-gray-600 mt-1">Foremen and projects by date - Assign employees to jobs</p>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 uppercase italic leading-none">
+              Short-Term <span className="text-orange-600">Schedule</span>
+            </h1>
+            <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-orange-600/30 pl-3">
+              Foremen & Assignment Control Matrix
+            </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 self-end md:self-center">
             <button
               onClick={() => setIsAddingProject(!isAddingProject)}
-              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${
                 isAddingProject 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
+                ? 'bg-red-900 hover:bg-red-800 text-white shadow-red-900/20' 
+                : 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-600/20'
               }`}
             >
-              {isAddingProject ? 'Cancel' : 'Add Project'}
+              {isAddingProject ? 'Cancel' : '+ Add Project'}
             </button>
             <Navigation currentPage="short-term-schedule" />
           </div>
         </div>
 
         {isAddingProject && (
-          <div className="mb-8 bg-white rounded-lg shadow-lg border border-orange-200 overflow-hidden">
-            <div className={`p-4 border-b flex items-center justify-between ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-              <h2 className="text-lg font-bold text-gray-900">
+          <div className="mb-8 bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden transform transition-all">
+            <div className={`p-4 md:p-6 border-b flex flex-col md:flex-row items-center justify-between gap-4 ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+              <h2 className="text-sm md:text-lg font-black text-gray-900 uppercase tracking-tight italic">
                 {targetingCell 
-                  ? `Add Project to ${targetingCell.date.toLocaleDateString()} for ${
+                  ? `Targeting: ${targetingCell.date.toLocaleDateString()} · ${
                     [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
                   }`
-                  : 'Search Projects to Add'
+                  : 'Search for Project'
                 }
               </h2>
-              <div className="relative w-96 flex items-center gap-2">
+              <div className="relative w-full md:w-96 flex items-center gap-3">
                 <div className="relative flex-1">
                   <input
                     type="text"
-                    placeholder="Search by name, customer, or number..."
+                    placeholder="Search name, customer, or number..."
                     value={projectSearch}
                     onChange={(e) => setProjectSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 rounded-md border border-orange-200 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                    className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-orange-200 focus:border-orange-500 focus:outline-none text-sm font-bold shadow-sm"
                     autoFocus
                   />
                   <svg className="absolute left-3 top-2.5 h-4 w-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
                 <button 
@@ -1122,31 +1115,31 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                     setIsAddingProject(false);
                     setTargetingCell(null);
                   }}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
                 >
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
-            <div className="p-4 max-h-[300px] overflow-y-auto">
+            <div className="p-4 md:p-6 max-h-[400px] overflow-y-auto">
               {projectSearch.length < 2 ? (
-                <div className="text-center py-8 text-gray-500 italic">
-                  Type at least 2 characters to search...
+                <div className="text-center py-10">
+                   <div className="text-orange-900/20 text-4xl mb-3">🔍</div>
+                   <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to begin searching...</div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {allProjects
                     .filter(p => 
                       p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
                       p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
                       p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
                     )
-                    .slice(0, 50) // Limit results for performance
+                    .slice(0, 50)
                     .map((p, idx) => {
                       const jobKey = getProjectKey(p);
-                      // Use a composite key to ensure uniqueness even if multiple projects share a name/customer/number
                       const uniqueKey = `${jobKey}-${p.id || idx}`;
                       return (
                         <div
@@ -1154,22 +1147,22 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                           draggable
                           onDragStart={() => handleDragStart(p)}
                           onClick={() => handleSearchProjectClick(p)}
-                          className={`flex items-center p-3 border rounded-lg transition-all cursor-grab active:cursor-grabbing group shadow-sm bg-white ${
-                            targetingCell ? 'hover:border-green-500 hover:bg-green-50' : 'hover:border-orange-500 hover:bg-orange-50'
-                          } border-gray-200`}
+                          className={`flex items-center p-4 border-2 rounded-2xl transition-all cursor-grab active:cursor-grabbing group shadow-sm bg-white hover:scale-[1.02] ${
+                            targetingCell ? 'border-green-100 hover:border-green-500 hover:bg-green-50' : 'border-gray-50 hover:border-orange-500 hover:bg-orange-50'
+                          }`}
                         >
                           <div className="flex-1 overflow-hidden">
-                            <div className="font-bold text-gray-900 truncate">{p.projectName}</div>
-                            <div className="text-xs text-gray-600 truncate">{p.customer} | {p.projectNumber}</div>
+                            <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
+                            <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} · #{p.projectNumber}</div>
                           </div>
-                          <div className={`ml-2 opacity-50 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-400'}`}>
+                          <div className={`ml-3 opacity-30 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-500'}`}>
                             {targetingCell ? (
-                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
                               </svg>
                             ) : (
                               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 8h16M4 16h16" />
                               </svg>
                             )}
                           </div>
@@ -1179,223 +1172,241 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                 </div>
               )}
             </div>
-            <div className="bg-gray-50 p-3 text-xs text-gray-500 border-t border-gray-100">
-              <span className="font-bold text-orange-600">Tip:</span> {targetingCell 
-                ? 'Click a project card above to add it to the selected cell, or drag it wherever you like.'
-                : 'Drag a project card from here and drop it onto a foreman\'s row under a specific date.'
-              }
+            <div className="bg-gray-50 p-4 text-[10px] font-black uppercase tracking-widest text-gray-400 border-t border-gray-100 italic">
+              <span className="text-orange-600 ml-2">Proprietary Scheduling System v2.0</span>
             </div>
           </div>
         )}
 
         {dayColumns.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-            No schedules found for the next 5 weeks.
+          <div className="bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-12 text-center">
+             <p className="text-gray-400 font-black uppercase tracking-[0.2em]">No Data Synced</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gradient-to-r from-orange-600 to-orange-700">
-                  <th className="sticky left-0 z-20 bg-orange-600 text-left py-3 px-4 text-sm font-bold text-white border-r border-orange-500 w-40">
-                    Foreman / Date
-                  </th>
-                  {dayColumns.map((day) => {
-                    const dateKey = formatDateKey(day.date);
-                    // Calculate total for this day across all foremen
-                    let totalHours = 0;
-                    Object.values(foremanDateProjects).forEach(dateMap => {
-                      if (dateMap[dateKey]) {
-                        dateMap[dateKey].forEach(proj => {
-                          totalHours += proj.hours;
-                        });
-                      }
-                    });
-                    const headCount = totalHours / 10;
-                    const dayCapacity = dailyCapacity[dateKey] || companyCapacity;
-                    const availabilityHeads = dayCapacity / 10;
-                    const availabilityPercent = dayCapacity > 0 ? (totalHours / dayCapacity) * 100 : 0;
-                    
-                    // Determine color based on capacity
-                    let capacityColor = "bg-white/20";
-                    if (availabilityPercent > 105) capacityColor = "bg-red-500/40 text-red-100";
-                    else if (availabilityPercent > 90) capacityColor = "bg-yellow-500/40 text-yellow-100";
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Mobile Cards for Field Users */}
+            <div className="md:hidden flex-1 overflow-y-auto space-y-6 custom-scrollbar pb-10">
+              {dayColumns.slice(0, 14).map((day) => {
+                const dateKey = formatDateKey(day.date);
+                const dayTotal = Object.values(foremanDateProjects).reduce((sum, fMap) => {
+                  return sum + (fMap[dateKey] || []).reduce((pSum, proj) => pSum + proj.hours, 0);
+                }, 0);
+                const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
 
-                    return (
-                      <th 
-                        key={dateKey} 
-                        className="text-center py-3 px-3 text-sm font-bold text-white border-r border-orange-500 min-w-[250px]"
-                      >
-                        <div className="flex flex-col items-center">
-                          <div className="text-lg">{day.dayLabel}</div>
-                          <div className="text-[10px] font-normal text-orange-100 flex flex-col items-center mt-1">
-                            <div className="flex gap-1.5 items-center mb-1">
-                              <span>{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
-                              <span className="bg-blue-500/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                {availabilityHeads} Avail
-                              </span>
-                            </div>
-                            <div className="flex gap-2 items-center">
-                              <span className={`px-1.5 py-0.5 rounded font-black border border-white/10 ${capacityColor}`}>
-                                {totalHours.toFixed(0)}h / {dayCapacity}h
-                              </span>
-                            </div>
-                            {/* Capacity Bar */}
-                            <div className="w-full h-1.5 bg-black/20 rounded-full mt-2 overflow-hidden border border-white/5">
-                              <div 
-                                className={`h-full transition-all duration-500 ${
-                                  availabilityPercent > 100 ? 'bg-red-500' : 
-                                  availabilityPercent > 85 ? 'bg-yellow-400' : 
-                                  'bg-green-400'
-                                }`}
-                                style={{ width: `${Math.min(availabilityPercent, 100)}%` }}
-                              />
-                            </div>
-                          </div>
+                return (
+                  <div key={dateKey} className={`${isWeekend ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center justify-between mb-3 border-l-4 border-orange-600 pl-3">
+                      <div>
+                        <div className="text-lg font-black text-gray-900 italic uppercase leading-none">{day.dayLabel}</div>
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                          {day.date.toLocaleDateString("en-US", { weekday: "long" })}
                         </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {[...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].map((foreman, foremanIdx) => {
-                  const foremanProjects = foremanDateProjects[foreman.id] || {};
-                  
-                  return (
-                    <React.Fragment key={foreman.id}>
-                      {/* Projects Row */}
-                      <tr className={`border-b border-gray-300 ${foremanIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <td className="sticky left-0 z-10 bg-inherit py-3 px-4 text-sm font-bold text-gray-900 border-r border-gray-300">
-                          {foreman.firstName} {foreman.lastName}
-                        </td>
-                        {dayColumns.map((day) => {
-                          const dateKey = formatDateKey(day.date);
-                          const projects = (foremanProjects[dateKey] || []).filter(p => p.hours > 0);
-                          const dayTotal = projects.reduce((sum, p) => sum + p.hours, 0);
-                          const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-                          
-                          return (
-                            <td
-                              key={dateKey}
-                              className={`py-3 px-3 text-xs border-r border-gray-300 align-top transition-colors ${isWeekend ? 'bg-gray-100' : ''} ${saving ? 'opacity-50 pointer-events-none' : ''}`}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                e.currentTarget.classList.add('bg-orange-50');
-                              }}
-                              onDragLeave={(e) => {
-                                e.currentTarget.classList.remove('bg-orange-50');
-                              }}
-                              onDrop={(e) => {
-                                e.currentTarget.classList.remove('bg-orange-50');
-                                handleDrop(e, day.date, foreman.id);
-                              }}
-                            >
-                              <div className="flex flex-col h-full">
-                                {projects.length > 0 ? (
-                                  <div className="space-y-2 mb-2">
-                                    {projects.map((project, projIdx) => {
-                                      const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
-                                      return (
-                                        <div 
-                                          key={projIdx} 
-                                          draggable={!saving}
-                                          onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
-                                          className={`${isHighlighted ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-400 scale-105 z-10' : 'bg-orange-50 border-orange-200'} border rounded p-2 cursor-grab active:cursor-grabbing hover:bg-orange-100 transition-all shadow-sm relative group`}
-                                          onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber)}
-                                        >
-                                        {/* Delete Button */}
-                                        <button
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            if (confirm(`Remove ${project.projectName} from ${day.dayLabel}?`)) {
-                                              setSaving(true);
-                                              try {
-                                                await updateProjectAssignment(project, dateKey, foreman.id, null, 0);
-                                                await loadSchedules();
-                                              } finally {
-                                                setSaving(false);
-                                              }
-                                            }
-                                          }}
-                                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-orange-400 hover:text-red-500 transition-opacity bg-white/50 rounded"
-                                          title="Remove project from this day"
-                                        >
-                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                        </button>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-black text-orange-600">{dayTotal.toFixed(0)}h</div>
+                        <div className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Total Allocation</div>
+                      </div>
+                    </div>
 
-                                        <div className="font-semibold text-gray-900 text-xs truncate pr-4" title={project.projectName}>
-                                          {project.projectName}
-                                        </div>
-                                        <div className="text-gray-600 text-xs truncate" title={project.customer}>
-                                          {project.customer}
-                                        </div>
-                                        <div className="flex items-center gap-1 mt-1">
-                                          <input
-                                            type="number"
-                                            step="0.5"
-                                            defaultValue={project.hours.toFixed(1)}
-                                            onBlur={async (e) => {
-                                              const newHrs = parseFloat(e.target.value);
-                                              if (!isNaN(newHrs) && newHrs !== project.hours) {
-                                                setSaving(true);
-                                                try {
-                                                  await updateProjectAssignment(project, dateKey, foreman.id, foreman.id, newHrs);
-                                                  await loadSchedules();
-                                                } finally {
-                                                  setSaving(false);
-                                                }
-                                              }
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="w-12 px-1 py-0.5 text-[10px] font-bold text-orange-700 bg-white border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                          />
-                                          <span className="text-[10px] text-orange-600 font-semibold">hrs</span>
-                                        </div>
-                                      </div>
-                                      );
-                                    })}
-                                    <div className="text-center py-1 font-bold text-orange-700 bg-orange-100 rounded">
-                                      Total: {dayTotal.toFixed(1)} hrs
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex-1 flex items-center justify-center text-gray-300 italic min-h-[40px]">
-                                    —
-                                  </div>
-                                )}
-                                
-                                {/* Quick Add Button in Cell */}
-                                <button
-                                  onClick={() => {
-                                    setTargetingCell({ date: day.date, foremanId: foreman.id });
-                                    setIsAddingProject(true);
-                                    setProjectSearch("");
-                                  }}
-                                  className={`mt-auto py-1 border-t border-dashed transition-colors flex items-center justify-center gap-1 ${
-                                    targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
-                                    ? 'border-green-300 text-green-600 bg-green-50'
-                                    : 'border-gray-200 text-gray-400 hover:text-orange-500 hover:bg-orange-50 opacity-0 group-hover:opacity-100'
-                                  }`}
-                                  title="Add project to this date/foreman"
-                                >
-                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                  </svg>
-                                  <span className="text-[9px] font-semibold">Add Project</span>
-                                </button>
+                    <div className="space-y-3">
+                      {[...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].map((foreman) => {
+                        const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
+                        if (projects.length === 0) return null;
+
+                        return (
+                          <div key={foreman.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100 shadow-sm relative overflow-hidden group">
+                             <div className="absolute top-0 right-0 p-2 opacity-5">
+                               <div className="text-xs font-black uppercase italic bg-gray-200 px-2 py-0.5 rounded rotate-12">{foreman.lastName || 'PMC'}</div>
+                             </div>
+                             <div className="flex items-center gap-2 mb-3">
+                               <div className="w-1.5 h-1.5 rounded-full bg-orange-600"></div>
+                               <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                                 {foreman.firstName} {foreman.lastName}
+                               </h4>
+                             </div>
+                             <div className="space-y-2">
+                               {projects.map((p, pIdx) => (
+                                 <div 
+                                    key={pIdx} 
+                                    onClick={() => openGanttModal(p.customer, p.projectName, p.projectNumber)}
+                                    className="bg-white border-2 border-orange-50 p-3 rounded-xl shadow-sm active:scale-95 transition-all"
+                                  >
+                                   <div className="font-black text-gray-900 text-xs uppercase leading-tight italic truncate pr-8">{p.projectName}</div>
+                                   <div className="flex justify-between items-end mt-2">
+                                     <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">{p.customer}</div>
+                                     <div className="bg-orange-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black shadow-sm shadow-orange-600/20">{p.hours.toFixed(0)} <span className="opacity-50">H</span></div>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="overflow-x-auto h-full custom-scrollbar">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-30">
+                    <tr className="bg-stone-800">
+                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg">
+                        Capacity Matrix
+                      </th>
+                      {dayColumns.map((day) => {
+                        const dateKey = formatDateKey(day.date);
+                        let totalHours = 0;
+                        Object.values(foremanDateProjects).forEach(dateMap => {
+                          if (dateMap[dateKey]) {
+                            dateMap[dateKey].forEach(proj => { totalHours += proj.hours; });
+                          }
+                        });
+                        const dayCapacity = dailyCapacity[dateKey] || companyCapacity;
+                        const availabilityPercent = dayCapacity > 0 ? (totalHours / dayCapacity) * 100 : 0;
+                        
+                        let capacityColor = "bg-white/5";
+                        if (availabilityPercent > 105) capacityColor = "bg-red-500/20 text-red-400";
+                        else if (availabilityPercent > 90) capacityColor = "bg-yellow-500/10 text-yellow-500";
+
+                        return (
+                          <th key={dateKey} className="text-center py-5 px-4 text-xs font-black text-white border-r border-stone-700 min-w-[300px]">
+                            <div className="flex flex-col items-center">
+                              <span className="text-xl italic leading-none mb-1 tracking-tighter">{day.dayLabel}</span>
+                              <div className="flex gap-2 items-center mb-2">
+                                <span className="text-[9px] uppercase tracking-widest text-stone-500">{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                                <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black border border-white/5 ${capacityColor}`}>
+                                  {totalHours.toFixed(0)}<span className="opacity-30">/</span>{dayCapacity}H
+                                </span>
                               </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                              <div className="w-32 h-1 bg-stone-700 rounded-full overflow-hidden border border-white/5">
+                                <div 
+                                  className={`h-full transition-all duration-700 ${
+                                    availabilityPercent > 100 ? 'bg-red-500 shadow-sm shadow-red-500/50' : 
+                                    availabilityPercent > 85 ? 'bg-yellow-400' : 'bg-green-500'
+                                  }`}
+                                  style={{ width: `${Math.min(availabilityPercent, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].map((foreman, foremanIdx) => {
+                      const foremanProjects = foremanDateProjects[foreman.id] || {};
+                      return (
+                        <tr key={foreman.id} className={`border-b border-gray-50 group hover:bg-gray-50/50 transition-colors ${foremanIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          <td className="sticky left-0 z-20 bg-inherit py-4 px-6 text-[11px] font-black text-gray-800 uppercase tracking-wider italic border-r border-gray-100 shadow-md">
+                            {foreman.firstName} <span className="text-gray-400 opacity-50">{foreman.lastName}</span>
+                          </td>
+                          {dayColumns.map((day) => {
+                            const dateKey = formatDateKey(day.date);
+                            const projects = (foremanProjects[dateKey] || []).filter(p => p.hours > 0);
+                            const dayTotal = projects.reduce((sum, p) => sum + p.hours, 0);
+                            const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
+                            
+                            return (
+                              <td
+                                key={dateKey}
+                                className={`py-4 px-3 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-orange-50/50'); }}
+                                onDragLeave={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); }}
+                                onDrop={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); handleDrop(e, day.date, foreman.id); }}
+                              >
+                                <div className="flex flex-col h-full min-h-[100px]">
+                                  {projects.length > 0 ? (
+                                    <div className="space-y-3 mb-3">
+                                      {projects.map((project, projIdx) => {
+                                        const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
+                                        return (
+                                          <div 
+                                            key={projIdx} 
+                                            draggable={!saving}
+                                            onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
+                                            className={`relative group/proj border-2 rounded-2xl p-3 cursor-grab transition-all shadow-sm ${
+                                              isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-4 ring-yellow-400/20 scale-105 z-10' : 'bg-white border-orange-100 hover:border-orange-500'
+                                            }`}
+                                            onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber)}
+                                          >
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm(`Remove ${project.projectName}?`)) {
+                                                  setSaving(true);
+                                                  try { await updateProjectAssignment(project, dateKey, foreman.id, null, 0); await loadSchedules(); }
+                                                  finally { setSaving(false); }
+                                                }
+                                              }}
+                                              className="absolute -top-2 -right-2 opacity-0 group-hover/proj:opacity-100 p-1.5 bg-red-900 text-white rounded-full shadow-lg hover:scale-110 transition-all z-20"
+                                            >
+                                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                              </svg>
+                                            </button>
+
+                                            <div className="font-black text-gray-900 text-[11px] uppercase tracking-tight italic leading-tight mb-1 truncate pr-4">{project.projectName}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest truncate">{project.customer}</div>
+                                            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+                                              <input
+                                                type="number"
+                                                step="0.5"
+                                                defaultValue={project.hours.toFixed(1)}
+                                                onBlur={async (e) => {
+                                                  const newHrs = parseFloat(e.target.value);
+                                                  if (!isNaN(newHrs) && newHrs !== project.hours) {
+                                                    setSaving(true);
+                                                    try { await updateProjectAssignment(project, dateKey, foreman.id, foreman.id, newHrs); await loadSchedules(); }
+                                                    finally { setSaving(false); }
+                                                  }
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-10 bg-gray-50 text-[10px] font-black text-orange-600 focus:outline-none text-center rounded border border-transparent focus:border-orange-500"
+                                              />
+                                              <span className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Hrs</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      <div className="text-center py-1.5 text-[10px] font-black text-orange-600 bg-orange-50 uppercase tracking-widest rounded-xl border border-orange-100">
+                                        Σ {dayTotal.toFixed(1)} <span className="opacity-50 text-[8px]">H Total</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex-1 flex items-center justify-center opacity-5 select-none pointer-events-none">
+                                      <div className="text-xl font-black italic tracking-tighter">PMC</div>
+                                    </div>
+                                  )}
+                                  
+                                  <button
+                                    onClick={() => { setTargetingCell({ date: day.date, foremanId: foreman.id }); setIsAddingProject(true); setProjectSearch(""); }}
+                                    className={`mt-auto py-2 border-2 border-dashed rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                                      targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
+                                      ? 'border-green-500 text-green-600 bg-green-50 ring-4 ring-green-100'
+                                      : 'border-transparent text-gray-300 hover:border-orange-200 hover:text-orange-500 opacity-0 group-hover:opacity-100'
+                                    }`}
+                                  >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Assign</span>
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1413,27 +1424,20 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
             onScopesUpdated={async (jobKey, updatedScopes) => {
               const enriched = getEnrichedScopes(updatedScopes, allProjects);
               setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
-              
-              // If we were targeting a specific cell, try to auto-stamp the scope to that foreman
               if (targetingCell) {
                 const { date, foremanId } = targetingCell;
                 const dateKey = formatDateKey(date);
-                
-                // Find the first scope that covers either our targeted date OR is simply the one we just added/modified
                 const targetScope = updatedScopes.find(s => {
                   if (!s.startDate || !s.endDate) return false;
                   return dateKey >= s.startDate && dateKey <= s.endDate;
                 }) || updatedScopes[updatedScopes.length - 1];
                 
-                if (targetScope && targetScope.startDate && targetScope.endDate) {
+                if (targetScope?.startDate && targetScope?.endDate) {
                   const start = new Date(targetScope.startDate + 'T00:00:00');
                   const end = new Date(targetScope.endDate + 'T00:00:00');
-                  
-                  // If the targeted date is within the range of the scope, stamp it to that foreman
                   if (date >= start && date <= end) {
                     const monthStr = dateKey.substring(0, 7);
                     const position = getWeekDayPositionForDate(monthStr, date);
-                    
                     if (position) {
                       const newProject: DayProject = {
                         jobKey,
@@ -1447,8 +1451,6 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                         weekNumber: position.weekNumber,
                         dayNumber: position.dayNumber
                       };
-
-                      // Distribution logic
                       if (targetScope.manpower && targetScope.manpower > 0) {
                         newProject.hours = targetScope.manpower * 10;
                       } else {
@@ -1458,25 +1460,25 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
                           if (curr.getDay() !== 0 && curr.getDay() !== 6) workDaysInRange++;
                           curr.setDate(curr.getDate() + 1);
                         }
-                        if (workDaysInRange > 0) {
-                          newProject.hours = (targetScope.hours || 0) / workDaysInRange;
-                        }
+                        if (workDaysInRange > 0) { newProject.hours = (targetScope.hours || 0) / workDaysInRange; }
                       }
-
-                      if (newProject.hours > 0) {
-                        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, newProject.hours);
-                      }
+                      if (newProject.hours > 0) { await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, newProject.hours); }
                     }
                   }
                 }
               }
-              
-              // Full reload to ensure everything is recalculated correctly
               await loadSchedules();
             }}
           />
         )}
       </div>
-    </div>
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+      `}</style>
+    </main>
   );
 }

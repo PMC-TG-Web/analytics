@@ -2,24 +2,24 @@
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "ADMIN": [
-    "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
     "procore", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management"
   ],
   "ESTIMATOR": [
-    "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
+    "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
     "crew-dispatch", "short-term-schedule", "long-term-schedule","constants"
   ],
   "OPERATIONS": [
-    "dashboard", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "field", "equipment"
   ],
   "FIELD": [
-    "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule"
+    "home", "dashboard", "wip", "field"
   ],
   "HR": [
-    "employees", "certifications", "onboarding"
+    "home", "employees", "certifications", "onboarding"
   ]
 };
 
@@ -29,14 +29,15 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   "todd@pmcdecor.com": ["ADMIN"],
   
   // Full access
-  "isaac@pmcdecor.com": ["ESTIMATOR"],
+ 
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
   
   // Add more users here:
-  // "estimator@pmcdecor.com": ["ESTIMATOR"],
-};
+   "isaac@pmcdecor.com": ["ESTIMATOR"]
+  // 
+  };
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
   if (!userEmail) return false;

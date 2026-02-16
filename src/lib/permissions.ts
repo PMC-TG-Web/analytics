@@ -7,20 +7,25 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "procore", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management"
   ],
+  "HR": [
+    "home", "employees", "certifications", "onboarding","Crew Dispatch"
+  ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
     "crew-dispatch", "short-term-schedule", "long-term-schedule","constants"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule"
+    "long-term-schedule", "project-schedule","WIP","projects", "field", "equipment","Certifications","Dashboard","kpi"
+  ],
+  "PMs": [
+    "home", "scheduling", "short-term-schedule", "crew-dispatch",
+    "long-term-schedule", "project-schedule","WIP","projects", "equipment"
   ],
   "FIELD": [
     "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule"
   ],
-  "HR": [
-    "home", "employees", "certifications", "onboarding"
-  ]
+ 
 };
 
 // Map Procore email addresses to groups or specific pages
@@ -29,7 +34,20 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
-  "isaac@pmcdecor.com": ["ESTIMATOR"] // Upgraded to Admin
+
+  // HR access
+  "jane@pmcdecor.com": ["HR"],
+
+
+// PM access
+"mervin@pmcdecor.com": ["PMs"],
+"abner@pmcdecor.com": ["PMs"],
+
+// Operations access
+"john@pmcdecor.com": ["OPERATIONS"],
+
+  //Estimator access
+  "isaac@pmcdecor.com": ["ESTIMATOR"] 
 };
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {

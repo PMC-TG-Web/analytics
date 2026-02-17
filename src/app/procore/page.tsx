@@ -12,11 +12,7 @@ interface ProcoreData {
   users?: any;
   bidBoardProjects?: any;
   estimatingProjects?: any;
-  companyBids?: any;
-  companyBidPackages?: any;
-  companyBidBoardProjects?: any;
-  companyEstimatingProjects?: any;
-  estimatingV2?: any;
+  bidBoardV2?: any;
   error?: string;
 }
 
@@ -32,6 +28,8 @@ function ProcoreContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [data, setData] = useState<ProcoreData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
@@ -90,6 +88,28 @@ function ProcoreContent() {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setError(null);
+    setSyncResult(null);
+    try {
+      const response = await fetch("/api/procore/sync", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setSyncResult({ count: result.count, message: result.message });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync data");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -189,19 +209,35 @@ function ProcoreContent() {
               ✓ Authenticated with Procore
             </div>
 
+            {syncResult && (
+              <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-6">
+                <strong>Sync Result:</strong> {syncResult.message}
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
                 Error: {error}
               </div>
             )}
 
-            <button
-              onClick={handleExplore}
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded mb-6"
-            >
-              {loading ? "Loading..." : "Explore Available Data"}
-            </button>
+            <div className="flex gap-4 mb-6">
+              <button
+                onClick={handleExplore}
+                disabled={loading || syncing}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded flex-1"
+              >
+                {loading ? "Exploring..." : "Explore Available Data"}
+              </button>
+              
+              <button
+                onClick={handleSync}
+                disabled={loading || syncing}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded flex-1"
+              >
+                {syncing ? "Syncing..." : "Sync Bid Board to Firestore"}
+              </button>
+            </div>
 
             {data && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -318,20 +354,12 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💸 Company Bids ({data.companyBids?.length || 0}) / Pkgs ({data.companyBidPackages?.length || 0})
+                    💸 Bid Board v2.0 ({data.bidBoardV2?.length || 0})
                   </h2>
                   {selectedSection === "bids" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
-                      <h3 className="font-bold mb-2">Bids:</h3>
-                      {renderData("bids", data.companyBids)}
-                      <h3 className="font-bold mt-4 mb-2">Bid Packages:</h3>
-                      {renderData("bidpackages", data.companyBidPackages)}
-                      <h3 className="font-bold mt-4 mb-2">Company Bid Board:</h3>
-                      {renderData("cbids", data.companyBidBoardProjects)}
-                      <h3 className="font-bold mt-4 mb-2">Company Estimating:</h3>
-                      {renderData("cestimating", data.companyEstimatingProjects)}
-                      <h3 className="font-bold mt-4 mb-2">Estimating v2.0 (Bid Board):</h3>
-                      {renderData("estv2", data.estimatingV2)}
+                      <h3 className="font-bold mb-2">Bid Board Projects (v2):</h3>
+                      {renderData("bidboardv2", data.bidBoardV2)}
                     </div>
                   )}
                 </div>

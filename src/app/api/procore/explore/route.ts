@@ -38,15 +38,7 @@ export async function POST(request: NextRequest) {
       makeRequest('/rest/v1.0/bid_board_projects', accessToken),
       // 7: Estimating projects (Alternate)
       makeRequest('/rest/v1.0/estimating_projects', accessToken),
-      // 8: Company Bids
-      makeRequest(`/rest/v1.0/companies/${companyId}/bids`, accessToken),
-      // 9: Company Bid Packages
-      makeRequest(`/rest/v1.0/companies/${companyId}/bid_packages`, accessToken),
-      // 10: Bid Board (Company Prefixed)
-      makeRequest(`/rest/v1.0/companies/${companyId}/bid_board_projects`, accessToken),
-      // 11: Estimating (Company Prefixed)
-      makeRequest(`/rest/v1.0/companies/${companyId}/estimating_projects`, accessToken),
-      // 12: Estimating v2.0 (New Discovery)
+      // 8: Estimating v2.0 (Verified Winner)
       makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects`, accessToken)
     ]);
 
@@ -59,11 +51,7 @@ export async function POST(request: NextRequest) {
       'users', 
       'bidBoardProjects', 
       'estimatingProjects',
-      'companyBids',
-      'companyBidPackages',
-      'companyBidBoardProjects',
-      'companyEstimatingProjects',
-      'estimatingV2'
+      'bidBoardV2'
     ];
     results.forEach((result, idx) => {
       const label = labels[idx];

@@ -10,8 +10,8 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
-    "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
+     "estimating-tools", "constants", "equipment", 
+    "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
   "HR": [
     "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"

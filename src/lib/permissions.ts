@@ -1,10 +1,16 @@
 // User permissions configuration
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
-  "ADMIN": [
+  "OWNER": [
     "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
     "procore", "field", "estimating-tools", "constants", "equipment", 
+    "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
+  ],
+  "ADMIN": [
+    "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "long-term-schedule", "project-schedule", "projects", "employees", 
+    "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
   ],
   "HR": [
@@ -30,7 +36,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  "todd@pmcdecor.com": ["ADMIN"],
+  "todd@pmcdecor.com": ["OWNER"],
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],

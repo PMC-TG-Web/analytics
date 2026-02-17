@@ -89,24 +89,41 @@ export async function makeRequest(
   const apiUrl = (procoreConfig.apiUrl || '').trim();
   const url = `${apiUrl}${endpoint}`;
   const cleanToken = (accessToken || '').trim();
-  const companyId = (procoreConfig.companyId || '').trim();
+  
+  // Use config, or direct env var as fallback
+  let companyId = (procoreConfig.companyId || process.env.PROCORE_COMPANY_ID || '').trim();
 
-  console.log(`Making request to: ${url}`);
-  console.log(`Using Company ID: "${companyId}"`);
+  // If not found yet, try to extract from query string if present
+  if (!companyId && endpoint.includes('company_id=')) {
+    const match = endpoint.match(/company_id=([^&]+)/);
+    if (match) companyId = match[1];
+  }
+
+  console.log(`[Procore API] Requesting: ${url}`);
+  if (companyId) {
+    console.log(`[Procore API] Using Company ID: ${companyId}`);
+  } else {
+    console.warn(`[Procore API] WARNING: Missing Company ID for ${endpoint}`);
+  }
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+    const requestHeaders: Record<string, string> = {
+      'Authorization': `Bearer ${cleanToken}`,
+      'Accept': 'application/json',
+      ...((options?.headers as Record<string, string>) || {}),
+    };
+
+    if (companyId) {
+      requestHeaders['Procore-Company-Id'] = companyId;
+    }
 
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${cleanToken}`,
-        'Procore-Company-Id': companyId,
-        'Accept': 'application/json',
-        ...options?.headers,
-      },
+      headers: requestHeaders,
     });
 
     clearTimeout(timeoutId);

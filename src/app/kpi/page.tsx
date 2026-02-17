@@ -267,10 +267,10 @@ const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> =
 };
 
 function getProjectDate(project: any) {
-  const updated = parseDateValue(project.dateUpdated);
   const created = parseDateValue(project.dateCreated);
-  if (updated && created) return updated > created ? updated : created;
-  return updated || created || null;
+  const updated = parseDateValue(project.dateUpdated);
+  if (created) return created;
+  return updated || null;
 }
 
 export default function KPIPage() {
@@ -283,6 +283,21 @@ export default function KPIPage() {
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  // Fetch KPI data separately when yearFilter changes
+  useEffect(() => {
+    async function fetchKpiData() {
+      const currentYear = yearFilter || new Date().getFullYear().toString();
+      try {
+        const kpiRes = await fetch(`/api/kpi?year=${currentYear}`);
+        const kpiJson = await kpiRes.json();
+        setKpiData(kpiJson.data || []);
+      } catch (err) {
+        console.error("Error fetching KPI overrides:", err);
+      }
+    }
+    fetchKpiData();
+  }, [yearFilter]);
 
   return (
     <ProtectedPage page="kpi">
@@ -372,12 +387,6 @@ function KPIPageContent({
 
         setSchedules(schedulesWithStatus);
 
-        // Load KPI data for current year
-        const currentYear = yearFilter || new Date().getFullYear().toString();
-        const kpiRes = await fetch(`/api/kpi?year=${currentYear}`);
-        const kpiJson = await kpiRes.json();
-        setKpiData(kpiJson.data || []);
-
         setLoading(false);
       } catch (error) {
         console.error("Error loading data:", error);
@@ -417,14 +426,14 @@ function KPIPageContent({
     return `${customer ?? ""}~${projectNumber ?? ""}~${projectName ?? ""}`;
   };
 
-  const qualifyingStatuses = ["In Progress"];
+  const qualifyingStatuses = ["In Progress", "Accepted", "Complete"];
 
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     const activeProjects = projects;
     
     const projectIdentifierMap = new Map<string, Project[]>();
     activeProjects.forEach((project: Project) => {
-      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
       if (!identifier) return;
       
       if (!projectIdentifierMap.has(identifier)) {
@@ -462,20 +471,25 @@ function KPIPageContent({
         if (!foundPriorityCustomer) {
           let latestCustomer: string = "";
           let latestDate: Date | null = null;
+          let maxSales: number = -1;
           
           customerMap.forEach((projs, customer) => {
             const mostRecentProj = projs.reduce((latest, current) => {
-              const currentDate = parseDateValue(current.dateCreated);
-              const latestDateVal = parseDateValue(latest.dateCreated);
+              const currentDate = getProjectDate(current);
+              const latestDateVal = getProjectDate(latest);
               if (!currentDate) return latest;
               if (!latestDateVal) return current;
               return currentDate > latestDateVal ? current : latest;
             }, projs[0]);
             
-            const projDate = parseDateValue(mostRecentProj.dateCreated);
-            if (projDate && (!latestDate || projDate > latestDate)) {
+            const projDate = getProjectDate(mostRecentProj);
+            const projSales = projs.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
+
+            // Prioritize highest sales volume if dates are similar, to avoid picking a $0 bid
+            if (projDate && (!latestDate || projDate > latestDate || (projDate.getTime() === latestDate.getTime() && projSales > maxSales))) {
               latestDate = projDate;
               latestCustomer = customer;
+              maxSales = projSales;
             }
           });
           
@@ -519,8 +533,9 @@ function KPIPageContent({
 
   const bidSubmittedSalesByMonth: Record<string, number> = {};
   dedupedByCustomer.forEach((project) => {
-    if ((project.status || "") !== "Bid Submitted") return;
-    const projectDate = parseDateValue(project.dateCreated);
+    const status = (project.status || "").trim();
+    if (status !== "Bid Submitted" && status !== "Estimating") return;
+    const projectDate = getProjectDate(project);
     if (!projectDate) return;
     const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
     const sales = Number(project.sales ?? 0);
@@ -553,9 +568,9 @@ function KPIPageContent({
     if (projectName.includes("sandbox")) return false;
     if (projectName.includes("raymond king")) return false;
     if (projectName === "alexander drive addition latest") return false;
-    const estimator = (p.estimator ?? "").toString().trim();
-    if (!estimator) return false;
-    if (estimator.toLowerCase() === "todd gilmore") return false;
+    // Don't filter out Todd Gilmore as estimator, otherwise user sees $0 if they are checking their own projects
+    // const estimator = (p.estimator ?? "").toString().trim().toLowerCase();
+    // if (estimator.includes("todd gilmore") || estimator.includes("gilmore todd")) return false;
     const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
     if (projectNumber === "701 poplar church rd") return false;
     
@@ -565,7 +580,7 @@ function KPIPageContent({
   // Deduplicate by project, selecting one customer per project, then sum hours
   const projectIdentifierMap = new Map<string, Project[]>();
   filteredProjects.forEach((project: Project) => {
-    const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+    const identifier = (project.projectNumber || project.projectName || "").toString().trim();
     if (!identifier) return;
     if (!projectIdentifierMap.has(identifier)) {
       projectIdentifierMap.set(identifier, []);
@@ -617,18 +632,31 @@ function KPIPageContent({
           }, projs[0]);
           
           const projDate = parseDateValue(mostRecent.dateCreated);
-          customerDates.push([customer, projDate]);
+          const projSales = projs.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
+          customerDates.push([customer, projDate, projSales]);
         });
         
-        // Sort by date descending, then by customer name ascending (alphabetical)
+        // Sort by date descending, then by sales descending, then by customer name ascending
         customerDates.sort((a, b) => {
           if (a[1] && b[1]) {
-            if (a[1] !== b[1]) return b[1].getTime() - a[1].getTime();
+            if (a[1].getTime() !== b[1].getTime()) {
+              return b[1].getTime() - a[1].getTime();
+            }
+          } else if (a[1]) {
+            return -1;
+          } else if (b[1]) {
+            return 1;
           }
-          return a[0].localeCompare(b[0]);
+          
+          // Dates are equal or both missing, sort by sales
+          const salesA = a[2] as number;
+          const salesB = b[2] as number;
+          if (salesA !== salesB) return salesB - salesA;
+          
+          return (a[0] as string).localeCompare(b[0] as string);
         });
         
-        chosenCustomer = customerDates[0][0];
+        chosenCustomer = customerDates[0][0] as string;
         chosenProjects = customerMap.get(chosenCustomer) || [];
       }
     } else {
@@ -640,9 +668,10 @@ function KPIPageContent({
     
     // Sum hours for chosen customer's entries
     chosenProjects.forEach((project) => {
-      if ((project.status || "") !== "Bid Submitted") return;
+      const status = (project.status || "").trim();
+      if (status !== "Bid Submitted" && status !== "Estimating") return;
       
-      const projectDate = parseDateValue(project.dateCreated);
+      const projectDate = getProjectDate(project);
       if (!projectDate) return;
       
       // Apply date range filter
@@ -724,9 +753,10 @@ function KPIPageContent({
     }
     
     chosenProjects.forEach((project) => {
-      if ((project.status || "") !== "In Progress") return;
+      const status = (project.status || "").trim();
+      if (!qualifyingStatuses.includes(status)) return;
       
-      const projectDate = parseDateValue(project.dateCreated);
+      const projectDate = getProjectDate(project);
       if (!projectDate) return;
       
       if (startDate || endDate) {

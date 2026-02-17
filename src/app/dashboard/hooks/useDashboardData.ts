@@ -46,8 +46,9 @@ export function useDashboardData() {
       if (exclusions.includes(projectName)) return false;
       if (projectName.includes("sandbox") || projectName.includes("raymond king")) return false;
 
-      const estimator = (p.estimator ?? "").toString().trim().toLowerCase();
-      if (!estimator || estimator === "todd gilmore") return false;
+      // Don't filter out Todd Gilmore - the user needs to see their own projects
+      // const estimator = (p.estimator ?? "").toString().trim().toLowerCase();
+      // if (estimator.includes("todd gilmore") || estimator.includes("gilmore todd")) return false;
 
       const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
       if (projectNumber === "701 poplar church rd") return false;
@@ -59,7 +60,7 @@ export function useDashboardData() {
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     const projectIdentifierMap = new Map<string, Project[]>();
     filteredProjects.forEach((project) => {
-      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
       if (!identifier) return;
       if (!projectIdentifierMap.has(identifier)) projectIdentifierMap.set(identifier, []);
       projectIdentifierMap.get(identifier)!.push(project);
@@ -89,6 +90,8 @@ export function useDashboardData() {
 
         if (!foundPriority) {
           let latestDate: Date | null = null;
+          let maxSales: number = -1;
+
           customerMap.forEach((projs) => {
             const mostRecentProj = projs.reduce((latest, current) => {
               const currentDate = parseDateValue(current.dateCreated);
@@ -97,9 +100,12 @@ export function useDashboardData() {
             }, projs[0]);
             
             const projDate = parseDateValue(mostRecentProj.dateCreated);
-            if (projDate && (!latestDate || projDate > latestDate)) {
+            const projSales = projs.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+
+            if (projDate && (!latestDate || projDate > latestDate || (projDate.getTime() === latestDate.getTime() && projSales > maxSales))) {
               latestDate = projDate;
               selectedProjects = projs;
+              maxSales = projSales;
             }
           });
         }

@@ -263,9 +263,9 @@ function SchedulingContent() {
       if (projectName.includes("sandbox")) return false;
       if (projectName.includes("raymond king")) return false;
       if (projectName === "alexander drive addition latest") return false;
-      const estimator = ((p as any).estimator ?? "").toString().trim();
-      if (!estimator) return false;
-      if (estimator.toLowerCase() === "todd gilmore") return false;
+      // Don't filter out Todd Gilmore, otherwise user sees nothing if they are the estimator
+      // const estimator = ((p as any).estimator ?? "").toString().trim().toLowerCase();
+      // if (estimator.includes("todd gilmore") || estimator.includes("gilmore todd")) return false;
       const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
       if (projectNumber === "701 poplar church rd") return false;
       return true;
@@ -274,13 +274,9 @@ function SchedulingContent() {
     // Step 2: Group by project identifier to find duplicates with different customers
     const projectIdentifierMap = new Map<string, typeof activeProjects>();
     activeProjects.forEach((project) => {
-      const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
       if (!identifier) return;
       if (!projectIdentifierMap.has(identifier)) {
-        projectIdentifierMap.set(identifier, []);
-      }
-      projectIdentifierMap.get(identifier)!.push(project);
-    });
     
     // Step 3: Deduplicate by customer (pick one customer per project identifier)
     const dedupedByCustomer: typeof activeProjects = [];

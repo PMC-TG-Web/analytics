@@ -57,15 +57,17 @@ export async function GET(request: NextRequest) {
        new URL(redirectPath, request.url)
     );
    
-     // Store user session (dedicated procore_session to avoid Auth0 conflicts)
-     // Use auth_session to satisfy hook requirements, but with lax security for localhost
-     const cookieOptions = {
+    // Store user session
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: false, // Force false for localhost
+      secure: isProduction, // Use secure in production
       path: '/',
       sameSite: 'lax' as const,
       maxAge: 60 * 60 * 24 * 180,
     };
+
+    console.log('Setting cookies with options:', { ...cookieOptions, secure: isProduction });
 
      response.cookies.set('auth_session', JSON.stringify({
        email: procoreUser.login,

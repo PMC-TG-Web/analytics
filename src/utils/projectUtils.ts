@@ -37,7 +37,7 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
   // Group by project identifier (number or name) to find duplicates across different customers
   const projectIdentifierMap = new Map<string, Project[]>();
   projects.forEach((project) => {
-    const identifier = (project.projectNumber ?? project.projectName ?? "").toString().trim();
+    const identifier = (project.projectNumber || project.projectName || "").toString().trim();
     if (!identifier) return;
     
     if (!projectIdentifierMap.has(identifier)) {

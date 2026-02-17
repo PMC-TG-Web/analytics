@@ -7,13 +7,14 @@ export async function POST(request: NextRequest) {
     const accessToken = request.cookies.get('procore_access_token')?.value;
 
     if (!accessToken) {
+      console.error('Procore Explore: No access token found in cookies');
       return NextResponse.json(
         { error: 'No access token found. Please authenticate first.' },
         { status: 401 }
       );
     }
 
-    // Fetch various endpoints to show what's available in parallel
+    console.log('Procore Explore: Access token found, starting requests...');
     const data: Record<string, any> = {};
 
     const results = await Promise.allSettled([
@@ -21,24 +22,16 @@ export async function POST(request: NextRequest) {
       makeRequest('/rest/v1.0/me', accessToken),
       // 1: Companies
       makeRequest('/rest/v1.0/companies', accessToken),
-      // 2: Projects (v2 -> v1)
-      makeRequest(`/rest/v2.0/companies/${procoreConfig.companyId}/projects`, accessToken).catch(() => 
-        makeRequest(`/rest/v1.0/companies/${procoreConfig.companyId}/projects`, accessToken)
-      ),
-      // 3: Project Templates (v2 -> v1)
-      makeRequest(`/rest/v2.0/companies/${procoreConfig.companyId}/project_templates`, accessToken).catch(() => 
-        makeRequest(`/rest/v1.0/companies/${procoreConfig.companyId}/project_templates`, accessToken)
-      ),
-      // 4: Vendors (v2 -> v1)
-      makeRequest(`/rest/v2.0/companies/${procoreConfig.companyId}/vendors`, accessToken).catch(() => 
-        makeRequest(`/rest/v1.0/companies/${procoreConfig.companyId}/vendors`, accessToken)
-      ),
-      // 5: Users (v2 -> v1)
-      makeRequest(`/rest/v2.0/companies/${procoreConfig.companyId}/users`, accessToken).catch(() => 
-        makeRequest(`/rest/v1.0/companies/${procoreConfig.companyId}/users`, accessToken)
-      ),
+      // 2: Projects
+      makeRequest(`/rest/v1.0/projects?company_id=${procoreConfig.companyId}`, accessToken),
+      // 3: Project Templates
+      makeRequest(`/rest/v1.0/project_templates?company_id=${procoreConfig.companyId}`, accessToken),
+      // 4: Vendors
+      makeRequest(`/rest/v1.0/vendors?company_id=${procoreConfig.companyId}`, accessToken),
+      // 5: Users
+      makeRequest(`/rest/v1.0/users?company_id=${procoreConfig.companyId}`, accessToken),
       // 6: Bid board projects
-      makeRequest(`/rest/v2.0/companies/${procoreConfig.companyId}/estimating/bid_board_projects`, accessToken)
+      makeRequest(`/rest/v1.0/estimating/bid_board_projects?company_id=${procoreConfig.companyId}`, accessToken)
     ]);
 
     const labels = ['user', 'companies', 'projects', 'projectTemplates', 'vendors', 'users', 'bidBoardProjects'];

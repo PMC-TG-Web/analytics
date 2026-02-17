@@ -13,13 +13,13 @@ interface ProcoreAuthCode {
 }
 
 export const procoreConfig = {
-  clientId: process.env.PROCORE_CLIENT_ID,
-  clientSecret: process.env.PROCORE_CLIENT_SECRET,
-  companyId: process.env.PROCORE_COMPANY_ID,
-  apiUrl: process.env.PROCORE_API_URL,
-  authUrl: process.env.PROCORE_AUTH_URL,
-  tokenUrl: process.env.PROCORE_TOKEN_URL,
-  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || `${process.env.AUTH0_BASE_URL || 'http://localhost:3000'}/api/auth/procore/callback`,
+  clientId: (process.env.PROCORE_CLIENT_ID || '').trim(),
+  clientSecret: (process.env.PROCORE_CLIENT_SECRET || '').trim(),
+  companyId: (process.env.PROCORE_COMPANY_ID || '').trim(),
+  apiUrl: (process.env.PROCORE_API_URL || 'https://api.procore.com').trim(),
+  authUrl: (process.env.PROCORE_AUTH_URL || 'https://login.procore.com/oauth/authorize').trim(),
+  tokenUrl: (process.env.PROCORE_TOKEN_URL || 'https://api.procore.com/oauth/token').trim(),
+  redirectUri: (process.env.NEXT_PUBLIC_REDIRECT_URI || `${process.env.AUTH0_BASE_URL || 'http://localhost:3000'}/api/auth/procore/callback`).trim(),
 };
 
 // Get OAuth authorization URL

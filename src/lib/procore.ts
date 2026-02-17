@@ -15,7 +15,7 @@ interface ProcoreAuthCode {
 export const procoreConfig = {
   clientId: (process.env.PROCORE_CLIENT_ID || '').trim(),
   clientSecret: (process.env.PROCORE_CLIENT_SECRET || '').trim(),
-  companyId: (process.env.PROCORE_COMPANY_ID || '').trim(),
+  companyId: (process.env.PROCORE_COMPANY_ID || '598134325658789').trim(),
   apiUrl: (process.env.PROCORE_API_URL || 'https://api.procore.com').trim(),
   authUrl: (process.env.PROCORE_AUTH_URL || 'https://login.procore.com/oauth/authorize').trim(),
   tokenUrl: (process.env.PROCORE_TOKEN_URL || 'https://api.procore.com/oauth/token').trim(),
@@ -90,23 +90,12 @@ export async function makeRequest(
   const url = `${apiUrl}${endpoint}`;
   const cleanToken = (accessToken || '').trim();
   
-  // Use config, or direct env var as fallback
-  let companyId = (procoreConfig.companyId || process.env.PROCORE_COMPANY_ID || '').trim();
-
-  // HARD FALLBACK for your specific Production Company ID if env vars are failing
-  if (!companyId || companyId === 'undefined') {
-    companyId = '598134325658789';
-  }
-
-  // If not found yet, try to extract from query string if present
-  if (!companyId && endpoint.includes('company_id=')) {
-    const match = endpoint.match(/company_id=([^&]+)/);
-    if (match) companyId = match[1];
-  }
+  // Use config (which has hardcoded fallback)
+  const companyId = procoreConfig.companyId;
 
   // CRITICAL: Stop the request if we still don't have a company ID
   if (!companyId || companyId === 'undefined') {
-    throw new Error('MISSING_COMPANY_ID: The Procore Company ID is not configured in environment variables.');
+    throw new Error('MISSING_COMPANY_ID: The Procore Company ID is not configured.');
   }
 
   console.log(`[Procore API] Requesting: ${url}`);
@@ -118,13 +107,10 @@ export async function makeRequest(
 
     const requestHeaders: Record<string, string> = {
       'Authorization': `Bearer ${cleanToken}`,
+      'Procore-Company-Id': companyId,
       'Accept': 'application/json',
       ...((options?.headers as Record<string, string>) || {}),
     };
-
-    if (companyId) {
-      requestHeaders['Procore-Company-Id'] = companyId;
-    }
 
     const response = await fetch(url, {
       ...options,

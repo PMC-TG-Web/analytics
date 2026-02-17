@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
     console.log('Procore Explore: Access token found, starting requests...');
     const data: Record<string, any> = {};
 
-    // Get Company ID from config or env
-    const companyId = procoreConfig.companyId || process.env.PROCORE_COMPANY_ID || '';
+    // Get Company ID from our robust config
+    const companyId = procoreConfig.companyId;
     console.log(`Procore Explore: Using Company ID ${companyId}`);
 
     const results = await Promise.allSettled([
@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
       // 3: Project Templates
       makeRequest(`/rest/v1.0/project_templates?company_id=${companyId}`, accessToken),
       // 4: Vendors
-      makeRequest(`/rest/v1.0/vendors?company_id=${companyId}`, accessToken),
+      makeRequest(`/rest/v1.1/vendors?company_id=${companyId}`, accessToken),
       // 5: Users
       makeRequest(`/rest/v1.0/users?company_id=${companyId}`, accessToken),
       // 6: Bid board projects
-      makeRequest(`/rest/v1.0/bid_board_projects?company_id=${companyId}`, accessToken)
+      makeRequest(`/rest/v1.0/estimating/bid_board_projects?company_id=${companyId}`, accessToken)
     ]);
 
     const labels = ['user', 'companies', 'projects', 'projectTemplates', 'vendors', 'users', 'bidBoardProjects'];

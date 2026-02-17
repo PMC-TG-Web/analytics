@@ -620,7 +620,7 @@ function KPIPageContent({
       if (!foundPriority) {
         let latestCustomer = "";
         let latestDate: Date | null = null;
-        const customerDates: Array<[string, Date | null]> = [];
+        const customerDates: Array<[string, Date | null, number]> = [];
         
         customerMap.forEach((projs, customer) => {
           const mostRecent = projs.reduce((latest, current) => {

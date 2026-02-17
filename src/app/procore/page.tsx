@@ -292,11 +292,14 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💰 Bid Board Projects ({data.bidBoardProjects?.length || 0})
+                    💰 Bid Board ({data.bidBoardProjects?.length || 0}) / Est ({data.estimatingProjects?.length || 0})
                   </h2>
                   {selectedSection === "bidboard" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
+                      <h3 className="font-bold mb-2">Bid Board Projects:</h3>
                       {renderData("bidboard", data.bidBoardProjects)}
+                      <h3 className="font-bold mt-4 mb-2">Estimating Projects:</h3>
+                      {renderData("estimating", data.estimatingProjects)}
                     </div>
                   )}
                 </div>
@@ -306,15 +309,18 @@ function ProcoreContent() {
                     className="text-lg font-semibold mb-4 cursor-pointer hover:text-blue-600"
                     onClick={() =>
                       setSelectedSection(
-                        selectedSection === "estimating" ? null : "estimating"
+                        selectedSection === "bids" ? null : "bids"
                       )
                     }
                   >
-                    💰 Estimating Projects ({data.estimatingProjects?.length || 0})
+                    💸 Company Bids ({data.companyBids?.length || 0}) / Pkgs ({data.companyBidPackages?.length || 0})
                   </h2>
-                  {selectedSection === "estimating" && (
+                  {selectedSection === "bids" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
-                      {renderData("estimating", data.estimatingProjects)}
+                      <h3 className="font-bold mb-2">Bids:</h3>
+                      {renderData("bids", data.companyBids)}
+                      <h3 className="font-bold mt-4 mb-2">Bid Packages:</h3>
+                      {renderData("bidpackages", data.companyBidPackages)}
                     </div>
                   )}
                 </div>

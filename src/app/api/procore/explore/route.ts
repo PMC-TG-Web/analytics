@@ -26,21 +26,36 @@ export async function POST(request: NextRequest) {
       makeRequest('/rest/v1.0/me', accessToken),
       // 1: Companies
       makeRequest('/rest/v1.0/companies', accessToken),
-      // 2: Projects
-      makeRequest(`/rest/v1.0/projects?company_id=${companyId}`, accessToken),
+      // 2: Projects (v1.1)
+      makeRequest(`/rest/v1.1/projects?company_id=${companyId}&view=extended`, accessToken),
       // 3: Project Templates
       makeRequest(`/rest/v1.0/project_templates?company_id=${companyId}`, accessToken),
       // 4: Vendors
       makeRequest(`/rest/v1.0/vendors?company_id=${companyId}`, accessToken),
       // 5: Users
       makeRequest(`/rest/v1.0/users?company_id=${companyId}`, accessToken),
-      // 6: Bid board projects
-      makeRequest(`/rest/v1.0/companies/${companyId}/bid_board_projects`, accessToken),
-      // 7: Estimating projects (Alternate name for Bid Board)
-      makeRequest(`/rest/v1.0/estimating_projects?company_id=${companyId}`, accessToken)
+      // 6: Bid board projects (Standard)
+      makeRequest('/rest/v1.0/bid_board_projects', accessToken),
+      // 7: Estimating projects (Alternate)
+      makeRequest('/rest/v1.0/estimating_projects', accessToken),
+      // 8: Company Bids
+      makeRequest(`/rest/v1.0/companies/${companyId}/bids`, accessToken),
+      // 9: Company Bid Packages
+      makeRequest(`/rest/v1.0/companies/${companyId}/bid_packages`, accessToken)
     ]);
 
-    const labels = ['user', 'companies', 'projects', 'projectTemplates', 'vendors', 'users', 'bidBoardProjects', 'estimatingProjects'];
+    const labels = [
+      'user', 
+      'companies', 
+      'projects', 
+      'projectTemplates', 
+      'vendors', 
+      'users', 
+      'bidBoardProjects', 
+      'estimatingProjects',
+      'companyBids',
+      'companyBidPackages'
+    ];
     results.forEach((result, idx) => {
       const label = labels[idx];
       if (result.status === 'fulfilled') {

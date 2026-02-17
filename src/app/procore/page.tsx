@@ -14,6 +14,8 @@ interface ProcoreData {
   estimatingProjects?: any;
   companyBids?: any;
   companyBidPackages?: any;
+  companyBidBoardProjects?: any;
+  companyEstimatingProjects?: any;
   error?: string;
 }
 
@@ -323,6 +325,10 @@ function ProcoreContent() {
                       {renderData("bids", data.companyBids)}
                       <h3 className="font-bold mt-4 mb-2">Bid Packages:</h3>
                       {renderData("bidpackages", data.companyBidPackages)}
+                      <h3 className="font-bold mt-4 mb-2">Company Bid Board:</h3>
+                      {renderData("cbids", data.companyBidBoardProjects)}
+                      <h3 className="font-bold mt-4 mb-2">Company Estimating:</h3>
+                      {renderData("cestimating", data.companyEstimatingProjects)}
                     </div>
                   )}
                 </div>

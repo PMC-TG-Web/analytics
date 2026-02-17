@@ -93,18 +93,24 @@ export async function makeRequest(
   // Use config, or direct env var as fallback
   let companyId = (procoreConfig.companyId || process.env.PROCORE_COMPANY_ID || '').trim();
 
+  // HARD FALLBACK for your specific Production Company ID if env vars are failing
+  if (!companyId || companyId === 'undefined') {
+    companyId = '598134325658789';
+  }
+
   // If not found yet, try to extract from query string if present
   if (!companyId && endpoint.includes('company_id=')) {
     const match = endpoint.match(/company_id=([^&]+)/);
     if (match) companyId = match[1];
   }
 
-  console.log(`[Procore API] Requesting: ${url}`);
-  if (companyId) {
-    console.log(`[Procore API] Using Company ID: ${companyId}`);
-  } else {
-    console.warn(`[Procore API] WARNING: Missing Company ID for ${endpoint}`);
+  // CRITICAL: Stop the request if we still don't have a company ID
+  if (!companyId || companyId === 'undefined') {
+    throw new Error('MISSING_COMPANY_ID: The Procore Company ID is not configured in environment variables.');
   }
+
+  console.log(`[Procore API] Requesting: ${url}`);
+  console.log(`[Procore API] Using Company ID Header: "${companyId}"`);
 
   try {
     const controller = new AbortController();

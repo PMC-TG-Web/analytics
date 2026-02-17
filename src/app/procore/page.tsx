@@ -11,6 +11,7 @@ interface ProcoreData {
   vendors?: any;
   users?: any;
   bidBoardProjects?: any;
+  estimatingProjects?: any;
   error?: string;
 }
 
@@ -296,6 +297,24 @@ function ProcoreContent() {
                   {selectedSection === "bidboard" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
                       {renderData("bidboard", data.bidBoardProjects)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2
+                    className="text-lg font-semibold mb-4 cursor-pointer hover:text-blue-600"
+                    onClick={() =>
+                      setSelectedSection(
+                        selectedSection === "estimating" ? null : "estimating"
+                      )
+                    }
+                  >
+                    💰 Estimating Projects ({data.estimatingProjects?.length || 0})
+                  </h2>
+                  {selectedSection === "estimating" && (
+                    <div className="text-sm max-h-96 overflow-y-auto">
+                      {renderData("estimating", data.estimatingProjects)}
                     </div>
                   )}
                 </div>

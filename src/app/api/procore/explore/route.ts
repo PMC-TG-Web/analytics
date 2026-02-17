@@ -45,7 +45,9 @@ export async function POST(request: NextRequest) {
       // 10: Bid Board (Company Prefixed)
       makeRequest(`/rest/v1.0/companies/${companyId}/bid_board_projects`, accessToken),
       // 11: Estimating (Company Prefixed)
-      makeRequest(`/rest/v1.0/companies/${companyId}/estimating_projects`, accessToken)
+      makeRequest(`/rest/v1.0/companies/${companyId}/estimating_projects`, accessToken),
+      // 12: Estimating v2.0 (New Discovery)
+      makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects`, accessToken)
     ]);
 
     const labels = [
@@ -60,7 +62,8 @@ export async function POST(request: NextRequest) {
       'companyBids',
       'companyBidPackages',
       'companyBidBoardProjects',
-      'companyEstimatingProjects'
+      'companyEstimatingProjects',
+      'estimatingV2'
     ];
     results.forEach((result, idx) => {
       const label = labels[idx];

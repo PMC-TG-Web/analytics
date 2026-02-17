@@ -12,6 +12,8 @@ interface ProcoreData {
   users?: any;
   bidBoardProjects?: any;
   estimatingProjects?: any;
+  companyBids?: any;
+  companyBidPackages?: any;
   error?: string;
 }
 

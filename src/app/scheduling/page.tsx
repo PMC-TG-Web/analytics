@@ -277,6 +277,10 @@ function SchedulingContent() {
       const identifier = (project.projectNumber || project.projectName || "").toString().trim();
       if (!identifier) return;
       if (!projectIdentifierMap.has(identifier)) {
+        projectIdentifierMap.set(identifier, []);
+      }
+      projectIdentifierMap.get(identifier)!.push(project);
+    });
     
     // Step 3: Deduplicate by customer (pick one customer per project identifier)
     const dedupedByCustomer: typeof activeProjects = [];

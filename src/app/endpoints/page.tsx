@@ -371,13 +371,15 @@ function EndpointExplorerContent() {
                                 <span className={testResult.success ? "text-green-700" : "text-red-700"}>
                                   {testResult.success ? "✅ Success" : "❌ Error"}
                                 </span>
-                                <span className="text-xs text-gray-600">
-                                  {testResult.statusCode} • {testResult.duration}ms • {(testResult.responseSize / 1024).toFixed(1)}KB
-                                </span>
+                                {testResult.duration > 0 && (
+                                  <span className="text-xs text-gray-600">
+                                    {testResult.statusCode} • {testResult.duration}ms • {(testResult.responseSize / 1024).toFixed(1)}KB
+                                  </span>
+                                )}
                               </div>
 
                               {testResult.error && (
-                                <div className="text-xs text-red-700 mb-2">
+                                <div className="text-xs text-red-700 mb-2 font-mono break-words">
                                   <strong>Error:</strong> {testResult.error}
                                 </div>
                               )}

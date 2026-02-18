@@ -51,6 +51,7 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
            <div style={{ display: 'flex', gap: '12px' }}>
               <a 
                 href={`/api/auth/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
+                target="_top"
                 style={{
                   padding: "10px 20px",
                   background: "#15616D",

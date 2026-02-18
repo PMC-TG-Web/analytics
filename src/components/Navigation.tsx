@@ -69,11 +69,12 @@ export default function Navigation({ currentPage }: { currentPage?: string }) {
       })}
       
       <a
-        href="/api/auth/logout"
-        className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-gray-800 hover:bg-black no-underline transition-all shadow-sm"
-      >
-        Sign Out
-      </a>
+      href="/api/auth/logout"
+      target="_top"
+      className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-gray-800 hover:bg-black no-underline transition-all shadow-sm"
+    >
+      Sign Out
+    </a>
     </nav>
   );
 }

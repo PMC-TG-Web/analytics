@@ -8,9 +8,12 @@ export async function GET(request: NextRequest) {
   const returnTo = request.nextUrl.searchParams.get('returnTo') || '/dashboard';
   const auth0Domain = process.env.AUTH0_DOMAIN;
   const clientId = process.env.AUTH0_CLIENT_ID;
-  const baseUrl = process.env.AUTH0_BASE_URL;
+  
+  // Use REQUEST URL for base to ensure it works on Vercel even if env is set to localhost
+  const origin = request.nextUrl.origin;
+  const baseUrl = origin.includes('localhost') ? (process.env.AUTH0_BASE_URL || origin) : origin;
 
-  if (!auth0Domain || !clientId || !baseUrl) {
+  if (!auth0Domain || !clientId) {
     return NextResponse.json(
       { error: 'Auth0 environment variables not configured' },
       { status: 500 }

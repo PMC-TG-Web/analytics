@@ -27,9 +27,12 @@ export async function GET(request: NextRequest) {
     const auth0Domain = process.env.AUTH0_DOMAIN;
     const clientId = process.env.AUTH0_CLIENT_ID;
     const clientSecret = process.env.AUTH0_CLIENT_SECRET;
-    const baseUrl = process.env.AUTH0_BASE_URL;
+    
+    // Use request origin if base URL is missing or set to localhost in prod
+    const origin = request.nextUrl.origin;
+    const baseUrl = origin.includes('localhost') ? (process.env.AUTH0_BASE_URL || origin) : origin;
 
-    if (!auth0Domain || !clientId || !clientSecret || !baseUrl) {
+    if (!auth0Domain || !clientId || !clientSecret) {
       throw new Error('Auth0 environment variables not configured');
     }
 

@@ -39,6 +39,7 @@ function ProcoreContent() {
   const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
   const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
   const [debugResult, setDebugResult] = useState<any>(null);
+  const [productivityDebugResult, setProductivityDebugResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
@@ -126,6 +127,7 @@ function ProcoreContent() {
     setSyncingProductivity(true);
     setError(null);
     setProductivityResult(null);
+    setProductivityDebugResult(null);
     try {
       const response = await fetch("/api/procore/sync-productivity", {
         method: "POST",
@@ -140,6 +142,11 @@ function ProcoreContent() {
         count: result.totalLogs, 
         message: result.message 
       });
+      
+      // Store debug info if available
+      if (result.debug) {
+        setProductivityDebugResult(result.debug);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sync productivity data");
     } finally {
@@ -342,6 +349,60 @@ function ProcoreContent() {
                 <strong>Productivity Sync:</strong> {productivityResult.message}
                 <br/>
                 <a href="/productivity" className="underline font-bold mt-2 inline-block">View Productivity Dashboard →</a>
+              </div>
+            )}
+
+            {productivityDebugResult && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-purple-500 mb-6">
+                <h2 className="text-xl font-bold text-purple-900 mb-4">
+                  🔍 Procore API Field Mapping
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-4 bg-purple-50 rounded border border-purple-200">
+                    <h3 className="font-bold text-purple-900 mb-2">Employee Object Fields</h3>
+                    <div className="text-sm font-mono">
+                      {productivityDebugResult.employeeObjectKeys?.length > 0 ? (
+                        <>
+                          <div className="mb-3">
+                            <strong>Keys:</strong> {productivityDebugResult.employeeObjectKeys.join(', ')}
+                          </div>
+                          <details>
+                            <summary className="cursor-pointer font-semibold">View Full Sample</summary>
+                            <pre className="mt-2 bg-white p-2 rounded text-xs border border-purple-200 overflow-auto max-h-64">
+                              {JSON.stringify(productivityDebugResult.employeeObjectSample, null, 2)}
+                            </pre>
+                          </details>
+                        </>
+                      ) : (
+                        <div className="text-gray-500 italic">No employee data found</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-purple-50 rounded border border-purple-200">
+                    <h3 className="font-bold text-purple-900 mb-2">Timecard Entry Object Fields</h3>
+                    <div className="text-sm font-mono">
+                      {productivityDebugResult.timecardObjectKeys?.length > 0 ? (
+                        <>
+                          <div className="mb-3">
+                            <strong>Keys:</strong> {productivityDebugResult.timecardObjectKeys.join(', ')}
+                          </div>
+                          <details>
+                            <summary className="cursor-pointer font-semibold">View Full Sample</summary>
+                            <pre className="mt-2 bg-white p-2 rounded text-xs border border-purple-200 overflow-auto max-h-64">
+                              {JSON.stringify(productivityDebugResult.timecardObjectSample, null, 2)}
+                            </pre>
+                          </details>
+                        </>
+                      ) : (
+                        <div className="text-gray-500 italic">No timecard data found</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+                  <strong>Next Step:</strong> Use these field names to extract employee information from timecard entries.
+                </div>
               </div>
             )}
 

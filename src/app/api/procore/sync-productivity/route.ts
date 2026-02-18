@@ -15,6 +15,14 @@ export async function POST(request: NextRequest) {
     const companyId = procoreConfig.companyId;
     console.log(`[Productivity Sync] Starting 6-month productivity sync for company ${companyId}`);
 
+    // For debugging in response
+    const debugInfo: any = {
+      employeeObjectKeys: [],
+      employeeObjectSample: null,
+      timecardObjectKeys: [],
+      timecardObjectSample: null
+    };
+
     // Calculate 6 months date range
     const endDate = new Date();
     const startDate = new Date();
@@ -63,7 +71,10 @@ export async function POST(request: NextRequest) {
       console.log(`[Productivity Sync] Found ${employeesArray.length} employees`);
       
       if (employeesArray.length > 0) {
-        console.log('[Productivity Sync] First employee keys:', Object.keys(employeesArray[0]));
+        const empKeys = Object.keys(employeesArray[0]);
+        debugInfo.employeeObjectKeys = empKeys;
+        debugInfo.employeeObjectSample = employeesArray[0];
+        console.log('[Productivity Sync] First employee keys:', empKeys);
         console.log('[Productivity Sync] First employee:', JSON.stringify(employeesArray[0], null, 2));
       }
       
@@ -101,8 +112,11 @@ export async function POST(request: NextRequest) {
           console.log(`[Productivity Sync] Found ${logsArray.length} timecard entries for ${projectName}`);
           
           // Debug: Log first few entries to see structure
-          if (logsArray[0]) {
-            console.log('[Productivity Sync] First timecard entry keys:', Object.keys(logsArray[0]));
+          if (logsArray[0] && !debugInfo.timecardObjectKeys.length) {
+            const tcKeys = Object.keys(logsArray[0]);
+            debugInfo.timecardObjectKeys = tcKeys;
+            debugInfo.timecardObjectSample = logsArray[0];
+            console.log('[Productivity Sync] First timecard entry keys:', tcKeys);
             console.log('[Productivity Sync] First timecard entry:', JSON.stringify(logsArray[0], null, 2));
           }
           
@@ -219,7 +233,8 @@ export async function POST(request: NextRequest) {
       totalLogs,
       monthlySummaries: Object.keys(monthlySummary).length,
       dateRange: { start: startDateStr, end: endDateStr },
-      message: `Successfully synced ${totalLogs} productivity logs across ${projectsProcessed} projects (6 months).`
+      message: `Successfully synced ${totalLogs} productivity logs across ${projectsProcessed} projects (6 months).`,
+      debug: debugInfo
     });
 
   } catch (error) {

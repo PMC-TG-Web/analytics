@@ -88,11 +88,13 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         
         if (!response.ok) {
           console.error('=== API ERROR DETAILS ===');
-          console.error('Full Response:', JSON.stringify(result, null, 2));
+          console.error('Status Code:', response.status);
           console.error('Error:', result.error);
           console.error('Message:', result.message);
-          console.error('Details:', result.details);
-          console.error('Status Code:', response.status);
+          console.error('Full Details (formatted):');
+          console.error(JSON.stringify(result.details, null, 2));
+          console.error('Full Response (all fields):');
+          console.error(JSON.stringify(result, null, 2));
           console.error('======================');
           const errorMsg = result.message || result.error || 'Failed to fetch project data';
           throw new Error(errorMsg);

@@ -24,22 +24,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Productivity Sync] Date range: ${startDateStr} to ${endDateStr}`);
 
-    // 1. Fetch all projects
-    const statuses = ['ESTIMATING', 'BIDDING', 'BID_SUBMITTED', 'NEGOTIATING', 'WON', 'LOST', 'DECLINED'];
-    const statusFilter = `&filters[status][]=${statuses.join('&filters[status][]=')}`;
+    // 1. Fetch ACTIVE CONSTRUCTION projects only (exclude bid board)
+    // Focus on projects with actual construction activity
+    const activeStatuses = ['Pre-Construction', 'Pre-Construction Complete', 'In Progress', 'Post-Construction Complete'];
+    const statusFilter = activeStatuses.map(s => `filters[project_status][]=${encodeURIComponent(s)}`).join('&');
+    
+    const coreProjectsResponse = await makeRequest(
+      `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=true&${statusFilter}`,
+      accessToken
+    );
 
-    const [bidBoardResponse, coreProjectsResponse] = await Promise.all([
-      makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100${statusFilter}`, accessToken),
-      makeRequest(`/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`, accessToken)
-    ]);
+    const allProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
 
-    const bidProjects = Array.isArray(bidBoardResponse) ? bidBoardResponse : (bidBoardResponse?.data || []);
-    const coreProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
-    const allProjects = [...coreProjects, ...bidProjects];
+    console.log(`[Productivity Sync] Found ${allProjects.length} active construction projects to sync`);
 
-    console.log(`[Productivity Sync] Found ${allProjects.length} projects to sync`);
-
-    // 2. Fetch manpower logs for each project
+    // 2. Fetch timecard entries for each project (primary labor tracking source)
     let totalLogs = 0;
     let projectsProcessed = 0;
     const monthlySummary: Record<string, any> = {};
@@ -49,37 +48,40 @@ export async function POST(request: NextRequest) {
         const projectId = project.id;
         const projectName = project.name || 'Unknown Project';
         
-        console.log(`[Productivity Sync] Fetching logs for: ${projectName} (${projectId})`);
+        console.log(`[Productivity Sync] Fetching timecard entries for: ${projectName} (${projectId})`);
 
         const logs = await makeRequest(
-          `/rest/v1.0/projects/${projectId}/manpower_logs?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
+          `/rest/v1.0/projects/${projectId}/timecard_entries?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
           accessToken
         );
 
         const logsArray = Array.isArray(logs) ? logs : [];
         
         if (logsArray.length > 0) {
+          console.log(`[Productivity Sync] Found ${logsArray.length} timecard entries for ${projectName}`);
+          
           // Write raw logs
           const batch = writeBatch(db);
           const logsRef = collection(db, 'productivity_logs');
 
           logsArray.forEach((log: any) => {
-            const logId = `${projectId}_${log.date || log.id}_${log.id || Math.random()}`;
+            const logDate = log.date || log.worked_date || '';
+            const logId = `${projectId}_${logDate}_${log.id || Math.random()}`;
             batch.set(doc(logsRef, logId), {
               projectId,
               projectName,
-              date: log.date,
-              vendor: log.vendor?.name || 'Unknown',
-              workers: log.quantity || 0,
+              date: logDate,
+              employeeName: log.employee?.name || 'Unknown',
+              employeeId: log.employee?.id || null,
               hours: log.hours || 0,
-              notes: log.notes || '',
-              costCode: log.cost_code?.name || '',
+              costCode: log.cost_code?.full_code || log.cost_code?.name || '',
+              description: log.description || '',
               createdAt: new Date().toISOString(),
-              source: 'procore_manpower'
+              source: 'procore_timecard'
             });
 
             // Aggregate for summary
-            const monthKey = log.date ? log.date.substring(0, 7) : ''; // YYYY-MM
+            const monthKey = logDate ? logDate.substring(0, 7) : ''; // YYYY-MM
             if (monthKey) {
               const summaryKey = `${projectId}_${monthKey}`;
               if (!monthlySummary[summaryKey]) {
@@ -88,22 +90,23 @@ export async function POST(request: NextRequest) {
                   projectName,
                   month: monthKey,
                   totalHours: 0,
-                  totalWorkers: 0,
+                  uniqueEmployees: new Set(),
                   workingDays: new Set(),
-                  byVendor: {}
+                  byEmployee: {}
                 };
               }
 
               monthlySummary[summaryKey].totalHours += log.hours || 0;
-              monthlySummary[summaryKey].totalWorkers += log.quantity || 0;
-              monthlySummary[summaryKey].workingDays.add(log.date);
-
-              const vendor = log.vendor?.name || 'Unknown';
-              if (!monthlySummary[summaryKey].byVendor[vendor]) {
-                monthlySummary[summaryKey].byVendor[vendor] = { hours: 0, workers: 0 };
+              monthlySummary[summaryKey].workingDays.add(logDate);
+              
+              const employeeName = log.employee?.name || 'Unknown';
+              monthlySummary[summaryKey].uniqueEmployees.add(employeeName);
+              
+              if (!monthlySummary[summaryKey].byEmployee[employeeName]) {
+                monthlySummary[summaryKey].byEmployee[employeeName] = { hours: 0, days: new Set() };
               }
-              monthlySummary[summaryKey].byVendor[vendor].hours += log.hours || 0;
-              monthlySummary[summaryKey].byVendor[vendor].workers += log.quantity || 0;
+              monthlySummary[summaryKey].byEmployee[employeeName].hours += log.hours || 0;
+              monthlySummary[summaryKey].byEmployee[employeeName].days.add(logDate);
             }
           });
 
@@ -123,9 +126,18 @@ export async function POST(request: NextRequest) {
 
     Object.entries(monthlySummary).forEach(([key, summary]: [string, any]) => {
       summaryBatch.set(doc(summaryRef, key), {
-        ...summary,
+        projectId: summary.projectId,
+        projectName: summary.projectName,
+        month: summary.month,
+        totalHours: summary.totalHours,
         workingDays: summary.workingDays.size,
-        byVendor: summary.byVendor,
+        uniqueEmployees: summary.uniqueEmployees.size,
+        byEmployee: Object.fromEntries(
+          Object.entries(summary.byEmployee).map(([name, data]: [string, any]) => [
+            name,
+            { hours: data.hours, days: data.days.size }
+          ])
+        ),
         updatedAt: new Date().toISOString()
       });
     });

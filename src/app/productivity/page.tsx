@@ -9,11 +9,11 @@ interface ProductivityLog {
   projectId: string;
   projectName: string;
   date: string;
-  vendor: string;
-  workers: number;
+  employeeName: string;
+  employeeId: string | null;
   hours: number;
-  notes: string;
   costCode: string;
+  description: string;
 }
 
 interface ProductivitySummary {
@@ -21,9 +21,9 @@ interface ProductivitySummary {
   projectName: string;
   month: string;
   totalHours: number;
-  totalWorkers: number;
+  uniqueEmployees: number;
   workingDays: number;
-  byVendor: Record<string, { hours: number; workers: number }>;
+  byEmployee: Record<string, { hours: number; days: number }>;
 }
 
 export default function ProductivityPage() {
@@ -92,7 +92,7 @@ function ProductivityContent() {
 
   // Calculate totals
   const totalHours = filteredSummaries.reduce((sum, s) => sum + s.totalHours, 0);
-  const totalWorkers = filteredSummaries.reduce((sum, s) => sum + s.totalWorkers, 0);
+  const uniqueEmployees = filteredSummaries.reduce((sum, s) => sum + s.uniqueEmployees, 0);
   const avgHoursPerDay = filteredSummaries.length > 0 
     ? totalHours / filteredSummaries.reduce((sum, s) => sum + s.workingDays, 0)
     : 0;
@@ -127,9 +127,9 @@ function ProductivityContent() {
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-sm text-gray-600 mb-1">Total Workers</div>
-            <div className="text-3xl font-bold text-green-900">{totalWorkers.toLocaleString()}</div>
-            <div className="text-xs text-gray-500 mt-1">Cumulative count</div>
+            <div className="text-sm text-gray-600 mb-1">Unique Employees</div>
+            <div className="text-3xl font-bold text-green-900">{uniqueEmployees.toLocaleString()}</div>
+            <div className="text-xs text-gray-500 mt-1">Across all projects</div>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
@@ -208,7 +208,7 @@ function ProductivityContent() {
                       Total Hours
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
-                      Total Workers
+                      Unique Employees
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Working Days
@@ -227,7 +227,7 @@ function ProductivityContent() {
                         {summary.totalHours.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {summary.totalWorkers.toLocaleString()}
+                        {summary.uniqueEmployees.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
                         {summary.workingDays}
@@ -250,16 +250,16 @@ function ProductivityContent() {
                       Project
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                      Vendor
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
-                      Workers
+                      Employee
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Hours
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Cost Code
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                      Description
                     </th>
                   </tr>
                 </thead>
@@ -268,12 +268,12 @@ function ProductivityContent() {
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-900">{log.date}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{log.projectName}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.vendor}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right">{log.workers}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{log.employeeName}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
                         {log.hours.toFixed(1)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">{log.costCode}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{log.description}</td>
                     </tr>
                   ))}
                 </tbody>

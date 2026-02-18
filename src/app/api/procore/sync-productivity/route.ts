@@ -78,13 +78,17 @@ export async function POST(request: NextRequest) {
           logsArray.forEach((log: any) => {
             const logDate = log.date || log.worked_date || '';
             const logId = `${projectId}_${logDate}_${log.id || Math.random()}`;
+            
+            // Convert hours to number
+            const hours = typeof log.hours === 'number' ? log.hours : parseFloat(log.hours) || 0;
+            
             batch.set(doc(logsRef, logId), {
               projectId,
               projectName,
               date: logDate,
               employeeName: log.employee?.name || 'Unknown',
               employeeId: log.employee?.id || null,
-              hours: log.hours || 0,
+              hours,
               costCode: log.cost_code?.full_code || log.cost_code?.name || '',
               description: log.description || '',
               createdAt: new Date().toISOString(),
@@ -107,7 +111,8 @@ export async function POST(request: NextRequest) {
                 };
               }
 
-              monthlySummary[summaryKey].totalHours += log.hours || 0;
+              // Add as number, not string
+              monthlySummary[summaryKey].totalHours += hours;
               monthlySummary[summaryKey].workingDays.add(logDate);
               
               const employeeName = log.employee?.name || 'Unknown';
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
               if (!monthlySummary[summaryKey].byEmployee[employeeName]) {
                 monthlySummary[summaryKey].byEmployee[employeeName] = { hours: 0, days: new Set() };
               }
-              monthlySummary[summaryKey].byEmployee[employeeName].hours += log.hours || 0;
+              monthlySummary[summaryKey].byEmployee[employeeName].hours += hours;
               monthlySummary[summaryKey].byEmployee[employeeName].days.add(logDate);
             }
           });

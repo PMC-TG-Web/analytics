@@ -106,6 +106,32 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (error === 'Access denied') return <div className="p-8 text-center text-red-500">Access denied. Redirecting...</div>;
+  if (error?.includes('Not authenticated with Procore') || error?.includes('Procore')) {
+    const returnPath = `/project/${projectId}`;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8 flex items-center justify-center">
+        <div className="max-w-md bg-slate-700/50 rounded-lg p-8 border border-slate-600 text-center">
+          <h2 className="text-2xl font-bold text-white mb-4">Procore Authentication Required</h2>
+          <p className="text-gray-300 mb-6">{error}</p>
+          <div className="space-y-3">
+            <a 
+              href={`/api/auth/procore/login?returnTo=${encodeURIComponent(returnPath)}`}
+              className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            >
+              Login with Procore
+            </a>
+            <a 
+              href={`/dev-login?email=todd@pmcdecor.com&returnTo=${encodeURIComponent(returnPath)}`}
+              className="block w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors text-sm"
+            >
+              Dev Login (with token)
+            </a>
+          </div>
+          <p className="text-gray-400 text-xs mt-4">You'll be redirected back to this dashboard after authentication</p>
+        </div>
+      </div>
+    );
+  }
   if (loading) return <div className="p-8 text-center">Loading project dashboard...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
   if (!data) return <div className="p-8 text-center">No data available</div>;

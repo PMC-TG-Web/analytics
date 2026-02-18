@@ -2,13 +2,13 @@
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
     "procore", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
   ],
   "ADMIN": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "employees", 
      "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
@@ -17,15 +17,15 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "project-schedule", "estimating-tools",
+    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
     "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants", "handbook"
   ],
   "OPERATIONS": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch",
+    "home", "scheduling", "short-term-schedule", "crew-dispatch", "productivity",
     "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
   ],
   "PMs": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch",
+    "home", "scheduling", "short-term-schedule", "crew-dispatch", "productivity",
     "long-term-schedule", "project-schedule", "wip", "projects", "equipment", "handbook"
   ],
   "FIELD": [

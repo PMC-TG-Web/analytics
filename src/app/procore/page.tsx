@@ -32,7 +32,9 @@ function ProcoreContent() {
   const [data, setData] = useState<ProcoreData | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingProductivity, setSyncingProductivity] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
+  const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
@@ -113,6 +115,31 @@ function ProcoreContent() {
       setError(err instanceof Error ? err.message : "Failed to sync data");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSyncProductivity = async () => {
+    setSyncingProductivity(true);
+    setError(null);
+    setProductivityResult(null);
+    try {
+      const response = await fetch("/api/procore/sync-productivity", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Productivity sync failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setProductivityResult({ 
+        count: result.totalLogs, 
+        message: result.message 
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync productivity data");
+    } finally {
+      setSyncingProductivity(false);
     }
   };
 
@@ -237,27 +264,43 @@ function ProcoreContent() {
               </div>
             )}
 
+            {productivityResult && (
+              <div className="bg-purple-100 border border-purple-400 text-purple-700 px-4 py-3 rounded mb-6">
+                <strong>Productivity Sync:</strong> {productivityResult.message}
+                <br/>
+                <a href="/productivity" className="underline font-bold mt-2 inline-block">View Productivity Dashboard →</a>
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
                 Error: {error}
               </div>
             )}
 
-            <div className="flex gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <button
                 onClick={handleExplore}
-                disabled={loading || syncing}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded flex-1"
+                disabled={loading || syncing || syncingProductivity}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
               >
                 {loading ? "Exploring..." : "Explore Available Data"}
               </button>
               
               <button
                 onClick={handleSync}
-                disabled={loading || syncing}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded flex-1"
+                disabled={loading || syncing || syncingProductivity}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
               >
                 {syncing ? "Syncing..." : "Sync Bid Board to Firestore"}
+              </button>
+
+              <button
+                onClick={handleSyncProductivity}
+                disabled={loading || syncing || syncingProductivity}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
+              >
+                {syncingProductivity ? "Syncing 6mo..." : "Sync Productivity (6mo)"}
               </button>
             </div>
 

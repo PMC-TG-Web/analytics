@@ -19,9 +19,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     }
 
     // Fetch all data in parallel
-    const [projectDetails, timecardEntries, lineItems, scheduleEntries, team] = await Promise.allSettled([
-      // Project details
-      makeRequest(`/rest/v1.1/projects/${projectId}?include=team`, accessToken),
+    // Try v1.0 project endpoint first (v1.1 was failing)
+    const [projectDetails, timecardEntries] = await Promise.allSettled([
+      // Project details - try v1.0 first
+      makeRequest(`/rest/v1.0/projects/${projectId}`, accessToken),
       
       // Labor hours (last 6 months)
       (async () => {
@@ -35,30 +36,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
           accessToken
         );
       })(),
-      
-      // Budget and costs
-      makeRequest(`/rest/v1.1/projects/${projectId}/line_items?page=1&per_page=100`, accessToken),
-      
-      // Schedule progress
-      makeRequest(`/rest/v1.0/projects/${projectId}/schedule_log_entries?per_page=50`, accessToken),
-      
-      // Team members
-      makeRequest(`/rest/v1.1/projects/${projectId}/users?per_page=100`, accessToken),
     ]);
 
     // Log results for debugging with full error messages
     console.log(`[Project Overview] Project: ${projectDetails.status}${projectDetails.status === 'rejected' ? ` - ${projectDetails.reason}` : ''}`);
     console.log(`[Project Overview] Timecards: ${timecardEntries.status}${timecardEntries.status === 'rejected' ? ` - ${timecardEntries.reason}` : ''}`);
-    console.log(`[Project Overview] Costs: ${lineItems.status}${lineItems.status === 'rejected' ? ` - ${lineItems.reason}` : ''}`);
-    console.log(`[Project Overview] Schedules: ${scheduleEntries.status}${scheduleEntries.status === 'rejected' ? ` - ${scheduleEntries.reason}` : ''}`);
-    console.log(`[Project Overview] Team: ${team.status}${team.status === 'rejected' ? ` - ${team.reason}` : ''}`);
 
     // Process results
     const project = projectDetails.status === 'fulfilled' ? projectDetails.value : null;
     const timecards = timecardEntries.status === 'fulfilled' ? (Array.isArray(timecardEntries.value) ? timecardEntries.value : []) : [];
-    const costs = lineItems.status === 'fulfilled' ? (Array.isArray(lineItems.value) ? lineItems.value : []) : [];
-    const schedules = scheduleEntries.status === 'fulfilled' ? (Array.isArray(scheduleEntries.value) ? scheduleEntries.value : []) : [];
-    const teamMembers = team.status === 'fulfilled' ? (Array.isArray(team.value) ? team.value : []) : [];
 
     if (!project) {
       console.log('[Project Overview] No project data returned');
@@ -70,12 +56,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
           projectError: projectDetails.status === 'rejected' ? String(projectDetails.reason) : null,
           timecardsFailed: timecardEntries.status === 'rejected',
           timecardsError: timecardEntries.status === 'rejected' ? String(timecardEntries.reason) : null,
-          costsFailed: lineItems.status === 'rejected',
-          costsError: lineItems.status === 'rejected' ? String(lineItems.reason) : null,
-          schedulesFailed: scheduleEntries.status === 'rejected',
-          schedulesError: scheduleEntries.status === 'rejected' ? String(scheduleEntries.reason) : null,
-          teamFailed: team.status === 'rejected',
-          teamError: team.status === 'rejected' ? String(team.reason) : null,
         }
       }, { status: 404 });
     }
@@ -91,9 +71,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     ).size;
 
     const workingDays = new Set(timecards.map(tc => tc.date)).size;
-
-    const totalBudget = costs.reduce((sum, item) => sum + (item.budgeted_amount || 0), 0);
-    const totalSpent = costs.reduce((sum, item) => sum + (item.actual_cost || 0), 0);
 
     // Group timecard entries by employee
     const byEmployee: Record<string, { hours: number; days: Set<string>; roles: Set<string> }> = {};
@@ -157,41 +134,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
         uniqueEmployees,
         workingDays,
         avgHoursPerDay: parseFloat((totalHours / (workingDays || 1)).toFixed(2)),
-        totalBudget: parseFloat(totalBudget.toFixed(2)),
-        totalSpent: parseFloat(totalSpent.toFixed(2)),
-        budgetRemaining: parseFloat((totalBudget - totalSpent).toFixed(2)),
-        budgetUtilization: totalBudget > 0 ? parseFloat(((totalSpent / totalBudget) * 100).toFixed(1)) : 0,
-      },
-      team: {
-        total: teamMembers.length,
-        members: teamMembers.slice(0, 20).map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          login: m.login,
-          role: m.role,
-        })),
       },
       laborAnalytics: {
         employeeBreakdown: employeeBreakdown.sort((a, b) => b.hours - a.hours),
         dailyTrends: dailyTrends.slice(-30), // Last 30 days
-      },
-      costAnalysis: {
-        lineItems: costs.slice(0, 20).map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          code: item.code,
-          budgeted: parseFloat(item.budgeted_amount || 0),
-          actual: parseFloat(item.actual_cost || 0),
-          variance: (item.budgeted_amount || 0) - (item.actual_cost || 0),
-        })),
-      },
-      scheduleProgress: {
-        entries: schedules.slice(0, 10).map((entry: any) => ({
-          id: entry.id,
-          date: entry.created_at,
-          description: entry.log_entry,
-          status: entry.status,
-        })),
       },
     });
   } catch (error) {

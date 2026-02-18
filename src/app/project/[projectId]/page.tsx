@@ -24,14 +24,6 @@ interface ProjectOverview {
     uniqueEmployees: number;
     workingDays: number;
     avgHoursPerDay: number;
-    totalBudget: number;
-    totalSpent: number;
-    budgetRemaining: number;
-    budgetUtilization: number;
-  };
-  team: {
-    total: number;
-    members: Array<{ id: string; name: string; login: string; role: string }>;
   };
   laborAnalytics: {
     employeeBreakdown: Array<{
@@ -42,16 +34,6 @@ interface ProjectOverview {
       avgHoursPerDay: number;
     }>;
     dailyTrends: Array<{ date: string; hours: number; employeesWorked: number }>;
-  };
-  costAnalysis: {
-    lineItems: Array<{
-      id: string;
-      name: string;
-      code: string;
-      budgeted: number;
-      actual: number;
-      variance: number;
-    }>;
   };
 }
 
@@ -222,10 +204,6 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
               <p className="text-gray-400 text-sm mb-1">Project Manager</p>
               <p className="text-white font-semibold">{data.project.projectManager}</p>
             </div>
-            <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-              <p className="text-gray-400 text-sm mb-1">Team Size</p>
-              <p className="text-white font-semibold">{data.team.total} members</p>
-            </div>
           </div>
         </div>
 
@@ -233,8 +211,6 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <MetricCard title="Total Hours" value={data.metrics.totalHours.toLocaleString()} subtext={`${data.metrics.uniqueEmployees} employees`} color="blue" />
           <MetricCard title="Working Days" value={data.metrics.workingDays} subtext={`${data.metrics.avgHoursPerDay.toFixed(1)} hrs/day avg`} color="green" />
-          <MetricCard title="Budget Spent" value={`$${data.metrics.totalSpent.toLocaleString()}`} subtext={`${data.metrics.budgetUtilization.toFixed(1)}% of budget`} color="amber" />
-          <MetricCard title="Budget Status" value={`$${data.metrics.budgetRemaining.toLocaleString()}`} subtext={data.metrics.budgetRemaining > 0 ? 'Remaining' : 'Over budget'} color={data.metrics.budgetRemaining > 0 ? 'green' : 'red'} />
         </div>
 
         {/* Charts Section */}
@@ -294,27 +270,6 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
             </div>
           </div>
 
-          {/* Budget Distribution */}
-          <div className="bg-slate-700/50 rounded-lg p-6 border border-slate-600">
-            <h2 className="text-xl font-bold text-white mb-4">Budget Distribution</h2>
-            <div style={{ position: 'relative', height: '300px' }}>
-              <Pie
-                data={{
-                  labels: ['Spent', 'Remaining'],
-                  datasets: [{
-                    data: [data.metrics.totalSpent, Math.max(0, data.metrics.budgetRemaining)],
-                    backgroundColor: ['#ef4444', '#10b981'],
-                  }],
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { labels: { color: '#9ca3af' } } },
-                }}
-              />
-            </div>
-          </div>
-
           {/* Working Days Distribution */}
           <div className="bg-slate-700/50 rounded-lg p-6 border border-slate-600">
             <h2 className="text-xl font-bold text-white mb-4">Employees by Days Worked</h2>
@@ -366,57 +321,6 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
                   ))}
                 </tbody>
               </table>
-            </div>
-          </ExpandableSection>
-
-          {/* Cost Analysis */}
-          <ExpandableSection
-            title={`Line Items / Cost Codes (${data.costAnalysis.lineItems.length})`}
-            isExpanded={expandedSection === 'costs'}
-            onToggle={() => setExpandedSection(expandedSection === 'costs' ? '' : 'costs')}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-600">
-                    <th className="text-left py-3 px-4 text-gray-400">Code</th>
-                    <th className="text-left py-3 px-4 text-gray-400">Description</th>
-                    <th className="text-right py-3 px-4 text-gray-400">Budgeted</th>
-                    <th className="text-right py-3 px-4 text-gray-400">Actual</th>
-                    <th className="text-right py-3 px-4 text-gray-400">Variance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.costAnalysis.lineItems.map((item, idx) => (
-                    <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/30">
-                      <td className="py-3 px-4 text-white font-mono text-xs">{item.code}</td>
-                      <td className="py-3 px-4 text-gray-300">{item.name}</td>
-                      <td className="py-3 px-4 text-right text-gray-300">${item.budgeted.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-right text-yellow-400">${item.actual.toLocaleString()}</td>
-                      <td className={`py-3 px-4 text-right font-semibold ${item.variance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        ${item.variance.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </ExpandableSection>
-
-          {/* Team Members */}
-          <ExpandableSection
-            title={`Team Members (${data.team.members.length})`}
-            isExpanded={expandedSection === 'team'}
-            onToggle={() => setExpandedSection(expandedSection === 'team' ? '' : 'team')}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.team.members.map((member) => (
-                <div key={member.id} className="bg-slate-600/30 rounded-lg p-4 border border-slate-600">
-                  <p className="text-white font-semibold">{member.name}</p>
-                  <p className="text-gray-400 text-sm">{member.login}</p>
-                  <p className="text-blue-400 text-xs mt-2">{member.role}</p>
-                </div>
-              ))}
             </div>
           </ExpandableSection>
         </div>

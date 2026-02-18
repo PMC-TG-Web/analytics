@@ -14,6 +14,10 @@ interface ProductivityLog {
   hours?: number;
   costCode?: string;
   description?: string;
+  // Legacy fields for backward compatibility
+  vendor?: string;
+  workers?: number;
+  notes?: string;
 }
 
 interface ProductivitySummary {
@@ -22,8 +26,10 @@ interface ProductivitySummary {
   month: string;
   totalHours?: number;
   uniqueEmployees?: number;
+  totalWorkers?: number; // Legacy field for backward compatibility
   workingDays?: number;
   byEmployee?: Record<string, { hours: number; days: number }>;
+  byVendor?: Record<string, { hours: number; workers: number }>; // Legacy field
 }
 
 export default function ProductivityPage() {
@@ -268,12 +274,12 @@ function ProductivityContent() {
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-900">{log.date || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{log.projectName || 'Unknown'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.employeeName || (log as any).vendor || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{log.employeeName || log.vendor || 'Unknown'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
                         {(log.hours || 0).toFixed(1)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">{log.costCode || ''}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{log.description || (log as any).notes || ''}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{log.description || log.notes || ''}</td>
                     </tr>
                   ))}
                 </tbody>

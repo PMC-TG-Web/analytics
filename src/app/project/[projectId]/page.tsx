@@ -88,13 +88,14 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         
         if (!response.ok) {
           console.error('API Error:', result);
-          throw new Error(result.message || result.error || 'Failed to fetch project data');
+          const errorMsg = result.message || result.error || 'Failed to fetch project data';
+          throw new Error(errorMsg);
         }
         
         setData(result);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Error loading project data';
-        console.error('Fetch error:', errorMsg);
+        console.error('Fetch error:', errorMsg, err);
         setError(errorMsg);
       } finally {
         setLoading(false);
@@ -111,9 +112,9 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8 flex items-center justify-center">
         <div className="max-w-md bg-slate-700/50 rounded-lg p-8 border border-slate-600 text-center">
-          <h2 className="text-2xl font-bold text-white mb-4">Procore Authentication Required</h2>
+          <h2 className="text-2xl font-bold text-white mb-4">🔐 Procore Authentication Required</h2>
           <p className="text-gray-300 mb-6">{error}</p>
-          <div className="space-y-3">
+          <div className="space-y-3 mb-6">
             <a 
               href={`/api/auth/procore/login?returnTo=${encodeURIComponent(returnPath)}`}
               className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
@@ -127,7 +128,13 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
               Dev Login (with token)
             </a>
           </div>
-          <p className="text-gray-400 text-xs mt-4">You'll be redirected back to this dashboard after authentication</p>
+          <p className="text-gray-400 text-xs mb-4">You'll be redirected back to this dashboard after authentication</p>
+          <a 
+            href="/debug-cookies"
+            className="text-blue-400 hover:text-blue-300 text-xs block"
+          >
+            🔍 Debug: Check which cookies are set
+          </a>
         </div>
       </div>
     );

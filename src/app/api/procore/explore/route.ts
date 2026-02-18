@@ -78,26 +78,43 @@ export async function POST(request: NextRequest) {
     
     data.unifiedProjects = unified;
 
-    // 9: Fetch Manpower Logs for the first 5 "Core Projects" (v1.1)
-    // We limit to 5 to avoid triggering rate limits or timeouts during exploration
-    const sampleProjects = coreProjects.slice(0, 5);
+    // 9: Fetch Manpower Logs for Giant #6582 specifically if found, otherwise sample 5
+    const giantProject = unified.find((p: any) => p.name?.includes('Giant') && p.project_number?.includes('6582')) 
+                      || unified.find((p: any) => p.name?.includes('6582'));
+
+    const projectsToFetch = giantProject ? [giantProject, ...coreProjects.slice(0, 4)] : coreProjects.slice(0, 5);
+    const uniqueProjects = Array.from(new Map(projectsToFetch.map((p: any) => [p.id, p])).values()).slice(0, 6);
     
-    // Default to last 90 days of data to ensure we see something
+    // Default to last 90 days of data
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 90);
     const dateStr = startDate.toISOString().split('T')[0];
 
     const logResults = await Promise.allSettled(
-      sampleProjects.map((p: any) => 
-        makeRequest(`/rest/v1.0/projects/${p.id}/manpower_logs?start_date=${dateStr}&per_page=10`, accessToken)
+      uniqueProjects.map((p: any) => 
+        makeRequest(`/rest/v1.0/projects/${p.id}/manpower_logs?start_date=${dateStr}&per_page=100`, accessToken)
       )
     );
 
     data.productivityLogs = logResults.map((result, idx) => ({
-      projectId: sampleProjects[idx].id,
-      projectName: sampleProjects[idx].name,
+      projectId: uniqueProjects[idx].id,
+      projectName: uniqueProjects[idx].name,
       logs: result.status === 'fulfilled' ? result.value : { error: String(result.reason) }
     }));
+
+    // SPECIAL PULL: Productivity Logs (Field Productivity) for Giant #6582
+    if (giantProject) {
+      try {
+        const prodLogs = await makeRequest(`/rest/v1.0/projects/${giantProject.id}/productivity_logs?start_date=${dateStr}&per_page=100`, accessToken);
+        data.giantProductivity = {
+          name: giantProject.name,
+          id: giantProject.id,
+          data: prodLogs
+        };
+      } catch (e) {
+        console.error('Error fetching Giant productivity:', e);
+      }
+    }
 
     return NextResponse.json(data);
   } catch (error) {

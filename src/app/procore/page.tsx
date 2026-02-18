@@ -15,6 +15,7 @@ interface ProcoreData {
   bidBoardV2?: any;
   unifiedProjects?: any;
   productivityLogs?: any;
+  giantProductivity?: any;
   error?: string;
 }
 
@@ -429,6 +430,25 @@ function ProcoreContent() {
                     </div>
                   )}
                 </div>
+
+                {data.giantProductivity && (
+                  <div className="bg-white rounded-lg shadow p-6 border-2 border-blue-500 md:col-span-2">
+                    <h2 className="text-xl font-bold text-blue-900 mb-4">
+                      🏗️ Giant #6582: Specific Productivity Data (Last 90 Days)
+                    </h2>
+                    <div className="text-sm overflow-x-auto">
+                      {data.giantProductivity.data?.length > 0 ? (
+                        renderData("giant", data.giantProductivity.data)
+                      ) : (
+                        <div className="p-4 bg-yellow-50 text-yellow-800 rounded">
+                           Found project "{data.giantProductivity.name}" (ID: {data.giantProductivity.id}), but no specific <strong>Productivity Logs</strong> entries were found for this date range. 
+                           <br/><br/>
+                           Check the <strong>Manpower Logs</strong> above for this project to see general daily labor hours.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

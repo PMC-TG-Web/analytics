@@ -3,13 +3,13 @@
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "projects", "employees", 
+    "long-term-schedule", "project-schedule", "projects", "employees", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "projects", "employees", 
+    "long-term-schedule", "project-schedule", "projects", "employees", "project",
      "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
   ],

@@ -87,7 +87,13 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         const result = await response.json();
         
         if (!response.ok) {
-          console.error('API Error:', result);
+          console.error('=== API ERROR DETAILS ===');
+          console.error('Full Response:', JSON.stringify(result, null, 2));
+          console.error('Error:', result.error);
+          console.error('Message:', result.message);
+          console.error('Details:', result.details);
+          console.error('Status Code:', response.status);
+          console.error('======================');
           const errorMsg = result.message || result.error || 'Failed to fetch project data';
           throw new Error(errorMsg);
         }
@@ -95,7 +101,10 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         setData(result);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Error loading project data';
-        console.error('Fetch error:', errorMsg, err);
+        console.error('=== FETCH ERROR ===');
+        console.error('Message:', errorMsg);
+        console.error('Full Error:', err);
+        console.error('==================');
         setError(errorMsg);
       } finally {
         setLoading(false);
@@ -140,7 +149,40 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
     );
   }
   if (loading) return <div className="p-8 text-center">Loading project dashboard...</div>;
-  if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
+  if (error) return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8 flex items-center justify-center">
+      <div className="max-w-2xl bg-slate-700/50 rounded-lg p-8 border border-red-500/30 text-center">
+        <h2 className="text-2xl font-bold text-red-400 mb-4">⚠️ Error Loading Project</h2>
+        <p className="text-gray-300 mb-4">{error}</p>
+        <p className="text-gray-400 text-sm mb-6">Check the browser console for detailed error information (look for "=== API ERROR DETAILS ===" section)</p>
+        <div className="bg-slate-800/50 rounded p-4 mb-6 text-left max-h-64 overflow-y-auto">
+          <code className="text-gray-300 text-xs whitespace-pre-wrap break-words">
+            {error}
+          </code>
+        </div>
+        <div className="space-y-3">
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+          >
+            Retry Loading
+          </button>
+          <a 
+            href="/debug-cookies"
+            className="block w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors text-sm"
+          >
+            🔍 Debug Cookies
+          </a>
+          <a 
+            href="/api/auth/procore/login"
+            className="block w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+          >
+            Re-authenticate with Procore
+          </a>
+        </div>
+      </div>
+    </div>
+  );
   if (!data) return <div className="p-8 text-center">No data available</div>;
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];

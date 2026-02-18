@@ -49,7 +49,30 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Productivity Sync] Found ${allProjects.length} active projects to sync`);
 
-    // 2. Fetch timecard entries for each project (primary labor tracking source)
+    // 2. Fetch all employees for the company (for name lookup)
+    console.log('[Productivity Sync] Fetching employees list...');
+    let employeesMap: Record<string, string> = {};
+    
+    try {
+      const employees = await makeRequest(
+        `/rest/v1.0/companies/${companyId}/timesheets/filters/employees`,
+        accessToken
+      );
+      
+      const employeesArray = Array.isArray(employees) ? employees : [];
+      console.log(`[Productivity Sync] Found ${employeesArray.length} employees`);
+      
+      // Create ID -> Name lookup map
+      employeesArray.forEach((emp: any) => {
+        if (emp.id && emp.name) {
+          employeesMap[emp.id] = emp.name;
+        }
+      });
+    } catch (error) {
+      console.error('[Productivity Sync] Failed to fetch employees:', error);
+    }
+
+    // 3. Fetch timecard entries for each project (primary labor tracking source)
     let totalLogs = 0;
     let projectsProcessed = 0;
     const monthlySummary: Record<string, any> = {};
@@ -71,11 +94,6 @@ export async function POST(request: NextRequest) {
         if (logsArray.length > 0) {
           console.log(`[Productivity Sync] Found ${logsArray.length} timecard entries for ${projectName}`);
           
-          // Debug: Log first entry structure
-          if (logsArray[0]) {
-            console.log('[Productivity Sync] Sample timecard entry structure:', JSON.stringify(logsArray[0], null, 2));
-          }
-          
           // Write raw logs
           const batch = writeBatch(db);
           const logsRef = collection(db, 'productivity_logs');
@@ -87,19 +105,22 @@ export async function POST(request: NextRequest) {
             // Convert hours to number
             const hours = typeof log.hours === 'number' ? log.hours : parseFloat(log.hours) || 0;
             
-            // Extract employee name from various possible locations
-            const employeeName = log.employee?.name 
-              || log.resource?.name 
-              || log.worker?.name
-              || log.crew_member?.name
-              || log.vendor?.name
-              || 'Unknown';
-            
-            const employeeId = log.employee?.id 
+            // Extract employee ID and lookup name
+            const employeeId = log.employee_id 
+              || log.employeeId
+              || log.employee?.id 
               || log.resource?.id 
               || log.worker?.id
-              || log.crew_member?.id
               || null;
+            
+            const employeeName = employeeId && employeesMap[employeeId]
+              ? employeesMap[employeeId]
+              : (log.employee?.name 
+                || log.resource?.name 
+                || log.worker?.name
+                || log.crew_member?.name
+                || log.vendor?.name
+                || 'Unknown');
             
             batch.set(doc(logsRef, logId), {
               projectId,
@@ -111,8 +132,7 @@ export async function POST(request: NextRequest) {
               costCode: log.cost_code?.full_code || log.cost_code?.name || '',
               description: log.description || '',
               createdAt: new Date().toISOString(),
-              source: 'procore_timecard',
-              rawEmployee: log.employee || log.resource || log.worker || null  // Store for debugging
+              source: 'procore_timecard'
             });
 
             // Aggregate for summary

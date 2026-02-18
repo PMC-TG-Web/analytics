@@ -19,10 +19,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     }
 
     // Fetch all data in parallel
-    // Try v1.0 project endpoint first (v1.1 was failing)
+    // v1.0 endpoints require company ID in the path
+    const companyId = '598134325658789';
     const [projectDetails, timecardEntries] = await Promise.allSettled([
-      // Project details - try v1.0 first
-      makeRequest(`/rest/v1.0/projects/${projectId}`, accessToken),
+      // Project details - include company ID in path per v1.0 spec
+      makeRequest(`/rest/v1.0/companies/${companyId}/projects/${projectId}`, accessToken),
       
       // Labor hours (last 6 months)
       (async () => {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
         const startDateStr = startDate.toISOString().split('T')[0];
         const endDateStr = endDate.toISOString().split('T')[0];
         return makeRequest(
-          `/rest/v1.0/projects/${projectId}/timecard_entries?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
+          `/rest/v1.0/companies/${companyId}/projects/${projectId}/timecard_entries?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
           accessToken
         );
       })(),

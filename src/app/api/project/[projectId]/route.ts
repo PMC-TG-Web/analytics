@@ -19,13 +19,22 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     }
 
     // Fetch all data in parallel
-    // v1.0 endpoints require company ID in the path
     const companyId = '598134325658789';
     const [projectDetails, timecardEntries] = await Promise.allSettled([
-      // Project details - include company ID in path per v1.0 spec
-      makeRequest(`/rest/v1.0/companies/${companyId}/projects/${projectId}`, accessToken),
+      // Use v1.1 API for project detail lookup with company_id query param
+      (async () => {
+        const response = await makeRequest(
+          `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[id]=${projectId}`,
+          accessToken
+        );
+        // v1.1 returns an array, extract the matching project
+        if (Array.isArray(response) && response.length > 0) {
+          return response[0];
+        }
+        throw new Error(`Project ${projectId} not found`);
+      })(),
       
-      // Labor hours (last 6 months)
+      // Labor hours (last 6 months) - v1.0 endpoint works with just project ID
       (async () => {
         const endDate = new Date();
         const startDate = new Date();
@@ -33,7 +42,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
         const startDateStr = startDate.toISOString().split('T')[0];
         const endDateStr = endDate.toISOString().split('T')[0];
         return makeRequest(
-          `/rest/v1.0/companies/${companyId}/projects/${projectId}/timecard_entries?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
+          `/rest/v1.0/projects/${projectId}/timecard_entries?start_date=${startDateStr}&end_date=${endDateStr}&per_page=100`,
           accessToken
         );
       })(),

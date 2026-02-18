@@ -59,11 +59,12 @@ export async function GET(request: NextRequest) {
    
     // Store user session
     const isProduction = process.env.NODE_ENV === 'production';
+    const isHttps = request.url.startsWith('https://');
     const cookieOptions = {
       httpOnly: true,
-      secure: isProduction, // Use secure in production
+      secure: isHttps || isProduction,
       path: '/',
-      sameSite: 'lax' as const,
+      sameSite: (isHttps || isProduction) ? 'none' as const : 'lax' as const,
       maxAge: 60 * 60 * 24 * 180,
     };
 

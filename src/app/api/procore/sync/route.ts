@@ -19,20 +19,25 @@ export async function POST(request: NextRequest) {
     const statuses = ['ESTIMATING', 'BIDDING', 'BID_SUBMITTED', 'NEGOTIATING', 'WON', 'LOST', 'DECLINED'];
     const statusFilter = `&filters[status][]=${statuses.join('&filters[status][]=')}`;
 
-    // 1. Fetch data from the working v2.0 endpoint with exhaustive filters
-    const endpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100${statusFilter}`;
-    const projects = await makeRequest(endpoint, accessToken);
+    // 1. Fetch data from BOTH endpoints to get the full picture
+    const [bidBoardResponse, coreProjectsResponse] = await Promise.all([
+      makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100${statusFilter}`, accessToken),
+      makeRequest(`/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`, accessToken)
+    ]);
 
-    if (!Array.isArray(projects)) {
-      // Some Procore v2 endpoints return { data: [...] }
-      if (projects && Array.isArray((projects as any).data)) {
-        return handleSync((projects as any).data);
-      }
-      console.error('[Procore Sync] Expected array from Procore, got:', projects);
-      return NextResponse.json({ error: 'Invalid response from Procore' }, { status: 500 });
+    const bidProjects = Array.isArray(bidBoardResponse) ? bidBoardResponse : (bidBoardResponse?.data || []);
+    const coreProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
+
+    console.log(`[Procore Sync] Found ${bidProjects.length} bids and ${coreProjects.length} core projects`);
+
+    // Combine them
+    const allProjects = [...bidProjects, ...coreProjects];
+
+    if (allProjects.length === 0) {
+      return NextResponse.json({ message: 'No projects found to sync' });
     }
 
-    return handleSync(projects);
+    return handleSync(allProjects);
 
     async function handleSync(projectList: any[]) {
       console.log(`[Procore Sync] Fetched ${projectList.length} projects from Procore`);

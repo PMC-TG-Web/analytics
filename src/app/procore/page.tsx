@@ -301,11 +301,12 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📋 Projects ({getCount(data.projects)})
+                    📋 All Projects (Merged: {getCount(data.unifiedProjects)})
                   </h2>
                   {selectedSection === "projects" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
-                      {renderData("projects", data.projects)}
+                      <p className="text-xs text-gray-500 mb-2 italic">Combining Core Construction Projects and Bid Board Projects</p>
+                      {renderData("projects", data.unifiedProjects)}
                     </div>
                   )}
                 </div>

@@ -66,6 +66,18 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Create a unified projects list for the UI
+    const coreProjects = Array.isArray(data.projects) ? data.projects : [];
+    const bidProjects = (data.bidBoardV2 && Array.isArray(data.bidBoardV2.data)) ? data.bidBoardV2.data : [];
+    
+    // Add a flag to distinguish them
+    const unified = [
+      ...coreProjects.map((p: any) => ({ ...p, _source: 'Core Project' })),
+      ...bidProjects.map((p: any) => ({ ...p, _source: 'Bid Board' }))
+    ];
+    
+    data.unifiedProjects = unified;
+
     return NextResponse.json(data);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

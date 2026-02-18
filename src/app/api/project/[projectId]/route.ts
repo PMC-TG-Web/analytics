@@ -46,12 +46,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
       makeRequest(`/rest/v1.1/projects/${projectId}/users?per_page=100`, accessToken),
     ]);
 
-    // Log results for debugging
-    console.log(`[Project Overview] Project: ${projectDetails.status}`, projectDetails.status === 'rejected' ? projectDetails.reason : '');
-    console.log(`[Project Overview] Timecards: ${timecardEntries.status}`, timecardEntries.status === 'rejected' ? timecardEntries.reason : '');
-    console.log(`[Project Overview] Costs: ${lineItems.status}`, lineItems.status === 'rejected' ? lineItems.reason : '');
-    console.log(`[Project Overview] Schedules: ${scheduleEntries.status}`, scheduleEntries.status === 'rejected' ? scheduleEntries.reason : '');
-    console.log(`[Project Overview] Team: ${team.status}`, team.status === 'rejected' ? team.reason : '');
+    // Log results for debugging with full error messages
+    console.log(`[Project Overview] Project: ${projectDetails.status}${projectDetails.status === 'rejected' ? ` - ${projectDetails.reason}` : ''}`);
+    console.log(`[Project Overview] Timecards: ${timecardEntries.status}${timecardEntries.status === 'rejected' ? ` - ${timecardEntries.reason}` : ''}`);
+    console.log(`[Project Overview] Costs: ${lineItems.status}${lineItems.status === 'rejected' ? ` - ${lineItems.reason}` : ''}`);
+    console.log(`[Project Overview] Schedules: ${scheduleEntries.status}${scheduleEntries.status === 'rejected' ? ` - ${scheduleEntries.reason}` : ''}`);
+    console.log(`[Project Overview] Team: ${team.status}${team.status === 'rejected' ? ` - ${team.reason}` : ''}`);
 
     // Process results
     const project = projectDetails.status === 'fulfilled' ? projectDetails.value : null;
@@ -67,8 +67,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
         projectId,
         details: {
           projectFailed: projectDetails.status === 'rejected',
+          projectError: projectDetails.status === 'rejected' ? String(projectDetails.reason) : null,
           timecardsFailed: timecardEntries.status === 'rejected',
+          timecardsError: timecardEntries.status === 'rejected' ? String(timecardEntries.reason) : null,
           costsFailed: lineItems.status === 'rejected',
+          costsError: lineItems.status === 'rejected' ? String(lineItems.reason) : null,
+          schedulesFailed: scheduleEntries.status === 'rejected',
+          schedulesError: scheduleEntries.status === 'rejected' ? String(scheduleEntries.reason) : null,
+          teamFailed: team.status === 'rejected',
+          teamError: team.status === 'rejected' ? String(team.reason) : null,
         }
       }, { status: 404 });
     }

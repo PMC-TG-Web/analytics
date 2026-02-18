@@ -34,6 +34,7 @@ function ProcoreContent() {
   const [syncing, setSyncing] = useState(false);
   const [syncingProductivity, setSyncingProductivity] = useState(false);
   const [debugging, setDebugging] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
   const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
   const [debugResult, setDebugResult] = useState<any>(null);
@@ -164,6 +165,31 @@ function ProcoreContent() {
       setError(err instanceof Error ? err.message : "Failed to debug productivity data");
     } finally {
       setDebugging(false);
+    }
+  };
+
+  const handleClearProductivity = async () => {
+    if (!window.confirm('This will delete all old productivity data. Are you ready to sync fresh data after this?')) {
+      return;
+    }
+    
+    setClearing(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/procore/clear-productivity", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Clear failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setError(`✅ ${result.message}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear productivity data");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -302,10 +328,10 @@ function ProcoreContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
               <button
                 onClick={handleExplore}
-                disabled={loading || syncing || syncingProductivity || debugging}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {loading ? "Exploring..." : "Explore Available Data"}
@@ -313,15 +339,23 @@ function ProcoreContent() {
               
               <button
                 onClick={handleSync}
-                disabled={loading || syncing || syncingProductivity || debugging}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {syncing ? "Syncing..." : "Sync Bid Board"}
               </button>
 
               <button
+                onClick={handleClearProductivity}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+              >
+                {clearing ? "Clearing..." : "🗑️ Clear Old Data"}
+              </button>
+
+              <button
                 onClick={handleSyncProductivity}
-                disabled={loading || syncing || syncingProductivity || debugging}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing}
                 className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {syncingProductivity ? "Syncing..." : "Sync Productivity"}
@@ -329,7 +363,7 @@ function ProcoreContent() {
 
               <button
                 onClick={handleDebugProductivity}
-                disabled={loading || syncing || syncingProductivity || debugging}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing}
                 className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {debugging ? "Checking..." : "Check Data Sources"}

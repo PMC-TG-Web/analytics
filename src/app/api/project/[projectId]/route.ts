@@ -6,11 +6,17 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     const { projectId } = await props.params;
     const accessToken = request.cookies.get('procore_access_token')?.value;
 
-    if (!accessToken) {
-      return NextResponse.json({ error: 'Not authenticated with Procore' }, { status: 401 });
-    }
-
     console.log(`[Project Overview] Fetching data for project ${projectId}`);
+    console.log(`[Project Overview] Access token present: ${!!accessToken}`);
+
+    if (!accessToken) {
+      console.log('[Project Overview] No access token found');
+      return NextResponse.json({
+        error: 'Not authenticated with Procore',
+        message: 'Please authenticate with Procore first',
+        details: 'Visit /dev-login or complete Procore authentication'
+      }, { status: 401 });
+    }
 
     // Fetch all data in parallel
     const [projectDetails, timecardEntries, lineItems, scheduleEntries, team] = await Promise.allSettled([
@@ -39,6 +45,13 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
       // Team members
       makeRequest(`/rest/v1.1/projects/${projectId}/users?per_page=100`, accessToken),
     ]);
+
+    // Log results for debugging
+    console.log(`[Project Overview] Project: ${projectDetails.status}`, projectDetails.status === 'rejected' ? projectDetails.reason : '');
+    console.log(`[Project Overview] Timecards: ${timecardEntries.status}`, timecardEntries.status === 'rejected' ? timecardEntries.reason : '');
+    console.log(`[Project Overview] Costs: ${lineItems.status}`, lineItems.status === 'rejected' ? lineItems.reason : '');
+    console.log(`[Project Overview] Schedules: ${scheduleEntries.status}`, scheduleEntries.status === 'rejected' ? scheduleEntries.reason : '');
+    console.log(`[Project Overview] Team: ${team.status}`, team.status === 'rejected' ? team.reason : '');
 
     // Process results
     const project = projectDetails.status === 'fulfilled' ? projectDetails.value : null;

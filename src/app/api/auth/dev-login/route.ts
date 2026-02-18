@@ -37,5 +37,17 @@ export async function GET(request: NextRequest) {
     path: '/',
   });
 
+  // Also set a mock/real Procore access token from environment if available
+  const procoreToken = process.env.PROCORE_ACCESS_TOKEN;
+  if (procoreToken) {
+    response.cookies.set('procore_access_token', procoreToken, {
+      httpOnly: true,
+      secure: (process.env.NODE_ENV as string) === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60, // 1 hour
+      path: '/',
+    });
+  }
+
   return response;
 }

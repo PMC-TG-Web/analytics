@@ -35,6 +35,7 @@ function ProcoreContent() {
   const [syncingProductivity, setSyncingProductivity] = useState(false);
   const [debugging, setDebugging] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [checkingFirebase, setCheckingFirebase] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
   const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
   const [debugResult, setDebugResult] = useState<any>(null);
@@ -193,6 +194,26 @@ function ProcoreContent() {
     }
   };
 
+  const handleCheckFirebase = async () => {
+    setCheckingFirebase(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/procore/check-firebase");
+
+      if (!response.ok) {
+        throw new Error(`Check failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setError(null);
+      setDebugResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to check Firebase");
+    } finally {
+      setCheckingFirebase(false);
+    }
+  };
+
   const getCount = (items: any) => {
     if (!items) return 0;
     if (Array.isArray(items)) return items.length;
@@ -323,15 +344,67 @@ function ProcoreContent() {
             )}
 
             {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-                Error: {error}
+              <div className={`px-4 py-3 rounded mb-6 border ${
+                error.startsWith('✅') 
+                  ? 'bg-green-100 border-green-400 text-green-700' 
+                  : 'bg-red-100 border-red-400 text-red-700'
+              }`}>
+                {error.startsWith('✅') ? error : `Error: ${error}`}
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            {debugResult && debugResult.results && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
+                <h2 className="text-xl font-bold text-orange-900 mb-4">
+                  🔍 Data Source Diagnostic Results
+                </h2>
+                <div className="mb-4 p-3 bg-orange-50 rounded">
+                  <strong>Recommendation:</strong> {debugResult.recommendation}
+                </div>
+                <div className="text-sm overflow-x-auto">
+                  <pre className="bg-gray-100 p-4 rounded text-xs">
+                    {JSON.stringify(debugResult, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {debugResult && debugResult.logsCount !== undefined && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
+                <h2 className="text-xl font-bold text-indigo-900 mb-4">
+                  📊 Firebase Data Status
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-indigo-50 p-4 rounded">
+                    <div className="text-sm text-indigo-700 font-semibold">Logs in Firebase</div>
+                    <div className="text-2xl font-bold text-indigo-900">{debugResult.logsCount}</div>
+                  </div>
+                  <div className="bg-indigo-50 p-4 rounded">
+                    <div className="text-sm text-indigo-700 font-semibold">Monthly Summaries</div>
+                    <div className="text-2xl font-bold text-indigo-900">{debugResult.summariesCount}</div>
+                  </div>
+                  <div className="bg-indigo-50 p-4 rounded">
+                    <div className="text-sm text-indigo-700 font-semibold">Total Hours</div>
+                    <div className="text-2xl font-bold text-indigo-900">{debugResult.totalHours.toFixed(1)}</div>
+                  </div>
+                </div>
+                <div className="text-sm overflow-x-auto">
+                  <pre className="bg-gray-100 p-4 rounded text-xs">
+                    {JSON.stringify({
+                      message: debugResult.message,
+                      byProject: debugResult.byProject,
+                      sampleLogs: debugResult.sampleLogs,
+                      firstSummary: debugResult.firstSummary
+                    }, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
               <button
                 onClick={handleExplore}
-                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {loading ? "Exploring..." : "Explore Available Data"}
@@ -339,7 +412,7 @@ function ProcoreContent() {
               
               <button
                 onClick={handleSync}
-                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {syncing ? "Syncing..." : "Sync Bid Board"}
@@ -347,7 +420,7 @@ function ProcoreContent() {
 
               <button
                 onClick={handleClearProductivity}
-                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
                 className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {clearing ? "Clearing..." : "🗑️ Clear Old Data"}
@@ -355,7 +428,7 @@ function ProcoreContent() {
 
               <button
                 onClick={handleSyncProductivity}
-                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
                 className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {syncingProductivity ? "Syncing..." : "Sync Productivity"}
@@ -363,10 +436,18 @@ function ProcoreContent() {
 
               <button
                 onClick={handleDebugProductivity}
-                disabled={loading || syncing || syncingProductivity || debugging || clearing}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
                 className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {debugging ? "Checking..." : "Check Data Sources"}
+              </button>
+
+              <button
+                onClick={handleCheckFirebase}
+                disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingFirebase}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+              >
+                {checkingFirebase ? "Checking..." : "📊 Check Firebase"}
               </button>
             </div>
 

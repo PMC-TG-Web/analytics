@@ -1,29 +1,29 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { db } from "@/firebase";
-import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 interface ProductivityLog {
   projectId: string;
   projectName: string;
-  date: string;
-  employeeName: string;
-  employeeId: string | null;
-  hours: number;
-  costCode: string;
-  description: string;
+  date?: string;
+  employeeName?: string;
+  employeeId?: string | null;
+  hours?: number;
+  costCode?: string;
+  description?: string;
 }
 
 interface ProductivitySummary {
   projectId: string;
   projectName: string;
   month: string;
-  totalHours: number;
-  uniqueEmployees: number;
-  workingDays: number;
-  byEmployee: Record<string, { hours: number; days: number }>;
+  totalHours?: number;
+  uniqueEmployees?: number;
+  workingDays?: number;
+  byEmployee?: Record<string, { hours: number; days: number }>;
 }
 
 export default function ProductivityPage() {
@@ -90,11 +90,11 @@ function ProductivityContent() {
   
   const months = Array.from(new Set(summaries.map(s => s.month))).sort().reverse();
 
-  // Calculate totals
-  const totalHours = filteredSummaries.reduce((sum, s) => sum + s.totalHours, 0);
-  const uniqueEmployees = filteredSummaries.reduce((sum, s) => sum + s.uniqueEmployees, 0);
+  // Calculate totals (handle both old and new data structures)
+  const totalHours = filteredSummaries.reduce((sum, s) => sum + (s.totalHours || 0), 0);
+  const uniqueEmployees = filteredSummaries.reduce((sum, s) => sum + (s.uniqueEmployees || s.totalWorkers || 0), 0);
   const avgHoursPerDay = filteredSummaries.length > 0 
-    ? totalHours / filteredSummaries.reduce((sum, s) => sum + s.workingDays, 0)
+    ? totalHours / filteredSummaries.reduce((sum, s) => sum + (s.workingDays || 0), 0)
     : 0;
 
   if (loading) {
@@ -227,13 +227,13 @@ function ProductivityContent() {
                         {summary.totalHours.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {summary.uniqueEmployees.toLocaleString()}
+                        {(summary.uniqueEmployees || summary.totalWorkers || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {summary.workingDays}
+                        {summary.workingDays || 0}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {(summary.totalHours / summary.workingDays).toFixed(1)}
+                        {summary.workingDays ? ((summary.totalHours || 0) / summary.workingDays).toFixed(1) : '0.0'}
                       </td>
                     </tr>
                   ))}
@@ -266,14 +266,14 @@ function ProductivityContent() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredLogs.map((log, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.date}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.projectName}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.employeeName}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{log.date || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{log.projectName || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{log.employeeName || (log as any).vendor || 'Unknown'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
-                        {log.hours.toFixed(1)}
+                        {(log.hours || 0).toFixed(1)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{log.costCode}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{log.description}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{log.costCode || ''}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{log.description || (log as any).notes || ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -290,12 +290,12 @@ function ProductivityContent() {
                 <p className="font-semibold mb-2">⚠️ Possible reasons:</p>
                 <ul className="text-left list-disc list-inside space-y-1">
                   <li>Projects may not be using Procore Daily Logs / Manpower tracking</li>
-                  <li>Most projects in your list are "Bids" (not active construction)</li>
+                  <li>Most projects in your list are &quot;Bids&quot; (not active construction)</li>
                   <li>No work was logged in the selected date range</li>
                 </ul>
                 <div className="mt-4 pt-3 border-t border-yellow-300">
                   <p className="font-semibold mb-1">Next steps:</p>
-                  <p>Go to the <a href="/procore" className="text-blue-600 underline font-bold">Procore page</a> and click <strong>"Check Data Sources"</strong> to see which endpoint has your data.</p>
+                  <p>Go to the <a href="/procore" className="text-blue-600 underline font-bold">Procore page</a> and click <strong>&quot;Check Data Sources&quot;</strong> to see which endpoint has your data.</p>
                 </div>
               </div>
             </div>

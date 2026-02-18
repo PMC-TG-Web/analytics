@@ -24,19 +24,30 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Productivity Sync] Date range: ${startDateStr} to ${endDateStr}`);
 
-    // 1. Fetch ACTIVE CONSTRUCTION projects only (exclude bid board)
-    // Focus on projects with actual construction activity
-    const activeStatuses = ['Pre-Construction', 'Pre-Construction Complete', 'In Progress', 'Post-Construction Complete'];
-    const statusFilter = activeStatuses.map(s => `filters[project_status][]=${encodeURIComponent(s)}`).join('&');
+    // 1. Fetch ACTIVE projects (try to get construction projects, fallback to all active)
+    let allProjects: any[] = [];
     
-    const coreProjectsResponse = await makeRequest(
-      `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=true&${statusFilter}`,
-      accessToken
-    );
+    try {
+      // Try with status filters first
+      const activeStatuses = ['Pre-Construction', 'Pre-Construction Complete', 'In Progress', 'Post-Construction Complete'];
+      const statusFilter = activeStatuses.map(s => `filters[project_status][]=${encodeURIComponent(s)}`).join('&');
+      
+      const coreProjectsResponse = await makeRequest(
+        `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=true&${statusFilter}`,
+        accessToken
+      );
+      allProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
+    } catch (error) {
+      console.log('[Productivity Sync] Status filter failed, trying without status filter...');
+      // Fallback: get all active projects
+      const coreProjectsResponse = await makeRequest(
+        `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=true`,
+        accessToken
+      );
+      allProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
+    }
 
-    const allProjects = Array.isArray(coreProjectsResponse) ? coreProjectsResponse : [];
-
-    console.log(`[Productivity Sync] Found ${allProjects.length} active construction projects to sync`);
+    console.log(`[Productivity Sync] Found ${allProjects.length} active projects to sync`);
 
     // 2. Fetch timecard entries for each project (primary labor tracking source)
     let totalLogs = 0;

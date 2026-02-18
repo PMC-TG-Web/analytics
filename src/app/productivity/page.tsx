@@ -47,6 +47,7 @@ function ProductivityContent() {
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [view, setView] = useState<"summary" | "detail">("summary");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -233,24 +234,61 @@ function ProductivityContent() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredSummaries.map((summary, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">{summary.projectName}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{summary.month}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
-                        {(summary.totalHours || 0).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {(summary.uniqueEmployees || summary.totalWorkers || 0).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {summary.workingDays || 0}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                        {summary.workingDays ? ((summary.totalHours || 0) / summary.workingDays).toFixed(1) : '0.0'}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredSummaries.map((summary, idx) => {
+                    const rowKey = `${summary.projectId}_${summary.month}`;
+                    const isExpanded = expandedRow === rowKey;
+                    
+                    return (
+                      <React.Fragment key={idx}>
+                        <tr 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => setExpandedRow(isExpanded ? null : rowKey)}
+                        >
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            <span className="mr-2">{isExpanded ? '▼' : '▶'}</span>
+                            {summary.projectName}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">{summary.month}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
+                            {(summary.totalHours || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                            {(summary.uniqueEmployees || summary.totalWorkers || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                            {summary.workingDays || 0}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                            {summary.workingDays ? ((summary.totalHours || 0) / summary.workingDays).toFixed(1) : '0.0'}
+                          </td>
+                        </tr>
+                        
+                        {isExpanded && summary.byEmployee && (
+                          <tr className="bg-blue-50">
+                            <td colSpan={6} className="px-6 py-4">
+                              <div className="ml-8">
+                                <h4 className="font-semibold text-gray-900 mb-3">Employee Breakdown</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {Object.entries(summary.byEmployee).map(([empName, empData]: [string, any]) => (
+                                    <div key={empName} className="bg-white rounded p-3 border border-gray-200">
+                                      <div className="font-medium text-gray-900">{empName}</div>
+                                      <div className="text-sm text-gray-600 mt-2">
+                                        <div>Hours: <span className="font-semibold">{empData.hours.toFixed(2)}</span></div>
+                                        <div>Days: <span className="font-semibold">{empData.days}</span></div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                          Avg: {(empData.hours / (empData.days || 1)).toFixed(2)} hrs/day
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             ) : (

@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
       else status = status.replace(/_/g, ' ');
 
       return {
-        id: `procore_${p.id}`,
-        projectName: p.name || 'Unknown Project',
-        projectNumber: p.project_number || '',
-        customer: p.customer_name || p.client_name || p.customer?.name || 'Procore Bid Board',
-        status,
+        id: p.id,
+        name: p.name || 'Unknown Project',
+        project_number: p.project_number || '',
+        company_name: p.customer_name || p.client_name || p.customer?.name || 'Procore Bid Board',
+        project_status: status,
         sales: p.stats?.total || 0,
         hours: p.stats?.total_hours || 0,
-        dateCreated: p.created_on || '',
-        dateUpdated: p.last_status_change || '',
+        created_on: p.created_on || '',
+        last_status_change: p.last_status_change || '',
         source: 'procore_live'
       };
     });

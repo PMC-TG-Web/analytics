@@ -30,6 +30,7 @@ const navLinks: NavLink[] = [
   { href: "/equipment", label: "Equipment", page: "equipment", color: "bg-stone-800" },
   { href: "/holidays", label: "Holidays", page: "holidays", color: "bg-stone-700" },
   { href: "/procore", label: "Procore", page: "procore", color: "bg-orange-700" },
+  { href: "/procore/projects", label: "Procore Projects", page: "procore-projects", color: "bg-orange-600" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "employees", color: "bg-stone-700" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook", color: "bg-stone-600" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management", color: "bg-stone-900" },

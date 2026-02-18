@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
 
     // Fetch all data in parallel
     const companyId = '598134325658789';
-    const [projectDetails, timecardEntries] = await Promise.allSettled([
+    const [projectDetails, timecardEntries, budgetData, changeOrderData] = await Promise.allSettled([
       // Use v1.1 API for project detail lookup with company_id query param
       (async () => {
         const response = await makeRequest(
@@ -46,15 +46,35 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
           accessToken
         );
       })(),
+      
+      // Budget data
+      (async () => {
+        return makeRequest(
+          `/rest/v1.0/projects/${projectId}/budgets?per_page=100`,
+          accessToken
+        );
+      })(),
+      
+      // Change orders
+      (async () => {
+        return makeRequest(
+          `/rest/v1.0/projects/${projectId}/change_orders?per_page=100`,
+          accessToken
+        );
+      })(),
     ]);
 
     // Log results for debugging with full error messages
     console.log(`[Project Overview] Project: ${projectDetails.status}${projectDetails.status === 'rejected' ? ` - ${projectDetails.reason}` : ''}`);
     console.log(`[Project Overview] Timecards: ${timecardEntries.status}${timecardEntries.status === 'rejected' ? ` - ${timecardEntries.reason}` : ''}`);
+    console.log(`[Project Overview] Budget: ${budgetData.status}${budgetData.status === 'rejected' ? ` - ${budgetData.reason}` : ''}`);
+    console.log(`[Project Overview] Change Orders: ${changeOrderData.status}${changeOrderData.status === 'rejected' ? ` - ${changeOrderData.reason}` : ''}`);
 
     // Process results
     const project = projectDetails.status === 'fulfilled' ? projectDetails.value : null;
     const timecards = timecardEntries.status === 'fulfilled' ? (Array.isArray(timecardEntries.value) ? timecardEntries.value : []) : [];
+    const budgets = budgetData.status === 'fulfilled' ? (Array.isArray(budgetData.value) ? budgetData.value : []) : [];
+    const changeOrders = changeOrderData.status === 'fulfilled' ? (Array.isArray(changeOrderData.value) ? changeOrderData.value : []) : [];
 
     if (!project) {
       console.log('[Project Overview] No project data returned');
@@ -66,6 +86,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
           projectError: projectDetails.status === 'rejected' ? String(projectDetails.reason) : null,
           timecardsFailed: timecardEntries.status === 'rejected',
           timecardsError: timecardEntries.status === 'rejected' ? String(timecardEntries.reason) : null,
+          budgetFailed: budgetData.status === 'rejected',
+          budgetError: budgetData.status === 'rejected' ? String(budgetData.reason) : null,
+          changeOrdersFailed: changeOrderData.status === 'rejected',
+          changeOrdersError: changeOrderData.status === 'rejected' ? String(changeOrderData.reason) : null,
         }
       }, { status: 404 });
     }
@@ -75,6 +99,34 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
       const hours = typeof tc.hours === 'number' ? tc.hours : parseFloat(tc.hours) || 0;
       return sum + hours;
     }, 0);
+
+    // Calculate budget metrics
+    const totalBudget = budgets.reduce((sum, budget) => {
+      const amount = typeof budget.amount === 'number' ? budget.amount : parseFloat(budget.amount) || 0;
+      return sum + amount;
+    }, 0);
+
+    const totalChangeOrders = changeOrders.reduce((sum, co) => {
+      const amount = typeof co.amount === 'number' ? co.amount : parseFloat(co.amount) || 0;
+      return sum + amount;
+    }, 0);
+
+    // Calculate productivity cost: total hours × average hourly rate from budget
+    // Extract hourly rates from budget items if available
+    interface BudgetItem {
+      rate?: string | number;
+    }
+    interface BudgetData {
+      line_items?: BudgetItem[];
+    }
+    const budgetItems = budgets.flatMap((budget: BudgetData) => budget.line_items || []);
+    const hourlyRates = budgetItems
+      .map((item: BudgetItem) => typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate)) || 0)
+      .filter((rate: number) => rate > 0);
+    const avgHourlyRate = hourlyRates.length > 0 
+      ? hourlyRates.reduce((sum: number, rate: number) => sum + rate, 0) / hourlyRates.length 
+      : 0;
+    const productivityCost = totalHours * avgHourlyRate;
 
     const uniqueEmployees = new Set(
       timecards.map(tc => tc.party?.name || tc.login_information?.name || 'Unknown')
@@ -144,6 +196,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
         uniqueEmployees,
         workingDays,
         avgHoursPerDay: parseFloat((totalHours / (workingDays || 1)).toFixed(2)),
+      },
+      financialMetrics: {
+        totalBudget: parseFloat(totalBudget.toFixed(2)),
+        totalChangeOrders: parseFloat(totalChangeOrders.toFixed(2)),
+        avgHourlyRate: parseFloat(avgHourlyRate.toFixed(2)),
+        productivityCost: parseFloat(productivityCost.toFixed(2)),
       },
       laborAnalytics: {
         employeeBreakdown: employeeBreakdown.sort((a, b) => b.hours - a.hours),

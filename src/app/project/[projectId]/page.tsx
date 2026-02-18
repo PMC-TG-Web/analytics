@@ -25,6 +25,12 @@ interface ProjectOverview {
     workingDays: number;
     avgHoursPerDay: number;
   };
+  financialMetrics: {
+    totalBudget: number;
+    totalChangeOrders: number;
+    avgHourlyRate: number;
+    productivityCost: number;
+  };
   laborAnalytics: {
     employeeBreakdown: Array<{
       name: string;
@@ -211,6 +217,28 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <MetricCard title="Total Hours" value={data.metrics.totalHours.toLocaleString()} subtext={`${data.metrics.uniqueEmployees} employees`} color="blue" />
           <MetricCard title="Working Days" value={data.metrics.workingDays} subtext={`${data.metrics.avgHoursPerDay.toFixed(1)} hrs/day avg`} color="green" />
+        </div>
+
+        {/* Financial Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <MetricCard 
+            title="Budget" 
+            value={`$${data.financialMetrics.totalBudget.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+            subtext={`@$${data.financialMetrics.avgHourlyRate.toFixed(2)}/hr`}
+            color="blue" 
+          />
+          <MetricCard 
+            title="Change Orders" 
+            value={`$${data.financialMetrics.totalChangeOrders.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+            subtext="Total adjustments"
+            color="amber" 
+          />
+          <MetricCard 
+            title="Productivity Cost" 
+            value={`$${data.financialMetrics.productivityCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+            subtext={`${data.metrics.totalHours.toLocaleString()} hours`}
+            color="red" 
+          />
         </div>
 
         {/* Charts Section */}

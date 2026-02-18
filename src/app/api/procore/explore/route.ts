@@ -78,6 +78,21 @@ export async function POST(request: NextRequest) {
     
     data.unifiedProjects = unified;
 
+    // 9: Fetch Productivity Logs for the first 5 "Core Projects" (v1.1) 
+    // We limit to 5 to avoid triggering rate limits or timeouts during exploration
+    const sampleProjects = coreProjects.slice(0, 5);
+    const logResults = await Promise.allSettled(
+      sampleProjects.map((p: any) => 
+        makeRequest(`/rest/v1.0/projects/${p.id}/productivity_logs?per_page=10`, accessToken)
+      )
+    );
+
+    data.productivityLogs = logResults.map((result, idx) => ({
+      projectId: sampleProjects[idx].id,
+      projectName: sampleProjects[idx].name,
+      logs: result.status === 'fulfilled' ? result.value : { error: String(result.reason) }
+    }));
+
     return NextResponse.json(data);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

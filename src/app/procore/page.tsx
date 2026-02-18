@@ -14,6 +14,7 @@ interface ProcoreData {
   estimatingProjects?: any;
   bidBoardV2?: any;
   unifiedProjects?: any;
+  productivityLogs?: any;
   error?: string;
 }
 
@@ -399,6 +400,32 @@ function ProcoreContent() {
                   {selectedSection === "templates" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
                       {renderData("templates", data.projectTemplates)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6 md:col-span-2">
+                  <h2
+                    className="text-lg font-semibold mb-4 cursor-pointer hover:text-blue-600"
+                    onClick={() =>
+                      setSelectedSection(
+                        selectedSection === "productivity" ? null : "productivity"
+                      )
+                    }
+                  >
+                    📈 Productivity Logs (Sample from {data.productivityLogs?.length || 0} Projects)
+                  </h2>
+                  {selectedSection === "productivity" && (
+                    <div className="text-sm max-h-96 overflow-y-auto">
+                      <p className="text-xs text-gray-500 mb-4 italic">
+                        Productivity logs are project-specific. Showing data for a few sample projects from the list.
+                      </p>
+                      {data.productivityLogs?.map((item: any, idx: number) => (
+                        <div key={idx} className="mb-6 border-b pb-4 last:border-0">
+                          <h3 className="font-bold text-blue-800 mb-2">{item.projectName} (ID: {item.projectId})</h3>
+                          {renderData(`prod_${item.projectId}`, item.logs)}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

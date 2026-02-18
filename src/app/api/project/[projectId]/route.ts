@@ -60,6 +60,19 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     const schedules = scheduleEntries.status === 'fulfilled' ? (Array.isArray(scheduleEntries.value) ? scheduleEntries.value : []) : [];
     const teamMembers = team.status === 'fulfilled' ? (Array.isArray(team.value) ? team.value : []) : [];
 
+    if (!project) {
+      console.log('[Project Overview] No project data returned');
+      return NextResponse.json({
+        error: 'Project not found or failed to fetch',
+        projectId,
+        details: {
+          projectFailed: projectDetails.status === 'rejected',
+          timecardsFailed: timecardEntries.status === 'rejected',
+          costsFailed: lineItems.status === 'rejected',
+        }
+      }, { status: 404 });
+    }
+
     // Calculate metrics
     const totalHours = timecards.reduce((sum, tc) => {
       const hours = typeof tc.hours === 'number' ? tc.hours : parseFloat(tc.hours) || 0;
@@ -175,9 +188,14 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
       },
     });
   } catch (error) {
-    console.error('[Project Overview] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch project data';
+    console.error('[Project Overview] Error:', errorMessage, error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch project data' },
+      { 
+        error: errorMessage,
+        message: 'Failed to fetch project data',
+        details: error instanceof Error ? error.stack : 'See server logs'
+      },
       { status: 500 }
     );
   }

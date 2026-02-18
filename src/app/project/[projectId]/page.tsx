@@ -84,11 +84,18 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
         const response = await fetch(`/api/project/${projectId}`, {
           credentials: 'include',
         });
-        if (!response.ok) throw new Error('Failed to fetch project data');
         const result = await response.json();
+        
+        if (!response.ok) {
+          console.error('API Error:', result);
+          throw new Error(result.message || result.error || 'Failed to fetch project data');
+        }
+        
         setData(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error loading project data');
+        const errorMsg = err instanceof Error ? err.message : 'Error loading project data';
+        console.error('Fetch error:', errorMsg);
+        setError(errorMsg);
       } finally {
         setLoading(false);
       }

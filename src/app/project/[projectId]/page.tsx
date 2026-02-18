@@ -81,7 +81,9 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
 
     const fetchData = async () => {
       try {
-        const response = await fetch(`/api/project/${projectId}`);
+        const response = await fetch(`/api/project/${projectId}`, {
+          credentials: 'include',
+        });
         if (!response.ok) throw new Error('Failed to fetch project data');
         const result = await response.json();
         setData(result);

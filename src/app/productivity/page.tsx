@@ -107,7 +107,16 @@ function ProductivityContent() {
 
   // Calculate totals (handle both old and new data structures)
   const totalHours = filteredSummaries.reduce((sum, s) => sum + (s.totalHours || 0), 0);
-  const uniqueEmployees = filteredSummaries.reduce((sum, s) => sum + (s.uniqueEmployees || s.totalWorkers || 0), 0);
+  
+  // Get truly unique employee names across all filtered summaries
+  const uniqueEmployeeSet = new Set<string>();
+  filteredSummaries.forEach(s => {
+    if (s.byEmployee) {
+      Object.keys(s.byEmployee).forEach(empName => uniqueEmployeeSet.add(empName));
+    }
+  });
+  const uniqueEmployees = uniqueEmployeeSet.size;
+  
   const avgHoursPerDay = filteredSummaries.length > 0 
     ? totalHours / filteredSummaries.reduce((sum, s) => sum + (s.workingDays || 0), 0)
     : 0;

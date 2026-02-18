@@ -71,6 +71,11 @@ export async function POST(request: NextRequest) {
         if (logsArray.length > 0) {
           console.log(`[Productivity Sync] Found ${logsArray.length} timecard entries for ${projectName}`);
           
+          // Debug: Log first entry structure
+          if (logsArray[0]) {
+            console.log('[Productivity Sync] Sample timecard entry structure:', JSON.stringify(logsArray[0], null, 2));
+          }
+          
           // Write raw logs
           const batch = writeBatch(db);
           const logsRef = collection(db, 'productivity_logs');
@@ -82,17 +87,32 @@ export async function POST(request: NextRequest) {
             // Convert hours to number
             const hours = typeof log.hours === 'number' ? log.hours : parseFloat(log.hours) || 0;
             
+            // Extract employee name from various possible locations
+            const employeeName = log.employee?.name 
+              || log.resource?.name 
+              || log.worker?.name
+              || log.crew_member?.name
+              || log.vendor?.name
+              || 'Unknown';
+            
+            const employeeId = log.employee?.id 
+              || log.resource?.id 
+              || log.worker?.id
+              || log.crew_member?.id
+              || null;
+            
             batch.set(doc(logsRef, logId), {
               projectId,
               projectName,
               date: logDate,
-              employeeName: log.employee?.name || 'Unknown',
-              employeeId: log.employee?.id || null,
+              employeeName,
+              employeeId,
               hours,
               costCode: log.cost_code?.full_code || log.cost_code?.name || '',
               description: log.description || '',
               createdAt: new Date().toISOString(),
-              source: 'procore_timecard'
+              source: 'procore_timecard',
+              rawEmployee: log.employee || log.resource || log.worker || null  // Store for debugging
             });
 
             // Aggregate for summary
@@ -115,7 +135,6 @@ export async function POST(request: NextRequest) {
               monthlySummary[summaryKey].totalHours += hours;
               monthlySummary[summaryKey].workingDays.add(logDate);
               
-              const employeeName = log.employee?.name || 'Unknown';
               monthlySummary[summaryKey].uniqueEmployees.add(employeeName);
               
               if (!monthlySummary[summaryKey].byEmployee[employeeName]) {

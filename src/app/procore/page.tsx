@@ -13,6 +13,7 @@ interface ProcoreData {
   bidBoardProjects?: any;
   estimatingProjects?: any;
   bidBoardV2?: any;
+  unifiedProjects?: any;
   error?: string;
 }
 

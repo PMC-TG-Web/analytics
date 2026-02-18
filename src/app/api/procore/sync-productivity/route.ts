@@ -78,10 +78,12 @@ export async function POST(request: NextRequest) {
         console.log('[Productivity Sync] First employee:', JSON.stringify(employeesArray[0], null, 2));
       }
       
-      // Create ID -> Name lookup map
+      // Create ID -> Name lookup map using 'key' field (not 'id')
       employeesArray.forEach((emp: any) => {
-        if (emp.id && emp.name) {
-          employeesMap[emp.id] = emp.name;
+        const empId = emp.key || emp.id;
+        const empName = emp.value || emp.name;
+        if (empId && empName) {
+          employeesMap[empId] = empName;
         }
       });
       console.log(`[Productivity Sync] Created lookup map for ${Object.keys(employeesMap).length} employees`);
@@ -131,22 +133,14 @@ export async function POST(request: NextRequest) {
             // Convert hours to number
             const hours = typeof log.hours === 'number' ? log.hours : parseFloat(log.hours) || 0;
             
-            // Extract employee ID and lookup name
-            const employeeId = log.employee_id 
-              || log.employeeId
-              || log.employee?.id 
-              || log.resource?.id 
-              || log.worker?.id
-              || null;
+            // Extract employee info from party object or login_information
+            // Procore stores employee data in 'party' object with nested name field
+            const employeeId = log.party_id || log.party?.id || null;
             
-            const employeeName = employeeId && employeesMap[employeeId]
-              ? employeesMap[employeeId]
-              : (log.employee?.name 
-                || log.resource?.name 
-                || log.worker?.name
-                || log.crew_member?.name
-                || log.vendor?.name
-                || 'Unknown');
+            const employeeName = log.party?.name 
+              || log.login_information?.name
+              || (employeeId && employeesMap[employeeId])
+              || 'Unknown';
             
             batch.set(doc(logsRef, logId), {
               projectId,

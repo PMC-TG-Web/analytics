@@ -230,7 +230,7 @@ function ProductivityContent() {
                       <td className="px-6 py-4 text-sm text-gray-900">{summary.projectName}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{summary.month}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right font-semibold">
-                        {summary.totalHours.toLocaleString()}
+                        {(summary.totalHours || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 text-right">
                         {(summary.uniqueEmployees || summary.totalWorkers || 0).toLocaleString()}

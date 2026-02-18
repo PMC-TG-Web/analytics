@@ -77,15 +77,23 @@ function ProductivityContent() {
     }
   };
 
-  // Filter data
+  // Filter data - handle both string and number projectIds
   const filteredSummaries = summaries.filter(s => {
-    if (selectedProject !== "all" && s.projectId !== selectedProject) return false;
+    if (selectedProject !== "all") {
+      const summaryProjectId = String(s.projectId);
+      const selectedProjectId = String(selectedProject);
+      if (summaryProjectId !== selectedProjectId) return false;
+    }
     if (selectedMonth !== "all" && s.month !== selectedMonth) return false;
     return true;
   });
 
   const filteredLogs = logs.filter(l => {
-    if (selectedProject !== "all" && l.projectId !== selectedProject) return false;
+    if (selectedProject !== "all") {
+      const logProjectId = String(l.projectId);
+      const selectedProjectId = String(selectedProject);
+      if (logProjectId !== selectedProjectId) return false;
+    }
     if (selectedMonth !== "all" && l.date?.substring(0, 7) !== selectedMonth) return false;
     return true;
   });

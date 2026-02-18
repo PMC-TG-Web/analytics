@@ -283,6 +283,8 @@ export default function KPIPage() {
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [dataSource, setDataSource] = useState<'firestore' | 'procore'>('firestore');
+  const [procoreAuthError, setProcoreAuthError] = useState(false);
 
   // Fetch KPI data separately when yearFilter changes
   useEffect(() => {
@@ -298,6 +300,71 @@ export default function KPIPage() {
     }
     fetchKpiData();
   }, [yearFilter]);
+
+  // Fetch Projects and Schedules
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      setProcoreAuthError(false);
+      try {
+        let projectsData: Project[] = [];
+
+        if (dataSource === 'procore') {
+          console.log("[KPI] Fetching projects from Procore Live API...");
+          const procoreRes = await fetch("/api/procore/projects");
+          
+          if (procoreRes.status === 401) {
+            console.warn("[KPI] Procore unauthorized, falling back to Firestore");
+            setProcoreAuthError(true);
+            setDataSource('firestore');
+            return; // useEffect will re-run for 'firestore'
+          }
+
+          const procoreJson = await procoreRes.json();
+          if (procoreJson.success && procoreJson.projects) {
+            projectsData = procoreJson.projects;
+          } else {
+            console.error("[KPI] Procore fetch failed:", procoreJson.error);
+            setDataSource('firestore');
+            return;
+          }
+        } else {
+          console.log("[KPI] Fetching projects from Firestore...");
+          const projectsSnapshot = await getDocs(collection(db, "projects"));
+          projectsData = projectsSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Project[];
+        }
+
+        setProjects(projectsData);
+
+        // Fetch schedules (currently always from Firestore)
+        const schedulesRes = await fetch("/api/scheduling");
+        const schedulesJson = await schedulesRes.json();
+        const schedulesData = schedulesJson.data || schedulesJson.schedules || [];
+
+        const schedulesWithStatus = schedulesData.map((schedule: any) => {
+          const matchingProject = projectsData.find((p: any) => {
+            const scheduleKey = `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
+            const projectKey = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+            return scheduleKey === projectKey;
+          });
+          return {
+            ...schedule,
+            status: matchingProject?.status || "Unknown",
+          };
+        });
+
+        setSchedules(schedulesWithStatus);
+      } catch (error) {
+        console.error("[KPI] Error loading data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [dataSource]);
 
   return (
     <ProtectedPage page="kpi">
@@ -320,6 +387,9 @@ export default function KPIPage() {
         setStartDate={setStartDate}
         endDate={endDate}
         setEndDate={setEndDate}
+        dataSource={dataSource}
+        setDataSource={setDataSource}
+        procoreAuthError={procoreAuthError}
       />
     </ProtectedPage>
   );
@@ -344,6 +414,9 @@ function KPIPageContent({
   setStartDate,
   endDate,
   setEndDate,
+  dataSource,
+  setDataSource,
+  procoreAuthError,
 }: any) {
 
   // Load year filter from localStorage on mount
@@ -359,42 +432,8 @@ function KPIPageContent({
     localStorage.setItem("kpi-year-filter", yearFilter);
   }, [yearFilter]);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
-        const projectsData = projectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Project[];
-        setProjects(projectsData);
-
-        const schedulesRes = await fetch("/api/scheduling");
-        const schedulesJson = await schedulesRes.json();
-        const schedulesData = schedulesJson.data || schedulesJson.schedules || [];
-
-        const schedulesWithStatus = schedulesData.map((schedule: any) => {
-          const matchingProject = projectsData.find((p: any) => {
-            const scheduleKey = `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
-            const projectKey = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-            return scheduleKey === projectKey;
-          });
-          return {
-            ...schedule,
-            status: matchingProject?.status || "Unknown",
-          };
-        });
-
-        setSchedules(schedulesWithStatus);
-
-        setLoading(false);
-      } catch (error) {
-        console.error("Error loading data:", error);
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  // Project and Schedule data is now fetched in the parent KPIPage component
+  // to support dynamic data source switching between Firestore and Procore Live.
 
   useEffect(() => {
     async function loadCardDataFromFirestore() {
@@ -955,6 +994,12 @@ function KPIPageContent({
         <Navigation currentPage="kpi" />
       </div>
 
+      {procoreAuthError && (
+        <div style={{ background: "#FEF2F2", color: "#991B1B", padding: "8px 12px", borderRadius: 6, marginBottom: 12, fontSize: 13, border: "1px solid #FCA5A5" }}>
+          Authentication with Procore required for live data. <a href="/api/auth/procore/login?returnTo=/kpi" style={{ color: "#15616D", fontWeight: 'bold', textDecoration: 'underline' }}>Click here to login</a>
+        </div>
+      )}
+
       {/* Year and Date Range Filters */}
       <div style={{
         background: "#ffffff",
@@ -967,6 +1012,44 @@ function KPIPageContent({
         gap: 16,
         flexWrap: "wrap"
       }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ color: "#666", fontWeight: 600, fontSize: 13 }}>Data Source:</div>
+          <div style={{ display: "flex", background: "#f0f0f0", borderRadius: 4, padding: 2 }}>
+            <button
+              onClick={() => setDataSource('firestore')}
+              style={{
+                padding: "4px 10px",
+                border: "none",
+                borderRadius: 2,
+                fontSize: 11,
+                cursor: "pointer",
+                background: dataSource === 'firestore' ? "#15616D" : "transparent",
+                color: dataSource === 'firestore' ? "white" : "#666",
+                fontWeight: 600,
+              }}
+            >
+              Firestore (Sync)
+            </button>
+            <button
+              onClick={() => setDataSource('procore')}
+              style={{
+                padding: "4px 10px",
+                border: "none",
+                borderRadius: 2,
+                fontSize: 11,
+                cursor: "pointer",
+                background: dataSource === 'procore' ? "#15616D" : "transparent",
+                color: dataSource === 'procore' ? "white" : "#666",
+                fontWeight: 600,
+              }}
+            >
+              Procore (Live)
+            </button>
+          </div>
+        </div>
+
+        <div style={{ width: "1px", height: "20px", background: "#333", opacity: 0.1 }} />
+
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ color: "#666", fontWeight: 600, fontSize: 13 }}>Year:</div>
           <select

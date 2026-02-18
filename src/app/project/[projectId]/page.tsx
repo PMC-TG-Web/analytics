@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Line, Bar, Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
@@ -54,7 +54,10 @@ interface ProjectOverview {
   };
 }
 
-export default function ProjectDashboard({ params }: { params: { projectId: string } }) {
+export default function ProjectDashboard({ params }: { params: Promise<{ projectId: string }> }) {
+  const resolvedParams = use(params);
+  const projectId = resolvedParams.projectId;
+
   const [data, setData] = useState<ProjectOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +89,7 @@ export default function ProjectDashboard({ params }: { params: { projectId: stri
 
     const fetchData = async () => {
       try {
-        const response = await fetch(`/api/project/${params.projectId}`);
+        const response = await fetch(`/api/project/${projectId}`);
         if (!response.ok) throw new Error('Failed to fetch project data');
         const result = await response.json();
         setData(result);
@@ -98,7 +101,7 @@ export default function ProjectDashboard({ params }: { params: { projectId: stri
     };
 
     fetchData();
-  }, [params.projectId, hasAccess]);
+  }, [projectId, hasAccess]);
 
   if (!hasAccess) return <div className="p-8 text-center text-red-500">Access denied. Redirecting...</div>;
   if (loading) return <div className="p-8 text-center">Loading project dashboard...</div>;

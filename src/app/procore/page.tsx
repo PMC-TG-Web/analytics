@@ -197,18 +197,20 @@ function ProcoreContent() {
   const handleCheckFirebase = async () => {
     setCheckingFirebase(true);
     setError(null);
+    setDebugResult(null);
     try {
       const response = await fetch("/api/procore/check-firebase");
 
       if (!response.ok) {
-        throw new Error(`Check failed: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.details || `Check failed: ${response.status}`);
       }
 
       const result = await response.json();
-      setError(null);
       setDebugResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to check Firebase");
+      console.error('Check Firebase error:', err);
     } finally {
       setCheckingFirebase(false);
     }

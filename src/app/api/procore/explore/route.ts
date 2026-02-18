@@ -21,13 +21,17 @@ export async function POST(request: NextRequest) {
     const companyId = procoreConfig.companyId;
     console.log(`Procore Explore: Using Company ID ${companyId}`);
 
+    // Build exhaustive filters for Estimating v2.0
+    const statuses = ['ESTIMATING', 'BIDDING', 'BID_SUBMITTED', 'NEGOTIATING', 'WON', 'LOST', 'DECLINED'];
+    const statusFilter = `&filters[status][]=${statuses.join('&filters[status][]=')}`;
+
     const results = await Promise.allSettled([
       // 0: User info
       makeRequest('/rest/v1.0/me', accessToken),
       // 1: Companies
       makeRequest('/rest/v1.0/companies', accessToken),
-      // 2: Projects (v1.1)
-      makeRequest(`/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100`, accessToken),
+      // 2: Projects (v1.1) - include archived
+      makeRequest(`/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`, accessToken),
       // 3: Project Templates
       makeRequest(`/rest/v1.0/project_templates?company_id=${companyId}&per_page=100`, accessToken),
       // 4: Vendors
@@ -38,8 +42,8 @@ export async function POST(request: NextRequest) {
       makeRequest('/rest/v1.0/bid_board_projects?per_page=100', accessToken),
       // 7: Estimating projects (Alternate)
       makeRequest('/rest/v1.0/estimating_projects?per_page=100', accessToken),
-      // 8: Estimating v2.0 (Verified Winner)
-      makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100`, accessToken)
+      // 8: Estimating v2.0 (Verified Winner) - include all statuses
+      makeRequest(`/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100${statusFilter}`, accessToken)
     ]);
 
     const labels = [

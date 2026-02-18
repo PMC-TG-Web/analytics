@@ -15,8 +15,12 @@ export async function POST(request: NextRequest) {
     const companyId = procoreConfig.companyId;
     console.log(`[Procore Sync] Starting sync for company ${companyId}`);
 
-    // 1. Fetch data from the working v2.0 endpoint
-    const endpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100`;
+    // Fetch all statuses to ensure we get "Bid submitted", etc.
+    const statuses = ['ESTIMATING', 'BIDDING', 'BID_SUBMITTED', 'NEGOTIATING', 'WON', 'LOST', 'DECLINED'];
+    const statusFilter = `&filters[status][]=${statuses.join('&filters[status][]=')}`;
+
+    // 1. Fetch data from the working v2.0 endpoint with exhaustive filters
+    const endpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100${statusFilter}`;
     const projects = await makeRequest(endpoint, accessToken);
 
     if (!Array.isArray(projects)) {

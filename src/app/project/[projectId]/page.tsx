@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { Line, Bar, Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 
@@ -58,34 +59,25 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
   const resolvedParams = use(params);
   const projectId = resolvedParams.projectId;
 
+  const { user, loading: authLoading, checkAccess } = useAuth();
   const [data, setData] = useState<ProjectOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string>('overview');
-  const [hasAccess, setHasAccess] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const checkAccess = async () => {
-      try {
-        const response = await fetch('/api/auth/check-access?page=project');
-        if (!response.ok) {
-          setHasAccess(false);
-          setTimeout(() => router.push('/'), 2000);
-          return;
-        }
-        setHasAccess(true);
-      } catch (err) {
-        console.error('Access check failed:', err);
-        setHasAccess(false);
-      }
-    };
-
-    checkAccess();
-  }, [router]);
+    if (authLoading) return;
+    
+    if (!user || !checkAccess('project')) {
+      setError('Access denied');
+      setTimeout(() => router.push('/'), 2000);
+      return;
+    }
+  }, [authLoading, user, checkAccess, router]);
 
   useEffect(() => {
-    if (!hasAccess) return;
+    if (authLoading || !user) return;
 
     const fetchData = async () => {
       try {
@@ -101,9 +93,10 @@ export default function ProjectDashboard({ params }: { params: Promise<{ project
     };
 
     fetchData();
-  }, [projectId, hasAccess]);
+  }, [projectId, authLoading, user]);
 
-  if (!hasAccess) return <div className="p-8 text-center text-red-500">Access denied. Redirecting...</div>;
+  if (authLoading) return <div className="p-8 text-center">Loading...</div>;
+  if (error === 'Access denied') return <div className="p-8 text-center text-red-500">Access denied. Redirecting...</div>;
   if (loading) return <div className="p-8 text-center">Loading project dashboard...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
   if (!data) return <div className="p-8 text-center">No data available</div>;

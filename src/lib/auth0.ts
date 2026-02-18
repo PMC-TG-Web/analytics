@@ -1,2 +1,10 @@
-// Auth0 is configured via environment variables only
-// No client initialization needed - use handlers directly from @auth0/nextjs-auth0
+import { Auth0Client } from '@auth0/nextjs-auth0/server';
+
+export const auth0 = new Auth0Client({
+  routes: {
+    login: '/api/auth/login',
+    logout: '/api/auth/logout',
+    callback: '/api/auth/callback',
+    profile: '/api/auth/me',
+  },
+});

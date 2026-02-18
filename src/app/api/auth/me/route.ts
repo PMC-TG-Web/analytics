@@ -1,36 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { auth0 } from '@/lib/auth0';
+import { NextResponse } from 'next/server';
 
 /**
- * Get current user session from auth_session cookie
+ * Get current user session using the Auth0 SDK
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    let sessionCookie = req.cookies.get('auth_session');
+    const session = await auth0.getSession();
     
-    // If no main auth session, check for procore specific session
-    if (!sessionCookie) {
-      sessionCookie = req.cookies.get('procore_session');
-    }
-
-    if (!sessionCookie?.value) {
-      console.log('No auth_session cookie found');
+    if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
       );
     }
 
-    const user = JSON.parse(sessionCookie.value);
-    console.log('Authenticated user:', user.email);
-
-    return NextResponse.json({
-      email: user.email,
-      name: user.name,
-      nickname: user.nickname,
-      picture: user.picture,
-    });
+    return NextResponse.json(session.user);
   } catch (error) {
-    console.error('Error parsing session:', error);
+    console.error('Error fetching session:', error);
     return NextResponse.json(
       { error: 'Failed to get session' },
       { status: 500 }

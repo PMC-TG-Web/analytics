@@ -282,8 +282,22 @@ function ProductivityContent() {
           </div>
 
           {filteredSummaries.length === 0 && filteredLogs.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              No productivity data found. Click "Sync Productivity Data" in the Procore page to load data.
+            <div className="text-center py-12">
+              <div className="text-gray-500 mb-4">
+                No productivity data found.
+              </div>
+              <div className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded p-4 max-w-2xl mx-auto">
+                <p className="font-semibold mb-2">⚠️ Possible reasons:</p>
+                <ul className="text-left list-disc list-inside space-y-1">
+                  <li>Projects may not be using Procore Daily Logs / Manpower tracking</li>
+                  <li>Most projects in your list are "Bids" (not active construction)</li>
+                  <li>No work was logged in the selected date range</li>
+                </ul>
+                <div className="mt-4 pt-3 border-t border-yellow-300">
+                  <p className="font-semibold mb-1">Next steps:</p>
+                  <p>Go to the <a href="/procore" className="text-blue-600 underline font-bold">Procore page</a> and click <strong>"Check Data Sources"</strong> to see which endpoint has your data.</p>
+                </div>
+              </div>
             </div>
           )}
         </div>

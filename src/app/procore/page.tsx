@@ -33,8 +33,10 @@ function ProcoreContent() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncingProductivity, setSyncingProductivity] = useState(false);
+  const [debugging, setDebugging] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number; message: string } | null>(null);
   const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
+  const [debugResult, setDebugResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
@@ -140,6 +142,29 @@ function ProcoreContent() {
       setError(err instanceof Error ? err.message : "Failed to sync productivity data");
     } finally {
       setSyncingProductivity(false);
+    }
+  };
+
+  const handleDebugProductivity = async () => {
+    setDebugging(true);
+    setError(null);
+    setDebugResult(null);
+    try {
+      const response = await fetch("/api/procore/debug-productivity", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Debug failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setDebugResult(result);
+      setSelectedSection("debug");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to debug productivity data");
+    } finally {
+      setDebugging(false);
     }
   };
 
@@ -278,29 +303,37 @@ function ProcoreContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={handleExplore}
-                disabled={loading || syncing || syncingProductivity}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
+                disabled={loading || syncing || syncingProductivity || debugging}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
                 {loading ? "Exploring..." : "Explore Available Data"}
               </button>
               
               <button
                 onClick={handleSync}
-                disabled={loading || syncing || syncingProductivity}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
+                disabled={loading || syncing || syncingProductivity || debugging}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {syncing ? "Syncing..." : "Sync Bid Board to Firestore"}
+                {syncing ? "Syncing..." : "Sync Bid Board"}
               </button>
 
               <button
                 onClick={handleSyncProductivity}
-                disabled={loading || syncing || syncingProductivity}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded"
+                disabled={loading || syncing || syncingProductivity || debugging}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {syncingProductivity ? "Syncing 6mo..." : "Sync Productivity (6mo)"}
+                {syncingProductivity ? "Syncing..." : "Sync Productivity"}
+              </button>
+
+              <button
+                onClick={handleDebugProductivity}
+                disabled={loading || syncing || syncingProductivity || debugging}
+                className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+              >
+                {debugging ? "Checking..." : "Check Data Sources"}
               </button>
             </div>
 
@@ -489,6 +522,22 @@ function ProcoreContent() {
                            Check the <strong>Manpower Logs</strong> above for this project to see general daily labor hours.
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {debugResult && selectedSection === "debug" && (
+                  <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 md:col-span-2">
+                    <h2 className="text-xl font-bold text-orange-900 mb-4">
+                      🔍 Data Source Diagnostic Results
+                    </h2>
+                    <div className="mb-4 p-3 bg-orange-50 rounded">
+                      <strong>Recommendation:</strong> {debugResult.recommendation}
+                    </div>
+                    <div className="text-sm overflow-x-auto">
+                      <pre className="bg-gray-100 p-4 rounded text-xs">
+                        {JSON.stringify(debugResult, null, 2)}
+                      </pre>
                     </div>
                   </div>
                 )}

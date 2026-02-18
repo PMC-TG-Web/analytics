@@ -113,18 +113,35 @@ function ProcoreContent() {
     }
   };
 
+  const getCount = (items: any) => {
+    if (!items) return 0;
+    if (Array.isArray(items)) return items.length;
+    if (items.data && Array.isArray(items.data)) return items.data.length;
+    if (items.entities && Array.isArray(items.entities)) return items.entities.length;
+    if (items.projects && Array.isArray(items.projects)) return items.projects.length;
+    return 0;
+  };
+
   const renderData = (section: string, sectionData: any) => {
     if (!sectionData) return <p>No data</p>;
     if (sectionData.error) return <p className="text-red-500">{sectionData.error}</p>;
 
-    if (Array.isArray(sectionData)) {
+    // Unpack common wrapper objects from Procore v2.0
+    let displayData = sectionData;
+    if (!Array.isArray(sectionData) && sectionData && typeof sectionData === 'object') {
+      if (Array.isArray(sectionData.data)) displayData = sectionData.data;
+      else if (Array.isArray(sectionData.entities)) displayData = sectionData.entities;
+      else if (Array.isArray(sectionData.projects)) displayData = sectionData.projects;
+    }
+
+    if (Array.isArray(displayData)) {
       return (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse border border-gray-300">
             <thead className="bg-gray-200">
               <tr>
-                {sectionData[0] &&
-                  Object.keys(sectionData[0]).map((key) => (
+                {displayData[0] &&
+                  Object.keys(displayData[0]).map((key) => (
                     <th key={key} className="border border-gray-300 p-2 text-left">
                       {key}
                     </th>
@@ -132,20 +149,22 @@ function ProcoreContent() {
               </tr>
             </thead>
             <tbody>
-              {sectionData.slice(0, 10).map((item, idx) => (
+              {displayData.slice(0, 10).map((item, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   {Object.values(item).map((val, colIdx) => (
                     <td key={colIdx} className="border border-gray-300 p-2 text-sm">
-                      {typeof val === "object" ? JSON.stringify(val) : String(val)}
+                      {typeof val === "object" ? (
+                        <span className="text-xs text-gray-400">Object</span>
+                      ) : String(val)}
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-          {sectionData.length > 10 && (
+          {displayData.length > 10 && (
             <p className="text-sm text-gray-600 mt-2">
-              Showing 10 of {sectionData.length} items
+              Showing 10 of {displayData.length} items
             </p>
           )}
         </div>
@@ -264,7 +283,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    🏢 Companies ({data.companies?.length || 0})
+                    🏢 Companies ({getCount(data.companies)})
                   </h2>
                   {selectedSection === "companies" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -282,7 +301,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📋 Projects ({data.projects?.length || 0})
+                    📋 Projects ({getCount(data.projects)})
                   </h2>
                   {selectedSection === "projects" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -300,7 +319,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    🏭 Vendors ({data.vendors?.length || 0})
+                    🏭 Vendors ({getCount(data.vendors)})
                   </h2>
                   {selectedSection === "vendors" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -315,7 +334,7 @@ function ProcoreContent() {
                     onClick={() => setSelectedSection(selectedSection === "users" ? null : "users")
                     }
                   >
-                    👥 Users ({data.users?.length || 0})
+                    👥 Users ({getCount(data.users)})
                   </h2>
                   {selectedSection === "users" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -333,7 +352,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💰 Bid Board ({data.bidBoardProjects?.length || 0}) / Est ({data.estimatingProjects?.length || 0})
+                    💰 Bid Board ({getCount(data.bidBoardProjects)}) / Est ({getCount(data.estimatingProjects)})
                   </h2>
                   {selectedSection === "bidboard" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -354,7 +373,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💸 Bid Board v2.0 ({data.bidBoardV2?.length || 0})
+                    💸 Bid Board v2.0 ({getCount(data.bidBoardV2)})
                   </h2>
                   {selectedSection === "bids" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -373,7 +392,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📑 Project Templates ({data.projectTemplates?.length || 0})
+                    📑 Project Templates ({getCount(data.projectTemplates)})
                   </h2>
                   {selectedSection === "templates" && (
                     <div className="text-sm max-h-96 overflow-y-auto">

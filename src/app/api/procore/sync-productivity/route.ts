@@ -62,12 +62,18 @@ export async function POST(request: NextRequest) {
       const employeesArray = Array.isArray(employees) ? employees : [];
       console.log(`[Productivity Sync] Found ${employeesArray.length} employees`);
       
+      if (employeesArray.length > 0) {
+        console.log('[Productivity Sync] First employee keys:', Object.keys(employeesArray[0]));
+        console.log('[Productivity Sync] First employee:', JSON.stringify(employeesArray[0], null, 2));
+      }
+      
       // Create ID -> Name lookup map
       employeesArray.forEach((emp: any) => {
         if (emp.id && emp.name) {
           employeesMap[emp.id] = emp.name;
         }
       });
+      console.log(`[Productivity Sync] Created lookup map for ${Object.keys(employeesMap).length} employees`);
     } catch (error) {
       console.error('[Productivity Sync] Failed to fetch employees:', error);
     }
@@ -93,6 +99,12 @@ export async function POST(request: NextRequest) {
         
         if (logsArray.length > 0) {
           console.log(`[Productivity Sync] Found ${logsArray.length} timecard entries for ${projectName}`);
+          
+          // Debug: Log first few entries to see structure
+          if (logsArray[0]) {
+            console.log('[Productivity Sync] First timecard entry keys:', Object.keys(logsArray[0]));
+            console.log('[Productivity Sync] First timecard entry:', JSON.stringify(logsArray[0], null, 2));
+          }
           
           // Write raw logs
           const batch = writeBatch(db);

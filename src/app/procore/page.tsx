@@ -160,7 +160,6 @@ function ProcoreContent() {
 
       const result = await response.json();
       setDebugResult(result);
-      setSelectedSection("debug");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to debug productivity data");
     } finally {
@@ -336,6 +335,22 @@ function ProcoreContent() {
                 {debugging ? "Checking..." : "Check Data Sources"}
               </button>
             </div>
+
+            {debugResult && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
+                <h2 className="text-xl font-bold text-orange-900 mb-4">
+                  🔍 Data Source Diagnostic Results
+                </h2>
+                <div className="mb-4 p-3 bg-orange-50 rounded">
+                  <strong>Recommendation:</strong> {debugResult.recommendation}
+                </div>
+                <div className="text-sm overflow-x-auto">
+                  <pre className="bg-gray-100 p-4 rounded text-xs">
+                    {JSON.stringify(debugResult, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
 
             {data && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -522,22 +537,6 @@ function ProcoreContent() {
                            Check the <strong>Manpower Logs</strong> above for this project to see general daily labor hours.
                         </div>
                       )}
-                    </div>
-                  </div>
-                )}
-
-                {debugResult && selectedSection === "debug" && (
-                  <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 md:col-span-2">
-                    <h2 className="text-xl font-bold text-orange-900 mb-4">
-                      🔍 Data Source Diagnostic Results
-                    </h2>
-                    <div className="mb-4 p-3 bg-orange-50 rounded">
-                      <strong>Recommendation:</strong> {debugResult.recommendation}
-                    </div>
-                    <div className="text-sm overflow-x-auto">
-                      <pre className="bg-gray-100 p-4 rounded text-xs">
-                        {JSON.stringify(debugResult, null, 2)}
-                      </pre>
                     </div>
                   </div>
                 )}

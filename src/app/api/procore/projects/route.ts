@@ -109,16 +109,16 @@ export async function GET(request: NextRequest) {
         const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : 'NULL';
         console.log(`  v2.0[${idx}] "${p.project_number}" => normalized: "${normalized}"`);
       });
-      console.log(`[Procore Projects] v2.0 sample keys: ${Object.keys(bidBoardProjects[0]).join(', ')}`);
+      console.log(`[Procore Projects] v2.0 sample ALL keys: ${Object.keys(bidBoardProjects[0]).join(', ')}`);
     }
     
     if (v11Projects.length > 0) {
       console.log(`[Procore Projects] First 5 v1.1 project_numbers:`);
       v11Projects.slice(0, 5).forEach((p: any, idx: number) => {
         const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : 'NULL';
-        console.log(`  v1.1[${idx}] "${p.project_number}" => normalized: "${normalized}"`);
+        console.log(`  v1.1[${idx}] id=${p.id}, project_number="${p.project_number}" => normalized: "${normalized}"`);
       });
-      console.log(`[Procore Projects] v1.1 sample keys: ${Object.keys(v11Projects[0]).join(', ')}`);
+      console.log(`[Procore Projects] v1.1 sample ALL keys: ${Object.keys(v11Projects[0]).join(', ')}`);
     }
 
     // Debug: count how many have project_number
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
-    // Only include projects that have v1.1 matches so dashboard links work
+    // Include ALL v2.0 projects, but track which have v1.1 matches for dashboard linking
     let matchCount = 0;
     let skipCount = 0;
     const mappedProjects = bidBoardProjects
@@ -140,40 +140,42 @@ export async function GET(request: NextRequest) {
           skipCount++;
           return false;
         }
+        return true; // Include projects without null project_number
+      })
+      .map((p: any, idx: number) => {
         // Try exact match first, then normalized match
         let v11Id = v11Map.get(p.project_number);
-        if (!v11Id) {
+        let matchType = 'none';
+        if (v11Id) {
+          matchType = 'exact';
+          matchCount++;
+        } else {
           const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
           v11Id = normalizedV11Map.get(normalized);
+          if (v11Id) {
+            matchType = 'normalized';
+            matchCount++;
+          }
         }
         
         if (idx < 10) {
-          console.log(`[Procore Projects] [${idx}] "${p.project_number}" => ${v11Id ? `MATCH: ${v11Id}` : 'NO MATCH'}`);
-        }
-        
-        if (v11Id) {
-          matchCount++;
-        }
-        return v11Id; // Only include if we have a v1.1 ID
-      })
-      .map((p: any) => {
-        // Get ID using the same logic as filter (project_number is guaranteed to exist from filter)
-        let v11Id = v11Map.get(p.project_number);
-        if (!v11Id && p.project_number) {
-          const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
-          v11Id = normalizedV11Map.get(normalized);
+          console.log(`[Procore Projects] [${idx}] "${p.project_number}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
         }
         
         return {
-          id: v11Id,
+          id: v11Id || p.id, // Use v1.1 ID if available, otherwise use v2.0 ID
           name: p.name || 'Unknown Project',
           project_number: p.project_number || '',
           company_name: p.customer_name || p.client_name || 'Unknown',
           project_status: p.status || 'Unknown',
           estimator: p.estimator,
           project_manager: p.project_manager,
+          v11_id: v11Id, // Track which ones have real v1.1 IDs
+          has_dashboard_link: !!v11Id, // Flag for UI to determine if dashboard link is available
         };
       });
+    
+    console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
     
     console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} projects`);
     
@@ -181,7 +183,7 @@ export async function GET(request: NextRequest) {
 
     if (debug) {
       // Show matching data for first few v2.0 projects
-      const debugProjects = bidBoardProjects.slice(0, 3).map(p => {
+      const debugProjects = bidBoardProjects.slice(0, 5).map(p => {
         let v11Id = v11Map.get(p.project_number);
         let matchType = 'none';
         if (v11Id) {
@@ -193,6 +195,7 @@ export async function GET(request: NextRequest) {
         }
         return {
           v2_0_project_number: p.project_number,
+          v2_0_id: p.id,
           v2_0_name: p.name,
           v11_id: v11Id,
           match_type: matchType,
@@ -206,6 +209,8 @@ export async function GET(request: NextRequest) {
           bidBoardWithProjectNumber: bidBoardProjects.filter((p: any) => p.project_number).length,
           v11Count: v11Projects.length,
           v11WithProjectNumber: v11Projects.filter((p: any) => p.project_number).length,
+          v2_0_sample_keys: bidBoardProjects.length > 0 ? Object.keys(bidBoardProjects[0]) : [],
+          v1_1_sample_keys: v11Projects.length > 0 ? Object.keys(v11Projects[0]) : [],
           samples: debugProjects,
           normalizedMapSample: Array.from(normalizedV11Map.keys()).slice(0, 3),
         },

@@ -87,173 +87,105 @@ export async function GET(request: NextRequest) {
       console.error('[Procore Projects] v1.1 error:', e);
     }
     
-    // Create TWO maps for lookups:
-    // 1. project_number -> v1.1 ID (for the projects that have matching project numbers)
-    // 2. name -> v1.1 ID (for fallback matching when project_number doesn't match)
-    const v11Map = new Map();
-    const normalizedV11Map = new Map(); // project_number -> id mapping with normalized keys
-    const v11ByName = new Map(); // name -> id mapping (exact name match)
-    const v11ByNormalizedName = new Map(); // normalized name -> id mapping (case/space insensitive)
+    // Build index of v2.0 projects for quick matching
+    const v20ByExactNumber = new Map();
+    const v20ByNormalizedNumber = new Map();
+    const v20ByExactName = new Map();
+    const v20ByNormalizedName = new Map();
     
-    v11Projects.forEach((p: any) => {
+    bidBoardProjects.forEach((p: any) => {
       if (p.project_number) {
-        v11Map.set(p.project_number, p.id);
+        v20ByExactNumber.set(p.project_number, p);
         const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
-        normalizedV11Map.set(normalized, p.id);
+        v20ByNormalizedNumber.set(normalized, p);
       }
       if (p.name) {
-        v11ByName.set(p.name, p.id);
-        // Also add normalized version (trim, lowercase)
+        v20ByExactName.set(p.name, p);
         const normalizedName = p.name.trim().toLowerCase();
-        v11ByNormalizedName.set(normalizedName, p.id);
+        v20ByNormalizedName.set(normalizedName, p);
       }
     });
-    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries, v11ByName with ${v11ByName.size} entries, v11ByNormalizedName with ${v11ByNormalizedName.size} entries`);
     
-    // Log some samples from the normalized name map
-    if (v11ByNormalizedName.size > 0) {
-      const samples = Array.from(v11ByNormalizedName.keys()).slice(0, 3);
-      console.log(`[Procore Projects] v11ByNormalizedName sample keys: ${samples.map(k => `"${k}"`).join(', ')}`);
-    }
-
-    if (bidBoardProjects.length > 0) {
-      console.log(`[Procore Projects] First 5 v2.0 project_numbers:`);
-      bidBoardProjects.slice(0, 5).forEach((p: any, idx: number) => {
-        const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : 'NULL';
-        console.log(`  v2.0[${idx}] "${p.project_number}" => normalized: "${normalized}"`);
-      });
-    }
-    
-    if (v11Projects.length > 0) {
-      console.log(`[Procore Projects] First 5 v1.1 project_numbers:`);
-      v11Projects.slice(0, 5).forEach((p: any, idx: number) => {
-        const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : 'NULL';
-        console.log(`  v1.1[${idx}] id=${p.id}, project_number="${p.project_number}" => normalized: "${normalized}"`);
-      });
-      console.log(`[Procore Projects] v1.1 sample ALL keys: ${Object.keys(v11Projects[0]).join(', ')}`);
-    }
-
-    // Debug: count how many have project_number
-    const v2WithProjectNumber = bidBoardProjects.filter((p: any) => p.project_number).length;
-    const v11WithProjectNumber = v11Projects.filter((p: any) => p.project_number).length;
-    console.log(`[Procore Projects] v2.0 projects with project_number: ${v2WithProjectNumber}/${bidBoardProjects.length}`);
-    console.log(`[Procore Projects] v1.1 projects with project_number: ${v11WithProjectNumber}/${v11Projects.length}`);
+    console.log(`[Procore Projects] Built v2.0 indices: ${v20ByExactNumber.size} by number, ${v20ByNormalizedNumber.size} normalized, ${v20ByExactName.size} by name, ${v20ByNormalizedName.size} normalized name`);
 
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
-    // Return ALL v2.0 projects - they are the source of truth for project listing
-    // v1.1 IDs are optional for dashboard integration but shouldn't block project display
+    // Use v1.1 as PRIMARY source (has all ~300 projects)
+    // Enrich with v2.0 bid board data where available (customer names, estimator, etc.)
     let matchCount = 0;
     let exactMatches = 0;
     let normalizedMatches = 0;
     let nameMatches = 0;
     let normalizedNameMatches = 0;
     
-    const mappedProjects = bidBoardProjects
+    const mappedProjects = v11Projects
       .map((p: any, idx: number) => {
-        // Try matching strategies in order of preference (for dashboard integration):
-        // 1. Exact project_number match
-        // 2. Normalized project_number match (lowercase, no spaces)
-        // 3. Exact name match
-        // 4. Normalized name match (trim, lowercase)
-        // Note: Not matching is OK - we still return the project, just without v1.1 link
-        
-        let v11Id: any = null;
+        // Try to find matching v2.0 project to enrich with customer/estimator data
+        let v20Data: any = null;
         let matchType = 'none';
         
         if (p.project_number) {
-          v11Id = v11Map.get(p.project_number);
-          if (v11Id) {
+          // Try exact match on project_number
+          v20Data = v20ByExactNumber.get(p.project_number);
+          if (v20Data) {
             matchType = 'exact_number';
             exactMatches++;
             matchCount++;
           } else {
+            // Try normalized match
             const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
-            v11Id = normalizedV11Map.get(normalized);
-            
-            if (v11Id) {
+            v20Data = v20ByNormalizedNumber.get(normalized);
+            if (v20Data) {
               matchType = 'normalized_number';
               normalizedMatches++;
               matchCount++;
-            } else if (p.name) {
-              // Try exact name match
-              v11Id = v11ByName.get(p.name);
-              if (v11Id) {
-                matchType = 'name_exact';
-                nameMatches++;
-                matchCount++;
-              } else {
-                // Try normalized name match (trim, lowercase)
-                const normalizedName = p.name.trim().toLowerCase();
-                v11Id = v11ByNormalizedName.get(normalizedName);
-                if (v11Id) {
-                  matchType = 'name_normalized';
-                  normalizedNameMatches++;
-                  matchCount++;
-                  if (idx < 20) {
-                    console.log(`[Procore Projects] [${idx}] NAME MATCH (normalized): "${p.name}" => "${normalizedName}"`);
-                  }
-                }
-              }
+            }
+          }
+        }
+        
+        // Fallback to name match if no number match
+        if (!v20Data && p.name) {
+          v20Data = v20ByExactName.get(p.name);
+          if (v20Data) {
+            matchType = 'name_exact';
+            nameMatches++;
+            matchCount++;
+          } else {
+            const normalizedName = p.name.trim().toLowerCase();
+            v20Data = v20ByNormalizedName.get(normalizedName);
+            if (v20Data) {
+              matchType = 'name_normalized';
+              normalizedNameMatches++;
+              matchCount++;
             }
           }
         }
         
         if (idx < 15) {
-          console.log(`[Procore Projects] [${idx}] num="${p.project_number}" name="${p.name?.substring(0, 35)}" => ${v11Id ? `v1.1_ID: ${v11Id} (${matchType})` : 'no_v1.1_match'}`);
+          console.log(`[Procore Projects] v1.1[${idx}] name="${p.name?.substring(0, 35)}" => ${v20Data ? `enriched_with_v2.0(${matchType})` : 'no_v2.0_data'}`);
         }
         
         return {
-          id: p.id, // Always use v2.0 ID for uniqueness
+          id: p.id,
           name: p.name || 'Unknown Project',
           project_number: p.project_number || '',
-          company_name: p.customer_name || p.client_name || 'Unknown',
-          project_status: p.status || 'Unknown',
-          estimator: p.estimator,
-          project_manager: p.project_manager,
-          v11_id: v11Id, // Track which ones have real v1.1 IDs for dashboard
-          has_dashboard_link: !!v11Id, // Flag for UI to determine if dashboard link is available
-          match_type: matchType, // Debug field
-        };
-      });
-    
-    console.log(`[Procore Projects] Returning ALL v2.0 bid board projects (source: active estimating/bidding projects)`);
-    console.log(`[Procore Projects] Also have ${v11Projects.length} v1.1 all projects for reference`);
-
-    if (debug) {
-      // Show matching data for first few v2.0 projects
-      const debugProjects = bidBoardProjects.slice(0, 5).map(p => {
-        let v11Id = v11Map.get(p.project_number);
-        let matchType = 'none';
-        if (v11Id) {
-          matchType = 'exact_number';
-        } else {
-          const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : '';
-          v11Id = normalizedV11Map.get(normalized);
-          if (v11Id) {
-            matchType = 'normalized_number';
-          } else if (p.name) {
-            v11Id = v11ByName.get(p.name);
-            if (v11Id) {
-              matchType = 'name_exact';
-            } else {
-              const normalizedName = p.name.trim().toLowerCase();
-              v11Id = v11ByNormalizedName.get(normalizedName);
-              matchType = v11Id ? 'name_normalized' : 'none';
-            }
-          }
-        }
-        return {
-          v2_0_project_number: p.project_number,
-          v2_0_id: p.id,
-          v2_0_name: p.name,
-          v2_0_name_normalized: (p.name || '').trim().toLowerCase(),
-          v11_id: v11Id,
+          // Use v2.0 customer if available, otherwise try v1.1 company_name
+          company_name: v20Data?.customer_name || v20Data?.client_name || p.company_name || 'Unknown',
+          project_status: v20Data?.status || p.project_status || (p.active ? 'Active' : 'Inactive') || 'Unknown',
+          estimator: v20Data?.estimator,
+          project_manager: v20Data?.project_manager,
+          v20_matched: !!v20Data,
           match_type: matchType,
         };
       });
-      
+    
+    console.log(`[Procore Projects] PRIMARY SOURCE: v1.1 (${v11Projects.length} projects total)`);
+    console.log(`[Procore Projects] ENRICHMENT: v2.0 bid board (${matchCount} matches: ${exactMatches} exact, ${normalizedMatches} norm, ${nameMatches} name, ${normalizedNameMatches} name_norm)`);
+    console.log(`[Procore Projects] Returning ${mappedProjects.length} total projects from v1.1`);
+
+    if (debug) {
+      // Debug mode: show summary stats and sample projects
       return NextResponse.json({
         success: true,
         debug: {
@@ -266,12 +198,8 @@ export async function GET(request: NextRequest) {
             name_exact: nameMatches,
             name_normalized: normalizedNameMatches,
           },
-          v11ByNameCount: v11ByName.size,
-          v11ByNormalizedNameCount: v11ByNormalizedName.size,
-          samples: debugProjects,
-          normalizedNameSamples: Array.from(v11ByNormalizedName.keys()).slice(0, 5),
         },
-        projects: mappedProjects.slice(0, 5),
+        projects: mappedProjects.slice(0, 10),
       });
     }
 

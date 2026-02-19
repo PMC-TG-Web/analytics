@@ -91,6 +91,17 @@ export async function GET(request: NextRequest) {
        maxAge: tokenResponse.expires_in || 3600,
      });
 
+     // Store refresh token if available (for token refresh flow)
+     if (tokenResponse.refresh_token) {
+       response.cookies.set('procore_refresh_token', tokenResponse.refresh_token, {
+         ...cookieOptions,
+         maxAge: 60 * 60 * 24 * 180, // longer expiry for refresh token
+       });
+       console.log('✓ Refresh token stored');
+     } else {
+       console.warn('⚠️ No refresh token in response from Procore');
+     }
+
     console.log('Cookies set, sending redirect...');
     return response;
   } catch (error) {

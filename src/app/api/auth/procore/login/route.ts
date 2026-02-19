@@ -3,7 +3,7 @@ import { getAuthorizationUrl } from '@/lib/procore';
 
 /**
  * Procore OAuth Login Endpoint
- * Redirects user to Procore OAuth authorization page
+ * Clears expired tokens and redirects user to Procore OAuth authorization page
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,8 +21,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log('Clearing expired Procore tokens and redirecting to login...');
+    const response = NextResponse.redirect(authUrl);
+    
+    // Clear old expired tokens - set maxAge to 0 to delete them
+    response.cookies.delete('procore_access_token');
+    response.cookies.delete('procore_refresh_token');
+    response.cookies.delete('procore_session');
+    
     console.log('Redirecting to Procore Login:', authUrl);
-    return NextResponse.redirect(authUrl);
+    return response;
   } catch (error) {
     console.error('Auth Login Route Error:', error);
     return NextResponse.json(

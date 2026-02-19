@@ -40,25 +40,7 @@ export default function ProcoreProjectsPage() {
       setLoading(true);
       setError(null);
 
-      // First, try to refresh the token to ensure it's valid
-      try {
-        console.log('Refreshing Procore access token...');
-        const refreshResponse = await fetch('/api/procore/refresh-token', {
-          method: 'POST',
-          credentials: 'include',
-        });
-        
-        if (refreshResponse.ok) {
-          console.log('✅ Token refreshed successfully');
-        } else {
-          console.warn('Token refresh returned non-ok status, continuing anyway...');
-        }
-      } catch (refreshError) {
-        console.warn('Token refresh attempt failed, continuing with existing token:', refreshError);
-        // Continue with existing token - it might still be valid
-      }
-
-      // Now fetch the projects
+      // Fetch projects from the API (which handles token refresh server-side)
       const response = await fetch('/api/procore/projects', {
         credentials: 'include',
       });
@@ -89,6 +71,13 @@ export default function ProcoreProjectsPage() {
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   
   if (error && !projects.length) {
+    const handleReAuth = async () => {
+      // Clear expired tokens
+      await fetch('/api/auth/procore/clear', { credentials: 'include' });
+      // Redirect to fresh login flow
+      window.location.href = '/api/auth/procore/login?returnTo=/procore/projects';
+    };
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
         <div className="max-w-4xl mx-auto">
@@ -98,13 +87,13 @@ export default function ProcoreProjectsPage() {
           <div className="bg-slate-700/50 rounded-lg p-8 border border-red-500/30 text-center">
             <h2 className="text-2xl font-bold text-red-400 mb-4">⚠️ Authentication Required</h2>
             <p className="text-gray-300 mb-6">{error}</p>
-            <div className="flex gap-4 justify-center">
-              <a
-                href="/debug-cookies"
+            <div className="flex gap-4 justify-center flex-wrap">
+              <button
+                onClick={handleReAuth}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
               >
                 Re-authenticate with Procore
-              </a>
+              </button>
               <button
                 onClick={fetchProjects}
                 className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"

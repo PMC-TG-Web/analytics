@@ -2,6 +2,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { makeRequest, procoreConfig, refreshAccessToken } from '@/lib/procore';
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimitError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('429') || message.toLowerCase().includes('rate limit');
+};
+
+const rateLimitResponse = () =>
+  NextResponse.json(
+    {
+      error: 'Rate limited by Procore. Please wait and try again.',
+      retryAfterSeconds: 60,
+    },
+    { status: 429, headers: { 'Retry-After': '60' } }
+  );
+
 function convertToCSV(data: any[]): string {
   if (data.length === 0) return '';
 
@@ -32,33 +48,53 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const searchParams = request.nextUrl.searchParams;
+    const requestedCompanyId = searchParams.get('companyId')?.trim();
     const companyId = procoreConfig.companyId;
-    const format = request.nextUrl.searchParams.get('format') || 'csv'; // csv or json
+    const effectiveCompanyId = requestedCompanyId || companyId;
+    const format = searchParams.get('format') || 'csv'; // csv or json
+    const maxPages = Math.max(1, Number(searchParams.get('maxPages')) || 10);
+    const pageDelayMs = Math.max(0, Number(searchParams.get('pageDelayMs')) || 250);
+    const timeBudgetMs = Math.max(5000, Number(searchParams.get('timeBudgetMs')) || 30000);
+    const startTime = Date.now();
     
     // Fetch v1.0 company projects
     let allProjects: any[] = [];
     try {
       let page = 1;
       while (true) {
-        const endpoint = `/rest/v1.0/companies/${companyId}/projects?per_page=100&page=${page}`;
-        const result = await makeRequest(endpoint, accessToken);
+        if (page > maxPages) break;
+        if (Date.now() - startTime > timeBudgetMs) break;
+
+        const endpoint = `/rest/v1.0/companies/${effectiveCompanyId}/projects?per_page=100&page=${page}`;
+        const result = await makeRequest(endpoint, accessToken, {
+          headers: { 'Procore-Company-Id': effectiveCompanyId }
+        });
         const pageResults = Array.isArray(result) ? result : (result?.data || []);
         
         if (pageResults.length === 0) break;
         allProjects = allProjects.concat(pageResults);
         page++;
+        if (pageDelayMs > 0) await sleep(pageDelayMs);
       }
     } catch (e) {
+      if (isRateLimitError(e)) return rateLimitResponse();
       // Fallback to v1.1
       let page = 1;
       while (true) {
-        const endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&page=${page}`;
-        const result = await makeRequest(endpoint, accessToken);
+        if (page > maxPages) break;
+        if (Date.now() - startTime > timeBudgetMs) break;
+
+        const endpoint = `/rest/v1.1/projects?company_id=${effectiveCompanyId}&view=extended&per_page=100&page=${page}`;
+        const result = await makeRequest(endpoint, accessToken, {
+          headers: { 'Procore-Company-Id': effectiveCompanyId }
+        });
         const pageResults = Array.isArray(result) ? result : (result?.data || []);
         
         if (pageResults.length === 0) break;
         allProjects = allProjects.concat(pageResults);
         page++;
+        if (pageDelayMs > 0) await sleep(pageDelayMs);
       }
     }
 
@@ -93,6 +129,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Export projects error:', error);
+    if (isRateLimitError(error)) return rateLimitResponse();
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : 'Export failed' 
     }, { status: 500 });

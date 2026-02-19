@@ -2,6 +2,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { makeRequest, procoreConfig } from '@/lib/procore';
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimitError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('429') || message.toLowerCase().includes('rate limit');
+};
+
+const rateLimitResponse = () =>
+  NextResponse.json(
+    {
+      error: 'Rate limited by Procore. Please wait and try again.',
+      retryAfterSeconds: 60,
+    },
+    { status: 429, headers: { 'Retry-After': '60' } }
+  );
+
 function convertToCSV(data: any[]): string {
   if (data.length === 0) return '';
 
@@ -28,8 +44,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const searchParams = request.nextUrl.searchParams;
+    const requestedCompanyId = searchParams.get('companyId')?.trim();
     const companyId = procoreConfig.companyId;
-    const format = request.nextUrl.searchParams.get('format') || 'csv'; // csv or json
+    const effectiveCompanyId = requestedCompanyId || companyId;
+    const format = searchParams.get('format') || 'csv'; // csv or json
+    const maxPages = Math.max(1, Number(searchParams.get('maxPages')) || 10);
+    const pageDelayMs = Math.max(0, Number(searchParams.get('pageDelayMs')) || 250);
+    const timeBudgetMs = Math.max(5000, Number(searchParams.get('timeBudgetMs')) || 30000);
+    const startTime = Date.now();
 
     // Fetch v2.0 bid board projects with pagination
     let bidBoardProjects: any[] = [];
@@ -37,8 +60,13 @@ export async function GET(request: NextRequest) {
       let page = 1;
       let hasMore = true;
       while (hasMore) {
-        const endpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
-        const result = await makeRequest(endpoint, accessToken);
+        if (page > maxPages) break;
+        if (Date.now() - startTime > timeBudgetMs) break;
+
+        const endpoint = `/rest/v2.0/companies/${effectiveCompanyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
+        const result = await makeRequest(endpoint, accessToken, {
+          headers: { 'Procore-Company-Id': effectiveCompanyId }
+        });
         
         let pageResults: any[] = [];
         if (Array.isArray(result)) {
@@ -54,10 +82,12 @@ export async function GET(request: NextRequest) {
         } else {
           bidBoardProjects = bidBoardProjects.concat(pageResults);
           page++;
+          if (pageDelayMs > 0) await sleep(pageDelayMs);
         }
       }
     } catch (e) {
       console.error('Bid board fetch error:', e);
+      if (isRateLimitError(e)) return rateLimitResponse();
       // Return what we have or empty array if nothing
     }
 
@@ -92,6 +122,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Export bid board error:', error);
+    if (isRateLimitError(error)) return rateLimitResponse();
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : 'Export failed' 
     }, { status: 500 });

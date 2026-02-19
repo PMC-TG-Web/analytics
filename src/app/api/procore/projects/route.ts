@@ -11,81 +11,68 @@ export async function GET(request: NextRequest) {
     }
 
     const companyId = procoreConfig.companyId;
-    console.log(`[Procore Projects] Fetching from both v2.0 (customer data) and v1.1 (IDs for dashboard)`);
+    console.log(`[Procore Projects] Fetching from v2.0 bid board and v1.1 projects`);
 
-    // Fetch from v2.0 bid board (has customer names)
-    const v2Endpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100`;
-    let bidBoardProjects = await makeRequest(v2Endpoint, accessToken);
+    // Fetch from v2.0 bid board (has customer data)
+    const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100`;
+    let bidBoardProjects: any[] = [];
+    try {
+      const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
+      bidBoardProjects = Array.isArray(bidResult?.data) ? bidResult.data : Array.isArray(bidResult) ? bidResult : [];
+      console.log(`[Procore Projects] Fetched ${bidBoardProjects.length} projects from v2.0`);
+    } catch (e) {
+      console.error('[Procore Projects] v2.0 error:', e);
+    }
+
+    // Also fetch v1.1 projects for ID mapping
+    const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`;
+    let v11Projects: any[] = [];
+    try {
+      const v11Result = await makeRequest(v11Endpoint, accessToken);
+      v11Projects = Array.isArray(v11Result) ? v11Result : [];
+      console.log(`[Procore Projects] Fetched ${v11Projects.length} projects from v1.1`);
+    } catch (e) {
+      console.error('[Procore Projects] v1.1 error:', e);
+    }
     
-    // Handle nested data structure
-    if (bidBoardProjects && !Array.isArray(bidBoardProjects) && Array.isArray((bidBoardProjects as any).data)) {
-      bidBoardProjects = (bidBoardProjects as any).data;
-    }
-
-    // Fetch from v1.1 (for dashboard-compatible IDs)
-    const v1Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`;
-    let v1Projects = await makeRequest(v1Endpoint, accessToken);
-
-    if (!Array.isArray(bidBoardProjects) || !Array.isArray(v1Projects)) {
-      console.error('[Procore Projects] Expected arrays');
-      return NextResponse.json({ error: 'Invalid response from Procore API' }, { status: 500 });
-    }
-
-    // Create lookup map: project_number -> v1.1 project ID
-    const v1Map = new Map();
-    v1Projects.forEach((p: any) => {
+    // Create a map of project_number -> v1.1 ID for lookups
+    const v11Map = new Map();
+    v11Projects.forEach((p: any) => {
       if (p.project_number) {
-        v1Map.set(p.project_number.trim().toLowerCase(), p);
+        v11Map.set(p.project_number, p.id);
       }
     });
 
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
-    // Map to return fields - use v2.0 for customer, match to v1.1 ID by project number
+    // Map to return fields matching the projects list UI expectations
     const mappedProjects = bidBoardProjects.map((p: any) => {
-      const projectNumber = (p.project_number || '').trim().toLowerCase();
-      const v1Match = v1Map.get(projectNumber);
+      // Find matching v1.1 project by number
+      const v11Id = v11Map.get(p.project_number);
       
-      // Normalize status from v2.0
-      let status = p.status || 'Unknown';
-      if (status === 'IN_PROGRESS') status = 'In Progress';
-      else if (status === 'WON') status = 'Accepted';
-      else if (status === 'BID_SUBMITTED') status = 'Bid Submitted';
-      else if (status === 'ESTIMATING') status = 'Estimating';
-      else if (status === 'NEGOTIATING') status = 'Negotiating';
-      else if (status === 'BIDDING') status = 'Bidding';
-      else status = status.replace(/_/g, ' ');
-
       return {
-        id: v1Match?.id || p.id, // Use v1.1 ID if matched, fallback to v2.0 ID
+        id: v11Id || p.id, // Use v1.1 ID if found, fallback to v2.0 ID
         name: p.name || 'Unknown Project',
         project_number: p.project_number || '',
-        company_name: p.customer_name || p.client_name || p.customer?.name || 'Unknown',
-        project_status: status,
-        estimator: v1Match?.estimator || p.estimator,
-        project_manager: v1Match?.project_manager || p.project_manager,
-        _hasV1Match: !!v1Match, // Track if we found a matching v1.1 project
+        company_name: p.customer_name || p.client_name || 'Unknown',
+        project_status: p.status || 'Unknown',
+        estimator: p.estimator,
+        project_manager: p.project_manager,
       };
     });
 
     if (debug) {
-      const v2Sample = bidBoardProjects[0] || {};
-      const v1Sample = v1Projects[0] || {};
+      const sample = bidBoardProjects[0] || {};
       return NextResponse.json({
         success: true,
         debug: {
-          v2_keys: Object.keys(v2Sample),
-          v2_customer_name: v2Sample.customer_name,
-          v2_client_name: v2Sample.client_name,
-          v2_status: v2Sample.status,
-          v2_project_number: v2Sample.project_number,
-          v1_keys: Object.keys(v1Sample),
-          v1_id: v1Sample.id,
-          v1_project_number: v1Sample.project_number,
-          v1_company: v1Sample.company,
-          matchedCount: mappedProjects.filter((p: any) => p._hasV1Match).length,
-          totalV2Projects: bidBoardProjects.length,
-          totalV1Projects: v1Projects.length,
+          bidBoardCount: bidBoardProjects.length,
+          v11Count: v11Projects.length,
+          customer_name: sample.customer_name,
+          client_name: sample.client_name,
+          status: sample.status,
+          project_number: sample.project_number,
+          v11_id_for_first: v11Map.get(sample.project_number),
         },
         projects: mappedProjects.slice(0, 5),
       });

@@ -84,24 +84,23 @@ export async function GET(request: NextRequest) {
       console.error('[Procore Projects] v1.1 error:', e);
     }
     
-    // Create a map of NORMALIZED project_number -> v1.1 ID for lookups
-    // Normalize: lowercase and remove all spaces
+    // Create TWO maps for lookups:
+    // 1. project_number -> v1.1 ID (for the projects that have matching project numbers)
+    // 2. name -> v1.1 ID (for fallback matching when project_number doesn't match)
     const v11Map = new Map();
     const normalizedV11Map = new Map(); // project_number -> id mapping with normalized keys
+    const v11ByName = new Map(); // name -> id mapping (exact name match)
     v11Projects.forEach((p: any) => {
       if (p.project_number) {
         v11Map.set(p.project_number, p.id);
         const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
         normalizedV11Map.set(normalized, p.id);
       }
+      if (p.name) {
+        v11ByName.set(p.name, p.id);
+      }
     });
-    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries`);
-    
-    // Debug: show some samples for comparison
-    if (normalizedV11Map.size > 0) {
-      const samples = Array.from(normalizedV11Map.keys()).slice(0, 5);
-      console.log(`[Procore Projects] normalizedV11Map sample keys: ${samples.join(', ')}`);
-    }
+    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries, v11ByName with ${v11ByName.size} entries`);
 
     if (bidBoardProjects.length > 0) {
       console.log(`[Procore Projects] First 5 v2.0 project_numbers:`);
@@ -133,6 +132,10 @@ export async function GET(request: NextRequest) {
     // Include ALL v2.0 projects, but track which have v1.1 matches for dashboard linking
     let matchCount = 0;
     let skipCount = 0;
+    let exactMatches = 0;
+    let normalizedMatches = 0;
+    let nameMatches = 0;
+    
     const mappedProjects = bidBoardProjects
       .filter((p: any, idx: number) => {
         if (!p.project_number) {
@@ -143,23 +146,39 @@ export async function GET(request: NextRequest) {
         return true; // Include projects without null project_number
       })
       .map((p: any, idx: number) => {
-        // Try exact match first, then normalized match
+        // Try matching strategies in order of preference:
+        // 1. Exact project_number match
+        // 2. Normalized project_number match (lowercase, no spaces)
+        // 3. Exact name match (fallback)
+        
         let v11Id = v11Map.get(p.project_number);
         let matchType = 'none';
+        
         if (v11Id) {
-          matchType = 'exact';
+          matchType = 'exact_number';
+          exactMatches++;
           matchCount++;
         } else {
           const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
           v11Id = normalizedV11Map.get(normalized);
+          
           if (v11Id) {
-            matchType = 'normalized';
+            matchType = 'normalized_number';
+            normalizedMatches++;
             matchCount++;
+          } else if (p.name) {
+            // Try name matching as fallback
+            v11Id = v11ByName.get(p.name);
+            if (v11Id) {
+              matchType = 'name_match';
+              nameMatches++;
+              matchCount++;
+            }
           }
         }
         
         if (idx < 10) {
-          console.log(`[Procore Projects] [${idx}] "${p.project_number}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
+          console.log(`[Procore Projects] [${idx}] "${p.project_number}" name="${p.name}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
         }
         
         return {
@@ -172,10 +191,11 @@ export async function GET(request: NextRequest) {
           project_manager: p.project_manager,
           v11_id: v11Id, // Track which ones have real v1.1 IDs
           has_dashboard_link: !!v11Id, // Flag for UI to determine if dashboard link is available
+          match_type: matchType, // Debug field
         };
       });
     
-    console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
+    console.log(`[Procore Projects] Match summary: ${matchCount} matches (${exactMatches} exact, ${normalizedMatches} normalized, ${nameMatches} by-name), ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
     
     console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} projects`);
     
@@ -187,11 +207,16 @@ export async function GET(request: NextRequest) {
         let v11Id = v11Map.get(p.project_number);
         let matchType = 'none';
         if (v11Id) {
-          matchType = 'exact';
-        } else if (p.project_number) {
-          const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
+          matchType = 'exact_number';
+        } else {
+          const normalized = p.project_number ? p.project_number.toLowerCase().replace(/\s+/g, '') : '';
           v11Id = normalizedV11Map.get(normalized);
-          matchType = v11Id ? 'normalized' : 'none';
+          if (v11Id) {
+            matchType = 'normalized_number';
+          } else if (p.name) {
+            v11Id = v11ByName.get(p.name);
+            matchType = v11Id ? 'name_match' : 'none';
+          }
         }
         return {
           v2_0_project_number: p.project_number,
@@ -209,6 +234,7 @@ export async function GET(request: NextRequest) {
           bidBoardWithProjectNumber: bidBoardProjects.filter((p: any) => p.project_number).length,
           v11Count: v11Projects.length,
           v11WithProjectNumber: v11Projects.filter((p: any) => p.project_number).length,
+          v11ByNameCount: v11ByName.size,
           v2_0_sample_keys: bidBoardProjects.length > 0 ? Object.keys(bidBoardProjects[0]) : [],
           v1_1_sample_keys: v11Projects.length > 0 ? Object.keys(v11Projects[0]) : [],
           samples: debugProjects,

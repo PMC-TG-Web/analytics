@@ -27,8 +27,17 @@ export async function GET(request: NextRequest) {
       id: p.id,
       name: p.name || 'Unknown Project',
       project_number: p.project_number || '',
-      company_name: p.company_name || 'Unknown',
-      project_status: p.project_status || 'Unknown',
+      company_name:
+        p.company_name ||
+        p.company?.name ||
+        p.customer?.name ||
+        p.client?.name ||
+        p.owner?.name ||
+        'Unknown',
+      project_status:
+        (typeof p.project_status === 'string' ? p.project_status : p.project_status?.name) ||
+        (typeof p.status === 'string' ? p.status : p.status?.name) ||
+        'Unknown',
       estimator: p.estimator,
       project_manager: p.project_manager,
     }));

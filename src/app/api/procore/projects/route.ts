@@ -22,48 +22,72 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid response from Procore API' }, { status: 500 });
     }
 
+    // Fetch detailed info for first 20 projects to get customer data
+    const detailPromises = projects.slice(0, 20).map((p: any) => 
+      makeRequest(
+        `/rest/v1.1/projects?company_id=${companyId}&view=extended&filters[id]=${p.id}`,
+        accessToken
+      ).then(result => Array.isArray(result) && result.length > 0 ? result[0] : null)
+      .catch(() => null)
+    );
+    
+    const detailedProjects = await Promise.all(detailPromises);
+    
+    // Create a map of project ID -> detailed data
+    const detailsMap = new Map();
+    detailedProjects.forEach(detail => {
+      if (detail && detail.id) {
+        detailsMap.set(detail.id, detail);
+      }
+    });
+
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
-    const mappedProjects = projects.map((p: any) => ({
-      id: p.id,
-      name: p.name || 'Unknown Project',
-      project_number: p.project_number || '',
-      company_name:
-        p.customer_name ||
-        p.client_name ||
-        p.project_owner_name ||
-        p.project_owner?.name ||
-        p.owner?.name ||
-        p.customer?.name ||
-        p.client?.name ||
-        p.company_name ||
-        p.company?.name ||
-        'Unknown',
-      project_status:
-        (typeof p.project_status === 'string' ? p.project_status : p.project_status?.name) ||
-        (typeof p.status === 'string' ? p.status : p.status?.name) ||
-        'Unknown',
-      estimator: p.estimator,
-      project_manager: p.project_manager,
-    }));
+    const mappedProjects = projects.map((p: any) => {
+      const detail = detailsMap.get(p.id) || p;
+      return {
+        id: p.id,
+        name: p.name || 'Unknown Project',
+        project_number: p.project_number || '',
+        company_name:
+          detail.customer_name ||
+          detail.client_name ||
+          detail.project_owner_name ||
+          detail.project_owner?.name ||
+          detail.owner?.name ||
+          detail.customer?.name ||
+          detail.client?.name ||
+          'Unknown',
+        project_status:
+          (typeof detail.project_status === 'string' ? detail.project_status : detail.project_status?.name) ||
+          (typeof detail.status === 'string' ? detail.status : detail.status?.name) ||
+          detail.project_stage ||
+          'Unknown',
+        estimator: detail.estimator,
+        project_manager: detail.project_manager,
+      };
+    });
 
     if (debug) {
       const sample = projects[0] || {};
+      const detailedSample = detailsMap.get(sample.id) || sample;
       return NextResponse.json({
         success: true,
         debug: {
-          keys: Object.keys(sample),
-          company_name: sample.company_name,
-          company: sample.company,
-          customer: sample.customer,
-          client: sample.client,
-          owner: sample.owner,
-          project_owner: sample.project_owner,
-          project_owner_name: sample.project_owner_name,
-          customer_name: sample.customer_name,
-          client_name: sample.client_name,
+          keys: Object.keys(detailedSample),
+          company_name: detailedSample.company_name,
+          company: detailedSample.company,
+          customer: detailedSample.customer,
+          client: detailedSample.client,
+          owner: detailedSample.owner,
+          project_owner: detailedSample.project_owner,
+          project_owner_name: detailedSample.project_owner_name,
+          customer_name: detailedSample.customer_name,
+          client_name: detailedSample.client_name,
+          project_stage: detailedSample.project_stage,
           resolved_customer: mappedProjects[0]?.company_name,
+          resolved_status: mappedProjects[0]?.project_status,
         },
         projects: mappedProjects.slice(0, 5),
       });

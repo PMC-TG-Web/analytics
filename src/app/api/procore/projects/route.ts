@@ -7,6 +7,16 @@ export async function GET(request: NextRequest) {
     let accessToken = request.cookies.get('procore_access_token')?.value;
     const refreshToken = request.cookies.get('procore_refresh_token')?.value;
 
+    const includeBidBoard = request.nextUrl.searchParams.get('includeBidBoard') !== '0';
+    const maxBidBoardPages = Math.max(
+      1,
+      Number(request.nextUrl.searchParams.get('maxBidBoardPages')) || 5
+    );
+    const bidBoardTimeBudgetMs = Math.max(
+      5000,
+      Number(request.nextUrl.searchParams.get('bidBoardTimeBudgetMs')) || 15000
+    );
+
     if (!accessToken) {
       console.log('[Procore Projects] No access token available');
       return NextResponse.json({ 
@@ -20,38 +30,52 @@ export async function GET(request: NextRequest) {
 
     // Fetch from v2.0 bid board (has customer data) - with pagination
     let bidBoardProjects: any[] = [];
-    try {
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
-        console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
-        const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
-        
-        // Handle different response formats
-        let pageResults: any[] = [];
-        if (Array.isArray(bidResult)) {
-          pageResults = bidResult;
-        } else if (bidResult?.data && Array.isArray(bidResult.data)) {
-          pageResults = bidResult.data;
-        } else if (bidResult?.projects && Array.isArray(bidResult.projects)) {
-          pageResults = bidResult.projects;
+    if (includeBidBoard) {
+      try {
+        const bidBoardStart = Date.now();
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          if (page > maxBidBoardPages) {
+            console.log(`[Procore Projects] v2.0 page limit reached (${maxBidBoardPages}). Stopping.`);
+            break;
+          }
+          if (Date.now() - bidBoardStart > bidBoardTimeBudgetMs) {
+            console.log('[Procore Projects] v2.0 time budget reached. Stopping.');
+            break;
+          }
+
+          const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
+          console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
+          const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
+          
+          // Handle different response formats
+          let pageResults: any[] = [];
+          if (Array.isArray(bidResult)) {
+            pageResults = bidResult;
+          } else if (bidResult?.data && Array.isArray(bidResult.data)) {
+            pageResults = bidResult.data;
+          } else if (bidResult?.projects && Array.isArray(bidResult.projects)) {
+            pageResults = bidResult.projects;
+          }
+          
+          console.log(`[Procore Projects] v2.0 page ${page}: received ${pageResults.length} results (total so far: ${bidBoardProjects.length + pageResults.length})`);
+          
+          if (pageResults.length === 0) {
+            console.log(`[Procore Projects] v2.0 page ${page}: empty response, pagination complete`);
+            hasMore = false;
+          } else {
+            bidBoardProjects = bidBoardProjects.concat(pageResults);
+            // Always try next page - keep going until we get 0 results
+            page++;
+          }
         }
-        
-        console.log(`[Procore Projects] v2.0 page ${page}: received ${pageResults.length} results (total so far: ${bidBoardProjects.length + pageResults.length})`);
-        
-        if (pageResults.length === 0) {
-          console.log(`[Procore Projects] v2.0 page ${page}: empty response, pagination complete`);
-          hasMore = false;
-        } else {
-          bidBoardProjects = bidBoardProjects.concat(pageResults);
-          // Always try next page - keep going until we get 0 results
-          page++;
-        }
+        console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
+      } catch (e) {
+        console.error('[Procore Projects] v2.0 error:', e);
       }
-      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
-    } catch (e) {
-      console.error('[Procore Projects] v2.0 error:', e);
+    } else {
+      console.log('[Procore Projects] Skipping v2.0 bid board fetch (includeBidBoard=0)');
     }
 
     // Also fetch v1.1 projects for ID mapping - with pagination

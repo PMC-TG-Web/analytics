@@ -40,10 +40,15 @@ export default function ProcoreProjectsPage() {
       setLoading(true);
       setError(null);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
       // Fetch projects from the API (which handles token refresh server-side)
-      const response = await fetch('/api/procore/projects', {
+      const response = await fetch('/api/procore/projects?includeBidBoard=0', {
         credentials: 'include',
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -54,8 +59,9 @@ export default function ProcoreProjectsPage() {
       setProjects(data.projects || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error loading projects';
+      const finalMessage = message.includes('aborted') ? 'Request timed out. Please try again.' : message;
       console.error('Error fetching projects:', message);
-      setError(message);
+      setError(finalMessage);
     } finally {
       setLoading(false);
     }

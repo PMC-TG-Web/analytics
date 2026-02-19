@@ -28,11 +28,15 @@ export async function GET(request: NextRequest) {
       name: p.name || 'Unknown Project',
       project_number: p.project_number || '',
       company_name:
-        p.company_name ||
-        p.company?.name ||
+        p.customer_name ||
+        p.client_name ||
+        p.project_owner_name ||
+        p.project_owner?.name ||
+        p.owner?.name ||
         p.customer?.name ||
         p.client?.name ||
-        p.owner?.name ||
+        p.company_name ||
+        p.company?.name ||
         'Unknown',
       project_status:
         (typeof p.project_status === 'string' ? p.project_status : p.project_status?.name) ||

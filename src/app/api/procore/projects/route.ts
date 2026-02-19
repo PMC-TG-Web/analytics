@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     let accessToken = request.cookies.get('procore_access_token')?.value;
     const refreshToken = request.cookies.get('procore_refresh_token')?.value;
 
+    const requestedCompanyId = request.nextUrl.searchParams.get('companyId')?.trim();
     const includeBidBoard = request.nextUrl.searchParams.get('includeBidBoard') !== '0';
     const maxBidBoardPages = Math.max(
       1,
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     const companyId = procoreConfig.companyId;
+    const effectiveCompanyId = requestedCompanyId || companyId;
     console.log(`[Procore Projects] Fetching from v2.0 bid board and v1.1 projects`);
 
     // Fetch from v2.0 bid board (has customer data) - with pagination
@@ -45,9 +47,11 @@ export async function GET(request: NextRequest) {
             break;
           }
 
-          const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
+          const bidBoardEndpoint = `/rest/v2.0/companies/${effectiveCompanyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
           console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
-          const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
+          const bidResult = await makeRequest(bidBoardEndpoint, accessToken, {
+            headers: { 'Procore-Company-Id': effectiveCompanyId }
+          });
           
           // Handle different response formats
           let pageResults: any[] = [];
@@ -81,16 +85,19 @@ export async function GET(request: NextRequest) {
     // Also fetch v1.1 projects for ID mapping - with pagination
     // Try multiple endpoints and filter approaches to get ALL projects
     let v11Projects: any[] = [];
-    try {
+
+    const fetchProjectsForCompany = async (targetCompanyId: string) => {
       // Approach 1: Try v1.0 company projects endpoint (might include all statuses)
-      console.log('[Procore Projects] Attempting v1.0 company projects endpoint...');
+      console.log(`[Procore Projects] Attempting v1.0 company projects endpoint for ${targetCompanyId}...`);
       let allProjects: any[] = [];
       try {
         let page = 1;
         while (true) {
-          const endpoint = `/rest/v1.0/companies/${companyId}/projects?per_page=100&page=${page}`;
+          const endpoint = `/rest/v1.0/companies/${targetCompanyId}/projects?per_page=100&page=${page}`;
           console.log(`[Procore Projects] Fetching v1.0 company projects page ${page}`);
-          const result = await makeRequest(endpoint, accessToken);
+          const result = await makeRequest(endpoint, accessToken, {
+            headers: { 'Procore-Company-Id': targetCompanyId }
+          });
           const pageResults = Array.isArray(result) ? result : (result?.data || []);
           
           if (pageResults.length === 0) break;
@@ -116,25 +123,70 @@ export async function GET(request: NextRequest) {
           });
         }
         
-        v11Projects = allProjects;
+        return allProjects;
       } catch (e1) {
         console.error('[Procore Projects] v1.0 company endpoint failed:', e1);
+      }
+      
+      // Fallback: Try v1.1 default endpoint
+      console.log('[Procore Projects] Falling back to v1.1 default endpoint...');
+      let page = 1;
+      let fallbackProjects: any[] = [];
+      while (true) {
+        const endpoint = `/rest/v1.1/projects?company_id=${targetCompanyId}&view=extended&per_page=100&page=${page}`;
+        console.log(`[Procore Projects] Fetching v1.1 page ${page}`);
+        const result = await makeRequest(endpoint, accessToken, {
+          headers: { 'Procore-Company-Id': targetCompanyId }
+        });
+        const pageResults = Array.isArray(result) ? result : (result?.data || []);
         
-        // Fallback: Try v1.1 default endpoint
-        console.log('[Procore Projects] Falling back to v1.1 default endpoint...');
-        let page = 1;
-        while (true) {
-          const endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&page=${page}`;
-          console.log(`[Procore Projects] Fetching v1.1 page ${page}`);
-          const result = await makeRequest(endpoint, accessToken);
-          const pageResults = Array.isArray(result) ? result : (result?.data || []);
-          
-          if (pageResults.length === 0) break;
-          console.log(`[Procore Projects] v1.1 page ${page}: got ${pageResults.length} projects`);
-          v11Projects = v11Projects.concat(pageResults);
-          page++;
+        if (pageResults.length === 0) break;
+        console.log(`[Procore Projects] v1.1 page ${page}: got ${pageResults.length} projects`);
+        fallbackProjects = fallbackProjects.concat(pageResults);
+        page++;
+      }
+      console.log(`[Procore Projects] ✅ v1.1 endpoint returned ${fallbackProjects.length} total projects`);
+      return fallbackProjects;
+    };
+
+    const fetchCompanies = async () => {
+      const url = `${procoreConfig.apiUrl}/rest/v1.0/companies`;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error('[Procore Projects] Failed to list companies:', response.status, errorBody);
+          return [] as any[];
         }
-        console.log(`[Procore Projects] ✅ v1.1 endpoint returned ${v11Projects.length} total projects`);
+        const result = await response.json();
+        return Array.isArray(result) ? result : (result?.data || []);
+      } catch (err) {
+        console.error('[Procore Projects] Companies fetch error:', err);
+        return [] as any[];
+      }
+    };
+
+    try {
+      v11Projects = await fetchProjectsForCompany(effectiveCompanyId);
+
+      if (v11Projects.length === 0 && !requestedCompanyId) {
+        const companies = await fetchCompanies();
+        if (companies.length > 0) {
+          const fallbackCompanyId = String(companies[0].id || '');
+          if (fallbackCompanyId && fallbackCompanyId !== effectiveCompanyId) {
+            console.log(`[Procore Projects] No projects for company ${effectiveCompanyId}. Retrying with ${fallbackCompanyId}.`);
+            v11Projects = await fetchProjectsForCompany(fallbackCompanyId);
+          }
+        }
       }
     } catch (e) {
       console.error('[Procore Projects] Project fetch error:', e);

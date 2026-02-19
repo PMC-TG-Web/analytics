@@ -31,6 +31,9 @@ export async function GET(request: NextRequest) {
       const v11Result = await makeRequest(v11Endpoint, accessToken);
       v11Projects = Array.isArray(v11Result) ? v11Result : [];
       console.log(`[Procore Projects] Fetched ${v11Projects.length} projects from v1.1`);
+      if (v11Projects.length > 0) {
+        console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id})`).join(', ')}`);
+      }
     } catch (e) {
       console.error('[Procore Projects] v1.1 error:', e);
     }
@@ -43,6 +46,10 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    if (bidBoardProjects.length > 0) {
+      console.log(`[Procore Projects] First 3 v2.0 projects: ${bidBoardProjects.slice(0, 3).map((p: any) => `${p.project_number}`).join(', ')}`);
+    }
+
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
@@ -50,6 +57,9 @@ export async function GET(request: NextRequest) {
     const mappedProjects = bidBoardProjects
       .filter((p: any) => {
         const v11Id = v11Map.get(p.project_number);
+        if (v11Id) {
+          console.log(`[Procore Projects] Match found: ${p.project_number} => v1.1 ID ${v11Id}`);
+        }
         return v11Id; // Only include if we have a v1.1 ID
       })
       .map((p: any) => {
@@ -65,6 +75,8 @@ export async function GET(request: NextRequest) {
           project_manager: p.project_manager,
         };
       });
+    
+    console.log(`[Procore Projects] Returning ${mappedProjects.length} projects with valid v1.1 IDs`);
 
     if (debug) {
       const sample = bidBoardProjects[0] || {};

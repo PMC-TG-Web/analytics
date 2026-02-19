@@ -23,15 +23,17 @@ export async function GET(request: NextRequest, props: { params: Promise<{ proje
     const [projectDetails, timecardEntries, budgetData, changeOrderData] = await Promise.allSettled([
       // Use v1.1 API for project detail lookup with company_id query param
       (async () => {
-        const response = await makeRequest(
-          `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[id]=${projectId}`,
-          accessToken
-        );
+        console.log(`[Project Overview] Fetching v1.1 project ${projectId}`);
+        const endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[id]=${projectId}`;
+        console.log(`[Project Overview] Endpoint: ${endpoint}`);
+        const response = await makeRequest(endpoint, accessToken);
+        console.log(`[Project Overview] Response type: ${Array.isArray(response) ? 'array' : typeof response}, length: ${Array.isArray(response) ? response.length : 'N/A'}`);
         // v1.1 returns an array, extract the matching project
         if (Array.isArray(response) && response.length > 0) {
+          console.log(`[Project Overview] Found project: ${response[0].name}`);
           return response[0];
         }
-        throw new Error(`Project ${projectId} not found`);
+        throw new Error(`Project ${projectId} not found in v1.1 API`);
       })(),
       
       // Labor hours (last 6 months) - v1.0 endpoint works with just project ID

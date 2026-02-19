@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
     try {
       let page = 1;
       let hasMore = true;
-      let totalFetched = 0;
       while (hasMore) {
         const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
         console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
@@ -34,24 +33,18 @@ export async function GET(request: NextRequest) {
           pageResults = bidResult.projects;
         }
         
-        console.log(`[Procore Projects] v2.0 page ${page}: received ${pageResults.length} results (total so far: ${totalFetched + pageResults.length})`);
+        console.log(`[Procore Projects] v2.0 page ${page}: received ${pageResults.length} results (total so far: ${bidBoardProjects.length + pageResults.length})`);
         
         if (pageResults.length === 0) {
-          console.log(`[Procore Projects] v2.0 page ${page}: empty response, stopping pagination`);
+          console.log(`[Procore Projects] v2.0 page ${page}: empty response, pagination complete`);
           hasMore = false;
         } else {
           bidBoardProjects = bidBoardProjects.concat(pageResults);
-          totalFetched += pageResults.length;
-          
-          // Continue if we got exactly 100 results (might be more on next page)
-          hasMore = pageResults.length === 100;
-          if (hasMore) {
-            console.log(`[Procore Projects] v2.0 page ${page}: got 100 results, fetching page ${page + 1}...`);
-          }
+          // Always try next page - keep going until we get 0 results
+          page++;
         }
-        page++;
       }
-      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0 across ${page - 1} pages`);
+      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
     } catch (e) {
       console.error('[Procore Projects] v2.0 error:', e);
     }
@@ -61,7 +54,6 @@ export async function GET(request: NextRequest) {
     try {
       let page = 1;
       let hasMore = true;
-      let totalFetched = 0;
       while (hasMore) {
         const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any&page=${page}`;
         console.log(`[Procore Projects] Fetching v1.1 page ${page}: ${v11Endpoint}`);
@@ -75,24 +67,18 @@ export async function GET(request: NextRequest) {
           pageResults = v11Result.data;
         }
         
-        console.log(`[Procore Projects] v1.1 page ${page}: received ${pageResults.length} results (total so far: ${totalFetched + pageResults.length})`);
+        console.log(`[Procore Projects] v1.1 page ${page}: received ${pageResults.length} results (total so far: ${v11Projects.length + pageResults.length})`);
         
         if (pageResults.length === 0) {
-          console.log(`[Procore Projects] v1.1 page ${page}: empty response, stopping pagination`);
+          console.log(`[Procore Projects] v1.1 page ${page}: empty response, pagination complete`);
           hasMore = false;
         } else {
           v11Projects = v11Projects.concat(pageResults);
-          totalFetched += pageResults.length;
-          
-          // Continue if we got exactly 100 results (might be more on next page)
-          hasMore = pageResults.length === 100;
-          if (hasMore) {
-            console.log(`[Procore Projects] v1.1 page ${page}: got 100 results, fetching page ${page + 1}...`);
-          }
+          // Always try next page - keep going until we get 0 results
+          page++;
         }
-        page++;
       }
-      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1 across ${page - 1} pages`);
+      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1`);
       if (v11Projects.length > 0) {
         console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id})`).join(', ')}`);
       }

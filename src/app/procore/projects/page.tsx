@@ -61,6 +61,33 @@ export default function ProcoreProjectsPage() {
     }
   };
 
+  const handleDownload = async (type: 'projects' | 'bid-board', format: 'csv' | 'json') => {
+    try {
+      const endpoint = `/api/procore/export/${type}?format=${format}`;
+      const response = await fetch(endpoint, { credentials: 'include' });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const filename = response.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] 
+        || `export-${type}-${new Date().toISOString().slice(0, 10)}.${format}`;
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      alert(`Failed to download ${type}`);
+      console.error('Download error:', err);
+    }
+  };
+
   const filteredProjects = projects.filter(
     (project) =>
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -111,7 +138,41 @@ export default function ProcoreProjectsPage() {
             ← Back to Dashboard
           </Link>
           <h1 className="text-4xl font-bold text-white mb-2">Procore Projects</h1>
-          <p className="text-gray-400">Select a project to view labor analytics and financial metrics</p>
+          <p className="text-gray-400 mb-6">Select a project to view labor analytics and financial metrics</p>
+          
+          {/* Export Buttons */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex gap-2">
+              <span className="text-sm text-gray-400 self-center">Export Projects:</span>
+              <button
+                onClick={() => handleDownload('projects', 'csv')}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors"
+              >
+                CSV
+              </button>
+              <button
+                onClick={() => handleDownload('projects', 'json')}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors"
+              >
+                JSON
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-sm text-gray-400 self-center">Bid Board:</span>
+              <button
+                onClick={() => handleDownload('bid-board', 'csv')}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium transition-colors"
+              >
+                CSV
+              </button>
+              <button
+                onClick={() => handleDownload('bid-board', 'json')}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium transition-colors"
+              >
+                JSON
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Search Bar */}

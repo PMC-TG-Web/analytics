@@ -140,91 +140,83 @@ export async function GET(request: NextRequest) {
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
-    // Include ALL v2.0 projects, but track which have v1.1 matches for dashboard linking
+    // Return ALL v2.0 projects - they are the source of truth for project listing
+    // v1.1 IDs are optional for dashboard integration but shouldn't block project display
     let matchCount = 0;
-    let skipCount = 0;
     let exactMatches = 0;
     let normalizedMatches = 0;
     let nameMatches = 0;
     let normalizedNameMatches = 0;
     
     const mappedProjects = bidBoardProjects
-      .filter((p: any, idx: number) => {
-        if (!p.project_number) {
-          if (idx < 10) console.log(`[Procore Projects] SKIP [${idx}] null/empty project_number, name: ${p.name}`);
-          skipCount++;
-          return false;
-        }
-        return true; // Include projects without null project_number
-      })
       .map((p: any, idx: number) => {
-        // Try matching strategies in order of preference:
+        // Try matching strategies in order of preference (for dashboard integration):
         // 1. Exact project_number match
         // 2. Normalized project_number match (lowercase, no spaces)
         // 3. Exact name match
         // 4. Normalized name match (trim, lowercase)
+        // Note: Not matching is OK - we still return the project, just without v1.1 link
         
-        let v11Id = v11Map.get(p.project_number);
+        let v11Id: any = null;
         let matchType = 'none';
         
-        if (v11Id) {
-          matchType = 'exact_number';
-          exactMatches++;
-          matchCount++;
-        } else {
-          const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
-          v11Id = normalizedV11Map.get(normalized);
-          
+        if (p.project_number) {
+          v11Id = v11Map.get(p.project_number);
           if (v11Id) {
-            matchType = 'normalized_number';
-            normalizedMatches++;
+            matchType = 'exact_number';
+            exactMatches++;
             matchCount++;
-          } else if (p.name) {
-            // Try exact name match
-            v11Id = v11ByName.get(p.name);
+          } else {
+            const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
+            v11Id = normalizedV11Map.get(normalized);
+            
             if (v11Id) {
-              matchType = 'name_exact';
-              nameMatches++;
+              matchType = 'normalized_number';
+              normalizedMatches++;
               matchCount++;
-            } else {
-              // Try normalized name match (trim, lowercase)
-              const normalizedName = p.name.trim().toLowerCase();
-              v11Id = v11ByNormalizedName.get(normalizedName);
+            } else if (p.name) {
+              // Try exact name match
+              v11Id = v11ByName.get(p.name);
               if (v11Id) {
-                matchType = 'name_normalized';
-                normalizedNameMatches++;
+                matchType = 'name_exact';
+                nameMatches++;
                 matchCount++;
-                if (idx < 15) {
-                  console.log(`[Procore Projects] [${idx}] NAME MATCH (normalized): "${p.name}" => "${normalizedName}"`);
+              } else {
+                // Try normalized name match (trim, lowercase)
+                const normalizedName = p.name.trim().toLowerCase();
+                v11Id = v11ByNormalizedName.get(normalizedName);
+                if (v11Id) {
+                  matchType = 'name_normalized';
+                  normalizedNameMatches++;
+                  matchCount++;
+                  if (idx < 20) {
+                    console.log(`[Procore Projects] [${idx}] NAME MATCH (normalized): "${p.name}" => "${normalizedName}"`);
+                  }
                 }
               }
             }
           }
         }
         
-        if (idx < 10) {
-          console.log(`[Procore Projects] [${idx}] num="${p.project_number}" name="${p.name?.substring(0, 40)}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
+        if (idx < 15) {
+          console.log(`[Procore Projects] [${idx}] num="${p.project_number}" name="${p.name?.substring(0, 35)}" => ${v11Id ? `v1.1_ID: ${v11Id} (${matchType})` : 'no_v1.1_match'}`);
         }
         
         return {
-          id: v11Id || p.id, // Use v1.1 ID if available, otherwise use v2.0 ID
+          id: p.id, // Always use v2.0 ID for uniqueness
           name: p.name || 'Unknown Project',
           project_number: p.project_number || '',
           company_name: p.customer_name || p.client_name || 'Unknown',
           project_status: p.status || 'Unknown',
           estimator: p.estimator,
           project_manager: p.project_manager,
-          v11_id: v11Id, // Track which ones have real v1.1 IDs
+          v11_id: v11Id, // Track which ones have real v1.1 IDs for dashboard
           has_dashboard_link: !!v11Id, // Flag for UI to determine if dashboard link is available
           match_type: matchType, // Debug field
         };
       });
     
-    console.log(`[Procore Projects] Match summary: ${matchCount} matches (${exactMatches} exact_number, ${normalizedMatches} normalized_number, ${nameMatches} name_exact, ${normalizedNameMatches} name_normalized), ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
-    
-    console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} projects`);
-    
-    console.log(`[Procore Projects] Returning ${mappedProjects.length} projects with valid v1.1 IDs`);
+    console.log(`[Procore Projects] Match summary: ${matchCount} v1.1 matches (${exactMatches} exact_number, ${normalizedMatches} normalized_number, ${nameMatches} name_exact, ${normalizedNameMatches} name_normalized), returning ALL ${mappedProjects.length} v2.0 projects`);
 
     if (debug) {
       // Show matching data for first few v2.0 projects

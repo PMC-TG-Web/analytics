@@ -84,14 +84,18 @@ export async function GET(request: NextRequest) {
       console.error('[Procore Projects] v1.1 error:', e);
     }
     
-    // Create a map of project_number -> v1.1 ID for lookups
+    // Create a map of NORMALIZED project_number -> v1.1 ID for lookups
+    // Normalize: lowercase and remove all spaces
     const v11Map = new Map();
+    const normalizedV11Map = new Map(); // project_number -> id mapping with normalized keys
     v11Projects.forEach((p: any) => {
       if (p.project_number) {
         v11Map.set(p.project_number, p.id);
+        const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
+        normalizedV11Map.set(normalized, p.id);
       }
     });
-    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries`);
+    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries`);
 
     if (bidBoardProjects.length > 0) {
       console.log(`[Procore Projects] First 3 v2.0 projects and their numbers:`);
@@ -115,18 +119,26 @@ export async function GET(request: NextRequest) {
     // Only include projects that have v1.1 matches so dashboard links work
     const mappedProjects = bidBoardProjects
       .filter((p: any) => {
-        const v11Id = v11Map.get(p.project_number);
-        if (!v11Id && bidBoardProjects.indexOf(p) < 5) {
-          console.log(`[Procore Projects] NO MATCH for v2.0 project: ${p.project_number} (looking in v11Map with ${v11Map.size} entries)`);
-          if (v11Map.size > 0) {
-            const v11Samples = Array.from(v11Map.keys()).slice(0, 3);
-            console.log(`[Procore Projects]   Sample v1.1 project_numbers in map: ${v11Samples.join(', ')}`);
+        // Try exact match first, then normalized match
+        let v11Id = v11Map.get(p.project_number);
+        if (!v11Id) {
+          const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
+          v11Id = normalizedV11Map.get(normalized);
+          if (v11Id && bidBoardProjects.indexOf(p) < 5) {
+            console.log(`[Procore Projects] Normalized match found: "${p.project_number}" => normalized "${normalized}" => v1.1 ID ${v11Id}`);
           }
+        } else if (bidBoardProjects.indexOf(p) < 5) {
+          console.log(`[Procore Projects] Exact match found: "${p.project_number}" => v1.1 ID ${v11Id}`);
         }
         return v11Id; // Only include if we have a v1.1 ID
       })
       .map((p: any) => {
-        const v11Id = v11Map.get(p.project_number)!; // We know it exists after filter
+        // Get ID using the same logic as filter
+        let v11Id = v11Map.get(p.project_number);
+        if (!v11Id) {
+          const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
+          v11Id = normalizedV11Map.get(normalized);
+        }
         
         return {
           id: v11Id,

@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid response from Procore API' }, { status: 500 });
     }
 
+    const debug = request.nextUrl.searchParams.get('debug') === '1';
+
     // Map to return fields matching the projects list UI expectations
     const mappedProjects = projects.map((p: any) => ({
       id: p.id,
@@ -45,6 +47,27 @@ export async function GET(request: NextRequest) {
       estimator: p.estimator,
       project_manager: p.project_manager,
     }));
+
+    if (debug) {
+      const sample = projects[0] || {};
+      return NextResponse.json({
+        success: true,
+        debug: {
+          keys: Object.keys(sample),
+          company_name: sample.company_name,
+          company: sample.company,
+          customer: sample.customer,
+          client: sample.client,
+          owner: sample.owner,
+          project_owner: sample.project_owner,
+          project_owner_name: sample.project_owner_name,
+          customer_name: sample.customer_name,
+          client_name: sample.client_name,
+          resolved_customer: mappedProjects[0]?.company_name,
+        },
+        projects: mappedProjects.slice(0, 5),
+      });
+    }
 
     return NextResponse.json({ success: true, projects: mappedProjects });
   } catch (error) {

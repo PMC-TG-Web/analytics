@@ -46,20 +46,25 @@ export async function GET(request: NextRequest) {
     const debug = request.nextUrl.searchParams.get('debug') === '1';
 
     // Map to return fields matching the projects list UI expectations
-    const mappedProjects = bidBoardProjects.map((p: any) => {
-      // Find matching v1.1 project by number
-      const v11Id = v11Map.get(p.project_number);
-      
-      return {
-        id: v11Id || p.id, // Use v1.1 ID if found, fallback to v2.0 ID
-        name: p.name || 'Unknown Project',
-        project_number: p.project_number || '',
-        company_name: p.customer_name || p.client_name || 'Unknown',
-        project_status: p.status || 'Unknown',
-        estimator: p.estimator,
-        project_manager: p.project_manager,
-      };
-    });
+    // Only include projects that have v1.1 matches so dashboard links work
+    const mappedProjects = bidBoardProjects
+      .filter((p: any) => {
+        const v11Id = v11Map.get(p.project_number);
+        return v11Id; // Only include if we have a v1.1 ID
+      })
+      .map((p: any) => {
+        const v11Id = v11Map.get(p.project_number)!; // We know it exists after filter
+        
+        return {
+          id: v11Id,
+          name: p.name || 'Unknown Project',
+          project_number: p.project_number || '',
+          company_name: p.customer_name || p.client_name || 'Unknown',
+          project_status: p.status || 'Unknown',
+          estimator: p.estimator,
+          project_manager: p.project_manager,
+        };
+      });
 
     if (debug) {
       const sample = bidBoardProjects[0] || {};

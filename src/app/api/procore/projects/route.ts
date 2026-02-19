@@ -13,24 +13,40 @@ export async function GET(request: NextRequest) {
     const companyId = procoreConfig.companyId;
     console.log(`[Procore Projects] Fetching from v2.0 bid board and v1.1 projects`);
 
-    // Fetch from v2.0 bid board (has customer data)
-    const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100`;
+    // Fetch from v2.0 bid board (has customer data) - with pagination
     let bidBoardProjects: any[] = [];
     try {
-      const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
-      bidBoardProjects = Array.isArray(bidResult?.data) ? bidResult.data : Array.isArray(bidResult) ? bidResult : [];
-      console.log(`[Procore Projects] Fetched ${bidBoardProjects.length} projects from v2.0`);
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
+        const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
+        const pageResults = Array.isArray(bidResult?.data) ? bidResult.data : Array.isArray(bidResult) ? bidResult : [];
+        bidBoardProjects = bidBoardProjects.concat(pageResults);
+        console.log(`[Procore Projects] Fetched ${pageResults.length} projects from v2.0 page ${page}`);
+        hasMore = pageResults.length === 100; // If we got exactly 100, there might be more pages
+        page++;
+      }
+      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
     } catch (e) {
       console.error('[Procore Projects] v2.0 error:', e);
     }
 
-    // Also fetch v1.1 projects for ID mapping
-    const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any`;
+    // Also fetch v1.1 projects for ID mapping - with pagination
     let v11Projects: any[] = [];
     try {
-      const v11Result = await makeRequest(v11Endpoint, accessToken);
-      v11Projects = Array.isArray(v11Result) ? v11Result : [];
-      console.log(`[Procore Projects] Fetched ${v11Projects.length} projects from v1.1`);
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any&page=${page}`;
+        const v11Result = await makeRequest(v11Endpoint, accessToken);
+        const pageResults = Array.isArray(v11Result) ? v11Result : [];
+        v11Projects = v11Projects.concat(pageResults);
+        console.log(`[Procore Projects] Fetched ${pageResults.length} projects from v1.1 page ${page}`);
+        hasMore = pageResults.length === 100; // If we got exactly 100, there might be more pages
+        page++;
+      }
+      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1`);
       if (v11Projects.length > 0) {
         console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id})`).join(', ')}`);
       }

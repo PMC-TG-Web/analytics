@@ -90,6 +90,8 @@ export async function GET(request: NextRequest) {
     const v11Map = new Map();
     const normalizedV11Map = new Map(); // project_number -> id mapping with normalized keys
     const v11ByName = new Map(); // name -> id mapping (exact name match)
+    const v11ByNormalizedName = new Map(); // normalized name -> id mapping (case/space insensitive)
+    
     v11Projects.forEach((p: any) => {
       if (p.project_number) {
         v11Map.set(p.project_number, p.id);
@@ -98,9 +100,18 @@ export async function GET(request: NextRequest) {
       }
       if (p.name) {
         v11ByName.set(p.name, p.id);
+        // Also add normalized version (trim, lowercase)
+        const normalizedName = p.name.trim().toLowerCase();
+        v11ByNormalizedName.set(normalizedName, p.id);
       }
     });
-    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries, v11ByName with ${v11ByName.size} entries`);
+    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries, normalizedV11Map with ${normalizedV11Map.size} entries, v11ByName with ${v11ByName.size} entries, v11ByNormalizedName with ${v11ByNormalizedName.size} entries`);
+    
+    // Log some samples from the normalized name map
+    if (v11ByNormalizedName.size > 0) {
+      const samples = Array.from(v11ByNormalizedName.keys()).slice(0, 3);
+      console.log(`[Procore Projects] v11ByNormalizedName sample keys: ${samples.map(k => `"${k}"`).join(', ')}`);
+    }
 
     if (bidBoardProjects.length > 0) {
       console.log(`[Procore Projects] First 5 v2.0 project_numbers:`);
@@ -135,6 +146,7 @@ export async function GET(request: NextRequest) {
     let exactMatches = 0;
     let normalizedMatches = 0;
     let nameMatches = 0;
+    let normalizedNameMatches = 0;
     
     const mappedProjects = bidBoardProjects
       .filter((p: any, idx: number) => {
@@ -149,7 +161,8 @@ export async function GET(request: NextRequest) {
         // Try matching strategies in order of preference:
         // 1. Exact project_number match
         // 2. Normalized project_number match (lowercase, no spaces)
-        // 3. Exact name match (fallback)
+        // 3. Exact name match
+        // 4. Normalized name match (trim, lowercase)
         
         let v11Id = v11Map.get(p.project_number);
         let matchType = 'none';
@@ -167,18 +180,30 @@ export async function GET(request: NextRequest) {
             normalizedMatches++;
             matchCount++;
           } else if (p.name) {
-            // Try name matching as fallback
+            // Try exact name match
             v11Id = v11ByName.get(p.name);
             if (v11Id) {
-              matchType = 'name_match';
+              matchType = 'name_exact';
               nameMatches++;
               matchCount++;
+            } else {
+              // Try normalized name match (trim, lowercase)
+              const normalizedName = p.name.trim().toLowerCase();
+              v11Id = v11ByNormalizedName.get(normalizedName);
+              if (v11Id) {
+                matchType = 'name_normalized';
+                normalizedNameMatches++;
+                matchCount++;
+                if (idx < 15) {
+                  console.log(`[Procore Projects] [${idx}] NAME MATCH (normalized): "${p.name}" => "${normalizedName}"`);
+                }
+              }
             }
           }
         }
         
         if (idx < 10) {
-          console.log(`[Procore Projects] [${idx}] "${p.project_number}" name="${p.name}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
+          console.log(`[Procore Projects] [${idx}] num="${p.project_number}" name="${p.name?.substring(0, 40)}" => ${v11Id ? `MATCH(${matchType}): ${v11Id}` : 'NO MATCH'}`);
         }
         
         return {
@@ -195,7 +220,7 @@ export async function GET(request: NextRequest) {
         };
       });
     
-    console.log(`[Procore Projects] Match summary: ${matchCount} matches (${exactMatches} exact, ${normalizedMatches} normalized, ${nameMatches} by-name), ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
+    console.log(`[Procore Projects] Match summary: ${matchCount} matches (${exactMatches} exact_number, ${normalizedMatches} normalized_number, ${nameMatches} name_exact, ${normalizedNameMatches} name_normalized), ${skipCount} skipped, returning ${mappedProjects.length} total projects`);
     
     console.log(`[Procore Projects] Match summary: ${matchCount} matches, ${skipCount} skipped, returning ${mappedProjects.length} projects`);
     
@@ -215,13 +240,20 @@ export async function GET(request: NextRequest) {
             matchType = 'normalized_number';
           } else if (p.name) {
             v11Id = v11ByName.get(p.name);
-            matchType = v11Id ? 'name_match' : 'none';
+            if (v11Id) {
+              matchType = 'name_exact';
+            } else {
+              const normalizedName = p.name.trim().toLowerCase();
+              v11Id = v11ByNormalizedName.get(normalizedName);
+              matchType = v11Id ? 'name_normalized' : 'none';
+            }
           }
         }
         return {
           v2_0_project_number: p.project_number,
           v2_0_id: p.id,
           v2_0_name: p.name,
+          v2_0_name_normalized: (p.name || '').trim().toLowerCase(),
           v11_id: v11Id,
           match_type: matchType,
         };
@@ -235,8 +267,10 @@ export async function GET(request: NextRequest) {
           v11Count: v11Projects.length,
           v11WithProjectNumber: v11Projects.filter((p: any) => p.project_number).length,
           v11ByNameCount: v11ByName.size,
+          v11ByNormalizedNameCount: v11ByNormalizedName.size,
           v2_0_sample_keys: bidBoardProjects.length > 0 ? Object.keys(bidBoardProjects[0]) : [],
           v1_1_sample_keys: v11Projects.length > 0 ? Object.keys(v11Projects[0]) : [],
+          normalizedNameSamples: Array.from(v11ByNormalizedName.keys()).slice(0, 5),
           samples: debugProjects,
           normalizedMapSample: Array.from(normalizedV11Map.keys()).slice(0, 3),
         },

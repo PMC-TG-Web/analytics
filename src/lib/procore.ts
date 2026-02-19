@@ -80,6 +80,46 @@ export async function getAccessToken(code: string): Promise<ProcoreTokenResponse
   }
 }
 
+// Refresh access token using refresh token
+export async function refreshAccessToken(refreshToken: string): Promise<ProcoreTokenResponse> {
+  try {
+    const clientId = (procoreConfig.clientId || '').trim();
+    const clientSecret = (procoreConfig.clientSecret || '').trim();
+    const tokenUrl = (procoreConfig.tokenUrl || '').trim();
+
+    console.log('Attempting to refresh Procore access token...');
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }).toString(),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Token refresh failed:', {
+        status: response.status,
+        statusText: response.statusText,
+      });
+      throw new Error(`Failed to refresh token (${response.status})`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Token refreshed successfully');
+    return result;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Token refresh failed: ${msg}`);
+  }
+}
+
 // Make authenticated request to Procore API
 export async function makeRequest(
   endpoint: string,

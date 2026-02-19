@@ -40,6 +40,25 @@ export default function ProcoreProjectsPage() {
       setLoading(true);
       setError(null);
 
+      // First, try to refresh the token to ensure it's valid
+      try {
+        console.log('Refreshing Procore access token...');
+        const refreshResponse = await fetch('/api/procore/refresh-token', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        
+        if (refreshResponse.ok) {
+          console.log('✅ Token refreshed successfully');
+        } else {
+          console.warn('Token refresh returned non-ok status, continuing anyway...');
+        }
+      } catch (refreshError) {
+        console.warn('Token refresh attempt failed, continuing with existing token:', refreshError);
+        // Continue with existing token - it might still be valid
+      }
+
+      // Now fetch the projects
       const response = await fetch('/api/procore/projects', {
         credentials: 'include',
       });
@@ -77,14 +96,22 @@ export default function ProcoreProjectsPage() {
             ← Back to Dashboard
           </Link>
           <div className="bg-slate-700/50 rounded-lg p-8 border border-red-500/30 text-center">
-            <h2 className="text-2xl font-bold text-red-400 mb-4">⚠️ Error Loading Projects</h2>
+            <h2 className="text-2xl font-bold text-red-400 mb-4">⚠️ Authentication Required</h2>
             <p className="text-gray-300 mb-6">{error}</p>
-            <button
-              onClick={fetchProjects}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Retry
-            </button>
+            <div className="flex gap-4 justify-center">
+              <a
+                href="/debug-cookies"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+              >
+                Re-authenticate with Procore
+              </a>
+              <button
+                onClick={fetchProjects}
+                className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         </div>
       </div>

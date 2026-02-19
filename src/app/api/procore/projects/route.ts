@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
       let page = 1;
       let hasMore = true;
       while (hasMore) {
-        const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any&page=${page}`;
+        // Try without filters first to get ALL projects including archived/inactive
+        const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&page=${page}`;
         console.log(`[Procore Projects] Fetching v1.1 page ${page}: ${v11Endpoint}`);
         const v11Result = await makeRequest(v11Endpoint, accessToken);
         
@@ -217,7 +218,8 @@ export async function GET(request: NextRequest) {
         };
       });
     
-    console.log(`[Procore Projects] Match summary: ${matchCount} v1.1 matches (${exactMatches} exact_number, ${normalizedMatches} normalized_number, ${nameMatches} name_exact, ${normalizedNameMatches} name_normalized), returning ALL ${mappedProjects.length} v2.0 projects`);
+    console.log(`[Procore Projects] Returning ALL v2.0 bid board projects (source: active estimating/bidding projects)`);
+    console.log(`[Procore Projects] Also have ${v11Projects.length} v1.1 all projects for reference`);
 
     if (debug) {
       // Show matching data for first few v2.0 projects

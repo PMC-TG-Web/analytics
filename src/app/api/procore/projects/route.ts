@@ -50,38 +50,92 @@ export async function GET(request: NextRequest) {
     }
 
     // Also fetch v1.1 projects for ID mapping - with pagination
+    // v1.1 API defaults to active projects only, so we need to fetch both active and inactive
     let v11Projects: any[] = [];
     try {
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        // Try without filters first to get ALL projects including archived/inactive
-        const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&page=${page}`;
-        console.log(`[Procore Projects] Fetching v1.1 page ${page}: ${v11Endpoint}`);
-        const v11Result = await makeRequest(v11Endpoint, accessToken);
-        
-        // Handle different response formats
-        let pageResults: any[] = [];
-        if (Array.isArray(v11Result)) {
-          pageResults = v11Result;
-        } else if (v11Result?.data && Array.isArray(v11Result.data)) {
-          pageResults = v11Result.data;
+      // Fetch 1: Active projects (default behavior when no filters specified)
+      let activeProjects: any[] = [];
+      try {
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&page=${page}`;
+          console.log(`[Procore Projects] Fetching v1.1 ACTIVE page ${page}: ${v11Endpoint}`);
+          const v11Result = await makeRequest(v11Endpoint, accessToken);
+          
+          // Handle different response formats
+          let pageResults: any[] = [];
+          if (Array.isArray(v11Result)) {
+            pageResults = v11Result;
+          } else if (v11Result?.data && Array.isArray(v11Result.data)) {
+            pageResults = v11Result.data;
+          }
+          
+          console.log(`[Procore Projects] v1.1 ACTIVE page ${page}: received ${pageResults.length} results (total so far: ${activeProjects.length + pageResults.length})`);
+          
+          if (pageResults.length === 0) {
+            console.log(`[Procore Projects] v1.1 ACTIVE page ${page}: empty response, pagination complete`);
+            hasMore = false;
+          } else {
+            activeProjects = activeProjects.concat(pageResults);
+            page++;
+          }
         }
-        
-        console.log(`[Procore Projects] v1.1 page ${page}: received ${pageResults.length} results (total so far: ${v11Projects.length + pageResults.length})`);
-        
-        if (pageResults.length === 0) {
-          console.log(`[Procore Projects] v1.1 page ${page}: empty response, pagination complete`);
-          hasMore = false;
-        } else {
-          v11Projects = v11Projects.concat(pageResults);
-          // Always try next page - keep going until we get 0 results
-          page++;
-        }
+        console.log(`[Procore Projects] Total fetched ${activeProjects.length} ACTIVE projects from v1.1`);
+      } catch (e) {
+        console.error('[Procore Projects] v1.1 ACTIVE fetch error:', e);
       }
-      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1`);
+
+      // Fetch 2: Inactive projects (with filters[active]=false)
+      let inactiveProjects: any[] = [];
+      try {
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&filters[active]=false&per_page=100&page=${page}`;
+          console.log(`[Procore Projects] Fetching v1.1 INACTIVE page ${page}: ${v11Endpoint}`);
+          const v11Result = await makeRequest(v11Endpoint, accessToken);
+          
+          // Handle different response formats
+          let pageResults: any[] = [];
+          if (Array.isArray(v11Result)) {
+            pageResults = v11Result;
+          } else if (v11Result?.data && Array.isArray(v11Result.data)) {
+            pageResults = v11Result.data;
+          }
+          
+          console.log(`[Procore Projects] v1.1 INACTIVE page ${page}: received ${pageResults.length} results (total so far: ${inactiveProjects.length + pageResults.length})`);
+          
+          if (pageResults.length === 0) {
+            console.log(`[Procore Projects] v1.1 INACTIVE page ${page}: empty response, pagination complete`);
+            hasMore = false;
+          } else {
+            inactiveProjects = inactiveProjects.concat(pageResults);
+            page++;
+          }
+        }
+        console.log(`[Procore Projects] Total fetched ${inactiveProjects.length} INACTIVE projects from v1.1`);
+      } catch (e) {
+        console.error('[Procore Projects] v1.1 INACTIVE fetch error:', e);
+      }
+
+      // Combine both lists and deduplicate by ID
+      const projectMap = new Map();
+      activeProjects.forEach((p: any) => {
+        if (p.id) {
+          projectMap.set(p.id, p);
+        }
+      });
+      inactiveProjects.forEach((p: any) => {
+        if (p.id && !projectMap.has(p.id)) {
+          projectMap.set(p.id, p);
+        }
+      });
+      v11Projects = Array.from(projectMap.values());
+
+      console.log(`[Procore Projects] Total fetched ${activeProjects.length} active + ${inactiveProjects.length} inactive = ${v11Projects.length} combined unique projects from v1.1`);
       if (v11Projects.length > 0) {
-        console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id})`).join(', ')}`);
+        console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id}, active: ${p.active})`).join(', ')}`);
       }
     } catch (e) {
       console.error('[Procore Projects] v1.1 error:', e);

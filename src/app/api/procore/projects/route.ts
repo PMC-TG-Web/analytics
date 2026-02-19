@@ -119,6 +119,10 @@ export async function GET(request: NextRequest) {
     // Only include projects that have v1.1 matches so dashboard links work
     const mappedProjects = bidBoardProjects
       .filter((p: any) => {
+        if (!p.project_number) {
+          console.log(`[Procore Projects] Skipping project with null/empty project_number`);
+          return false;
+        }
         // Try exact match first, then normalized match
         let v11Id = v11Map.get(p.project_number);
         if (!v11Id) {
@@ -133,9 +137,9 @@ export async function GET(request: NextRequest) {
         return v11Id; // Only include if we have a v1.1 ID
       })
       .map((p: any) => {
-        // Get ID using the same logic as filter
+        // Get ID using the same logic as filter (project_number is guaranteed to exist from filter)
         let v11Id = v11Map.get(p.project_number);
-        if (!v11Id) {
+        if (!v11Id && p.project_number) {
           const normalized = p.project_number.toLowerCase().replace(/\s+/g, '');
           v11Id = normalizedV11Map.get(normalized);
         }

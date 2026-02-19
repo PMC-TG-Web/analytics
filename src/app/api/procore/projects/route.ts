@@ -7,27 +7,10 @@ export async function GET(request: NextRequest) {
     let accessToken = request.cookies.get('procore_access_token')?.value;
     const refreshToken = request.cookies.get('procore_refresh_token')?.value;
 
-    // If access token is missing but we have a refresh token, try to refresh
-    if (!accessToken && refreshToken) {
-      console.log('[Procore Projects] Access token missing, attempting to refresh...');
-      try {
-        const newTokenData = await refreshAccessToken(refreshToken);
-        accessToken = newTokenData.access_token;
-        console.log('[Procore Projects] Successfully refreshed access token');
-      } catch (e) {
-        console.error('[Procore Projects] Token refresh failed:', e);
-        // If refresh fails, we need fresh authentication
-        return NextResponse.json({ 
-          error: 'Authentication expired. Please re-authenticate with Procore.',
-          needsReauth: true 
-        }, { status: 401 });
-      }
-    }
-
     if (!accessToken) {
-      console.log('[Procore Projects] No access token available - needs authentication');
+      console.log('[Procore Projects] No access token available');
       return NextResponse.json({ 
-        error: 'Not authenticated with Procore. Please visit /debug-cookies to authenticate.',
+        error: 'Not authenticated with Procore',
         needsReauth: true
       }, { status: 401 });
     }

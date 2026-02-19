@@ -94,8 +94,19 @@ export async function GET(request: NextRequest) {
     console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries`);
 
     if (bidBoardProjects.length > 0) {
-      console.log(`[Procore Projects] First 3 v2.0 projects: ${bidBoardProjects.slice(0, 3).map((p: any) => `${p.project_number}`).join(', ')}`);
-      console.log(`[Procore Projects] First v2.0 project sample: ${JSON.stringify(bidBoardProjects[0], null, 2)}`);
+      console.log(`[Procore Projects] First 3 v2.0 projects and their numbers:`);
+      bidBoardProjects.slice(0, 3).forEach((p: any, idx: number) => {
+        console.log(`  [${idx}] project_number=${p.project_number}, fields: ${Object.keys(p).slice(0, 5).join(', ')}`);
+      });
+      console.log(`[Procore Projects] v2.0 sample keys: ${Object.keys(bidBoardProjects[0]).join(', ')}`);
+    }
+    
+    if (v11Projects.length > 0) {
+      console.log(`[Procore Projects] First 3 v1.1 projects and their numbers:`);
+      v11Projects.slice(0, 3).forEach((p: any, idx: number) => {
+        console.log(`  [${idx}] project_number=${p.project_number}, id=${p.id}`);
+      });
+      console.log(`[Procore Projects] v1.1 sample keys: ${Object.keys(v11Projects[0]).join(', ')}`);
     }
 
     const debug = request.nextUrl.searchParams.get('debug') === '1';
@@ -105,8 +116,12 @@ export async function GET(request: NextRequest) {
     const mappedProjects = bidBoardProjects
       .filter((p: any) => {
         const v11Id = v11Map.get(p.project_number);
-        if (v11Id) {
-          console.log(`[Procore Projects] Match found: ${p.project_number} => v1.1 ID ${v11Id}`);
+        if (!v11Id && bidBoardProjects.indexOf(p) < 5) {
+          console.log(`[Procore Projects] NO MATCH for v2.0 project: ${p.project_number} (looking in v11Map with ${v11Map.size} entries)`);
+          if (v11Map.size > 0) {
+            const v11Samples = Array.from(v11Map.keys()).slice(0, 3);
+            console.log(`[Procore Projects]   Sample v1.1 project_numbers in map: ${v11Samples.join(', ')}`);
+          }
         }
         return v11Id; // Only include if we have a v1.1 ID
       })

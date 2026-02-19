@@ -18,16 +18,31 @@ export async function GET(request: NextRequest) {
     try {
       let page = 1;
       let hasMore = true;
-      while (hasMore) {
+      let totalFetched = 0;
+      while (hasMore && page <= 10) { // Add safety limit
         const bidBoardEndpoint = `/rest/v2.0/companies/${companyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
+        console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
         const bidResult = await makeRequest(bidBoardEndpoint, accessToken);
+        
+        // Debug the response structure
+        console.log(`[Procore Projects] v2.0 Response type: ${typeof bidResult}, is array: ${Array.isArray(bidResult)}`);
+        if (bidResult && typeof bidResult === 'object') {
+          console.log(`[Procore Projects] v2.0 Response keys: ${Object.keys(bidResult).join(', ')}`);
+        }
+        
         const pageResults = Array.isArray(bidResult?.data) ? bidResult.data : Array.isArray(bidResult) ? bidResult : [];
+        console.log(`[Procore Projects] Page ${page} returned ${pageResults.length} results`);
+        
         bidBoardProjects = bidBoardProjects.concat(pageResults);
-        console.log(`[Procore Projects] Fetched ${pageResults.length} projects from v2.0 page ${page}`);
+        totalFetched += pageResults.length;
+        
         hasMore = pageResults.length === 100; // If we got exactly 100, there might be more pages
+        if (hasMore) {
+          console.log(`[Procore Projects] Got 100 results, fetching next page...`);
+        }
         page++;
       }
-      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
+      console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0 (${totalFetched} total iterated)`);
     } catch (e) {
       console.error('[Procore Projects] v2.0 error:', e);
     }
@@ -37,16 +52,31 @@ export async function GET(request: NextRequest) {
     try {
       let page = 1;
       let hasMore = true;
-      while (hasMore) {
+      let totalFetched = 0;
+      while (hasMore && page <= 10) { // Add safety limit
         const v11Endpoint = `/rest/v1.1/projects?company_id=${companyId}&view=extended&per_page=100&filters[active]=any&page=${page}`;
+        console.log(`[Procore Projects] Fetching v1.1 page ${page}: ${v11Endpoint}`);
         const v11Result = await makeRequest(v11Endpoint, accessToken);
+        
+        // Debug the response structure
+        console.log(`[Procore Projects] v1.1 Response type: ${typeof v11Result}, is array: ${Array.isArray(v11Result)}`);
+        if (v11Result && typeof v11Result === 'object' && !Array.isArray(v11Result)) {
+          console.log(`[Procore Projects] v1.1 Response keys: ${Object.keys(v11Result).join(', ')}`);
+        }
+        
         const pageResults = Array.isArray(v11Result) ? v11Result : [];
+        console.log(`[Procore Projects] v1.1 Page ${page} returned ${pageResults.length} results`);
+        
         v11Projects = v11Projects.concat(pageResults);
-        console.log(`[Procore Projects] Fetched ${pageResults.length} projects from v1.1 page ${page}`);
+        totalFetched += pageResults.length;
+        
         hasMore = pageResults.length === 100; // If we got exactly 100, there might be more pages
+        if (hasMore) {
+          console.log(`[Procore Projects] Got 100 results, fetching next page...`);
+        }
         page++;
       }
-      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1`);
+      console.log(`[Procore Projects] Total fetched ${v11Projects.length} projects from v1.1 (${totalFetched} total iterated)`);
       if (v11Projects.length > 0) {
         console.log(`[Procore Projects] First 3 v1.1 projects: ${v11Projects.slice(0, 3).map(p => `${p.project_number} (ID: ${p.id})`).join(', ')}`);
       }
@@ -61,9 +91,11 @@ export async function GET(request: NextRequest) {
         v11Map.set(p.project_number, p.id);
       }
     });
+    console.log(`[Procore Projects] Created v11Map with ${v11Map.size} entries`);
 
     if (bidBoardProjects.length > 0) {
       console.log(`[Procore Projects] First 3 v2.0 projects: ${bidBoardProjects.slice(0, 3).map((p: any) => `${p.project_number}`).join(', ')}`);
+      console.log(`[Procore Projects] First v2.0 project sample: ${JSON.stringify(bidBoardProjects[0], null, 2)}`);
     }
 
     const debug = request.nextUrl.searchParams.get('debug') === '1';

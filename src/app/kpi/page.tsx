@@ -309,33 +309,13 @@ export default function KPIPage() {
       try {
         let projectsData: Project[] = [];
 
-        if (dataSource === 'procore') {
-          console.log("[KPI] Fetching projects from Procore Live API...");
-          const procoreRes = await fetch("/api/procore/projects");
-          
-          if (procoreRes.status === 401) {
-            console.warn("[KPI] Procore unauthorized, falling back to Firestore");
-            setProcoreAuthError(true);
-            setDataSource('firestore');
-            return; // useEffect will re-run for 'firestore'
-          }
-
-          const procoreJson = await procoreRes.json();
-          if (procoreJson.success && procoreJson.projects) {
-            projectsData = procoreJson.projects;
-          } else {
-            console.error("[KPI] Procore fetch failed:", procoreJson.error);
-            setDataSource('firestore');
-            return;
-          }
-        } else {
-          console.log("[KPI] Fetching projects from Firestore...");
-          const projectsSnapshot = await getDocs(collection(db, "projects"));
-          projectsData = projectsSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Project[];
-        }
+        // Fetch projects from Firestore
+        console.log("[KPI] Fetching projects from Firestore...");
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        projectsData = projectsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Project[];
 
         setProjects(projectsData);
 

@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       const now = new Date().toISOString();
       const existing = existingEmployees.get(fullName);
       
-      const employeeData = {
+      const employeeData: any = {
         firstName: emp.firstName,
         lastName: emp.lastName,
         email: emp.email || "",
@@ -78,20 +78,21 @@ export async function POST(request: NextRequest) {
         isActive: true,
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
-        // Preserve existing data if employee exists
-        ...(existing ? {
-          department: existing.department,
-          hourlyRate: existing.hourlyRate,
-          vacationHours: existing.vacationHours,
-          keypadCode: existing.keypadCode,
-          dateOfBirth: existing.dateOfBirth,
-          hireDate: existing.hireDate,
-          dateOfLeave: existing.dateOfLeave,
-          notes: existing.notes,
-          payHistory: existing.payHistory,
-          apparelRecords: existing.apparelRecords,
-        } : {}),
       };
+
+      // Preserve existing data if employee exists (only add defined values)
+      if (existing) {
+        if (existing.department) employeeData.department = existing.department;
+        if (existing.hourlyRate !== undefined) employeeData.hourlyRate = existing.hourlyRate;
+        if (existing.vacationHours !== undefined) employeeData.vacationHours = existing.vacationHours;
+        if (existing.keypadCode) employeeData.keypadCode = existing.keypadCode;
+        if (existing.dateOfBirth) employeeData.dateOfBirth = existing.dateOfBirth;
+        if (existing.hireDate) employeeData.hireDate = existing.hireDate;
+        if (existing.dateOfLeave) employeeData.dateOfLeave = existing.dateOfLeave;
+        if (existing.notes) employeeData.notes = existing.notes;
+        if (existing.payHistory && existing.payHistory.length > 0) employeeData.payHistory = existing.payHistory;
+        if (existing.apparelRecords && existing.apparelRecords.length > 0) employeeData.apparelRecords = existing.apparelRecords;
+      }
 
       const docId = existing 
         ? snapshot.docs.find(doc => `${doc.data().firstName} ${doc.data().lastName}`.toLowerCase() === fullName)?.id

@@ -1199,6 +1199,9 @@ function ShortTermScheduleContent() {
                           <div className="flex-1 overflow-hidden">
                             <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
                             <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} · #{p.projectNumber}</div>
+                            {p.scopeOfWork && (
+                              <div className="text-[9px] font-bold text-orange-600 truncate mt-1 italic">{p.scopeOfWork}</div>
+                            )}
                           </div>
                           <div className={`ml-3 opacity-30 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-500'}`}>
                             {targetingCell ? (

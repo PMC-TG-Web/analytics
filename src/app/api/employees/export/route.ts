@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
       const logoData = fs.readFileSync(logoPath);
       const logoBase64 = `data:image/png;base64,${logoData.toString('base64')}`;
       
-      // Add logo at top center (letterhead style)
-      doc.addImage(logoBase64, 'PNG', 80, 8, 50, 20); // x, y, width, height
+      // Add logo at top center (letterhead style) - smaller and higher
+      doc.addImage(logoBase64, 'PNG', 85, 5, 40, 16); // x, y, width, height
     } catch (error) {
       console.error("Error loading logo:", error);
       // Continue without logo if it fails to load
@@ -73,22 +73,22 @@ export async function GET(request: NextRequest) {
     // Add horizontal line
     doc.setDrawColor(20, 184, 166);
     doc.setLineWidth(0.5);
-    doc.line(14, 32, 196, 32);
+    doc.line(14, 23, 196, 23);
     
     // Add title in teal
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setTextColor(20, 184, 166); // Teal color
-    doc.text("Employee Contact List", 105, 40, { align: 'center' });
+    doc.text("Employee Contact List", 105, 29, { align: 'center' });
     
-    // Add date only
-    doc.setFontSize(9);
+    // Add date only (smaller, inline with title area)
+    doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
     const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    doc.text(`Generated: ${today}`, 14, 48);
+    doc.text(`Generated: ${today}`, 14, 29);
     
-    // Add table
+    // Add table - start much higher to fit everything on one page
     autoTable(doc, {
-      startY: 52,
+      startY: 33,
       head: [['Name', 'Job Title', 'Work Phone', 'Personal Phone', 'Work Email']],
       body: employees.map(emp => [
         emp.name,

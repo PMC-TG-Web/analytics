@@ -720,7 +720,6 @@ function EmployeesContent() {
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Email</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Phone</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Job Title</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Department</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Rate</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Status</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Actions</th>
@@ -729,7 +728,7 @@ function EmployeesContent() {
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-gray-500">
+                    <td colSpan={7} className="text-center py-12 text-gray-500">
                       {searchTerm
                         ? "No employees found matching your search"
                         : "No employees yet. Click 'Add Employee' to get started."}

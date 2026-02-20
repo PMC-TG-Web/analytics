@@ -643,27 +643,35 @@ function ShortTermScheduleContent() {
 
       // If no scopes in projectScopes collection, generate them from project scopeOfWork values
       if (rawScopes.length === 0) {
-        const generatedScopes: Scope[] = [];
-        const seenScopeNames = new Set<string>();
+        const scopesByJobKeyAndName: Record<string, Record<string, Scope>> = {};
         
         projs.forEach(p => {
           const jobKey = getProjectKey(p);
           const scopeName = (p.scopeOfWork || 'Default Scope').trim();
-          const scopeKey = `${jobKey}|${scopeName}`;
           
-          if (!seenScopeNames.has(scopeKey)) {
-            seenScopeNames.add(scopeKey);
-            generatedScopes.push({
+          if (!scopesByJobKeyAndName[jobKey]) scopesByJobKeyAndName[jobKey] = {};
+          
+          const key = scopeName.toLowerCase();
+          if (!scopesByJobKeyAndName[jobKey][key]) {
+            scopesByJobKeyAndName[jobKey][key] = {
               id: `generated-${jobKey}-${scopeName}`,
               jobKey: jobKey,
               title: scopeName,
-              hours: 0, // Will be enriched below
+              hours: 0,
               manpower: 0,
               startDate: '',
               endDate: '',
               description: ''
-            });
+            };
           }
+          // Aggregate hours from all projects with this scope
+          scopesByJobKeyAndName[jobKey][key].hours! += (p.hours || 0);
+        });
+        
+        // Flatten back to array
+        const generatedScopes: Scope[] = [];
+        Object.values(scopesByJobKeyAndName).forEach(scopesForJob => {
+          generatedScopes.push(...Object.values(scopesForJob));
         });
         rawScopes = generatedScopes;
       }

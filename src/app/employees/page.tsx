@@ -13,6 +13,7 @@ interface Employee {
   lastName: string;
   email: string;
   phone?: string;
+  workPhone?: string;
   jobTitle: string;
   department?: string;
   hourlyRate?: number;
@@ -85,6 +86,7 @@ function EmployeesContent() {
     lastName: "",
     email: "",
     phone: "",
+    workPhone: "",
     jobTitle: "Field Worker",
     department: "",
     hourlyRate: 0,
@@ -141,6 +143,7 @@ function EmployeesContent() {
       lastName: "",
       email: "",
       phone: "",
+      workPhone: "",
       jobTitle: "Field Worker",
       department: "",
       hourlyRate: 0,
@@ -164,6 +167,7 @@ function EmployeesContent() {
       lastName: employee.lastName,
       email: employee.email,
       phone: employee.phone || "",
+      workPhone: employee.workPhone || "",
       jobTitle: employee.jobTitle,
       department: employee.department || "",
       hourlyRate: employee.hourlyRate || 0,
@@ -197,6 +201,7 @@ function EmployeesContent() {
         lastName: formData.lastName!,
         email: formData.email!.toLowerCase(),
         phone: formData.phone || "",
+        workPhone: formData.workPhone || "",
         jobTitle: formData.jobTitle || "Field Worker",
         department: formData.department || "",
         hourlyRate: formData.hourlyRate || 0,
@@ -741,6 +746,20 @@ function EmployeesContent() {
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="(555) 123-4567"
+                  />
+                </div>
+
+                {/* Work Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Work Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.workPhone || ""}
+                    onChange={(e) => setFormData({ ...formData, workPhone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="(717) 000-0000"
                   />
                 </div>
 

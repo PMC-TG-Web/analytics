@@ -667,7 +667,7 @@ function ShortTermScheduleContent() {
             jobKey: jobKey,
             title: p.scopeOfWork || 'Default Scope',
             scopeName: p.scopeOfWork || 'Default Scope',
-            hours: 0,
+            hours: p.hours || 0,
             manpower: 0,
             startDate: '',
             endDate: '',

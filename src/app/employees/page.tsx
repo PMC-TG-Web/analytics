@@ -277,6 +277,12 @@ function EmployeesContent() {
     }
   }
 
+  function handleDownloadReport() {
+    const includeInactive = confirm("Include inactive employees in the report?\n\nClick OK to include inactive employees, or Cancel to only include active employees.");
+    const url = `/api/employees/export?includeInactive=${includeInactive}`;
+    window.location.href = url;
+  }
+
   async function deleteEmployee(employee: Employee) {
     if (!confirm(`Are you sure you want to delete ${employee.firstName} ${employee.lastName}?`)) {
       return;
@@ -567,16 +573,15 @@ function EmployeesContent() {
               Add Employee
             </button>
             
-            <a
-              href="/api/employees/export"
-              download
+            <button
+              onClick={handleDownloadReport}
               className="px-6 py-3 bg-teal-50 text-teal-800 border-2 border-teal-200 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-teal-100 transition-all shadow-lg shadow-teal-900/10 flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Download Report
-            </a>
+            </button>
             
             <Navigation currentPage="employees" />
           </div>

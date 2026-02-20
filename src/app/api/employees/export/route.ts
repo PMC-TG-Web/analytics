@@ -1,22 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const includeInactive = searchParams.get('includeInactive') === 'true';
+    
     const snapshot = await getDocs(collection(db, "employees"));
     
     // Build CSV with specific columns
     const csvRows = [];
-    csvRows.push("Name,Job Title,Work Phone,Personal Phone,Work Email");
+    csvRows.push("Name,Job Title,Work Phone,Personal Phone,Work Email,Status");
     
     snapshot.forEach((doc) => {
       const data = doc.data();
+      
+      // Filter out inactive employees if not included
+      if (!includeInactive && data.isActive === false) {
+        return;
+      }
       const name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
       const jobTitle = data.jobTitle || '';
       const workPhone = data.workPhone || '';
       const personalPhone = data.phone || '';
       const email = data.email || '';
+      const status = data.isActive === false ? 'Inactive' : 'Active';
       
       // Escape fields that might contain commas
       const escapeCsv = (field: string) => {
@@ -31,7 +40,8 @@ export async function GET() {
         escapeCsv(jobTitle),
         escapeCsv(workPhone),
         escapeCsv(personalPhone),
-        escapeCsv(email)
+        escapeCsv(email),
+        escapeCsv(status)
       ].join(','));
     });
     

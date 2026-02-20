@@ -110,6 +110,7 @@ function ShortTermScheduleContent() {
   const [selectedGanttProject, setSelectedGanttProject] = useState<ProjectInfo | null>(null);
   const [projectSearch, setProjectSearch] = useState("");
   const [isAddingProject, setIsAddingProject] = useState<boolean>(false);
+  const [scopeSelectionModal, setScopeSelectionModal] = useState<{ jobKey: string; projects: Project[] } | null>(null);
   const [targetingCell, setTargetingCell] = useState<{ date: Date; foremanId: string } | null>(null);
   const [draggedProject, setDraggedProject] = useState<{
     project: DayProject | Project;
@@ -240,6 +241,50 @@ function ShortTermScheduleContent() {
   }
 
   async function handleSearchProjectClick(p: Project) {
+    const jobKey = getProjectKey(p);
+    // Find all projects with this jobKey (all scopes)
+    const matchingProjects = allProjects.filter(proj => getProjectKey(proj) === jobKey);
+    
+    if (matchingProjects.length > 1) {
+      // Multiple scopes - show selection modal
+      setScopeSelectionModal({ jobKey, projects: matchingProjects });
+      return;
+    }
+    
+    // Single scope or direct add
+    if (!targetingCell) return;
+    
+    const { date, foremanId } = targetingCell;
+    const dateKey = formatDateKey(date);
+    const targetMonthStr = dateKey.substring(0, 7);
+    const position = getWeekDayPositionForDate(targetMonthStr, date);
+
+    if (position) {
+      setSaving(true);
+      try {
+        const newProject: DayProject = {
+          jobKey,
+          customer: p.customer || "",
+          projectNumber: p.projectNumber || "",
+          projectName: p.projectName || "",
+          hours: 8,
+          foreman: foremanId === "__unassigned__" ? "" : foremanId,
+          employees: [],
+          month: targetMonthStr,
+          weekNumber: position.weekNumber,
+          dayNumber: position.dayNumber
+        };
+        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, 8);
+        await loadSchedules();
+        setTargetingCell(null);
+        setIsAddingProject(false);
+      } finally {
+        setSaving(false);
+      }
+    }
+  }
+
+  async function handleScopeSelect(p: Project) {
     if (!targetingCell) return;
     
     const { date, foremanId } = targetingCell;
@@ -267,6 +312,7 @@ function ShortTermScheduleContent() {
         await loadSchedules();
         setTargetingCell(null);
         setIsAddingProject(false);
+        setScopeSelectionModal(null);
       } finally {
         setSaving(false);
       }
@@ -1176,19 +1222,27 @@ function ShortTermScheduleContent() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {allProjects
-                    .filter(p => 
+                  {(() => {
+                    // Group filtered projects by jobKey
+                    const filtered = allProjects.filter(p => 
                       p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
                       p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
                       p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
-                    )
-                    .slice(0, 50)
-                    .map((p, idx) => {
+                    );
+                    
+                    const grouped: Record<string, Project[]> = {};
+                    filtered.forEach(p => {
                       const jobKey = getProjectKey(p);
-                      const uniqueKey = `${jobKey}-${p.id || idx}`;
+                      if (!grouped[jobKey]) grouped[jobKey] = [];
+                      grouped[jobKey].push(p);
+                    });
+                    
+                    return Object.entries(grouped).slice(0, 50).map(([jobKey, projects], idx) => {
+                      const p = projects[0]; // Representative project
+                      const scopeCount = projects.length;
                       return (
                         <div
-                          key={uniqueKey}
+                          key={`${jobKey}-${idx}`}
                           draggable
                           onDragStart={() => handleDragStart(p)}
                           onClick={() => handleSearchProjectClick(p)}
@@ -1199,8 +1253,8 @@ function ShortTermScheduleContent() {
                           <div className="flex-1 overflow-hidden">
                             <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
                             <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} · #{p.projectNumber}</div>
-                            {p.scopeOfWork && (
-                              <div className="text-[9px] font-bold text-orange-600 truncate mt-1 italic">{p.scopeOfWork}</div>
+                            {scopeCount > 1 && (
+                              <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Scopes Available</div>
                             )}
                           </div>
                           <div className={`ml-3 opacity-30 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-500'}`}>
@@ -1216,7 +1270,8 @@ function ShortTermScheduleContent() {
                           </div>
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                 </div>
               )}
             </div>
@@ -1518,6 +1573,46 @@ function ShortTermScheduleContent() {
               await loadSchedules();
             }}
           />
+        )}
+
+        {/* Scope Selection Modal */}
+        {scopeSelectionModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setScopeSelectionModal(null)}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tight">{scopeSelectionModal.projects[0]?.projectName}</h3>
+                    <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer} · #{scopeSelectionModal.projects[0]?.projectNumber}</p>
+                  </div>
+                  <button
+                    onClick={() => setScopeSelectionModal(null)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="mt-3 text-xs font-black text-orange-600 uppercase tracking-widest">Select Scope of Work ({scopeSelectionModal.projects.length} options)</div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {scopeSelectionModal.projects.map((project, idx) => (
+                    <button
+                      key={project.id || idx}
+                      onClick={() => handleScopeSelect(project)}
+                      disabled={saving}
+                      className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="font-black text-gray-900 text-sm uppercase italic tracking-tight">{project.scopeOfWork || 'Unnamed Scope'}</div>
+                      <div className="text-[10px] font-bold text-orange-600 uppercase mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to Schedule →</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

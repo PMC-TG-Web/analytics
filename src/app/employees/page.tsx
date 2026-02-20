@@ -181,9 +181,9 @@ function EmployeesContent() {
   function openEditModal(employee: Employee) {
     setEditingEmployee(employee);
     setFormData({
-      firstName: employee.firstName,
-      lastName: employee.lastName,
-      email: employee.email,
+      firstName: employee.firstName || "",
+      lastName: employee.lastName || "",
+      email: employee.email || "",
       personalEmail: employee.personalEmail || "",
       phone: employee.phone || "",
       workPhone: employee.workPhone || "",
@@ -209,7 +209,12 @@ function EmployeesContent() {
   }
 
   async function saveEmployee() {
-    if (!formData.firstName || !formData.lastName || !formData.email) {
+    // Trim and validate required fields
+    const firstName = formData.firstName?.trim();
+    const lastName = formData.lastName?.trim();
+    const email = formData.email?.trim();
+    
+    if (!firstName || !lastName || !email) {
       alert("Please fill in all required fields (First Name, Last Name, Email)");
       return;
     }
@@ -221,9 +226,9 @@ function EmployeesContent() {
       
       const employeeData: Employee = {
         id: employeeId,
-        firstName: formData.firstName!,
-        lastName: formData.lastName!,
-        email: formData.email!.toLowerCase(),
+        firstName: firstName,
+        lastName: lastName,
+        email: email.toLowerCase(),
         personalEmail: formData.personalEmail || "",
         phone: formData.phone || "",
         workPhone: formData.workPhone || "",

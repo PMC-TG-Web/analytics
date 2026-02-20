@@ -25,7 +25,7 @@ export default function HandbookPage() {
     setIsClient(true);
     import("react-pdf").then(({ pdfjs }) => {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.js",
+        "pdfjs-dist/build/pdf.worker.min.mjs",
         import.meta.url
       ).toString();
     });

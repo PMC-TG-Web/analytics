@@ -245,9 +245,19 @@ function ShortTermScheduleContent() {
     // Find all projects with this jobKey (all scopes)
     const matchingProjects = allProjects.filter(proj => getProjectKey(proj) === jobKey);
     
-    if (matchingProjects.length > 1) {
-      // Multiple scopes - show selection modal
-      setScopeSelectionModal({ jobKey, projects: matchingProjects });
+    // Deduplicate by scopeOfWork
+    const uniqueScopes = new Map<string, Project>();
+    matchingProjects.forEach(proj => {
+      const scopeKey = proj.scopeOfWork || 'default';
+      if (!uniqueScopes.has(scopeKey)) {
+        uniqueScopes.set(scopeKey, proj);
+      }
+    });
+    const uniqueProjects = Array.from(uniqueScopes.values());
+    
+    if (uniqueProjects.length > 1) {
+      // Multiple unique scopes - show selection modal
+      setScopeSelectionModal({ jobKey, projects: uniqueProjects });
       return;
     }
     
@@ -1239,7 +1249,11 @@ function ShortTermScheduleContent() {
                     
                     return Object.entries(grouped).slice(0, 50).map(([jobKey, projects], idx) => {
                       const p = projects[0]; // Representative project
-                      const scopeCount = projects.length;
+                      
+                      // Count unique scopes
+                      const uniqueScopes = new Set(projects.map(proj => proj.scopeOfWork || 'default'));
+                      const scopeCount = uniqueScopes.size;
+                      
                       return (
                         <div
                           key={`${jobKey}-${idx}`}
@@ -1254,7 +1268,7 @@ function ShortTermScheduleContent() {
                             <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
                             <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} · #{p.projectNumber}</div>
                             {scopeCount > 1 && (
-                              <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Scopes Available</div>
+                              <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Unique Scopes</div>
                             )}
                           </div>
                           <div className={`ml-3 opacity-30 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-500'}`}>
@@ -1594,7 +1608,7 @@ function ShortTermScheduleContent() {
                     </svg>
                   </button>
                 </div>
-                <div className="mt-3 text-xs font-black text-orange-600 uppercase tracking-widest">Select Scope of Work ({scopeSelectionModal.projects.length} options)</div>
+                <div className="mt-3 text-xs font-black text-orange-600 uppercase tracking-widest">Select Scope of Work ({scopeSelectionModal.projects.length} unique options)</div>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

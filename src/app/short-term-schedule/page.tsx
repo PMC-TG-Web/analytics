@@ -642,6 +642,7 @@ function ShortTermScheduleContent() {
       });
 
       // If no scopes in projectScopes collection, generate them from project scopeOfWork values
+      let enrichedScopes: Scope[];
       if (rawScopes.length === 0) {
         const scopesByJobKeyAndName: Record<string, Record<string, Scope>> = {};
         
@@ -668,15 +669,16 @@ function ShortTermScheduleContent() {
           scopesByJobKeyAndName[jobKey][key].hours! += (p.hours || 0);
         });
         
-        // Flatten back to array
+        // Flatten back to array - already has correct hours, no enrichment needed
         const generatedScopes: Scope[] = [];
         Object.values(scopesByJobKeyAndName).forEach(scopesForJob => {
           generatedScopes.push(...Object.values(scopesForJob));
         });
-        rawScopes = generatedScopes;
+        enrichedScopes = generatedScopes;
+      } else {
+        enrichedScopes = getEnrichedScopes(rawScopes, projs);
       }
 
-      const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {
         if (scope.jobKey) {

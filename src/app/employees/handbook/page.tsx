@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,10 +9,24 @@ import { db } from "@/firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 export default function HandbookPage() {
+  const Document = dynamic(() => import("react-pdf").then((mod) => mod.Document), { ssr: false });
+  const Page = dynamic(() => import("react-pdf").then((mod) => mod.Page), { ssr: false });
   const { user } = useAuth();
   const [signed, setSigned] = useState<boolean | null>(null);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState(0);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.0);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+    import("react-pdf").then(({ pdfjs }) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+    });
+  }, []);
 
   useEffect(() => {
     if (user?.email) {
@@ -100,7 +115,7 @@ export default function HandbookPage() {
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Quick Links</h3>
                 <ul className="space-y-3">
                   <li>
-                    <a href="/public/documents/handbook.pdf" target="_blank" className="text-xs font-bold text-gray-700 hover:text-red-800 flex items-center gap-2 group">
+                    <a href="/documents/handbook.pdf" target="_blank" className="text-xs font-bold text-gray-700 hover:text-red-800 flex items-center gap-2 group">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-800 group-hover:scale-125 transition-all"></div>
                       Open PDF in New Tab
                     </a>
@@ -140,11 +155,83 @@ export default function HandbookPage() {
                   </div>
                 </div>
                 <div className="flex-1 bg-gray-200">
-                  <iframe 
-                    src="/documents/handbook.pdf" 
-                    className="w-full h-full min-h-[650px] border-none"
-                    title="Company Handbook"
-                  />
+                  <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                        className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-bold uppercase tracking-wider hover:bg-gray-200"
+                        disabled={pageNumber <= 1}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPageNumber((p) => Math.min(numPages || 1, p + 1))}
+                        className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-bold uppercase tracking-wider hover:bg-gray-200"
+                        disabled={numPages > 0 && pageNumber >= numPages}
+                      >
+                        Next
+                      </button>
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Page {pageNumber}{numPages ? ` of ${numPages}` : ""}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setScale((s) => Math.max(0.75, Number((s - 0.1).toFixed(2))))}
+                        className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-bold uppercase tracking-wider hover:bg-gray-200"
+                      >
+                        -
+                      </button>
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        {Math.round(scale * 100)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setScale((s) => Math.min(2, Number((s + 0.1).toFixed(2))))}
+                        className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-bold uppercase tracking-wider hover:bg-gray-200"
+                      >
+                        +
+                      </button>
+                      <a
+                        href="/documents/handbook.pdf"
+                        target="_blank"
+                        className="px-2 py-1 rounded bg-red-800 text-white text-xs font-bold uppercase tracking-wider hover:bg-red-900"
+                      >
+                        Open PDF
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex justify-center p-4 overflow-auto">
+                    {!isClient ? (
+                      <div className="text-gray-500 text-sm">Loading handbook...</div>
+                    ) : pdfError ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-600 text-sm">
+                        <p className="font-bold">PDF preview unavailable.</p>
+                        <p className="text-xs mt-1">{pdfError}</p>
+                        <a href="/documents/handbook.pdf" target="_blank" className="text-red-800 font-bold mt-2">
+                          Open handbook PDF
+                        </a>
+                      </div>
+                    ) : (
+                      <Document
+                        file="/documents/handbook.pdf"
+                        onLoadSuccess={({ numPages }) => {
+                          setNumPages(numPages);
+                          setPageNumber(1);
+                        }}
+                        onLoadError={(err) => {
+                          console.error("PDF load error:", err);
+                          setPdfError("Please open the PDF in a new tab.");
+                        }}
+                        loading={<div className="text-gray-500 text-sm">Loading handbook...</div>}
+                      >
+                        <Page pageNumber={pageNumber} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      </Document>
+                    )}
+                  </div>
                 </div>
                 <div className="p-6 bg-gray-50 border-t border-gray-100 text-center">
                   <p className="text-gray-400 font-bold uppercase text-[9px] tracking-widest">

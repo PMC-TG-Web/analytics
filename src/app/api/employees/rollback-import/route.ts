@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase";
 
-// The names from the contact list import
+// The names from the Company Directory import
 const importedNames = [
-  "Alvin Huyard", "Jason Stoltzfus", "Joey Beiler", "Matt King", "Omar Stoltzfus", 
-  "Ray King", "Ivan Zavaleta", "James King", "Matt Beiler", "Mose Zook", 
-  "Willie Stoltzfus", "Francisco Romero", "Japheth King", "Jesse King", "Johnny King", 
-  "Jose Alpizar", "Jose Cruz", "Kevin Buch", "Lee Zook", "Logan Spence", 
-  "Omar Garcia Cruz", "Abner Stoltzfus", "Dan Hess", "Danny Hess", "Danny Jones", 
-  "Dave Garrett", "Isaac Stoltzfus Jr.", "Jane Dropeskey", "John Stoltzfus", 
-  "Josh Guidroz", "Levi Stoltzfus", "Merv Allgyer", "Rick Steffy", "Scott Swinehart", 
-  "Shelly Swinehart", "Todd Gilmore"
+  "Mervin Allgyer", "Jose Alpizar", "Joseph Beiler", "Matt Beiler", "Kevin Buch", 
+  "Omar Garcia Cruz", "Jose Cruz-Loaeza", "Jane Dropeskey", "Francisco Garcia Romero", 
+  "David Garrett", "Todd Gilmore", "Joshua Guidroz", "Daniel Hess", "Daniel Hess (son)", 
+  "Alvin Huyard", "Danny Jones", "James King", "Japheth King", "Jesse King", "John King", 
+  "Matthew King", "Raymond King Jr", "Logan Spence", "Rick Steffy", "Abner Stoltzfus", 
+  "Jason Stoltzfus", "John Stoltzfus", "Levi Stoltzfus", "Omar Stoltzfus", "William Stoltzfus", 
+  "Isaac Stoltzfus Jr", "Scott Swinehart", "Shelly Swinehart", "Ivan Zavaleta Lopez", 
+  "Lee Zook", "Mose Zook"
 ];
 
 export async function POST(request: NextRequest) {

@@ -12,10 +12,16 @@ interface Employee {
   firstName: string;
   lastName: string;
   email: string;
+  personalEmail?: string;
   phone?: string;
   workPhone?: string;
   jobTitle: string;
   department?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
   hourlyRate?: number;
   vacationHours?: number;
   keypadCode?: string;
@@ -85,10 +91,16 @@ function EmployeesContent() {
     firstName: "",
     lastName: "",
     email: "",
+    personalEmail: "",
     phone: "",
     workPhone: "",
     jobTitle: "Field Worker",
     department: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    country: "United States",
     hourlyRate: 0,
     vacationHours: 0,
     keypadCode: "",
@@ -142,10 +154,16 @@ function EmployeesContent() {
       firstName: "",
       lastName: "",
       email: "",
+      personalEmail: "",
       phone: "",
       workPhone: "",
       jobTitle: "Field Worker",
       department: "",
+      address: "",
+      city: "",
+      state: "",
+      zip: "",
+      country: "United States",
       hourlyRate: 0,
       vacationHours: 0,
       keypadCode: "",
@@ -166,10 +184,16 @@ function EmployeesContent() {
       firstName: employee.firstName,
       lastName: employee.lastName,
       email: employee.email,
+      personalEmail: employee.personalEmail || "",
       phone: employee.phone || "",
       workPhone: employee.workPhone || "",
       jobTitle: employee.jobTitle,
       department: employee.department || "",
+      address: employee.address || "",
+      city: employee.city || "",
+      state: employee.state || "",
+      zip: employee.zip || "",
+      country: employee.country || "United States",
       hourlyRate: employee.hourlyRate || 0,
       vacationHours: employee.vacationHours || 0,
       keypadCode: employee.keypadCode || "",
@@ -200,10 +224,16 @@ function EmployeesContent() {
         firstName: formData.firstName!,
         lastName: formData.lastName!,
         email: formData.email!.toLowerCase(),
+        personalEmail: formData.personalEmail || "",
         phone: formData.phone || "",
         workPhone: formData.workPhone || "",
         jobTitle: formData.jobTitle || "Field Worker",
         department: formData.department || "",
+        address: formData.address || "",
+        city: formData.city || "",
+        state: formData.state || "",
+        zip: formData.zip || "",
+        country: formData.country || "United States",
         hourlyRate: formData.hourlyRate || 0,
         vacationHours: formData.vacationHours || 0,
         keypadCode: formData.keypadCode || "",
@@ -747,6 +777,20 @@ function EmployeesContent() {
                   />
                 </div>
 
+                {/* Personal Email */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Personal Email
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.personalEmail || ""}
+                    onChange={(e) => setFormData({ ...formData, personalEmail: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="john.doe@gmail.com"
+                  />
+                </div>
+
                 {/* Phone */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -807,6 +851,76 @@ function EmployeesContent() {
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="Construction"
+                  />
+                </div>
+
+                {/* Address */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.address || ""}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="123 Main St"
+                  />
+                </div>
+
+                {/* City */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.city || ""}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Lancaster"
+                  />
+                </div>
+
+                {/* State */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    State
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.state || ""}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Pennsylvania"
+                  />
+                </div>
+
+                {/* Zip */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Zip Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.zip || ""}
+                    onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="17527"
+                  />
+                </div>
+
+                {/* Country */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Country
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.country || "United States"}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="United States"
                   />
                 </div>
 

@@ -57,7 +57,14 @@ interface Employee {
   lastName: string;
   jobTitle: string;
   email?: string;
+  personalEmail?: string;
   phone?: string;
+  workPhone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
   isActive?: boolean;
 }
 

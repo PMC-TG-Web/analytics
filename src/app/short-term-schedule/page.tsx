@@ -649,14 +649,35 @@ function ShortTermScheduleContent() {
           scopesObj[scope.jobKey].push(scope);
         }
       });
+      
+      // Also create scopes from project documents with different scopeOfWork values
+      projectsByJobKey.forEach((projectsForKey, jobKey) => {
+        const uniqueScopes = new Map<string, Project>();
+        projectsForKey.forEach(p => {
+          const scopeName = p.scopeOfWork || 'Default Scope';
+          if (!uniqueScopes.has(scopeName)) {
+            uniqueScopes.set(scopeName, p);
+          }
+        });
+        
+        // Create Scope objects from unique project scopeOfWork values if scopesObj doesn't have any
+        if (!scopesObj[jobKey] || scopesObj[jobKey].length === 0) {
+          scopesObj[jobKey] = Array.from(uniqueScopes.values()).map((p, idx) => ({
+            id: `${p.id}-scope-${idx}`,
+            jobKey: jobKey,
+            title: p.scopeOfWork || 'Default Scope',
+            scopeName: p.scopeOfWork || 'Default Scope',
+            hours: 0,
+            manpower: 0,
+            startDate: '',
+            endDate: '',
+            description: ''
+          })) as Scope[];
+        }
+      });
+      
       setScopesByJobKey(scopesObj);
 
-      // Calculate the date range for next 5 weeks (including current week)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Find the Monday of the current week
-      const currentWeekStart = new Date(today);
       const dayOfWeek = currentWeekStart.getDay();
       const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       currentWeekStart.setDate(currentWeekStart.getDate() + daysToMonday);

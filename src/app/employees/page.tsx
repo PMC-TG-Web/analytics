@@ -572,7 +572,6 @@ function EmployeesContent() {
                   email: "",
                   phone: "",
                   jobTitle: "Field Worker",
-                  department: "",
                   hourlyRate: 0,
                   vacationHours: 0,
                   keypadCode: "",

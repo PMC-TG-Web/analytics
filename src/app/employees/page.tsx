@@ -89,6 +89,19 @@ function EmployeesContent() {
   const [downloadModalVisible, setDownloadModalVisible] = useState(false);
   const [includeInactiveEmployees, setIncludeInactiveEmployees] = useState(false);
 
+  // Job titles state
+  const [jobTitles, setJobTitles] = useState<string[]>([
+    "Field Worker",
+    "Project Manager",
+    "Superintendent",
+    "Foreman",
+    "Estimator",
+    "Office Staff",
+    "Executive",
+  ]);
+  const [showAddJobTitle, setShowAddJobTitle] = useState(false);
+  const [newJobTitle, setNewJobTitle] = useState("");
+
   // Form state
   const [formData, setFormData] = useState<Partial<Employee>>({
     firstName: "",
@@ -117,6 +130,7 @@ function EmployeesContent() {
 
   useEffect(() => {
     loadEmployees();
+    loadJobTitles();
   }, []);
 
   function formatPhoneNumber(phone: string): string {
@@ -135,6 +149,47 @@ function EmployeesContent() {
     
     // Return original if not 10 digits
     return phone;
+  }
+
+  async function loadJobTitles() {
+    try {
+      const snapshot = await getDocs(collection(db, "jobTitles"));
+      if (!snapshot.empty) {
+        const titles = snapshot.docs.map(doc => doc.data().title as string);
+        setJobTitles(titles.sort());
+      }
+    } catch (error) {
+      console.error("Error loading job titles:", error);
+    }
+  }
+
+  async function addJobTitle() {
+    if (!newJobTitle.trim()) return;
+    
+    const trimmedTitle = newJobTitle.trim();
+    if (jobTitles.includes(trimmedTitle)) {
+      alert("This job title already exists");
+      return;
+    }
+
+    try {
+      // Add to Firestore
+      await addDoc(collection(db, "jobTitles"), {
+        title: trimmedTitle,
+        createdAt: new Date().toISOString()
+      });
+      
+      // Update local state
+      setJobTitles([...jobTitles, trimmedTitle].sort());
+      setNewJobTitle("");
+      setShowAddJobTitle(false);
+      
+      // Update form data to use the new title
+      setFormData({ ...formData, jobTitle: trimmedTitle });
+    } catch (error) {
+      console.error("Error adding job title:", error);
+      alert("Failed to add job title");
+    }
   }
 
   async function loadEmployees() {
@@ -852,20 +907,51 @@ function EmployeesContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Job Title
                   </label>
-                  <select
-                    value={formData.jobTitle}
-                    onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    <option value="Field Worker">Field Worker</option>
-                    <option value="Project Manager">Project Manager</option>
-                    <option value="Superintendent">Superintendent</option>
-                    <option value="Foreman">Foreman</option>
-                    <option value="Estimator">Estimator</option>
-                    <option value="Office Staff">Office Staff</option>
-                    <option value="Executive">Executive</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.jobTitle}
+                      onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      {jobTitles.map(title => (
+                        <option key={title} value={title}>{title}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddJobTitle(!showAddJobTitle)}
+                      className="px-3 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors text-sm font-medium"
+                      title="Add new job title"
+                    >
+                      +
+                    </button>
+                  </div>
+                  {showAddJobTitle && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        value={newJobTitle}
+                        onChange={(e) => setNewJobTitle(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addJobTitle()}
+                        placeholder="Enter new job title"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={addJobTitle}
+                        className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddJobTitle(false); setNewJobTitle(""); }}
+                        className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Address */}

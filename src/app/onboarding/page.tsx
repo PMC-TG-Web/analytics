@@ -103,7 +103,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <ProtectedPage page="public" requireAuth={false}>
+    <ProtectedPage page="onboarding" requireAuth={true}>
       <div className="min-h-screen bg-gray-50 py-6 sm:py-12 px-3 sm:px-6 lg:px-8 font-sans">
         <div className="max-w-4xl mx-auto">
           {/* Header */}

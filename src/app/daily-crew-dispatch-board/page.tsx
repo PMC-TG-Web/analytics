@@ -266,7 +266,7 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Right Hand Man" || emp.jobTitle === "Right Hand Man/ Sealhard Crew Leader"));
+      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
       setForemen(foremenList);
 
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];

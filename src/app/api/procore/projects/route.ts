@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     let accessToken = request.cookies.get('procore_access_token')?.value;
     const refreshToken = request.cookies.get('procore_refresh_token')?.value;
+    let refreshedAccessToken: string | null = null;
 
     const requestedCompanyId = request.nextUrl.searchParams.get('companyId')?.trim();
     const includeBidBoard = request.nextUrl.searchParams.get('includeBidBoard') !== '0';
@@ -30,8 +31,24 @@ export async function GET(request: NextRequest) {
     const effectiveCompanyId = requestedCompanyId || companyId;
     console.log(`[Procore Projects] Fetching from v2.0 bid board and v1.1 projects`);
 
+    const makeRequestWithRefresh = async (endpoint: string, options?: RequestInit) => {
+      try {
+        return await makeRequest(endpoint, accessToken, options);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('401') && refreshToken) {
+          const newToken = await refreshAccessToken(refreshToken);
+          accessToken = newToken.access_token;
+          refreshedAccessToken = newToken.access_token;
+          return await makeRequest(endpoint, accessToken, options);
+        }
+        throw error;
+      }
+    };
+
     // Fetch from v2.0 bid board (has customer data) - with pagination
     let bidBoardProjects: any[] = [];
+    let bidBoardWarning: string | null = null;
     if (includeBidBoard) {
       try {
         const bidBoardStart = Date.now();
@@ -40,16 +57,18 @@ export async function GET(request: NextRequest) {
         while (hasMore) {
           if (page > maxBidBoardPages) {
             console.log(`[Procore Projects] v2.0 page limit reached (${maxBidBoardPages}). Stopping.`);
+            bidBoardWarning = 'Bid board pagination limit reached.';
             break;
           }
           if (Date.now() - bidBoardStart > bidBoardTimeBudgetMs) {
             console.log('[Procore Projects] v2.0 time budget reached. Stopping.');
+            bidBoardWarning = 'Bid board time budget reached.';
             break;
           }
 
           const bidBoardEndpoint = `/rest/v2.0/companies/${effectiveCompanyId}/estimating/bid_board_projects?per_page=100&page=${page}`;
           console.log(`[Procore Projects] Fetching v2.0 page ${page}: ${bidBoardEndpoint}`);
-          const bidResult = await makeRequest(bidBoardEndpoint, accessToken, {
+          const bidResult = await makeRequestWithRefresh(bidBoardEndpoint, {
             headers: { 'Procore-Company-Id': effectiveCompanyId }
           });
           
@@ -77,6 +96,7 @@ export async function GET(request: NextRequest) {
         console.log(`[Procore Projects] Total fetched ${bidBoardProjects.length} projects from v2.0`);
       } catch (e) {
         console.error('[Procore Projects] v2.0 error:', e);
+        bidBoardWarning = 'Bid board enrichment failed.';
       }
     } else {
       console.log('[Procore Projects] Skipping v2.0 bid board fetch (includeBidBoard=0)');
@@ -95,7 +115,7 @@ export async function GET(request: NextRequest) {
         while (true) {
           const endpoint = `/rest/v1.0/companies/${targetCompanyId}/projects?per_page=100&page=${page}`;
           console.log(`[Procore Projects] Fetching v1.0 company projects page ${page}`);
-          const result = await makeRequest(endpoint, accessToken, {
+          const result = await makeRequestWithRefresh(endpoint, {
             headers: { 'Procore-Company-Id': targetCompanyId }
           });
           const pageResults = Array.isArray(result) ? result : (result?.data || []);
@@ -135,7 +155,7 @@ export async function GET(request: NextRequest) {
       while (true) {
         const endpoint = `/rest/v1.1/projects?company_id=${targetCompanyId}&view=extended&per_page=100&page=${page}`;
         console.log(`[Procore Projects] Fetching v1.1 page ${page}`);
-        const result = await makeRequest(endpoint, accessToken, {
+        const result = await makeRequestWithRefresh(endpoint, {
           headers: { 'Procore-Company-Id': targetCompanyId }
         });
         const pageResults = Array.isArray(result) ? result : (result?.data || []);
@@ -291,7 +311,7 @@ export async function GET(request: NextRequest) {
 
     if (debug) {
       // Debug mode: show summary stats and sample projects
-      return NextResponse.json({
+      const debugResponse = NextResponse.json({
         success: true,
         debug: {
           bidBoardCount: bidBoardProjects.length,
@@ -303,12 +323,34 @@ export async function GET(request: NextRequest) {
             name_exact: nameMatches,
             name_normalized: normalizedNameMatches,
           },
+          bidBoardWarning,
         },
         projects: mappedProjects.slice(0, 10),
       });
+      if (refreshedAccessToken) {
+        debugResponse.cookies.set('procore_access_token', refreshedAccessToken, {
+          httpOnly: true,
+          secure: request.url.startsWith('https://') || process.env.NODE_ENV === 'production',
+          sameSite: request.url.startsWith('https://') || process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          path: '/',
+          maxAge: 3600,
+        });
+      }
+      return debugResponse;
     }
 
-    return NextResponse.json({ success: true, projects: mappedProjects });
+    const warnings = bidBoardWarning ? [bidBoardWarning] : [];
+    const response = NextResponse.json({ success: true, projects: mappedProjects, warnings });
+    if (refreshedAccessToken) {
+      response.cookies.set('procore_access_token', refreshedAccessToken, {
+        httpOnly: true,
+        secure: request.url.startsWith('https://') || process.env.NODE_ENV === 'production',
+        sameSite: request.url.startsWith('https://') || process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/',
+        maxAge: 3600,
+      });
+    }
+    return response;
   } catch (error) {
     console.error('[Procore Projects] Error:', error);
     return NextResponse.json({ 

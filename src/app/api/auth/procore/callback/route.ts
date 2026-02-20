@@ -44,7 +44,15 @@ export async function GET(request: NextRequest) {
    
     // Store token in secure httpOnly cookie
     // Append status=authenticated if we're going back to the procore page
-    let redirectPath = state || '/dashboard';
+    const isSafeRedirect = (value: string | null) => {
+      if (!value) return false;
+      if (!value.startsWith('/')) return false;
+      if (value.startsWith('//')) return false;
+      if (value.includes('://')) return false;
+      return true;
+    };
+
+    let redirectPath = isSafeRedirect(state) ? state! : '/dashboard';
     if (redirectPath.includes('/procore')) {
       const url = new URL(redirectPath, request.url);
       url.searchParams.set('status', 'authenticated');

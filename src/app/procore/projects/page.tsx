@@ -73,7 +73,21 @@ export default function ProcoreProjectsPage() {
       const response = await fetch(endpoint, { credentials: 'include' });
 
       if (!response.ok) {
-        throw new Error('Download failed');
+        let message = 'Download failed';
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) message = errorData.error;
+        } catch {
+          const text = await response.text();
+          if (text) message = text;
+        }
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            message = `${message} Try again in ${retryAfter} seconds.`;
+          }
+        }
+        throw new Error(message);
       }
 
       const blob = await response.blob();
@@ -89,7 +103,8 @@ export default function ProcoreProjectsPage() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      alert(`Failed to download ${type}`);
+      const message = err instanceof Error ? err.message : `Failed to download ${type}`;
+      alert(message);
       console.error('Download error:', err);
     }
   };

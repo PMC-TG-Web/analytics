@@ -185,26 +185,26 @@ function HolidaysContent() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-black text-red-600 uppercase tracking-tighter">
+            <h1 className="text-4xl font-bold text-white uppercase tracking-normal">
               Holiday Schedule
             </h1>
-            <p className="text-stone-400 text-sm italic">Manage company holidays and paid time off</p>
+            <p className="text-gray-400 text-sm mt-1">Manage company holidays and paid time off</p>
           </div>
-          <div className="flex gap-4 items-center">
-            <div className="text-[9px] text-stone-500 uppercase font-black text-right hidden lg:block mr-2 leading-tight">
+          <div className="flex gap-3 items-center">
+            <div className="text-xs text-gray-400 uppercase font-semibold text-right hidden lg:block mr-2 leading-tight">
               CSV Format:<br/>Name, YYYY-MM-DD, Paid(true/false)
             </div>
             <button
               onClick={() => handleOpenModal()}
-              className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded text-xs font-bold uppercase transition-colors shadow-lg"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-semibold uppercase transition-colors"
             >
               Add Holiday
             </button>
-            <label className="bg-stone-800 hover:bg-stone-700 text-white px-4 py-2 rounded text-xs font-bold uppercase transition-colors border border-stone-700 cursor-pointer text-center min-w-[100px]">
+            <label className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-xs font-semibold uppercase transition-colors border border-slate-600 cursor-pointer text-center min-w-[100px]">
               {importing ? "Importing..." : "Import CSV"}
               <input 
                 type="file" 
@@ -218,7 +218,7 @@ function HolidaysContent() {
               <button
                 onClick={handleSeed}
                 disabled={seeding}
-                className="bg-stone-800 hover:bg-stone-700 text-white px-4 py-2 rounded text-xs font-bold uppercase transition-colors border border-stone-700"
+                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-xs font-semibold uppercase transition-colors border border-slate-600"
               >
                 {seeding ? "Seeding..." : "Seed 2026"}
               </button>
@@ -229,31 +229,31 @@ function HolidaysContent() {
 
         {loading ? (
           <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {holidays.map((holiday) => (
               <div
                 key={holiday.id}
-                className="bg-stone-900 border border-stone-800 p-4 rounded-lg flex justify-between items-start group hover:border-red-900/50 transition-all"
+                className="bg-slate-700/50 border border-slate-600 p-4 rounded-lg flex justify-between items-start group hover:border-blue-500 hover:bg-slate-700/80 transition-all"
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-red-100">{holiday.name}</h3>
+                    <h3 className="font-bold text-white">{holiday.name}</h3>
                     {holiday.isPaid && (
-                        <span className="bg-green-900/30 text-green-400 text-[10px] px-1.5 py-0.5 rounded font-black border border-green-900/50 uppercase">
+                        <span className="bg-green-500/20 text-green-200 text-xs px-2 py-1 rounded font-semibold uppercase">
                             Paid
                         </span>
                     )}
                   </div>
-                  <p className="text-xl font-black text-white">{new Date(holiday.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-                  <p className="text-stone-500 text-xs mt-1 uppercase font-bold">{holiday.date}</p>
+                  <p className="text-lg font-semibold text-white">{new Date(holiday.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                  <p className="text-gray-400 text-xs mt-1 uppercase font-semibold">{holiday.date}</p>
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleOpenModal(holiday)}
-                    className="text-stone-400 hover:text-white p-1"
+                    className="text-gray-400 hover:text-white p-1"
                     title="Edit"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -262,7 +262,7 @@ function HolidaysContent() {
                   </button>
                   <button
                     onClick={() => handleDelete(holiday.id!)}
-                    className="text-stone-600 hover:text-red-500 p-1"
+                    className="text-gray-600 hover:text-red-500 p-1"
                     title="Delete"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -273,8 +273,8 @@ function HolidaysContent() {
               </div>
             ))}
             {holidays.length === 0 && (
-              <div className="col-span-full py-12 text-center bg-stone-900/50 border border-dashed border-stone-800 rounded-lg">
-                <p className="text-stone-500">No holidays scheduled yet.</p>
+              <div className="col-span-full py-12 text-center bg-slate-700/30 border border-dashed border-slate-600 rounded-lg">
+                <p className="text-gray-400">No holidays scheduled yet.</p>
               </div>
             )}
           </div>
@@ -283,30 +283,30 @@ function HolidaysContent() {
         {/* Modal */}
         {modalVisible && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-stone-900 border border-stone-800 p-6 rounded-xl w-full max-w-md shadow-2xl">
-              <h2 className="text-xl font-black text-white mb-6 uppercase tracking-tight">
+            <div className="bg-slate-700/50 border border-slate-600 p-6 rounded-lg w-full max-w-md">
+              <h2 className="text-xl font-bold text-white mb-6">
                 {editingHoliday ? "Edit" : "Add"} Holiday
               </h2>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-black text-stone-500 uppercase mb-1">Holiday Name</label>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-2">Holiday Name</label>
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-black border border-stone-800 rounded px-3 py-2 text-sm text-white focus:border-red-700 outline-none transition-colors"
+                    className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors"
                     placeholder="e.g. New Year's Day"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-stone-500 uppercase mb-1">Date</label>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-2">Date</label>
                   <input
                     type="date"
                     required
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full bg-black border border-stone-800 rounded px-3 py-2 text-sm text-white focus:border-red-700 outline-none transition-colors [color-scheme:dark]"
+                    className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors [color-scheme:dark]"
                   />
                 </div>
                 <div className="flex items-center gap-3 py-2">
@@ -315,9 +315,9 @@ function HolidaysContent() {
                     id="isPaid"
                     checked={formData.isPaid}
                     onChange={(e) => setFormData({ ...formData, isPaid: e.target.checked })}
-                    className="w-4 h-4 accent-red-600"
+                    className="w-4 h-4 accent-blue-600"
                   />
-                  <label htmlFor="isPaid" className="text-xs font-bold text-stone-300 cursor-pointer uppercase">
+                  <label htmlFor="isPaid" className="text-xs font-semibold text-gray-300 cursor-pointer uppercase">
                     Paid Holiday
                   </label>
                 </div>
@@ -325,14 +325,14 @@ function HolidaysContent() {
                   <button
                     type="button"
                     onClick={() => setModalVisible(false)}
-                    className="flex-1 bg-stone-800 hover:bg-stone-700 text-white py-2 rounded text-xs font-bold uppercase transition-colors"
+                    className="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded text-xs font-semibold uppercase transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white py-2 rounded text-xs font-bold uppercase transition-colors"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded text-xs font-semibold uppercase transition-colors"
                   >
                     {saving ? "Saving..." : editingHoliday ? "Update" : "Add"}
                   </button>

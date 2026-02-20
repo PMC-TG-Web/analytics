@@ -657,7 +657,6 @@ function ShortTermScheduleContent() {
               id: `generated-${jobKey}-${scopeName}`,
               jobKey: jobKey,
               title: scopeName,
-              scopeName: scopeName,
               hours: 0, // Will be enriched below
               manpower: 0,
               startDate: '',

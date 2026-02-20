@@ -485,25 +485,50 @@ function ShortTermScheduleContent() {
 
   async function loadSchedules() {
     try {
+      // Helper: Get cached data
+      const getCache = (key: string) => {
+        try {
+          const cached = sessionStorage.getItem(key);
+          if (!cached) return null;
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 5 * 60 * 1000) return data;
+          sessionStorage.removeItem(key);
+        } catch (e) {
+          sessionStorage.removeItem(key);
+        }
+        return null;
+      };
+
+      const setCache = (key: string, data: any) => {
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+        } catch (e) {
+          console.error('Cache error:', e);
+        }
+      };
+
       // Load employees to get foremen
-      const employeesSnapshot = await getDocs(collection(db, "employees"));
-      
-      const allEmps = employeesSnapshot.docs
-        .map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            firstName: data.firstName || '',
-            lastName: data.lastName || '',
-            jobTitle: data.jobTitle || data.role || '',
-            isActive: data.isActive !== false
-          } as Employee;
-        })
-        .sort((a, b) => {
-          const nameA = `${a.firstName} ${a.lastName}`;
-          const nameB = `${b.firstName} ${b.lastName}`;
-          return nameA.localeCompare(nameB);
-        });
+      let allEmps: Employee[] = getCache('schedule_employees') || [];
+      if (allEmps.length === 0) {
+        const employeesSnapshot = await getDocs(collection(db, "employees"));
+        allEmps = employeesSnapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              firstName: data.firstName || '',
+              lastName: data.lastName || '',
+              jobTitle: data.jobTitle || data.role || '',
+              isActive: data.isActive !== false
+            } as Employee;
+          })
+          .sort((a, b) => {
+            const nameA = `${a.firstName} ${a.lastName}`;
+            const nameB = `${b.firstName} ${b.lastName}`;
+            return nameA.localeCompare(nameB);
+          });
+        setCache('schedule_employees', allEmps);
+      }
       
       setAllEmployees(allEmps);
 
@@ -523,14 +548,23 @@ function ShortTermScheduleContent() {
       );
       setForemen(foremenList);
       
-const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapshot] = await Promise.all([
-          getDocs(collection(db, "long term schedual")),
-          getDocs(collection(db, "short term schedual")),
-          getDocs(collection(db, "projectScopes")),
-          getDocs(collection(db, "timeOffRequests"))
-        ]);
+      // Cache projectScopes since they don't change often
+      let rawScopes: Scope[] = getCache('schedule_projectScopes') || [];
+      let scopesNeedRefresh = rawScopes.length === 0;
 
-        const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
+      const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapshot] = await Promise.all([
+        getDocs(collection(db, "long term schedual")),
+        getDocs(collection(db, "short term schedual")),
+        scopesNeedRefresh ? getDocs(collection(db, "projectScopes")) : Promise.resolve(null),
+        getDocs(collection(db, "timeOffRequests"))
+      ]);
+
+      if (projectScopesSnapshot) {
+        rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+        setCache('schedule_projectScopes', rawScopes);
+      }
+
+      const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
 
       // Optimization: Fetch only active, non-archived projects. 
       // Excluding "Bid Submitted", "Lost", and Archived saves ~18,000 document reads.
@@ -551,7 +585,6 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
         projectsByJobKey[pKey].push(p);
       });
 
-      const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {

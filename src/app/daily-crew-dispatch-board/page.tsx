@@ -195,6 +195,31 @@ function DailyCrewDispatchBoardContent() {
       setLoading(true);
       const start = Date.now();
       
+      // Helper: Get cached data (5 min cache)
+      const getCache = (key: string) => {
+        try {
+          const cached = sessionStorage.getItem(key);
+          if (!cached) return null;
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 5 * 60 * 1000) return data;
+          sessionStorage.removeItem(key);
+        } catch (e) {
+          sessionStorage.removeItem(key);
+        }
+        return null;
+      };
+
+      const setCache = (key: string, data: any) => {
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+        } catch (e) {}
+      };
+
+      // Check cache for static data
+      let cachedEmployees: Employee[] | null = getCache('dispatch_employees');
+      let cachedScopes = getCache('dispatch_projectScopes');
+      let cachedHolidays = getCache('dispatch_holidays');
+      
       const [
         employeesSnapshot,
         shortTermSnapshot, 
@@ -204,9 +229,9 @@ function DailyCrewDispatchBoardContent() {
         timeOffSnapshot, 
         holidaysSnapshot
       ] = await Promise.all([
-        getDocs(collection(db, "employees")),
+        cachedEmployees ? Promise.resolve(null) : getDocs(collection(db, "employees")),
         getDocs(collection(db, "short term schedual")),
-        getDocs(collection(db, "projectScopes")),
+        cachedScopes ? Promise.resolve(null) : getDocs(collection(db, "projectScopes")),
         getDocs(query(
           collection(db, "projects"),
           where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
@@ -214,12 +239,12 @@ function DailyCrewDispatchBoardContent() {
         )),
         getDocs(collection(db, "long term schedual")),
         getDocs(collection(db, "timeOffRequests")),
-        getDocs(collection(db, "holidays"))
+        cachedHolidays ? Promise.resolve(null) : getDocs(collection(db, "holidays"))
       ]);
 
       console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
 
-      const allEmps = employeesSnapshot.docs
+      const allEmps = cachedEmployees || (employeesSnapshot ? employeesSnapshot.docs
         .map(doc => {
           const data = doc.data();
           return {
@@ -236,7 +261,10 @@ function DailyCrewDispatchBoardContent() {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
           return nameA.localeCompare(nameB);
-        });
+        }) : []);
+      
+      if (!cachedEmployees) setCache('dispatch_employees', allEmps);
+      
       setAllEmployees(allEmps);
       const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman"));
       setForemen(foremenList);
@@ -244,12 +272,15 @@ function DailyCrewDispatchBoardContent() {
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
       setTimeOffRequests(requests);
 
-      const holidayListData = holidaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Holiday[];
+      const holidayListData = cachedHolidays || (holidaysSnapshot ? holidaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) : []) as Holiday[];
+      if (!cachedHolidays && holidaysSnapshot) setCache('dispatch_holidays', holidayListData);
       setHolidays(holidayListData);
       
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
       
-      const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      const rawScopes = cachedScopes || (projectScopesSnapshot ? projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope)) : []);
+      if (!cachedScopes && projectScopesSnapshot) setCache('dispatch_projectScopes', rawScopes);
+      
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {

@@ -309,13 +309,38 @@ export default function KPIPage() {
       try {
         let projectsData: Project[] = [];
 
-        // Fetch projects from Firestore
-        console.log("[KPI] Fetching projects from Firestore...");
-        const projectsSnapshot = await getDocs(collection(db, "projects"));
-        projectsData = projectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Project[];
+        // Try cache first (5 minute cache)
+        const cachedProjects = sessionStorage.getItem('kpi_projects');
+        if (cachedProjects) {
+          try {
+            const { data, timestamp } = JSON.parse(cachedProjects);
+            const age = Date.now() - timestamp;
+            if (age < 5 * 60 * 1000) { // 5 minutes
+              console.log("[KPI] Using cached projects data");
+              projectsData = data;
+            } else {
+              sessionStorage.removeItem('kpi_projects');
+            }
+          } catch (e) {
+            sessionStorage.removeItem('kpi_projects');
+          }
+        }
+
+        // Fetch from Firestore if no valid cache
+        if (projectsData.length === 0) {
+          console.log("[KPI] Fetching projects from Firestore...");
+          const projectsSnapshot = await getDocs(collection(db, "projects"));
+          projectsData = projectsSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Project[];
+          
+          // Cache the data
+          sessionStorage.setItem('kpi_projects', JSON.stringify({
+            data: projectsData,
+            timestamp: Date.now()
+          }));
+        }
 
         setProjects(projectsData);
 

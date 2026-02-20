@@ -64,7 +64,7 @@ interface Employee {
   id: string;
   firstName: string;
   lastName: string;
-  role: string;
+  jobTitle: string;
   isActive?: boolean;
 }
 
@@ -480,13 +480,16 @@ function ShortTermScheduleContent() {
       const employeesSnapshot = await getDocs(collection(db, "employees"));
       
       const allEmps = employeesSnapshot.docs
-        .map(doc => ({ 
-          id: doc.id, 
-          firstName: doc.data().firstName || '',
-          lastName: doc.data().lastName || '',
-          role: doc.data().role || '',
-          isActive: doc.data().isActive !== false
-        } as Employee))
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            jobTitle: data.jobTitle || data.role || '',
+            isActive: data.isActive !== false
+          } as Employee;
+        })
         .sort((a, b) => {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
@@ -498,16 +501,16 @@ function ShortTermScheduleContent() {
       // Dynamic Capacity: Count active field staff (foremen + workers)
       const activeFieldStaff = allEmps.filter(e => 
         e.isActive && (
-          e.role === "Foreman" || 
-          e.role === "Lead foreman" || 
-          e.role === "Field Worker" || 
-          e.role === "Field worker"
+          e.jobTitle === "Foreman" || 
+          e.jobTitle === "Lead foreman" || 
+          e.jobTitle === "Field Worker" || 
+          e.jobTitle === "Field worker"
         )
       );
       setCompanyCapacity(activeFieldStaff.length * 10);
       
       const foremenList = allEmps.filter((emp) => 
-        emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman")
+        emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman")
       );
       setForemen(foremenList);
       
@@ -882,7 +885,7 @@ const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapsh
     
     return allEmployees.filter(e => 
       e.isActive && 
-      (e.role === "Field Worker" || e.role === "Field worker") && 
+      (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && 
       !assignedToOthers.includes(e.id)
     );
   }

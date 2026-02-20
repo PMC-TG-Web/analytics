@@ -55,7 +55,7 @@ interface Employee {
   id: string;
   firstName: string;
   lastName: string;
-  role: string;
+  jobTitle: string;
   email?: string;
   phone?: string;
   isActive?: boolean;
@@ -213,22 +213,25 @@ function DailyCrewDispatchBoardContent() {
       console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
 
       const allEmps = employeesSnapshot.docs
-        .map(doc => ({ 
-          id: doc.id, 
-          firstName: doc.data().firstName || '',
-          lastName: doc.data().lastName || '',
-          role: doc.data().role || '',
-          email: doc.data().email || '',
-          phone: doc.data().phone || '',
-          isActive: doc.data().isActive !== false
-        } as Employee))
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            jobTitle: data.jobTitle || data.role || '',
+            email: data.email || '',
+            phone: data.phone || '',
+            isActive: data.isActive !== false
+          } as Employee;
+        })
         .sort((a, b) => {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
           return nameA.localeCompare(nameB);
         });
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.role === "Foreman" || emp.role === "Lead foreman"));
+      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman"));
       setForemen(foremenList);
 
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
@@ -492,7 +495,7 @@ function DailyCrewDispatchBoardContent() {
     }
 
     return allEmployees.filter(e => {
-      const isBasicFilter = e.isActive && (e.role === "Field Worker" || e.role === "Field worker") && !assignedToOthers.includes(e.id);
+      const isBasicFilter = e.isActive && (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && !assignedToOthers.includes(e.id);
       if (!isBasicFilter) return false;
 
       // Check time off
@@ -595,7 +598,7 @@ function DailyCrewDispatchBoardContent() {
       // Original dynamic distribution logic (Re-enable after testing)
       const dynamicRecipients = allEmployees
         .filter(e => {
-          const roleNormalized = (e.role || "").toLowerCase();
+          const roleNormalized = (e.jobTitle || "").toLowerCase();
           const hasRole = recipientRoles.some(r => r.toLowerCase() === roleNormalized);
           const hasEmail = !!e.email && e.email.includes("@");
           const isActive = e.isActive !== false;
@@ -718,7 +721,7 @@ function DailyCrewDispatchBoardContent() {
   let totalHoursOff = 0;
   let workersOffCount = 0;
   const peopleOffToday: { name: string, hours: number, type: string }[] = [];
-  const fieldWorkers = allEmployees.filter(e => (e.role === "Field Worker" || e.role === "Field worker") && e.isActive);
+  const fieldWorkers = allEmployees.filter(e => (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && e.isActive);
 
   fieldWorkers.forEach(worker => {
     const matchingReq = timeOffRequests.find(req => 

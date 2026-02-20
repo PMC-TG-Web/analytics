@@ -13,11 +13,17 @@ interface Employee {
   lastName: string;
   email: string;
   phone?: string;
-  role: string;
+  jobTitle: string;
   department?: string;
   hourlyRate?: number;
-  isActive: boolean;
+  vacationHours?: number;
+  keypadCode?: string;
+  dateOfBirth?: string;
   hireDate?: string;
+  dateOfLeave?: string;
+  payHistory?: Array<{ date: string; rate: number }>;
+  apparelRecords?: Array<{ type: string; size: string; dateReceived: string; count: number }>;
+  isActive: boolean;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -79,12 +85,18 @@ function EmployeesContent() {
     lastName: "",
     email: "",
     phone: "",
-    role: "Field Worker",
+    jobTitle: "Field Worker",
     department: "",
     hourlyRate: 0,
+    vacationHours: 0,
+    keypadCode: "",
+    dateOfBirth: "",
     isActive: true,
     hireDate: "",
+    dateOfLeave: "",
     notes: "",
+    payHistory: [],
+    apparelRecords: [],
   });
 
   useEffect(() => {
@@ -94,10 +106,17 @@ function EmployeesContent() {
   async function loadEmployees() {
     try {
       const snapshot = await getDocs(collection(db, "employees"));
-      const employeeData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Employee[];
+      const employeeData = snapshot.docs.map((doc) => {
+        const data = doc.data() as any;
+        // Migrate 'role' to 'jobTitle' if needed
+        if (data.role && !data.jobTitle) {
+          data.jobTitle = data.role;
+        }
+        return {
+          id: doc.id,
+          ...data,
+        };
+      }) as Employee[];
       
       // Sort by last name, then first name
       employeeData.sort((a, b) => {
@@ -122,12 +141,18 @@ function EmployeesContent() {
       lastName: "",
       email: "",
       phone: "",
-      role: "Field Worker",
+      jobTitle: "Field Worker",
       department: "",
       hourlyRate: 0,
+      vacationHours: 0,
+      keypadCode: "",
+      dateOfBirth: "",
       isActive: true,
       hireDate: new Date().toISOString().split('T')[0],
+      dateOfLeave: "",
       notes: "",
+      payHistory: [],
+      apparelRecords: [],
     });
     setModalVisible(true);
   }
@@ -139,12 +164,18 @@ function EmployeesContent() {
       lastName: employee.lastName,
       email: employee.email,
       phone: employee.phone || "",
-      role: employee.role,
+      jobTitle: employee.jobTitle,
       department: employee.department || "",
       hourlyRate: employee.hourlyRate || 0,
+      vacationHours: employee.vacationHours || 0,
+      keypadCode: employee.keypadCode || "",
+      dateOfBirth: employee.dateOfBirth || "",
       isActive: employee.isActive,
       hireDate: employee.hireDate || "",
+      dateOfLeave: employee.dateOfLeave || "",
       notes: employee.notes || "",
+      payHistory: employee.payHistory || [],
+      apparelRecords: employee.apparelRecords || [],
     });
     setModalVisible(true);
   }
@@ -166,12 +197,18 @@ function EmployeesContent() {
         lastName: formData.lastName!,
         email: formData.email!.toLowerCase(),
         phone: formData.phone || "",
-        role: formData.role || "Field Worker",
+        jobTitle: formData.jobTitle || "Field Worker",
         department: formData.department || "",
         hourlyRate: formData.hourlyRate || 0,
+        vacationHours: formData.vacationHours || 0,
+        keypadCode: formData.keypadCode || "",
+        dateOfBirth: formData.dateOfBirth || "",
         isActive: formData.isActive ?? true,
         hireDate: formData.hireDate || "",
+        dateOfLeave: formData.dateOfLeave || "",
         notes: formData.notes || "",
+        payHistory: formData.payHistory || [],
+        apparelRecords: formData.apparelRecords || [],
         createdAt: editingEmployee?.createdAt || now,
         updatedAt: now,
       };
@@ -247,7 +284,7 @@ function EmployeesContent() {
         emp.firstName.toLowerCase().includes(search) ||
         emp.lastName.toLowerCase().includes(search) ||
         emp.email.toLowerCase().includes(search) ||
-        emp.role.toLowerCase().includes(search) ||
+        emp.jobTitle.toLowerCase().includes(search) ||
         (emp.department && emp.department.toLowerCase().includes(search))
       );
     }
@@ -468,12 +505,18 @@ function EmployeesContent() {
                   lastName: "",
                   email: "",
                   phone: "",
-                  role: "Field Worker",
+                  jobTitle: "Field Worker",
                   department: "",
                   hourlyRate: 0,
+                  vacationHours: 0,
+                  keypadCode: "",
+                  dateOfBirth: "",
                   isActive: true,
                   hireDate: new Date().toISOString().split('T')[0],
+                  dateOfLeave: "",
                   notes: "",
+                  payHistory: [],
+                  apparelRecords: [],
                 });
                 setModalVisible(true);
               }}
@@ -545,7 +588,7 @@ function EmployeesContent() {
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Name</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Email</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Phone</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Role</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Job Title</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Department</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Rate</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Status</th>
@@ -574,7 +617,7 @@ function EmployeesContent() {
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.email}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.phone || "—"}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{employee.role}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{employee.jobTitle}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.department || "—"}</td>
                       <td className="py-3 px-4 text-sm text-center font-semibold text-gray-900">
                         {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "—"}
@@ -701,14 +744,14 @@ function EmployeesContent() {
                   />
                 </div>
 
-                {/* Role */}
+                {/* Job Title */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
+                    Job Title
                   </label>
                   <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    value={formData.jobTitle}
+                    onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
                     <option value="Field Worker">Field Worker</option>
@@ -752,6 +795,49 @@ function EmployeesContent() {
                   />
                 </div>
 
+                {/* Vacation Hours */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Vacation Hours
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={formData.vacationHours || 0}
+                    onChange={(e) => setFormData({ ...formData, vacationHours: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="40"
+                  />
+                </div>
+
+                {/* Keypad Code */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Keypad Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.keypadCode || ""}
+                    onChange={(e) => setFormData({ ...formData, keypadCode: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="1234"
+                  />
+                </div>
+
+                {/* Date of Birth */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.dateOfBirth || ""}
+                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
                 {/* Hire Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -761,6 +847,19 @@ function EmployeesContent() {
                     type="date"
                     value={formData.hireDate}
                     onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                {/* Date of Leave */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of Leave
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.dateOfLeave || ""}
+                    onChange={(e) => setFormData({ ...formData, dateOfLeave: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>

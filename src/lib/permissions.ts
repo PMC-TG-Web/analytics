@@ -3,18 +3,18 @@
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "projects", "employees", "project",
+    "long-term-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
-    "long-term-schedule", "project-schedule", "projects", "employees", "project",
+    "long-term-schedule", "project-schedule", "projects", "project",
      "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
   "HR": [
-    "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
+    "home", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
@@ -36,13 +36,18 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  "todd@pmcdecor.com": ["OWNER"],
+  // OWNER access + Personnel Management (employees page)
+  "todd@pmcdecor.com": ["OWNER", "employees"],
+  
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
 
-  // HR access
-  "jane@pmcdecor.com": ["HR"],
+  // HR access + Personnel Management (employees page)
+  "jane@pmcdecor.com": ["HR", "employees"],
+  
+  // Personnel Management access only
+  "dave@pmcdecor.com": ["employees"],
 
 
 // PM access

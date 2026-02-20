@@ -533,7 +533,7 @@ function DailyCrewDispatchBoardContent() {
     }
 
     return allEmployees.filter(e => {
-      const isBasicFilter = e.isActive && (e.jobTitle === "Laborer" || e.jobTitle === "Trainer" || e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && !assignedToOthers.includes(e.id);
+      const isBasicFilter = e.isActive && (e.jobTitle === "Laborer" || e.jobTitle === "Trainer" || e.jobTitle === "Field Worker" || e.jobTitle === "Field worker" || e.jobTitle === "Right Hand Man" || e.jobTitle === "Right Hand Man/ Sealhard Crew Leader") && !assignedToOthers.includes(e.id);
       if (!isBasicFilter) return false;
 
       // Check time off

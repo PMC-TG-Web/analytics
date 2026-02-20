@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function formatPhoneNumber(phone: string): string {
   if (!phone) return "";
@@ -27,9 +29,8 @@ export async function GET(request: NextRequest) {
     
     const snapshot = await getDocs(collection(db, "employees"));
     
-    // Build CSV with specific columns
-    const csvRows = [];
-    csvRows.push("Name,Job Title,Work Phone,Personal Phone,Work Email");
+    // Collect employee data
+    const employees: any[] = [];
     
     snapshot.forEach((doc) => {
       const data = doc.data();
@@ -38,35 +39,78 @@ export async function GET(request: NextRequest) {
       if (!includeInactive && data.isActive === false) {
         return;
       }
-      const name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
-      const jobTitle = data.jobTitle || '';
-      const workPhone = formatPhoneNumber(data.workPhone || '');
-      const personalPhone = formatPhoneNumber(data.phone || '');
-      const email = data.email || '';
       
-      // Escape fields that might contain commas
-      const escapeCsv = (field: string) => {
-        if (field.includes(',') || field.includes('"') || field.includes('\n')) {
-          return `"${field.replace(/"/g, '""')}"`;
-        }
-        return field;
-      };
-      
-      csvRows.push([
-        escapeCsv(name),
-        escapeCsv(jobTitle),
-        escapeCsv(workPhone),
-        escapeCsv(personalPhone),
-        escapeCsv(email)
-      ].join(','));
+      employees.push({
+        name: `${data.firstName || ''} ${data.lastName || ''}`.trim(),
+        jobTitle: data.jobTitle || '',
+        workPhone: formatPhoneNumber(data.workPhone || ''),
+        personalPhone: formatPhoneNumber(data.phone || ''),
+        email: data.email || ''
+      });
     });
     
-    const csvContent = csvRows.join('\n');
+    // Sort employees by name
+    employees.sort((a, b) => a.name.localeCompare(b.name));
     
-    return new NextResponse(csvContent, {
+    // Create PDF
+    const doc = new jsPDF();
+    
+    // Add company header
+    doc.setFontSize(20);
+    doc.setTextColor(20, 184, 166); // Teal color
+    doc.text("PMC Decor", 14, 20);
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Employee Contact List", 14, 32);
+    
+    // Add date and count
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    doc.text(`Generated: ${today}`, 14, 40);
+    doc.text(`Total Employees: ${employees.length}`, 14, 46);
+    
+    // Add table
+    autoTable(doc, {
+      startY: 52,
+      head: [['Name', 'Job Title', 'Work Phone', 'Personal Phone', 'Work Email']],
+      body: employees.map(emp => [
+        emp.name,
+        emp.jobTitle,
+        emp.workPhone,
+        emp.personalPhone,
+        emp.email
+      ]),
+      theme: 'striped',
+      headStyles: {
+        fillColor: [20, 184, 166], // Teal color
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 10
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        0: { cellWidth: 35 }, // Name
+        1: { cellWidth: 30 }, // Job Title
+        2: { cellWidth: 35 }, // Work Phone
+        3: { cellWidth: 35 }, // Personal Phone
+        4: { cellWidth: 'auto' } // Email
+      },
+      margin: { left: 14, right: 14 }
+    });
+    
+    // Convert PDF to buffer
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    
+    return new NextResponse(pdfBuffer, {
       headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="employee-contact-list-${new Date().toISOString().split('T')[0]}.csv"`,
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="employee-contact-list-${new Date().toISOString().split('T')[0]}.pdf"`,
       },
     });
   } catch (error) {

@@ -641,38 +641,40 @@ function ShortTermScheduleContent() {
         projectsByJobKey[pKey].push(p);
       });
 
+      // If no scopes in projectScopes collection, generate them from project scopeOfWork values
+      if (rawScopes.length === 0) {
+        const generatedScopes: Scope[] = [];
+        const seenScopeNames = new Set<string>();
+        
+        projs.forEach(p => {
+          const jobKey = getProjectKey(p);
+          const scopeName = (p.scopeOfWork || 'Default Scope').trim();
+          const scopeKey = `${jobKey}|${scopeName}`;
+          
+          if (!seenScopeNames.has(scopeKey)) {
+            seenScopeNames.add(scopeKey);
+            generatedScopes.push({
+              id: `generated-${jobKey}-${scopeName}`,
+              jobKey: jobKey,
+              title: scopeName,
+              scopeName: scopeName,
+              hours: 0, // Will be enriched below
+              manpower: 0,
+              startDate: '',
+              endDate: '',
+              description: ''
+            });
+          }
+        });
+        rawScopes = generatedScopes;
+      }
+
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {
         if (scope.jobKey) {
           if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
           scopesObj[scope.jobKey].push(scope);
-        }
-      });
-      
-      // Also create scopes from project documents with different scopeOfWork values
-      Object.entries(projectsByJobKey).forEach(([jobKey, projectsForKey]) => {
-        const uniqueScopes = new Map<string, Project>();
-        projectsForKey.forEach(p => {
-          const scopeName = p.scopeOfWork || 'Default Scope';
-          if (!uniqueScopes.has(scopeName)) {
-            uniqueScopes.set(scopeName, p);
-          }
-        });
-        
-        // Create Scope objects from unique project scopeOfWork values if scopesObj doesn't have any
-        if (!scopesObj[jobKey] || scopesObj[jobKey].length === 0) {
-          scopesObj[jobKey] = Array.from(uniqueScopes.values()).map((p, idx) => ({
-            id: `${p.id}-scope-${idx}`,
-            jobKey: jobKey,
-            title: p.scopeOfWork || 'Default Scope',
-            scopeName: p.scopeOfWork || 'Default Scope',
-            hours: p.hours || 0,
-            manpower: 0,
-            startDate: '',
-            endDate: '',
-            description: ''
-          })) as Scope[];
         }
       });
       

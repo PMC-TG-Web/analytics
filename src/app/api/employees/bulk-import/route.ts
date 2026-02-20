@@ -56,6 +56,24 @@ const companyDirectoryData: EmployeeImport[] = [
   { firstName: "Mose", lastName: "Zook", jobTitle: "Trainer", country: "United States", address: "6068 Limeville Rd", city: "Parkesburg", state: "Pennsylvania", phone: "17179131644", email: "mose.zook@pmcdecor.com", personalEmail: "mose.zook@pmcdecor.com" },
 ];
 
+function formatPhoneNumber(phone: string): string {
+  if (!phone) return "";
+  
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, "");
+  
+  // Remove leading 1 if present
+  const cleanDigits = digits.startsWith("1") && digits.length === 11 ? digits.substring(1) : digits;
+  
+  // Format as (XXX) XXX-XXXX if we have 10 digits
+  if (cleanDigits.length === 10) {
+    return `(${cleanDigits.substring(0, 3)}) ${cleanDigits.substring(3, 6)}-${cleanDigits.substring(6)}`;
+  }
+  
+  // Return original if not 10 digits
+  return phone;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const snapshot = await getDocs(collection(db, "employees"));
@@ -79,8 +97,8 @@ export async function POST(request: NextRequest) {
         lastName: emp.lastName,
         email: emp.email || "",
         personalEmail: emp.personalEmail || "",
-        phone: emp.phone || "",
-        workPhone: emp.workPhone || "",
+        phone: formatPhoneNumber(emp.phone || ""),
+        workPhone: formatPhoneNumber(emp.workPhone || ""),
         jobTitle: emp.jobTitle,
         address: emp.address || "",
         city: emp.city || "",

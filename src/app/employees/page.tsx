@@ -117,6 +117,24 @@ function EmployeesContent() {
     loadEmployees();
   }, []);
 
+  function formatPhoneNumber(phone: string): string {
+    if (!phone) return "";
+    
+    // Remove all non-digit characters
+    const digits = phone.replace(/\D/g, "");
+    
+    // Remove leading 1 if present
+    const cleanDigits = digits.startsWith("1") && digits.length === 11 ? digits.substring(1) : digits;
+    
+    // Format as (XXX) XXX-XXXX if we have 10 digits
+    if (cleanDigits.length === 10) {
+      return `(${cleanDigits.substring(0, 3)}) ${cleanDigits.substring(3, 6)}-${cleanDigits.substring(6)}`;
+    }
+    
+    // Return original if not 10 digits
+    return phone;
+  }
+
   async function loadEmployees() {
     try {
       const snapshot = await getDocs(collection(db, "employees"));
@@ -229,8 +247,8 @@ function EmployeesContent() {
         lastName: lastName,
         email: (formData.email || "").trim().toLowerCase(),
         personalEmail: formData.personalEmail || "",
-        phone: formData.phone || "",
-        workPhone: formData.workPhone || "",
+        phone: formatPhoneNumber(formData.phone || ""),
+        workPhone: formatPhoneNumber(formData.workPhone || ""),
         jobTitle: formData.jobTitle || "Field Worker",
         department: formData.department || "",
         address: formData.address || "",
@@ -672,7 +690,7 @@ function EmployeesContent() {
                         {employee.firstName} {employee.lastName}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.email}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{employee.phone || "—"}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatPhoneNumber(employee.phone || "") || "—"}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.jobTitle}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.department || "—"}</td>
                       <td className="py-3 px-4 text-sm text-center font-semibold text-gray-900">

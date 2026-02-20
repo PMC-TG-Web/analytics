@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
 
+function formatPhoneNumber(phone: string): string {
+  if (!phone) return "";
+  
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, "");
+  
+  // Remove leading 1 if present
+  const cleanDigits = digits.startsWith("1") && digits.length === 11 ? digits.substring(1) : digits;
+  
+  // Format as (XXX) XXX-XXXX if we have 10 digits
+  if (cleanDigits.length === 10) {
+    return `(${cleanDigits.substring(0, 3)}) ${cleanDigits.substring(3, 6)}-${cleanDigits.substring(6)}`;
+  }
+  
+  // Return original if not 10 digits
+  return phone;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -22,8 +40,8 @@ export async function GET(request: NextRequest) {
       }
       const name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
       const jobTitle = data.jobTitle || '';
-      const workPhone = data.workPhone || '';
-      const personalPhone = data.phone || '';
+      const workPhone = formatPhoneNumber(data.workPhone || '');
+      const personalPhone = formatPhoneNumber(data.phone || '');
       const email = data.email || '';
       const status = data.isActive === false ? 'Inactive' : 'Active';
       

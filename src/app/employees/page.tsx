@@ -133,6 +133,51 @@ function EmployeesContent() {
     loadJobTitles();
   }, []);
 
+  // Cache helpers
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+  function getCachedData<T>(key: string): T | null {
+    try {
+      const cached = sessionStorage.getItem(key);
+      if (!cached) return null;
+      
+      const { data, timestamp } = JSON.parse(cached);
+      const now = Date.now();
+      
+      // Check if cache is still valid
+      if (now - timestamp < CACHE_DURATION) {
+        return data as T;
+      }
+      
+      // Cache expired, remove it
+      sessionStorage.removeItem(key);
+      return null;
+    } catch (error) {
+      console.error("Error reading cache:", error);
+      return null;
+    }
+  }
+
+  function setCachedData<T>(key: string, data: T): void {
+    try {
+      const cacheObject = {
+        data,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(key, JSON.stringify(cacheObject));
+    } catch (error) {
+      console.error("Error setting cache:", error);
+    }
+  }
+
+  function invalidateCache(key: string): void {
+    try {
+      sessionStorage.removeItem(key);
+    } catch (error) {
+      console.error("Error invalidating cache:", error);
+    }
+  }
+
   function formatPhoneNumber(phone: string): string {
     if (!phone) return "";
     
@@ -153,10 +198,20 @@ function EmployeesContent() {
 
   async function loadJobTitles() {
     try {
+      // Try to get from cache first
+      const cached = getCachedData<string[]>('jobTitles');
+      if (cached) {
+        setJobTitles(cached);
+        return;
+      }
+
+      // Cache miss, fetch from Firestore
       const snapshot = await getDocs(collection(db, "jobTitles"));
       if (!snapshot.empty) {
         const titles = snapshot.docs.map(doc => doc.data().title as string);
-        setJobTitles(titles.sort());
+        const sortedTitles = titles.sort();
+        setJobTitles(sortedTitles);
+        setCachedData('jobTitles', sortedTitles);
       }
     } catch (error) {
       console.error("Error loading job titles:", error);
@@ -180,12 +235,16 @@ function EmployeesContent() {
       });
       
       // Update local state
-      setJobTitles([...jobTitles, trimmedTitle].sort());
+      const newTitles = [...jobTitles, trimmedTitle].sort();
+      setJobTitles(newTitles);
       setNewJobTitle("");
       setShowAddJobTitle(false);
       
       // Update form data to use the new title
       setFormData({ ...formData, jobTitle: trimmedTitle });
+      
+      // Invalidate and update cache
+      setCachedData('jobTitles', newTitles);
     } catch (error) {
       console.error("Error adding job title:", error);
       alert("Failed to add job title");
@@ -194,6 +253,15 @@ function EmployeesContent() {
 
   async function loadEmployees() {
     try {
+      // Try to get from cache first
+      const cached = getCachedData<Employee[]>('employees');
+      if (cached) {
+        setEmployees(cached);
+        setLoading(false);
+        return;
+      }
+
+      // Cache miss, fetch from Firestore
       const snapshot = await getDocs(collection(db, "employees"));
       const employeeData = snapshot.docs.map((doc) => {
         const data = doc.data() as any;
@@ -215,6 +283,7 @@ function EmployeesContent() {
       });
       
       setEmployees(employeeData);
+      setCachedData('employees', employeeData);
     } catch (error) {
       console.error("Failed to load employees:", error);
       alert("Failed to load employees");
@@ -328,15 +397,21 @@ function EmployeesContent() {
       
       // Update local state
       if (editingEmployee) {
-        setEmployees((prev) =>
-          prev.map((emp) => (emp.id === employeeId ? employeeData : emp))
-        );
+        setEmployees((prev) => {
+          const updated = prev.map((emp) => (emp.id === employeeId ? employeeData : emp));
+          setCachedData('employees', updated);
+          return updated;
+        });
       } else {
-        setEmployees((prev) => [...prev, employeeData].sort((a, b) => {
-          const lastNameCompare = a.lastName.localeCompare(b.lastName);
-          if (lastNameCompare !== 0) return lastNameCompare;
-          return a.firstName.localeCompare(b.firstName);
-        }));
+        setEmployees((prev) => {
+          const updated = [...prev, employeeData].sort((a, b) => {
+            const lastNameCompare = a.lastName.localeCompare(b.lastName);
+            if (lastNameCompare !== 0) return lastNameCompare;
+            return a.firstName.localeCompare(b.firstName);
+          });
+          setCachedData('employees', updated);
+          return updated;
+        });
       }
 
       setModalVisible(false);
@@ -367,7 +442,11 @@ function EmployeesContent() {
 
     try {
       await deleteDoc(doc(db, "employees", employee.id));
-      setEmployees((prev) => prev.filter((emp) => emp.id !== employee.id));
+      setEmployees((prev) => {
+        const updated = prev.filter((emp) => emp.id !== employee.id);
+        setCachedData('employees', updated);
+        return updated;
+      });
     } catch (error) {
       console.error("Failed to delete employee:", error);
       alert("Failed to delete employee");
@@ -384,9 +463,11 @@ function EmployeesContent() {
         updatedAt: now 
       };
       await setDoc(doc(db, "employees", employee.id), employeeData);
-      setEmployees((prev) =>
-        prev.map((emp) => (emp.id === employee.id ? employeeData : emp))
-      );
+      setEmployees((prev) => {
+        const updated = prev.map((emp) => (emp.id === employee.id ? employeeData : emp));
+        setCachedData('employees', updated);
+        return updated;
+      });
     } catch (error) {
       console.error("Failed to toggle status:", error);
       alert("Failed to update status");

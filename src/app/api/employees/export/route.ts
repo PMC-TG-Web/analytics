@@ -3,6 +3,8 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import fs from "fs";
+import path from "path";
 
 function formatPhoneNumber(phone: string): string {
   if (!phone) return "";
@@ -55,26 +57,44 @@ export async function GET(request: NextRequest) {
     // Create PDF
     const doc = new jsPDF();
     
-    // Add company header
-    doc.setFontSize(20);
+    // Load and add logo as letterhead
+    try {
+      const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+      const logoData = fs.readFileSync(logoPath);
+      const logoBase64 = `data:image/png;base64,${logoData.toString('base64')}`;
+      
+      // Add logo at top center (letterhead style)
+      doc.addImage(logoBase64, 'PNG', 80, 10, 50, 20); // x, y, width, height
+    } catch (error) {
+      console.error("Error loading logo:", error);
+      // Continue without logo if it fails to load
+    }
+    
+    // Add company name below logo
+    doc.setFontSize(18);
     doc.setTextColor(20, 184, 166); // Teal color
-    doc.text("PMC Decor", 14, 20);
+    doc.text("PMC Decor", 105, 38, { align: 'center' });
+    
+    // Add horizontal line
+    doc.setDrawColor(20, 184, 166);
+    doc.setLineWidth(0.5);
+    doc.line(14, 42, 196, 42);
     
     // Add title
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
-    doc.text("Employee Contact List", 14, 32);
+    doc.text("Employee Contact List", 105, 52, { align: 'center' });
     
     // Add date and count
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    doc.text(`Generated: ${today}`, 14, 40);
-    doc.text(`Total Employees: ${employees.length}`, 14, 46);
+    doc.text(`Generated: ${today}`, 14, 60);
+    doc.text(`Total Employees: ${employees.length}`, 14, 66);
     
     // Add table
     autoTable(doc, {
-      startY: 52,
+      startY: 72,
       head: [['Name', 'Job Title', 'Work Phone', 'Personal Phone', 'Work Email']],
       body: employees.map(emp => [
         emp.name,

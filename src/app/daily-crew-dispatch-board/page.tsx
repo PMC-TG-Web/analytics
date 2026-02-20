@@ -266,7 +266,7 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman"));
+      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Right Hand Man" || emp.jobTitle === "Right Hand Man/ Sealhard Crew Leader"));
       setForemen(foremenList);
 
       const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
@@ -533,7 +533,7 @@ function DailyCrewDispatchBoardContent() {
     }
 
     return allEmployees.filter(e => {
-      const isBasicFilter = e.isActive && (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && !assignedToOthers.includes(e.id);
+      const isBasicFilter = e.isActive && (e.jobTitle === "Laborer" || e.jobTitle === "Trainer" || e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && !assignedToOthers.includes(e.id);
       if (!isBasicFilter) return false;
 
       // Check time off

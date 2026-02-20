@@ -16,7 +16,6 @@ interface Employee {
   phone?: string;
   workPhone?: string;
   jobTitle: string;
-  department?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -99,7 +98,6 @@ function EmployeesContent() {
     phone: "",
     workPhone: "",
     jobTitle: "Field Worker",
-    department: "",
     address: "",
     city: "",
     state: "",
@@ -180,7 +178,6 @@ function EmployeesContent() {
       phone: "",
       workPhone: "",
       jobTitle: "Field Worker",
-      department: "",
       address: "",
       city: "",
       state: "",
@@ -210,7 +207,6 @@ function EmployeesContent() {
       phone: employee.phone || "",
       workPhone: employee.workPhone || "",
       jobTitle: employee.jobTitle,
-      department: employee.department || "",
       address: employee.address || "",
       city: employee.city || "",
       state: employee.state || "",
@@ -254,7 +250,6 @@ function EmployeesContent() {
         phone: formatPhoneNumber(formData.phone || ""),
         workPhone: formatPhoneNumber(formData.workPhone || ""),
         jobTitle: formData.jobTitle || "Field Worker",
-        department: formData.department || "",
         address: formData.address || "",
         city: formData.city || "",
         state: formData.state || "",
@@ -356,8 +351,7 @@ function EmployeesContent() {
         emp.firstName.toLowerCase().includes(search) ||
         emp.lastName.toLowerCase().includes(search) ||
         emp.email.toLowerCase().includes(search) ||
-        emp.jobTitle.toLowerCase().includes(search) ||
-        (emp.department && emp.department.toLowerCase().includes(search))
+        emp.jobTitle.toLowerCase().includes(search)
       );
     }
 
@@ -701,7 +695,6 @@ function EmployeesContent() {
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.email}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{formatPhoneNumber(employee.phone || "") || "—"}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.jobTitle}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{employee.department || "—"}</td>
                       <td className="py-3 px-4 text-sm text-center font-semibold text-gray-900">
                         {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "—"}
                       </td>
@@ -874,20 +867,6 @@ function EmployeesContent() {
                     <option value="Executive">Executive</option>
                     <option value="Other">Other</option>
                   </select>
-                </div>
-
-                {/* Department */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Construction"
-                  />
                 </div>
 
                 {/* Address */}

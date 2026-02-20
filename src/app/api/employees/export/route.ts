@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     
     // Build CSV with specific columns
     const csvRows = [];
-    csvRows.push("Name,Job Title,Work Phone,Personal Phone,Work Email,Status");
+    csvRows.push("Name,Job Title,Work Phone,Personal Phone,Work Email");
     
     snapshot.forEach((doc) => {
       const data = doc.data();
@@ -43,7 +43,6 @@ export async function GET(request: NextRequest) {
       const workPhone = formatPhoneNumber(data.workPhone || '');
       const personalPhone = formatPhoneNumber(data.phone || '');
       const email = data.email || '';
-      const status = data.isActive === false ? 'Inactive' : 'Active';
       
       // Escape fields that might contain commas
       const escapeCsv = (field: string) => {
@@ -58,8 +57,7 @@ export async function GET(request: NextRequest) {
         escapeCsv(jobTitle),
         escapeCsv(workPhone),
         escapeCsv(personalPhone),
-        escapeCsv(email),
-        escapeCsv(status)
+        escapeCsv(email)
       ].join(','));
     });
     

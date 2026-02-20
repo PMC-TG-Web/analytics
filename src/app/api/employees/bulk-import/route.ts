@@ -112,7 +112,6 @@ export async function POST(request: NextRequest) {
 
       // Preserve existing data if employee exists (only add defined values)
       if (existing) {
-        if (existing.department) employeeData.department = existing.department;
         if (existing.hourlyRate !== undefined) employeeData.hourlyRate = existing.hourlyRate;
         if (existing.vacationHours !== undefined) employeeData.vacationHours = existing.vacationHours;
         if (existing.keypadCode) employeeData.keypadCode = existing.keypadCode;

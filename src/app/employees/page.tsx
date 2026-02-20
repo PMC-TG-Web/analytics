@@ -212,12 +212,9 @@ function EmployeesContent() {
     // Trim and validate required fields - handle both undefined and empty string
     const firstName = (formData.firstName || "").trim();
     const lastName = (formData.lastName || "").trim();
-    const email = (formData.email || "").trim();
     
-    console.log("Validation check:", { firstName, lastName, email, formData });
-    
-    if (!firstName || !lastName || !email) {
-      alert("Please fill in all required fields (First Name, Last Name, Email)");
+    if (!firstName || !lastName) {
+      alert("Please fill in all required fields (First Name, Last Name)");
       return;
     }
 
@@ -230,7 +227,7 @@ function EmployeesContent() {
         id: employeeId,
         firstName: firstName,
         lastName: lastName,
-        email: email.toLowerCase(),
+        email: (formData.email || "").trim().toLowerCase(),
         personalEmail: formData.personalEmail || "",
         phone: formData.phone || "",
         workPhone: formData.workPhone || "",
@@ -773,7 +770,7 @@ function EmployeesContent() {
                 {/* Email */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email <span className="text-red-500">*</span>
+                    Email
                   </label>
                   <input
                     type="email"

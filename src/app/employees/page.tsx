@@ -209,10 +209,12 @@ function EmployeesContent() {
   }
 
   async function saveEmployee() {
-    // Trim and validate required fields
-    const firstName = formData.firstName?.trim();
-    const lastName = formData.lastName?.trim();
-    const email = formData.email?.trim();
+    // Trim and validate required fields - handle both undefined and empty string
+    const firstName = (formData.firstName || "").trim();
+    const lastName = (formData.lastName || "").trim();
+    const email = (formData.email || "").trim();
+    
+    console.log("Validation check:", { firstName, lastName, email, formData });
     
     if (!firstName || !lastName || !email) {
       alert("Please fill in all required fields (First Name, Last Name, Email)");

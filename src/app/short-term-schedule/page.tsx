@@ -1615,7 +1615,11 @@ function ShortTermScheduleContent() {
                   {scopeSelectionModal.projects.map((project, idx) => (
                     <button
                       key={project.id || idx}
-                      onClick={() => handleScopeSelect(project)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleScopeSelect(project);
+                      }}
                       disabled={saving}
                       className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                     >

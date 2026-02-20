@@ -64,37 +64,31 @@ export async function GET(request: NextRequest) {
       const logoBase64 = `data:image/png;base64,${logoData.toString('base64')}`;
       
       // Add logo at top center (letterhead style)
-      doc.addImage(logoBase64, 'PNG', 80, 10, 50, 20); // x, y, width, height
+      doc.addImage(logoBase64, 'PNG', 80, 8, 50, 20); // x, y, width, height
     } catch (error) {
       console.error("Error loading logo:", error);
       // Continue without logo if it fails to load
     }
     
-    // Add company name below logo
-    doc.setFontSize(18);
-    doc.setTextColor(20, 184, 166); // Teal color
-    doc.text("PMC Decor", 105, 38, { align: 'center' });
-    
     // Add horizontal line
     doc.setDrawColor(20, 184, 166);
     doc.setLineWidth(0.5);
-    doc.line(14, 42, 196, 42);
+    doc.line(14, 32, 196, 32);
     
-    // Add title
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text("Employee Contact List", 105, 52, { align: 'center' });
+    // Add title in teal
+    doc.setFontSize(14);
+    doc.setTextColor(20, 184, 166); // Teal color
+    doc.text("Employee Contact List", 105, 40, { align: 'center' });
     
-    // Add date and count
-    doc.setFontSize(10);
+    // Add date only
+    doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
     const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    doc.text(`Generated: ${today}`, 14, 60);
-    doc.text(`Total Employees: ${employees.length}`, 14, 66);
+    doc.text(`Generated: ${today}`, 14, 48);
     
     // Add table
     autoTable(doc, {
-      startY: 72,
+      startY: 52,
       head: [['Name', 'Job Title', 'Work Phone', 'Personal Phone', 'Work Email']],
       body: employees.map(emp => [
         emp.name,
@@ -108,20 +102,22 @@ export async function GET(request: NextRequest) {
         fillColor: [20, 184, 166], // Teal color
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 10
+        fontSize: 8
       },
       styles: {
-        fontSize: 9,
-        cellPadding: 3,
+        fontSize: 7,
+        cellPadding: 1.5,
+        lineWidth: 0.1,
       },
       columnStyles: {
-        0: { cellWidth: 35 }, // Name
-        1: { cellWidth: 30 }, // Job Title
-        2: { cellWidth: 35 }, // Work Phone
-        3: { cellWidth: 35 }, // Personal Phone
+        0: { cellWidth: 32 }, // Name
+        1: { cellWidth: 28 }, // Job Title
+        2: { cellWidth: 32 }, // Work Phone
+        3: { cellWidth: 32 }, // Personal Phone
         4: { cellWidth: 'auto' } // Email
       },
-      margin: { left: 14, right: 14 }
+      margin: { left: 14, right: 14, bottom: 14 },
+      pageBreak: 'avoid'
     });
     
     // Convert PDF to buffer

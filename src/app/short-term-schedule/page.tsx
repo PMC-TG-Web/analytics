@@ -651,7 +651,7 @@ function ShortTermScheduleContent() {
       });
       
       // Also create scopes from project documents with different scopeOfWork values
-      projectsByJobKey.forEach((projectsForKey, jobKey) => {
+      Object.entries(projectsByJobKey).forEach(([jobKey, projectsForKey]) => {
         const uniqueScopes = new Map<string, Project>();
         projectsForKey.forEach(p => {
           const scopeName = p.scopeOfWork || 'Default Scope';

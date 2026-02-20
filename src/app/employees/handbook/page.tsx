@@ -17,7 +17,7 @@ export default function HandbookPage() {
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(1.25);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
 
@@ -36,6 +36,12 @@ export default function HandbookPage() {
       checkSignStatus();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (numPages && pageNumber > numPages) {
+      setPageNumber(numPages);
+    }
+  }, [numPages, pageNumber]);
 
   async function checkSignStatus() {
     try {
@@ -223,7 +229,6 @@ export default function HandbookPage() {
                         file="/documents/handbook.pdf"
                         onLoadSuccess={({ numPages }) => {
                           setNumPages(numPages);
-                          setPageNumber(1);
                         }}
                         onLoadError={(err) => {
                           console.error("PDF load error:", err);

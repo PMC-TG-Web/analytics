@@ -960,6 +960,24 @@ function DailyCrewDispatchBoardContent() {
                 </div>
               );
             })}
+
+            {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
+              <div className="p-3 bg-orange-50 border border-orange-100 rounded-2xl">
+                <div className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-2">Unassigned</div>
+                <div className="flex flex-col gap-2">
+                  {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
+                    <Link 
+                      key={pIdx} 
+                      href={`/short-term-schedule?search=${encodeURIComponent(p.projectName)}`}
+                      className="bg-white border border-orange-200 rounded-xl px-3 py-2 flex items-center justify-between gap-3 shadow-sm hover:border-orange-500 transition-colors"
+                    >
+                      <span className="text-xs font-black text-gray-800">{p.projectName}</span>
+                      <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 rounded-lg">{p.hours.toFixed(0)}h</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1120,6 +1138,25 @@ function DailyCrewDispatchBoardContent() {
             })}
           </div>
         </div>
+
+        {/* Unassigned Projects tray */}
+        {foremanDateProjects.__unassigned__?.[dateKey]?.filter(p => p.hours > 0).length > 0 && (
+          <div className="hidden md:flex px-6 py-2.5 bg-stone-50 border-t border-stone-200 items-center gap-4">
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] bg-stone-800 text-white px-3 py-1 rounded-lg shadow-md italic">Unassigned Projects</span>
+            <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar py-1">
+              {foremanDateProjects.__unassigned__[dateKey].filter(p => p.hours > 0).map((p, pIdx) => (
+                <Link 
+                  key={pIdx} 
+                  href={`/short-term-schedule?search=${encodeURIComponent(p.projectName)}`}
+                  className="bg-white border border-stone-200 rounded-xl px-4 py-1.5 flex items-center gap-3 flex-shrink-0 shadow-sm hover:border-red-900/40 hover:shadow-md transition-all group"
+                >
+                  <span className="text-[10px] font-black text-stone-800 group-hover:text-red-900 truncate max-w-[200px] uppercase italic tracking-tight">{p.projectName}</span>
+                  <span className="text-[10px] font-black text-red-900 bg-red-50 px-2 rounded-lg py-0.5">{p.hours.toFixed(0)}H</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* People Off Today - Ultra-small footer */}

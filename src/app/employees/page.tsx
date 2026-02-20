@@ -86,6 +86,10 @@ function EmployeesContent() {
     notes: "",
   });
 
+  // Download modal state
+  const [downloadModalVisible, setDownloadModalVisible] = useState(false);
+  const [includeInactiveEmployees, setIncludeInactiveEmployees] = useState(false);
+
   // Form state
   const [formData, setFormData] = useState<Partial<Employee>>({
     firstName: "",
@@ -296,9 +300,14 @@ function EmployeesContent() {
   }
 
   function handleDownloadReport() {
-    const includeInactive = confirm("Include inactive employees in the report?\n\nClick OK to include inactive employees, or Cancel to only include active employees.");
-    const url = `/api/employees/export?includeInactive=${includeInactive}`;
+    setDownloadModalVisible(true);
+  }
+
+  function executeDownload() {
+    const url = `/api/employees/export?includeInactive=${includeInactiveEmployees}`;
     window.location.href = url;
+    setDownloadModalVisible(false);
+    setIncludeInactiveEmployees(false);
   }
 
   async function deleteEmployee(employee: Employee) {
@@ -1358,6 +1367,53 @@ function EmployeesContent() {
                     })
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Modal */}
+      {downloadModalVisible && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-2xl font-black text-gray-900 mb-4">Download Employee Report</h2>
+              
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  Choose your export options:
+                </p>
+                
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeInactiveEmployees}
+                    onChange={(e) => setIncludeInactiveEmployees(e.target.checked)}
+                    className="w-5 h-5 text-teal-600 border-gray-300 rounded focus:ring-teal-500 cursor-pointer"
+                  />
+                  <span className="text-gray-700 font-medium">
+                    Include inactive employees
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setDownloadModalVisible(false);
+                    setIncludeInactiveEmployees(false);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeDownload}
+                  className="flex-1 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  Download
+                </button>
               </div>
             </div>
           </div>

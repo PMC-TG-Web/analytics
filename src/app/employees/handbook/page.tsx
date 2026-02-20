@@ -24,7 +24,10 @@ export default function HandbookPage() {
   useEffect(() => {
     setIsClient(true);
     import("react-pdf").then(({ pdfjs }) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url
+      ).toString();
     });
   }, []);
 
@@ -224,7 +227,7 @@ export default function HandbookPage() {
                         }}
                         onLoadError={(err) => {
                           console.error("PDF load error:", err);
-                          setPdfError("Please open the PDF in a new tab.");
+                          setPdfError(err instanceof Error ? err.message : "Please open the PDF in a new tab.");
                         }}
                         loading={<div className="text-gray-500 text-sm">Loading handbook...</div>}
                       >

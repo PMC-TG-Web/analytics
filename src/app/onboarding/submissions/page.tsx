@@ -100,7 +100,7 @@ export default function OnboardingSubmissionsPage() {
   }
 
   return (
-    <ProtectedPage page="employees">
+    <ProtectedPage page="onboarding">
       <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
         <Navigation />
         

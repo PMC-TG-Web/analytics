@@ -5,7 +5,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
     "long-term-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook"
+    "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
@@ -14,7 +14,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
   "HR": [
-    "home", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
+    "home", "certifications", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
@@ -36,18 +36,18 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 
 // Map Procore email addresses to groups or specific pages
 export const USER_PERMISSIONS: Record<string, string[]> = {
-  // OWNER access + Personnel Management (employees page)
-  "todd@pmcdecor.com": ["OWNER", "employees"],
+  // OWNER access + Personnel Management (employees + onboarding pages)
+  "todd@pmcdecor.com": ["OWNER", "employees", "onboarding"],
   
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
 
-  // HR access + Personnel Management (employees page)
-  "jane@pmcdecor.com": ["HR", "employees"],
+  // HR access + Personnel Management (employees + onboarding pages)
+  "jane@pmcdecor.com": ["HR", "employees", "onboarding"],
   
-  // Personnel Management access only
-  "dave@pmcdecor.com": ["employees"],
+  // Personnel Management access only (employees + onboarding pages)
+  "dave@pmcdecor.com": ["employees", "onboarding"],
 
 
 // PM access

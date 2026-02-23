@@ -42,17 +42,18 @@ function DashboardContent() {
 
   const refreshData = async () => {
     setLoading(true);
-    // Clear summary cache and reload
+    
+    // Force a full scan to get fresh data from database
+    const data = await getAllProjectsForDashboard();
+    setProjects(data);
+    setIsFullScan(true);
+    
+    // Also reload the summary in the background (for when we go back to no filters)
     const summaryData = await getDashboardSummary();
     if (summaryData) {
       setSummary(summaryData);
     }
     
-    // If we're in full scan mode, reload projects too
-    if (isFullScan) {
-      const data = await getAllProjectsForDashboard();
-      setProjects(data);
-    }
     setLoading(false);
   };
 

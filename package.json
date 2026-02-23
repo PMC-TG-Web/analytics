@@ -24,7 +24,7 @@
     "react-dom": "19.2.3",
     "react-pdf": "^10.3.0",
     "resend": "^6.9.2",
-    "twilio": "^5.12.1"
+    "twilio": "^5.12.2"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.9.0",

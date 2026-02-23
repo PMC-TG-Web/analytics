@@ -1164,6 +1164,22 @@ function KPIPageContent({
         </div>
       )}
 
+      {/* Combined Hours Line Chart */}
+      {(Object.keys(inProgressHoursByMonth).length > 0 || Object.keys(bidSubmittedHoursByMonth).length > 0) && (
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
+          <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Hours Trend</h2>
+          <div style={{ height: 160 }}>
+            <CombinedHoursLineChart
+              inProgressHoursByMonth={inProgressHoursByMonth}
+              bidSubmittedHoursByMonth={bidSubmittedHoursByMonth}
+              yearFilter={yearFilter}
+              startDate={startDate}
+              endDate={endDate}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Combined Sales by Month Table */}
       {filteredCombinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
@@ -1776,6 +1792,147 @@ function CombinedSalesLineChart({
         title: {
           display: true,
           text: "Bid Submitted Sales",
+          color: "#E06C00",
+          font: { weight: "bold" },
+        },
+      },
+      x: {
+        ticks: {
+          color: "#111827",
+        },
+        grid: {
+          color: "#f0f0f0",
+        },
+      },
+    },
+  };
+
+  return <Line data={chartData} options={options} />;
+}
+
+function CombinedHoursLineChart({
+  inProgressHoursByMonth,
+  bidSubmittedHoursByMonth,
+  yearFilter,
+  startDate,
+  endDate,
+}: {
+  inProgressHoursByMonth: Record<string, number>;
+  bidSubmittedHoursByMonth: Record<string, number>;
+  yearFilter: string;
+  startDate: string;
+  endDate: string;
+}) {
+  // Get all unique months from both datasets
+  const allMonths = Array.from(new Set([...Object.keys(inProgressHoursByMonth), ...Object.keys(bidSubmittedHoursByMonth)])).sort();
+  
+  // Filter months based on yearFilter and startDate/endDate
+  const filteredMonths = allMonths.filter((month) => {
+    if (yearFilter && !month.startsWith(yearFilter)) return false;
+    
+    if (startDate || endDate) {
+      const [year, m] = month.split("-");
+      const monthDate = new Date(Number(year), Number(m) - 1, 1);
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        if (monthDate < start) return false;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setMonth(end.getMonth() + 1);
+        end.setDate(0);
+        end.setHours(23, 59, 59, 999);
+        if (monthDate > end) return false;
+      }
+    }
+    
+    return true;
+  });
+
+  const chartData = {
+    labels: filteredMonths.map((month) => {
+      const [year, m] = month.split("-");
+      const date = new Date(Number(year), Number(m) - 1);
+      return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+    }),
+    datasets: [
+      {
+        label: "In Progress Hours",
+        data: filteredMonths.map((month) => inProgressHoursByMonth[month] || 0),
+        borderColor: "#E06C00",
+        backgroundColor: "rgba(224, 108, 0, 0.1)",
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      },
+      {
+        label: "Bid Submitted Hours",
+        data: filteredMonths.map((month) => bidSubmittedHoursByMonth[month] || 0),
+        borderColor: "#15616D",
+        backgroundColor: "rgba(21, 97, 109, 0.1)",
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      },
+    ],
+  };
+
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        position: "top" as const,
+        labels: {
+          usePointStyle: true,
+          padding: 8,
+          font: { size: 11, weight: "bold" },
+          color: "#111827",
+        },
+      },
+      tooltip: {
+        mode: "index" as const,
+        intersect: false,
+        callbacks: {
+          label: function (context) {
+            let label = context.dataset.label || "";
+            if (label) {
+              label += ": ";
+            }
+            if (context.parsed.y !== null) {
+              label += context.parsed.y.toLocaleString() + " hrs";
+            }
+            return label;
+          },
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          color: "#111827",
+          callback: function (value) {
+            return value.toLocaleString() + " hrs";
+          },
+        },
+        grid: {
+          drawOnChartArea: false,
+        },
+        border: {
+          color: "#15616D",
+          width: 2,
+        },
+        title: {
+          display: true,
+          text: "In Progress Hours",
           color: "#E06C00",
           font: { weight: "bold" },
         },

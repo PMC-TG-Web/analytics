@@ -157,8 +157,10 @@ function DashboardContent() {
       }, {} as Record<string, any>);
     }
     
-    // Fallback to grouped projects
+    // Fallback: Calculate from dedupedByCustomer to preserve PMC group breakdown
     const groups: Record<string, any> = {};
+    
+    // First pass: calculate sales, cost, hours from aggregated projects
     aggregatedProjects.forEach((p) => {
       const status = p.status || 'Unknown';
       if (isExcludedFromDashboard(p)) return;
@@ -167,11 +169,25 @@ function DashboardContent() {
       groups[status].cost += (p.cost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
-      
-      // We'd need projects to do deeper labor breakdown here, or use statusGroupsForLabor
     });
+    
+    // Second pass: calculate laborByGroup from dedupedByCustomer (line items)
+    dedupedByCustomer.forEach((p) => {
+      const status = p.status || 'Unknown';
+      if (isExcludedFromDashboard(p)) return;
+      if (!groups[status]) return; // Skip if status doesn't exist in groups
+      
+      const pmcGroup = p.pmcGroup || 'Unassigned';
+      const hours = Number(p.hours ?? 0);
+      
+      if (!groups[status].laborByGroup[pmcGroup]) {
+        groups[status].laborByGroup[pmcGroup] = 0;
+      }
+      groups[status].laborByGroup[pmcGroup] += hours;
+    });
+    
     return groups;
-  }, [aggregatedProjects, useSummary, summary]);
+  }, [aggregatedProjects, dedupedByCustomer, useSummary, summary]);
 
   const bidSubmittedLabor = useMemo(() => {
     const targetGroups = [
@@ -196,7 +212,8 @@ function DashboardContent() {
         if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
       });
     } else {
-      const bidProjects = (aggregatedProjects || []).filter(p => p.status === 'Bid Submitted');
+      // Use dedupedByCustomer (line items after competitive bidding dedup) to preserve individual PMC groups
+      const bidProjects = (dedupedByCustomer || []).filter(p => p.status === 'Bid Submitted');
       bidProjects.forEach((p) => {
         const groupName = (p.pmcGroup ?? '').toString().trim();
         const normalized = groupName.toLowerCase();
@@ -221,17 +238,57 @@ function DashboardContent() {
     return { totalHours, breakdown };
   }, [dedupedByCustomer, useSummary, summary]);
 
+  // All status labor breakdown (across all project statuses)
+  const allStatusesLabor = useMemo(() => {
+    const targetGroups = [
+      'slab on grade labor',
+      'site concrete labor',
+      'wall labor',
+      'foundation labor',
+    ];
+    const totals: Record<string, number> = {
+      'Slab On Grade Labor': 0,
+      'Site Concrete Labor': 0,
+      'Wall Labor': 0,
+      'Foundation Labor': 0,
+    };
+
+    // Use ALL dedupedByCustomer (not filtered by status)
+    const allProjects = dedupedByCustomer || [];
+    allProjects.forEach((p) => {
+      const groupName = (p.pmcGroup ?? '').toString().trim();
+      const normalized = groupName.toLowerCase();
+      if (!normalized) return;
+      const hours = Number(p.hours ?? 0);
+      if (!Number.isFinite(hours)) return;
+
+      if (normalized === targetGroups[0]) totals['Slab On Grade Labor'] += hours;
+      if (normalized === targetGroups[1]) totals['Site Concrete Labor'] += hours;
+      if (normalized === targetGroups[2]) totals['Wall Labor'] += hours;
+      if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
+    });
+
+    const totalHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    const breakdown = Object.entries(totals).map(([label, value]) => ({
+      label,
+      hours: value,
+      percent: totalHours > 0 ? (value / totalHours) * 100 : 0,
+    }));
+
+    return { totalHours, breakdown };
+  }, [dedupedByCustomer]);
+
   const pmHours = useMemo(() => {
     const pmGroupTotals: Record<string, number> = {};
     
     if (useSummary && summary?.pmcGroupHours) {
+      // Use summary data
       Object.entries(summary.pmcGroupHours).forEach(([label, hours]) => {
-        const normalized = label.toLowerCase();
-        if (!normalized || !(normalized.startsWith('pm ') || normalized === 'pm' || normalized.startsWith('pm-'))) return;
         pmGroupTotals[label] = hours;
       });
     } else {
-      const allProjects = (aggregatedProjects || []).filter(
+      // Calculate from dedupedByCustomer (only Bid Submitted)
+      const allProjects = (dedupedByCustomer || []).filter(
         p => p.status === 'Bid Submitted' && !p.projectArchived
       );
       

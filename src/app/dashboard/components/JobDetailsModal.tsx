@@ -163,11 +163,11 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-10">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
             {metrics.map((m) => (
               <div key={m.label} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">{m.label}</div>
-                <div className="text-lg font-bold text-gray-900">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1 whitespace-nowrap overflow-hidden text-ellipsis">{m.label}</div>
+                <div className="text-lg font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">
                   {m.prefix}{(m.value ?? 0).toLocaleString(undefined, { 
                     minimumFractionDigits: m.decimals, 
                     maximumFractionDigits: m.decimals 

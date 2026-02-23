@@ -550,6 +550,28 @@ function KPIPageContent({
   }, [projects]);
 
   const bidSubmittedSalesByMonth: Record<string, number> = {};
+  const bidSubmittedProjects = dedupedByCustomer.filter((project) => {
+    const status = (project.status || "").trim();
+    return status === "Bid Submitted" || status === "Estimating";
+  });
+  
+  console.log("[KPI] Total Bid Submitted/Estimating projects:", bidSubmittedProjects.length);
+  
+  const bidSubmittedWithDates = bidSubmittedProjects.filter(p => {
+    const projectDate = getProjectDate(p);
+    return projectDate !== null;
+  });
+  
+  console.log("[KPI] Bid Submitted projects with valid dates:", bidSubmittedWithDates.length);
+  
+  if (bidSubmittedWithDates.length > 0) {
+    console.log("[KPI] Sample Bid Submitted project dates:");
+    bidSubmittedWithDates.slice(0, 5).forEach(p => {
+      const projectDate = getProjectDate(p);
+      console.log(`  ${p.projectName || p.projectNumber}: dateCreated=${p.dateCreated}, dateUpdated=${p.dateUpdated}, resolved=${projectDate}`);
+    });
+  }
+  
   dedupedByCustomer.forEach((project) => {
     const status = (project.status || "").trim();
     if (status !== "Bid Submitted" && status !== "Estimating") return;

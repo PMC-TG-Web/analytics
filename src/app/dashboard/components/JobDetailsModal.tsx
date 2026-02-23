@@ -16,6 +16,19 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "cost" | "sales">("name");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [newStatus, setNewStatus] = useState(project?.status || "");
+  const [updating, setUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<{type: "success" | "error"; text: string} | null>(null);
+
+  const statusOptions = [
+    "Estimating",
+    "Bid Submitted",
+    "Accepted",
+    "In Progress",
+    "Complete",
+    "Delayed",
+    "Lost",
+  ];
 
   useEffect(() => {
     // FIX Issue #1 & #2: Ensure all required fields exist before fetching
@@ -29,6 +42,8 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
             project.customer!
           );
           setLineItems(items);
+          setNewStatus(project.status || "");
+          setUpdateMessage(null);
         } catch (error) {
           console.error("Error fetching line items:", error);
         } finally {
@@ -37,7 +52,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
       };
       fetchLineItems();
     }
-  }, [isOpen, project?.projectNumber, project?.projectName, project?.customer]);
+  }, [isOpen, project?.projectNumber, project?.projectName, project?.customer, project?.status]);
 
   // FIX Issue #3: Use useMemo for all aggregations
   const groupedItems = useMemo(() => {
@@ -90,6 +105,40 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
       ...prev,
       [type]: !prev[type],
     }));
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!project?.id || newStatus === project.status) {
+      setUpdateMessage({ type: "error", text: "No changes to update" });
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const response = await fetch("/api/updateProjectStatus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          newStatus: newStatus,
+          projectNumber: project.projectNumber,
+          projectName: project.projectName,
+          customer: project.customer,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update status");
+      }
+
+      setUpdateMessage({ type: "success", text: `Status updated to "${newStatus}"` });
+      setTimeout(() => setUpdateMessage(null), 3000);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      setUpdateMessage({ type: "error", text: "Failed to update status. Try again." });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   if (!isOpen || !project) return null;
@@ -193,6 +242,39 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
                     <span className="text-sm font-semibold text-gray-900">{item.v || "—"}</span>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-[#15616D] font-bold mb-4 uppercase text-xs tracking-widest">Update Status</h3>
+                <div className="space-y-3">
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#15616D]"
+                  >
+                    {statusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleStatusUpdate}
+                    disabled={updating || newStatus === project.status}
+                    className="w-full px-4 py-2 bg-[#15616D] text-white font-semibold rounded-lg hover:bg-[#0d3d4a] disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm"
+                  >
+                    {updating ? "Updating..." : "Update Status"}
+                  </button>
+                  {updateMessage && (
+                    <div className={`text-xs p-2 rounded-lg text-center font-medium ${
+                      updateMessage.type === "success" 
+                        ? "bg-green-50 text-green-700 border border-green-200" 
+                        : "bg-red-50 text-red-700 border border-red-200"
+                    }`}>
+                      {updateMessage.text}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

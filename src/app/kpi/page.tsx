@@ -551,16 +551,35 @@ function KPIPageContent({
 
   // Bid Submitted sales - use dateCreated
   const bidSubmittedSalesByMonth: Record<string, number> = {};
+  
+  let bidSubmittedTotal = 0;
+  let bidSubmittedWithDates = 0;
+  let bidSubmittedWithoutDates = 0;
+  
   dedupedByCustomer.forEach((project) => {
     const status = (project.status || "").trim();
     if (status !== "Bid Submitted" && status !== "Estimating") return;
-    const projectDate = getProjectDate(project);
-    if (!projectDate) return;
-    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+    
     const sales = Number(project.sales ?? 0);
+    bidSubmittedTotal += sales;
+    
+    const projectDate = getProjectDate(project);
+    if (!projectDate) {
+      bidSubmittedWithoutDates++;
+      return;
+    }
+    bidSubmittedWithDates++;
+    
+    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
     if (!Number.isFinite(sales)) return;
     bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
   });
+  
+  console.log("[KPI] === Bid Submitted Breakdown ===");
+  console.log(`[KPI] Total Bid Submitted/Estimating projects: ${dedupedByCustomer.filter(p => p.status === "Bid Submitted" || p.status === "Estimating").length}`);
+  console.log(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
+  console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
+  console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
   
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   
@@ -928,6 +947,12 @@ function KPIPageContent({
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
   
+  const scheduledTotal = Object.values(scheduledSalesByMonth).reduce((sum, val) => sum + val, 0);
+  
+  console.log("[KPI] === Scheduled Sales Breakdown ===");
+  console.log(`[KPI] Projects with qualifying status (In Progress/Accepted/Complete): ${scheduleSalesMap.size}`);
+  console.log(`[KPI] Schedules used for allocation: ${schedules.length}`);
+  console.log(`[KPI] Total Scheduled sales: $${scheduledTotal.toLocaleString()}`);
   console.log("[KPI] Scheduled sales by month:", scheduledSalesByMonth);
   console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
   

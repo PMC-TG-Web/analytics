@@ -196,7 +196,7 @@ function DashboardContent() {
         if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
       });
     } else {
-      const bidProjects = (dedupedByCustomer || []).filter(p => p.status === 'Bid Submitted');
+      const bidProjects = (aggregatedProjects || []).filter(p => p.status === 'Bid Submitted');
       bidProjects.forEach((p) => {
         const groupName = (p.pmcGroup ?? '').toString().trim();
         const normalized = groupName.toLowerCase();
@@ -231,7 +231,7 @@ function DashboardContent() {
         pmGroupTotals[label] = hours;
       });
     } else {
-      const allProjects = (dedupedByCustomer || []).filter(
+      const allProjects = (aggregatedProjects || []).filter(
         p => p.status === 'Bid Submitted' && !p.projectArchived
       );
       

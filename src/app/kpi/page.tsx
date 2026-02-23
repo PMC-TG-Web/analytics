@@ -549,14 +549,14 @@ function KPIPageContent({
     return { aggregated: Array.from(map.values()), dedupedByCustomer };
   }, [projects]);
 
-  // Bid Submitted sales - use dateCreated
+  // Bid Submitted sales - use the AGGREGATED (deduplicated) projects, not dedupedByCustomer
   const bidSubmittedSalesByMonth: Record<string, number> = {};
   
   let bidSubmittedTotal = 0;
   let bidSubmittedWithDates = 0;
   let bidSubmittedWithoutDates = 0;
   
-  dedupedByCustomer.forEach((project) => {
+  aggregatedProjects.forEach((project) => {
     const status = (project.status || "").trim();
     if (status !== "Bid Submitted" && status !== "Estimating") return;
     
@@ -576,7 +576,7 @@ function KPIPageContent({
   });
   
   console.log("[KPI] === Bid Submitted Breakdown ===");
-  console.log(`[KPI] Total Bid Submitted/Estimating projects: ${dedupedByCustomer.filter(p => p.status === "Bid Submitted" || p.status === "Estimating").length}`);
+  console.log(`[KPI] Total Bid Submitted/Estimating projects (deduplicated): ${aggregatedProjects.filter(p => p.status === "Bid Submitted" || p.status === "Estimating").length}`);
   console.log(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
   console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
   console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);

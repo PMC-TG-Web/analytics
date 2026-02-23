@@ -1701,7 +1701,7 @@ function CombinedSalesLineChart({
     labels,
     datasets: [
       {
-        label: "Scheduled Sales",
+        label: "Sold (Revenue)",
         data: scheduledSales,
         borderColor: "#15616D",
         backgroundColor: "rgba(21, 97, 109, 0.25)",
@@ -1715,7 +1715,7 @@ function CombinedSalesLineChart({
         yAxisID: "y",
       },
       {
-        label: "Bid Submitted Sales",
+        label: "Bid Submitted (Estimates)",
         data: bidSubmittedSales,
         borderColor: "#E06C00",
         backgroundColor: "rgba(224, 108, 0, 0.25)",

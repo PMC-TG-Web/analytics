@@ -115,6 +115,7 @@ const buildDocFromRecord = (record) => {
     active: parseValue(normalized.active, 'boolean'),
     dateCreated: parseValue(normalized.datecreated, 'date'),
     estimator: parseValue(normalized.estimator, 'string'),
+    scopeOfWork: parseValue(normalized.scopeofwork, 'string'),
   };
 };
 

@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for errors from auth endpoints
+    // Check URL for error parameter
+    const searchParams = new URLSearchParams(window.location.search);
     const errorParam = searchParams.get('error');
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
@@ -21,7 +21,7 @@ export default function LoginPage() {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [router, searchParams]);
+  }, [router]);
 
   const handleManualLogin = () => {
     router.push("/api/auth/login?returnTo=/wip");
@@ -52,4 +52,8 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+export default function LoginPage() {
+  return <LoginContent />;
 }

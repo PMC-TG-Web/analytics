@@ -43,6 +43,7 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
   "rick@pmcdecor.com": ["ADMIN"],
   "shelly@pmcdecor.com": ["ADMIN"],
   "dave@pmcdecor.com": ["ADMIN"],
+  "david@pmcdecor.com": ["ADMIN"],
 
   // HR access + Personnel Management (employees + onboarding pages)
   "jane@pmcdecor.com": ["HR", "employees", "onboarding"],

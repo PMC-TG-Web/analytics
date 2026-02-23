@@ -16,6 +16,7 @@ export default function DevLoginPage() {
     { email: 'levi@paradise-concrete.com', name: 'Levi PC (Full Access)' },
     { email: 'rick@pmcdecor.com', name: 'Rick (Full Access)' },
     { email: 'dave@pmcdecor.com', name: 'Dave (Admin - Full Access)' },
+    { email: 'david@pmcdecor.com', name: 'David (Admin - Full Access)' },
     { email: 'levi@pmcdecor.com', name: 'Levi (KPI Only)' },
     { email: 'shelly@pmcdecor.com', name: 'Shelly (KPI Only)' },
   ];

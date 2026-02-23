@@ -307,42 +307,16 @@ export default function KPIPage() {
       setLoading(true);
       setProcoreAuthError(false);
       try {
-        let projectsData: Project[] = [];
-
-        // Try cache first (5 minute cache)
-        const cachedProjects = sessionStorage.getItem('kpi_projects');
-        if (cachedProjects) {
-          try {
-            const { data, timestamp } = JSON.parse(cachedProjects);
-            const age = Date.now() - timestamp;
-            if (age < 5 * 60 * 1000) { // 5 minutes
-              console.log("[KPI] Using cached projects data");
-              projectsData = data;
-            } else {
-              sessionStorage.removeItem('kpi_projects');
-            }
-          } catch (e) {
-            sessionStorage.removeItem('kpi_projects');
-          }
-        }
-
-        // Fetch from Firestore if no valid cache
-        if (projectsData.length === 0) {
-          console.log("[KPI] Fetching projects from Firestore...");
-          const projectsSnapshot = await getDocs(collection(db, "projects"));
-          projectsData = projectsSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Project[];
-          
-          // Cache the data
-          sessionStorage.setItem('kpi_projects', JSON.stringify({
-            data: projectsData,
-            timestamp: Date.now()
-          }));
-        }
+        // Fetch from Firestore
+        console.log("[KPI] Fetching projects from Firestore...");
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsData = projectsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Project[];
 
         setProjects(projectsData);
+        console.log("[KPI] Loaded projects:", projectsData.length);
 
         // Fetch schedules (currently always from Firestore)
         const schedulesRes = await fetch("/api/scheduling");
@@ -621,6 +595,9 @@ function KPIPageContent({
     return true;
   });
   
+  console.log("[KPI] Total projects:", projects.length);
+  console.log("[KPI] Filtered projects:", filteredProjects.length);
+  
   // Deduplicate by project, selecting one customer per project, then sum hours
   const projectIdentifierMap = new Map<string, Project[]>();
   filteredProjects.forEach((project: Project) => {
@@ -746,6 +723,8 @@ function KPIPageContent({
     }
     bidSubmittedHoursYearMonthMap[year][Number(m)] = bidSubmittedHoursByMonth[month];
   });
+  
+  console.log("[KPI] Bid Submitted hours by month:", bidSubmittedHoursByMonth);
 
   // In Progress hours calculation
   const inProgressHoursByMonth: Record<string, number> = {};
@@ -831,6 +810,8 @@ function KPIPageContent({
     }
     inProgressHoursYearMonthMap[year][Number(m)] = inProgressHoursByMonth[month];
   });
+  
+  console.log("[KPI] In Progress hours by month:", inProgressHoursByMonth);
 
   const renderCardRows = (cardName: string, color: string) => {
     const rawRows = cardLoadData[normalizeCardName(cardName)] || [];
@@ -944,6 +925,10 @@ function KPIPageContent({
   });
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
+  
+  console.log("[KPI] Scheduled sales by month:", scheduledSalesByMonth);
+  console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
+  
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
   scheduledSalesMonths.forEach((month) => {
     const [year, m] = month.split("-");

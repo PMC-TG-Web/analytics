@@ -40,6 +40,22 @@ function DashboardContent() {
   const [jobsListTitle, setJobsListTitle] = useState("");
   const [topContractorLimit, setTopContractorLimit] = useState<string>("10");
 
+  const refreshData = async () => {
+    setLoading(true);
+    // Clear summary cache and reload
+    const summaryData = await getDashboardSummary();
+    if (summaryData) {
+      setSummary(summaryData);
+    }
+    
+    // If we're in full scan mode, reload projects too
+    if (isFullScan) {
+      const data = await getAllProjectsForDashboard();
+      setProjects(data);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     async function fetchData() {
       // First try to get the summary (extremely fast)
@@ -662,6 +678,7 @@ function DashboardContent() {
           setJobDetailsOpen(false);
           setJobsListOpen(true);
         }}
+        onStatusUpdate={refreshData}
       />
     </main>
   );

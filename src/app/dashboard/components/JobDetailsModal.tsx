@@ -9,9 +9,10 @@ interface JobDetailsModalProps {
   project: Project | null;
   onClose: () => void;
   onBack?: () => void;
+  onStatusUpdate?: () => void;
 }
 
-export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetailsModalProps) {
+export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpdate }: JobDetailsModalProps) {
   const [lineItems, setLineItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "cost" | "sales">("name");
@@ -133,6 +134,11 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack }: JobDetails
 
       setUpdateMessage({ type: "success", text: `Status updated to "${newStatus}"` });
       setTimeout(() => setUpdateMessage(null), 3000);
+      
+      // Trigger parent refresh
+      if (onStatusUpdate) {
+        onStatusUpdate();
+      }
     } catch (error) {
       console.error("Error updating status:", error);
       setUpdateMessage({ type: "error", text: "Failed to update status. Try again." });

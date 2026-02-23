@@ -549,39 +549,42 @@ function KPIPageContent({
     return { aggregated: Array.from(map.values()), dedupedByCustomer };
   }, [projects]);
 
+  // Bid Submitted sales - use schedule allocations like Scheduled Sales does
   const bidSubmittedSalesByMonth: Record<string, number> = {};
-  const bidSubmittedProjects = dedupedByCustomer.filter((project) => {
-    const status = (project.status || "").trim();
-    return status === "Bid Submitted" || status === "Estimating";
-  });
   
-  console.log("[KPI] Total Bid Submitted/Estimating projects:", bidSubmittedProjects.length);
-  
-  const bidSubmittedWithDates = bidSubmittedProjects.filter(p => {
-    const projectDate = getProjectDate(p);
-    return projectDate !== null;
-  });
-  
-  console.log("[KPI] Bid Submitted projects with valid dates:", bidSubmittedWithDates.length);
-  
-  if (bidSubmittedWithDates.length > 0) {
-    console.log("[KPI] Sample Bid Submitted project dates:");
-    bidSubmittedWithDates.slice(0, 5).forEach(p => {
-      const projectDate = getProjectDate(p);
-      console.log(`  ${p.projectName || p.projectNumber}: dateCreated=${p.dateCreated}, dateUpdated=${p.dateUpdated}, resolved=${projectDate}`);
-    });
-  }
-  
+  // First, gather all Bid Submitted/Estimating project sales
+  const bidSubmittedSalesMap = new Map<string, number>();
   dedupedByCustomer.forEach((project) => {
     const status = (project.status || "").trim();
     if (status !== "Bid Submitted" && status !== "Estimating") return;
-    const projectDate = getProjectDate(project);
-    if (!projectDate) return;
-    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+    
+    const key = getProjectKey(project.customer, project.projectNumber, project.projectName);
     const sales = Number(project.sales ?? 0);
     if (!Number.isFinite(sales)) return;
-    bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
+    
+    const currentTotal = bidSubmittedSalesMap.get(key) || 0;
+    bidSubmittedSalesMap.set(key, currentTotal + sales);
   });
+  
+  console.log("[KPI] Bid Submitted projects with sales:", bidSubmittedSalesMap.size);
+  
+  // Then allocate them by schedule month (same as Scheduled Sales)
+  schedules.forEach((schedule: Schedule) => {
+    const key = schedule.jobKey || getProjectKey(schedule.customer, schedule.projectNumber, schedule.projectName);
+    const projectSales = bidSubmittedSalesMap.get(key);
+    
+    if (!projectSales) return;
+
+    normalizeAllocations(schedule.allocations).forEach((alloc: any) => {
+      const percent = Number(alloc.percent ?? 0);
+      if (!Number.isFinite(percent) || percent <= 0) return;
+      const monthKey = alloc.month;
+      if (!isValidMonthKey(monthKey)) return;
+      const monthlySales = projectSales * (percent / 100);
+      bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + monthlySales;
+    });
+  });
+  
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
   bidSubmittedSalesMonths.forEach((month) => {

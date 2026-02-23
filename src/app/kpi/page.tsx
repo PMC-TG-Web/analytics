@@ -549,43 +549,24 @@ function KPIPageContent({
     return { aggregated: Array.from(map.values()), dedupedByCustomer };
   }, [projects]);
 
-  // Bid Submitted sales - use schedule allocations like Scheduled Sales does
+  // Bid Submitted sales - use dateCreated
   const bidSubmittedSalesByMonth: Record<string, number> = {};
-  
-  // First, gather all Bid Submitted/Estimating project sales
-  const bidSubmittedSalesMap = new Map<string, number>();
   dedupedByCustomer.forEach((project) => {
     const status = (project.status || "").trim();
     if (status !== "Bid Submitted" && status !== "Estimating") return;
-    
-    const key = getProjectKey(project.customer, project.projectNumber, project.projectName);
+    const projectDate = getProjectDate(project);
+    if (!projectDate) return;
+    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
     const sales = Number(project.sales ?? 0);
     if (!Number.isFinite(sales)) return;
-    
-    const currentTotal = bidSubmittedSalesMap.get(key) || 0;
-    bidSubmittedSalesMap.set(key, currentTotal + sales);
-  });
-  
-  console.log("[KPI] Bid Submitted projects with sales:", bidSubmittedSalesMap.size);
-  
-  // Then allocate them by schedule month (same as Scheduled Sales)
-  schedules.forEach((schedule: Schedule) => {
-    const key = schedule.jobKey || getProjectKey(schedule.customer, schedule.projectNumber, schedule.projectName);
-    const projectSales = bidSubmittedSalesMap.get(key);
-    
-    if (!projectSales) return;
-
-    normalizeAllocations(schedule.allocations).forEach((alloc: any) => {
-      const percent = Number(alloc.percent ?? 0);
-      if (!Number.isFinite(percent) || percent <= 0) return;
-      const monthKey = alloc.month;
-      if (!isValidMonthKey(monthKey)) return;
-      const monthlySales = projectSales * (percent / 100);
-      bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + monthlySales;
-    });
+    bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
   });
   
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
+  
+  console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
+  console.log("[KPI] Year filter:", yearFilter);
+  
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
   bidSubmittedSalesMonths.forEach((month) => {
     const [year, m] = month.split("-");
@@ -973,6 +954,9 @@ function KPIPageContent({
     filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
     return true;
   });
+  
+  console.log("[KPI] Filtered bid submitted months:", filteredBidSubmittedSalesMonths);
+  console.log("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
 
   const filteredScheduledSalesByMonth: Record<string, number> = {};
   const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {

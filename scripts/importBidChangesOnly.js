@@ -231,12 +231,8 @@ async function importBidChangesOnly() {
         const lineItemKey = makeLineItemKey(newDoc);
         newDoc.lineItemKey = lineItemKey;
 
-        if (!projectNumber) {
-          console.warn(`⚠️  Skipping record ${i}: No project number found`);
-          skippedCount++;
-          results.skipped.push({ row: i + 2, reason: 'No project number' });
-          continue;
-        }
+        // Import all rows, even those without project numbers
+        // If projectNumber is empty, it will be stored as null
 
         const existingList = existingProjects.get(lineItemKey);
 

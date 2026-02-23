@@ -52,7 +52,7 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
               <button 
                 onClick={() => {
                   const returnUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
-                  window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`;
+                  window.location.href = `/api/auth/procore/login?returnTo=${encodeURIComponent(returnUrl)}`;
                 }}
                 style={{
                   padding: "10px 20px",

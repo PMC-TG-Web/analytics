@@ -15,16 +15,16 @@ function LoginContent() {
       return;
     }
 
-    // Auto-redirect to Auth0 login
+    // Auto-redirect to Procore login
     const timer = setTimeout(() => {
-      router.replace("/api/auth/login?returnTo=/wip");
+      router.replace("/api/auth/procore/login?returnTo=/wip");
     }, 100);
 
     return () => clearTimeout(timer);
   }, [router]);
 
   const handleManualLogin = () => {
-    router.push("/api/auth/login?returnTo=/wip");
+    router.push("/api/auth/procore/login?returnTo=/wip");
   };
 
   return (

@@ -1,5 +1,5 @@
 // scripts/clearFirestoreCollection.js
-// Usage: node scripts/clearFirestoreCollection.js
+// Usage: node scripts/clearFirestoreCollection.js [collectionName]
 
 const { initializeApp } = require('firebase/app');
 const { getFirestore, collection, getDocs, deleteDoc, doc } = require('firebase/firestore');
@@ -21,7 +21,9 @@ async function clearCollection(collName) {
   console.log(`Cleared collection '${collName}'. Total deleted: ${deleted}`);
 }
 
-clearCollection('schedules').catch(err => {
+const collectionName = process.argv[2] || 'schedules';
+
+clearCollection(collectionName).catch(err => {
   console.error('Failed to clear collection:', err);
   process.exit(1);
 });

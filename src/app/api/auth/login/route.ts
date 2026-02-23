@@ -14,19 +14,31 @@ export async function GET(request: NextRequest) {
   const baseUrl = origin.includes('localhost') ? (process.env.AUTH0_BASE_URL || origin) : origin;
 
   if (!auth0Domain || !clientId) {
-    return NextResponse.json(
-      { error: 'Auth0 environment variables not configured' },
-      { status: 500 }
+    console.error('Auth0 Configuration Missing:', {
+      auth0Domain: auth0Domain ? '✓ Present' : '✗ MISSING',
+      clientId: clientId ? '✓ Present' : '✗ MISSING',
+      nodeEnv: process.env.NODE_ENV,
+    });
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent('Auth0 not configured. Contact admin.')}`, request.url)
     );
   }
 
-  // Build Auth0 login URL
-  const loginUrl = new URL(`https://${auth0Domain}/authorize`);
-  loginUrl.searchParams.set('client_id', clientId);
-  loginUrl.searchParams.set('redirect_uri', `${baseUrl}/api/auth/callback`);
-  loginUrl.searchParams.set('response_type', 'code');
-  loginUrl.searchParams.set('scope', 'openid profile email');
-  loginUrl.searchParams.set('state', encodeURIComponent(returnTo));
+  try {
+    // Build Auth0 login URL
+    const loginUrl = new URL(`https://${auth0Domain}/authorize`);
+    loginUrl.searchParams.set('client_id', clientId);
+    loginUrl.searchParams.set('redirect_uri', `${baseUrl}/api/auth/callback`);
+    loginUrl.searchParams.set('response_type', 'code');
+    loginUrl.searchParams.set('scope', 'openid profile email');
+    loginUrl.searchParams.set('state', encodeURIComponent(returnTo));
 
-  return NextResponse.redirect(loginUrl.toString());
+    console.log('Redirecting to Auth0:', { domain: auth0Domain, redirectUri: `${baseUrl}/api/auth/callback` });
+    return NextResponse.redirect(loginUrl.toString());
+  } catch (error) {
+    console.error('Auth0 login error:', error);
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent('Login error. Try again.')}`, request.url)
+    );
+  }
 }

@@ -1150,25 +1150,29 @@ function KPIPageContent({
       </div>
 
       {/* Combined Sales Line Chart */}
-      {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) && (
-        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
-          <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales Trend</h2>
-          <div style={{ height: 160 }}>
+      <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
+        <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales Trend</h2>
+        <div style={{ height: 160 }}>
+          {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
             <CombinedSalesLineChart
               scheduledMonths={filteredScheduledSalesMonths}
               scheduledSalesByMonth={filteredScheduledSalesByMonth}
               bidSubmittedMonths={filteredBidSubmittedSalesMonths}
               bidSubmittedSalesByMonth={filteredBidSubmittedSalesByMonth}
             />
-          </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#999", fontSize: 13 }}>
+              No sales data available for the selected period
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Combined Hours Line Chart */}
-      {(Object.keys(inProgressHoursByMonth).length > 0 || Object.keys(bidSubmittedHoursByMonth).length > 0) && (
-        <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
-          <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Hours Trend</h2>
-          <div style={{ height: 160 }}>
+      <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
+        <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Hours Trend</h2>
+        <div style={{ height: 160 }}>
+          {(Object.keys(inProgressHoursByMonth).length > 0 || Object.keys(bidSubmittedHoursByMonth).length > 0) ? (
             <CombinedHoursLineChart
               inProgressHoursByMonth={inProgressHoursByMonth}
               bidSubmittedHoursByMonth={bidSubmittedHoursByMonth}
@@ -1176,9 +1180,13 @@ function KPIPageContent({
               startDate={startDate}
               endDate={endDate}
             />
-          </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#999", fontSize: 13 }}>
+              No hours data available for the selected period
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Combined Sales by Month Table */}
       {filteredCombinedSalesYears.length > 0 && (

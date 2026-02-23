@@ -49,14 +49,16 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
              Please sign in to access this page.
           </p>
            <div style={{ display: 'flex', gap: '12px' }}>
-              <a 
-                href={`/api/auth/login?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
-                target="_top"
+              <button 
+                onClick={() => {
+                  const returnUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
+                  window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`;
+                }}
                 style={{
                   padding: "10px 20px",
                   background: "#15616D",
                   color: "#fff",
-                  textDecoration: "none",
+                  border: "none",
                   borderRadius: "6px",
                   fontWeight: 600,
                   fontSize: "14px",
@@ -64,7 +66,7 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
                 }}
               >
                 Sign In
-              </a>
+              </button>
            </div>
         </div>
       );

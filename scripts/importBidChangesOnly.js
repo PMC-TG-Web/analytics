@@ -94,13 +94,17 @@ const buildDocFromRecord = (record) => {
   }
 
   // Build document with all fields
+  const costitems = parseValue(normalized.costitems, 'string');
+  const costType = parseValue(normalized.costtype, 'string');
+  const pmcGroup = derivePmcGroup(costitems, costType);
+  
   return {
     projectNumber: parseValue(normalized.projectnumber, 'string'),
     dateUpdated: parseValue(normalized.dateupdated, 'date'),
     reasonForLoss: parseValue(normalized.reasonforloss, 'string'),
     projectStage: parseValue(normalized.projectstage, 'string'),
-    costitems: parseValue(normalized.costitems, 'string'),
-    costType: parseValue(normalized.costtype, 'string'),
+    costitems: costitems,
+    costType: costType,
     quantity: parseValue(normalized.quantity, 'number'),
     sales: parseValue(normalized.sales, 'number'),
     laborSales: parseValue(normalized.laborsales, 'number'),
@@ -116,7 +120,24 @@ const buildDocFromRecord = (record) => {
     dateCreated: parseValue(normalized.datecreated, 'date'),
     estimator: parseValue(normalized.estimator, 'string'),
     scopeOfWork: parseValue(normalized.scopeofwork, 'string'),
+    pmcGroup: pmcGroup,
   };
+};
+
+const derivePmcGroup = (costitems, costType) => {
+  const normalized = (costitems ?? '').toString().toLowerCase().trim();
+  
+  // Map costitems to PMC group
+  if (normalized.includes('slab on grade labor')) return 'Slab On Grade Labor';
+  if (normalized.includes('site concrete labor')) return 'Site Concrete Labor';
+  if (normalized.includes('wall labor')) return 'Wall Labor';
+  if (normalized.includes('foundation labor')) return 'Foundation Labor';
+  if (normalized.includes('slab on grade') || normalized.includes('slab on deck')) return 'Slab On Grade Labor';
+  if (normalized.includes('site concrete') || normalized.includes('site apron') || normalized.includes('dock')) return 'Site Concrete Labor';
+  if (normalized.includes('poured wall') || normalized.includes('wall')) return 'Wall Labor';
+  if (normalized.includes('foundation') || normalized.includes('footing')) return 'Foundation Labor';
+  
+  return null;
 };
 
 const makeLineItemKey = (doc) => {

@@ -191,7 +191,7 @@ export function ProjectScopesModal({
         onScopesUpdated(project.jobKey, updatedScopes);
       } else {
         const docRef = await addDoc(collection(db, "projectScopes"), payload);
-        const newScope: Scope = { id: docRef.id, ...payload };
+        const newScope: Scope = { id: docRef.id, title: payload.title || "Scope", ...payload } as Scope;
         onScopesUpdated(project.jobKey, [...scopes, newScope]);
         setActiveScopeId(docRef.id);
       }

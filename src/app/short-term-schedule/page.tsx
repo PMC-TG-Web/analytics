@@ -379,7 +379,7 @@ function ShortTermScheduleContent() {
     }
     
     // If not targeting a cell, show the Gantt modal for editing
-    openGanttModal(p.customer, p.projectName, p.projectNumber);
+    openGanttModal(p.customer || "", p.projectName || "", p.projectNumber || "");
   }
 
   async function handleScopeSelect(p: Project) {

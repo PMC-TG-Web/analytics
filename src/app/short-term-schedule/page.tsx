@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { collection, getDocs, doc, setDoc, getDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, getDoc, query, where, writeBatch, deleteDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -10,6 +10,7 @@ import { Scope, Project, ProjectInfo } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
+import { getActiveScheduleDocId, recalculateScopeTracking } from "@/utils/activeScheduleUtils";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -426,77 +427,37 @@ function ShortTermScheduleContent() {
     targetWeekNum: number,
     targetDayNum: number
   ) {
-    const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber, hours } = project;
-    const targetMonthStr = targetDateKey.substring(0, 7); // YYYY-MM
+    const { jobKey, hours } = project;
+    const scopeOfWork = "Scheduled Work"; // Default scope for short-term assignments
+    const foremanValue = targetForemanId === "__unassigned__" || !targetForemanId ? "" : targetForemanId;
     
-    // 1. Update/Remove Source (if in same month doc)
-    // 2. Add/Update Target (if in same month doc)
-    
-    const sourceDocId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const targetDocId = `${jobKey}_${targetMonthStr}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-
-    if (sourceDocId === targetDocId) {
-      // SAME DOCUMENT - Update both days in one write
-      const docRef = doc(db, "short term schedual", sourceDocId);
-      const docSnapshot = await getDoc(docRef);
-      let docData: ScheduleDoc;
-
-      if (docSnapshot.exists()) {
-        docData = docSnapshot.data() as ScheduleDoc;
-        if (!docData.weeks) docData.weeks = [];
-        
-        // Update source day to 0
-        let sourceWeekFound = false;
-        docData.weeks = docData.weeks.map(w => {
-          if (w.weekNumber === weekNumber) {
-            sourceWeekFound = true;
-            w.days = (w.days || []).map(d => d.dayNumber === dayNumber ? { ...d, hours: 0 } : d);
-          }
-          return w;
-        });
-
-        // Update/Add target day
-        let targetWeekFound = false;
-        docData.weeks = docData.weeks.map(w => {
-          if (w.weekNumber === targetWeekNum) {
-            targetWeekFound = true;
-            const updatedDays = (w.days || []).map(d => 
-              d.dayNumber === targetDayNum ? { ...d, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId } : d
-            );
-            if (!updatedDays.some(d => d.dayNumber === targetDayNum)) {
-              updatedDays.push({ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId });
-            }
-            return { ...w, days: updatedDays };
-          }
-          return w;
-        });
-
-        if (!targetWeekFound) {
-          docData.weeks.push({
-            weekNumber: targetWeekNum,
-            days: [{ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId }]
-          });
-        }
-      } else {
-        // Doc doesn't exist (e.g. moving a Gantt project that had no override)
-        docData = {
-          jobKey, customer, projectNumber, projectName, month: targetMonthStr,
-          weeks: [
-            { weekNumber, days: [{ dayNumber, hours: 0, foreman: "" }] },
-            { weekNumber: targetWeekNum, days: [{ dayNumber: targetDayNum, hours, foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId }] }
-          ]
-        };
-      }
-      await setDoc(docRef, { ...docData, updatedAt: new Date().toISOString() }, { merge: true });
-      await syncProjectWIP(jobKey);
-      await syncGanttWithShortTerm(jobKey);
-    } else {
-      // DIFFERENT DOCUMENTS - Sequenced writes
-      await updateProjectAssignment(project, sourceDateKey, sourceForemanId, null, 0);
-      const targetProject = { ...project, month: targetMonthStr, weekNumber: targetWeekNum, dayNumber: targetDayNum };
-      await updateProjectAssignment(targetProject, targetDateKey, targetForemanId, targetForemanId, hours);
-      // sync methods called inside updateProjectAssignment for the target
+    // Delete old entry on source date
+    const sourceDocId = getActiveScheduleDocId(jobKey, scopeOfWork, sourceDateKey);
+    const sourceDocRef = doc(db, 'activeSchedule', sourceDocId);
+    try {
+      await deleteDoc(sourceDocRef);
+    } catch (e) {
+      // May not exist, that's okay
     }
+    
+    // Create new entry on target date
+    const targetDocId = getActiveScheduleDocId(jobKey, scopeOfWork, targetDateKey);
+    const targetDocRef = doc(db, 'activeSchedule', targetDocId);
+    
+    await setDoc(targetDocRef, {
+      jobKey,
+      scopeOfWork,
+      date: targetDateKey,
+      hours,
+      foreman: foremanValue,
+      source: 'short-term',
+      lastModified: Timestamp.now()
+    }, { merge: true });
+    
+    // Update scopeTracking
+    await recalculateScopeTracking(jobKey, { [scopeOfWork]: 0 });
+    await syncProjectWIP(jobKey);
+    await syncGanttWithShortTerm(jobKey);
   }
 
   async function updateProjectAssignment(
@@ -506,65 +467,37 @@ function ShortTermScheduleContent() {
     newForemanId: string | null,
     newHours: number
   ) {
-    const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber } = project;
-    const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const docRef = doc(db, "short term schedual", docId);
-    
-    const docSnapshot = await getDoc(docRef);
-    const existingData = docSnapshot.exists() ? (docSnapshot.data() as ScheduleDoc) : null;
-    
-    let docData: ScheduleDoc & { updatedAt?: string };
+    const { jobKey } = project;
+    const scopeOfWork = "Scheduled Work"; // Default scope for short-term assignments
     const foremanValue = newForemanId === "__unassigned__" || !newForemanId ? "" : newForemanId;
-
-    if (existingData) {
-      docData = { ...existingData };
-      if (!docData.weeks) docData.weeks = [];
-      
-      let weekFound = false;
-      docData.weeks = docData.weeks.map((week: WeekData) => {
-        if (week.weekNumber === weekNumber) {
-          weekFound = true;
-          const updatedDays = (week.days || []).map((day: DayData) => {
-            if (day.dayNumber === dayNumber) {
-              return { ...day, hours: newHours, foreman: foremanValue };
-            }
-            return day;
-          });
-          
-          if (!updatedDays.some((d: DayData) => d.dayNumber === dayNumber)) {
-            updatedDays.push({ dayNumber, hours: newHours, foreman: foremanValue });
-          }
-          return { ...week, days: updatedDays };
-        }
-        return week;
-      });
-      
-      if (!weekFound) {
-        docData.weeks.push({
-          weekNumber,
-          days: [{ dayNumber, hours: newHours, foreman: foremanValue }]
-        });
+    
+    // Delete old entry if hours are being removed (newHours <= 0)
+    if (newHours <= 0) {
+      const docId = getActiveScheduleDocId(jobKey, scopeOfWork, dateKey);
+      const docRef = doc(db, 'activeSchedule', docId);
+      try {
+        await deleteDoc(docRef);
+      } catch (e) {
+        // Doc may not exist, that's okay
       }
     } else {
-      docData = {
+      // Write to activeSchedule
+      const docId = getActiveScheduleDocId(jobKey, scopeOfWork, dateKey);
+      const docRef = doc(db, 'activeSchedule', docId);
+      
+      await setDoc(docRef, {
         jobKey,
-        customer,
-        projectNumber,
-        projectName,
-        month,
-        weeks: [{
-          weekNumber,
-          days: [{
-            dayNumber,
-            hours: newHours,
-            foreman: foremanValue,
-          }]
-        }],
-      };
+        scopeOfWork,
+        date: dateKey,
+        hours: newHours,
+        foreman: foremanValue,
+        source: 'short-term',
+        lastModified: Timestamp.now()
+      }, { merge: true });
     }
     
-    docData.updatedAt = new Date().toISOString();
-    await setDoc(docRef, docData, { merge: true });
+    // Update scopeTracking
+    await recalculateScopeTracking(jobKey, { [scopeOfWork]: 0 }); // Pass empty scope totals - it will sum from activeSchedule
     await syncProjectWIP(jobKey);
     await syncGanttWithShortTerm(jobKey);
   }

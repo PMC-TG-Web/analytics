@@ -273,7 +273,7 @@ export function ProjectScopesModal({
 
       for (const scheduleDoc of schedulesSnapshot.docs) {
         const scheduleData = scheduleDoc.data();
-        const scopeOfWork = scheduleData.scopeOfWork || project.scopeOfWork || "General";
+        const scopeOfWork = scheduleData.scopeOfWork || "General";
 
         processedScopes.add(scopeOfWork); // Track this scope
 

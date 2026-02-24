@@ -1,0 +1,391 @@
+================================================================================
+  PMC ANALYTICS - SCHEDULE SYSTEM QUICK REFERENCE
+================================================================================
+
+Last Updated: February 24, 2026
+Version: 1.0
+
+================================================================================
+SYSTEM OVERVIEW
+================================================================================
+
+This scheduling system combines 4 data sources to create 3 different schedule
+views. The priority of which data source to use depends on the view and what
+data is available.
+
+4 DATA SOURCES (in Firestore):
+  1. projectScopes - Explicit date ranges with manpower/hours
+  2. long term schedual - Monthly data from legacy system
+  3. schedules - Current allocations with monthly percentages
+  4. short term schedual - Daily assignments and foreman info
+
+3 SCHEDULE VIEWS (what users see):
+  1. Long-term Schedule (15 weeks) - Career planning, resource overview
+  2. Project Gantt (monthly) - Timeline visualization
+  3. Short-term Schedule (5 weeks + daily grid) - Crew dispatch
+
+================================================================================
+SCHEDULE VIEWS EXPLAINED
+================================================================================
+
+VIEW 1: LONG-TERM SCHEDULE (15-Week Overview)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Purpose: See all projects for the next 15 weeks
+What you see: Project cards organized by week
+Data Priority: Scopes > Long-term data > Schedules %
+
+How it works:
+  • If project has projectScopes entry: use those dates
+  • If no scope but has long-term data: use that
+  • If neither: use monthly allocation % from schedules
+  • Result: Colored cards showing hours per project per week
+
+Example:
+  Week of Jan 10-14: Canine Partners 40h, GSQ 30h, Oak Hill 15h
+  Week of Jan 17-21: Canine Partners 40h, Oak Hill 25h
+
+---
+
+VIEW 2: PROJECT GANTT (Monthly Timeline)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Purpose: See when projects start and end
+What you see: Timeline bars for each project
+Data Priority: Scopes > Short-term detail > Long-term > Schedules %
+
+How it works:
+  • If projectScopes exist: create bar from start to end date
+  • If no scope but short-term schedual has data: use that range
+  • If no scope/short-term: try long-term dates
+  • If nothing else: use schedules % allocations (fallback)
+  • Hours shown: calculated from available data source
+
+Example Gantt:
+  Canine Partners:  [█████████████] Jan 10 ──────────────── Mar 31
+  GSQ:              [██████████] Jan 17 ──────── Feb 28
+  Oak Hill:                      [█████████████████] Feb 3 ────── Apr 15
+
+---
+
+VIEW 3: SHORT-TERM SCHEDULE (5-Week + Daily)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Purpose: Daily crew dispatch and assignment
+What you see: 5-week grid with projects + foreman assignments
+Data Priority: Scopes (if in window) > Long-term > Schedules % + Foreman overlay
+
+How it works - TWO-PART SYSTEM:
+
+  PART A: Calculate Project Hours
+  ┌─────────────────────┐
+  │ Determine hours for │
+  │ each day (Mon-Fri)  │
+  └─────────────────────┘
+    ↓
+  1. If project has scope within 5-week window:
+     • Use scope start/end dates
+     • If scope has "manpower": hours = manpower × 10
+     • If scope has "hours": hours = hours ÷ manpower/days
+  
+  2. If no scope: Check long-term schedual
+     • Week overlaps window? Extract weekly hours
+     • Divide by 5 workdays for daily amount
+  
+  3. If no scope or long-term: Use schedules %
+     • Find month % allocation
+     • monthHours = totalHours × % ÷ 100
+     • Divide by valid Mondays in month within window
+     • Divide by 5 workdays
+  
+  4. If none exist: ❌ Project doesn't show
+
+  PART B: Assign Foreman (overlay on Part A)
+  ┌───────────────────────┐
+  │ Add crew assignment   │
+  │ to the hours          │
+  └───────────────────────┘
+    ↓
+  • Check short term schedual for foreman assignment
+  • If foreman assigned: show name, allow X to remove
+  • If not assigned: show in "Unassigned" row
+  • Users can click to assign crew or mark complete
+
+Example display:
+  Mon Feb 24 | Tue Feb 25 | Wed Feb 26 | Thu Feb 27 | Fri Feb 28
+  ──────────┼───────────┼──────────┼──────────┼──────────
+  Canine    | Canine    | Canine   | Canine   | Canine
+  Partners  | Partners  | Partners | Partners | Partners
+  ~13.3h    | ~13.3h    | ~13.3h   | ~13.3h   | ~13.3h
+  [Mike]    | [Mike]    | [Mike]   | [Mike]   | [TBD]
+  
+  GSQ       | GSQ       | GSQ      | GSQ      | GSQ
+  ~12h      | ~12h      | ~12h     | ~12h     | ~12h
+  [TBD]     | [Sarah]   | [Sarah]  | [Sarah]  | [Sarah]
+
+================================================================================
+FIRESTORE COLLECTIONS STRUCTURE
+================================================================================
+
+COLLECTION: projectScopes
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Document: {projectName}
+Fields:
+  • scopes: [
+      {
+        scope: number,
+        manpower: number (optional),
+        hours: number (optional),
+        startDate: timestamp,
+        endDate: timestamp
+      }
+    ]
+
+Use case: Explicit project date ranges
+Example:
+  Canine Partners → scopes[0].startDate: Jan 10
+                             .endDate: Mar 31
+                             .manpower: 4
+                             (= 40 hours/day)
+
+---
+
+COLLECTION: long term schedual (NOTE: Typo in name, keep as-is)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Document: {projectName}
+Fields:
+  • monthlyData: {
+      "2026-01": { weeks: { week1: hours, week2: hours, ... } },
+      "2026-02": { weeks: { week1: hours, week2: hours, ... } }
+    }
+
+Use case: Legacy monthly data (fallback)
+Example:
+  Canine Partners → monthlyData["2026-01"].weeks.week1: 200 hours
+
+---
+
+COLLECTION: schedules
+━━━━━━━━━━━━━━━━━━━━
+Document: {projectName}
+Fields:
+  • totalHours: number,
+  • allocations: {
+      "2026-01": percent,
+      "2026-02": percent,
+      etc.
+    }
+
+Use case: Current percentage allocations (most common)
+Example:
+  Canine Partners → totalHours: 531
+                 → allocations["2026-03"]: 50 (means 50% for March)
+
+---
+
+COLLECTION: short term schedual (NOTE: Typo in name, keep as-is)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Document: {projectName}
+Fields:
+  • assignments: {
+      "2026-02-24": { foreman: "Mike", hours: 13.3, status: "assigned" },
+      "2026-02-25": { foreman: "Sarah", hours: 12, status: "assigned" },
+      etc.
+    }
+
+Use case: Daily crew assignments (overrides all above)
+Example:
+  Canine Partners → assignments["2026-02-24"].foreman: "Mike"
+
+================================================================================
+KEY RULES & CONSISTENCY GUARANTEES
+================================================================================
+
+1. NO DOUBLE-COUNTING
+   ├─ If project found in projectScopes for a date: SKIP schedules collection
+   ├─ If project found in long-term for a date: SKIP schedules collection
+   └─ Only use schedules % if NO scope & NO long-term data
+
+2. DATE WINDOWS MATTER
+   ├─ Long-term Schedule: Shows 15 weeks from today forward
+   ├─ Short-term Schedule: Shows 5 weeks from today forward (daily grid)
+   ├─ Any data OUTSIDE these windows: Ignored (not shown)
+   └─ Data spanning multiple weeks: Properly distributed per week
+
+3. FOREMAN ASSIGNMENTS
+   ├─ Only appear in Short-term Schedule
+   ├─ Come from short term schedual collection
+   ├─ Users can click X to remove assignment (marks as unassigned)
+   ├─ Users can click to assign to available crew
+   └─ Unassigned projects grouped in "Unassigned" section
+
+4. DATA FRESHNESS
+   ├─ Schedule views update when ANY of 4 collections change
+   ├─ Foreman in short-term takes priority (user override)
+   ├─ If foreman added to short-term: hours recalculated from that source
+   └─ Removing foreman reverts to original hours calculation
+
+5. FALLBACK CASCADE
+   ├─ Scopes > Long-term > Schedules % > Skip project
+   ├─ Each level checks if data exists AND overlaps date window
+   ├─ As soon as data found: Use it, skip lower levels
+   └─ No mixing of data sources for same project on same day
+
+================================================================================
+EXAMPLE: CANINE PARTNERS (Case Study)
+================================================================================
+
+SCENARIO:
+  Project: Canine Partners Partners
+  Total hours: 531
+  Scopes exist: Jan 10 - Mar 31
+  Long-term: Has Jan-Mar data
+  Schedules: 50% allocated for March
+  Short-term: Mike assigned Feb 24-28, unassigned Mar 3+
+
+LONG-TERM SCHEDULE (15 weeks from Jan 10):
+  Week of Jan 10-14: Canine Partners ~40h (from scope)
+  Week of Jan 17-21: Canine Partners ~40h (from scope)
+  Week of Jan 24-28: Canine Partners ~40h (from scope)
+  Week of Jan 31-Feb 04: Canine Partners ~40h (from scope)
+  Week of Feb 7-11: Canine Partners ~40h (from scope)
+  (... continues through March ...)
+  Week of Mar 24-28: Canine Partners from schedules % (40.2h)
+  ✓ Shows overall 15-week project plan
+
+PROJECT GANTT (Timeline):
+  │                    │
+  ├─ Canine Partners ──[████████████████] Jan 10 ───────── Mar 31 ──── (scope date range)
+  │
+  (other projects...)
+  ✓ Shows when project runs relative to others
+
+SHORT-TERM SCHEDULE (5 weeks, starting today = Jan 10):
+  WEEK 1 (Jan 10-14):
+    Canine Partners: ~40h/day
+    Monday: Mike (assigned)
+    Tuesday: Mike (assigned)
+    Wednesday: Mike (assigned)
+    Thursday: Mike (assigned)
+    Friday: Mike (assigned)
+  
+  WEEK 2-3 (Jan 17-28):
+    Canine Partners: ~40h/day
+    All TBD (unassigned)
+  
+  5-WEEK DAILY GRID:
+    Shows each day Mon-Fri with Canine Partners hours
+    Shows Mike's assignments where entered
+    Shows "Unassigned" row for crew dispatch
+  ✓ Ready for daily crew dispatch
+
+MARCH 3+ (if current date is before March 24):
+  • Scopes end Mar 31: still within 15-week long-term view
+  • Scopes NOT in 5-week short-term window (today + 35 days)
+  • So short-term uses: schedules % allocation
+  • Calculation: 531 × 50% ÷ 100 ÷ 4 Mondays in window ÷ 5 days
+  •           = 265.5 ÷ 4 ÷ 5 = ~13.3 hours/day
+
+================================================================================
+COMMON QUESTIONS
+================================================================================
+
+Q: Why don't I see project X in 5-week schedule?
+A: Project either:
+   - Has no data in any of 4 collections
+   - Data exists but date is outside 5-week window
+   - Data is marked archived/inactive
+   → Check if scope/long-term/schedules/short-term have current entries
+
+Q: Why do hours change between views?
+A: Different calculations for different windows:
+   - Long-term: Uses scope full date range
+   - Short-term: Uses only hours in 5-week window, distributed by workdays
+   → Both correct; they answer different questions
+
+Q: How do I edit foreman assignments?
+A: In short-term schedule:
+   - Click on project day
+   - Click to assign crew from "Unassigned" section
+   - Click X to remove assignment (reverts hours to original calc)
+   → Changes saved to short term schedual collection
+
+Q: Can data come from multiple sources for same project?
+A: NO. Data priority is strict:
+   - If scope exists: Use ONLY scope, ignore everything else
+   - If no scope but long-term exists: Use ONLY long-term
+   - If neither: Use schedules %, ignore others
+   → Prevents double-counting
+
+Q: What if I update schedules allocation % on Mar 15?
+A: If March data doesn't have scope or long-term:
+   - Immediately updates in all 3 views
+   - Short-term recalculates daily hours
+   - Existing foreman assignments stay, hours update behind them
+   - No risk of double-counting (see Q above)
+
+================================================================================
+MAINTENANCE TIPS
+================================================================================
+
+✓ DO:
+  • Keep projectScopes updated for known project dates
+  • Use schedules % for projects without defined date ranges
+  • Assign foreman in short-term schedule daily
+  • Archive projects when complete (removes from views)
+  • Keep long-term as reference but prefer scopes
+
+✗ DON'T:
+  • Add same project to multiple collections with overlapping dates
+  • Use long-term if scope exists (slower, less accurate)
+  • Rely only on foreman assignment (underlying hours must exist)
+  • Edit collection docs directly if UI exists (use UI for safety)
+
+⚠️  Known Issues:
+  • Collection name "long term schedual" has typo (legacy, can't rename)
+  • Collection name "short term schedual" has typo (legacy, can't rename)
+  • Firestore doesn't enforce relationships (manual audit needed)
+
+================================================================================
+FILES IN THIS DOCUMENTATION SET
+================================================================================
+
+1. SCHEDULE_DOCUMENTATION.html ← MAIN FILE (open in browser)
+   - Interactive HTML with embedded diagrams
+   - Download buttons for markdown/JSON/diagrams
+   - Best for sharing with team
+   - No installation needed
+
+2. SCHEDULE_LOGIC.md
+   - Detailed markdown version
+   - All rules and logic explained
+   - Can be edited/version controlled
+   - Copy from HTML or use directly
+
+3. MERMAID_DIAGRAMS.md
+   - All 3 system diagrams
+   - Can be used in GitHub, Mermaid.live, Notion, Confluence
+   - Standalone - no dependencies
+   - Each diagram separately usable
+
+4. SCHEDULE_SYSTEM_QUICK_REFERENCE.txt (THIS FILE)
+   - Plain text cheat sheet
+   - Can be printed or embedded
+   - No special formatting needs
+   - Quick lookup reference
+
+================================================================================
+FOR MORE HELP
+================================================================================
+
+Detailed diagnostic scripts available:
+  • checkCanineSchedules.js - Test data for Canine Partners
+  • debugDateRange.js - Debug 5-week window calculation
+  • verifyScheduleLogic.js - Validate data sources
+  • checkScheduleForBroadcast.js - Quick data check
+
+To run:
+  node scripts/checkCanineSchedules.js
+
+Generated: February 24, 2026
+PMC Analytics Team
+Version: 1.0
+
+================================================================================

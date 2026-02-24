@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { collection, getDocs, doc, setDoc, getDoc, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
@@ -96,6 +96,7 @@ export default function ShortTermSchedulePage() {
 
 function ShortTermScheduleContent() {
   const searchParams = useSearchParams();
+  const tableScrollRef = React.useRef<HTMLDivElement>(null);
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
@@ -119,6 +120,21 @@ function ShortTermScheduleContent() {
     isNew?: boolean;
   } | null>(null);
 
+  const scheduledHoursByJobKeyDate = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    Object.values(foremanDateProjects).forEach((dateMap) => {
+      Object.entries(dateMap).forEach(([dateKey, projects]) => {
+        projects.forEach((project) => {
+          if (!project.jobKey) return;
+          if (!map[project.jobKey]) map[project.jobKey] = {};
+          map[project.jobKey][dateKey] = (map[project.jobKey][dateKey] || 0) + (project.hours || 0);
+        });
+      });
+    });
+    return map;
+  }, [foremanDateProjects]);
+  const autoScrollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const search = searchParams.get("search");
     if (search) {
@@ -139,6 +155,15 @@ function ShortTermScheduleContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Cleanup auto-scroll interval on unmount
+  useEffect(() => {
+    return () => {
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
+    };
+  }, []);
+
   function openGanttModal(customer: string, projectName: string, projectNumber: string) {
     const jobKey = getProjectKey({ customer, projectName, projectNumber } as Project);
     const project = allProjects.find((p) => {
@@ -156,6 +181,98 @@ function ShortTermScheduleContent() {
       });
     } else {
       console.warn("Project not found for key:", jobKey);
+    }
+  }
+
+  const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    // Global drag handler for scrolling
+    const handleGlobalDragOver = (e: DragEvent) => {
+      if (!draggedProject || !tableScrollRef.current) return;
+      
+      const container = tableScrollRef.current;
+      const rect = container.getBoundingClientRect();
+      const scrollThreshold = 100;
+      
+      // Only scroll if drag is over the table container
+      if (e.clientY < rect.top || e.clientY > rect.bottom) {
+        if (autoScrollIntervalRef.current) {
+          clearInterval(autoScrollIntervalRef.current);
+          autoScrollIntervalRef.current = null;
+        }
+        return;
+      }
+      
+      // Clear existing scroll
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+        autoScrollIntervalRef.current = null;
+      }
+      
+      let scrollSpeed = 0;
+      
+      // Check if near top
+      if (e.clientY - rect.top < scrollThreshold && container.scrollTop > 0) {
+        scrollSpeed = -1;
+      }
+      // Check if near bottom
+      else if (rect.bottom - e.clientY < scrollThreshold && container.scrollTop < container.scrollHeight - container.clientHeight) {
+        scrollSpeed = 1;
+      }
+      
+      if (scrollSpeed !== 0) {
+        autoScrollIntervalRef.current = setInterval(() => {
+          container.scrollTop += scrollSpeed * 15;
+        }, 16);
+      }
+    };
+
+    if (draggedProject) {
+      document.addEventListener('dragover', handleGlobalDragOver);
+      return () => document.removeEventListener('dragover', handleGlobalDragOver);
+    }
+  }, [draggedProject]);
+
+  function handleDragOverScroll(e: React.DragEvent) {
+    setDragOver(true);
+    if (!tableScrollRef.current) return;
+    
+    const container = tableScrollRef.current;
+    const rect = container.getBoundingClientRect();
+    const scrollThreshold = 100; // pixels from edge to trigger scroll
+    
+    // Clear any existing scroll interval
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+    
+    let scrollSpeed = 0;
+    
+    // Check if mouse is near top
+    if (e.clientY - rect.top < scrollThreshold && container.scrollTop > 0) {
+      scrollSpeed = -1;
+    } 
+    // Check if mouse is near bottom
+    else if (rect.bottom - e.clientY < scrollThreshold && container.scrollTop < container.scrollHeight - container.clientHeight) {
+      scrollSpeed = 1;
+    }
+    
+    if (scrollSpeed !== 0) {
+      autoScrollIntervalRef.current = setInterval(() => {
+        if (container) {
+          container.scrollTop += scrollSpeed * 12; // Scroll 12px per interval
+        }
+      }, 16); // ~60fps
+    }
+  }
+
+  function handleDragEnd() {
+    setDragOver(false);
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
     }
   }
 
@@ -255,43 +372,14 @@ function ShortTermScheduleContent() {
     });
     const uniqueProjects = Array.from(uniqueScopes.values());
     
-    if (uniqueProjects.length > 1) {
-      // Multiple unique scopes - show selection modal
+    // Always show scope selection modal when targeting a cell (improves UX)
+    if (targetingCell) {
       setScopeSelectionModal({ jobKey, projects: uniqueProjects });
       return;
     }
     
-    // Single scope or direct add
-    if (!targetingCell) return;
-    
-    const { date, foremanId } = targetingCell;
-    const dateKey = formatDateKey(date);
-    const targetMonthStr = dateKey.substring(0, 7);
-    const position = getWeekDayPositionForDate(targetMonthStr, date);
-
-    if (position) {
-      setSaving(true);
-      try {
-        const newProject: DayProject = {
-          jobKey,
-          customer: p.customer || "",
-          projectNumber: p.projectNumber || "",
-          projectName: p.projectName || "",
-          hours: 8,
-          foreman: foremanId === "__unassigned__" ? "" : foremanId,
-          employees: [],
-          month: targetMonthStr,
-          weekNumber: position.weekNumber,
-          dayNumber: position.dayNumber
-        };
-        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, 8);
-        await loadSchedules();
-        setTargetingCell(null);
-        setIsAddingProject(false);
-      } finally {
-        setSaving(false);
-      }
-    }
+    // If not targeting a cell, show the Gantt modal for editing
+    openGanttModal(p.customer, p.projectName, p.projectNumber);
   }
 
   async function handleScopeSelect(p: Project) {
@@ -593,6 +681,8 @@ function ShortTermScheduleContent() {
         e.isActive && (
           e.jobTitle === "Foreman" || 
           e.jobTitle === "Lead foreman" || 
+          e.jobTitle === "Lead Foreman" || 
+          e.jobTitle === "Lead Foreman / Project Manager" || 
           e.jobTitle === "Field Worker" || 
           e.jobTitle === "Field worker"
         )
@@ -600,17 +690,15 @@ function ShortTermScheduleContent() {
       setCompanyCapacity(activeFieldStaff.length * 10);
       
       const foremenList = allEmps.filter((emp) => 
-        emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman")
+        emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead Foreman / Project Manager")
       );
       setForemen(foremenList);
       
-      // Cache projectScopes since they don't change often
+      // Cache projectScopes since they don't change often (needed for scope modal)
       let rawScopes: Scope[] = getCache('schedule_projectScopes') || [];
       let scopesNeedRefresh = rawScopes.length === 0;
-
-      const [longTermSnapshot, shortTermSnapshot, projectScopesSnapshot, timeOffSnapshot] = await Promise.all([
-        getDocs(collection(db, "long term schedual")),
-        getDocs(collection(db, "short term schedual")),
+      
+      const [projectScopesSnapshot, timeOffSnapshot] = await Promise.all([
         scopesNeedRefresh ? getDocs(collection(db, "projectScopes")) : Promise.resolve(null),
         getDocs(collection(db, "timeOffRequests"))
       ]);
@@ -622,8 +710,7 @@ function ShortTermScheduleContent() {
 
       const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
 
-      // Optimization: Fetch only active, non-archived projects. 
-      // Excluding "Bid Submitted", "Lost", and Archived saves ~18,000 document reads.
+      // Fetch active projects for scope lookup
       const projectsSnapshot = await getDocs(query(
         collection(db, "projects"),
         where("status", "not-in", ["Bid Submitted", "Lost"]),
@@ -633,7 +720,7 @@ function ShortTermScheduleContent() {
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
       setAllProjects(projs);
       
-      // OPTIMIZATION: pre-group projects by JobKey
+      // Pre-group projects by JobKey for lookup
       const projectsByJobKey: Record<string, Project[]> = {};
       projs.forEach(p => {
         const pKey = getProjectKey(p);
@@ -641,43 +728,60 @@ function ShortTermScheduleContent() {
         projectsByJobKey[pKey].push(p);
       });
 
-      // If no scopes in projectScopes collection, generate them from project scopeOfWork values
-      let enrichedScopes: Scope[];
-      if (rawScopes.length === 0) {
-        const scopesByJobKeyAndName: Record<string, Record<string, Scope>> = {};
-        
-        projs.forEach(p => {
-          const jobKey = getProjectKey(p);
-          const scopeName = (p.scopeOfWork || 'Default Scope').trim();
-          
-          if (!scopesByJobKeyAndName[jobKey]) scopesByJobKeyAndName[jobKey] = {};
-          
-          const key = scopeName.toLowerCase();
-          if (!scopesByJobKeyAndName[jobKey][key]) {
-            scopesByJobKeyAndName[jobKey][key] = {
-              id: `generated-${jobKey}-${scopeName}`,
-              jobKey: jobKey,
-              title: scopeName,
-              hours: 0,
-              manpower: 0,
-              startDate: '',
-              endDate: '',
-              description: ''
-            };
-          }
-          // Aggregate hours from all projects with this scope
-          scopesByJobKeyAndName[jobKey][key].hours! += (p.hours || 0);
-        });
-        
-        // Flatten back to array - already has correct hours, no enrichment needed
-        const generatedScopes: Scope[] = [];
-        Object.values(scopesByJobKeyAndName).forEach(scopesForJob => {
-          generatedScopes.push(...Object.values(scopesForJob));
-        });
-        enrichedScopes = generatedScopes;
-      } else {
-        enrichedScopes = getEnrichedScopes(rawScopes, projs);
-      }
+      // Generate scopes for the modal (keep existing logic for compatibility)
+      const scopesByJobKeyAndName: Record<string, Record<string, Scope>> = {};
+      projs.forEach(p => {
+        const jobKey = getProjectKey(p);
+        const scopeName = (p.scopeOfWork || 'Default Scope').trim();
+
+        if (!scopesByJobKeyAndName[jobKey]) scopesByJobKeyAndName[jobKey] = {};
+
+        const key = scopeName.toLowerCase();
+        if (!scopesByJobKeyAndName[jobKey][key]) {
+          scopesByJobKeyAndName[jobKey][key] = {
+            id: `generated-${jobKey}-${scopeName}`,
+            jobKey: jobKey,
+            title: scopeName,
+            hours: 0,
+            manpower: 0,
+            startDate: '',
+            endDate: '',
+            description: ''
+          };
+        }
+        scopesByJobKeyAndName[jobKey][key].hours! += (p.hours || 0);
+      });
+
+      const generatedScopes: Scope[] = [];
+      Object.values(scopesByJobKeyAndName).forEach(scopesForJob => {
+        generatedScopes.push(...Object.values(scopesForJob));
+      });
+
+      const isAutoScheduledScope = (scope: Scope) =>
+        (scope.title || '').trim().toLowerCase() === 'scheduled work';
+
+      const baseScopes = rawScopes.length === 0 ? [] : getEnrichedScopes(rawScopes, projs);
+      const realScopes = baseScopes.filter(scope => scope.jobKey && !isAutoScheduledScope(scope));
+
+      const realScopeTitlesByJobKey = new Map<string, Set<string>>();
+      realScopes.forEach(scope => {
+        const jobKey = scope.jobKey || "";
+        if (!jobKey) return;
+        const titleKey = (scope.title || "").trim().toLowerCase();
+        if (!realScopeTitlesByJobKey.has(jobKey)) {
+          realScopeTitlesByJobKey.set(jobKey, new Set<string>());
+        }
+        if (titleKey) realScopeTitlesByJobKey.get(jobKey)!.add(titleKey);
+      });
+
+      const fallbackScopes = generatedScopes.filter(scope => {
+        if (!scope.jobKey) return false;
+        const titleKey = (scope.title || "").trim().toLowerCase();
+        const existingTitles = realScopeTitlesByJobKey.get(scope.jobKey);
+        return !titleKey || !existingTitles || !existingTitles.has(titleKey);
+      });
+
+      const enrichedScopes: Scope[] = [...realScopes, ...fallbackScopes];
 
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {
@@ -689,7 +793,8 @@ function ShortTermScheduleContent() {
       
       setScopesByJobKey(scopesObj);
 
-      // Calculate the date range for next 5 weeks (including current week)
+      // ===== NEW: Load schedule data from activeSchedule collection =====
+      // Calculate the date range for next 5 weeks
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -703,18 +808,31 @@ function ShortTermScheduleContent() {
       const fiveWeeksFromStart = new Date(currentWeekStart);
       fiveWeeksFromStart.setDate(fiveWeeksFromStart.getDate() + (5 * 7));
       
+      const startDateStr = formatDateKey(currentWeekStart);
+      const endDateStr = formatDateKey(new Date(fiveWeeksFromStart.getTime() - 1));
+      
+      // Query activeSchedule for this date range
+      const activeScheduleQuery = query(
+        collection(db, 'activeSchedule'),
+        where('date', '>=', startDateStr),
+        where('date', '<=', endDateStr)
+      );
+      
+      const activeScheduleSnapshot = await getDocs(activeScheduleQuery);
+      
       // Build day columns for next 5 weeks
       const dayMap = new Map<string, DayColumn>();
       const projectsByDay: Record<string, DayProject[]> = {};
-      const projectsWithGanttData = new Set<string>();
       
       // Generate all work days (Mon-Fri) for next 5 weeks
       for (let weekNum = 0; weekNum < 5; weekNum++) {
         const weekStart = new Date(currentWeekStart);
         weekStart.setDate(weekStart.getDate() + (weekNum * 7));
         
-        const weekDates = getWeekDates(weekStart);
-        weekDates.forEach((date) => {
+        for (let dayOffset = 0; dayOffset < 5; dayOffset++) { // Mon-Fri only
+          const date = new Date(weekStart);
+          date.setDate(date.getDate() + dayOffset);
+          
           const dateKey = formatDateKey(date);
           dayMap.set(dateKey, {
             date,
@@ -722,184 +840,50 @@ function ShortTermScheduleContent() {
             weekNumber: weekNum + 1,
           });
           projectsByDay[dateKey] = [];
-        });
+        }
       }
-
-      // Process Gantt Scopes first
-      Object.entries(scopesObj).forEach(([jobKey, scopes]) => {
-        const jobProjects = projectsByJobKey[jobKey] || [];
-        if (jobProjects.length === 0) return;
-
-        const validScopes = scopes.filter(s => s.startDate && s.endDate);
-        if (validScopes.length > 0) {
-          projectsWithGanttData.add(jobKey);
-
-          validScopes.forEach(scope => {
-            // Fix: Use a date parsing helper or append T00:00:00 to ensure local date
-            const start = new Date(scope.startDate! + 'T00:00:00');
-            const end = new Date(scope.endDate! + 'T00:00:00');
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
-
-            // Prioritize manpower for daily calculation (1 man = 10 hours)
-            let dailyHours = 0;
-            const manpower = scope.manpower ? parseFloat(String(scope.manpower)) : 0;
-            const totalHours = scope.hours ? parseFloat(String(scope.hours)) : 0;
-
-            if (!isNaN(manpower) && manpower > 0) {
-              dailyHours = manpower * 10;
-            } else if (!isNaN(totalHours) && totalHours > 0) {
-              // Fallback to distributing total hours over work days
-              let workDaysInRange = 0;
-              let currentDist = new Date(start);
-              
-              // Safety break for extremely long ranges (max 3 years)
-              const maxDate = new Date(start);
-              maxDate.setFullYear(maxDate.getFullYear() + 3);
-              const actualEnd = end > maxDate ? maxDate : end;
-
-              while (currentDist <= actualEnd) {
-                if (currentDist.getDay() !== 0 && currentDist.getDay() !== 6) workDaysInRange++;
-                currentDist.setDate(currentDist.getDate() + 1);
-              }
-              if (workDaysInRange > 0) {
-                dailyHours = totalHours / workDaysInRange;
-              }
-            }
-
-            if (dailyHours <= 0) return;
-
-            if (jobKey.includes('Washburn') || jobKey.includes('Berg')) {
-              console.log(`Processing Washburn Scope: ${scope.title}, Daily Hrs: ${dailyHours}, Start: ${scope.startDate}`);
-            }
-
-            // Add to projectsByDay for days within our 5-week window
-            let currentDay = new Date(start);
-            // Optimization: Skip days before our 5-week window
-            if (currentDay < currentWeekStart) {
-              currentDay = new Date(currentWeekStart);
-            }
-
-            while (currentDay <= end && currentDay < fiveWeeksFromStart) {
-              if (currentDay.getDay() !== 0 && currentDay.getDay() !== 6) {
-                const dateKey = formatDateKey(currentDay);
-                if (projectsByDay[dateKey]) {
-                  const monthStr = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}`;
-                  const position = getWeekDayPositionForDate(monthStr, currentDay);
-                  
-                  // AGGREGATION: Instead of multiple cards per scope, we sum them into one project card per day
-                  const existing = projectsByDay[dateKey].find(p => p.jobKey === jobKey);
-                  if (existing) {
-                    existing.hours += dailyHours;
-                  } else {
-                    projectsByDay[dateKey].push({
-                      jobKey,
-                      customer: jobProjects[0].customer || "",
-                      projectNumber: jobProjects[0].projectNumber || "",
-                      projectName: jobProjects[0].projectName || "",
-                      hours: dailyHours,
-                      foreman: "",
-                      employees: [],
-                      month: monthStr,
-                      weekNumber: position?.weekNumber || 1,
-                      dayNumber: position?.dayNumber || (currentDay.getDay() || 7),
-                    });
-                  }
-                }
-              }
-              currentDay.setDate(currentDay.getDate() + 1);
-            }
+      
+      // Load data from activeSchedule
+      activeScheduleSnapshot.docs.forEach(doc => {
+        const entry = doc.data();
+        const dateKey = entry.date;
+        
+        if (!projectsByDay[dateKey]) return; // Skip if outside our 5-week window
+        
+        const jobKey = entry.jobKey;
+        const projectList = projectsByJobKey[jobKey] || [];
+        
+        if (projectList.length === 0) {
+          // Extract from jobKey if no project found
+          const parts = jobKey.split('~');
+          projectList.push({
+            customer: parts[0] || '',
+            projectNumber: parts[1] || '',
+            projectName: parts[2] || '',
+          } as Project);
+        }
+        
+        const project = projectList[0];
+        
+        // Aggregate hours by jobKey (multiple scopes for same project on same day = one card)
+        const existing = projectsByDay[dateKey].find(p => p.jobKey === jobKey);
+        
+        if (existing) {
+          existing.hours += entry.hours || 0;
+        } else {
+          projectsByDay[dateKey].push({
+            jobKey,
+            customer: project.customer || '',
+            projectNumber: project.projectNumber || '',
+            projectName: project.projectName || '',
+            hours: entry.hours || 0,
+            foreman: entry.foreman || '',
+            employees: [],
+            month: dateKey.substring(0, 7), // YYYY-MM
+            weekNumber: 1,
+            dayNumber: 1,
           });
         }
-      });
-      
-      // Load existing short-term schedules (daily) with foreman assignments
-      shortTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data() as ScheduleDoc;
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-
-        const weeks = docData.weeks || [];
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        
-        weeks.forEach((week: WeekData) => {
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-          
-          const weekDates = getWeekDates(weekStart);
-          
-          (week.days || []).forEach((day: DayData) => {
-            const dayDate = weekDates[day.dayNumber - 1];
-            if (!dayDate || dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
-
-            const dateKey = formatDateKey(dayDate);
-            
-            if (projectsByDay[dateKey]) {
-              // Priority: If we have short-term data (overrides), it takes priority over Gantt/Long-term
-              const existingProjectIndex = projectsByDay[dateKey].findIndex(p => p.jobKey === docData.jobKey);
-              
-              if (existingProjectIndex !== -1) {
-                // Update the existing project
-                // If hours is 0 in short-term, but we have Gantt hours, we only overwrite if a foreman is assigned
-                // This allows a "deleted" project to reapppear if a new Scope is added/updated
-                if (day.hours > 0 || day.foreman) {
-                  projectsByDay[dateKey][existingProjectIndex].foreman = day.foreman || "";
-                  projectsByDay[dateKey][existingProjectIndex].hours = day.hours; 
-                }
-              } else if (day.hours > 0) {
-                // Add as a new project for this day
-                projectsByDay[dateKey].push({
-                  jobKey: docData.jobKey,
-                  customer: docData.customer || "",
-                  projectNumber: docData.projectNumber || "",
-                  projectName: docData.projectName || "",
-                  hours: day.hours,
-                  foreman: day.foreman || "",
-                  employees: day.employees || [],
-                  month: docData.month,
-                  weekNumber: week.weekNumber,
-                  dayNumber: day.dayNumber,
-                });
-              }
-            }
-          });
-        });
-      });
-      
-      // Then, distribute weekly hours from long-term schedule if no daily/Gantt data exists
-      longTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data();
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-        if (projectsWithGanttData.has(docData.jobKey)) return;
-
-        const weeks = docData.weeks || [];
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        
-        weeks.forEach((week: { weekNumber: number; hours: number }) => {
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-          
-          const weekDates = getWeekDates(weekStart);
-          const hoursPerDay = (week.hours || 0) / 5;
-          
-          weekDates.forEach((dayDate, dayIndex) => {
-            if (dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
-            const dateKey = formatDateKey(dayDate);
-            
-            if (projectsByDay[dateKey] && !projectsByDay[dateKey].some(p => p.jobKey === docData.jobKey)) {
-              projectsByDay[dateKey].push({
-                jobKey: docData.jobKey,
-                customer: docData.customer || "",
-                projectNumber: docData.projectNumber || "",
-                projectName: docData.projectName || "",
-                hours: hoursPerDay,
-                foreman: "",
-                employees: [],
-                month: docData.month,
-                weekNumber: week.weekNumber,
-                dayNumber: dayIndex + 1,
-              });
-            }
-          });
-        });
       });
       
       // Convert to arrays and sort
@@ -1199,7 +1183,7 @@ function ShortTermScheduleContent() {
 
   return (
     <main className="min-h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900">
-      <div className="w-full flex flex-col min-h-[calc(100vh-2rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-4 md:p-8">
+      <div className="w-full flex flex-col max-h-[calc(100vh-1rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-4 md:p-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 pb-8 border-b border-gray-100">
           <div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 uppercase italic leading-none">
@@ -1263,26 +1247,32 @@ function ShortTermScheduleContent() {
               </div>
             </div>
             <div className="p-4 md:p-6 max-h-[400px] overflow-y-auto">
-              {projectSearch.length < 2 ? (
+              {projectSearch.length < 2 && !targetingCell ? (
                 <div className="text-center py-10">
                    <div className="text-orange-900/20 text-4xl mb-3">🔍</div>
-                   <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to begin searching...</div>
+                   <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to search or click Assign on a cell...</div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {(() => {
-                    // Group filtered projects by jobKey
-                    const filtered = allProjects.filter(p => 
-                      p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
-                      p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
-                      p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
-                    );
+                    // When targeting a cell with no search, show all active projects (filtered by status)
+                    // Otherwise, filter by search term
+                    const filtered = projectSearch.length >= 2
+                      ? allProjects.filter(p => 
+                        p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                        p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                        p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
+                      )
+                      : targetingCell
+                      ? allProjects.filter(p => p.status && !['Lost', 'Bid Submitted'].includes(p.status)) // Show active projects
+                      : [];
                     
                     const grouped: Record<string, Project[]> = {};
                     filtered.forEach(p => {
                       const jobKey = getProjectKey(p);
                       if (!grouped[jobKey]) grouped[jobKey] = [];
                       grouped[jobKey].push(p);
+
                     });
                     
                     return Object.entries(grouped).slice(0, 50).map(([jobKey, projects], idx) => {
@@ -1338,7 +1328,7 @@ function ShortTermScheduleContent() {
              <p className="text-gray-400 font-black uppercase tracking-[0.2em]">No Data Synced</p>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Mobile Cards for Field Users */}
             <div className="md:hidden flex-1 overflow-y-auto space-y-6 custom-scrollbar pb-10">
               {dayColumns.slice(0, 14).map((day) => {
@@ -1404,8 +1394,11 @@ function ShortTermScheduleContent() {
             </div>
 
             {/* Desktop Table View */}
-            <div className="hidden md:block flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto h-full custom-scrollbar">
+            <div 
+              ref={tableScrollRef} 
+              className="hidden md:block flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden overflow-y-auto custom-scrollbar min-h-0"
+            >
+              <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-stone-800">
@@ -1470,9 +1463,9 @@ function ShortTermScheduleContent() {
                               <td
                                 key={dateKey}
                                 className={`py-4 px-3 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
-                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-orange-50/50'); }}
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('bg-orange-50/50'); }}
                                 onDragLeave={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); }}
-                                onDrop={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); handleDrop(e, day.date, foreman.id); }}
+                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('bg-orange-50/50'); handleDrop(e, day.date, foreman.id); }}
                               >
                                 <div className="flex flex-col h-full min-h-[100px]">
                                   {projects.length > 0 ? (
@@ -1492,9 +1485,9 @@ function ShortTermScheduleContent() {
                                             <button
                                               onClick={async (e) => {
                                                 e.stopPropagation();
-                                                if (confirm(`Remove ${project.projectName}?`)) {
+                                                if (confirm(`Move ${project.projectName} to unassigned?`)) {
                                                   setSaving(true);
-                                                  try { await updateProjectAssignment(project, dateKey, foreman.id, null, 0); await loadSchedules(); }
+                                                  try { await updateProjectAssignment(project, dateKey, foreman.id, "", project.hours); await loadSchedules(); }
                                                   finally { setSaving(false); }
                                                 }
                                               }}
@@ -1570,6 +1563,7 @@ function ShortTermScheduleContent() {
             project={selectedGanttProject}
             scopes={scopesByJobKey[selectedGanttProject.jobKey || ""] || []}
             allScopes={scopesByJobKey}
+            scheduledHoursByJobKeyDate={scheduledHoursByJobKeyDate}
             selectedScopeId={null}
             companyCapacity={companyCapacity}
             onClose={() => {
@@ -1579,6 +1573,11 @@ function ShortTermScheduleContent() {
             onScopesUpdated={async (jobKey, updatedScopes) => {
               const enriched = getEnrichedScopes(updatedScopes, allProjects);
               setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
+              if (typeof window !== "undefined") {
+                sessionStorage.removeItem("schedule_projectScopes");
+              }
+              // Reload schedules to see updated hours
+              await loadSchedules();
               if (targetingCell) {
                 const { date, foremanId } = targetingCell;
                 const dateKey = formatDateKey(date);

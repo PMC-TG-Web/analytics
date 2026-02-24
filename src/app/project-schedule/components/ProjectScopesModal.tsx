@@ -1,23 +1,39 @@
 import React, { useState, useEffect } from "react";
-import { addDoc, collection, doc, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, setDoc, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "@/firebase";
 import { ProjectInfo, Scope } from "@/types";
-import { syncProjectWIP } from "@/utils/scheduleSync";
+import { syncProjectWIP, updateShortTermFromScope } from "@/utils/scheduleSync";
+import { deleteActiveScheduleEntry, recalculateScopeTracking, writeActiveScheduleEntry, getActiveScheduleDocId } from "@/utils/activeScheduleUtils";
 
 interface ProjectScopesModalProps {
   project: ProjectInfo;
   scopes: Scope[];
   allScopes?: Record<string, Scope[]>; // Map of jobKey -> Scope[] for company-wide capacity
   companyCapacity?: number; // Total available hours per day
+  scheduledHoursByJobKeyDate?: Record<string, Record<string, number>>; // jobKey -> dateKey -> hours
   selectedScopeId: string | null;
   onClose: () => void;
   onScopesUpdated: (jobKey: string, scopes: Scope[]) => void;
 }
 
-const calculateWorkDays = (startStr?: string, endStr?: string) => {
-  if (!startStr || !endStr) return 0;
-  const start = new Date(startStr);
-  const end = new Date(endStr);
+const parseScopeDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "object" && value && typeof (value as { toDate?: () => Date }).toDate === "function") {
+    const d = (value as { toDate: () => Date }).toDate();
+    return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+  }
+  return null;
+};
+
+const calculateWorkDays = (startValue?: unknown, endValue?: unknown) => {
+  const start = parseScopeDate(startValue);
+  const end = parseScopeDate(endValue);
+  if (!start || !end) return 0;
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
   
   let count = 0;
@@ -35,11 +51,28 @@ const calculateWorkDays = (startStr?: string, endStr?: string) => {
   return count;
 };
 
+const computeScopeHours = (scope: Partial<Scope>) => {
+  const manpowerRaw = scope.manpower;
+  const manpowerValue = typeof manpowerRaw === "number" ? manpowerRaw : parseFloat(String(manpowerRaw));
+  const days = calculateWorkDays(scope.startDate, scope.endDate);
+
+  if (Number.isFinite(manpowerValue) && manpowerValue > 0 && days > 0) {
+    return manpowerValue * 10 * days;
+  }
+
+  const hoursRaw = scope.hours;
+  const hoursValue = typeof hoursRaw === "number" ? hoursRaw : parseFloat(String(hoursRaw));
+  if (Number.isFinite(hoursValue) && hoursValue > 0) return hoursValue;
+
+  return 0;
+};
+
 export function ProjectScopesModal({
   project,
   scopes,
   allScopes,
   companyCapacity = 210, // Default to 210 if not provided
+  scheduledHoursByJobKeyDate,
   selectedScopeId,
   onClose,
   onScopesUpdated,
@@ -53,7 +86,33 @@ export function ProjectScopesModal({
     tasks: [],
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [newTask, setNewTask] = useState("");
+
+  const getScheduledHoursForScope = (scope: Scope) => {
+    if (!scheduledHoursByJobKeyDate || !project.jobKey) return 0;
+    if (!scope.startDate || !scope.endDate) return 0;
+
+    const start = parseScopeDate(scope.startDate);
+    const end = parseScopeDate(scope.endDate);
+    if (!start || !end) return 0;
+
+    // Normalize dates to YYYY-MM-DD for comparison (ignore time/timezone)
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+
+    const perDate = scheduledHoursByJobKeyDate[project.jobKey] || {};
+    let total = 0;
+
+    Object.entries(perDate).forEach(([dateKey, hours]) => {
+      // dateKey is already in YYYY-MM-DD format
+      if (dateKey >= startStr && dateKey <= endStr) {
+        total += hours || 0;
+      }
+    });
+
+    return total;
+  };
 
   useEffect(() => {
     setActiveScopeId(selectedScopeId);
@@ -79,7 +138,7 @@ export function ProjectScopesModal({
       startDate: scope.startDate || "",
       endDate: scope.endDate || "",
       manpower: scope.manpower,
-      hours: scope.hours,
+      hours: computeScopeHours(scope),
       description: scope.description || "",
       tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
     });
@@ -105,16 +164,24 @@ export function ProjectScopesModal({
   const handleSaveScope = async () => {
     setIsSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         jobKey: project.jobKey,
         title: (scopeDetail.title || "Scope").trim() || "Scope",
         startDate: scopeDetail.startDate || "",
         endDate: scopeDetail.endDate || "",
-        manpower: scopeDetail.manpower,
-        hours: typeof scopeDetail.hours === 'number' ? scopeDetail.hours : 0,
         description: scopeDetail.description || "",
         tasks: (scopeDetail.tasks || []).filter((task) => task.trim()),
       };
+
+      // Only include manpower and hours if they have valid values
+      if (scopeDetail.manpower !== undefined && scopeDetail.manpower !== null) {
+        payload.manpower = scopeDetail.manpower;
+      }
+      
+      const computedHours = computeScopeHours(scopeDetail);
+      if (computedHours > 0) {
+        payload.hours = computedHours;
+      }
 
       if (activeScopeId) {
         await setDoc(doc(db, "projectScopes", activeScopeId), payload, { merge: true });
@@ -129,6 +196,17 @@ export function ProjectScopesModal({
         setActiveScopeId(docRef.id);
       }
 
+      // Update short-term schedule if dates and manpower are set
+      if (payload.startDate && payload.endDate && payload.manpower && payload.manpower > 0) {
+        const dailyHours = payload.manpower * 10;
+        await updateShortTermFromScope(
+          project.jobKey,
+          payload.startDate,
+          payload.endDate,
+          dailyHours
+        );
+      }
+
       await syncProjectWIP(project.jobKey);
       alert("Scope saved successfully!");
     } catch (error) {
@@ -136,6 +214,150 @@ export function ProjectScopesModal({
       alert("Failed to save scope.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleResetSchedule = async () => {
+    if (!project.jobKey) {
+      alert("Cannot reset schedule: No job key found.");
+      return;
+    }
+
+    const confirmed = confirm(
+      `This will clear all scheduled hours for "${project.projectName}" and rebuild from source data. Continue?`
+    );
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    try {
+      // Step 1: Delete all activeSchedule entries for this jobKey
+      const activeScheduleQuery = query(
+        collection(db, "activeSchedule"),
+        where("jobKey", "==", project.jobKey)
+      );
+      const activeScheduleSnapshot = await getDocs(activeScheduleQuery);
+      
+      const batch = writeBatch(db);
+      activeScheduleSnapshot.docs.forEach((docSnapshot) => {
+        batch.delete(docSnapshot.ref);
+      });
+      await batch.commit();
+
+      console.log(`Deleted ${activeScheduleSnapshot.docs.length} activeSchedule entries for ${project.jobKey}`);
+
+      // Step 2: Rebuild from schedules collection
+      const schedulesQuery = query(
+        collection(db, "schedules"),
+        where("jobKey", "==", project.jobKey)
+      );
+      const schedulesSnapshot = await getDocs(schedulesQuery);
+      
+      // Helper: Get first Monday of a month
+      const getFirstMonday = (year: number, month: number): Date => {
+        const date = new Date(year, month - 1, 1); // month is 1-indexed
+        while (date.getDay() !== 1) {
+          date.setDate(date.getDate() + 1);
+        }
+        return date;
+      };
+
+      // Helper: Format date as YYYY-MM-DD
+      const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0];
+      };
+
+      // Step 4: Process each schedule entry
+      const batch2 = writeBatch(db);
+      let entryCount = 0;
+      const processedScopes = new Set<string>(); // Track unique scopes
+
+      for (const scheduleDoc of schedulesSnapshot.docs) {
+        const scheduleData = scheduleDoc.data();
+        const scopeOfWork = scheduleData.scopeOfWork || project.scopeOfWork || "General";
+
+        processedScopes.add(scopeOfWork); // Track this scope
+
+        const totalHours = parseFloat(scheduleData.totalHours || "0");
+        if (totalHours <= 0) continue;
+
+        // Build month allocations from either `allocations` or month fields
+        const allocations: Array<{ year: number; month: number; percent: number }> = [];
+
+        if (scheduleData.allocations && typeof scheduleData.allocations === "object") {
+          Object.entries(scheduleData.allocations).forEach(([monthKey, percentValue]) => {
+            const match = String(monthKey).match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+            if (!match) return;
+            const year = Number(match[1]);
+            const month = Number(match[2]);
+            const percent = Number(percentValue) || 0;
+            if (percent <= 0) return;
+            allocations.push({ year, month, percent });
+          });
+        } else if (scheduleData.year) {
+          const year = Number(scheduleData.year);
+          const months = [
+            { month: 1, key: "january" },
+            { month: 2, key: "february" },
+            { month: 3, key: "march" },
+            { month: 4, key: "april" },
+            { month: 5, key: "may" },
+            { month: 6, key: "june" },
+            { month: 7, key: "july" },
+            { month: 8, key: "august" },
+            { month: 9, key: "september" },
+            { month: 10, key: "october" },
+            { month: 11, key: "november" },
+            { month: 12, key: "december" },
+          ];
+
+          months.forEach(({ month, key }) => {
+            const percent = Number(scheduleData[key]) || 0;
+            if (percent <= 0) return;
+            allocations.push({ year, month, percent });
+          });
+        }
+
+        allocations.forEach(({ year, month, percent }) => {
+          const hours = (totalHours * percent) / 100;
+          if (hours <= 0) return;
+
+          // Always place on first Monday of the month
+          const dateStr = formatDate(getFirstMonday(year, month));
+
+          // Write to activeSchedule
+          const activeScheduleDocId = getActiveScheduleDocId(project.jobKey, scopeOfWork, dateStr);
+          const activeScheduleRef = doc(db, "activeSchedule", activeScheduleDocId);
+          batch2.set(activeScheduleRef, {
+            jobKey: project.jobKey,
+            scopeOfWork,
+            date: dateStr,
+            hours,
+            foreman: "",
+            manpower: 0,
+            source: "schedules",
+            lastModified: new Date(),
+          });
+          entryCount++;
+        });
+      }
+
+      await batch2.commit();
+      console.log(`Created ${entryCount} activeSchedule entries for ${project.jobKey}`);
+
+      // Step 5: Recalculate scopeTracking for all processed scopes
+      for (const scopeOfWork of processedScopes) {
+        await recalculateScopeTracking(project.jobKey, scopeOfWork);
+      }
+
+      alert(`Schedule reset successfully! Created ${entryCount} entries.`);
+      
+      // Refresh the page to show updated data
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to reset schedule:", error);
+      alert("Failed to reset schedule. Check console for details.");
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -156,7 +378,7 @@ export function ProjectScopesModal({
             <div>
               <span className="font-semibold">Total Budgeted Hours:</span>
               <p className="mt-1 text-orange-700 font-bold text-base">
-                {scopes.reduce((sum, s) => sum + (s.hours || 0), 0).toFixed(1)}
+                {scopes.reduce((sum, s) => sum + computeScopeHours(s), 0).toFixed(1)}
               </p>
             </div>
             <div className="col-span-2"><span className="font-semibold">Job Key:</span><p className="mt-1">{project.jobKey || "—"}</p></div>
@@ -165,13 +387,34 @@ export function ProjectScopesModal({
           <div className="border-t pt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">Scopes</h3>
-              <button type="button" onClick={() => setActiveScopeId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-md border border-orange-300 text-orange-700 hover:bg-orange-50">+ Add Scope</button>
+              <div className="flex gap-2">
+                <button 
+                  type="button" 
+                  onClick={handleResetSchedule} 
+                  disabled={isResetting}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-md border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isResetting ? "Resetting..." : "Reset Schedule"}
+                </button>
+                <button type="button" onClick={() => setActiveScopeId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-md border border-orange-300 text-orange-700 hover:bg-orange-50">+ Add Scope</button>
+              </div>
             </div>
+            {scheduledHoursByJobKeyDate && (
+              <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 pb-2 text-[10px] font-bold uppercase text-gray-400">
+                <span>Scope</span>
+                <span className="text-right">Sched</span>
+                <span className="text-right">Unsch</span>
+              </div>
+            )}
             <div className="grid gap-2 max-h-40 overflow-y-auto">
               {scopes.length === 0 ? (
                 <div className="text-sm text-gray-500">No scopes yet.</div>
               ) : (
-                scopes.map((scope) => (
+                scopes.map((scope) => {
+                  const scopeHours = computeScopeHours(scope);
+                  const scheduledHours = getScheduledHoursForScope(scope);
+                  const unscheduledHours = Math.max(scopeHours - scheduledHours, 0);
+                  return (
                   <button
                     key={scope.id}
                     type="button"
@@ -180,19 +423,33 @@ export function ProjectScopesModal({
                       activeScopeId === scope.id ? "border-orange-400 bg-orange-50" : "border-gray-200 hover:border-orange-200"
                     }`}
                   >
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm font-semibold">{scope.title || "Scope"}</div>
-                      {scope.hours !== undefined && (
-                        <div className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
-                          {scope.hours.toFixed(1)} hrs
+                    <div className={scheduledHoursByJobKeyDate ? "grid grid-cols-[1fr_auto_auto] items-center gap-3" : "flex justify-between items-center"}>
+                      <div>
+                        <div className="text-sm font-semibold">{scope.title || "Scope"}</div>
+                        <div className="text-xs text-gray-500">
+                          {scope.startDate || "No start"} - {scope.endDate || "No end"}
                         </div>
+                      </div>
+                      {scheduledHoursByJobKeyDate ? (
+                        <>
+                          <div className="text-xs font-bold text-orange-700 text-right">
+                            {scheduledHours.toFixed(1)}
+                          </div>
+                          <div className="text-xs font-bold text-gray-600 text-right">
+                            {unscheduledHours.toFixed(1)}
+                          </div>
+                        </>
+                      ) : (
+                        scopeHours > 0 && (
+                          <div className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                            {scopeHours.toFixed(1)} hrs
+                          </div>
+                        )
                       )}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {scope.startDate || "No start"} - {scope.endDate || "No end"}
-                    </div>
                   </button>
-                ))
+                );
+                })
               )}
             </div>
           </div>

@@ -2,13 +2,13 @@
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
   "ADMIN": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch",
+    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "project-schedule", "projects", "project",
      "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
@@ -21,11 +21,11 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants", "handbook"
   ],
   "OPERATIONS": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch", "productivity",
+    "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
     "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
   ],
   "PMs": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch", "productivity",
+    "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
     "long-term-schedule", "project-schedule", "wip", "projects", "equipment", "handbook"
   ],
   "FIELD": [

@@ -224,23 +224,186 @@ export async function syncGanttWithShortTerm(jobKey: string) {
       const endDate = (maxDate as Date).toISOString().split('T')[0];
 
       const scopesSnap = await getDocs(query(collection(db, "projectScopes"), where("jobKey", "==", jobKey)));
-      
-      if (!scopesSnap.empty) {
-        // Update the first scope found (assuming it's the primary one)
-        const firstScope = scopesSnap.docs[0];
-        await setDoc(firstScope.ref, { startDate, endDate }, { merge: true });
-      } else {
-        // Create a new scope if none exists
-        await addDoc(collection(db, "projectScopes"), {
-          jobKey,
-          title: "Scheduled Work",
-          startDate,
-          endDate,
-          hours: 0 // Will be aggregated in WIP sync
-        });
-      }
+
+      if (scopesSnap.empty) return;
+
+      const scheduledScopeDoc = scopesSnap.docs.find((docSnap) => {
+        const data = docSnap.data() as { title?: string };
+        return (data.title || "").trim().toLowerCase() === "scheduled work";
+      });
+
+      if (!scheduledScopeDoc) return;
+
+      await setDoc(scheduledScopeDoc.ref, { startDate, endDate }, { merge: true });
     }
   } catch (error) {
     console.error("Error syncing Gantt with ShortTerm:", error);
   }
+}
+
+interface DayData {
+  dayNumber: number;
+  hours: number;
+  foreman?: string;
+  employees?: string[];
+}
+
+interface WeekData {
+  weekNumber: number;
+  days: DayData[];
+}
+
+interface ScheduleDoc {
+  jobKey: string;
+  customer: string;
+  projectNumber: string;
+  projectName: string;
+  month: string;
+  weeks: WeekData[];
+  updatedAt?: string;
+}
+
+/**
+ * Updates the short-term schedule when a scope is saved with specific dates and hours
+ */
+export async function updateShortTermFromScope(
+  jobKey: string,
+  startDate: string,
+  endDate: string,
+  dailyHours: number,
+  foremanId?: string
+) {
+  if (!jobKey || !startDate || !endDate || dailyHours <= 0) return;
+
+  try {
+    const [customer, projectNumber, projectName] = jobKey.split("~");
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
+    
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
+    // Group dates by month
+    const datesByMonth: Record<string, Date[]> = {};
+    let curr = new Date(start);
+    
+    while (curr <= end) {
+      // Skip weekends
+      if (curr.getDay() !== 0 && curr.getDay() !== 6) {
+        const monthKey = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}`;
+        if (!datesByMonth[monthKey]) datesByMonth[monthKey] = [];
+        datesByMonth[monthKey].push(new Date(curr));
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+
+
+    // Update each month document
+    for (const [monthKey, dates] of Object.entries(datesByMonth)) {
+      const docId = `${jobKey}_${monthKey}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const docRef = doc(db, "short term schedual", docId);
+      const docSnapshot = await getDoc(docRef);
+      
+      let docData: ScheduleDoc;
+      
+      if (docSnapshot.exists()) {
+        docData = docSnapshot.data() as ScheduleDoc;
+      } else {
+        docData = {
+          jobKey,
+          customer: customer || "",
+          projectNumber: projectNumber || "",
+          projectName: projectName || "",
+          month: monthKey,
+          weeks: []
+        };
+      }
+
+      // Clean invalid week numbers that don't exist for this month
+      const validWeekCount = getMonthWeekStarts(monthKey).length;
+      if (validWeekCount > 0 && docData.weeks.length > 0) {
+        docData.weeks = docData.weeks.filter(
+          (week) => week.weekNumber >= 1 && week.weekNumber <= validWeekCount
+        );
+      }
+
+      // Update or add days
+      dates.forEach(date => {
+        const position = getWeekDayPositionForDate(monthKey, date);
+        if (!position) return;
+        const { weekNumber, dayNumber } = position;
+        
+        let week = docData.weeks.find(w => w.weekNumber === weekNumber);
+        if (!week) {
+          week = { weekNumber, days: [] };
+          docData.weeks.push(week);
+        }
+        
+        let day = week.days.find(d => d.dayNumber === dayNumber);
+        if (day) {
+          day.hours = dailyHours;
+          if (foremanId) day.foreman = foremanId;
+        } else {
+          week.days.push({
+            dayNumber,
+            hours: dailyHours,
+            foreman: foremanId || ""
+          });
+        }
+      });
+
+      // Sort weeks and days for consistency
+      docData.weeks.sort((a, b) => a.weekNumber - b.weekNumber);
+      docData.weeks.forEach(w => w.days.sort((a, b) => a.dayNumber - b.dayNumber));
+
+      await setDoc(docRef, { ...docData, updatedAt: new Date().toISOString() }, { merge: true });
+    }
+  } catch (error) {
+    console.error("Error updating short-term schedule from scope:", error);
+  }
+}
+
+function getWeekDates(weekStart: Date): Date[] {
+  const dates: Date[] = [];
+  for (let i = 0; i < 5; i++) {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + i);
+    dates.push(date);
+  }
+  return dates;
+}
+
+function getMonthWeekStarts(monthStr: string): Date[] {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthStr)) return [];
+  const [year, month] = monthStr.split("-").map(Number);
+  const dates: Date[] = [];
+
+  const startDate = new Date(year, month - 1, 1);
+  while (startDate.getDay() !== 1) {
+    startDate.setDate(startDate.getDate() + 1);
+  }
+
+  while (startDate.getMonth() === month - 1) {
+    dates.push(new Date(startDate));
+    startDate.setDate(startDate.getDate() + 7);
+  }
+
+  return dates;
+}
+
+function getWeekDayPositionForDate(
+  monthStr: string,
+  targetDate: Date
+): { weekNumber: number; dayNumber: number } | null {
+  const monthWeekStarts = getMonthWeekStarts(monthStr);
+
+  for (let i = 0; i < monthWeekStarts.length; i++) {
+    const weekDates = getWeekDates(monthWeekStarts[i]);
+    for (let d = 0; d < weekDates.length; d++) {
+      if (weekDates[d].toDateString() === targetDate.toDateString()) {
+        return { weekNumber: i + 1, dayNumber: d + 1 };
+      }
+    }
+  }
+
+  return null;
 }

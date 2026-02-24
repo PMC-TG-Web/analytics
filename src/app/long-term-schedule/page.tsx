@@ -8,6 +8,7 @@ import Navigation from "@/components/Navigation";
 import { Scope, Project } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes } from "@/utils/projectUtils";
+import { loadActiveScheduleByWeek } from "@/utils/activeScheduleLoader";
 
 interface WeekData {
   weekNumber: number;
@@ -95,7 +96,9 @@ function LongTermScheduleContent() {
 
   async function loadSchedules() {
     try {
-      const snapshot = await getDocs(collection(db, "long term schedual"));
+      console.log('[LongTermSchedule] Loading schedules from activeSchedule...');
+      
+      // Load projects and scopes (unchanged)
       const projectScopesSnapshot = await getDocs(collection(db, "projectScopes"));
       const projectsSnapshot = await getDocs(query(
         collection(db, "projects"),
@@ -103,10 +106,13 @@ function LongTermScheduleContent() {
       ));
       
       const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      console.log('[LongTermSchedule] Loaded projects:', projs.length);
       setAllProjects(projs);
       
       const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      console.log('[LongTermSchedule] Loaded raw scopes:', rawScopes.length);
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
+      console.log('[LongTermSchedule] Enriched scopes:', enrichedScopes.length);
       const scopesObj: Record<string, Scope[]> = {};
       enrichedScopes.forEach(scope => {
         if (scope.jobKey) {
@@ -114,6 +120,69 @@ function LongTermScheduleContent() {
           scopesObj[scope.jobKey].push(scope);
         }
       });
+      console.log('[LongTermSchedule] Scopes by jobKey:', Object.keys(scopesObj).length, 'jobs');
+      
+      // BACKFILL: Generate virtual scopes for projects without explicit scopes
+      let backfilledCount = 0;
+      projs.forEach(project => {
+        const jobKey = `${project.customer || ''}~${project.projectNumber || ''}~${project.projectName || ''}`;
+        
+        // Skip if this project already has scopes
+        if (scopesObj[jobKey] && scopesObj[jobKey].length > 0) return;
+        
+        // Get all cost items for this project (projects collection has one row per cost item)
+        const projectCostItems = projs.filter(p => {
+          const pKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
+          return pKey === jobKey;
+        });
+        
+        // Group cost items by scopeOfWork/pmcGroup/costType
+        const groups: Record<string, { title: string; hours: number; sales: number; cost: number }> = {};
+        
+        projectCostItems.forEach(item => {
+          const itemHours = typeof item.hours === 'number' ? item.hours : 0;
+          const itemSales = typeof item.sales === 'number' ? item.sales : 0;
+          const itemCost = typeof item.cost === 'number' ? item.cost : 0;
+          
+          if (itemHours <= 0 && itemSales <= 0) return;
+          
+          // Use scopeOfWork first, then pmcGroup, then costType
+          const groupName = (item as any).scopeOfWork || (item as any).pmcGroup || (item as any).pmcgroup || item.costType || 'Other';
+          
+          if (!groups[groupName]) {
+            groups[groupName] = { title: groupName, hours: 0, sales: 0, cost: 0 };
+          }
+          
+          // Don't count management hours
+          if (!(item.costType || '').toLowerCase().includes('management')) {
+            groups[groupName].hours += itemHours;
+          }
+          groups[groupName].sales += itemSales;
+          groups[groupName].cost += itemCost;
+        });
+        
+        // Create virtual scopes from groups
+        const virtualScopes = Object.values(groups)
+          .filter(g => g.hours > 0 || g.sales > 0)
+          .map((group, idx) => ({
+            id: `virtual-${jobKey}-${idx}`,
+            jobKey,
+            title: group.title,
+            hours: group.hours,
+            sales: group.sales,
+            cost: group.cost,
+            startDate: '',
+            endDate: '',
+            tasks: []
+          }));
+        
+        if (virtualScopes.length > 0) {
+          scopesObj[jobKey] = virtualScopes;
+          backfilledCount++;
+        }
+      });
+      
+      console.log('[LongTermSchedule] Backfilled virtual scopes for', backfilledCount, 'projects');
       setScopesByJobKey(scopesObj);
 
       // Calculate the date range for next 15 weeks (including current week)
@@ -130,171 +199,13 @@ function LongTermScheduleContent() {
       const fifteenWeeksFromStart = new Date(currentWeekStart);
       fifteenWeeksFromStart.setDate(fifteenWeeksFromStart.getDate() + (15 * 7));
       
-      // Build week columns and job data
-      const weekMap = new Map<string, WeekColumn>();
-      const jobMap = new Map<string, JobRow>();
-      const projectsWithGanttData = new Set<string>();
-
-      // Generate week columns first
-      for (let i = 0; i < 15; i++) {
-        const weekDate = new Date(currentWeekStart);
-        weekDate.setDate(weekDate.getDate() + (i * 7));
-        const weekKey = weekDate.toISOString();
-        weekMap.set(weekKey, {
-          weekStartDate: weekDate,
-          weekLabel: weekDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        });
-      }
-
-      // Process Gantt Scopes first
-      Object.entries(scopesObj).forEach(([jobKey, scopes]) => {
-        const jobProjects = projs.filter(p => {
-          const pKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
-          return pKey === jobKey;
-        });
-        if (jobProjects.length === 0) return;
-
-        const validScopes = scopes.filter(s => s.startDate && s.endDate);
-        if (validScopes.length > 0) {
-          projectsWithGanttData.add(jobKey);
-
-          validScopes.forEach(scope => {
-            const start = new Date(scope.startDate!);
-            const end = new Date(scope.endDate!);
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
-
-            const title = (scope.title || "Scope").trim().toLowerCase();
-            const titleWithoutQty = title
-              .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "")
-              .trim();
-            
-            const projectCostItems = jobProjects.map(p => ({
-              costitems: (p.costitems || "").toLowerCase(),
-              hours: typeof p.hours === "number" ? p.hours : 0,
-              costType: typeof p.costType === "string" ? p.costType : "",
-            }));
-
-            const matchedItems = projectCostItems.filter((item) =>
-              item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems)
-            );
-
-            const scopeHours = matchedItems.reduce(
-              (acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc,
-              0
-            ) || (typeof scope.hours === "number" ? scope.hours : 0);
-
-            if (scopeHours <= 0) return;
-
-            // Count work days in range (Mon-Fri)
-            let workDaysInRange = 0;
-            let current = new Date(start);
-            while (current <= end) {
-              if (current.getDay() !== 0 && current.getDay() !== 6) {
-                workDaysInRange++;
-              }
-              current.setDate(current.getDate() + 1);
-            }
-            
-            if (workDaysInRange === 0) return;
-            const hourRatePerWorkDay = scopeHours / workDaysInRange;
-
-            // Create job row if not exists
-            if (!jobMap.has(jobKey)) {
-              jobMap.set(jobKey, {
-                jobKey,
-                customer: jobProjects[0].customer || "",
-                projectNumber: jobProjects[0].projectNumber || "",
-                projectName: jobProjects[0].projectName || "",
-                weekHours: {},
-                totalHours: 0,
-              });
-            }
-            const job = jobMap.get(jobKey)!;
-
-            // Distribute hours into the weeks in our grid
-            weekMap.forEach((col, weekKey) => {
-              const weekStart = col.weekStartDate;
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekEnd.getDate() + 6); // End of week
-
-              // Find overlap between [start, end] and [weekStart, weekEnd]
-              const overlapStart = start > weekStart ? start : weekStart;
-              const overlapEnd = end < weekEnd ? end : weekEnd;
-
-              if (overlapStart <= overlapEnd) {
-                // Count work days in overlap
-                let overlapWorkDays = 0;
-                let c = new Date(overlapStart);
-                while (c <= overlapEnd) {
-                  if (c.getDay() !== 0 && c.getDay() !== 6) {
-                    overlapWorkDays++;
-                  }
-                  c.setDate(c.getDate() + 1);
-                }
-                const overlapHours = hourRatePerWorkDay * overlapWorkDays;
-                if (overlapHours > 0) {
-                  job.weekHours[weekKey] = (job.weekHours[weekKey] || 0) + overlapHours;
-                  job.totalHours += overlapHours;
-                }
-              }
-            });
-          });
-        }
-      });
+      // Load schedule data from activeSchedule aggregated by week
+      const { weekColumns, jobRows } = await loadActiveScheduleByWeek(currentWeekStart, fifteenWeeksFromStart);
       
-      snapshot.docs.forEach((doc) => {
-        const docData = doc.data();
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-        if (projectsWithGanttData.has(docData.jobKey)) return;
-
-        const month = docData.month || "";
-        const weeks = docData.weeks || [];
-        const weekDates = getMonthWeekDates(month);
-        
-        weeks.forEach((week: WeekData) => {
-          const weekDate = weekDates[week.weekNumber - 1];
-          
-          if (!weekDate || weekDate < currentWeekStart || weekDate >= fifteenWeeksFromStart) return;
-          
-          const weekKey = weekDate.toISOString();
-          
-          // Add week column if not exists
-          if (!weekMap.has(weekKey)) {
-            weekMap.set(weekKey, {
-              weekStartDate: weekDate,
-              weekLabel: weekDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-            });
-          }
-          
-          // Add or update job row
-          if (!jobMap.has(docData.jobKey)) {
-            jobMap.set(docData.jobKey, {
-              jobKey: docData.jobKey,
-              customer: docData.customer || "",
-              projectNumber: docData.projectNumber || "",
-              projectName: docData.projectName || "",
-              weekHours: {},
-              totalHours: 0,
-            });
-          }
-          
-          const job = jobMap.get(docData.jobKey)!;
-          job.weekHours[weekKey] = week.hours;
-          job.totalHours += week.hours;
-        });
-      });
+      console.log('[LongTermSchedule] Loaded from activeSchedule:', jobRows.length, 'jobs', weekColumns.length, 'weeks');
       
-      // Convert to arrays and sort
-      const columns = Array.from(weekMap.values()).sort((a, b) => 
-        a.weekStartDate.getTime() - b.weekStartDate.getTime()
-      );
-      
-      const rows = Array.from(jobMap.values()).sort((a, b) => 
-        a.projectName.localeCompare(b.projectName)
-      );
-      
-      setWeekColumns(columns);
-      setJobRows(rows);
+      setWeekColumns(weekColumns);
+      setJobRows(jobRows);
     } catch (error) {
       console.error("Failed to load schedules:", error);
     } finally {

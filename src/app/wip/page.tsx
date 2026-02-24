@@ -209,10 +209,10 @@ function WIPReportContent() {
         
         const scopesMap: Record<string, Scope[]> = {};
         enrichedScopes.forEach((scope) => {
-          if (scope.jobKey) {
-            if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
-            scopesMap[scope.jobKey].push(scope);
-          }
+          if (!scope.jobKey) return;
+          if ((scope.title || "").trim().toLowerCase() === "scheduled work") return;
+          if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
+          scopesMap[scope.jobKey].push(scope);
         });
         setScopesByJobKey(scopesMap);
         console.log(`[WIP] Processed all data in ${Date.now() - start}ms`);

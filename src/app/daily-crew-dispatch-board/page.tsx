@@ -10,6 +10,7 @@ import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 import { useAuth } from "@/hooks/useAuth";
+import { loadActiveScheduleForDateRange } from "@/utils/activeScheduleLoader";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -222,24 +223,22 @@ function DailyCrewDispatchBoardContent() {
       
       const [
         employeesSnapshot,
-        shortTermSnapshot, 
         projectScopesSnapshot, 
         projectsSnapshot, 
-        longTermSnapshot, 
         timeOffSnapshot, 
-        holidaysSnapshot
+        holidaysSnapshot,
+        crewsSnapshot
       ] = await Promise.all([
         cachedEmployees ? Promise.resolve(null) : getDocs(collection(db, "employees")),
-        getDocs(collection(db, "short term schedual")),
         cachedScopes ? Promise.resolve(null) : getDocs(collection(db, "projectScopes")),
         getDocs(query(
           collection(db, "projects"),
           where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
           where("projectArchived", "==", false)
         )),
-        getDocs(collection(db, "long term schedual")),
         getDocs(collection(db, "timeOffRequests")),
-        cachedHolidays ? Promise.resolve(null) : getDocs(collection(db, "holidays"))
+        cachedHolidays ? Promise.resolve(null) : getDocs(collection(db, "holidays")),
+        getDocs(collection(db, "crews"))
       ]);
 
       console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
@@ -291,17 +290,14 @@ function DailyCrewDispatchBoardContent() {
       });
 
       const today = new Date();
-      today.setHours(today.getHours(), today.getMinutes(), today.getSeconds(), today.getMilliseconds());
+      today.setHours(0, 0, 0, 0);
       const displayDate = new Date(today);
-      displayDate.setHours(0, 0, 0, 0);
-      
-      const currentWeekStart = new Date(displayDate);
-      const fiveWeeksFromStart = new Date(displayDate);
-      fiveWeeksFromStart.setDate(fiveWeeksFromStart.getDate() + 1);
 
+      // Load schedule data from activeSchedule for today only
+      const { projectsByDate } = await loadActiveScheduleForDateRange(displayDate, displayDate);
+      
       const dayMap = new Map<string, DayColumn>();
       const projectsByDay: Record<string, DayProject[]> = {};
-      const projectsWithGanttData = new Set<string>();
 
       const dateKey = formatDateKey(displayDate);
       dayMap.set(dateKey, {
@@ -309,151 +305,23 @@ function DailyCrewDispatchBoardContent() {
         dayLabel: displayDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         weekNumber: 1,
       });
-      projectsByDay[dateKey] = [];
 
-      Object.entries(scopesObj).forEach(([jobKey, scopes]) => {
-        const jobProjects = projs.filter(p => {
-          const pKey = getProjectKey(p);
-          return pKey === jobKey;
-        });
-        if (jobProjects.length === 0) return;
-        const validScopes = scopes.filter(s => s.startDate && s.endDate);
-        if (validScopes.length > 0) {
-          projectsWithGanttData.add(jobKey);
-          validScopes.forEach(scope => {
-              // Parse YYYY-MM-DD as local date to avoid timezone shift
-              const [sY, sM, sD] = scope.startDate!.split('-').map(Number);
-              const [eY, eM, eD] = scope.endDate!.split('-').map(Number);
-              const start = new Date(sY, sM - 1, sD);
-              const end = new Date(eY, eM - 1, eD);
-              
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
-            const title = (scope.title || "Scope").trim().toLowerCase();
-            const titleWithoutQty = title.replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*[-–]\s*/i, "").trim();
-            const projectCostItems = jobProjects.map(p => ({
-              costitems: (p.costitems || "").toLowerCase(),
-              hours: typeof p.hours === "number" ? p.hours : 0,
-              costType: typeof p.costType === "string" ? p.costType : "",
-            }));
-            const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
-            const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
-            if (scopeHours <= 0) return;
-            let workDaysInRange = 0;
-            let current = new Date(start);
-            while (current <= end) {
-              if (current.getDay() !== 0 && current.getDay() !== 6) workDaysInRange++;
-              current.setDate(current.getDate() + 1);
-            }
-            if (workDaysInRange === 0) return;
-            const dailyHours = scopeHours / workDaysInRange;
-            current = new Date(start);
-            while (current <= end) {
-              if (current.getDay() !== 0 && current.getDay() !== 6) {
-                const dKey = formatDateKey(current);
-                if (projectsByDay[dKey]) {
-                  const monthStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-                  const position = getWeekDayPositionForDate(monthStr, current);
-                  projectsByDay[dKey].push({
-                    jobKey,
-                    customer: jobProjects[0].customer || "",
-                    projectNumber: jobProjects[0].projectNumber || "",
-                    projectName: jobProjects[0].projectName || "",
-                    hours: dailyHours,
-                    foreman: "",
-                    employees: [],
-                    month: monthStr,
-                    weekNumber: position?.weekNumber || 1,
-                    dayNumber: position?.dayNumber || (current.getDay() || 7),
-                  });
-                }
-              }
-              current.setDate(current.getDate() + 1);
-            }
-          });
-        }
-      });
+      // Initialize projectsByDay from activeSchedule
+      const activeScheduleProjects = projectsByDate[dateKey] || [];
+      projectsByDay[dateKey] = activeScheduleProjects.map(p => ({
+        jobKey: p.jobKey,
+        customer: p.customer,
+        projectNumber: p.projectNumber,
+        projectName: p.projectName,
+        hours: p.hours,
+        foreman: p.foreman || "",
+        employees: p.employees || [],
+        month: dateKey.substring(0, 7), // YYYY-MM
+        weekNumber: 1,
+        dayNumber: displayDate.getDay() || 7,
+      }));
 
-      shortTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data() as ScheduleDoc;
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-        const normalizedJobKey = docData.jobKey.replace(/\s+/g, ' '); // Ensure consistent key format
-        const weeks = docData.weeks || [];
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        weeks.forEach((week: WeekData) => {
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-          const weekDates = getWeekDates(weekStart);
-          (week.days || []).forEach((day: DayData) => {
-            const dayDate = weekDates[day.dayNumber - 1];
-            if (!dayDate || dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
-            const dKey = formatDateKey(dayDate);
-            if (projectsByDay[dKey]) {
-              // Update ALL matching scopes for this project on this day
-              let foundExisting = false;
-              projectsByDay[dKey].forEach(p => {
-                if (p.jobKey === normalizedJobKey || p.jobKey === docData.jobKey) {
-                  p.foreman = day.foreman || "";
-                  p.employees = day.employees || [];
-                  // Only override hours if manually scheduled hours are provided (> 0)
-                  if (day.hours > 0) p.hours = day.hours;
-                  foundExisting = true;
-                }
-              });
-
-              if (!foundExisting) {
-                projectsByDay[dKey].push({
-                  jobKey: docData.jobKey,
-                  customer: docData.customer || "",
-                  projectNumber: docData.projectNumber || "",
-                  projectName: docData.projectName || "",
-                  hours: day.hours,
-                  foreman: day.foreman || "",
-                  employees: day.employees || [],
-                  month: docData.month,
-                  weekNumber: week.weekNumber,
-                  dayNumber: day.dayNumber,
-                });
-              }
-            }
-          });
-        });
-      });
-
-      longTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data();
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-        if (projectsWithGanttData.has(docData.jobKey)) return;
-        const weeks = docData.weeks || [];
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        weeks.forEach((week: { weekNumber: number; hours: number }) => {
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-          const weekDates = getWeekDates(weekStart);
-          const hoursPerDay = (week.hours || 0) / 5;
-          if (hoursPerDay <= 0) return;
-          weekDates.forEach((dayDate, dayIndex) => {
-            if (dayDate < currentWeekStart || dayDate >= fiveWeeksFromStart) return;
-            const dKey = formatDateKey(dayDate);
-            if (projectsByDay[dKey]) {
-              const exists = projectsByDay[dKey].some(p => p.jobKey === docData.jobKey);
-              if (!exists) {
-                projectsByDay[dKey].push({
-                  jobKey: docData.jobKey,
-                  customer: docData.customer || "",
-                  projectNumber: docData.projectNumber || "",
-                  projectName: docData.projectName || "",
-                  hours: hoursPerDay,
-                  foreman: "",
-                  employees: [],
-                  month: docData.month,
-                  weekNumber: week.weekNumber,
-                  dayNumber: dayIndex + 1,
-                });
-              }
-            }
-          });
-        });
-      });
+      console.log(`[DispatchBoard] Loaded ${projectsByDay[dateKey].length} projects from activeSchedule for ${dateKey}`);
 
       const columns = Array.from(dayMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
       setDayColumns(columns);
@@ -485,21 +353,58 @@ function DailyCrewDispatchBoardContent() {
       });
       setForemanDateProjects(foremanDateMap);
 
+      // Load saved crew templates from crews collection
+      const savedCrews: Record<string, { rightHandManId?: string; crewMemberIds: string[] }> = {};
+      crewsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        savedCrews[doc.id] = {
+          rightHandManId: data.rightHandManId,
+          crewMemberIds: data.crewMemberIds || []
+        };
+      });
+      
+      console.log('[DispatchBoard] Loaded saved crews:', savedCrews);
+
       const crewMap: Record<string, Record<string, string[]>> = {};
       Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
         if (!crewMap[dateKey]) crewMap[dateKey] = {};
         projects.forEach(project => {
           const foremanId = project.foreman;
           if (foremanId) {
-            if (!crewMap[dateKey][foremanId]) crewMap[dateKey][foremanId] = [];
-            if (project.employees && Array.isArray(project.employees)) {
+            if (!crewMap[dateKey][foremanId]) {
+              crewMap[dateKey][foremanId] = [];
+              
+              // Apply default crew for this foreman on this day (first time we see them)
+              if (savedCrews[foremanId]) {
+                const defaultCrew = savedCrews[foremanId];
+                console.log(`[DispatchBoard] Applying default crew for foreman ${foremanId} on ${dateKey}:`, defaultCrew);
+                
+                // Add right hand man if assigned
+                if (defaultCrew.rightHandManId) {
+                  crewMap[dateKey][foremanId].push(defaultCrew.rightHandManId);
+                }
+                // Add crew members
+                defaultCrew.crewMemberIds.forEach((empId: string) => {
+                  if (!crewMap[dateKey][foremanId].includes(empId)) {
+                    crewMap[dateKey][foremanId].push(empId);
+                  }
+                });
+              }
+            }
+            
+            // Also add any employees already assigned to this specific project
+            if (project.employees && Array.isArray(project.employees) && project.employees.length > 0) {
               project.employees.forEach((empId: string) => {
-                if (!crewMap[dateKey][foremanId].includes(empId)) crewMap[dateKey][foremanId].push(empId);
+                if (!crewMap[dateKey][foremanId].includes(empId)) {
+                  crewMap[dateKey][foremanId].push(empId);
+                }
               });
             }
           }
         });
       });
+      
+      console.log('[DispatchBoard] Final crew assignments:', crewMap);
       setCrewAssignments(crewMap);
     } catch (error) {
       console.error("Failed to load schedules:", error);

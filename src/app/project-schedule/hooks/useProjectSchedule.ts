@@ -2,18 +2,17 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import { Scope, ViewMode, GanttTask, ProjectInfo } from "@/types";
-import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";
+import { ShortTermJob, LongTermJob, MonthJob } from "@/types/schedule";
 import { getProjectKey, parseDateValue } from "@/utils/projectUtils";
 import { 
   addDays, 
   diffInDays, 
   diffInMonths, 
   getMonthRange, 
-  getMonthWeekStarts, 
-  getWeekDates, 
   parseDateInput, 
   formatDateInput 
 } from "@/utils/dateUtils";
+import { ActiveScheduleEntry } from "@/utils/activeScheduleUtils";
 
 export function useProjectSchedule() {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -40,16 +39,11 @@ export function useProjectSchedule() {
       const [
         projectsSnapshot,
         scopesSnapshot,
-        shortTermSnapshot,
-        longTermSnapshot
+        activeScheduleSnapshot
       ] = await Promise.all([
-        getDocs(query(
-          collection(db, "projects"),
-          where("status", "not-in", ["Lost"])
-        )),
+        getDocs(collection(db, "projects")),
         getDocs(collection(db, "projectScopes")),
-        getDocs(collection(db, "short term schedual")),
-        getDocs(collection(db, "long term schedual"))
+        getDocs(collection(db, "activeSchedule"))
       ]);
 
       console.log(`[useProjectSchedule] Fetched all snapshots in ${Date.now() - start}ms`);
@@ -62,7 +56,7 @@ export function useProjectSchedule() {
         const data = doc.data() as any;
         const { projectName = "", jobKey, customer = "", projectNumber = "", status = "" } = data;
         
-        if (status === "Invitations") return;
+        if (status === "Invitations" || status === "Lost") return;
 
         // Force evaluation of the standardized key for mapping
         const generatedKey = getProjectKey({ ...data, id: doc.id });
@@ -101,6 +95,8 @@ export function useProjectSchedule() {
       });
 
       const scopesMap: Record<string, Scope[]> = {};
+      const isAutoScheduledScope = (scope: Scope) =>
+        (scope.title || "").trim().toLowerCase() === "scheduled work";
 
       scopesSnapshot.docs.forEach((docSnap) => {
         const data = docSnap.data() as Partial<Scope> & { jobKey?: string };
@@ -160,26 +156,43 @@ export function useProjectSchedule() {
         scopesMap[jobKey].push(scope);
       });
 
+      Object.entries(scopesMap).forEach(([jobKey, scopes]) => {
+        const realScopes = scopes.filter(scope => !isAutoScheduledScope(scope));
+        scopesMap[jobKey] = realScopes;
+      });
+
       console.log(`[useProjectSchedule] Processed projects and scopes at ${Date.now() - start}ms`);
 
-      // BACKFILL: If a project has no explicit scopes in projectScopes, 
-      // generate "Virtual Scopes" from its PMC Groups / CostItems
+      // BACKFILL: Generate "Virtual Scopes" from PMC Groups / CostItems
+      // for any missing scope titles (not just missing jobKeys).
+      const processedJobKeys = new Set<string>();
       allProjects.forEach(project => {
-        if (!scopesMap[project.jobKey] || scopesMap[project.jobKey].length === 0) {
-          const costItems = projectCostItems[project.jobKey] || [];
-          const groups: Record<string, { title: string, hours: number, sales: number }> = {};
-          
-          costItems.forEach(item => {
-            if (item.hours <= 0 && item.sales <= 0) return;
-            const groupName = item.scopeOfWork || item.pmcGroup || item.costType || "Other";
-            if (!groups[groupName]) {
-              groups[groupName] = { title: groupName, hours: 0, sales: 0 };
-            }
-            groups[groupName].hours += item.hours;
-            groups[groupName].sales += item.sales;
-          });
+        if (processedJobKeys.has(project.jobKey)) return;
+        processedJobKeys.add(project.jobKey);
 
-          scopesMap[project.jobKey] = Object.values(groups).map((group, idx) => ({
+        const existingScopes = scopesMap[project.jobKey] || [];
+        const existingTitles = new Set(
+          existingScopes
+            .map(scope => (scope.title || "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+
+        const costItems = projectCostItems[project.jobKey] || [];
+        const groups: Record<string, { title: string, hours: number, sales: number }> = {};
+
+        costItems.forEach(item => {
+          if (item.hours <= 0 && item.sales <= 0) return;
+          const groupName = item.scopeOfWork || item.pmcGroup || item.costType || "Other";
+          if (!groups[groupName]) {
+            groups[groupName] = { title: groupName, hours: 0, sales: 0 };
+          }
+          groups[groupName].hours += item.hours;
+          groups[groupName].sales += item.sales;
+        });
+
+        const fallbackScopes = Object.values(groups)
+          .filter(group => !existingTitles.has(group.title.trim().toLowerCase()))
+          .map((group, idx) => ({
             id: `virtual-${project.jobKey}-${idx}`,
             jobKey: project.jobKey,
             title: group.title,
@@ -189,107 +202,123 @@ export function useProjectSchedule() {
             endDate: "",
             tasks: []
           }));
-        }
+
+        if (!scopesMap[project.jobKey]) scopesMap[project.jobKey] = [];
+        scopesMap[project.jobKey] = [...scopesMap[project.jobKey], ...fallbackScopes];
       });
 
       const shortTermMap = new Map<string, ShortTermJob>();
-      shortTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data() as ShortTermDoc;
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
+      const longTermMap = new Map<string, LongTermJob>();
+      const monthMap = new Map<string, MonthJob>();
+      const projectLookup = new Map(allProjects.map(p => [p.jobKey, p]));
 
-        let jobKey = docData.jobKey;
-        // Normalize jobKey to Customer~Number~Name format
+      const normalizeJobKey = (jobKey: string) => {
         const parts = jobKey.split(/[~|]/).map(p => p.trim());
         if (parts.length >= 3) {
-          jobKey = `${parts[0]}~${parts[1]}~${parts[2]}`;
-        } else if (jobKey.includes('|')) {
-          jobKey = jobKey.replace(/\|/g, '~');
+          return `${parts[0]}~${parts[1]}~${parts[2]}`;
         }
+        if (jobKey.includes("|")) return jobKey.replace(/\|/g, "~");
+        return jobKey;
+      };
+
+      const getProjectInfo = (jobKey: string) => {
+        const project = projectLookup.get(jobKey);
+        if (project) {
+          return {
+            customer: project.customer || "",
+            projectNumber: project.projectNumber || "",
+            projectName: project.projectName || "",
+            projectDocId: project.projectDocId || "",
+          };
+        }
+        const parts = jobKey.split("~");
+        return {
+          customer: parts[0] || "",
+          projectNumber: parts[1] || "",
+          projectName: parts[2] || "",
+          projectDocId: docMap[jobKey] || "",
+        };
+      };
+
+      activeScheduleSnapshot.docs.forEach((doc) => {
+        const data = doc.data() as ActiveScheduleEntry;
+        if (!data.jobKey || !data.date) return;
+
+        const jobKey = normalizeJobKey(data.jobKey);
+        const entryDate = new Date(data.date);
+        if (Number.isNaN(entryDate.getTime())) return;
+
+        const info = getProjectInfo(jobKey);
+        const hours = typeof data.hours === "number" ? data.hours : 0;
 
         if (!shortTermMap.has(jobKey)) {
           shortTermMap.set(jobKey, {
             jobKey,
-            customer: docData.customer || "",
-            projectNumber: docData.projectNumber || "",
-            projectName: docData.projectName || "",
-            projectDocId: docMap[jobKey] || docMap[docData.projectName] || "",
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
             dates: [],
             totalHours: 0,
             scopes: scopesMap[jobKey] || [],
           });
         }
-
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        (docData.weeks || []).forEach((week) => {
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-
-          const weekDates = getWeekDates(weekStart);
-          (week.days || []).forEach((day) => {
-            if (!day.hours || day.hours <= 0) return;
-            const dayDate = weekDates[day.dayNumber - 1];
-            if (!dayDate) return;
-
-            const job = shortTermMap.get(jobKey)!;
-            job.dates.push(dayDate);
-            job.totalHours += day.hours;
-          });
-        });
-      });
-
-      const longTermMap = new Map<string, LongTermJob>();
-      const monthList: MonthJob[] = [];
-      longTermSnapshot.docs.forEach((doc) => {
-        const docData = doc.data() as LongTermDoc;
-        if (doc.id === "_placeholder" || !docData.jobKey) return;
-
-        let jobKey = docData.jobKey;
-        // Normalize jobKey to Customer~Number~Name format
-        const parts = jobKey.split(/[~|]/).map(p => p.trim());
-        if (parts.length >= 3) {
-          jobKey = `${parts[0]}~${parts[1]}~${parts[2]}`;
-        } else if (jobKey.includes('|')) {
-          jobKey = jobKey.replace(/\|/g, '~');
-        }
+        const stJob = shortTermMap.get(jobKey)!;
+        stJob.dates.push(entryDate);
+        stJob.totalHours += hours;
 
         if (!longTermMap.has(jobKey)) {
           longTermMap.set(jobKey, {
             jobKey,
-            customer: docData.customer || "",
-            projectNumber: docData.projectNumber || "",
-            projectName: docData.projectName || "",
-            projectDocId: docMap[jobKey] || docMap[docData.projectName] || "",
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
             weekStarts: [],
             totalHours: 0,
             scopes: scopesMap[jobKey] || [],
           });
         }
+        const ltJob = longTermMap.get(jobKey)!;
+        const weekStart = new Date(entryDate);
+        const day = weekStart.getDay();
+        const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+        weekStart.setDate(diff);
+        weekStart.setHours(0, 0, 0, 0);
+        ltJob.weekStarts.push(weekStart);
+        ltJob.totalHours += hours;
 
-        const monthWeekStarts = getMonthWeekStarts(docData.month);
-        (docData.weeks || []).forEach((week) => {
-          if (!week.hours || week.hours <= 0) return;
-          const weekStart = monthWeekStarts[week.weekNumber - 1];
-          if (!weekStart) return;
-
-          const job = longTermMap.get(jobKey)!;
-          job.weekStarts.push(weekStart);
-          job.totalHours += week.hours;
-        });
-
-        const monthTotal = docData.totalHours ?? (docData.weeks || []).reduce((sum, w) => sum + (w.hours || 0), 0);
-        if (monthTotal > 0) {
-          monthList.push({
+        const monthKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}`;
+        const monthMapKey = `${jobKey}__${monthKey}`;
+        if (!monthMap.has(monthMapKey)) {
+          monthMap.set(monthMapKey, {
             jobKey,
-            customer: docData.customer || "",
-            projectNumber: docData.projectNumber || "",
-            projectName: docData.projectName || "",
-            projectDocId: docMap[jobKey] || docMap[docData.projectName] || "",
-            month: docData.month,
-            totalHours: monthTotal,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            month: monthKey,
+            totalHours: 0,
             scopes: scopesMap[jobKey] || [],
           });
         }
+        const monthJob = monthMap.get(monthMapKey)!;
+        monthJob.totalHours += hours;
       });
+
+      shortTermMap.forEach((job) => {
+        const unique = new Map<string, Date>();
+        job.dates.forEach((d) => unique.set(d.toISOString().split("T")[0], d));
+        job.dates = Array.from(unique.values());
+      });
+
+      longTermMap.forEach((job) => {
+        const unique = new Map<string, Date>();
+        job.weekStarts.forEach((d) => unique.set(d.toISOString(), d));
+        job.weekStarts = Array.from(unique.values());
+      });
+
+      const monthList = Array.from(monthMap.values());
 
       setScopesByJobKey(scopesMap);
       setProjects(allProjects);

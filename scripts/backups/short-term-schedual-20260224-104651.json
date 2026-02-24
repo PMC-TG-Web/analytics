@@ -1,0 +1,218 @@
+[
+  {
+    "id": "Ames_Construction__Inc__2508_-_GI_Giant__6582_2026-02",
+    "weeks": [
+      {
+        "weekNumber": 2,
+        "days": [
+          {
+            "dayNumber": 1,
+            "foreman": "emp_procore_598134329368356",
+            "employees": [
+              "emp_procore_598134329367182"
+            ],
+            "hours": 0
+          },
+          {
+            "dayNumber": 2,
+            "employees": [
+              "emp_procore_598134329367182",
+              "emp_procore_598134329367212",
+              "emp_procore_598134329368183",
+              "emp_procore_598134330744991"
+            ],
+            "foreman": "emp_procore_598134329368356",
+            "hours": 40
+          },
+          {
+            "dayNumber": 3,
+            "foreman": "emp_procore_598134329368356",
+            "hours": 409
+          }
+        ]
+      }
+    ],
+    "projectName": "Giant #6582",
+    "customer": "Ames Construction, Inc.",
+    "projectNumber": "2508 - GI",
+    "month": "2026-02",
+    "updatedAt": "2026-02-10T21:04:33.976Z",
+    "jobKey": "Ames Construction, Inc.~2508 - GI~Giant #6582"
+  },
+  {
+    "id": "Berg_Construction_2508_-_WD_Washburn_Dam_2026-02",
+    "jobKey": "Berg Construction~2508 - WD~Washburn Dam",
+    "month": "2026-02",
+    "projectNumber": "2508 - WD",
+    "customer": "Berg Construction",
+    "projectName": "Washburn Dam",
+    "weeks": [
+      {
+        "days": [
+          {
+            "hours": 20,
+            "employees": [
+              "emp_procore_598134329367182"
+            ],
+            "dayNumber": 1,
+            "foreman": "emp_procore_598134329368356"
+          },
+          {
+            "hours": 20,
+            "employees": [
+              "emp_procore_598134329367182",
+              "emp_procore_598134329367212",
+              "emp_procore_598134329368183",
+              "emp_procore_598134330744991"
+            ],
+            "foreman": "emp_procore_598134329368356",
+            "dayNumber": 2
+          },
+          {
+            "hours": 20,
+            "foreman": "emp_procore_598134329368356",
+            "dayNumber": 3
+          },
+          {
+            "foreman": "emp_procore_598134329368356",
+            "employees": [
+              "emp_procore_598134329367276"
+            ],
+            "dayNumber": 4,
+            "hours": 60
+          }
+        ],
+        "weekNumber": 2
+      },
+      {
+        "days": [
+          {
+            "foreman": "emp_procore_598134329368356",
+            "dayNumber": 1,
+            "hours": 5.12
+          }
+        ],
+        "weekNumber": 3
+      }
+    ],
+    "updatedAt": "2026-02-12T21:04:45.228Z"
+  },
+  {
+    "id": "C__Raymond_Davis___Sons__Inc__2508_-_CP_Canine_Partners_for_Life_2026-02",
+    "jobKey": "C. Raymond Davis & Sons, Inc.~2508 - CP~Canine Partners for Life",
+    "updatedAt": "2026-02-24T12:42:32.781Z",
+    "month": "2026-02",
+    "customer": "C. Raymond Davis & Sons, Inc.",
+    "projectName": "Canine Partners for Life",
+    "projectNumber": "2508 - CP",
+    "weeks": [
+      {
+        "weekNumber": 0,
+        "days": [
+          {
+            "dayNumber": 1,
+            "foreman": "",
+            "hours": 0
+          }
+        ]
+      },
+      {
+        "weekNumber": 4,
+        "days": [
+          {
+            "dayNumber": 1,
+            "foreman": "",
+            "hours": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Centurion_Construction_Group__LLC_2505-WP_Westminster_Presbyterian_Addition_2026-02",
+    "jobKey": "Centurion Construction Group, LLC~2505-WP~Westminster Presbyterian Addition",
+    "updatedAt": "2026-02-12T21:04:58.884Z",
+    "month": "2026-02",
+    "projectNumber": "2505-WP",
+    "projectName": "Westminster Presbyterian Addition",
+    "customer": "Centurion Construction Group, LLC",
+    "weeks": [
+      {
+        "weekNumber": 3,
+        "days": [
+          {
+            "foreman": "",
+            "dayNumber": 1,
+            "hours": 0
+          }
+        ]
+      },
+      {
+        "weekNumber": 2,
+        "days": [
+          {
+            "hours": 20,
+            "dayNumber": 4,
+            "foreman": "emp_procore_598134329368784",
+            "employees": [
+              "emp_procore_598134329368464",
+              "emp_procore_598134332692485",
+              "emp_procore_598134329368019",
+              "emp_procore_598134329369069"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Hoover_Building_Specialists__Inc__2505_-_KE_Kemper_Equipment_2026-02",
+    "jobKey": "Hoover Building Specialists, Inc.~2505 - KE~Kemper Equipment",
+    "updatedAt": "2026-02-24T15:45:27.211Z",
+    "month": "2026-02",
+    "projectNumber": "2505 - KE",
+    "customer": "Hoover Building Specialists, Inc.",
+    "projectName": "Kemper Equipment",
+    "weeks": [
+      {
+        "days": [
+          {
+            "dayNumber": 3,
+            "foreman": "",
+            "hours": 0
+          }
+        ],
+        "weekNumber": 0
+      },
+      {
+        "weekNumber": 4,
+        "days": [
+          {
+            "hours": 67.4,
+            "dayNumber": 3,
+            "foreman": ""
+          }
+        ]
+      },
+      {
+        "days": [
+          {
+            "foreman": "",
+            "dayNumber": 2,
+            "hours": 60
+          }
+        ],
+        "weekNumber": 5
+      }
+    ]
+  },
+  {
+    "id": "_placeholder",
+    "created": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1769908205,
+      "nanoseconds": 293000000
+    },
+    "description": "Placeholder document - can be deleted after adding real data"
+  }
+]

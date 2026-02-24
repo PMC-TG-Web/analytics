@@ -344,10 +344,13 @@ export function ProjectScopesModal({
       await batch2.commit();
       console.log(`Created ${entryCount} activeSchedule entries for ${project.jobKey}`);
 
-      // Step 5: Recalculate scopeTracking for all processed scopes
-      for (const scopeOfWork of processedScopes) {
-        await recalculateScopeTracking(project.jobKey, scopeOfWork);
-      }
+      // Step 5: Recalculate scopeTracking using current scope totals
+      const scopeTotals: Record<string, number> = {};
+      scopes.forEach((scope) => {
+        const title = (scope.title || "Scope").trim() || "Scope";
+        scopeTotals[title] = computeScopeHours(scope);
+      });
+      await recalculateScopeTracking(project.jobKey, scopeTotals);
 
       alert(`Schedule reset successfully! Created ${entryCount} entries.`);
       

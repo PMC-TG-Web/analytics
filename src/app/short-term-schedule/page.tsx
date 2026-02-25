@@ -41,6 +41,7 @@ interface DayColumn {
 
 interface DayProject {
   jobKey: string;
+  scopeOfWork?: string; // Which scope these hours belong to
   customer: string;
   projectNumber: string;
   projectName: string;
@@ -277,6 +278,19 @@ function ShortTermScheduleContent() {
     }
   }
 
+  // Helper: Get manpower for a scope
+  function getScopeManpower(jobKey: string, scopeName: string): number {
+    const scopes = scopesByJobKey[jobKey] || [];
+    const scope = scopes.find(s => (s.title || '').trim() === scopeName.trim());
+    return scope?.manpower || 0;
+  }
+
+  // Helper: Calculate hours to schedule based on manpower
+  function calculateScheduledHours(jobKey: string, scopeName: string): number {
+    const manpower = getScopeManpower(jobKey, scopeName);
+    return manpower * 10; // 10 hours per person per day
+  }
+
   function handleDragStart(project: DayProject | Project, dateKey?: string, foremanId?: string) {
     if ('jobKey' in project && dateKey && foremanId) {
       // It's an existing DayProject
@@ -297,31 +311,24 @@ function ShortTermScheduleContent() {
     if (draggedProject.isNew) {
       const p = draggedProject.project as Project;
       const jobKey = getProjectKey(p);
-      const targetMonthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
-      const position = getWeekDayPositionForDate(targetMonthStr, targetDate);
-
-      if (position) {
-        setSaving(true);
-        try {
-          const newProject: DayProject = {
-            jobKey,
-            customer: p.customer || "",
-            projectNumber: p.projectNumber || "",
-            projectName: p.projectName || "",
-            hours: 8, // Default 8 hours for new drops
-            foreman: targetForemanId === "__unassigned__" ? "" : targetForemanId,
-            employees: [],
-            month: targetMonthStr,
-            weekNumber: position.weekNumber,
-            dayNumber: position.dayNumber
-          };
-          await updateProjectAssignment(newProject, targetDateKey, targetForemanId, targetForemanId, 8);
-          await loadSchedules();
-        } finally {
-          setSaving(false);
-          setDraggedProject(null);
+      
+      // Find all projects with this jobKey (all scopes)
+      const matchingProjects = allProjects.filter(proj => getProjectKey(proj) === jobKey);
+      
+      // Deduplicate by scopeOfWork
+      const uniqueScopes = new Map<string, Project>();
+      matchingProjects.forEach(proj => {
+        const scopeKey = proj.scopeOfWork || 'default';
+        if (!uniqueScopes.has(scopeKey)) {
+          uniqueScopes.set(scopeKey, proj);
         }
-      }
+      });
+      const uniqueProjects = Array.from(uniqueScopes.values());
+      
+      // Show scope selection modal
+      setTargetingCell({ date: targetDate, foremanId: targetForemanId });
+      setScopeSelectionModal({ jobKey, projects: uniqueProjects });
+      setDraggedProject(null);
       return;
     }
 
@@ -395,19 +402,25 @@ function ShortTermScheduleContent() {
     if (position) {
       setSaving(true);
       try {
+        // Get the manpower for this scope to calculate hours
+        const manpower = p.manpower || 0;
+        const hoursToSchedule = manpower > 0 ? manpower * 10 : 8; // Calculate from manpower, or fallback to 8
+        const scopeOfWork = (p.scopeOfWork || "Scheduled Work").trim();
+        
         const newProject: DayProject = {
           jobKey,
+          scopeOfWork,
           customer: p.customer || "",
           projectNumber: p.projectNumber || "",
           projectName: p.projectName || "",
-          hours: 8,
+          hours: hoursToSchedule,
           foreman: foremanId === "__unassigned__" ? "" : foremanId,
           employees: [],
           month: targetMonthStr,
           weekNumber: position.weekNumber,
           dayNumber: position.dayNumber
         };
-        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, 8);
+        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, hoursToSchedule);
         await loadSchedules();
         setTargetingCell(null);
         setIsAddingProject(false);
@@ -427,8 +440,8 @@ function ShortTermScheduleContent() {
     targetWeekNum: number,
     targetDayNum: number
   ) {
-    const { jobKey, hours } = project;
-    const scopeOfWork = "Scheduled Work"; // Default scope for short-term assignments
+    const { jobKey, hours, scopeOfWork: scopeFromProject } = project;
+    const scopeOfWork = scopeFromProject || "Scheduled Work";
     const foremanValue = targetForemanId === "__unassigned__" || !targetForemanId ? "" : targetForemanId;
     
     // Delete old entry on source date
@@ -467,8 +480,8 @@ function ShortTermScheduleContent() {
     newForemanId: string | null,
     newHours: number
   ) {
-    const { jobKey } = project;
-    const scopeOfWork = "Scheduled Work"; // Default scope for short-term assignments
+    const { jobKey, scopeOfWork: scopeFromProject } = project;
+    const scopeOfWork = scopeFromProject || "Scheduled Work";
     const foremanValue = newForemanId === "__unassigned__" || !newForemanId ? "" : newForemanId;
     
     // Delete old entry if hours are being removed (newHours <= 0)
@@ -806,6 +819,7 @@ function ShortTermScheduleContent() {
         } else {
           projectsByDay[dateKey].push({
             jobKey,
+            scopeOfWork: entry.scopeOfWork || "Scheduled Work", // Track the scope for this entry
             customer: project.customer || '',
             projectNumber: project.projectNumber || '',
             projectName: project.projectName || '',
@@ -1127,6 +1141,30 @@ function ShortTermScheduleContent() {
             </p>
           </div>
           <div className="flex items-center gap-3 self-end md:self-center">
+            <button
+              onClick={async () => {
+                if (!confirm('Delete all "Scope" and "Scheduled Work" scopes? This cannot be undone.')) return;
+                setSaving(true);
+                try {
+                  const response = await fetch('/api/admin/cleanup-generic-scopes', { method: 'POST' });
+                  const data = await response.json();
+                  if (response.ok) {
+                    alert(`✅ Cleanup complete!\n\n${data.message}`);
+                    await loadSchedules();
+                  } else {
+                    alert(`❌ Error: ${data.error}`);
+                  }
+                } catch (error) {
+                  alert(`❌ Failed: ${error}`);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all shadow-sm bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-900 shadow-red-100/50"
+              title="Delete generic scopes"
+            >
+              Cleanup
+            </button>
             <button
               onClick={() => setIsAddingProject(!isAddingProject)}
               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${

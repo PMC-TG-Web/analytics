@@ -1506,7 +1506,9 @@ function KPIPageContent({
 
         {/* Revenue Hours Table */}
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
-          <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Revenue Hours by Month</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h3 style={{ color: "#15616D", fontSize: 14, fontWeight: 700, margin: 0 }}>Revenue Hours by Month</h3>
+          </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>

@@ -1,20 +1,11 @@
-// Firebase configuration and initialization
-import { initializeApp, getApps } from 'firebase/app';
-// Only import getAnalytics in the browser
-let analytics: any = null;
-let getAnalytics: any = null;
-if (typeof window !== 'undefined') {
-	// Dynamically import getAnalytics only on the client
-	import('firebase/analytics').then(mod => {
-		getAnalytics = mod.getAnalytics;
-		analytics = getAnalytics(app);
-	});
-}
-import { getFirestore } from 'firebase/firestore';
-import { firebaseConfig } from './firebaseConfig';
+/**
+ * Firebase configuration
+ * 
+ * DEPRECATED: This file is being replaced with Prisma + Postgres
+ * All Firestore queries should be migrated to Prisma
+ * Import from @/lib/prisma instead
+ */
 
-// Initialize Firebase only once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const firebaseApp = app;
-export { analytics };
-export const db = getFirestore(app);
+// Stub export for module compatibility during migration
+// This allows the app to build while we migrate to Prisma
+export const db = null;

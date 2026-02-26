@@ -1,9 +1,8 @@
 /**
- * activeScheduleUtils.ts
+ * activeScheduleUtils.ts (Prisma version)
  * 
  * Utilities for managing the activeSchedule table - the single source of truth
  * for all schedule views (short-term, long-term, and Gantt).
- * Updated to use Prisma instead of Firebase Firestore.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -29,22 +28,6 @@ export interface ScopeTracking {
   unscheduledHours: number;
   lastUpdated?: Date;
 }
-
-/**
- * Generate a document ID for activeSchedule (for reference)
- */
-export const getActiveScheduleDocId = (jobKey: string, scopeOfWork: string, date: string): string => {
-  const sanitize = (str: string) => str.replace(/[\/\\#?]/g, '_');
-  return `${sanitize(jobKey)}_${sanitize(scopeOfWork)}_${date}`;
-};
-
-/**
- * Generate a document ID for scopeTracking (for reference)
- */
-export const getScopeTrackingDocId = (jobKey: string, scopeOfWork: string): string => {
-  const sanitize = (str: string) => str.replace(/[\/\\#?]/g, '_');
-  return `${sanitize(jobKey)}_${sanitize(scopeOfWork)}`;
-};
 
 /**
  * Write an entry to activeSchedule
@@ -165,20 +148,4 @@ export const clearActiveScheduleForJob = async (jobKey: string): Promise<void> =
   await prisma.activeSchedule.deleteMany({
     where: { jobKey }
   });
-};
-
-/**
- * Get all activeSchedule entries (use with caution - can be large result set)
- */
-export const getAllActiveScheduleEntries = async (): Promise<ActiveScheduleEntry[]> => {
-  const entries = await prisma.activeSchedule.findMany();
-  return entries as ActiveScheduleEntry[];
-};
-
-/**
- * Get all scope tracking entries
- */
-export const getAllScopeTrackingEntries = async (): Promise<ScopeTracking[]> => {
-  const tracking = await prisma.scopeTracking.findMany();
-  return tracking as ScopeTracking[];
 };

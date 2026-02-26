@@ -6,8 +6,7 @@
  * considering its impact on all pages that use it.
  */
 
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+import { prisma } from "@/lib/prisma";
 
 export type Project = {
   id: string;
@@ -52,19 +51,16 @@ export type DashboardSummary = {
 };
 
 /**
- * DASHBOARD: Fetch the pre-aggregated summary document
+ * DASHBOARD: Fetch projects by customer
  */
 export async function getProjectsByCustomer(customerName: string): Promise<Project[]> {
   try {
-    const q = query(
-      collection(db, "projects"),
-      where("customer", "==", customerName)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    } as Project));
+    const projects = await prisma.project.findMany({
+      where: {
+        customer: customerName
+      }
+    });
+    return projects as Project[];
   } catch (error) {
     console.error("Error fetching projects by customer:", error);
     return [];
@@ -73,9 +69,20 @@ export async function getProjectsByCustomer(customerName: string): Promise<Proje
 
 export async function getDashboardSummary(): Promise<DashboardSummary | null> {
   try {
-    const summaryDoc = await getDoc(doc(db, "summaryDocuments", "summary"));
-    if (summaryDoc.exists()) {
-      return summaryDoc.data() as DashboardSummary;
+    const summary = await prisma.dashboardSummary.findUnique({
+      where: { id: "summary" }
+    });
+    if (summary) {
+      return {
+        totalSales: summary.totalSales,
+        totalCost: summary.totalCost,
+        totalHours: summary.totalHours,
+        statusGroups: (summary.statusGroups as any) || {},
+        contractors: (summary.contractors as any) || {},
+        pmcGroupHours: (summary.pmcGroupHours as any) || {},
+        laborBreakdown: (summary.laborBreakdown as any),
+        lastUpdated: summary.lastUpdated
+      };
     }
     return null;
   } catch (error) {
@@ -89,11 +96,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary | null> {
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
   try {
-    const snapshot = await getDocs(collection(db, "projects"));
-    return snapshot.docs.map((doc) => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    } as Project));
+    const projects = await prisma.project.findMany();
+    return projects as Project[];
   } catch (error) {
     console.error("Error fetching projects:", error);
     return [];
@@ -123,17 +127,14 @@ export async function getProjectLineItems(
   customer: string
 ): Promise<Project[]> {
   try {
-    const q = query(
-      collection(db, "projects"),
-      where("projectNumber", "==", projectNumber),
-      where("projectName", "==", projectName),
-      where("customer", "==", customer)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    } as Project));
+    const projects = await prisma.project.findMany({
+      where: {
+        projectNumber,
+        projectName,
+        customer
+      }
+    });
+    return projects as Project[];
   } catch (error) {
     console.error("Error fetching project line items:", error);
     return [];
@@ -153,18 +154,12 @@ export async function getProjectsByStatus(statuses: string[]): Promise<Project[]
     return getAllProjectsForDashboard();
   }
   
-  // Firestore limitation: 'in' queries limited to 10 values
-  // If more than 10 statuses, we'd need to split into multiple queries
-  const q = query(
-    collection(db, "projects"),
-    where("status", "in", statuses.slice(0, 10))
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ 
-    id: doc.id, 
-    ...doc.data() 
-  } as Project));
+  const projects = await prisma.project.findMany({
+    where: {
+      status: { in: statuses }
+    }
+  });
+  return projects as Project[];
 }
 
 /**
@@ -173,21 +168,14 @@ export async function getProjectsByStatus(statuses: string[]): Promise<Project[]
  * Used by: Future search functionality
  * Purpose: Gets projects that match specific field values
  * 
- * Note: Firestore doesn't support full-text search. For complex searches,
- * consider using getAllProjectsForDashboard() and filtering in memory.
- * 
  * @param field - The field to search in
  * @param value - The value to search for
  */
 export async function searchProjects(field: string, value: any): Promise<Project[]> {
-  const q = query(
-    collection(db, "projects"),
-    where(field, "==", value)
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ 
-    id: doc.id, 
-    ...doc.data() 
-  } as Project));
+  const projects = await prisma.project.findMany({
+    where: {
+      [field]: value
+    }
+  });
+  return projects as Project[];
 }

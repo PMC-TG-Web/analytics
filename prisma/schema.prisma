@@ -10,6 +10,194 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================== PROJECTS ====================
+model Project {
+  id                    String   @id @default(cuid())
+  projectNumber         String?
+  projectName           String
+  customer              String?
+  status                String?  // "Bid Submitted", "Estimating", "In Progress", etc.
+  sales                 Float?
+  cost                  Float?
+  hours                 Float?
+  laborSales            Float?
+  laborCost             Float?
+  dateUpdated           DateTime?
+  dateCreated           DateTime?
+  projectArchived       Boolean? @default(false)
+  estimator             String?
+  projectManager        String?
+  
+  // Flexible data (store as JSON for fields not explicitly modeled)
+  customFields          Json?
+
+  // Relationships
+  scopes                ProjectScope[]
+  schedules             Schedule[]
+  activeSchedules       ActiveSchedule[]
+  scopeTrackings        ScopeTracking[]
+  productivityLogs      ProductivityLog[]
+  productivitySummaries ProductivitySummary[]
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([projectNumber])
+  @@index([projectName])
+  @@index([customer])
+  @@index([status])
+  @@index([projectArchived])
+}
+
+// ==================== PROJECT SCOPES (Gantt Chart) ====================
+model ProjectScope {
+  id                String   @id @default(cuid())
+  jobKey            String   @unique // Format: "customer~projectNumber~projectName"
+  projectId         String?  
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  scopeOfWork       String
+  startDate         String?  // YYYY-MM-DD format
+  endDate           String?  // YYYY-MM-DD format
+  hours             Float?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+}
+
+// ==================== SCHEDULES (WIP - Work In Progress) ====================
+model Schedule {
+  id                String   @id @default(cuid())
+  jobKey            String   @unique
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  customer          String?
+  projectNumber     String?
+  projectName       String?
+  status            String?
+  totalHours        Float?
+  
+  // Store schedule data as JSON
+  // Format: { "2026-01": 120, "2026-02": 80, ... }
+  allocations       Json?    @default("{}")
+  
+  // Separate collections for short/long term (stored as JSON for flexibility)
+  shortTermData     Json?
+  longTermData      Json?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+}
+
+// ==================== ACTIVE SCHEDULE ====================
+model ActiveSchedule {
+  id                String   @id @default(cuid())
+  jobKey            String
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  scopeOfWork       String
+  date              String   @db.VarChar(10) // YYYY-MM-DD format
+  hours             Float
+  foreman           String?
+  manpower          Int?
+  source            String   // 'gantt' | 'short-term' | 'long-term' | 'schedules'
+  
+  lastModified      DateTime @default(now()) @updatedAt
+
+  @@unique([jobKey, scopeOfWork, date]) // Composite unique constraint
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([date])
+}
+
+// ==================== SCOPE TRACKING ====================
+model ScopeTracking {
+  id                String   @id @default(cuid())
+  jobKey            String
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  scopeOfWork       String
+  totalHours        Float
+  scheduledHours    Float
+  unscheduledHours  Float
+  
+  lastUpdated       DateTime @default(now()) @updatedAt
+
+  @@unique([jobKey, scopeOfWork])
+  @@index([jobKey])
+  @@index([projectId])
+}
+
+// ==================== PRODUCTIVITY ====================
+model ProductivityLog {
+  id                String   @id @default(cuid())
+  jobKey            String?
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  
+  date              DateTime
+  foreman           String?
+  crew              String?
+  hours             Float?
+  scopeOfWork       String?
+  notes             String?
+  
+  // Flexible data
+  customFields      Json?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([date])
+}
+
+model ProductivitySummary {
+  id                String   @id @default(cuid())
+  jobKey            String   @unique
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  
+  totalHours        Float
+  averageDaily      Float?
+  dates             Json?    // Array of dates worked
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+}
+
+// ==================== DASHBOARD SUMMARY ====================
+model DashboardSummary {
+  id                String   @id @default("summary")
+  
+  totalSales        Float
+  totalCost         Float
+  totalHours        Float
+  
+  statusGroups      Json     // Record<string, { sales, cost, hours, count, laborByGroup }>
+  contractors       Json     // Record<string, { sales, cost, hours, count, byStatus }>
+  pmcGroupHours     Json     // Record<string, number>
+  laborBreakdown    Json?    // Record<string, number>
+  
+  lastUpdated       DateTime @updatedAt
+
+  @@index([id])
+}
+
+// ==================== KPI DATA ====================
 model KPIEntry {
   id                String   @id @default(cuid())
   entryKey          String   @unique // Format: "2026-01" (year-month)
@@ -42,10 +230,11 @@ model KPIEntry {
   @@index([entryKey])
 }
 
+// ==================== AUDIT LOG ====================
 model AuditLog {
   id          String   @id @default(cuid())
   action      String   // "CREATE", "UPDATE", "DELETE"
-  entity      String   // "KPIEntry"
+  entity      String   // "Project", "KPIEntry", etc.
   entityId    String
   userEmail   String
   changes     Json?    // Store what changed

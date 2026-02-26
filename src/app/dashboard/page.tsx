@@ -12,6 +12,7 @@ import {
   getProjectKey,
   isExcludedFromDashboard
 } from "@/utils/projectUtils";
+import { calculatePMCGroupHours, filterLaborHours } from "@/utils/pmcHoursUtils";
 import { SummaryCard } from "./components/SummaryCard";
 import { FunnelChart } from "./components/FunnelChart";
 import { TopContractorsCard } from "./components/TopContractorsCard";
@@ -174,37 +175,36 @@ function DashboardContent() {
       }, {} as Record<string, any>);
     }
     
-    // Fallback: Calculate from dedupedByCustomer to preserve PMC group breakdown
+    // Fallback: Calculate from aggregatedProjects with pmcBreakdown
     const groups: Record<string, any> = {};
     
-    // First pass: calculate sales, cost, hours from aggregated projects
+    // Single pass: calculate all metrics from aggregatedProjects
     aggregatedProjects.forEach((p) => {
       const status = p.status || 'Unknown';
       if (isExcludedFromDashboard(p)) return;
-      if (!groups[status]) groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {} };
+      
+      if (!groups[status]) {
+        groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {} };
+      }
+      
       groups[status].sales += (p.sales ?? 0);
       groups[status].cost += (p.cost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
-    });
-    
-    // Second pass: calculate laborByGroup from dedupedByCustomer (line items)
-    dedupedByCustomer.forEach((p) => {
-      const status = p.status || 'Unknown';
-      if (isExcludedFromDashboard(p)) return;
-      if (!groups[status]) return; // Skip if status doesn't exist in groups
       
-      const pmcGroup = p.pmcGroup || 'Unassigned';
-      const hours = Number(p.hours ?? 0);
-      
-      if (!groups[status].laborByGroup[pmcGroup]) {
-        groups[status].laborByGroup[pmcGroup] = 0;
+      // Aggregate pmcBreakdown hours by group
+      if (p.pmcBreakdown && typeof p.pmcBreakdown === 'object') {
+        Object.entries(p.pmcBreakdown).forEach(([group, hours]) => {
+          const h = Number(hours) || 0;
+          if (h > 0) {
+            groups[status].laborByGroup[group] = (groups[status].laborByGroup[group] || 0) + h;
+          }
+        });
       }
-      groups[status].laborByGroup[pmcGroup] += hours;
     });
     
     return groups;
-  }, [aggregatedProjects, dedupedByCustomer, useSummary, summary]);
+  }, [aggregatedProjects, useSummary, summary]);
 
   const bidSubmittedLabor = useMemo(() => {
     const targetGroups = [
@@ -334,6 +334,13 @@ function DashboardContent() {
 
     return { totalHours, breakdown };
   }, [dedupedByCustomer, useSummary, summary]);
+
+  // Calculate ALL PMC Group hours (from projects with pmcBreakdown)
+  const allPMCHours = useMemo(() => {
+    // Use projects (which have pmcBreakdown) for complete PMC breakdown
+    const pmcData = calculatePMCGroupHours(aggregatedProjects);
+    return pmcData;
+  }, [aggregatedProjects]);
 
   if (loading) {
     return (
@@ -626,6 +633,66 @@ function DashboardContent() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* PMC Group Hours Distribution */}
+        <section>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-2 h-8 bg-teal-600 rounded-full shadow-lg shadow-teal-600/20"></div>
+            <h2 className="text-teal-800 text-2xl font-black uppercase tracking-tight italic">PMC Group Hours Distribution</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Overall PMC Hours Summary */}
+            <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 lg:col-span-3 flex flex-col">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="font-black text-xl text-teal-800 uppercase tracking-tight">Total Hours by PMC Category</h3>
+                <div className="px-2 py-1 bg-gray-50 rounded text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none">All Projects</div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {allPMCHours.breakdown.map((item) => {
+                  const bgColor = [
+                    'bg-teal-50', 'bg-blue-50', 'bg-cyan-50', 'bg-emerald-50',
+                    'bg-green-50', 'bg-lime-50', 'bg-yellow-50', 'bg-amber-50'
+                  ];
+                  const textColor = [
+                    'text-teal-900', 'text-blue-900', 'text-cyan-900', 'text-emerald-900',
+                    'text-green-900', 'text-lime-900', 'text-yellow-900', 'text-amber-900'
+                  ];
+                  const idx = allPMCHours.breakdown.indexOf(item) % 8;
+                  
+                  return (
+                    <div key={item.group} className={`${bgColor[idx]} rounded-xl p-4 border border-gray-100 hover:shadow-md transition-all`}>
+                      <div className="flex flex-col gap-2">
+                        <span className={`text-[10px] font-black ${textColor[idx]} uppercase tracking-tight truncate`}>{item.group}</span>
+                        <div className="flex justify-between items-end">
+                          <span className={`text-2xl font-black ${textColor[idx]}`}>
+                            {item.hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-bold">hrs</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full ${textColor[idx].replace('text', 'bg')} rounded-full transition-all`}
+                            style={{ width: `${item.percent}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-[9px] text-gray-500 font-bold">{item.percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}% of total</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-gray-100 flex justify-between items-center">
+                <span className="text-sm font-black text-gray-600 uppercase tracking-widest">Total Hours Across All Categories</span>
+                <span className="text-4xl font-black text-teal-600">
+                  {allPMCHours.totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
               </div>
             </div>
           </div>

@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model KPIEntry {
+  id                String   @id @default(cuid())
+  entryKey          String   @unique // Format: "2026-01" (year-month)
+  year              String
+  month             Int
+  monthName         String
+
+  // Financial Metrics
+  bidSubmittedSales Float?
+  scheduledSales    Float?
+  subs              Float?
+  estimates         Float?
+  grossProfit       Float?
+  cost              Float?
+
+  // Hours Metrics
+  bidSubmittedHours Float?
+  scheduledHours    Float?
+  leadtimes         Float?
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Optional: Link to user who created/edited
+  createdByEmail    String?
+  updatedByEmail    String?
+
+  @@index([year, month])
+  @@index([entryKey])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String   // "CREATE", "UPDATE", "DELETE"
+  entity      String   // "KPIEntry"
+  entityId    String
+  userEmail   String
+  changes     Json?    // Store what changed
+  createdAt   DateTime @default(now())
+
+  @@index([entityId])
+  @@index([userEmail])
+  @@index([createdAt])
+}

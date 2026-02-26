@@ -34,6 +34,7 @@ function KPICardsManagementContent() {
   const [cards, setCards] = useState<KPICard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [warning, setWarning] = useState<string>("");
   const [editingCard, setEditingCard] = useState<KPICard | null>(null);
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   const [newRowKpi, setNewRowKpi] = useState("");
@@ -64,12 +65,17 @@ function KPICardsManagementContent() {
     try {
       setLoading(true);
       setError("");
+      setWarning("");
       const res = await fetch("/api/kpi-cards");
       if (!res.ok) throw new Error("Failed to fetch cards");
       const json = await res.json();
       const fetchedCards = json.data || [];
+
+      if (json.fallback) {
+        setWarning(json.message || "Using local default KPI cards. Changes may not be saved to the database.");
+      }
       
-      if (fetchedCards.length === 0) {
+      if (fetchedCards.length === 0 && !json.fallback) {
         setError("No KPI cards found in database. Please seed the database first.");
       }
       
@@ -569,6 +575,21 @@ function KPICardsManagementContent() {
         </div>
       )}
 
+      {warning && (
+        <div
+          style={{
+            backgroundColor: "#fff7ed",
+            border: "1px solid #fed7aa",
+            borderRadius: "8px",
+            padding: "15px",
+            marginBottom: "20px",
+            color: "#9a3412",
+          }}
+        >
+          <strong>⚠️ {warning}</strong>
+        </div>
+      )}
+
       {error && (
         <div
           style={{
@@ -581,9 +602,11 @@ function KPICardsManagementContent() {
           }}
         >
           <strong>⚠️ {error}</strong>
-          <div style={{ marginTop: "10px", fontSize: "14px" }}>
-            <p>To get started, visit <code style={{ backgroundColor: "#f0f0f0", padding: "2px 6px", borderRadius: "3px" }}>/seed-kpi-cards</code> to seed the database with default data.</p>
-          </div>
+          {error.includes("No KPI cards found") && (
+            <div style={{ marginTop: "10px", fontSize: "14px" }}>
+              <p>To get started, visit <code style={{ backgroundColor: "#f0f0f0", padding: "2px 6px", borderRadius: "3px" }}>/seed-kpi-cards</code> to seed the database with default data.</p>
+            </div>
+          )}
         </div>
       )}
 

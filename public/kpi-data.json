@@ -1,0 +1,21 @@
+[
+  {
+    "id": "2026-01",
+    "year": "2026",
+    "month": 1,
+    "monthName": "Jan",
+    "updatedAt": "2026-02-26T15:33:38.733Z",
+    "createdAt": "2026-02-26T15:27:02.602Z",
+    "bidSubmittedSales": 8023033,
+    "estimates": 34798.35
+  },
+  {
+    "id": "2026-02",
+    "year": "2026",
+    "month": 2,
+    "monthName": "Feb",
+    "updatedAt": "2026-02-26T15:28:00.000Z",
+    "createdAt": "2026-02-26T15:28:00.000Z",
+    "bidSubmittedSales": 1374368
+  }
+]

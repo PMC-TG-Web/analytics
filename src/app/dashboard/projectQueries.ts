@@ -8,6 +8,14 @@
 
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
+import {
+  getAllProjectsForDashboard as getAllProjectsAdapter,
+  getDashboardSummary as getDashboardSummaryAdapter,
+  getProjectsByCustomer as getProjectsByCustomerAdapter,
+  getProjectLineItems as getProjectLineItemsAdapter,
+  isUsingMockData,
+  getMockDataReason
+} from "@/lib/firebaseAdapter";
 
 export type Project = {
   id: string;
@@ -53,32 +61,41 @@ export type DashboardSummary = {
 
 /**
  * DASHBOARD: Fetch the pre-aggregated summary document
+ * Falls back to mock data if Firebase is unavailable
  */
 export async function getProjectsByCustomer(customerName: string): Promise<Project[]> {
-  const projectsRef = collection(db, "projects");
-  const q = query(projectsRef, where("customer", "==", customerName));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+  try {
+    return await getProjectsByCustomerAdapter(customerName);
+  } catch (error) {
+    console.error("Error fetching projects by customer:", error);
+    return [];
+  }
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary | null> {
-  const summaryRef = doc(db, "metadata", "dashboard_summary");
-  const snap = await getDoc(summaryRef);
-  if (snap.exists()) {
-    return snap.data() as DashboardSummary;
+  try {
+    const summary = await getDashboardSummaryAdapter();
+    if (isUsingMockData()) {
+      console.log("⚠️ Using demo data - Firebase is currently unavailable");
+    }
+    return summary;
+  } catch (error) {
+    console.error("Error fetching dashboard summary:", error);
+    return null;
   }
-  return null;
 }
 
 /**
  * DASHBOARD: Fetch all relevant project documents for aggregation
+ * Falls back to mock data if Firebase is unavailable
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
-  const querySnapshot = await getDocs(collection(db, "projects"));
-  return querySnapshot.docs.map((doc) => ({ 
-    id: doc.id, 
-    ...doc.data() 
-  } as Project));
+  try {
+    return await getAllProjectsAdapter();
+  } catch (error) {
+    console.error("Error fetching projects:", error);
+    return [];
+  }
 }
 
 /**
@@ -103,39 +120,11 @@ export async function getProjectLineItems(
   projectName: string,
   customer: string
 ): Promise<Project[]> {
-  const q = query(
-    collection(db, "projects"),
-    where("projectNumber", "==", projectNumber),
-    where("projectName", "==", projectName || ""),
-    where("customer", "==", customer || "")
-  );
-  
-  const snapshot = await getDocs(q);
-  const projectDocs = snapshot.docs;
-  
-  if (projectDocs.length === 0) {
+  try {
+    return await getProjectLineItemsAdapter(projectNumber, projectName, customer);
+  } catch (error) {
+    console.error("Error fetching project line items:", error);
     return [];
-  }
-  
-  // Check if first document has items array (consolidated format)
-  const firstDocData = projectDocs[0].data();
-  if (firstDocData.items && Array.isArray(firstDocData.items)) {
-    // Use the items array from the consolidated document
-    return firstDocData.items as Project[];
-  } else if (projectDocs.length > 1) {
-    // Multiple documents found - treat each as a separate line item
-    return projectDocs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    } as Project));
-  } else {
-    // Single document without items array - treat as single line item
-    return [
-      {
-        id: projectDocs[0].id,
-        ...firstDocData,
-      } as Project,
-    ];
   }
 }
 

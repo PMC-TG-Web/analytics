@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Data Loading</title>
+</head>
+<body>
+    <h1>Data Loading Test</h1>
+    <div id="results"></div>
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        async function testFetch() {
+            try {
+                resultsDiv.innerHTML = '<p>Loading...</p>';
+                const response = await fetch('/projects-backup.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const projects = await response.json();
+                resultsDiv.innerHTML = `
+                    <p><strong>✓ Successfully loaded ${projects.length} projects</strong></p>
+                    <p>Top project: ${projects[0].projectName}</p>
+                    <p>Sales: $${projects[0].sales.toLocaleString()}</p>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `<p style="color: red;"><strong>Error:</strong> ${error.message}</p>`;
+            }
+        }
+        
+        testFetch();
+    </script>
+</body>
+</html>

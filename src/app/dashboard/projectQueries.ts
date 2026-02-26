@@ -8,14 +8,6 @@
 
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
-import {
-  getAllProjectsForDashboard as getAllProjectsAdapter,
-  getDashboardSummary as getDashboardSummaryAdapter,
-  getProjectsByCustomer as getProjectsByCustomerAdapter,
-  getProjectLineItems as getProjectLineItemsAdapter,
-  isUsingMockData,
-  getMockDataReason
-} from "@/lib/firebaseAdapter";
 
 export type Project = {
   id: string;
@@ -61,11 +53,18 @@ export type DashboardSummary = {
 
 /**
  * DASHBOARD: Fetch the pre-aggregated summary document
- * Falls back to mock data if Firebase is unavailable
  */
 export async function getProjectsByCustomer(customerName: string): Promise<Project[]> {
   try {
-    return await getProjectsByCustomerAdapter(customerName);
+    const q = query(
+      collection(db, "projects"),
+      where("customer", "==", customerName)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    } as Project));
   } catch (error) {
     console.error("Error fetching projects by customer:", error);
     return [];
@@ -74,11 +73,11 @@ export async function getProjectsByCustomer(customerName: string): Promise<Proje
 
 export async function getDashboardSummary(): Promise<DashboardSummary | null> {
   try {
-    const summary = await getDashboardSummaryAdapter();
-    if (isUsingMockData()) {
-      console.log("⚠️ Using demo data - Firebase is currently unavailable");
+    const summaryDoc = await getDoc(doc(db, "summaryDocuments", "summary"));
+    if (summaryDoc.exists()) {
+      return summaryDoc.data() as DashboardSummary;
     }
-    return summary;
+    return null;
   } catch (error) {
     console.error("Error fetching dashboard summary:", error);
     return null;
@@ -87,11 +86,14 @@ export async function getDashboardSummary(): Promise<DashboardSummary | null> {
 
 /**
  * DASHBOARD: Fetch all relevant project documents for aggregation
- * Falls back to mock data if Firebase is unavailable
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
   try {
-    return await getAllProjectsAdapter();
+    const snapshot = await getDocs(collection(db, "projects"));
+    return snapshot.docs.map((doc) => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    } as Project));
   } catch (error) {
     console.error("Error fetching projects:", error);
     return [];
@@ -121,7 +123,17 @@ export async function getProjectLineItems(
   customer: string
 ): Promise<Project[]> {
   try {
-    return await getProjectLineItemsAdapter(projectNumber, projectName, customer);
+    const q = query(
+      collection(db, "projects"),
+      where("projectNumber", "==", projectNumber),
+      where("projectName", "==", projectName),
+      where("customer", "==", customer)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    } as Project));
   } catch (error) {
     console.error("Error fetching project line items:", error);
     return [];

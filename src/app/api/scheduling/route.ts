@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
         };
         localSchedules[existingIndex] = merged;
       } else {
-        scheduleData.id = jobKey;
+        (scheduleData as any).id = jobKey;
         localSchedules.push(scheduleData);
       }
       

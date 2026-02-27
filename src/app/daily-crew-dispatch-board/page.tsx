@@ -244,7 +244,7 @@ function DailyCrewDispatchBoardContent() {
       console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
 
       const allEmps = cachedEmployees || (employeesSnapshot ? employeesSnapshot.docs
-        .map(doc => {
+        .map((doc: any) => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -256,7 +256,7 @@ function DailyCrewDispatchBoardContent() {
             isActive: data.isActive !== false
           } as Employee;
         })
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
           return nameA.localeCompare(nameB);

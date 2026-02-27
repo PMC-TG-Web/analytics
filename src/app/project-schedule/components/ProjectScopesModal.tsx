@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-import { db, setDoc, doc, addDoc, collection, query, where, getDocs, writeBatch } from "@/firebase";
 import { ProjectInfo, Scope } from "@/types";
-import { syncProjectWIP, updateShortTermFromScope } from "@/utils/scheduleSync";
-import { deleteActiveScheduleEntry, recalculateScopeTracking, writeActiveScheduleEntry, getActiveScheduleDocId } from "@/utils/activeScheduleUtils";
 
 interface ProjectScopesModalProps {
   project: ProjectInfo;
@@ -183,31 +180,33 @@ export function ProjectScopesModal({
         payload.hours = computedHours;
       }
 
+      let savedScope;
       if (activeScopeId) {
-        await setDoc(doc(db, "projectScopes", activeScopeId), payload, { merge: true });
+        const response = await fetch('/api/project-scopes', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: activeScopeId, ...payload }),
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Failed to update scope');
+        savedScope = result.data;
         const updatedScopes = scopes.map((scope) =>
-          scope.id === activeScopeId ? { ...scope, ...payload } : scope
+          scope.id === activeScopeId ? { ...scope, ...savedScope } : scope
         );
         onScopesUpdated(project.jobKey, updatedScopes);
       } else {
-        const docRef = await addDoc(collection(db, "projectScopes"), payload);
-        const newScope: Scope = { id: docRef.id, title: payload.title || "Scope", ...payload } as Scope;
+        const response = await fetch('/api/project-scopes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Failed to create scope');
+        savedScope = result.data;
+        const newScope: Scope = { ...savedScope } as Scope;
         onScopesUpdated(project.jobKey, [...scopes, newScope]);
-        setActiveScopeId(docRef.id);
+        setActiveScopeId(savedScope.id);
       }
-
-      // Update short-term schedule if dates and manpower are set
-      if (payload.startDate && payload.endDate && payload.manpower && payload.manpower > 0) {
-        const dailyHours = payload.manpower * 10;
-        await updateShortTermFromScope(
-          project.jobKey,
-          payload.startDate,
-          payload.endDate,
-          dailyHours
-        );
-      }
-
-      await syncProjectWIP(project.jobKey);
       alert("Scope saved successfully!");
     } catch (error) {
       console.error("Failed to save scope:", error);
@@ -223,145 +222,13 @@ export function ProjectScopesModal({
       return;
     }
 
-    const confirmed = confirm(
-      `This will clear all scheduled hours for "${project.projectName}" and rebuild from source data. Continue?`
-    );
-    if (!confirmed) return;
-
-    setIsResetting(true);
-    try {
-      // Step 1: Delete all activeSchedule entries for this jobKey
-      const activeScheduleQuery = query(
-        collection(db, "activeSchedule"),
-        where("jobKey", "==", project.jobKey)
-      );
-      const activeScheduleSnapshot = await getDocs(activeScheduleQuery);
-      
-      const batch = writeBatch(db);
-      activeScheduleSnapshot.docs.forEach((docSnapshot) => {
-        batch.delete(docSnapshot.ref);
-      });
-      await batch.commit();
-
-      console.log(`Deleted ${activeScheduleSnapshot.docs.length} activeSchedule entries for ${project.jobKey}`);
-
-      // Step 2: Rebuild from schedules collection
-      const schedulesQuery = query(
-        collection(db, "schedules"),
-        where("jobKey", "==", project.jobKey)
-      );
-      const schedulesSnapshot = await getDocs(schedulesQuery);
-      
-      // Helper: Get first Monday of a month
-      const getFirstMonday = (year: number, month: number): Date => {
-        const date = new Date(year, month - 1, 1); // month is 1-indexed
-        while (date.getDay() !== 1) {
-          date.setDate(date.getDate() + 1);
-        }
-        return date;
-      };
-
-      // Helper: Format date as YYYY-MM-DD
-      const formatDate = (date: Date): string => {
-        return date.toISOString().split('T')[0];
-      };
-
-      // Step 4: Process each schedule entry
-      const batch2 = writeBatch(db);
-      let entryCount = 0;
-      const processedScopes = new Set<string>(); // Track unique scopes
-
-      for (const scheduleDoc of schedulesSnapshot.docs) {
-        const scheduleData = scheduleDoc.data();
-        const scopeOfWork = scheduleData.scopeOfWork || "General";
-
-        processedScopes.add(scopeOfWork); // Track this scope
-
-        const totalHours = parseFloat(scheduleData.totalHours || "0");
-        if (totalHours <= 0) continue;
-
-        // Build month allocations from either `allocations` or month fields
-        const allocations: Array<{ year: number; month: number; percent: number }> = [];
-
-        if (scheduleData.allocations && typeof scheduleData.allocations === "object") {
-          Object.entries(scheduleData.allocations).forEach(([monthKey, percentValue]) => {
-            const match = String(monthKey).match(/^(\d{4})-(0[1-9]|1[0-2])$/);
-            if (!match) return;
-            const year = Number(match[1]);
-            const month = Number(match[2]);
-            const percent = Number(percentValue) || 0;
-            if (percent <= 0) return;
-            allocations.push({ year, month, percent });
-          });
-        } else if (scheduleData.year) {
-          const year = Number(scheduleData.year);
-          const months = [
-            { month: 1, key: "january" },
-            { month: 2, key: "february" },
-            { month: 3, key: "march" },
-            { month: 4, key: "april" },
-            { month: 5, key: "may" },
-            { month: 6, key: "june" },
-            { month: 7, key: "july" },
-            { month: 8, key: "august" },
-            { month: 9, key: "september" },
-            { month: 10, key: "october" },
-            { month: 11, key: "november" },
-            { month: 12, key: "december" },
-          ];
-
-          months.forEach(({ month, key }) => {
-            const percent = Number(scheduleData[key]) || 0;
-            if (percent <= 0) return;
-            allocations.push({ year, month, percent });
-          });
-        }
-
-        allocations.forEach(({ year, month, percent }) => {
-          const hours = (totalHours * percent) / 100;
-          if (hours <= 0) return;
-
-          // Always place on first Monday of the month
-          const dateStr = formatDate(getFirstMonday(year, month));
-
-          // Write to activeSchedule
-          const activeScheduleDocId = getActiveScheduleDocId(project.jobKey, scopeOfWork, dateStr);
-          const activeScheduleRef = doc(db, "activeSchedule", activeScheduleDocId);
-          batch2.set(activeScheduleRef, {
-            jobKey: project.jobKey,
-            scopeOfWork,
-            date: dateStr,
-            hours,
-            foreman: "",
-            manpower: 0,
-            source: "schedules",
-            lastModified: new Date(),
-          });
-          entryCount++;
-        });
-      }
-
-      await batch2.commit();
-      console.log(`Created ${entryCount} activeSchedule entries for ${project.jobKey}`);
-
-      // Step 5: Recalculate scopeTracking using current scope totals
-      const scopeTotals: Record<string, number> = {};
-      scopes.forEach((scope) => {
-        const title = (scope.title || "Scope").trim() || "Scope";
-        scopeTotals[title] = computeScopeHours(scope);
-      });
-      await recalculateScopeTracking(project.jobKey, scopeTotals);
-
-      alert(`Schedule reset successfully! Created ${entryCount} entries.`);
-      
-      // Refresh the page to show updated data
-      window.location.reload();
-    } catch (error) {
-      console.error("Failed to reset schedule:", error);
-      alert("Failed to reset schedule. Check console for details.");
-    } finally {
-      setIsResetting(false);
-    }
+    alert("Reset Schedule functionality is currently being migrated to the new API. This feature will be available soon.");
+    
+    // TODO: Implement reset schedule via API
+    // This will require endpoints for:
+    // - DELETE /api/active-schedule?jobKey={jobKey}
+    // - POST /api/active-schedule/rebuild
+    // - POST /api/scope-tracking/recalculate
   };
 
   return (

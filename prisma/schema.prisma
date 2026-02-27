@@ -56,14 +56,17 @@ model Project {
 // ==================== PROJECT SCOPES (Gantt Chart) ====================
 model ProjectScope {
   id                String   @id @default(cuid())
-  jobKey            String   @unique // Format: "customer~projectNumber~projectName"
+  jobKey            String   // Format: "customer~projectNumber~projectName"
   projectId         String?  
   project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
-  scopeOfWork       String
+  title             String   // Scope title/name
   startDate         String?  // YYYY-MM-DD format
   endDate           String?  // YYYY-MM-DD format
-  hours             Float?
+  manpower          Float?   // Daily manpower
+  hours             Float?   // Total hours
+  description       String?  @db.Text
+  tasks             Json?    // Array of task strings
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

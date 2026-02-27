@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           jobKey: true,
-          scopeOfWork: true,
+          title: true,
           startDate: true,
           endDate: true,
           hours: true,

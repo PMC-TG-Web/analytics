@@ -96,6 +96,7 @@ export default function ShortTermSchedulePage() {
 
 function ShortTermScheduleContent() {
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
   const tableScrollRef = React.useRef<HTMLDivElement>(null);
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
@@ -134,6 +135,11 @@ function ShortTermScheduleContent() {
     return map;
   }, [foremanDateProjects]);
   const autoScrollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Set mounted on client side to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const search = searchParams.get("search");
@@ -1124,6 +1130,10 @@ function ShortTermScheduleContent() {
     
     docData.updatedAt = new Date().toISOString();
     await setDoc(docRef, docData, { merge: true });
+  }
+
+  if (!mounted) {
+    return <div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>;
   }
 
   return (

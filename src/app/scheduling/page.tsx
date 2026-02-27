@@ -1,7 +1,8 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { db, getDocs, query, collection, where } from "@/firebase";
-
+import { collection, getDocs, query, where, updateDoc, doc } from "firebase/firestore";
+import { db } from "@/firebase";
+import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 type Project = {
@@ -90,7 +91,11 @@ function getNextMonths(count: number) {
 }
 
 export default function SchedulingPage() {
-  return <SchedulingContent />;
+  return (
+    <ProtectedPage page="scheduling">
+      <SchedulingContent />
+    </ProtectedPage>
+  );
 }
 
 function SchedulingContent() {
@@ -160,15 +165,18 @@ function SchedulingContent() {
           collection(db, "projects"),
           where("status", "not-in", ["Bid Submitted", "Lost"])
         ));
-        const projectsData = projectsSnapshot.docs.map((doc: any) => ({
+        const projectsData = projectsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as Omit<Project, "id">),
         }));
         setProjects(projectsData);
 
-        const schedulesRes = await fetch("/api/scheduling");
-        const schedulesJson = await schedulesRes.json();
-        const schedulesArray = (schedulesJson.data || []).map((s: any) => {
+        let schedulesArray: JobSchedule[] = [];
+        try {
+          const schedulesRes = await fetch("/api/scheduling");
+          if (!schedulesRes.ok) throw new Error("Not found");
+          const schedulesJson = await schedulesRes.json();
+          schedulesArray = (schedulesJson.data || []).map((s: any) => {
           // Handle both object and array formats for allocations
           let allocations: Record<string, number> = {};
           if (s.allocations) {
@@ -193,11 +201,15 @@ function SchedulingContent() {
             allocations,
           };
         });
+        } catch (error) {
+          console.warn("Failed to load schedules from API:", error);
+          schedulesArray = [];
+        }
         setSchedules(schedulesArray);
 
         // Fetch scopes for Gantt prioritization logic
         const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
-        const rawScopes = scopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const scopesMap: Record<string, any[]> = {};
         rawScopes.forEach((scope: any) => {
           if (scope.jobKey) {
@@ -551,9 +563,11 @@ function SchedulingContent() {
       setProjects(allProjects.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any);
       
       // Refresh schedules data
-      const schedulesRes = await fetch("/api/scheduling");
-      const schedulesJson = await schedulesRes.json();
-      const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
+      try {
+        const schedulesRes = await fetch("/api/scheduling");
+        if (schedulesRes.ok) {
+          const schedulesJson = await schedulesRes.json();
+          const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
         jobKey: s.jobKey,
         customer: s.customer,
         projectName: s.projectName,
@@ -564,8 +578,12 @@ function SchedulingContent() {
           return acc;
         }, {}),
       }));
-      setSchedules(schedulesArray);
-      console.log("Schedules refreshed, new status:", schedulesArray.find((s: any) => s.jobKey === jobKey)?.status);
+          setSchedules(schedulesArray);
+          console.log("Schedules refreshed, new status:", schedulesArray.find((s: any) => s.jobKey === jobKey)?.status);
+        }
+      } catch (scheduleRefreshError) {
+        console.warn("Failed to refresh schedules:", scheduleRefreshError);
+      }
       
       alert(`Status updated to ${newStatus} successfully!`);
     } catch (error) {

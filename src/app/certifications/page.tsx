@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { db } from "@/firebase";
-import { getDocs, addDoc, deleteDoc, query, collection, orderBy, doc } from "@/firebaseStubs";
+import { getDocs, addDoc, deleteDoc, query, collection, orderBy, doc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
@@ -64,7 +64,7 @@ function CertificationsContent() {
       })) as Employee[];
 
       setCertifications(certData);
-      setEmployees(empData.filter(e => e.firstName)); // Simple validation
+      setEmployees(empData.filter((e: any) => e.firstName)); // Simple validation
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
@@ -252,7 +252,7 @@ function CertificationsContent() {
                 className="w-full px-3 py-2 border-2 border-gray-100 rounded-xl focus:ring-0 focus:border-teal-500 outline-none text-sm font-bold bg-gray-50"
               >
                 <option value="">Select...</option>
-                {employees.map(e => (
+                {employees.map((e: any) => (
                   <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
                 ))}
               </select>
@@ -362,7 +362,7 @@ function CertificationsContent() {
                   <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">No certifications found matching your filters</td>
                 </tr>
               ) : (
-                filteredCerts.map(cert => {
+                filteredCerts.map((cert: any) => {
                   const now = new Date();
                   const thirtyDays = new Date();
                   thirtyDays.setDate(now.getDate() + 30);

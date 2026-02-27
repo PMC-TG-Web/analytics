@@ -263,7 +263,7 @@ function EmployeesContent() {
 
       // Cache miss, fetch from Firestore
       const snapshot = await getDocs(collection(db, "employees"));
-      const employeeData = snapshot.docs.map((doc) => {
+      const employeeData = snapshot.docs.map((doc: any) => {
         const data = doc.data() as any;
         // Migrate 'role' to 'jobTitle' if needed
         if (data.role && !data.jobTitle) {

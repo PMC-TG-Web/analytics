@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { db } from "@/firebase";
+import { db, query, collection, orderBy, getDocs, setDoc, doc, addDoc, deleteDoc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Holiday } from "@/types";
@@ -39,7 +39,7 @@ function HolidaysContent() {
     try {
       const q = query(collection(db, "holidays"), orderBy("date", "asc"));
       const snapshot = await getDocs(q);
-      const holidayData = snapshot.docs.map((doc) => ({
+      const holidayData = snapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data(),
       })) as Holiday[];

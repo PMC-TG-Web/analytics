@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { db, query, collection, where, getDocs, addDoc, setDoc, doc } from "@/firebase";
-
 import Navigation from "@/components/Navigation";
 import { Project, Scope } from "@/types";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
@@ -71,34 +69,31 @@ function ProjectsContent() {
   async function loadAllData() {
     setLoading(true);
     try {
-      // Optimize: Only fetch non-Lost, non-Invitations, and active projects by default
-      // This combined with the "showArchived" toggle will significantly reduce reads
-      let projectsQuery;
-      
-      if (showArchived) {
-        projectsQuery = query(
-          collection(db, "projects"), 
-          where("status", "not-in", ["Lost", "Invitations"])
-        );
-      } else {
-        projectsQuery = query(
-          collection(db, "projects"), 
-          where("status", "not-in", ["Lost", "Invitations"]),
-          where("projectArchived", "==", false)
-        );
-      }
-
-      const [projSnap, scopeSnap, eqSnap, assignSnap] = await Promise.all([
-        getDocs(projectsQuery),
-        getDocs(collection(db, "projectScopes")),
-        getDocs(collection(db, "equipment")),
-        getDocs(collection(db, "equipment_assignments"))
+      const [projRes, scopeRes, eqRes, assignRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/project-scopes'),
+        fetch('/api/equipment'),
+        fetch('/api/equipment-assignments')
       ]);
 
-      setProjectsData(projSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Project)));
-      setScopesData(scopeSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Scope)));
-      setEquipment(eqSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Equipment)));
-      setAssignments(assignSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as EquipmentAssignment)));
+      const projData = await projRes.json();
+      const scopeData = await scopeRes.json();
+      const eqData = await eqRes.json();
+      const assignData = await assignRes.json();
+
+      let projects = (projData.success && Array.isArray(projData.data)) ? projData.data : [];
+      
+      // Filter projects based on showArchived
+      if (!showArchived) {
+        projects = projects.filter((p: any) => !["Lost", "Invitations"].includes(p.status || "") && !p.projectArchived);
+      } else {
+        projects = projects.filter((p: any) => !["Lost", "Invitations"].includes(p.status || ""));
+      }
+
+      setProjectsData(projects);
+      setScopesData((scopeData.success && Array.isArray(scopeData.data)) ? scopeData.data : []);
+      setEquipment((eqData.success && Array.isArray(eqData.data)) ? eqData.data : []);
+      setAssignments((assignData.success && Array.isArray(assignData.data)) ? assignData.data : []);
     } catch (error) {
       console.error("Error loading projects data:", error);
     } finally {
@@ -248,12 +243,22 @@ function ProjectsContent() {
         createdAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, "equipment_assignments"), newAssignment);
+      const assignRes = await fetch('/api/equipment-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAssignment)
+      });
+      
+      if (!assignRes.ok) throw new Error('Failed to create assignment');
       
       // Update inventory status
       const today = new Date().toISOString().split('T')[0];
       if (assignForm.startDate <= today && assignForm.endDate >= today) {
-        await setDoc(doc(db, "equipment", assignForm.equipmentId), { status: "In Use" }, { merge: true });
+        await fetch(`/api/equipment?id=${assignForm.equipmentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...eq, status: "In Use" })
+        });
       }
 
       await loadAllData();

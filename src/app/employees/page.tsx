@@ -208,7 +208,7 @@ function EmployeesContent() {
       // Cache miss, fetch from Firestore
       const snapshot = await getDocs(collection(db, "jobTitles"));
       if (!snapshot.empty) {
-        const titles = snapshot.docs.map(doc => doc.data().title as string);
+        const titles = snapshot.docs.map((doc: any) => doc.data().title as string);
         const sortedTitles = titles.sort();
         setJobTitles(sortedTitles);
         setCachedData('jobTitles', sortedTitles);
@@ -511,7 +511,7 @@ function EmployeesContent() {
         where("employeeId", "==", employee.id)
       );
       const snapshot = await getDocs(q);
-      const requests = snapshot.docs.map(doc => ({
+      const requests = snapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as TimeOffRequest[];
@@ -598,7 +598,7 @@ function EmployeesContent() {
         where("employeeId", "==", employee.id)
       );
       const snapshot = await getDocs(q);
-      const certs = snapshot.docs.map(doc => ({
+      const certs = snapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as Certification[];

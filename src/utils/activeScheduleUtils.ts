@@ -1,12 +1,9 @@
 /**
  * activeScheduleUtils.ts
  * 
- * Utilities for managing the activeSchedule table - the single source of truth
- * for all schedule views (short-term, long-term, and Gantt).
- * Updated to use Prisma instead of Firebase Firestore.
+ * Stub implementations for schedule utilities - database connectivity removed
+ * for static export. These functions are no-ops in static mode.
  */
-
-import { prisma } from "@/lib/prisma";
 
 export interface ActiveScheduleEntry {
   id?: string;
@@ -47,158 +44,81 @@ export const getScopeTrackingDocId = (jobKey: string, scopeOfWork: string): stri
 };
 
 /**
- * Write an entry to activeSchedule
+ * Write an entry to activeSchedule (no-op in static mode)
  */
 export const writeActiveScheduleEntry = async (entry: ActiveScheduleEntry): Promise<void> => {
-  await prisma.activeSchedule.upsert({
-    where: {
-      jobKey_scopeOfWork_date: {
-        jobKey: entry.jobKey,
-        scopeOfWork: entry.scopeOfWork,
-        date: entry.date
-      }
-    },
-    create: {
-      jobKey: entry.jobKey,
-      scopeOfWork: entry.scopeOfWork,
-      date: entry.date,
-      hours: entry.hours,
-      foreman: entry.foreman,
-      manpower: entry.manpower,
-      source: entry.source
-    },
-    update: {
-      hours: entry.hours,
-      foreman: entry.foreman,
-      manpower: entry.manpower,
-      source: entry.source,
-      lastModified: new Date()
-    }
-  });
+  console.warn('writeActiveScheduleEntry: Database operations not available in static export mode');
 };
 
 /**
- * Delete an entry from activeSchedule
+ * Delete an entry from activeSchedule (no-op in static mode)
  */
 export const deleteActiveScheduleEntry = async (jobKey: string, scopeOfWork: string, date: string): Promise<void> => {
-  await prisma.activeSchedule.deleteMany({
-    where: {
-      jobKey,
-      scopeOfWork,
-      date
-    }
-  });
+  console.warn('deleteActiveScheduleEntry: Database operations not available in static export mode');
 };
 
 /**
- * Get all activeSchedule entries for a jobKey
+ * Get all activeSchedule entries for a jobKey (returns empty in static mode)
  */
 export const getActiveScheduleForJob = async (jobKey: string): Promise<ActiveScheduleEntry[]> => {
-  const entries = await prisma.activeSchedule.findMany({
-    where: { jobKey }
-  });
-  return entries as ActiveScheduleEntry[];
+  return [];
 };
 
 /**
- * Get all activeSchedule entries for a date range
+ * Get all activeSchedule entries for a date range (returns empty in static mode)
  */
 export const getActiveScheduleForDateRange = async (startDate: string, endDate: string): Promise<ActiveScheduleEntry[]> => {
-  const entries = await prisma.activeSchedule.findMany({
-    where: {
-      date: {
-        gte: startDate,
-        lte: endDate
-      }
-    }
-  });
-  return entries as ActiveScheduleEntry[];
+  return [];
 };
 
 /**
- * Update scopeTracking for a specific scope
+ * Update scopeTracking for a specific scope (no-op in static mode)
  */
 export const updateScopeTracking = async (
   jobKey: string,
   scopeOfWork: string,
-  totalHours: number,
-  scheduledHours: number,
-  unscheduledHours: number
+  totalHours?: number,
+  scheduledHours?: number,
+  unscheduledHours?: number
 ): Promise<void> => {
-  await prisma.scopeTracking.upsert({
-    where: {
-      jobKey_scopeOfWork: {
-        jobKey,
-        scopeOfWork
-      }
-    },
-    create: {
-      jobKey,
-      scopeOfWork,
-      totalHours,
-      scheduledHours,
-      unscheduledHours
-    },
-    update: {
-      totalHours,
-      scheduledHours,
-      unscheduledHours,
-      lastUpdated: new Date()
-    }
-  });
+  console.warn('updateScopeTracking: Database operations not available in static export mode');
 };
 
 /**
- * Get scope tracking by jobKey
+ * Get scope tracking by jobKey (returns empty in static mode)
  */
 export const getScopeTracking = async (jobKey: string): Promise<ScopeTracking[]> => {
-  const tracking = await prisma.scopeTracking.findMany({
-    where: { jobKey }
-  });
-  return tracking as ScopeTracking[];
+  return [];
 };
 
 /**
- * Delete all activeSchedule entries for a jobKey
+ * Delete all activeSchedule entries for a jobKey (no-op in static mode)
  */
 export const clearActiveScheduleForJob = async (jobKey: string): Promise<void> => {
-  await prisma.activeSchedule.deleteMany({
-    where: { jobKey }
-  });
+  console.warn('clearActiveScheduleForJob: Database operations not available in static export mode');
 };
 
 /**
- * Get all activeSchedule entries (use with caution - can be large result set)
+ * Get all activeSchedule entries (returns empty in static mode)
  */
 export const getAllActiveScheduleEntries = async (): Promise<ActiveScheduleEntry[]> => {
-  const entries = await prisma.activeSchedule.findMany();
-  return entries as ActiveScheduleEntry[];
+  return [];
 };
 
 /**
- * Get all scope tracking entries
+ * Get all scope tracking entries (returns empty in static mode)
  */
 export const getAllScopeTrackingEntries = async (): Promise<ScopeTracking[]> => {
-  const tracking = await prisma.scopeTracking.findMany();
-  return tracking as ScopeTracking[];
+  return [];
 };
 
 /**
- * Recalculate scope tracking totals for a job based on scope of work allocations
+ * Recalculate scope tracking totals (no-op in static mode)
  */
 export const recalculateScopeTracking = async (
   jobKey: string,
-  scopeTotals: Record<string, number>
+  scopeTotals?: Record<string, number>
 ): Promise<void> => {
-  // Update each scope's tracking
-  for (const [scopeOfWork, total] of Object.entries(scopeTotals)) {
-    await updateScopeTracking({
-      jobKey,
-      scopeOfWork,
-      totalHours: total || 0,
-      completedHours: 0,
-      remainingHours: total || 0,
-    });
-  }
+  console.warn('recalculateScopeTracking: Database operations not available in static export mode');
 };
 

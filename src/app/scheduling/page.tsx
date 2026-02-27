@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { db, collection, getDocs, query, where, updateDoc, doc } from "@/firebase";
 import Navigation from "@/components/Navigation";
 
 type Project = {
@@ -155,15 +154,19 @@ function SchedulingContent() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const projectsSnapshot = await getDocs(query(
-          collection(db, "projects"),
-          where("status", "not-in", ["Bid Submitted", "Lost"])
-        ));
-        const projectsData = projectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<Project, "id">),
-        }));
-        setProjects(projectsData);
+        // Fetch projects from API
+        const projectsRes = await fetch("/api/projects");
+        if (!projectsRes.ok) {
+          console.warn("Failed to fetch projects from API");
+          setProjects([]);
+        } else {
+          const projectsJson = await projectsRes.json();
+          const projectsData = (projectsJson.data || []).map((p: any) => ({
+            id: p.id,
+            ...(p as Omit<Project, "id">),
+          }));
+          setProjects(projectsData);
+        }
 
         let schedulesArray: JobSchedule[] = [];
         try {
@@ -201,17 +204,24 @@ function SchedulingContent() {
         }
         setSchedules(schedulesArray);
 
-        // Fetch scopes for Gantt prioritization logic
-        const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
-        const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const scopesMap: Record<string, any[]> = {};
-        rawScopes.forEach((scope: any) => {
-          if (scope.jobKey) {
-            if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
-            scopesMap[scope.jobKey].push(scope);
-          }
-        });
-        setScopesByJobKey(scopesMap);
+        // Fetch scopes from API
+        try {
+          const scopesRes = await fetch("/api/project-scopes");
+          if (!scopesRes.ok) throw new Error("Failed to fetch scopes");
+          const scopesJson = await scopesRes.json();
+          const rawScopes = scopesJson.data || [];
+          const scopesMap: Record<string, any[]> = {};
+          rawScopes.forEach((scope: any) => {
+            if (scope.jobKey) {
+              if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
+              scopesMap[scope.jobKey].push(scope);
+            }
+          });
+          setScopesByJobKey(scopesMap);
+        } catch (error) {
+          console.warn("Failed to load scopes from API:", error);
+          setScopesByJobKey({});
+        }
 
         // Collect all months that have scheduled hours (valid months only)
         const scheduledMonths = new Set<string>();
@@ -508,53 +518,39 @@ function SchedulingContent() {
       // Parse the jobKey to get customer, projectNumber, and projectName
       const [customer, projectNumber, projectName] = jobKey.split("~");
       
-      // Update projects collection
-      const projectsRef = collection(db, "projects");
-      const q = query(
-        projectsRef,
-        where("customer", "==", customer),
-        where("projectNumber", "==", projectNumber)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      console.log(`Updating ${querySnapshot.size} project document(s) for ${customer} - ${projectName}`);
-      
-      // Update all matching project documents
-      const updatePromises = querySnapshot.docs.map((docSnapshot) => {
-        const docRef = doc(db, "projects", docSnapshot.id);
-        return updateDoc(docRef, { status: newStatus });
+      // Update projects via API
+      const updateRes = await fetch("/api/projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          projectNumber,
+          status: newStatus,
+        }),
       });
       
-      await Promise.all(updatePromises);
-      console.log("Projects updated successfully");
-      
-      // Also update the schedule document - query by projectName instead of using jobKey as doc ID
-      try {
-        const schedulesRef = collection(db, "schedules");
-        const scheduleQuery = query(schedulesRef, where("projectName", "==", projectName));
-        const scheduleSnapshot = await getDocs(scheduleQuery);
-        
-        if (scheduleSnapshot.docs.length > 0) {
-          const scheduleUpdatePromises = scheduleSnapshot.docs.map((scheduleDoc) => {
-            return updateDoc(scheduleDoc.ref, { status: newStatus });
-          });
-          await Promise.all(scheduleUpdatePromises);
-          console.log(`Schedule updated successfully for ${projectName}`);
-        } else {
-          console.log(`No schedule found for ${projectName}, skipping schedule update`);
-        }
-      } catch (scheduleError) {
-        console.error("Error updating schedule:", scheduleError);
-        // Continue even if schedule update fails
+      if (!updateRes.ok) {
+        const error = await updateRes.json();
+        throw new Error(error.error || "Failed to update status");
       }
       
+      const updateData = await updateRes.json();
+      console.log(`Updated ${updateData.data.count} project(s)`);
+      
       // Refresh the projects data
-      const allProjects = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Bid Submitted", "Lost"])
-      ));
-      setProjects(allProjects.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any);
+      try {
+        const projectsRes = await fetch("/api/projects");
+        if (projectsRes.ok) {
+          const projectsJson = await projectsRes.json();
+          const projectsData = (projectsJson.data || []).map((p: any) => ({
+            id: p.id,
+            ...(p as Omit<Project, "id">),
+          }));
+          setProjects(projectsData);
+        }
+      } catch (error) {
+        console.warn("Failed to refresh projects:", error);
+      }
       
       // Refresh schedules data
       try {
@@ -562,16 +558,16 @@ function SchedulingContent() {
         if (schedulesRes.ok) {
           const schedulesJson = await schedulesRes.json();
           const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
-        jobKey: s.jobKey,
-        customer: s.customer,
-        projectName: s.projectName,
-        status: s.status || "Unknown",
-        totalHours: s.totalHours,
-        allocations: s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
-          acc[alloc.month] = alloc.percent;
-          return acc;
-        }, {}),
-      }));
+            jobKey: s.jobKey,
+            customer: s.customer,
+            projectName: s.projectName,
+            status: s.status || "Unknown",
+            totalHours: s.totalHours,
+            allocations: s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
+              acc[alloc.month] = alloc.percent;
+              return acc;
+            }, {}),
+          }));
           setSchedules(schedulesArray);
           console.log("Schedules refreshed, new status:", schedulesArray.find((s: any) => s.jobKey === jobKey)?.status);
         }

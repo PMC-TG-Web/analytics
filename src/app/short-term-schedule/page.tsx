@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { db, setDoc, getDocs, collection, query, doc, where, orderBy } from "@/firebase";
+import { db, setDoc, getDocs, collection, query, doc, where, orderBy, deleteDoc } from "@/firebase";
 
 
 import Navigation from "@/components/Navigation";

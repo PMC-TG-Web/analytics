@@ -14,10 +14,10 @@ function findMatchingItems(scope: Scope, fullProjectList: any[], jobKey: string,
     .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf|ea)?\s*([-–]\s*)?/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  const scopeWords = cleanScope.split(/\s+/).filter(w => w.length >= 2 && w !== "and" && w !== "with" && w !== "for" && w !== "psi");
+  const scopeWords = cleanScope.split(/\s+/).filter((w: any) => w.length >= 2 && w !== "and" && w !== "with" && w !== "for" && w !== "psi");
   const measurements = scopeTitleLower.match(/\d+(\s*(?:\"|\'|in|mil|ga|psi))/g) || [];
 
-  return fullProjectList.filter(p => {
+  return fullProjectList.filter((p: any) => {
     const pJobKey = p.jobKey || getProjectKey(p);
     if (pJobKey !== jobKey) return false;
     
@@ -26,7 +26,7 @@ function findMatchingItems(scope: Scope, fullProjectList: any[], jobKey: string,
     const status = (p.status || "").toString();
 
     // If we have an "In Progress" item, ignore "Lost" or "Bid Submitted" ones for this specific list
-    const hasInProgress = fullProjectList.some(item => 
+    const hasInProgress = fullProjectList.some((item: any) => 
       (item.jobKey || getProjectKey(item)) === jobKey && 
       item.status === "In Progress" && 
       item.costitems === p.costitems
@@ -54,7 +54,7 @@ function findMatchingItems(scope: Scope, fullProjectList: any[], jobKey: string,
     if (allScopes.some(s => s.id !== scope.id && (s.title || "").toLowerCase() === costItemName)) return false;
 
     // Keyword matching - Strictness increases with scope complexity
-    const matchCount = scopeWords.filter(word => costItemName.includes(word) || pmcGroupName.includes(word)).length;
+    const matchCount = scopeWords.filter((word: any) => costItemName.includes(word) || pmcGroupName.includes(word)).length;
     const requiredMatches = scopeWords.length >= 3 ? 2 : 1;
     if (matchCount < requiredMatches) return false;
     if (matchCount >= Math.min(requiredMatches + 1, scopeWords.length)) return true;
@@ -63,11 +63,11 @@ function findMatchingItems(scope: Scope, fullProjectList: any[], jobKey: string,
     // Labor/Material heuristics
     if (scopeTitleLower.includes("slab") && !costItemName.includes("footing")) {
       const slabMaterials = ["concrete", "wire mesh", "vapor barrier", "viper tape", "curing compound", "foam", "rebar", "chair", "hardener", "forms"];
-      if (slabMaterials.some(m => costItemName.includes(m))) return true;
+      if (slabMaterials.some((m: any) => costItemName.includes(m))) return true;
     }
     if ((scopeTitleLower.includes("footing") || scopeTitleLower.includes("foundation")) && !costItemName.includes("slab")) {
       const foundationMaterials = ["concrete", "rebar", "forms", "anchor bolt", "ties"];
-      if (foundationMaterials.some(m => costItemName.includes(m))) return true;
+      if (foundationMaterials.some((m: any) => costItemName.includes(m))) return true;
     }
 
     return false;
@@ -98,24 +98,24 @@ function FieldTrackingContent() {
   const [notes, setNotes] = useState("");
 
   // Memoized derived properties
-  const activeProject = React.useMemo(() => projects.find(p => p.id === selectedProject), [projects, selectedProject]);
+  const activeProject = React.useMemo(() => projects.find((p: any) => p.id === selectedProject), [projects, selectedProject]);
   const activeJobKey = React.useMemo(() => activeProject ? (activeProject.jobKey || getProjectKey(activeProject)) : "", [activeProject]);
   
   const projectCostItems = React.useMemo(() => {
     if (!activeJobKey) return [];
     
     // Filter out items that are from "Lost" or "Bid Submitted" versions if "In Progress" exists for same jobKey+costitem
-    const jobItems = fullProjectList.filter(p => (p.jobKey || getProjectKey(p)) === activeJobKey);
+    const jobItems = fullProjectList.filter((p: any) => (p.jobKey || getProjectKey(p)) === activeJobKey);
     
     return Array.from(new Set(jobItems
-      .filter(p => {
-        const hasInProgress = jobItems.some(item => 
+      .filter((p: any) => {
+        const hasInProgress = jobItems.some((item: any) => 
           item.status === "In Progress" && 
           item.costitems === p.costitems
         );
         return hasInProgress ? p.status === "In Progress" : true;
       })
-      .map(p => p.costitems || "")
+      .map((p: any) => p.costitems || "")
       .filter(Boolean)
     )).sort();
   }, [activeJobKey, fullProjectList]);
@@ -139,7 +139,7 @@ function FieldTrackingContent() {
           }
         });
 
-        setProjects(Array.from(dedupedMap.values()).sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
+        setProjects(Array.from(dedupedMap.values()).sort((a: any, b: any) => (a.projectName || "").localeCompare(b.projectName || "")));
         setLoading(false);
       } catch (error) {
         console.error("Error fetching projects:", error);
@@ -167,7 +167,7 @@ function FieldTrackingContent() {
         const scopesData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as Scope[];
         
         setScopes(Array.from(new Map(scopesData.map((s: any) => [s.title, s])).values())
-          .sort((a, b) => (a.title || "").localeCompare(b.title || "")));
+          .sort((a: any, b: any) => (a.title || "").localeCompare(b.title || "")));
       } catch (error) {
         console.error("Error fetching scopes:", error);
       }
@@ -193,7 +193,7 @@ function FieldTrackingContent() {
         
         const isLabor = pmcGroup.toLowerCase().includes("labor") || 
                         costItem.toLowerCase().includes("labor") || 
-                        ["pm", "management", "mobilization", "travel"].some(word => pmcGroup.toLowerCase().includes(word));
+                        ["pm", "management", "mobilization", "travel"].some((word: any) => pmcGroup.toLowerCase().includes(word));
 
         if (isLabor) {
           const groupName = pmcGroup || costItem || "General Labor";

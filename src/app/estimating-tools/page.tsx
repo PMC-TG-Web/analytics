@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { db } from "@/firebase";
+import { db, getDocs, query, collection, where, addDoc } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -143,12 +143,12 @@ function EstimatingToolsContent() {
         where("status", "not-in", ["Lost", "Archived"])
       ));
       const pData = projectsSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }) as Project)
+        .map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project)
         .filter((p: Project) => !p.projectArchived);
       
       // De-duplicate by both ID and Project Name/Number to handle potential database duplicates
       const uniqueMap = new Map();
-      pData.forEach(p => {
+      pData.forEach((p: any) => {
         const nameKey = `${(p.projectName || "").toLowerCase()}-${(p.projectNumber || "").toLowerCase()}`;
         // If we haven't seen this ID OR this name/number combo yet, keep it
         if (!uniqueMap.has(p.id) && !uniqueMap.has(nameKey)) {
@@ -166,12 +166,12 @@ function EstimatingToolsContent() {
 
       // Fetch Constants
       const constSnapshot = await getDocs(collection(db, "estimatingConstants"));
-      const constData = constSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Constant[];
+      const constData = constSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as Constant[];
       setConstants(constData);
 
       // Fetch Rebar Constants
       const rebarSnapshot = await getDocs(collection(db, "rebarConstants"));
-      const rData = rebarSnapshot.docs.map(doc => doc.data()) as Constant[];
+      const rData = rebarSnapshot.docs.map((doc: any) => doc.data()) as Constant[];
       
       if (rData.length > 0) {
         // Sort once by numeric size
@@ -214,7 +214,7 @@ function EstimatingToolsContent() {
       }
       
       const calcSnapshot = await getDocs(calcQuery);
-      const allCalcs = calcSnapshot.docs.map(doc => {
+      const allCalcs = calcSnapshot.docs.map((doc: any) => {
         const data = doc.data();
         let totalCY = data.totalCY || 0;
         let totalTons = data.totalTons || 0;
@@ -252,7 +252,7 @@ function EstimatingToolsContent() {
       
       // De-duplicate: Keep only the latest calculation for each Project + Label + Type combination
       const uniqueCalcsMap = new Map();
-      allCalcs.forEach(c => {
+      allCalcs.forEach((c: any) => {
         const key = `${c.projectId}-${c.type}-${(c.label || c.name || "").toLowerCase()}`;
         if (!uniqueCalcsMap.has(key)) {
           uniqueCalcsMap.set(key, c);

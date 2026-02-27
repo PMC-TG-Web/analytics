@@ -265,6 +265,9 @@ model Employee {
   // Flexible data for additional fields
   customFields Json?
   
+  // Relations
+  certifications Certification[]
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -327,4 +330,123 @@ model HandbookSignoff {
   updatedAt   DateTime @updatedAt
 
   @@index([email])
+}
+
+// ==================== ESTIMATING CONSTANTS ====================
+model EstimatingConstant {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  value       String   // Can be numeric string or any value
+  category    String   @default("General")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+model RebarConstant {
+  id          String   @id @default(cuid())
+  size        String   // e.g., "#1", "#2", etc.
+  weight      Float    // Weight per unit
+  spacing     Float?   // Spacing information
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([size])
+}
+
+// ==================== CERTIFICATIONS ====================
+model Certification {
+  id              String   @id @default(cuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  type            String
+  issueDate       String   // YYYY-MM-DD
+  expirationDate  String   // YYYY-MM-DD
+  notes           String?  @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([expirationDate])
+}
+
+// ==================== EQUIPMENT ====================
+model Equipment {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   // e.g., "Truck", "Excavator", etc.
+  make            String?
+  model           String?
+  serialNumber    String?  @unique
+  
+  status          String   @default("Available") // Available, In Use, Maintenance
+  hourlyRate      Float?
+  dailyRate       Float?
+  notes           String?  @db.Text
+  isActive        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+}
+
+model EquipmentAssignment {
+  id              String   @id @default(cuid())
+  equipmentId     String
+  projectId       String?
+  scopeId         String?
+  
+  startDate       String   // YYYY-MM-DD
+  endDate         String   // YYYY-MM-DD
+  notes           String?  @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([equipmentId])
+  @@index([projectId])
+  @@index([startDate])
+}
+
+// ==================== ONBOARDING ====================
+model OnboardingSubmission {
+  id              String   @id @default(cuid())
+  email           String
+  displayName     String?
+  
+  submittedAt     DateTime
+  hasBooklet      Boolean? // Understanding of Handbook
+  hasHandbook     Boolean? // Employee Handbook Receipt
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([email])
+  @@index([submittedAt])
+}
+
+// ==================== ESTIMATES ====================
+model Estimate {
+  id              String   @id @default(cuid())
+  projectId       String?
+  
+  title           String
+  description     String?  @db.Text
+  estimatedHours  Float?
+  estimatedCost   Float?
+  status          String   @default("Draft") // Draft, Submitted, Approved, Completed
+  
+  createdByEmail  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
 }

@@ -133,5 +133,6 @@ export default function SeedKPICardsPage() {
         </ul>
       </div>
     </div>
+    </div>
   );
 }

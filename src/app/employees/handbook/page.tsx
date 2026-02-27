@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -76,7 +76,6 @@ export default function HandbookPage() {
   }
 
   return (
-    <ProtectedPage page="handbook">
       <div className="min-h-screen bg-stone-50 flex flex-col font-sans text-slate-900">
         <Navigation currentPage="handbook" />
 
@@ -253,6 +252,5 @@ export default function HandbookPage() {
           </div>
         </main>
       </div>
-    </ProtectedPage>
   );
 }

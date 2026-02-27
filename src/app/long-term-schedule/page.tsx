@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { db, getDocs, collection, query, where } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Scope, Project } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
@@ -41,11 +41,7 @@ interface JobRow {
 }
 
 export default function LongTermSchedulePage() {
-  return (
-    <ProtectedPage page="long-term-schedule">
-      <LongTermScheduleContent />
-    </ProtectedPage>
-  );
+  return <LongTermScheduleContent />;
 }
 
 function LongTermScheduleContent() {

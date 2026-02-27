@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
@@ -290,10 +289,16 @@ export default function KPIPage() {
       const currentYear = yearFilter || new Date().getFullYear().toString();
       try {
         const kpiRes = await fetch(`/api/kpi?year=${currentYear}`);
+        if (!kpiRes.ok) {
+          console.warn("KPI API endpoint not available");
+          setKpiData([]);
+          return;
+        }
         const kpiJson = await kpiRes.json();
         setKpiData(kpiJson.data || []);
       } catch (err) {
-        console.error("Error fetching KPI overrides:", err);
+        console.warn("Error fetching KPI data (using empty defaults):", err);
+        setKpiData([]);
       }
     }
     fetchKpiData();
@@ -305,19 +310,38 @@ export default function KPIPage() {
       setLoading(true);
       setProcoreAuthError(false);
       try {
-        // Fetch projects from API
-        console.log("[KPI] Fetching projects from API...");
-        const projectsScopesRes = await fetch("/api/projects-scopes");
-        const projectsScopesData = await projectsScopesRes.json();
-        const projectsData = projectsScopesData.projects || [];
+        let projectsData = [];
+        let schedulesData = [];
+        
+        try {
+          // Fetch projects from API
+          console.log("[KPI] Fetching projects from API...");
+          const projectsScopesRes = await fetch("/api/projects-scopes");
+          if (projectsScopesRes.ok) {
+            const projectsScopesData = await projectsScopesRes.json();
+            projectsData = projectsScopesData.projects || [];
+          } else {
+            console.warn("[KPI] Projects API endpoint not available");
+          }
+          setProjects(projectsData);
+          console.log("[KPI] Loaded projects:", projectsData.length);
+        } catch (err) {
+          console.warn("[KPI] Error fetching projects (using empty defaults):", err);
+          setProjects([]);
+        }
 
-        setProjects(projectsData);
-        console.log("[KPI] Loaded projects:", projectsData.length);
-
-        // Fetch schedules (currently always from Firestore)
-        const schedulesRes = await fetch("/api/scheduling");
-        const schedulesJson = await schedulesRes.json();
-        const schedulesData = schedulesJson.data || schedulesJson.schedules || [];
+        try {
+          // Fetch schedules (currently always from Firestore)
+          const schedulesRes = await fetch("/api/scheduling");
+          if (schedulesRes.ok) {
+            const schedulesJson = await schedulesRes.json();
+            schedulesData = schedulesJson.data || schedulesJson.schedules || [];
+          } else {
+            console.warn("[KPI] Schedules API endpoint not available");
+          }
+        } catch (err) {
+          console.warn("[KPI] Error fetching schedules (using empty defaults):", err);
+        }
 
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
           const matchingProject = projectsData.find((p: any) => {
@@ -333,7 +357,9 @@ export default function KPIPage() {
 
         setSchedules(schedulesWithStatus);
       } catch (error) {
-        console.error("[KPI] Error loading data:", error);
+        console.warn("[KPI] Error loading data (using empty defaults):", error);
+        setProjects([]);
+        setSchedules([]);
       } finally {
         setLoading(false);
       }
@@ -342,31 +368,29 @@ export default function KPIPage() {
   }, [dataSource]);
 
   return (
-    <ProtectedPage page="kpi">
-      <KPIPageContent
-        schedules={schedules}
-        setSchedules={setSchedules}
-        projects={projects}
-        setProjects={setProjects}
-        kpiData={kpiData}
-        setKpiData={setKpiData}
-        cardLoadData={cardLoadData}
-        setCardLoadData={setCardLoadData}
-        loading={loading}
-        setLoading={setLoading}
-        yearFilter={yearFilter}
-        setYearFilter={setYearFilter}
-        monthFilter={monthFilter}
-        setMonthFilter={setMonthFilter}
-        startDate={startDate}
-        setStartDate={setStartDate}
-        endDate={endDate}
-        setEndDate={setEndDate}
-        dataSource={dataSource}
-        setDataSource={setDataSource}
-        procoreAuthError={procoreAuthError}
-      />
-    </ProtectedPage>
+    <KPIPageContent
+      schedules={schedules}
+      setSchedules={setSchedules}
+      projects={projects}
+      setProjects={setProjects}
+      kpiData={kpiData}
+      setKpiData={setKpiData}
+      cardLoadData={cardLoadData}
+      setCardLoadData={setCardLoadData}
+      loading={loading}
+      setLoading={setLoading}
+      yearFilter={yearFilter}
+      setYearFilter={setYearFilter}
+      monthFilter={monthFilter}
+      setMonthFilter={setMonthFilter}
+      startDate={startDate}
+      setStartDate={setStartDate}
+      endDate={endDate}
+      setEndDate={setEndDate}
+      dataSource={dataSource}
+      setDataSource={setDataSource}
+      procoreAuthError={procoreAuthError}
+    />
   );
 }
 
@@ -450,8 +474,8 @@ function KPIPageContent({
         console.log(`[KPI] Response status: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Server error ${response.status}: ${errorText || response.statusText}`);
+          console.warn(`[KPI] API endpoint not available, skipping save`);
+          return; // Gracefully skip API call in static mode
         }
         
         const result = await response.json();
@@ -459,29 +483,20 @@ function KPIPageContent({
         
         // Refresh kpi data in background (don't block)
         console.log(`[KPI] Refreshing data for ${year}`);
-        const kpiRes = await fetch(`/api/kpi?year=${year}`);
-        if (!kpiRes.ok) {
-          throw new Error(`Failed to refresh: ${kpiRes.statusText}`);
+        try {
+          const kpiRes = await fetch(`/api/kpi?year=${year}`);
+          if (kpiRes.ok) {
+            const kpiJson = await kpiRes.json();
+            setKpiData(kpiJson.data || []);
+          }
+        } catch (err) {
+          console.warn(`[KPI] Could not refresh data:`, err);
         }
-        
-        const kpiJson = await kpiRes.json();
-        setKpiData(kpiJson.data || []);
         
         console.log(`[KPI] ✓ Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
       } catch (error) {
-        console.error(`[KPI] Error saving ${fieldName}:`, error);
-        
-        let errorMsg = (error as Error).message;
-        if (errorMsg === 'Failed to fetch') {
-          errorMsg = 'Could not connect to server. Is the dev server running on port 3000?';
-        } else if (errorMsg.includes('abort')) {
-          errorMsg = 'Request timed out. Server took too long to respond.';
-        }
-        
-        // Only alert if the error is critical
-        if ((error as Error).message.includes('Server error')) {
-          alert(`Failed to save ${fieldName}: ` + errorMsg);
-        }
+        console.warn(`[KPI] Error saving ${fieldName} (API not available):`, error);
+        // Gracefully skip in static export mode - no alerts needed
       }
     })();
     // Return immediately without waiting
@@ -512,7 +527,10 @@ function KPIPageContent({
     async function loadCardDataFromFirestore() {
       try {
         const res = await fetch("/api/kpi-cards");
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn("[KPI] KPI cards endpoint not available");
+          return;
+        }
         const json = await res.json();
         const cards = json.data || [];
 

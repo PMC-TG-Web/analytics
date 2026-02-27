@@ -16,14 +16,12 @@ const navLinks: NavLink[] = [
   { href: "/projects", label: "Projects", page: "projects", color: "bg-stone-700" },
   { href: "/kpi", label: "KPI", page: "kpi", color: "bg-stone-800" },
   { href: "/wip", label: "WIP", page: "wip", color: "bg-red-800" },
-  { href: "/productivity", label: "Productivity", page: "productivity", color: "bg-purple-800" },
   { href: "/scheduling", label: "Scheduling", page: "scheduling", color: "bg-stone-800" },
   { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch", color: "bg-red-900" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management", color: "bg-blue-900" },
   { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule", color: "bg-red-800" },
   { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule", color: "bg-stone-700" },
   { href: "/project-schedule", label: "Project Gantt", page: "project-schedule", color: "bg-red-900" },
-  { href: "/field", label: "Field Log", page: "field", color: "bg-stone-800" },
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools", color: "bg-red-950" },
   { href: "/constants", label: "Constants", page: "constants", color: "bg-stone-600" },
   { href: "/employees", label: "Employees", page: "employees", color: "bg-stone-800" },
@@ -31,7 +29,6 @@ const navLinks: NavLink[] = [
   { href: "/equipment", label: "Equipment", page: "equipment", color: "bg-stone-800" },
   { href: "/holidays", label: "Holidays", page: "holidays", color: "bg-stone-700" },
   { href: "/procore", label: "Procore", page: "procore", color: "bg-orange-700" },
-  { href: "/procore/projects", label: "Procore Projects", page: "procore-projects", color: "bg-orange-600" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "employees", color: "bg-stone-700" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook", color: "bg-stone-600" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management", color: "bg-stone-900" },
@@ -39,16 +36,17 @@ const navLinks: NavLink[] = [
 
 export default function Navigation({ currentPage }: { currentPage?: string }) {
   const { user, loading } = useAuth();
-  // We can use window.location.pathname if we want, but sticking to existing pattern
   
-  if (loading || !user) {
+  // Show navigation even without authentication for static export
+  if (loading) {
     return null;
   }
 
   return (
     <nav className="flex flex-wrap items-center justify-end gap-1.5">
       {navLinks.map((link) => {
-        if (!hasPageAccess(user.email, link.page)) {
+        // Skip permission check in static mode, or check only if user exists
+        if (user && !hasPageAccess(user.email, link.page)) {
           return null;
         }
 

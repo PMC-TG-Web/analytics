@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { db } from "@/firebase";
 import { getDocs, addDoc, deleteDoc, query, collection, orderBy, doc } from "@/firebase";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
 
@@ -15,11 +15,7 @@ interface Employee {
 }
 
 export default function CertificationsPage() {
-  return (
-    <ProtectedPage page="employees">
-      <CertificationsContent />
-    </ProtectedPage>
-  );
+  return <CertificationsContent />;
 }
 
 function CertificationsContent() {

@@ -3,18 +3,14 @@
 import { useEffect, useState } from "react";
 
 import { db, getDocs, collection, setDoc, doc, addDoc, deleteDoc } from "@/firebase";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
 import { Project, Scope } from "@/types";
 import { getProjectKey } from "@/utils/projectUtils";
 
 export default function EquipmentPage() {
-  return (
-    <ProtectedPage page="equipment">
-      <EquipmentContent />
-    </ProtectedPage>
-  );
+  return <EquipmentContent />;
 }
 
 function EquipmentContent() {

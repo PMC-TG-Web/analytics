@@ -2,15 +2,11 @@
 import React, { useState, useEffect } from "react";
 import { db, getDocs, collection, setDoc, doc, deleteDoc } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 
 export default function ConstantsPage() {
-  return (
-    <ProtectedPage page="constants">
-      <ConstantsContent />
-    </ProtectedPage>
-  );
+  return <ConstantsContent />;
 }
 
 function ConstantsContent() {

@@ -89,11 +89,7 @@ function getNextMonths(count: number) {
 }
 
 export default function SchedulingPage() {
-  return (
-    <ProtectedPage page="scheduling">
-      <SchedulingContent />
-    </ProtectedPage>
-  );
+  return <SchedulingContent />;
 }
 
 function SchedulingContent() {

@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
@@ -85,11 +84,7 @@ const formatDateKey = (date: Date) => {
 };
 
 export default function DailyCrewDispatchBoardPage() {
-  return (
-    <ProtectedPage page="crew-dispatch">
-      <DailyCrewDispatchBoardContent />
-    </ProtectedPage>
-  );
+  return <DailyCrewDispatchBoardContent />;
 }
 
 function DailyCrewDispatchBoardContent() {
@@ -221,6 +216,20 @@ function DailyCrewDispatchBoardContent() {
       let cachedHolidays = getCache('dispatch_holidays');
       
       // Fetch data from API endpoints instead of Firebase
+      const safeJsonFetch = async (url: string) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            console.warn(`[DispatchBoard] API endpoint not available: ${url}`);
+            return null;
+          }
+          return await res.json();
+        } catch (error) {
+          console.warn(`[DispatchBoard] Error fetching ${url}:`, error);
+          return null;
+        }
+      };
+
       const [
         employeesData,
         projectScopesData, 
@@ -229,12 +238,12 @@ function DailyCrewDispatchBoardContent() {
         holidaysData,
         crewsData
       ] = await Promise.all([
-        cachedEmployees ? Promise.resolve(cachedEmployees) : fetch('/api/employees').then(r => r.json()),
-        cachedScopes ? Promise.resolve(cachedScopes) : fetch('/api/projects-scopes').then(r => r.json()).then(data => data.scopes || []),
-        fetch('/api/projects').then(r => r.json()),
-        fetch('/api/time-off').then(r => r.json()),
-        cachedHolidays ? Promise.resolve(cachedHolidays) : fetch('/api/holidays').then(r => r.json()),
-        fetch('/api/crews').then(r => r.json())
+        cachedEmployees ? Promise.resolve(cachedEmployees) : safeJsonFetch('/api/employees'),
+        cachedScopes ? Promise.resolve(cachedScopes) : safeJsonFetch('/api/projects-scopes').then(data => data?.scopes || []),
+        safeJsonFetch('/api/projects'),
+        safeJsonFetch('/api/time-off'),
+        cachedHolidays ? Promise.resolve(cachedHolidays) : safeJsonFetch('/api/holidays'),
+        safeJsonFetch('/api/crews')
       ]);
 
       console.log(`[DispatchBoard] Fetched all data in ${Date.now() - start}ms`);
@@ -394,7 +403,7 @@ function DailyCrewDispatchBoardContent() {
       console.log('[DispatchBoard] Final crew assignments:', crewMap);
       setCrewAssignments(crewMap);
     } catch (error) {
-      console.error("Failed to load schedules:", error);
+      console.warn("[DispatchBoard] Failed to load schedules:", error);
     } finally {
       setLoading(false);
     }
@@ -462,8 +471,17 @@ function DailyCrewDispatchBoardContent() {
         const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
         
         // Fetch existing schedule data from API
-        const existingResponse = await fetch(`/api/short-term-schedule?jobKey=${encodeURIComponent(jobKey)}`);
-        const existingData = existingResponse.ok ? await existingResponse.json() : null;
+        let existingData = null;
+        try {
+          const existingResponse = await fetch(`/api/short-term-schedule?jobKey=${encodeURIComponent(jobKey)}`);
+          if (existingResponse.ok) {
+            existingData = await existingResponse.json();
+          } else {
+            console.warn("[DispatchBoard] short-term-schedule API endpoint not available");
+          }
+        } catch (error) {
+          console.warn("[DispatchBoard] Error fetching short-term-schedule:", error);
+        }
         
         let docData: ScheduleDoc & { updatedAt?: string };
         if (existingData) {
@@ -491,17 +509,24 @@ function DailyCrewDispatchBoardContent() {
         docData.updatedAt = new Date().toISOString();
         
         // Save to API
-        await fetch('/api/short-term-schedule', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobKey, docId, scheduleData: docData })
-        });
-        
-        await syncProjectWIP(jobKey);
-        await syncGanttWithShortTerm(jobKey);
+        try {
+          const response = await fetch('/api/short-term-schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobKey, docId, scheduleData: docData })
+          });
+          if (!response.ok) {
+            console.warn("[DispatchBoard] short-term-schedule API endpoint not available");
+          }
+          
+          await syncProjectWIP(jobKey);
+          await syncGanttWithShortTerm(jobKey);
+        } catch (error) {
+          console.warn("[DispatchBoard] Error saving schedule:", error);
+        }
       }
     } catch (error) {
-      console.error("Failed to save crew assignment:", error);
+      console.warn("[DispatchBoard] Failed to save crew assignment:", error);
     } finally {
       setSaving(false);
     }
@@ -552,8 +577,16 @@ function DailyCrewDispatchBoardContent() {
           console.log("No recipients found, falling back to current user:", user.email);
           recipients.push(user.email);
         } else {
-          throw new Error("No recipients found with valid emails. Please check employee records for roles like Office, Foreman, or PM.");
+          console.warn("[DispatchBoard] No recipients found with valid emails");
         }
+      }
+
+      if (recipients.length === 0) {
+        console.warn("[DispatchBoard] No recipients to notify");
+        setShowSickModal(false);
+        setSickEmployeeId("");
+        setSickNotes("");
+        return;
       }
 
       const response = await fetch("/api/notify-absence", {
@@ -569,22 +602,22 @@ function DailyCrewDispatchBoardContent() {
         }),
       });
 
-      const responseData = await response.json();
       if (!response.ok) {
-        throw new Error(responseData.error || "Failed to send email");
+        console.warn("[DispatchBoard] notify-absence API endpoint not available");
+      } else {
+        const responseData = await response.json();
+        const smsSent = responseData?.sms?.sent || 0;
+        const smsError = responseData?.sms?.error;
+        const smsSummary = smsSent > 0 ? ` and texted ${smsSent} number${smsSent > 1 ? "s" : ""}` : "";
+        const smsWarning = smsError ? ` SMS error: ${smsError}` : "";
+        console.log(`Notification sent to ${recipients.length} team members${smsSummary}.${smsWarning}`);
       }
 
-      const smsSent = responseData?.sms?.sent || 0;
-      const smsError = responseData?.sms?.error;
-      const smsSummary = smsSent > 0 ? ` and texted ${smsSent} number${smsSent > 1 ? "s" : ""}` : "";
-      const smsWarning = smsError ? ` SMS error: ${smsError}` : "";
-      alert(`Notification sent to ${recipients.length} team members${smsSummary}.${smsWarning}`);
       setShowSickModal(false);
       setSickEmployeeId("");
       setSickNotes("");
     } catch (error) {
-      console.error("Error sending absence notification:", error);
-      alert("Error: " + (error instanceof Error ? error.message : "Unknown error"));
+      console.warn("[DispatchBoard] Error sending absence notification:", error);
     } finally {
       setSendingEmail(false);
     }
@@ -611,18 +644,23 @@ function DailyCrewDispatchBoardContent() {
         })
       });
 
-      const savedRequest = await response.json();
+      if (response.ok) {
+        const savedRequest = await response.json();
 
-      const newRequest: TimeOffRequest = {
-        id: savedRequest.id,
-        employeeId: selectedPersonnelId,
-        startDate: newTimeOff.startDate,
-        endDate: newTimeOff.endDate,
-        type: newTimeOff.type,
-        hours: newTimeOff.hours
-      };
+        const newRequest: TimeOffRequest = {
+          id: savedRequest.id,
+          employeeId: selectedPersonnelId,
+          startDate: newTimeOff.startDate,
+          endDate: newTimeOff.endDate,
+          type: newTimeOff.type,
+          hours: newTimeOff.hours
+        };
 
-      setTimeOffRequests(prev => [newRequest, ...prev]);
+        setTimeOffRequests(prev => [newRequest, ...prev]);
+      } else {
+        console.warn("[DispatchBoard] time-off API endpoint not available");
+      }
+
       setShowTimeOffModal(false);
       setSelectedPersonnelId("");
       setNewTimeOff({
@@ -632,10 +670,8 @@ function DailyCrewDispatchBoardContent() {
         hours: 10,
         reason: ""
       });
-      alert("Time off request recorded successfully.");
     } catch (error) {
-      console.error("Error saving time off:", error);
-      alert("Failed to save time off request.");
+      console.warn("[DispatchBoard] Error saving time off:", error);
     } finally {
       setSaving(false);
     }

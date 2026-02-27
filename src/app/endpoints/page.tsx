@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Navigation from "@/components/Navigation";
-import ProtectedPage from "@/components/ProtectedPage";
+
 
 interface Endpoint {
   method: string;
@@ -30,11 +30,7 @@ interface EndpointGroup {
 }
 
 export default function EndpointsPage() {
-  return (
-    <ProtectedPage page="endpoints" requireAuth={true}>
-      <EndpointExplorerContent />
-    </ProtectedPage>
-  );
+  return <EndpointExplorerContent />;
 }
 
 function EndpointExplorerContent() {

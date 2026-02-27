@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 interface Announcement {

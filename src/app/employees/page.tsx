@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { db, getDocs, collection, addDoc, setDoc, deleteDoc, doc, query, where } from "@/firebase";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
 
@@ -46,11 +46,7 @@ interface TimeOffRequest {
 }
 
 export default function EmployeesPage() {
-  return (
-    <ProtectedPage page="employees">
-      <EmployeesContent />
-    </ProtectedPage>
-  );
+  return <EmployeesContent />;
 }
 
 function EmployeesContent() {

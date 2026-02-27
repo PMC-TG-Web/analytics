@@ -2,15 +2,11 @@
 import React, { useState, useEffect } from "react";
 import { db, getDocs, query, collection, where, addDoc, limit, orderBy, serverTimestamp } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 
 export default function EstimatingToolsPage() {
-  return (
-    <ProtectedPage page="estimating-tools">
-      <EstimatingToolsContent />
-    </ProtectedPage>
-  );
+  return <EstimatingToolsContent />;
 }
 
 interface Project {

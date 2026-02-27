@@ -3,16 +3,12 @@
 import { useEffect, useState } from "react";
 
 import { db, query, collection, orderBy, getDocs, setDoc, doc, addDoc, deleteDoc } from "@/firebase";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Holiday } from "@/types";
 
 export default function HolidaysPage() {
-  return (
-    <ProtectedPage page="holidays">
-      <HolidaysContent />
-    </ProtectedPage>
-  );
+  return <HolidaysContent />;
 }
 
 function HolidaysContent() {

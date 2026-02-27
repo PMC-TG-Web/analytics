@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 
 import { db, getDocs, setDoc, doc, collection, getDoc } from "@/firebase";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 interface Employee {
@@ -22,11 +21,7 @@ interface CrewAssignment {
 }
 
 export default function CrewManagementPage() {
-  return (
-    <ProtectedPage page="crew-management">
-      <CrewManagementContent />
-    </ProtectedPage>
-  );
+  return <CrewManagementContent />;
 }
 
 function CrewManagementContent() {

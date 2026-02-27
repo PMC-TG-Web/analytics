@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { useProjectSchedule } from "./hooks/useProjectSchedule";
 import { ProjectScopesModal } from "./components/ProjectScopesModal";
@@ -10,11 +10,7 @@ import { GanttRow } from "./components/GanttRow";
 import { ProjectInfo, GanttTask, Scope } from "@/types";
 
 export default function ProjectSchedulePage() {
-  return (
-    <ProtectedPage page="project-schedule">
-      <ProjectScheduleContent />
-    </ProtectedPage>
-  );
+  return <ProjectScheduleContent />;
 }
 
 function ProjectScheduleContent() {

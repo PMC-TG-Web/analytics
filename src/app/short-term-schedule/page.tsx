@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { db, setDoc, getDocs, collection, query, doc, where, orderBy } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 import { Scope, Project, ProjectInfo } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
@@ -88,11 +88,9 @@ const formatDateKey = (date: Date) => {
 
 export default function ShortTermSchedulePage() {
   return (
-    <ProtectedPage page="short-term-schedule">
-      <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>}>
-        <ShortTermScheduleContent />
-      </Suspense>
-    </ProtectedPage>
+    <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>}>
+      <ShortTermScheduleContent />
+    </Suspense>
   );
 }
 

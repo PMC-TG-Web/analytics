@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import { db, addDoc, collection } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 export default function OnboardingPage() {
@@ -104,8 +103,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <ProtectedPage page="onboarding" requireAuth={true}>
-      <div className="min-h-screen bg-gray-50 py-6 sm:py-12 px-3 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-12 px-3 sm:px-6 lg:px-8 font-sans">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="flex justify-between items-start gap-4 mb-8 sm:mb-12">
@@ -364,6 +362,5 @@ export default function OnboardingPage() {
           </form>
         </div>
       </div>
-    </ProtectedPage>
-  );
-}
+    );
+  }

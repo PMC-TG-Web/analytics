@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
 import { ProjectInfo, Scope, Project } from "@/types";
@@ -105,11 +104,7 @@ function formatMonthLabelShort(month: string) {
 }
 
 export default function WIPReportPage() {
-  return (
-    <ProtectedPage page="wip">
-      <WIPReportContent />
-    </ProtectedPage>
-  );
+  return <WIPReportContent />;
 }
 
 function WIPReportContent() {
@@ -170,18 +165,29 @@ function WIPReportContent() {
           fetch("/api/scheduling"),
         ]);
 
-        const projectsScopesData = await projectsScopesRes.json();
-        const projectsSnapshot = projectsScopesData.projects || [];
-        const scopesSnapshot = projectsScopesData.scopes || [];
+        let projectsData: any[] = [];
+        let scopesSnapshot: any[] = [];
+        let schedulesData: any[] = [];
+
+        // Handle projects-scopes response
+        if (projectsScopesRes.ok) {
+          const projectsScopesData = await projectsScopesRes.json();
+          projectsSnapshot = projectsScopesData.projects || [];
+          scopesSnapshot = projectsScopesData.scopes || [];
+          projectsData = projectsSnapshot as any[];
+        } else {
+          console.warn("[WIP] Projects-scopes API endpoint not available");
+        }
+
+        // Handle schedules response
+        if (schedulesRes.ok) {
+          const schedulesJson = await schedulesRes.json();
+          schedulesData = schedulesJson.data || [];
+        } else {
+          console.warn("[WIP] Scheduling API endpoint not available");
+        }
 
         console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
-        
-        const projectsData = projectsSnapshot as any[];
-        
-        const schedulesJson = await schedulesRes.json();
-        const schedulesData = schedulesJson.data || [];
-        
-        // Use a map for faster project lookups
         const projectLookup = new Map();
         projectsData.forEach(p => {
           const key = `${p.customer || "" }~${p.projectNumber || "" }~${p.projectName || "" }`;
@@ -215,7 +221,10 @@ function WIPReportContent() {
         setScopesByJobKey(scopesMap);
         console.log(`[WIP] Processed all data in ${Date.now() - start}ms`);
       } catch (error) {
-        console.error("Failed to load data:", error);
+        console.warn("[WIP] Error loading data (using empty defaults):", error);
+        setProjects([]);
+        setSchedules([]);
+        setScopesByJobKey({});
       } finally {
         setLoading(false);
       }
@@ -342,6 +351,16 @@ function WIPReportContent() {
     // Load existing weekly schedule from API
     try {
       const response = await fetch(`/api/long-term-schedule?jobKey=${encodeURIComponent(selectedJob.jobKey)}&month=${encodeURIComponent(month)}`);
+      if (!response.ok) {
+        console.warn("[WIP] Long-term-schedule API endpoint not available, using empty schedule");
+        const weeks: Record<number, number> = {};
+        for (let i = 1; i <= 5; i++) {
+          weeks[i] = 0;
+        }
+        setWeeklySchedule(weeks);
+        setWeeklyModalVisible(true);
+        return;
+      }
       const schedules = await response.json();
       const existingSchedule = schedules.length > 0 ? schedules[0] : null;
       
@@ -362,8 +381,7 @@ function WIPReportContent() {
       
       setWeeklyModalVisible(true);
     } catch (error) {
-      console.error("Failed to load weekly schedule:", error);
-      alert("Failed to load weekly schedule");
+      console.warn("[WIP] Failed to load weekly schedule:", error);
     }
   }
 
@@ -400,16 +418,16 @@ function WIPReportContent() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save");
+        console.warn("[WIP] Long-term-schedule API endpoint not available, skipping save");
+        // Don't throw, just skip in static export mode
+      } else {
+        console.log("[WIP] Weekly schedule saved successfully");
       }
 
-      alert("Weekly schedule saved successfully!");
       setWeeklyModalVisible(false);
       setSelectedMonth(null);
     } catch (error) {
-      console.error("Failed to save weekly schedule:", error);
-      alert("Failed to save weekly schedule");
+      console.warn("[WIP] Failed to save weekly schedule:", error);
     } finally {
       setSaving(false);
     }
@@ -440,17 +458,17 @@ function WIPReportContent() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save");
+        console.warn("[WIP] Scheduling API endpoint not available, skipping save");
+        // Don't throw, just skip in static export mode
+      } else {
+        console.log("[WIP] Schedule saved successfully");
       }
 
-      alert("Schedule saved successfully!");
       setModalVisible(false);
       // Refresh data
-      window.location.reload();
+      // window.location.reload();
     } catch (error) {
-      console.error("Failed to save schedule:", error);
-      alert("Failed to save schedule");
+      console.warn("[WIP] Failed to save schedule:", error);
     } finally {
       setSaving(false);
     }

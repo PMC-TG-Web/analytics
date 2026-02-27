@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { db, getDocs, collection, deleteDoc, doc, updateDoc } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 
 function MaskedValue({ value, isDark = false }: { value: string; isDark?: boolean }) {
@@ -100,8 +100,7 @@ export default function OnboardingSubmissionsPage() {
   }
 
   return (
-    <ProtectedPage page="onboarding">
-      <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
         <Navigation />
         
         <main className="flex-1 p-3 sm:p-8">
@@ -455,6 +454,5 @@ export default function OnboardingSubmissionsPage() {
           </div>
         </main>
       </div>
-    </ProtectedPage>
   );
 }

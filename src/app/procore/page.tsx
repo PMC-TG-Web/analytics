@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import ProtectedPage from "@/components/ProtectedPage";
+
 import Navigation from "@/components/Navigation";
 
 interface ProcoreData {
@@ -20,11 +20,7 @@ interface ProcoreData {
 }
 
 export default function ProcorePage() {
-  return (
-    <ProtectedPage page="procore" requireAuth={false}>
-      <ProcoreContent />
-    </ProtectedPage>
-  );
+  return <ProcoreContent />;
 }
 
 function ProcoreContent() {
@@ -49,16 +45,22 @@ function ProcoreContent() {
         console.log("ProcorePage: Checking auth...");
         const response = await fetch("/api/procore/me");
         if (response.ok) {
-          console.log("ProcorePage: Auth OK");
-          setIsAuthenticated(true);
+          try {
+            const data = await response.json();
+            console.log("ProcorePage: Auth OK");
+            setIsAuthenticated(true);
+          } catch (e) {
+            console.warn("Failed to parse auth response");
+            setIsAuthenticated(false);
+          }
         } else {
-          const data = await response.json();
-          console.log("ProcorePage: Auth Failed", data.error);
+          console.warn("ProcorePage: Auth endpoint not available");
           // Don't set error state here to avoid showing it on initial load
           setIsAuthenticated(false);
         }
       } catch (err) {
-        console.error("Error checking Procore auth:", err);
+        console.warn("Error checking Procore auth:", err);
+        setIsAuthenticated(false);
       }
     };
 
@@ -89,13 +91,21 @@ function ProcoreContent() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.warn("Procore explore endpoint not available");
+        setData(null);
+        return;
       }
 
-      const result = await response.json();
-      setData(result);
+      try {
+        const result = await response.json();
+        setData(result);
+      } catch (e) {
+        console.warn("Failed to parse explore response");
+        setData(null);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch data");
+      console.warn("Error exploring Procore:", err);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -111,13 +121,18 @@ function ProcoreContent() {
       });
 
       if (!response.ok) {
-        throw new Error(`Sync failed: ${response.status}`);
+        console.warn("Procore sync endpoint not available");
+        return;
       }
 
-      const result = await response.json();
-      setSyncResult({ count: result.count, message: result.message });
+      try {
+        const result = await response.json();
+        setSyncResult({ count: result.count, message: result.message });
+      } catch (e) {
+        console.warn("Failed to parse sync response");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync data");
+      console.warn("Error syncing Procore:", err);
     } finally {
       setSyncing(false);
     }
@@ -134,21 +149,26 @@ function ProcoreContent() {
       });
 
       if (!response.ok) {
-        throw new Error(`Productivity sync failed: ${response.status}`);
+        console.warn("Procore sync-productivity endpoint not available");
+        return;
       }
 
-      const result = await response.json();
-      setProductivityResult({ 
-        count: result.totalLogs, 
-        message: result.message 
-      });
-      
-      // Store debug info if available
-      if (result.debug) {
-        setProductivityDebugResult(result.debug);
+      try {
+        const result = await response.json();
+        setProductivityResult({ 
+          count: result.totalLogs, 
+          message: result.message 
+        });
+        
+        // Store debug info if available
+        if (result.debug) {
+          setProductivityDebugResult(result.debug);
+        }
+      } catch (e) {
+        console.warn("Failed to parse sync-productivity response");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync productivity data");
+      console.warn("Error syncing productivity:", err);
     } finally {
       setSyncingProductivity(false);
     }
@@ -164,13 +184,18 @@ function ProcoreContent() {
       });
 
       if (!response.ok) {
-        throw new Error(`Debug failed: ${response.status}`);
+        console.warn("Procore debug-productivity endpoint not available");
+        return;
       }
 
-      const result = await response.json();
-      setDebugResult(result);
+      try {
+        const result = await response.json();
+        setDebugResult(result);
+      } catch (e) {
+        console.warn("Failed to parse debug-productivity response");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to debug productivity data");
+      console.warn("Error debugging productivity:", err);
     } finally {
       setDebugging(false);
     }
@@ -189,13 +214,18 @@ function ProcoreContent() {
       });
 
       if (!response.ok) {
-        throw new Error(`Clear failed: ${response.status}`);
+        console.warn("Procore clear-productivity endpoint not available");
+        return;
       }
 
-      const result = await response.json();
-      setError(`✅ ${result.message}`);
+      try {
+        const result = await response.json();
+        setError(`✅ ${result.message}`);
+      } catch (e) {
+        console.warn("Failed to parse clear-productivity response");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear productivity data");
+      console.warn("Error clearing productivity:", err);
     } finally {
       setClearing(false);
     }
@@ -209,15 +239,18 @@ function ProcoreContent() {
       const response = await fetch("/api/procore/check-firebase");
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.details || `Check failed: ${response.status}`);
+        console.warn("Procore check-firebase endpoint not available");
+        return;
       }
 
-      const result = await response.json();
-      setDebugResult(result);
+      try {
+        const result = await response.json();
+        setDebugResult(result);
+      } catch (e) {
+        console.warn("Failed to parse check-firebase response");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check Firebase");
-      console.error('Check Firebase error:', err);
+      console.warn('Error checking Firebase:', err);
     } finally {
       setCheckingFirebase(false);
     }

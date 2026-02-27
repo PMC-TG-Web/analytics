@@ -10,6 +10,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+
+
+
 // ==================== PROJECTS ====================
 model Project {
   id                    String   @id @default(cuid())

@@ -11,21 +11,45 @@ export async function GET(request: NextRequest) {
     const employees = await prisma.employee.findMany({
       where: isActive !== null ? { isActive: isActive === 'true' } : undefined,
       orderBy: { firstName: 'asc' },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        jobTitle: true,
-        email: true,
-        phone: true,
-        isActive: true,
-        customFields: true,
-      },
+    });
+
+    // Unpack customFields to top-level properties for UI compatibility
+    const formattedEmployees = employees.map(emp => {
+      const custom = (emp.customFields as any) || {};
+      return {
+        id: emp.id,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        jobTitle: emp.jobTitle,
+        email: emp.email,
+        phone: emp.phone,
+        isActive: emp.isActive,
+        createdAt: emp.createdAt.toISOString(),
+        updatedAt: emp.updatedAt.toISOString(),
+        // Unpack custom fields
+        workPhone: custom.workPhone || custom.WorkPhone,
+        employeePhone: custom.employeePhone || custom.EmployeePhone,
+        personalEmail: custom.otherEmail || custom.Other_Email,
+        address: custom.address || custom.Address,
+        city: custom.city || custom.City,
+        state: custom.state || custom.State,
+        zip: custom.zip || custom.Zip,
+        country: custom.country || custom.Country,
+        hourlyRate: custom.hourlyRate,
+        vacationHours: custom.vacationHours,
+        keypadCode: custom.keypadCode,
+        dateOfBirth: custom.dateOfBirth,
+        hireDate: custom.hireDate,
+        dateOfLeave: custom.dateOfLeave,
+        payHistory: custom.payHistory,
+        apparelRecords: custom.apparelRecords,
+        notes: custom.notes,
+      };
     });
 
     return NextResponse.json({
       success: true,
-      data: employees,
+      data: formattedEmployees,
     });
   } catch (error) {
     console.error('Failed to fetch employees:', error);

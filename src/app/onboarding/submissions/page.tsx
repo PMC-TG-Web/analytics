@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { db, getDocs, collection, deleteDoc, doc } from "@/firebase";
+import { db, getDocs, collection, deleteDoc, doc, updateDoc } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";

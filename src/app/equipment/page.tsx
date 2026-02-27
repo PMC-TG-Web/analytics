@@ -67,10 +67,10 @@ function EquipmentContent() {
         getDocs(collection(db, "projectScopes"))
       ]);
 
-      setEquipment(eqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Equipment)).sort((a,b) => a.name.localeCompare(b.name)));
-      setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EquipmentAssignment)));
+      setEquipment(eqSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Equipment)).sort((a: any,b: any) => a.name.localeCompare(b.name)));
+      setAssignments(assignSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as EquipmentAssignment)));
       
-      const pData = projSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      const pData = projSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Project));
       setAllProjects(pData);
       
       // Filter for active/relevant projects for the dropdown
@@ -79,7 +79,7 @@ function EquipmentContent() {
       // For equipment assignment, we need the specific project doc or at least the jobKey
       setProjects(activeProjects.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
 
-      setScopesData(scopeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope)));
+      setScopesData(scopeSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope)));
 
     } catch (error) {
       console.error("Error loading equipment data:", error);
@@ -167,18 +167,18 @@ function EquipmentContent() {
     if (jobKey === "__noKey__") return [];
 
     // 1. Formal scopes
-    const formal = scopesData.filter(s => s.jobKey === jobKey);
+    const formal = scopesData.filter((s: any) => s.jobKey === jobKey);
 
     // 2. Virtual scopes from line items
-    const lineItems = allProjects.filter(p => getProjectKey(p) === jobKey);
+    const lineItems = allProjects.filter((p: any) => getProjectKey(p) === jobKey);
     const uniqueSOWs = new Set<string>();
-    lineItems.forEach(item => {
+    lineItems.forEach((item: any) => {
       const sow = item.scopeOfWork || item.pmcGroup || item.costType;
       if (sow && sow !== "Unassigned") uniqueSOWs.add(sow);
     });
 
     const virtual: Scope[] = Array.from(uniqueSOWs)
-      .filter(sow => !formal.some(fs => fs.title.toLowerCase() === sow.toLowerCase()))
+      .filter((sow: any) => !formal.some((fs: any) => fs.title.toLowerCase() === sow.toLowerCase()))
       .map((sow, idx) => ({
         id: `virtual-${jobKey}-${idx}`,
         jobKey: jobKey,
@@ -211,7 +211,7 @@ function EquipmentContent() {
     }
   }
 
-  const filteredEquipment = equipment.filter(eq => 
+  const filteredEquipment = equipment.filter((eq: any) => 
     eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     eq.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
     eq.model?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -476,7 +476,7 @@ function EquipmentContent() {
                       className="w-full px-5 py-4 bg-white border-2 border-gray-100 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"
                     >
                       <option value="">Choose a Project...</option>
-                      {projects.map(p => (
+                      {projects.map((p: any) => (
                         <option key={p.id} value={p.id}>{p.projectName}</option>
                       ))}
                     </select>
@@ -502,8 +502,8 @@ function EquipmentContent() {
                       disabled={!assignData.projectId}
                     >
                       <option value="">General Project Use</option>
-                      {assignData.projectId && projects.find(p => p.id === assignData.projectId) && 
-                        getProjectStages(projects.find(p => p.id === assignData.projectId)!).map(s => (
+                      {assignData.projectId && projects.find((p: any) => p.id === assignData.projectId) && 
+                        getProjectStages(projects.find((p: any) => p.id === assignData.projectId)!).map((s: any) => (
                           <option key={s.id} value={s.id}>{s.title}</option>
                         ))
                       }

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 
-import { db } from "@/firebase";
+import { db, getDocs, query, collection, where } from "@/firebase";
 import { Scope, GanttTask, ProjectInfo, ViewMode } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";
 import { getProjectKey, parseDateValue } from "@/utils/projectUtils";

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 
-import { db, query, collection, where, getDocs, setDoc, doc } from "@/firebase";
 import { Scope, Project } from "@/types";
 import { syncProjectWIP } from "@/utils/scheduleSync";
 
@@ -51,15 +50,11 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
   const loadMonthData = useCallback(async (monthStr: string) => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, "short term schedual"),
-        where("jobKey", "==", project.jobKey),
-        where("month", "==", monthStr)
-      );
-      const snap = await getDocs(q);
+      const response = await fetch(`/api/project-schedule?jobKey=${encodeURIComponent(project.jobKey)}&month=${encodeURIComponent(monthStr)}`);
+      const result = await response.json();
       
-      if (!snap.empty) {
-        setScheduleData(snap.docs[0].data() as ScheduleDoc);
+      if (result.success && result.data) {
+        setScheduleData(result.data);
       } else {
         // Initialize empty structure for the month
         setScheduleData({
@@ -76,6 +71,18 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
       }
     } catch (error) {
       console.error("Error loading short term data:", error);
+      // Initialize empty structure as fallback
+      setScheduleData({
+        jobKey: project.jobKey,
+        customer: project.customer,
+        projectNumber: project.projectNumber,
+        projectName: project.projectName,
+        month: monthStr,
+        weeks: [1, 2, 3, 4, 5, 6].map(w => ({
+          weekNumber: w,
+          days: [1, 2, 3, 4, 5, 6, 7].map(d => ({ dayNumber: d, hours: 0 }))
+        }))
+      });
     } finally {
       setLoading(false);
     }
@@ -106,10 +113,19 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
     if (!scheduleData) return;
     setSaving(true);
     try {
-      const docId = `${project.jobKey.replace(/[^a-zA-Z0-9_-]/g, "_")}_${activeMonth}`;
-      await setDoc(doc(db, "short term schedual", docId), scheduleData);
-      await syncProjectWIP(project.jobKey);
-      onClose();
+      const response = await fetch('/api/project-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scheduleData),
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        await syncProjectWIP(project.jobKey);
+        onClose();
+      } else {
+        alert("Error saving schedule: " + result.error);
+      }
     } catch (error) {
       alert("Error saving schedule");
     } finally {

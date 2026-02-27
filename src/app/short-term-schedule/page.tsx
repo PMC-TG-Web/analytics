@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-
+import { db, setDoc, getDocs, collection, query, doc, where, orderBy } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -602,7 +602,7 @@ function ShortTermScheduleContent() {
       if (allEmps.length === 0) {
         const employeesSnapshot = await getDocs(collection(db, "employees"));
         allEmps = employeesSnapshot.docs
-          .map(doc => {
+          .map((doc: any) => {
             const data = doc.data();
             return {
               id: doc.id,
@@ -650,11 +650,11 @@ function ShortTermScheduleContent() {
       ]);
 
       if (projectScopesSnapshot) {
-        rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+        rawScopes = projectScopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope));
         setCache('schedule_projectScopes', rawScopes);
       }
 
-      const timeOffRequests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
+      const timeOffRequests = timeOffSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
 
       // Fetch active projects for scope lookup
       const projectsSnapshot = await getDocs(query(
@@ -663,7 +663,7 @@ function ShortTermScheduleContent() {
         where("projectArchived", "==", false)
       ));
       
-      const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      const projs = projectsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project);
       setAllProjects(projs);
       
       // Pre-group projects by JobKey for lookup

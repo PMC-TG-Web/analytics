@@ -355,7 +355,7 @@ function DailyCrewDispatchBoardContent() {
 
       // Load saved crew templates from crews collection
       const savedCrews: Record<string, { rightHandManId?: string; crewMemberIds: string[] }> = {};
-      crewsSnapshot.docs.forEach(doc => {
+      crewsSnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         savedCrews[doc.id] = {
           rightHandManId: data.rightHandManId,

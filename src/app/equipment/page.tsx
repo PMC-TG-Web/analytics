@@ -77,7 +77,7 @@ function EquipmentContent() {
       const activeProjects = pData.filter((p: any) => !["Lost", "Archived"].includes(p.status || ""));
       // Group by name for the dropdown to avoid clutter, though usually we want specific project docs
       // For equipment assignment, we need the specific project doc or at least the jobKey
-      setProjects(activeProjects.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));
+      setProjects(activeProjects.sort((a: any, b: any) => (a.projectName || "").localeCompare(b.projectName || "")));
 
       setScopesData(scopeSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope)));
 

@@ -6,7 +6,7 @@
  * considering its impact on all pages that use it.
  */
 
-import { prisma } from "@/lib/prisma";
+// Static export: database access removed.
 
 export type Project = {
   id: string;
@@ -54,54 +54,18 @@ export type DashboardSummary = {
  * DASHBOARD: Fetch projects by customer
  */
 export async function getProjectsByCustomer(customerName: string): Promise<Project[]> {
-  try {
-    const projects = await prisma.project.findMany({
-      where: {
-        customer: customerName
-      }
-    });
-    return projects as Project[];
-  } catch (error) {
-    console.error("Error fetching projects by customer:", error);
-    return [];
-  }
+  return [];
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary | null> {
-  try {
-    const summary = await prisma.dashboardSummary.findUnique({
-      where: { id: "summary" }
-    });
-    if (summary) {
-      return {
-        totalSales: summary.totalSales,
-        totalCost: summary.totalCost,
-        totalHours: summary.totalHours,
-        statusGroups: (summary.statusGroups as any) || {},
-        contractors: (summary.contractors as any) || {},
-        pmcGroupHours: (summary.pmcGroupHours as any) || {},
-        laborBreakdown: (summary.laborBreakdown as any),
-        lastUpdated: summary.lastUpdated
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error("Error fetching dashboard summary:", error);
-    return null;
-  }
+  return null;
 }
 
 /**
  * DASHBOARD: Fetch all relevant project documents for aggregation
  */
 export async function getAllProjectsForDashboard(): Promise<Project[]> {
-  try {
-    const projects = await prisma.project.findMany();
-    return projects as Project[];
-  } catch (error) {
-    console.error("Error fetching projects:", error);
-    return [];
-  }
+  return [];
 }
 
 /**
@@ -126,19 +90,7 @@ export async function getProjectLineItems(
   projectName: string,
   customer: string
 ): Promise<Project[]> {
-  try {
-    const projects = await prisma.project.findMany({
-      where: {
-        projectNumber,
-        projectName,
-        customer
-      }
-    });
-    return projects as Project[];
-  } catch (error) {
-    console.error("Error fetching project line items:", error);
-    return [];
-  }
+  return [];
 }
 
 /**
@@ -153,13 +105,7 @@ export async function getProjectsByStatus(statuses: string[]): Promise<Project[]
   if (statuses.length === 0) {
     return getAllProjectsForDashboard();
   }
-  
-  const projects = await prisma.project.findMany({
-    where: {
-      status: { in: statuses }
-    }
-  });
-  return projects as Project[];
+  return [];
 }
 
 /**
@@ -172,10 +118,5 @@ export async function getProjectsByStatus(statuses: string[]): Promise<Project[]
  * @param value - The value to search for
  */
 export async function searchProjects(field: string, value: any): Promise<Project[]> {
-  const projects = await prisma.project.findMany({
-    where: {
-      [field]: value
-    }
-  });
-  return projects as Project[];
+  return [];
 }

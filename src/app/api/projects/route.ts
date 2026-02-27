@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // Get all projects with status not in ["Bid Submitted", "Lost"]
@@ -25,13 +27,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { status } = body;
+    const { status, customer, projectNumber } = body;
 
     if (!status) {
       return NextResponse.json(
@@ -43,8 +42,8 @@ export async function PUT(
     // Update project status
     const updated = await prisma.project.updateMany({
       where: {
-        customer: body.customer,
-        projectNumber: body.projectNumber,
+        customer: customer,
+        projectNumber: projectNumber,
       },
       data: {
         status,
@@ -64,3 +63,4 @@ export async function PUT(
     );
   }
 }
+

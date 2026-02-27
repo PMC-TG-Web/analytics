@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-
+import { db, query, collection, where, getDocs, addDoc, setDoc, doc } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -100,10 +100,10 @@ function ProjectsContent() {
         getDocs(collection(db, "equipment_assignments"))
       ]);
 
-      setProjectsData(projSnap.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
-      setScopesData(scopeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Scope)));
-      setEquipment(eqSnap.docs.map(d => ({ id: d.id, ...d.data() } as Equipment)));
-      setAssignments(assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as EquipmentAssignment)));
+      setProjectsData(projSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Project)));
+      setScopesData(scopeSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Scope)));
+      setEquipment(eqSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Equipment)));
+      setAssignments(assignSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as EquipmentAssignment)));
     } catch (error) {
       console.error("Error loading projects data:", error);
     } finally {
@@ -117,7 +117,7 @@ function ProjectsContent() {
     const groupedLineItems = new Map<string, Project[]>();
 
     // Pass 1: Group line items by jobKey and initialize aggregation objects
-    projectsData.forEach(p => {
+    projectsData.forEach((p: any) => {
       const key = getProjectKey(p);
       if (key === "__noKey__") return;
 
@@ -152,18 +152,18 @@ function ProjectsContent() {
     });
 
     // Pass 2: Attach scopes and determine dates using the pre-grouped data
-    map.forEach(agg => {
-      const formalScopes = scopesData.filter(s => s.jobKey === agg.jobKey);
+    map.forEach((agg: any) => {
+      const formalScopes = scopesData.filter((s: any) => s.jobKey === agg.jobKey);
       const lineItems = groupedLineItems.get(agg.jobKey) || [];
       const uniqueSOWs = new Set<string>();
       
-      lineItems.forEach(item => {
+      lineItems.forEach((item: any) => {
         const sow = item.scopeOfWork || item.pmcGroup || item.costType;
         if (sow && sow !== "Unassigned") uniqueSOWs.add(sow);
       });
 
       const virtualScopes: Scope[] = Array.from(uniqueSOWs)
-        .filter(sow => !formalScopes.some(fs => fs.title.toLowerCase() === sow.toLowerCase()))
+        .filter((sow: string) => !formalScopes.some((fs: any) => fs.title.toLowerCase() === sow.toLowerCase()))
         .map((sow, idx) => ({
           id: `virtual-${agg.jobKey}-${idx}`,
           jobKey: agg.jobKey,

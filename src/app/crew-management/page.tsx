@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 
 import { db, getDocs, setDoc, doc, collection, getDoc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 interface Employee {
   id: string;
@@ -199,9 +200,12 @@ function CrewManagementContent() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Crew Management</h1>
-          <p className="text-gray-600 mt-2">Assign right hand men and crew members to foremen</p>
+        <div className="mb-8 flex justify-between items-start gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Crew Management</h1>
+            <p className="text-gray-600 mt-2">Assign right hand men and crew members to foremen</p>
+          </div>
+          <Navigation currentPage="crew-management" />
         </div>
 
         {foremen.length === 0 ? (

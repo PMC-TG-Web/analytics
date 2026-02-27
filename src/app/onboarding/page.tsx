@@ -5,6 +5,7 @@ import { useState } from "react";
 import { db, addDoc, collection } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
 import ProtectedPage from "@/components/ProtectedPage";
+import Navigation from "@/components/Navigation";
 
 export default function OnboardingPage() {
   const [formData, setFormData] = useState<Partial<OnboardingSubmission>>({
@@ -107,9 +108,12 @@ export default function OnboardingPage() {
       <div className="min-h-screen bg-gray-50 py-6 sm:py-12 px-3 sm:px-6 lg:px-8 font-sans">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-8 sm:mb-12">
-            <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter mb-2">Employee Onboarding</h1>
-            <p className="text-gray-500 font-bold uppercase text-[9px] sm:text-[10px] tracking-[0.2em] italic px-4">Personnel & Payroll Information Request</p>
+          <div className="flex justify-between items-start gap-4 mb-8 sm:mb-12">
+            <div className="text-center flex-1">
+              <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter mb-2">Employee Onboarding</h1>
+              <p className="text-gray-500 font-bold uppercase text-[9px] sm:text-[10px] tracking-[0.2em] italic px-4">Personnel & Payroll Information Request</p>
+            </div>
+            <Navigation currentPage="employees" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8 pb-20 sm:pb-0">

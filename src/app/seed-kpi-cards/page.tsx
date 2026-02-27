@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Navigation from "@/components/Navigation";
 
 export default function SeedKPICardsPage() {
   const [loading, setLoading] = useState(false);
@@ -37,18 +38,22 @@ export default function SeedKPICardsPage() {
   };
 
   return (
-    <div style={{ maxWidth: "600px", margin: "40px auto", padding: "20px" }}>
-      <h1>Seed KPI Cards Database</h1>
+    <div style={{ minHeight: "100vh", background: "#f5f5f5", padding: "32px 20px" }}>
+      <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginBottom: "32px" }}>
+          <h1 style={{ margin: 0, color: "#333", fontSize: "24px" }}>Seed KPI Cards Database</h1>
+          <Navigation currentPage="seed-kpi-cards" />
+        </div>
 
-      <div
-        style={{
-          backgroundColor: "#f0f4f8",
-          border: "1px solid #cbd5e0",
-          borderRadius: "8px",
-          padding: "20px",
-          marginBottom: "20px",
-        }}
-      >
+        <div
+          style={{
+            backgroundColor: "#f0f4f8",
+            border: "1px solid #cbd5e0",
+            borderRadius: "8px",
+            padding: "20px",
+            marginBottom: "20px",
+          }}
+        >
         <p style={{ margin: "0 0 10px 0" }}>
           This will populate the Firestore database with the default KPI card data including:
         </p>

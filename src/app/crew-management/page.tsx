@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-
-import { db, getDocs, setDoc, doc, collection, getDoc } from "@/firebase";
 import Navigation from "@/components/Navigation";
 
 interface Employee {
@@ -41,12 +39,10 @@ function CrewManagementContent() {
     try {
       setLoading(true);
       
-      // Load employees
-      const employeesSnapshot = await getDocs(collection(db, "employees"));
-      const allEmployees = employeesSnapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      } as Employee));
+      // Load employees from API
+      const response = await fetch('/api/employees?isActive=true');
+      const result = await response.json();
+      const allEmployees = result.success ? result.data || [] : [];
 
       // Filter by job title
       const foremenList = allEmployees.filter((emp: any) => 
@@ -74,20 +70,14 @@ function CrewManagementContent() {
       setRightHandMen(rightHandMenList);
       setLaborers(laborersList);
 
-      // Load crew assignments
+      // Initialize empty crew assignments
       const assignments: Record<string, CrewAssignment> = {};
-      for (const foreman of foremenList) {
-        const crewDoc = await getDoc(doc(db, "crews", foreman.id));
-        if (crewDoc.exists()) {
-          assignments[foreman.id] = crewDoc.data() as CrewAssignment;
-        } else {
-          assignments[foreman.id] = {
-            foremanId: foreman.id,
-            crewMemberIds: []
-          };
-        }
-      }
-
+      foremenList.forEach((foreman: Employee) => {
+        assignments[foreman.id] = {
+          foremanId: foreman.id,
+          crewMemberIds: []
+        };
+      });
       setCrewAssignments(assignments);
     } catch (error) {
       console.error("Error loading data:", error);
@@ -102,18 +92,17 @@ function CrewManagementContent() {
       setSaving(foremanId);
       const assignment = crewAssignments[foremanId];
       
-      // Clean up undefined values for Firestore
-      const dataToSave: any = {
-        foremanId: assignment.foremanId,
-        crewMemberIds: assignment.crewMemberIds || []
-      };
+      // Save to crew template API
+      const response = await fetch('/api/crew-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Crew - ${foremen.find(f => f.id === foremanId)?.lastName || foremanId}`,
+          members: assignment.crewMemberIds,
+        }),
+      });
       
-      // Only add rightHandManId if it exists and is not empty
-      if (assignment.rightHandManId) {
-        dataToSave.rightHandManId = assignment.rightHandManId;
-      }
-      
-      await setDoc(doc(db, "crews", foremanId), dataToSave);
+      if (!response.ok) throw new Error('Failed to save crew assignment');
       
       alert("Crew assignment saved successfully!");
     } catch (error) {

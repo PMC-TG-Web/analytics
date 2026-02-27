@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { db, getDocs, collection, setDoc, doc, addDoc, deleteDoc } from "@/firebase";
-
 import Navigation from "@/components/Navigation";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
 import { Project, Scope } from "@/types";
@@ -56,27 +53,24 @@ function EquipmentContent() {
   async function loadData() {
     setLoading(true);
     try {
-      const [eqSnap, assignSnap, projSnap, scopeSnap] = await Promise.all([
-        getDocs(collection(db, "equipment")),
-        getDocs(collection(db, "equipment_assignments")),
-        getDocs(collection(db, "projects")),
-        getDocs(collection(db, "projectScopes"))
+      const [eqRes, projRes] = await Promise.all([
+        fetch('/api/equipment'),
+        fetch('/api/projects')
       ]);
 
-      setEquipment(eqSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Equipment)).sort((a: any,b: any) => a.name.localeCompare(b.name)));
-      setAssignments(assignSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as EquipmentAssignment)));
-      
-      const pData = projSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Project));
-      setAllProjects(pData);
-      
-      // Filter for active/relevant projects for the dropdown
-      const activeProjects = pData.filter((p: any) => !["Lost", "Archived"].includes(p.status || ""));
-      // Group by name for the dropdown to avoid clutter, though usually we want specific project docs
-      // For equipment assignment, we need the specific project doc or at least the jobKey
-      setProjects(activeProjects.sort((a: any, b: any) => (a.projectName || "").localeCompare(b.projectName || "")));
+      const eqResult = await eqRes.json();
+      const projResult = await projRes.json();
 
-      setScopesData(scopeSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope)));
+      if (eqResult.success && Array.isArray(eqResult.data)) {
+        setEquipment(eqResult.data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+      }
 
+      if (projResult.success && Array.isArray(projResult.data)) {
+        const pData = projResult.data as Project[];
+        setAllProjects(pData);
+        const activeProjects = pData.filter((p: any) => !["Lost", "Archived"].includes(p.status || ""));
+        setProjects(activeProjects.sort((a: any, b: any) => (a.projectName || "").localeCompare(b.projectName || "")));
+      }
     } catch (error) {
       console.error("Error loading equipment data:", error);
     } finally {
@@ -93,18 +87,25 @@ function EquipmentContent() {
         updatedAt: new Date().toISOString(),
       };
 
-      if (editingEquipment) {
-        await setDoc(doc(db, "equipment", editingEquipment.id), data, { merge: true });
+      const url = editingEquipment 
+        ? `/api/equipment?id=${editingEquipment.id}`
+        : '/api/equipment';
+      const method = editingEquipment ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        await loadData();
+        setModalVisible(false);
+        setEditingEquipment(null);
       } else {
-        const newEq = {
-          ...data,
-          createdAt: new Date().toISOString(),
-        };
-        await addDoc(collection(db, "equipment"), newEq);
+        alert("Error saving equipment");
       }
-      await loadData();
-      setModalVisible(false);
-      setEditingEquipment(null);
     } catch (error) {
       alert("Error saving equipment");
     } finally {
@@ -139,12 +140,23 @@ function EquipmentContent() {
         createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, "equipment_assignments"), newAssign);
+      const response = await fetch('/api/equipment-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAssign)
+      });
+
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to assign equipment');
       
       // Update equipment status if it's currently assigned
       const today = new Date().toISOString().split('T')[0];
       if (assignData.startDate! <= today && assignData.endDate! >= today) {
-        await setDoc(doc(db, "equipment", selectedEqForAssign.id), { status: "In Use" }, { merge: true });
+        await fetch(`/api/equipment?id=${selectedEqForAssign.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...selectedEqForAssign, status: "In Use" })
+        });
       }
 
       await loadData();
@@ -190,18 +202,28 @@ function EquipmentContent() {
   async function handleDeleteAssignment(id: string) {
     if (!confirm("Are you sure you want to delete this assignment?")) return;
     try {
-      await deleteDoc(doc(db, "equipment_assignments", id));
-      await loadData();
+      const response = await fetch(`/api/equipment-assignments?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        await loadData();
+      }
     } catch (error) {
       alert("Error deleting assignment");
     }
   }
 
   async function handleDeleteEquipment(id: string) {
-    if (!confirm("Are you sure you want to delete this equipment? This will not delete its history.")) return;
+    if (!confirm("Delete this equipment?\nThis will not delete its history.")) return;
     try {
-      await deleteDoc(doc(db, "equipment", id));
-      await loadData();
+      const response = await fetch(`/api/equipment?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        await loadData();
+      }
     } catch (error) {
       alert("Error deleting equipment");
     }

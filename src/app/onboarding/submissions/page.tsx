@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { db, getDocs, collection, deleteDoc, doc, updateDoc } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
-
 import Navigation from "@/components/Navigation";
 
 function MaskedValue({ value, isDark = false }: { value: string; isDark?: boolean }) {
@@ -45,29 +42,13 @@ export default function OnboardingSubmissionsPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const submissionsPromise = getDocs(collection(db, "onboarding_submissions"));
-      const signoffsPromise = getDocs(collection(db, "handbook-signoffs"));
-      
-      const [submissionsSnapshot, signoffsSnapshot] = await Promise.all([
-        submissionsPromise,
-        signoffsPromise
-      ]);
+      const response = await fetch('/api/onboarding-submissions');
+      const result = await response.json();
 
-      const submissionsData = submissionsSnapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as OnboardingSubmission[];
-      setSubmissions(submissionsData.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
-
-      const signoffsData = signoffsSnapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any[];
-      setSignoffs(signoffsData.sort((a, b) => {
-        const dateA = a.signedAt?.toDate() || new Date(0);
-        const dateB = b.signedAt?.toDate() || new Date(0);
-        return dateB - dateA;
-      }));
+      if (result.success && result.data) {
+        const submissionsData = result.data as OnboardingSubmission[];
+        setSubmissions(submissionsData.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()));
+      }
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -83,8 +64,15 @@ export default function OnboardingSubmissionsPage() {
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this submission?")) return;
     try {
-      await deleteDoc(doc(db, "onboarding_submissions", id));
-      setSubmissions(submissions.filter(s => s.id !== id));
+      const response = await fetch(`/api/onboarding-submissions?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        setSubmissions(submissions.filter(s => s.id !== id));
+      } else {
+        alert("Error deleting submission");
+      }
     } catch (error) {
       alert("Error deleting submission");
     }
@@ -92,8 +80,20 @@ export default function OnboardingSubmissionsPage() {
 
   async function handleStatusChange(id: string, status: OnboardingSubmission['status']) {
     try {
-      await updateDoc(doc(db, "onboarding_submissions", id), { status });
-      setSubmissions(submissions.map(s => s.id === id ? { ...s, status } : s));
+      const submission = submissions.find(s => s.id === id);
+      if (!submission) return;
+      
+      const response = await fetch(`/api/onboarding-submissions?id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...submission, status })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setSubmissions(submissions.map(s => s.id === id ? { ...s, status } : s));
+      } else {
+        alert("Error updating status");
+      }
     } catch (error) {
       alert("Error updating status");
     }

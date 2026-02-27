@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { db } from "@/firebase";
+import { db, getDocs, collection } from "@/firebase";
 
 export default function TestSchedules() {
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -12,7 +12,7 @@ export default function TestSchedules() {
     async function fetchSchedules() {
       try {
         const schedulesSnapshot = await getDocs(collection(db, "schedules"));
-        const schedulesData = schedulesSnapshot.docs.map((doc) => ({
+        const schedulesData = schedulesSnapshot.docs.map((doc: any) => ({
           id: doc.id,
           ...doc.data(),
         }));
@@ -36,7 +36,7 @@ export default function TestSchedules() {
       {schedules.length === 0 ? (
         <p>No schedules found in the database.</p>
       ) : (
-        schedules.map((schedule) => (
+        schedules.map((schedule: any) => (
           <div key={schedule.id} style={{ marginBottom: 30, padding: 20, background: "#f5f5f5", borderRadius: 8 }}>
             <div><strong>ID:</strong> {schedule.id}</div>
             <div><strong>Job Key:</strong> {schedule.jobKey}</div>

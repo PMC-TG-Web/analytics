@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { db, getDocs, query, collection, where } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
 type Project = {
@@ -91,11 +90,7 @@ function getNextMonths(count: number) {
 }
 
 export default function SchedulingPage() {
-  return (
-    <ProtectedPage page="scheduling">
-      <SchedulingContent />
-    </ProtectedPage>
-  );
+  return <SchedulingContent />;
 }
 
 function SchedulingContent() {

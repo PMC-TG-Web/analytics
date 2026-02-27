@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, getDashboardSummary, getProjectsByCustomer, type Project, type DashboardSummary } from "./projectQueries";
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { 
   calculateAggregated, 
@@ -19,11 +18,7 @@ import { TopContractorsCard } from "./components/TopContractorsCard";
 
 
 export default function Dashboard() {
-  return (
-    <ProtectedPage page="dashboard">
-      <DashboardContent />
-    </ProtectedPage>
-  );
+  return <DashboardContent />;
 }
 
 

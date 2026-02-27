@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { db, query, collection, where, getDocs, addDoc, setDoc, doc } from "@/firebase";
 
-import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Project, Scope } from "@/types";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
@@ -28,11 +27,7 @@ interface AggregatedProject {
 }
 
 export default function ProjectsPage() {
-  return (
-    <ProtectedPage page="projects">
-      <ProjectsContent />
-    </ProtectedPage>
-  );
+  return <ProjectsContent />;
 }
 
 function ProjectsContent() {

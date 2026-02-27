@@ -108,11 +108,7 @@ const SAFETY_TOPICS = [
 ];
 
 export default function Home() {
-  return (
-    <ProtectedPage page="home">
-      <HomeContent />
-    </ProtectedPage>
-  );
+  return <HomeContent />;
 }
 
 function HomeContent() {

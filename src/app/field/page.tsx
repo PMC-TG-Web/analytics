@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { db } from "@/firebase";
+import { db, query, collection, where, getDocs, addDoc } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import { Project, Scope } from "@/types";
@@ -126,12 +126,12 @@ function FieldTrackingContent() {
       try {
         const q = query(collection(db, "projects"), where("projectArchived", "==", false));
         const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
+        const data = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as Project[];
         setFullProjectList(data);
 
         // Deduplicate for project selection - Prefer "In Progress" status
         const dedupedMap = new Map();
-        data.forEach(p => {
+        data.forEach((p: any) => {
           const key = p.jobKey || getProjectKey(p);
           const existing = dedupedMap.get(key);
           if (!existing || (existing.status !== "In Progress" && p.status === "In Progress")) {
@@ -164,9 +164,9 @@ function FieldTrackingContent() {
       try {
         const q = query(collection(db, "projectScopes"), where("jobKey", "==", activeJobKey));
         const snapshot = await getDocs(q);
-        const scopesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Scope[];
+        const scopesData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as Scope[];
         
-        setScopes(Array.from(new Map(scopesData.map(s => [s.title, s])).values())
+        setScopes(Array.from(new Map(scopesData.map((s: any) => [s.title, s])).values())
           .sort((a, b) => (a.title || "").localeCompare(b.title || "")));
       } catch (error) {
         console.error("Error fetching scopes:", error);
@@ -187,7 +187,7 @@ function FieldTrackingContent() {
       const laborMap = new Map<string, { name: string; hours: number }>();
       const materialMap = new Map<string, { name: string; quantity: string }>();
 
-      matchedProjectItems.forEach(item => {
+      matchedProjectItems.forEach((item: any) => {
         const pmcGroup = (item.pmcGroup || "").toString();
         const costItem = (item.costitems || "").toString();
         
@@ -210,11 +210,11 @@ function FieldTrackingContent() {
       const materialEntriesList = Array.from(materialMap.values());
 
       setLaborEntries(laborEntriesList.length > 0 
-        ? laborEntriesList.map(l => ({ category: l.name, hours: l.hours.toString() })) 
+        ? laborEntriesList.map((l: any) => ({ category: l.name, hours: l.hours.toString() })) 
         : [{ category: "General Labor", hours: scope.hours?.toString() || "" }]);
 
       setMaterials(materialEntriesList.length > 0 
-        ? materialEntriesList.map(m => ({ item: m.name, quantity: m.quantity })) 
+        ? materialEntriesList.map((m: any) => ({ item: m.name, quantity: m.quantity })) 
         : [{ item: "", quantity: "" }]);
     } else {
       setLaborEntries([{ category: "General Labor", hours: scope.hours?.toString() || "" }]);

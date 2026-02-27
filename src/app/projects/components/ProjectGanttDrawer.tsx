@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 
-import { db, getDocs, query, collection, where } from "@/firebase";
 import { Scope, GanttTask, ProjectInfo, ViewMode } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";
 import { getProjectKey, parseDateValue } from "@/utils/projectUtils";
@@ -54,15 +53,17 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
     try {
       const { jobKey } = project;
       
-      // Load all schedule data in parallel
-      const [scopesSnap, stSnap, ltSnap] = await Promise.all([
-        getDocs(query(collection(db, "projectScopes"), where("jobKey", "==", jobKey))),
-        getDocs(query(collection(db, "short term schedual"), where("jobKey", "==", jobKey))),
-        getDocs(query(collection(db, "long term schedual"), where("jobKey", "==", jobKey)))
+      // Load all schedule data in parallel from API
+      const [scopesRes, scheduleRes] = await Promise.all([
+        fetch(`/api/project-scopes?jobKey=${encodeURIComponent(jobKey)}`),
+        fetch(`/api/project-schedule?jobKey=${encodeURIComponent(jobKey)}`)
       ]);
 
+      const scopesData = await scopesRes.json();
+      const scheduleData = await scheduleRes.json();
+
       // 1. Process Scopes
-      const formalScopes = scopesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      const formalScopes = (scopesData.data || []) as Scope[];
       
       // Merge with virtual scopes from hub to ensure everything shows up
       const mergedScopes = [...formalScopes];
@@ -76,9 +77,14 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
       }
       setScopes(mergedScopes);
 
-      // 2. Process Short Term
-      if (!stSnap.empty) {
-        const docData = stSnap.docs[0].data() as ShortTermDoc;
+      // 2. Process Short Term from API response
+      const shortTermData = (scheduleData.data?.shortTermData || {}) as Record<string, any>;
+      const shortTermMonths = Object.keys(shortTermData);
+      
+      if (shortTermMonths.length > 0) {
+        // Use the first available month's data
+        const firstMonth = shortTermMonths[0];
+        const docData = { ...shortTermData[firstMonth], month: firstMonth } as ShortTermDoc;
         const monthWeekStarts = getMonthWeekStarts(docData.month);
         const dates: Date[] = [];
         let totalHours = 0;
@@ -108,9 +114,14 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
         });
       }
 
-      // 3. Process Long Term
-      if (!ltSnap.empty) {
-        const docData = ltSnap.docs[0].data() as LongTermDoc;
+      // 3. Process Long Term from API response
+      const longTermData = (scheduleData.data?.longTermData || {}) as Record<string, any>;
+      const longTermMonths = Object.keys(longTermData);
+      
+      if (longTermMonths.length > 0) {
+        // Use the first available month's data
+        const firstMonth = longTermMonths[0];
+        const docData = { ...longTermData[firstMonth], month: firstMonth } as LongTermDoc;
         const monthWeekStarts = getMonthWeekStarts(docData.month);
         const weekStarts: Date[] = [];
         let totalHours = 0;
@@ -139,8 +150,8 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
 
       // 4. Load Month Jobs (simpler view of long term)
       const mList: MonthJob[] = [];
-      ltSnap.docs.forEach(doc => {
-        const d = doc.data() as LongTermDoc;
+      Object.entries(longTermData).forEach(([month, data]) => {
+        const d = { ...(data as any), month } as LongTermDoc;
         const monthTotal = (d.weeks || []).reduce((sum, w) => sum + (w.hours || 0), 0);
         if (monthTotal > 0) {
           mList.push({

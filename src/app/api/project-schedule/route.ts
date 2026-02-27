@@ -9,14 +9,14 @@ export async function GET(request: NextRequest) {
     const jobKey = searchParams.get('jobKey');
     const month = searchParams.get('month');
 
-    if (!jobKey || !month) {
+    if (!jobKey) {
       return NextResponse.json(
-        { success: false, error: 'jobKey and month are required' },
+        { success: false, error: 'jobKey is required' },
         { status: 400 }
       );
     }
 
-    // Fetch the schedule document for this project/month
+    // Fetch the schedule document for this project
     const schedule = await prisma.schedule.findFirst({
       where: {
         jobKey: jobKey,
@@ -28,9 +28,41 @@ export async function GET(request: NextRequest) {
         projectNumber: true,
         projectName: true,
         shortTermData: true,
+        longTermData: true,
       },
     });
 
+    // If no month specified, return all schedule data (for Gantt view)
+    if (!month) {
+      if (!schedule) {
+        const [customer, projectNumber, projectName] = jobKey.split('~');
+        return NextResponse.json({
+          success: true,
+          data: {
+            jobKey,
+            customer: customer || '',
+            projectNumber: projectNumber || '',
+            projectName: projectName || '',
+            shortTermData: {},
+            longTermData: {},
+          },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          jobKey,
+          customer: schedule.customer || '',
+          projectNumber: schedule.projectNumber || '',
+          projectName: schedule.projectName || '',
+          shortTermData: schedule.shortTermData || {},
+          longTermData: schedule.longTermData || {},
+        },
+      });
+    }
+
+    // Month-specific query (for drawer editor)
     if (!schedule) {
       // Return empty structure if no schedule exists yet
       const [customer, projectNumber, projectName] = jobKey.split('~');

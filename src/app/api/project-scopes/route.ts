@@ -5,7 +5,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const jobKey = searchParams.get('jobKey');
+
     const scopes = await prisma.projectScope.findMany({
+      where: jobKey ? { jobKey } : undefined,
       select: {
         id: true,
         jobKey: true,

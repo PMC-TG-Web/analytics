@@ -1,8 +1,5 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { db, getDocs, collection, setDoc, doc, deleteDoc } from "@/firebase";
-
-
 import Navigation from "@/components/Navigation";
 
 export default function ConstantsPage() {
@@ -20,16 +17,11 @@ function ConstantsContent() {
   async function fetchAllData() {
     setLoading(true);
     try {
-      const snapshot = await getDocs(collection(db, "estimatingConstants"));
-      setConstants(snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })));
-
-      const rebarSnapshot = await getDocs(collection(db, "rebarConstants"));
-      setRebarConstants(rebarSnapshot.docs.map((doc: any) => doc.data()).sort((a: any, b: any) => {
-        const numA = parseInt(a.size.replace("#", ""));
-        const numB = parseInt(b.size.replace("#", ""));
-        return numA - numB;
-      }));
-
+      const response = await fetch('/api/estimating-constants');
+      const result = await response.json();
+      if (result.success) {
+        setConstants(result.data || []);
+      }
       setLoading(false);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -45,15 +37,20 @@ function ConstantsContent() {
     if (!newConstant.name || !newConstant.value) return;
     setSaving(true);
     try {
-      const id = newConstant.name.toLowerCase().replace(/\s+/g, "_");
-      await setDoc(doc(db, "estimatingConstants", id), {
-        name: newConstant.name,
-        value: Number(newConstant.value),
-        category: newConstant.category,
-        updatedAt: new Date().toISOString()
+      const response = await fetch('/api/estimating-constants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newConstant.name,
+          value: Number(newConstant.value),
+          category: newConstant.category
+        })
       });
-      setNewConstant({ name: "", value: "", category: "General" });
-      await fetchAllData();
+      const result = await response.json();
+      if (result.success) {
+        setNewConstant({ name: "", value: "", category: "General" });
+        await fetchAllData();
+      }
     } catch (error) {
       console.error("Error saving constant:", error);
     } finally {
@@ -64,8 +61,13 @@ function ConstantsContent() {
   async function removeConstant(id: string) {
     if (!confirm("Are you sure you want to delete this constant?")) return;
     try {
-      await deleteDoc(doc(db, "estimatingConstants", id));
-      await fetchAllData();
+      const response = await fetch(`/api/estimating-constants?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        await fetchAllData();
+      }
     } catch (error) {
       console.error("Error deleting constant:", error);
     }

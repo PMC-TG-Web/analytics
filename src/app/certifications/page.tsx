@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { db } from "@/firebase";
-import { getDocs, addDoc, deleteDoc, query, collection, orderBy, doc } from "@/firebase";
-
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
 
@@ -43,24 +40,26 @@ function CertificationsContent() {
 
   async function loadData() {
     try {
-      const [certSnap, empSnap] = await Promise.all([
-        getDocs(query(collection(db, "certifications"), orderBy("expirationDate", "asc"))),
-        getDocs(query(collection(db, "employees"), orderBy("firstName", "asc")))
+      const [certRes, empRes] = await Promise.all([
+        fetch('/api/certifications'),
+        fetch('/api/employees?isActive=true')
       ]);
 
-      const certData = certSnap.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Certification[];
+      const certResult = await certRes.json();
+      const empResult = await empRes.json();
 
-      const empData = empSnap.docs.map((doc: any) => ({
-        id: doc.id,
-        firstName: doc.data().firstName,
-        lastName: doc.data().lastName,
-      })) as Employee[];
+      if (certResult.success) {
+        setCertifications(certResult.data || []);
+      }
 
-      setCertifications(certData);
-      setEmployees(empData.filter((e: any) => e.firstName)); // Simple validation
+      if (empResult.success) {
+        const empData = empResult.data?.map((emp: any) => ({
+          id: emp.id,
+          firstName: emp.firstName,
+          lastName: emp.lastName,
+        })) || [];
+        setEmployees(empData);
+      }
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
@@ -76,24 +75,25 @@ function CertificationsContent() {
 
     setSaving(true);
     try {
-      const emp = employees.find(e => e.id === newCert.employeeId);
-      const certToSave = {
-        ...newCert,
-        employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
-        createdAt: new Date().toISOString(),
-      };
-
-      const docRef = await addDoc(collection(db, "certifications"), certToSave);
-      const createdCert = { id: docRef.id, ...certToSave };
-
-      setCertifications([createdCert, ...certifications]);
-      setNewCert({
-        employeeId: "",
-        type: "",
-        issueDate: "",
-        expirationDate: "",
-        notes: "",
+      const response = await fetch('/api/certifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCert)
       });
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        setCertifications([result.data, ...certifications]);
+        setNewCert({
+          employeeId: "",
+          type: "",
+          issueDate: "",
+          expirationDate: "",
+          notes: "",
+        });
+      } else {
+        alert("Failed to save record");
+      }
     } catch (error) {
       console.error("Failed to add certification:", error);
       alert("Failed to save record");
@@ -105,8 +105,13 @@ function CertificationsContent() {
   async function deleteCert(id: string) {
     if (!confirm("Delete this certification record?")) return;
     try {
-      await deleteDoc(doc(db, "certifications", id));
-      setCertifications(certifications.filter(c => c.id !== id));
+      const response = await fetch(`/api/certifications?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        setCertifications(certifications.filter(c => c.id !== id));
+      }
     } catch (error) {
       console.error("Delete failed:", error);
     }

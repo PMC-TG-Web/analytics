@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-
-import { db, addDoc, collection } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
 import Navigation from "@/components/Navigation";
 
@@ -76,8 +74,17 @@ export default function OnboardingPage() {
         userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : "Unknown",
         ipAddress: ip,
       };
-      await addDoc(collection(db, "onboarding_submissions"), submission);
-      setSubmitted(true);
+      const response = await fetch('/api/onboarding-submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submission)
+      });
+      const result = await response.json();
+      if (result.success) {
+        setSubmitted(true);
+      } else {
+        alert("Failed to save information. Please try again.");
+      }
     } catch (error) {
       console.error("Submission failed:", error);
       alert("Failed to save information. Please try again.");

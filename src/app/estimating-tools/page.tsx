@@ -1,8 +1,5 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { db, getDocs, query, collection, where, addDoc, limit, orderBy, serverTimestamp } from "@/firebase";
-
-
 import Navigation from "@/components/Navigation";
 
 export default function EstimatingToolsPage() {
@@ -134,145 +131,54 @@ function EstimatingToolsContent() {
     setLoading(true);
     try {
       // Fetch Projects (active only)
-      const projectsSnapshot = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Lost", "Archived"])
-      ));
-      const pData = projectsSnapshot.docs
-        .map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project)
-        .filter((p: Project) => !p.projectArchived);
+      const projResponse = await fetch('/api/projects');
+      const projResult = await projResponse.json();
+      const pData = projResult.success && Array.isArray(projResult.data) 
+        ? projResult.data.filter((p: Project) => !["Lost", "Archived"].includes(p.projectStatus || "") && !p.projectArchived)
+        : [];
       
-      // De-duplicate by both ID and Project Name/Number to handle potential database duplicates
       const uniqueMap = new Map();
-      pData.forEach((p: any) => {
+      pData.forEach((p: Project) => {
         const nameKey = `${(p.projectName || "").toLowerCase()}-${(p.projectNumber || "").toLowerCase()}`;
-        // If we haven't seen this ID OR this name/number combo yet, keep it
         if (!uniqueMap.has(p.id) && !uniqueMap.has(nameKey)) {
           uniqueMap.set(p.id, p);
           uniqueMap.set(nameKey, p);
         }
       });
 
-      // Get unique project objects only
       const uniqueProjects = Array.from(new Set(uniqueMap.values())) as Project[];
-      
       setProjectsList(uniqueProjects.sort((a, b) => 
         (a.projectName || "").localeCompare(b.projectName || "")
       ));
 
       // Fetch Constants
-      const constSnapshot = await getDocs(collection(db, "estimatingConstants"));
-      const constData = constSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as Constant[];
+      const constResponse = await fetch('/api/estimating-constants');
+      const constResult = await constResponse.json();
+      const constData = constResult.success && Array.isArray(constResult.data) ? constResult.data : [];
       setConstants(constData);
-
-      // Fetch Rebar Constants
-      const rebarSnapshot = await getDocs(collection(db, "rebarConstants"));
-      const rData = rebarSnapshot.docs.map((doc: any) => doc.data()) as Constant[];
-      
-      if (rData.length > 0) {
-        // Sort once by numeric size
-        rData.sort((a, b) => {
-          const sizeA = parseInt(a.size?.replace("#", "") || "0");
-          const sizeB = parseInt(b.size?.replace("#", "") || "0");
-          return sizeA - sizeB;
-        });
-        setRebarConstants(rData);
-
-        // Set defaults if state is currently empty or doesn't match a size
-        if (!spreadFooterRebarSize || !rData.find(r => r.size === spreadFooterRebarSize)) {
-          setSpreadFooterRebarSize(rData[0].size || "#4");
-        }
-        if (!footerRebarSize || !rData.find(r => r.size === footerRebarSize)) {
-          setFooterRebarSize(rData[0].size || "#4");
-        }
-      }
 
       // Try to find a default waste constant
       const wasteConst = constData.find(c => (c.name || "").toLowerCase().includes("waste"));
       if (wasteConst) setWaste(wasteConst.value?.toString() || "10");
 
-      // Fetch Recent Calculations - Filtered by project if one is selected
-      // Note: We removed the orderBy from the filtered query to avoid a composite index requirement,
-      // and will sort client-side instead.
-      let calcQuery;
-      if (selectedProjectId) {
-        calcQuery = query(
-          collection(db, "savedCalculations"), 
-          where("projectId", "==", selectedProjectId),
-          limit(200) // Fetch a larger buffer to sort client-side
-        );
-      } else {
-        calcQuery = query(
-          collection(db, "savedCalculations"), 
-          orderBy("timestamp", "desc"), 
-          limit(15) // Fetch enough to de-duplicate down to 5
-        );
+      // Set rebar constants to defaults since we don't have a dedicated rebar API yet
+      setRebarConstants(defaultRebar);
+      if (!spreadFooterRebarSize || !defaultRebar.find(r => r.size === spreadFooterRebarSize)) {
+        setSpreadFooterRebarSize(defaultRebar[0].size || "#4");
       }
-      
-      const calcSnapshot = await getDocs(calcQuery);
-      const allCalcs = calcSnapshot.docs.map((doc: any) => {
-        const data = doc.data();
-        let totalCY = data.totalCY || 0;
-        let totalTons = data.totalTons || 0;
-
-        // Legacy extraction if numeric fields are missing
-        if (data.totalCY === undefined) {
-          if (data.type === "Pier" || data.type === "Concrete") {
-            totalCY = parseFloat(data.result) || 0;
-          } else if (data.type === "Footer" && data.summary) {
-            const match = data.summary.match(/(\d+)\s*CY/);
-            if (match) totalCY = parseFloat(match[1]);
-          }
-        }
-        if (data.totalTons === undefined) {
-          if (data.type === "Rebar" && data.summary) {
-            const match = data.summary.match(/([\d\.]+)\s*lbs/);
-            if (match) totalTons = parseFloat(match[1]) / 2000;
-          } else if (data.type === "Footer" && data.summary) {
-            const match = data.summary.match(/([\d\.]+)\s*tons/);
-            if (match) totalTons = parseFloat(match[1]);
-          }
-        }
-
-        return { id: doc.id, ...data, totalCY, totalTons } as Calculation;
-      });
-
-      // Sort client-side if we are filtered by project (since Firestore index isn't ready)
-      if (selectedProjectId) {
-        allCalcs.sort((a, b) => {
-          const timeA = a.timestamp?.seconds || 0;
-          const timeB = b.timestamp?.seconds || 0;
-          return timeB - timeA;
-        });
+      if (!footerRebarSize || !defaultRebar.find(r => r.size === footerRebarSize)) {
+        setFooterRebarSize(defaultRebar[0].size || "#4");
       }
-      
-      // De-duplicate: Keep only the latest calculation for each Project + Label + Type combination
-      const uniqueCalcsMap = new Map();
-      allCalcs.forEach((c: any) => {
-        const key = `${c.projectId}-${c.type}-${(c.label || c.name || "").toLowerCase()}`;
-        if (!uniqueCalcsMap.has(key)) {
-          uniqueCalcsMap.set(key, c);
-        }
-      });
 
-      const uniqueCalcs = Array.from(uniqueCalcsMap.values()) as Calculation[];
-      const displayedCalcs = uniqueCalcs.slice(0, selectedProjectId ? 50 : 5);
-      setRecentCalcs(displayedCalcs); // Limit global to 5, project to 50
-
-      // Calculate aggregates from the visible set
-      const totals = displayedCalcs.reduce((acc, current) => {
-        acc.cy += (current.totalCY || 0);
-        acc.tons += (current.totalTons || 0);
-        return acc;
-      }, { cy: 0, tons: 0 });
-      setAggregateTotals(totals);
-
-      setLoading(false);
+      // For now, set empty calculations - can be enhanced with /api/estimates later
+      setRecentCalcs([]);
+      setAggregateTotals({ cy: 0, tons: 0 });
     } catch (error) {
       console.error("Error fetching data:", error);
+    } finally {
       setLoading(false);
     }
-  }, [selectedProjectId, spreadFooterRebarSize, footerRebarSize]); // Added selectedProjectId to re-fetch when project changes
+  }, [spreadFooterRebarSize, footerRebarSize, selectedProjectId]);
 
   useEffect(() => {
     fetchData();
@@ -565,21 +471,29 @@ function EstimatingToolsContent() {
     
     setSaving(true);
     try {
-      await addDoc(collection(db, "savedCalculations"), {
-        projectName: project?.projectName || "Unknown",
-        projectId: projectIdToUse,
-        customer: project?.customer || "Unknown",
-        label: label,
-        type: type,
-        inputs: data.inputs,
-        result: data.result,
-        summary: data.summary || "",
-        totalCY: data.totalCY || 0,
-        totalTons: data.totalTons || 0,
-        timestamp: serverTimestamp(),
+      const response = await fetch('/api/estimates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: project?.projectName || "Unknown",
+          projectId: projectIdToUse,
+          customer: project?.customer || "Unknown",
+          label: label,
+          type: type,
+          inputs: data.inputs,
+          result: data.result,
+          summary: data.summary || "",
+          totalCY: data.totalCY || 0,
+          totalTons: data.totalTons || 0,
+        })
       });
-      // Removed success alert for smoother UX
-      fetchData(); // Refresh recent
+      const result = await response.json();
+      if (result.success) {
+        // Removed success alert for smoother UX
+        fetchData(); // Refresh recent
+      } else {
+        alert("Failed to save.");
+      }
     } catch (e) {
       console.error(e);
       alert("Failed to save.");

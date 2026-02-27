@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-import { db } from "@/firebase";
+import { db, setDoc, doc, addDoc, collection, query, where, getDocs } from "@/firebase";
 import { ProjectInfo, Scope } from "@/types";
 import { syncProjectWIP, updateShortTermFromScope } from "@/utils/scheduleSync";
 import { deleteActiveScheduleEntry, recalculateScopeTracking, writeActiveScheduleEntry, getActiveScheduleDocId } from "@/utils/activeScheduleUtils";

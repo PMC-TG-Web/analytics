@@ -168,16 +168,16 @@ function CrewManagementContent() {
     const assignedToOthers = new Set<string>();
     Object.entries(crewAssignments).forEach(([fid, assignment]) => {
       if (fid !== foremanId) {
-        assignment.crewMemberIds?.forEach(laborerId => assignedToOthers.add(laborerId));
+        assignment.crewMemberIds?.forEach((laborerId: any) => assignedToOthers.add(laborerId));
       }
     });
     
     // Filter out laborers assigned to other crews
-    let availableLaborers = laborers.filter(laborer => !assignedToOthers.has(laborer.id));
+    let availableLaborers = laborers.filter((laborer: any) => !assignedToOthers.has(laborer.id));
     
     // Apply search filter
     if (search) {
-      availableLaborers = availableLaborers.filter(laborer => 
+      availableLaborers = availableLaborers.filter((laborer: any) => 
         `${laborer.firstName} ${laborer.lastName}`.toLowerCase().includes(search)
       );
     }
@@ -210,7 +210,7 @@ function CrewManagementContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {foremen.map(foreman => {
+            {foremen.map((foreman: any) => {
               const assignment = crewAssignments[foreman.id] || { foremanId: foreman.id, crewMemberIds: [] };
               const assignedLaborers = assignment.crewMemberIds || [];
               const filteredLaborers = getFilteredLaborers(foreman.id);
@@ -236,7 +236,7 @@ function CrewManagementContent() {
                         className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">-- None --</option>
-                        {rightHandMen.map(rhm => (
+                        {rightHandMen.map((rhm: any) => (
                           <option key={rhm.id} value={rhm.id}>
                             {rhm.firstName} {rhm.lastName}
                           </option>
@@ -272,7 +272,7 @@ function CrewManagementContent() {
                       {/* Selected members */}
                       {assignedLaborers.length > 0 && (
                         <div className="mb-2 flex flex-wrap gap-1">
-                          {assignedLaborers.map(laborerId => (
+                          {assignedLaborers.map((laborerId: any) => (
                             <span
                               key={laborerId}
                               className="inline-flex items-center bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs"
@@ -291,7 +291,7 @@ function CrewManagementContent() {
 
                       {/* Available laborers */}
                       <div className="border border-gray-300 rounded-md max-h-48 overflow-y-auto flex-1">
-                        {filteredLaborers.map(laborer => {
+                        {filteredLaborers.map((laborer: any) => {
                           const isSelected = assignedLaborers.includes(laborer.id);
                           return (
                             <label

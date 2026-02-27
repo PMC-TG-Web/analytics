@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-
 import { firebaseConfig } from '@/firebaseConfig';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getDocs, collection, getFirestore, setDoc, doc, deleteDoc, query, where, getDoc } from '@/firebaseStubs';
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+// Initialize stub Firebase
+const db = getFirestore(undefined);
 
 const FIRESTORE_TIMEOUT_MS = 3000;
 const SCHEDULES_PATH = path.join(process.cwd(), 'public', 'schedules.json');
@@ -174,7 +173,7 @@ export async function GET(request: NextRequest) {
           FIRESTORE_TIMEOUT_MS,
           'getAllSchedules'
         );
-        const schedules = querySnapshot.docs.map(doc => ({
+        const schedules = querySnapshot.docs.map((doc: any) => ({
           id: doc.id,
           ...doc.data(),
         }));

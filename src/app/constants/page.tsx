@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { db } from "@/firebase";
+import { db, getDocs, collection, setDoc, doc, deleteDoc } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -25,10 +25,10 @@ function ConstantsContent() {
     setLoading(true);
     try {
       const snapshot = await getDocs(collection(db, "estimatingConstants"));
-      setConstants(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setConstants(snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })));
 
       const rebarSnapshot = await getDocs(collection(db, "rebarConstants"));
-      setRebarConstants(rebarSnapshot.docs.map(doc => doc.data()).sort((a,b) => {
+      setRebarConstants(rebarSnapshot.docs.map((doc: any) => doc.data()).sort((a: any, b: any) => {
         const numA = parseInt(a.size.replace("#", ""));
         const numB = parseInt(b.size.replace("#", ""));
         return numA - numB;

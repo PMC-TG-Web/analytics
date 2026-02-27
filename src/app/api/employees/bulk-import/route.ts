@@ -78,7 +78,7 @@ function formatPhoneNumber(phone: string): string {
 export async function POST(request: NextRequest) {
   try {
     const snapshot = await getDocs(collection(db, "employees"));
-    const existingEmployees = new Map(
+    const existingEmployees = new Map<string, any>(
       snapshot.docs.map((doc: any) => [
         `${doc.data().firstName} ${doc.data().lastName}`.toLowerCase(),
         doc.data()
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       }
 
       const docId = existing 
-        ? snapshot.docs.find(doc => `${doc.data().firstName} ${doc.data().lastName}`.toLowerCase() === fullName)?.id
+        ? snapshot.docs.find((doc: any) => `${doc.data().firstName} ${doc.data().lastName}`.toLowerCase() === fullName)?.id
         : `emp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       await setDoc(doc(db, "employees", docId!), employeeData);

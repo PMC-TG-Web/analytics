@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-
 import { firebaseConfig } from '@/firebaseConfig';
 import { defaultCardData } from '@/lib/kpiCardDefaults';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getDocs, collection, getFirestore, doc, setDoc, deleteDoc } from '@/firebaseStubs';
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+// Initialize stub Firebase
+const db = getFirestore(undefined);
 
 const FIRESTORE_TIMEOUT_MS = 3000;
 const KPI_CARDS_PATH = path.join(process.cwd(), 'public', 'kpi-cards.json');
@@ -79,7 +78,7 @@ export async function GET() {
         FIRESTORE_TIMEOUT_MS,
         'getKpiCards'
       );
-      const cards: KPICard[] = cardsSnapshot.docs.map((doc) => ({
+      const cards: KPICard[] = cardsSnapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data(),
       })) as KPICard[];

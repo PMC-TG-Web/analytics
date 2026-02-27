@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     // Collect employee data
     const employees: any[] = [];
     
-    snapshot.forEach((doc) => {
+    snapshot.forEach((doc: any) => {
       const data = doc.data();
       
       // Filter out inactive employees if not included

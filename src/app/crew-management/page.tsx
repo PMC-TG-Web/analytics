@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-import { db } from "@/firebase";
+import { db, getDocs, setDoc, doc, collection } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 
 interface Employee {
@@ -47,7 +47,7 @@ function CrewManagementContent() {
       
       // Load employees
       const employeesSnapshot = await getDocs(collection(db, "employees"));
-      const allEmployees = employeesSnapshot.docs.map(doc => ({
+      const allEmployees = employeesSnapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       } as Employee));

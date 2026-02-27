@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { db } from "@/firebase";
+import { getDocs, addDoc, deleteDoc, query, collection, orderBy, doc } from "@/firebaseStubs";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
@@ -51,12 +52,12 @@ function CertificationsContent() {
         getDocs(query(collection(db, "employees"), orderBy("firstName", "asc")))
       ]);
 
-      const certData = certSnap.docs.map(doc => ({
+      const certData = certSnap.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as Certification[];
 
-      const empData = empSnap.docs.map(doc => ({
+      const empData = empSnap.docs.map((doc: any) => ({
         id: doc.id,
         firstName: doc.data().firstName,
         lastName: doc.data().lastName,

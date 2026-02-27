@@ -8,11 +8,21 @@ export async function GET(request: NextRequest) {
 
     let whereClause: any = {};
     if (jobKey) whereClause.jobKey = jobKey;
-    if (month) whereClause.month = month;
 
     const schedules = await prisma.schedule.findMany({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
     });
+
+    // If filtering by month, filter in memory from the longTermData JSON
+    if (month) {
+      return NextResponse.json(
+        schedules.filter((schedule) => {
+          if (!schedule.longTermData || typeof schedule.longTermData !== 'object') return false;
+          const longTermData = schedule.longTermData as any;
+          return longTermData[month] !== undefined;
+        })
+      );
+    }
 
     return NextResponse.json(schedules);
   } catch (error) {
@@ -36,23 +46,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-
+    // Find or create schedule by jobKey
     const schedule = await prisma.schedule.upsert({
       where: {
-        id: docId,
+        jobKey: jobKey,
       },
       update: {
-        weeks,
-        totalHours,
+        // Store monthly data in longTermData JSON field
+        longTermData: {
+          [month]: weeks,
+        },
+        totalHours: (totalHours || 0) + (weeks?.reduce?.((sum: number, week: any) => sum + (week.hours || 0), 0) || 0),
         updatedAt: new Date(),
       },
       create: {
-        id: docId,
-        jobKey,
-        month,
-        weeks,
-        totalHours,
+        jobKey: jobKey,
+        // Store monthly data in longTermData JSON field
+        longTermData: {
+          [month]: weeks,
+        },
+        totalHours: totalHours || (weeks?.reduce?.((sum: number, week: any) => sum + (week.hours || 0), 0) || 0),
         createdAt: new Date(),
         updatedAt: new Date(),
       },

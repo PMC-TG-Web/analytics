@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/firebase';
+import { collection, query, where, getDocs, getFirestore, updateDoc } from '@/firebaseStubs';
+
+const db = getFirestore(undefined);
 
 
 export async function POST(request: NextRequest) {
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update all matching documents with the new status
-    const updates = querySnapshot.docs.map((doc) =>
+    const updates = querySnapshot.docs.map((doc: any) =>
       updateDoc(doc.ref, {
         status: newStatus,
         dateUpdated: new Date(),

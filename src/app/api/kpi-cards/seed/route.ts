@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-
 import { firebaseConfig } from '@/firebaseConfig';
 import { defaultCardData } from '@/lib/kpiCardDefaults';
+import { setDoc, doc, getFirestore } from '@/firebaseStubs';
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+// Initialize stub Firebase
+const db = getFirestore(undefined);
 
 
 export async function POST(request: NextRequest) {

@@ -1,6 +1,8 @@
 // Clear old productivity data from Firebase before resyncing
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/firebase';
+import { collection, getDocs, deleteDoc, doc, getFirestore } from '@/firebaseStubs';
+
+const db = getFirestore(undefined);
 
 
 export async function POST(request: NextRequest) {

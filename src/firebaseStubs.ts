@@ -64,7 +64,7 @@ export async function getDoc(...args: any[]): Promise<any> {
   return { exists: () => false, data: () => ({}) };
 }
 
-export async function writeBatch(...args: any[]): Promise<any> {
+export function writeBatch(...args: any[]): any {
   console.warn("writeBatch() stub called - use API instead");
   return {
     set: () => {},

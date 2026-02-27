@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-
 import { firebaseConfig } from '@/firebaseConfig';
+import { getDocs, collection, getFirestore } from '@/firebaseStubs';
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+// Initialize stub Firebase
+const db = getFirestore(undefined);
 
 export async function GET(request: NextRequest) {
   try {
     const querySnapshot = await getDocs(collection(db, 'projects'));
-    const projects = querySnapshot.docs.map(doc => ({
+    const projects = querySnapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data(),
     }));

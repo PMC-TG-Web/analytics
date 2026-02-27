@@ -1,6 +1,8 @@
 // Check what data is currently in Firebase
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/firebase';
+import { collection, getDocs, getFirestore } from '@/firebaseStubs';
+
+const db = getFirestore(undefined);
 
 
 export async function GET(request: NextRequest) {
@@ -10,7 +12,7 @@ export async function GET(request: NextRequest) {
     // Get all logs
     const logsRef = collection(db, 'productivity_logs');
     const logsSnap = await getDocs(logsRef);
-    const logsArray = logsSnap.docs.map(doc => {
+    const logsArray = logsSnap.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Get all summaries
     const summaryRef = collection(db, 'productivity_summary');
     const summarySnap = await getDocs(summaryRef);
-    const summaryArray = summarySnap.docs.map(doc => {
+    const summaryArray = summarySnap.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,

@@ -1,7 +1,9 @@
 // src/app/api/procore/sync-productivity/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { makeRequest, procoreConfig } from '@/lib/procore';
-import { db } from '@/firebase';
+import { collection, writeBatch, doc, getFirestore } from '@/firebaseStubs';
+
+const db = getFirestore(undefined);
 
 
 export async function POST(request: NextRequest) {

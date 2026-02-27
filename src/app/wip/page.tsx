@@ -166,6 +166,7 @@ function WIPReportContent() {
         ]);
 
         let projectsData: any[] = [];
+        let projectsSnapshot: any[] = [];
         let scopesSnapshot: any[] = [];
         let schedulesData: any[] = [];
 

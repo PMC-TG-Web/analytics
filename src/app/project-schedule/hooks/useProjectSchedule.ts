@@ -1,6 +1,4 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-
-import { db, getDocs, collection } from "@/firebase";
 import { Scope, ViewMode, GanttTask, ProjectInfo } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob } from "@/types/schedule";
 import { getProjectKey, parseDateValue } from "@/utils/projectUtils";
@@ -35,36 +33,41 @@ export function useProjectSchedule() {
     try {
       console.log("[useProjectSchedule] Starting data fetch...");
       
-      // Parallelize all Firestore fetches
-      const [
-        projectsSnapshot,
-        scopesSnapshot,
-        activeScheduleSnapshot
-      ] = await Promise.all([
-        getDocs(collection(db, "projects")),
-        getDocs(collection(db, "projectScopes")),
-        getDocs(collection(db, "activeSchedule"))
+      // Parallelize all API fetches
+      const [projectsRes, scopesRes, activeScheduleRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/project-scopes'),
+        fetch('/api/short-term-schedule?action=activeSchedules')
       ]);
 
-      console.log(`[useProjectSchedule] Fetched all snapshots in ${Date.now() - start}ms`);
+      const projectsData = await projectsRes.json();
+      const scopesData = await scopesRes.json();
+      const activeScheduleData = await activeScheduleRes.json();
+
+      console.log(`[useProjectSchedule] Fetched all data in ${Date.now() - start}ms`);
       
       const docMap: Record<string, string> = {};
       const projectCostItems: Record<string, Array<{ costitems: string; scopeOfWork: string; pmcGroup: string; sales: number; cost: number; hours: number; costType: string }>> = {};
       const allProjects: ProjectInfo[] = [];
 
-      projectsSnapshot.docs.forEach((doc) => {
-        const data = doc.data() as any;
-        const { projectName = "", jobKey, customer = "", projectNumber = "", status = "" } = data;
+      const projects = (projectsData.success && Array.isArray(projectsData.data)) ? projectsData.data : [];
+      projects.forEach((proj: any) => {
+        const projectName = proj.projectName || "";
+        const jobKey = proj.jobKey || "";
+        const customer = proj.customer || "";
+        const projectNumber = proj.projectNumber || "";
+        const status = proj.status || "";
+        const id = proj.id;
         
         if (status === "Invitations" || status === "Lost") return;
 
         // Force evaluation of the standardized key for mapping
-        const generatedKey = getProjectKey({ ...data, id: doc.id });
+        const generatedKey = getProjectKey({ ...proj, id });
         const itemJobKey = generatedKey; 
         
-        if (projectName) docMap[projectName] = doc.id;
-        if (jobKey) docMap[jobKey] = doc.id;
-        docMap[itemJobKey] = doc.id;
+        if (projectName) docMap[projectName] = id;
+        if (jobKey) docMap[jobKey] = id;
+        docMap[itemJobKey] = id;
 
         if (!itemJobKey) return;
 
@@ -75,22 +78,22 @@ export function useProjectSchedule() {
             customer,
             projectNumber,
             projectName,
-            projectDocId: doc.id,
-            dateCreated: data.dateCreated,
-            dateUpdated: data.dateUpdated
+            projectDocId: id,
+            dateCreated: proj.dateCreated,
+            dateUpdated: proj.dateUpdated
           } as any);
         }
 
         if (!projectCostItems[itemJobKey]) projectCostItems[itemJobKey] = [];
 
         projectCostItems[itemJobKey].push({
-          costitems: (data.costitems || "").toString(),
-          scopeOfWork: (data.scopeOfWork || "").toString(),
-          pmcGroup: (data.pmcGroup || data.pmcgroup || "").toString(),
-          sales: typeof data.sales === "number" ? data.sales : 0,
-          cost: typeof data.cost === "number" ? data.cost : 0,
-          hours: typeof data.hours === "number" ? data.hours : 0,
-          costType: typeof data.costType === "string" ? data.costType : "",
+          costitems: (proj.costitems || "").toString(),
+          scopeOfWork: (proj.scopeOfWork || "").toString(),
+          pmcGroup: (proj.pmcGroup || proj.pmcgroup || "").toString(),
+          sales: typeof proj.sales === "number" ? proj.sales : 0,
+          cost: typeof proj.cost === "number" ? proj.cost : 0,
+          hours: typeof proj.hours === "number" ? proj.hours : 0,
+          costType: typeof proj.costType === "string" ? proj.costType : "",
         });
       });
 
@@ -98,13 +101,13 @@ export function useProjectSchedule() {
       const isAutoScheduledScope = (scope: Scope) =>
         (scope.title || "").trim().toLowerCase() === "scheduled work";
 
-      scopesSnapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data() as Partial<Scope> & { jobKey?: string };
+      const scopes = (scopesData.success && Array.isArray(scopesData.data)) ? scopesData.data : [];
+      scopes.forEach((docData: any) => {
+        const data = docData as Partial<Scope> & { jobKey?: string };
         let jobKey = data.jobKey;
         if (!jobKey) return;
 
         // Force normalization of ANY jobKey found in projectScopes to the tilde format
-        // We'll normalize it to Customer~Number~Name if it's pipes or has extra baggage
         const parts = jobKey.split(/[~|]/).map(p => p.trim());
         if (parts.length >= 3) {
           jobKey = `${parts[0]}~${parts[1]}~${parts[2]}`;
@@ -139,7 +142,7 @@ export function useProjectSchedule() {
         );
 
         const scope: Scope = {
-          id: docSnap.id,
+          id: data.id || `${jobKey}-${title}`,
           title,
           jobKey,
           startDate: data.startDate,
@@ -240,8 +243,8 @@ export function useProjectSchedule() {
         };
       };
 
-      activeScheduleSnapshot.docs.forEach((doc) => {
-        const data = doc.data() as ActiveScheduleEntry;
+      const activeSchedules = (activeScheduleData.success && Array.isArray(activeScheduleData.data)) ? activeScheduleData.data : [];
+      activeSchedules.forEach((data: ActiveScheduleEntry) => {
         if (!data.jobKey || !data.date) return;
 
         const jobKey = normalizeJobKey(data.jobKey);

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { db, setDoc, getDocs, collection, query, doc, where, orderBy, deleteDoc, Timestamp } from "@/firebase";
+import { db, setDoc, getDocs, collection, query, doc, where, orderBy, deleteDoc, serverTimestamp } from "@/firebase";
 
 
 import Navigation from "@/components/Navigation";
@@ -462,7 +462,7 @@ function ShortTermScheduleContent() {
       hours,
       foreman: foremanValue,
       source: 'short-term',
-      lastModified: Timestamp.now()
+      lastModified: serverTimestamp()
     }, { merge: true });
     
     // Update scopeTracking
@@ -503,7 +503,7 @@ function ShortTermScheduleContent() {
         hours: newHours,
         foreman: foremanValue,
         source: 'short-term',
-        lastModified: Timestamp.now()
+        lastModified: serverTimestamp()
       }, { merge: true });
     }
     

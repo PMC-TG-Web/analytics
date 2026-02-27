@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { db } from "@/firebase";
+import { db, getDocs, collection, deleteDoc, doc } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -53,13 +53,13 @@ export default function OnboardingSubmissionsPage() {
         signoffsPromise
       ]);
 
-      const submissionsData = submissionsSnapshot.docs.map(doc => ({
+      const submissionsData = submissionsSnapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as OnboardingSubmission[];
       setSubmissions(submissionsData.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
 
-      const signoffsData = signoffsSnapshot.docs.map(doc => ({
+      const signoffsData = signoffsSnapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as any[];

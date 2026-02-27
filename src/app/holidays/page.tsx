@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { db, query, collection, orderBy, getDocs, setDoc, doc, addDoc, deleteDoc } from "@/firebase";
-
 import Navigation from "@/components/Navigation";
 import { Holiday } from "@/types";
 
@@ -33,13 +31,13 @@ function HolidaysContent() {
 
   async function loadHolidays() {
     try {
-      const q = query(collection(db, "holidays"), orderBy("date", "asc"));
-      const snapshot = await getDocs(q);
-      const holidayData = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Holiday[];
-      setHolidays(holidayData);
+      const response = await fetch('/api/holidays');
+      const result = await response.json();
+      if (result.success) {
+        setHolidays(result.data || []);
+      } else {
+        console.error("Error loading holidays:", result.error);
+      }
     } catch (error) {
       console.error("Error loading holidays:", error);
     } finally {
@@ -72,11 +70,22 @@ function HolidaysContent() {
 
     setSaving(true);
     try {
-      if (editingHoliday?.id) {
-        await setDoc(doc(db, "holidays", editingHoliday.id), formData);
-      } else {
-        await addDoc(collection(db, "holidays"), formData);
+      const method = editingHoliday?.id ? 'PUT' : 'POST';
+      const body = editingHoliday?.id 
+        ? { id: editingHoliday.id, ...formData }
+        : formData;
+      
+      const response = await fetch('/api/holidays', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save holiday');
       }
+      
       await loadHolidays();
       setModalVisible(false);
     } catch (error) {
@@ -108,13 +117,24 @@ function HolidaysContent() {
         { name: "New Year's Eve", date: "2026-12-31", isPaid: true }
       ];
 
-      for (const h of standardHolidays) {
-        // Simple check to avoid duplicates by date
-        const exists = holidays.some(existing => existing.date === h.date);
-        if (!exists) {
-          await addDoc(collection(db, "holidays"), h);
+      // Filter out holidays that already exist
+      const newHolidays = standardHolidays.filter(
+        h => !holidays.some(existing => existing.date === h.date)
+      );
+      
+      if (newHolidays.length > 0) {
+        const response = await fetch('/api/holidays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newHolidays),
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to seed holidays');
         }
       }
+      
       await loadHolidays();
     } catch (error) {
       console.error("Error seeding holidays:", error);
@@ -138,6 +158,7 @@ function HolidaysContent() {
         const startIdx = lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('date') ? 1 : 0;
         
         let count = 0;
+        const newHolidaysToImport: any[] = [];
         for (let i = startIdx; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
@@ -146,7 +167,7 @@ function HolidaysContent() {
           if (name && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
             const exists = holidays.some(h => h.date === date);
             if (!exists) {
-              await addDoc(collection(db, "holidays"), {
+              newHolidaysToImport.push({
                 name,
                 date,
                 isPaid: isPaid?.toLowerCase() === 'true' || isPaid === '1' || isPaid?.toLowerCase() === 'paid'
@@ -155,6 +176,20 @@ function HolidaysContent() {
             }
           }
         }
+        
+        if (newHolidaysToImport.length > 0) {
+          const response = await fetch('/api/holidays', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newHolidaysToImport),
+          });
+          
+          const result = await response.json();
+          if (!result.success) {
+            throw new Error(result.error || 'Failed to import holidays');
+          }
+        }
+        
         alert(`Successfully imported ${count} holidays.`);
         await loadHolidays();
       } catch (error) {
@@ -172,7 +207,15 @@ function HolidaysContent() {
     if (!confirm("Are you sure you want to delete this holiday?")) return;
 
     try {
-      await deleteDoc(doc(db, "holidays", id));
+      const response = await fetch(`/api/holidays?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete holiday');
+      }
+      
       await loadHolidays();
     } catch (error) {
       console.error("Error deleting holiday:", error);

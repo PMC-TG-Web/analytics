@@ -6,7 +6,7 @@
  */
 
 
-import { db } from '@/firebase';
+import { db, query, collection, where, getDocs } from '@/firebase';
 import { ActiveScheduleEntry } from './activeScheduleUtils';
 
 export interface DayProject {

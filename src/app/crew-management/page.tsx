@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-import { db, getDocs, setDoc, doc, collection } from "@/firebase";
+import { db, getDocs, setDoc, doc, collection, getDoc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 
 interface Employee {
@@ -53,7 +53,7 @@ function CrewManagementContent() {
       } as Employee));
 
       // Filter by job title
-      const foremenList = allEmployees.filter(emp => 
+      const foremenList = allEmployees.filter((emp: any) => 
         emp.isActive && (
           emp.jobTitle === "Foreman" || 
           emp.jobTitle === "Forman" || 
@@ -61,18 +61,18 @@ function CrewManagementContent() {
           emp.jobTitle === "Lead foreman" || 
           emp.jobTitle === "Lead Foreman / Project Manager"
         )
-      ).sort((a, b) => a.lastName.localeCompare(b.lastName));
+      ).sort((a: any, b: any) => a.lastName.localeCompare(b.lastName));
 
-      const rightHandMenList = allEmployees.filter(emp => 
+      const rightHandMenList = allEmployees.filter((emp: any) => 
         emp.isActive && (
           emp.jobTitle?.includes("Right Hand Man") || 
           emp.jobTitle?.includes("Right Hand")
         )
-      ).sort((a, b) => a.lastName.localeCompare(b.lastName));
+      ).sort((a: any, b: any) => a.lastName.localeCompare(b.lastName));
 
-      const laborersList = allEmployees.filter(emp => 
+      const laborersList = allEmployees.filter((emp: any) => 
         emp.isActive && emp.jobTitle === "Laborer"
-      ).sort((a, b) => a.lastName.localeCompare(b.lastName));
+      ).sort((a: any, b: any) => a.lastName.localeCompare(b.lastName));
 
       setForemen(foremenList);
       setRightHandMen(rightHandMenList);

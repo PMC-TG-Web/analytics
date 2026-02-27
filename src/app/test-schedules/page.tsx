@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import Navigation from "@/components/Navigation";
 
-import { db, getDocs, collection } from "@/firebase";
-
 export default function TestSchedules() {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -12,12 +10,9 @@ export default function TestSchedules() {
   useEffect(() => {
     async function fetchSchedules() {
       try {
-        const schedulesSnapshot = await getDocs(collection(db, "schedules"));
-        const schedulesData = schedulesSnapshot.docs.map((doc: any) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setSchedules(schedulesData);
+        const response = await fetch('/api/scheduling');
+        const result = await response.json();
+        setSchedules(result.data || []);
       } catch (error) {
         console.error("Error fetching schedules:", error);
       } finally {

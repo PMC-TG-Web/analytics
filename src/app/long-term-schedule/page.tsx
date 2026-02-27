@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { db, getDocs, collection, query, where } from "@/firebase";
-
 
 import Navigation from "@/components/Navigation";
 import { Scope, Project } from "@/types";
@@ -92,20 +90,29 @@ function LongTermScheduleContent() {
 
   async function loadSchedules() {
     try {
-      console.log('[LongTermSchedule] Loading schedules from activeSchedule...');
+      console.log('[LongTermSchedule] Loading schedules from API...');
       
-      // Load projects and scopes (unchanged)
-      const projectScopesSnapshot = await getDocs(collection(db, "projectScopes"));
-      const projectsSnapshot = await getDocs(query(
-        collection(db, "projects"),
-        where("status", "not-in", ["Bid Submitted", "Lost"])
-      ));
+      // Load projects and scopes via API
+      const [projectsRes, scopesRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/project-scopes')
+      ]);
       
-      const projs = projectsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project);
+      const projectsData = await projectsRes.json();
+      const scopesData = await scopesRes.json();
+      
+      const projs = projectsData.data || [];
       console.log('[LongTermSchedule] Loaded projects:', projs.length);
       setAllProjects(projs);
       
-      const rawScopes = projectScopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope));
+      const rawScopes = (scopesData.data || []).map((scope: any) => ({
+        id: scope.id,
+        jobKey: scope.jobKey,
+        scopeOfWork: scope.scopeOfWork,
+        startDate: scope.startDate,
+        endDate: scope.endDate,
+        hours: scope.hours,
+      })) as Scope[];
       console.log('[LongTermSchedule] Loaded raw scopes:', rawScopes.length);
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       console.log('[LongTermSchedule] Enriched scopes:', enrichedScopes.length);

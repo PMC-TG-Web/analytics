@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-
+import { db, getDocs, query, collection, where } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -165,7 +165,7 @@ function SchedulingContent() {
           collection(db, "projects"),
           where("status", "not-in", ["Bid Submitted", "Lost"])
         ));
-        const projectsData = projectsSnapshot.docs.map((doc) => ({
+        const projectsData = projectsSnapshot.docs.map((doc: any) => ({
           id: doc.id,
           ...(doc.data() as Omit<Project, "id">),
         }));
@@ -202,7 +202,7 @@ function SchedulingContent() {
 
         // Fetch scopes for Gantt prioritization logic
         const scopesSnapshot = await getDocs(collection(db, "projectScopes"));
-        const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const rawScopes = scopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
         const scopesMap: Record<string, any[]> = {};
         rawScopes.forEach((scope: any) => {
           if (scope.jobKey) {

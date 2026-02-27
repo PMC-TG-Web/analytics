@@ -74,7 +74,7 @@ function EquipmentContent() {
       setAllProjects(pData);
       
       // Filter for active/relevant projects for the dropdown
-      const activeProjects = pData.filter(p => !["Lost", "Archived"].includes(p.status || ""));
+      const activeProjects = pData.filter((p: any) => !["Lost", "Archived"].includes(p.status || ""));
       // Group by name for the dropdown to avoid clutter, though usually we want specific project docs
       // For equipment assignment, we need the specific project doc or at least the jobKey
       setProjects(activeProjects.sort((a, b) => (a.projectName || "").localeCompare(b.projectName || "")));

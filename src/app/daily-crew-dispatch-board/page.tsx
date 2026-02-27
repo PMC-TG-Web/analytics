@@ -265,19 +265,19 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
+      const foremenList = allEmps.filter((emp: any) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
       setForemen(foremenList);
 
-      const requests = timeOffSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
+      const requests = timeOffSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
       setTimeOffRequests(requests);
 
-      const holidayListData = cachedHolidays || (holidaysSnapshot ? holidaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) : []) as Holiday[];
+      const holidayListData = cachedHolidays || (holidaysSnapshot ? holidaysSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : []) as Holiday[];
       if (!cachedHolidays && holidaysSnapshot) setCache('dispatch_holidays', holidayListData);
       setHolidays(holidayListData);
       
-      const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      const projs = projectsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project);
       
-      const rawScopes = cachedScopes || (projectScopesSnapshot ? projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope)) : []);
+      const rawScopes = cachedScopes || (projectScopesSnapshot ? projectScopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope)) : []);
       if (!cachedScopes && projectScopesSnapshot) setCache('dispatch_projectScopes', rawScopes);
       
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);

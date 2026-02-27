@@ -211,7 +211,7 @@ function CrewManagementContent() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {foremen.map((foreman: any) => {
-              const assignment = crewAssignments[foreman.id] || { foremanId: foreman.id, crewMemberIds: [] };
+              const assignment = crewAssignments[foreman.id] || { foremanId: foreman.id, rightHandManId: "", crewMemberIds: [] };
               const assignedLaborers = assignment.crewMemberIds || [];
               const filteredLaborers = getFilteredLaborers(foreman.id);
 

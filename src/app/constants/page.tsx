@@ -78,7 +78,7 @@ function ConstantsContent() {
   const downloadBackup = () => {
     if (constants.length === 0) return;
     const headers = ["Name", "Value", "Category"];
-    const rows = constants.map(c => [c.name, c.value, c.category].join(","));
+    const rows = constants.map((c: any) => [c.name, c.value, c.category].join(","));
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");

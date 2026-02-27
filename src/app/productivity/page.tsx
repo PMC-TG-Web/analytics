@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-
+import { db, collection, query, orderBy, getDocs } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -61,14 +61,14 @@ function ProductivityContent() {
       const summaryRef = collection(db, "productivity_summary");
       const summaryQuery = query(summaryRef, orderBy("month", "desc"));
       const summarySnap = await getDocs(summaryQuery);
-      const summaryData = summarySnap.docs.map(doc => doc.data() as ProductivitySummary);
+      const summaryData = summarySnap.docs.map((doc: any) => doc.data() as ProductivitySummary);
       setSummaries(summaryData);
 
       // Load first 500 raw logs for detail view
       const logsRef = collection(db, "productivity_logs");
       const logsQuery = query(logsRef, orderBy("date", "desc"));
       const logsSnap = await getDocs(logsQuery);
-      const logsData = logsSnap.docs.slice(0, 500).map(doc => doc.data() as ProductivityLog);
+      const logsData = logsSnap.docs.slice(0, 500).map((doc: any) => doc.data() as ProductivityLog);
       setLogs(logsData);
 
     } catch (error) {

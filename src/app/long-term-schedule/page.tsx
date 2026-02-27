@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-
+import { db, getDocs, collection, query, where } from "@/firebase";
 
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
@@ -105,11 +105,11 @@ function LongTermScheduleContent() {
         where("status", "not-in", ["Bid Submitted", "Lost"])
       ));
       
-      const projs = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Project);
+      const projs = projectsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project);
       console.log('[LongTermSchedule] Loaded projects:', projs.length);
       setAllProjects(projs);
       
-      const rawScopes = projectScopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+      const rawScopes = projectScopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope));
       console.log('[LongTermSchedule] Loaded raw scopes:', rawScopes.length);
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       console.log('[LongTermSchedule] Enriched scopes:', enrichedScopes.length);

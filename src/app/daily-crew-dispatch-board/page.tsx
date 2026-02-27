@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { db, getDocs, collection, query, where } from "@/firebase";
+import { db, getDocs, collection, query, where, doc, getDoc, setDoc, addDoc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";

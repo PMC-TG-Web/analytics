@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { db, getDocs, collection, addDoc, setDoc, deleteDoc, doc, query, where } from "@/firebase";
-
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
 
@@ -201,13 +198,13 @@ function EmployeesContent() {
         return;
       }
 
-      // Cache miss, fetch from Firestore
-      const snapshot = await getDocs(collection(db, "jobTitles"));
-      if (!snapshot.empty) {
-        const titles = snapshot.docs.map((doc: any) => doc.data().title as string);
-        const sortedTitles = titles.sort();
-        setJobTitles(sortedTitles);
-        setCachedData('jobTitles', sortedTitles);
+      // Cache miss, fetch from API
+      const response = await fetch('/api/job-titles');
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        const titles = result.data.map((item: any) => item.title).sort();
+        setJobTitles(titles);
+        setCachedData('jobTitles', titles);
       }
     } catch (error) {
       console.error("Error loading job titles:", error);
@@ -224,23 +221,20 @@ function EmployeesContent() {
     }
 
     try {
-      // Add to Firestore
-      await addDoc(collection(db, "jobTitles"), {
-        title: trimmedTitle,
-        createdAt: new Date().toISOString()
+      const response = await fetch('/api/job-titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: trimmedTitle })
       });
-      
-      // Update local state
-      const newTitles = [...jobTitles, trimmedTitle].sort();
-      setJobTitles(newTitles);
-      setNewJobTitle("");
-      setShowAddJobTitle(false);
-      
-      // Update form data to use the new title
-      setFormData({ ...formData, jobTitle: trimmedTitle });
-      
-      // Invalidate and update cache
-      setCachedData('jobTitles', newTitles);
+      const result = await response.json();
+      if (result.success) {
+        const newTitles = [...jobTitles, trimmedTitle].sort();
+        setJobTitles(newTitles);
+        setNewJobTitle("");
+        setShowAddJobTitle(false);
+        setFormData({ ...formData, jobTitle: trimmedTitle });
+        setCachedData('jobTitles', newTitles);
+      }
     } catch (error) {
       console.error("Error adding job title:", error);
       alert("Failed to add job title");
@@ -257,29 +251,29 @@ function EmployeesContent() {
         return;
       }
 
-      // Cache miss, fetch from Firestore
-      const snapshot = await getDocs(collection(db, "employees"));
-      const employeeData = snapshot.docs.map((doc: any) => {
-        const data = doc.data() as any;
-        // Migrate 'role' to 'jobTitle' if needed
-        if (data.role && !data.jobTitle) {
-          data.jobTitle = data.role;
-        }
-        return {
-          id: doc.id,
-          ...data,
-        };
-      }) as Employee[];
+      // Cache miss, fetch from API
+      const response = await fetch('/api/employees');
+      const result = await response.json();
       
-      // Sort by last name, then first name
-      employeeData.sort((a, b) => {
-        const lastNameCompare = a.lastName.localeCompare(b.lastName);
-        if (lastNameCompare !== 0) return lastNameCompare;
-        return a.firstName.localeCompare(b.firstName);
-      });
-      
-      setEmployees(employeeData);
-      setCachedData('employees', employeeData);
+      if (result.success && Array.isArray(result.data)) {
+        const employeeData = result.data.map((data: any) => {
+          // Migrate 'role' to 'jobTitle' if needed
+          if (data.role && !data.jobTitle) {
+            data.jobTitle = data.role;
+          }
+          return data as Employee;
+        });
+        
+        // Sort by last name, then first name
+        employeeData.sort((a, b) => {
+          const lastNameCompare = a.lastName.localeCompare(b.lastName);
+          if (lastNameCompare !== 0) return lastNameCompare;
+          return a.firstName.localeCompare(b.firstName);
+        });
+        
+        setEmployees(employeeData);
+        setCachedData('employees', employeeData);
+      }
     } catch (error) {
       console.error("Failed to load employees:", error);
       alert("Failed to load employees");
@@ -389,7 +383,11 @@ function EmployeesContent() {
         updatedAt: now,
       };
 
-      await setDoc(doc(db, "employees", employeeId), employeeData);
+      await fetch(editingEmployee ? `/api/employees?id=${employeeId}` : '/api/employees', {
+        method: editingEmployee ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employeeData)
+      });
       
       // Update local state
       if (editingEmployee) {
@@ -437,12 +435,17 @@ function EmployeesContent() {
     }
 
     try {
-      await deleteDoc(doc(db, "employees", employee.id));
-      setEmployees((prev) => {
-        const updated = prev.filter((emp) => emp.id !== employee.id);
-        setCachedData('employees', updated);
-        return updated;
+      const response = await fetch(`/api/employees?id=${employee.id}`, {
+        method: 'DELETE'
       });
+      const result = await response.json();
+      if (result.success) {
+        setEmployees((prev) => {
+          const updated = prev.filter((emp) => emp.id !== employee.id);
+          setCachedData('employees', updated);
+          return updated;
+        });
+      }
     } catch (error) {
       console.error("Failed to delete employee:", error);
       alert("Failed to delete employee");
@@ -458,12 +461,19 @@ function EmployeesContent() {
         isActive: newStatus,
         updatedAt: now 
       };
-      await setDoc(doc(db, "employees", employee.id), employeeData);
-      setEmployees((prev) => {
-        const updated = prev.map((emp) => (emp.id === employee.id ? employeeData : emp));
-        setCachedData('employees', updated);
-        return updated;
+      const response = await fetch(`/api/employees?id=${employee.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employeeData)
       });
+      const result = await response.json();
+      if (result.success) {
+        setEmployees((prev) => {
+          const updated = prev.map((emp) => (emp.id === employee.id ? employeeData : emp));
+          setCachedData('employees', updated);
+          return updated;
+        });
+      }
     } catch (error) {
       console.error("Failed to toggle status:", error);
       alert("Failed to update status");
@@ -502,20 +512,13 @@ function EmployeesContent() {
     
     // Load existing time off for this employee
     try {
-      const q = query(
-        collection(db, "timeOffRequests"),
-        where("employeeId", "==", employee.id)
-      );
-      const snapshot = await getDocs(q);
-      const requests = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as TimeOffRequest[];
-      
-      // Sort by start date desc
-      requests.sort((a, b) => b.startDate.localeCompare(a.startDate));
-      setEmployeeTimeOffRequests(requests);
-      setTimeOffModalVisible(true);
+      const response = await fetch(`/api/time-off?employeeId=${employee.id}`);
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        const requests = result.data as TimeOffRequest[];
+        requests.sort((a, b) => b.startDate.localeCompare(a.startDate));
+        setEmployeeTimeOffRequests(requests);
+      }
     } catch (error) {
       console.error("Failed to load time off requests:", error);
       alert("Failed to load time off records");
@@ -531,34 +534,31 @@ function EmployeesContent() {
 
     setSaving(true);
     try {
-      const docRef = await addDoc(collection(db, "timeOffRequests"), {
-        employeeId: selectedEmployeeForTimeOff.id,
-        startDate: newTimeOff.startDate,
-        endDate: newTimeOff.endDate,
-        reason: newTimeOff.reason,
-        type: newTimeOff.type,
-        hours: newTimeOff.hours,
-        createdAt: new Date().toISOString(),
+      const response = await fetch('/api/time-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: selectedEmployeeForTimeOff.id,
+          startDate: newTimeOff.startDate,
+          endDate: newTimeOff.endDate,
+          reason: newTimeOff.reason,
+          type: newTimeOff.type,
+          hours: newTimeOff.hours,
+        })
       });
 
-      const newRequest: TimeOffRequest = {
-        id: docRef.id,
-        employeeId: selectedEmployeeForTimeOff.id,
-        startDate: newTimeOff.startDate,
-        endDate: newTimeOff.endDate,
-        reason: newTimeOff.reason,
-        type: newTimeOff.type,
-        hours: newTimeOff.hours,
-      };
-
-      setEmployeeTimeOffRequests([newRequest, ...employeeTimeOffRequests]);
-      setNewTimeOff({
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
-        reason: "",
-        type: "Vacation",
-        hours: 10,
-      });
+      const result = await response.json();
+      if (result.success && result.data) {
+        const newRequest = result.data as TimeOffRequest;
+        setEmployeeTimeOffRequests([newRequest, ...employeeTimeOffRequests]);
+        setNewTimeOff({
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0],
+          reason: "",
+          type: "Vacation",
+          hours: 10,
+        });
+      }
     } catch (error) {
       console.error("Failed to add time off:", error);
       alert("Failed to save time off record");
@@ -571,8 +571,13 @@ function EmployeesContent() {
     if (!confirm("Are you sure you want to delete this time off record?")) return;
     
     try {
-      await deleteDoc(doc(db, "timeOffRequests", id));
-      setEmployeeTimeOffRequests(employeeTimeOffRequests.filter(r => r.id !== id));
+      const response = await fetch(`/api/time-off?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        setEmployeeTimeOffRequests(employeeTimeOffRequests.filter(r => r.id !== id));
+      }
     } catch (error) {
       console.error("Failed to delete time off:", error);
       alert("Failed to delete record");
@@ -589,19 +594,14 @@ function EmployeesContent() {
     });
     
     try {
-      const q = query(
-        collection(db, "certifications"),
-        where("employeeId", "==", employee.id)
-      );
-      const snapshot = await getDocs(q);
-      const certs = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Certification[];
-      
-      certs.sort((a, b) => b.expirationDate.localeCompare(a.expirationDate));
-      setEmployeeCertifications(certs);
-      setCertModalVisible(true);
+      const response = await fetch(`/api/certifications?employeeId=${employee.id}`);
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        const certs = result.data as Certification[];
+        certs.sort((a, b) => b.expirationDate.localeCompare(a.expirationDate));
+        setEmployeeCertifications(certs);
+        setCertModalVisible(true);
+      }
     } catch (error) {
       console.error("Failed to load certifications:", error);
       alert("Failed to load certification records");
@@ -619,28 +619,28 @@ function EmployeesContent() {
     try {
       const certData = {
         employeeId: selectedEmployeeForCert.id,
-        employeeName: `${selectedEmployeeForCert.firstName} ${selectedEmployeeForCert.lastName}`,
         type: newCert.type,
         issueDate: newCert.issueDate,
         expirationDate: newCert.expirationDate,
         notes: newCert.notes,
-        createdAt: new Date().toISOString(),
       };
 
-      const docRef = await addDoc(collection(db, "certifications"), certData);
-
-      const createdCert: Certification = {
-        id: docRef.id,
-        ...certData
-      };
-
-      setEmployeeCertifications([createdCert, ...employeeCertifications]);
-      setNewCert({
-        type: "",
-        issueDate: "",
-        expirationDate: "",
-        notes: "",
+      const response = await fetch('/api/certifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(certData)
       });
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        setEmployeeCertifications([result.data, ...employeeCertifications]);
+        setNewCert({
+          type: "",
+          issueDate: "",
+          expirationDate: "",
+          notes: "",
+        });
+      }
     } catch (error) {
       console.error("Failed to add certification:", error);
       alert("Failed to save certification record");
@@ -653,8 +653,13 @@ function EmployeesContent() {
     if (!confirm("Are you sure you want to delete this certification?")) return;
     
     try {
-      await deleteDoc(doc(db, "certifications", id));
-      setEmployeeCertifications(employeeCertifications.filter(c => c.id !== id));
+      const response = await fetch(`/api/certifications?id=${id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (result.success) {
+        setEmployeeCertifications(employeeCertifications.filter(c => c.id !== id));
+      }
     } catch (error) {
       console.error("Failed to delete certification:", error);
       alert("Failed to delete record");

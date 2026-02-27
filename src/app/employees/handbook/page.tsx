@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { db } from "@/firebase";
 
 
 export default function HandbookPage() {
@@ -45,9 +44,10 @@ export default function HandbookPage() {
 
   async function checkSignStatus() {
     try {
-      const docRef = doc(db, "handbook-signoffs", user!.email!.toLowerCase());
-      const docSnap = await getDoc(docRef);
-      setSigned(docSnap.exists());
+      if (!user?.email) return;
+      const response = await fetch(`/api/handbook-signoff?email=${encodeURIComponent(user.email)}`);
+      const data = await response.json();
+      setSigned(data.exists);
     } catch (err) {
       console.error("Error checking sign status:", err);
     }
@@ -58,11 +58,13 @@ export default function HandbookPage() {
     setSigning(true);
     setError(null);
     try {
-      await setDoc(doc(db, "handbook-signoffs", user.email.toLowerCase()), {
-        email: user.email,
-        signedAt: serverTimestamp(),
-        displayName: user.name || "Unknown",
-        userAgent: navigator.userAgent,
+      await fetch('/api/handbook-signoff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          displayName: user.name || "Unknown"
+        })
       });
       setSigned(true);
     } catch (err) {

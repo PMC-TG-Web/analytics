@@ -306,3 +306,17 @@ model CrewTemplate {
 
   @@index([name])
 }
+
+// ==================== HANDBOOK SIGNOFFS ====================
+model HandbookSignoff {
+  id          String   @id @default(cuid())
+  email       String   @unique @db.VarChar(255)
+  displayName String?
+  userAgent   String?
+  signedAt    DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([email])
+}

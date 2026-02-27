@@ -323,25 +323,25 @@ function DailyCrewDispatchBoardContent() {
 
       console.log(`[DispatchBoard] Loaded ${projectsByDay[dateKey].length} projects from activeSchedule for ${dateKey}`);
 
-      const columns = Array.from(dayMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+      const columns = Array.from(dayMap.values()).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
       setDayColumns(columns);
 
       const foremanDateMap: Record<string, Record<string, DayProject[]>> = {};
-      foremenList.forEach(foreman => {
+      foremenList.forEach((foreman: any) => {
         foremanDateMap[foreman.id] = {};
-        columns.forEach(col => {
+        columns.forEach((col: any) => {
           const dateKey = col.date.toISOString().split('T')[0];
           foremanDateMap[foreman.id][dateKey] = [];
         });
       });
       foremanDateMap.__unassigned__ = {};
-      columns.forEach(col => {
+      columns.forEach((col: any) => {
         const dateKey = col.date.toISOString().split('T')[0];
         foremanDateMap.__unassigned__[dateKey] = [];
       });
 
-      Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
-        projects.forEach(project => {
+      Object.entries(projectsByDay).forEach(([dateKey, projects]: any) => {
+        projects.forEach((project: any) => {
           if (project.foreman) {
             if (!foremanDateMap[project.foreman]) foremanDateMap[project.foreman] = {};
             if (!foremanDateMap[project.foreman][dateKey]) foremanDateMap[project.foreman][dateKey] = [];

@@ -244,3 +244,65 @@ model AuditLog {
   @@index([userEmail])
   @@index([createdAt])
 }
+
+// ==================== EMPLOYEES ====================
+model Employee {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  jobTitle    String?
+  email       String?  @unique
+  phone       String?
+  isActive    Boolean  @default(true)
+  
+  // Flexible data for additional fields
+  customFields Json?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([jobTitle])
+  @@index([isActive])
+}
+
+// ==================== HOLIDAYS ====================
+model Holiday {
+  id          String   @id @default(cuid())
+  date        String   @db.VarChar(10) // YYYY-MM-DD format
+  name        String
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+}
+
+// ==================== TIME OFF REQUESTS ====================
+model TimeOffRequest {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employeeName String?
+  dates       Json     // Array of date strings
+  reason      String?
+  status      String   @default("pending") // pending, approved, denied
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+// ==================== CREW TEMPLATES ====================
+model CrewTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  members     Json     // Array of employee IDs or employee data
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}

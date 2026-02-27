@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { db, getDocs, collection, query, where, doc, getDoc, setDoc, addDoc } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";
@@ -221,46 +220,32 @@ function DailyCrewDispatchBoardContent() {
       let cachedScopes = getCache('dispatch_projectScopes');
       let cachedHolidays = getCache('dispatch_holidays');
       
+      // Fetch data from API endpoints instead of Firebase
       const [
-        employeesSnapshot,
-        projectScopesSnapshot, 
-        projectsSnapshot, 
-        timeOffSnapshot, 
-        holidaysSnapshot,
-        crewsSnapshot
+        employeesData,
+        projectScopesData, 
+        projectsData, 
+        timeOffData, 
+        holidaysData,
+        crewsData
       ] = await Promise.all([
-        cachedEmployees ? Promise.resolve(null) : getDocs(collection(db, "employees")),
-        cachedScopes ? Promise.resolve(null) : getDocs(collection(db, "projectScopes")),
-        getDocs(query(
-          collection(db, "projects"),
-          where("status", "not-in", ["Bid Submitted", "Lost", "Complete"]),
-          where("projectArchived", "==", false)
-        )),
-        getDocs(collection(db, "timeOffRequests")),
-        cachedHolidays ? Promise.resolve(null) : getDocs(collection(db, "holidays")),
-        getDocs(collection(db, "crews"))
+        cachedEmployees ? Promise.resolve(cachedEmployees) : fetch('/api/employees').then(r => r.json()),
+        cachedScopes ? Promise.resolve(cachedScopes) : fetch('/api/projects-scopes').then(r => r.json()).then(data => data.scopes || []),
+        fetch('/api/projects').then(r => r.json()),
+        fetch('/api/time-off').then(r => r.json()),
+        cachedHolidays ? Promise.resolve(cachedHolidays) : fetch('/api/holidays').then(r => r.json()),
+        fetch('/api/crews').then(r => r.json())
       ]);
 
-      console.log(`[DispatchBoard] Fetched all snapshots in ${Date.now() - start}ms`);
+      console.log(`[DispatchBoard] Fetched all data in ${Date.now() - start}ms`);
 
-      const allEmps = cachedEmployees || (employeesSnapshot ? employeesSnapshot.docs
-        .map((doc: any) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            firstName: data.firstName || '',
-            lastName: data.lastName || '',
-            jobTitle: data.jobTitle || data.role || '',
-            email: data.email || '',
-            phone: data.phone || '',
-            isActive: data.isActive !== false
-          } as Employee;
-        })
+      const allEmps = cachedEmployees || (employeesData || [])
+        .filter((emp: any) => emp.isActive !== false)
         .sort((a: any, b: any) => {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
           return nameA.localeCompare(nameB);
-        }) : []);
+        });
       
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
@@ -268,17 +253,20 @@ function DailyCrewDispatchBoardContent() {
       const foremenList = allEmps.filter((emp: any) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
       setForemen(foremenList);
 
-      const requests = timeOffSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as TimeOffRequest[];
+      const requests = (timeOffData || []) as TimeOffRequest[];
       setTimeOffRequests(requests);
 
-      const holidayListData = cachedHolidays || (holidaysSnapshot ? holidaysSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : []) as Holiday[];
-      if (!cachedHolidays && holidaysSnapshot) setCache('dispatch_holidays', holidayListData);
+      const holidayListData = cachedHolidays || (holidaysData || []);
+      if (!cachedHolidays && holidaysData) setCache('dispatch_holidays', holidayListData);
       setHolidays(holidayListData);
       
-      const projs = projectsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }) as Project);
+      const projs = (projectsData || []).filter((p: any) => 
+        !["Bid Submitted", "Lost", "Complete"].includes(p.status) && 
+        p.projectArchived !== true
+      ) as Project[];
       
-      const rawScopes = cachedScopes || (projectScopesSnapshot ? projectScopesSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Scope)) : []);
-      if (!cachedScopes && projectScopesSnapshot) setCache('dispatch_projectScopes', rawScopes);
+      const rawScopes = cachedScopes || (projectScopesData || []);
+      if (!cachedScopes && projectScopesData) setCache('dispatch_projectScopes', rawScopes);
       
       const enrichedScopes = getEnrichedScopes(rawScopes, projs);
       const scopesObj: Record<string, Scope[]> = {};
@@ -353,13 +341,12 @@ function DailyCrewDispatchBoardContent() {
       });
       setForemanDateProjects(foremanDateMap);
 
-      // Load saved crew templates from crews collection
+      // Load saved crew templates from API
       const savedCrews: Record<string, { rightHandManId?: string; crewMemberIds: string[] }> = {};
-      crewsSnapshot.docs.forEach((doc: any) => {
-        const data = doc.data();
-        savedCrews[doc.id] = {
-          rightHandManId: data.rightHandManId,
-          crewMemberIds: data.crewMemberIds || []
+      (crewsData || []).forEach((crew: any) => {
+        savedCrews[crew.id] = {
+          rightHandManId: crew.rightHandManId,
+          crewMemberIds: crew.crewMemberIds || crew.members || []
         };
       });
       
@@ -473,9 +460,11 @@ function DailyCrewDispatchBoardContent() {
       for (const project of projects) {
         const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber, hours, foreman } = project;
         const docId = `${jobKey}_${month}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-        const docRef = doc(db, "short term schedual", docId);
-        const docSnapshot = await getDoc(docRef);
-        const existingData = docSnapshot.exists() ? (docSnapshot.data() as ScheduleDoc) : null;
+        
+        // Fetch existing schedule data from API
+        const existingResponse = await fetch(`/api/short-term-schedule?jobKey=${encodeURIComponent(jobKey)}`);
+        const existingData = existingResponse.ok ? await existingResponse.json() : null;
+        
         let docData: ScheduleDoc & { updatedAt?: string };
         if (existingData) {
           docData = { ...existingData };
@@ -500,7 +489,14 @@ function DailyCrewDispatchBoardContent() {
           docData = { jobKey, customer, projectNumber, projectName, month, weeks: [{ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds }] }] };
         }
         docData.updatedAt = new Date().toISOString();
-        await setDoc(docRef, docData, { merge: true });
+        
+        // Save to API
+        await fetch('/api/short-term-schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobKey, docId, scheduleData: docData })
+        });
+        
         await syncProjectWIP(jobKey);
         await syncGanttWithShortTerm(jobKey);
       }
@@ -602,18 +598,23 @@ function DailyCrewDispatchBoardContent() {
 
     setSaving(true);
     try {
-      const docRef = await addDoc(collection(db, "timeOffRequests"), {
-        employeeId: selectedPersonnelId,
-        startDate: newTimeOff.startDate,
-        endDate: newTimeOff.endDate,
-        type: newTimeOff.type,
-        hours: newTimeOff.hours,
-        reason: newTimeOff.reason,
-        createdAt: new Date().toISOString()
+      // Save time off request via API
+      const response = await fetch('/api/time-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: selectedPersonnelId,
+          employeeName: allEmployees.find(e => e.id === selectedPersonnelId)?.firstName + ' ' + allEmployees.find(e => e.id === selectedPersonnelId)?.lastName,
+          dates: [newTimeOff.startDate, newTimeOff.endDate],
+          reason: newTimeOff.reason,
+          status: 'pending'
+        })
       });
 
+      const savedRequest = await response.json();
+
       const newRequest: TimeOffRequest = {
-        id: docRef.id,
+        id: savedRequest.id,
         employeeId: selectedPersonnelId,
         startDate: newTimeOff.startDate,
         endDate: newTimeOff.endDate,

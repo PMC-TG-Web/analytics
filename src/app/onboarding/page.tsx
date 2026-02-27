@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { db } from "@/firebase";
+import { db, addDoc, collection } from "@/firebase";
 import { OnboardingSubmission } from "@/types/onboarding";
 import ProtectedPage from "@/components/ProtectedPage";
 

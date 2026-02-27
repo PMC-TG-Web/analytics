@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 
-import { db, query, collection, where, getDocs } from "@/firebase";
+import { db, query, collection, where, getDocs, setDoc, doc } from "@/firebase";
 import { Scope, Project } from "@/types";
 import { syncProjectWIP } from "@/utils/scheduleSync";
 

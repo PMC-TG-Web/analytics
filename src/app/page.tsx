@@ -3,8 +3,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
-import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 
@@ -126,15 +124,11 @@ function HomeContent() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Load Announcements
-        const annSnapshot = await getDocs(query(collection(db, "announcements"), orderBy("date", "desc"), limit(5)));
-        const annData = annSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
-        setAnnouncements(annData);
+        // Load Announcements (stub data - migration from Firebase)
+        setAnnouncements([]);
 
-        // Load Employees for Anniversaries
-        const empSnapshot = await getDocs(collection(db, "employees"));
-        const empData = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
-        setEmployees(empData.filter(e => e.hireDate));
+        // Load Employees for Anniversaries (stub data - migration from Firebase)
+        setEmployees([]);
 
         // Load Weather (Using Open-Meteo for Quarryville, PA)
         try {

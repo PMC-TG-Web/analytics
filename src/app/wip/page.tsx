@@ -1,8 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { db } from "@/firebase";
-import { collection, getDocs, doc, setDoc, query, where } from "firebase/firestore";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
@@ -167,18 +165,18 @@ function WIPReportContent() {
         const start = Date.now();
 
         // Parallelize all primary data fetches
-        const [projectsSnapshot, schedulesRes, scopesSnapshot] = await Promise.all([
-          getDocs(collection(db, "projects")),
+        const [projectsScopesRes, schedulesRes] = await Promise.all([
+          fetch("/api/projects-scopes"),
           fetch("/api/scheduling"),
-          getDocs(collection(db, "projectScopes"))
         ]);
+
+        const projectsScopesData = await projectsScopesRes.json();
+        const projectsSnapshot = projectsScopesData.projects || [];
+        const scopesSnapshot = projectsScopesData.scopes || [];
 
         console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
         
-        const projectsData = projectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as any[];
+        const projectsData = projectsSnapshot as any[];
         
         const schedulesJson = await schedulesRes.json();
         const schedulesData = schedulesJson.data || [];
@@ -204,7 +202,7 @@ function WIPReportContent() {
         setSchedules(schedulesWithStatus);
         
         // Fetch scopes for Gantt feed
-        const rawScopes = scopesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Scope));
+        const rawScopes = scopesSnapshot as Scope[];
         const enrichedScopes = getEnrichedScopes(rawScopes, projectsData);
         
         const scopesMap: Record<string, Scope[]> = {};
@@ -341,18 +339,16 @@ function WIPReportContent() {
     const targetHours = (selectedJob.totalHours * percent) / 100;
     setMonthTargetHours(targetHours);
     
-    // Load existing weekly schedule from Firestore
+    // Load existing weekly schedule from API
     try {
-      const longTermSnapshot = await getDocs(collection(db, "long term schedual"));
-      const existingDoc = longTermSnapshot.docs.find(
-        (doc) => doc.data().jobKey === selectedJob.jobKey && doc.data().month === month
-      );
+      const response = await fetch(`/api/long-term-schedule?jobKey=${encodeURIComponent(selectedJob.jobKey)}&month=${encodeURIComponent(month)}`);
+      const schedules = await response.json();
+      const existingSchedule = schedules.length > 0 ? schedules[0] : null;
       
-      if (existingDoc) {
-        const data = existingDoc.data();
+      if (existingSchedule) {
         const weeks: Record<number, number> = {};
-        (data.weeks || []).forEach((w: any) => {
-          weeks[w.weekNumber] = w.hours || 0;
+        (existingSchedule.weeks || []).forEach((w: any) => {
+          weeks[w.weekNumber || w.week_number] = w.hours || 0;
         });
         setWeeklySchedule(weeks);
       } else {
@@ -389,18 +385,24 @@ function WIPReportContent() {
         hours,
       }));
 
-      // Save to long term schedual collection
-      const docId = `${selectedJob.jobKey}_${selectedMonth}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-      await setDoc(doc(db, "long term schedual", docId), {
-        jobKey: selectedJob.jobKey,
-        customer: selectedJob.customer,
-        projectNumber: selectedJob.projectNumber,
-        projectName: selectedJob.projectName,
-        month: selectedMonth,
-        weeks,
-        totalHours: weeks.reduce((sum, w) => sum + w.hours, 0),
-        updatedAt: new Date().toISOString(),
+      const response = await fetch("/api/long-term-schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobKey: selectedJob.jobKey,
+          customer: selectedJob.customer,
+          projectNumber: selectedJob.projectNumber,
+          projectName: selectedJob.projectName,
+          month: selectedMonth,
+          weeks,
+          totalHours: weeks.reduce((sum, w) => sum + w.hours, 0),
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save");
+      }
 
       alert("Weekly schedule saved successfully!");
       setWeeklyModalVisible(false);

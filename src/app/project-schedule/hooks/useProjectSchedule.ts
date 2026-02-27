@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+
 import { db } from "@/firebase";
 import { Scope, ViewMode, GanttTask, ProjectInfo } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob } from "@/types/schedule";

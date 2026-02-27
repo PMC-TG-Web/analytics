@@ -5,7 +5,7 @@ import { db } from "@/firebase";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
-import { addDoc, deleteDoc, doc, collection, getDocs, orderBy, query } from "firebase/firestore";
+
 
 interface Employee {
   id: string;

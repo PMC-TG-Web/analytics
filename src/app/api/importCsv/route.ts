@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+
 import { db } from '@/firebase';
+import { getDocs, collection, setDoc, doc, getDoc, deleteDoc, updateDoc, addDoc, writeBatch, query, where } from '@/firebaseStubs';
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
@@ -111,3 +112,4 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message });
   }
 }
+

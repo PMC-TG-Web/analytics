@@ -1,6 +1,7 @@
-import { collection, query, where, getDocs, doc, setDoc, getDoc, addDoc } from "firebase/firestore";
+
 import { db } from "@/firebase";
 import { Scope } from "@/types";
+import { getDocs, query, collection, where, setDoc, doc } from "@/firebaseStubs";
 
 interface MonthAllocation {
   month: string;

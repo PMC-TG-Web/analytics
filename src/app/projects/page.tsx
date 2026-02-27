@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { collection, getDocs, query, where, addDoc, doc, setDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+
+
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Project, Scope } from "@/types";

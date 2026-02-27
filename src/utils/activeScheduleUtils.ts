@@ -182,3 +182,23 @@ export const getAllScopeTrackingEntries = async (): Promise<ScopeTracking[]> => 
   const tracking = await prisma.scopeTracking.findMany();
   return tracking as ScopeTracking[];
 };
+
+/**
+ * Recalculate scope tracking totals for a job based on scope of work allocations
+ */
+export const recalculateScopeTracking = async (
+  jobKey: string,
+  scopeTotals: Record<string, number>
+): Promise<void> => {
+  // Update each scope's tracking
+  for (const [scopeOfWork, total] of Object.entries(scopeTotals)) {
+    await updateScopeTracking({
+      jobKey,
+      scopeOfWork,
+      totalHours: total || 0,
+      completedHours: 0,
+      remainingHours: total || 0,
+    });
+  }
+};
+

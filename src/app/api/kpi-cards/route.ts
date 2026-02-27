@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
+
+
 import { firebaseConfig } from '@/firebaseConfig';
 import { defaultCardData } from '@/lib/kpiCardDefaults';
 import { promises as fs } from 'fs';

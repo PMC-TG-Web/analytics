@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { addDoc, collection, doc, setDoc, query, where, getDocs, writeBatch } from "firebase/firestore";
+
 import { db } from "@/firebase";
 import { ProjectInfo, Scope } from "@/types";
 import { syncProjectWIP, updateShortTermFromScope } from "@/utils/scheduleSync";

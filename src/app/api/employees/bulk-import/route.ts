@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collection, setDoc, doc, getDocs } from "firebase/firestore";
+
 import { db } from "@/firebase";
 
+import { getDocs, collection, setDoc, doc, getDoc, deleteDoc, updateDoc, addDoc, writeBatch, query, where } from '@/firebaseStubs';
 interface EmployeeImport {
   firstName: string;
   lastName: string;
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   try {
     const snapshot = await getDocs(collection(db, "employees"));
     const existingEmployees = new Map(
-      snapshot.docs.map(doc => [
+      snapshot.docs.map((doc: any) => [
         `${doc.data().firstName} ${doc.data().lastName}`.toLowerCase(),
         doc.data()
       ])
@@ -151,3 +152,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

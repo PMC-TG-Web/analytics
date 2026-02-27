@@ -6,7 +6,7 @@ import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { db } from "@/firebase";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+
 
 export default function HandbookPage() {
   const Document = dynamic(() => import("react-pdf").then((mod) => mod.Document), { ssr: false });

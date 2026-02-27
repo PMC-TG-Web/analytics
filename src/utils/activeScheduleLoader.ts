@@ -5,7 +5,7 @@
  * Replaces the complex fallback logic with a single source of truth.
  */
 
-import { collection, getDocs, query, where } from 'firebase/firestore';
+
 import { db } from '@/firebase';
 import { ActiveScheduleEntry } from './activeScheduleUtils';
 

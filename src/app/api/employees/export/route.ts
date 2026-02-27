@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collection, getDocs } from "firebase/firestore";
+
 import { db } from "@/firebase";
+import { getDocs, collection, setDoc, doc, getDoc, deleteDoc, updateDoc, addDoc, writeBatch, query, where } from '@/firebaseStubs';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import fs from "fs";
@@ -137,3 +138,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+

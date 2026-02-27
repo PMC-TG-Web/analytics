@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { makeRequest, procoreConfig } from '@/lib/procore';
 import { db } from '@/firebase';
-import { collection, writeBatch, doc, getDocs, query, where } from 'firebase/firestore';
+
 
 export async function POST(request: NextRequest) {
   try {

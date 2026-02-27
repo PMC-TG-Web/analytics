@@ -1,9 +1,6 @@
 "use client";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import { getFirestore, collection, getDocs } from "firebase/firestore";
-import { initializeApp, getApps } from "firebase/app";
-import { firebaseConfig } from "@/firebaseConfig";
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
@@ -308,16 +305,11 @@ export default function KPIPage() {
       setLoading(true);
       setProcoreAuthError(false);
       try {
-        // Fetch from Firestore directly
-        console.log("[KPI] Fetching projects from Firestore...");
-        const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-        const db = getFirestore(app);
-        const projectsRef = collection(db, "projects");
-        const querySnapshot = await getDocs(projectsRef);
-        const projectsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        // Fetch projects from API
+        console.log("[KPI] Fetching projects from API...");
+        const projectsScopesRes = await fetch("/api/projects-scopes");
+        const projectsScopesData = await projectsScopesRes.json();
+        const projectsData = projectsScopesData.projects || [];
 
         setProjects(projectsData);
         console.log("[KPI] Loaded projects:", projectsData.length);

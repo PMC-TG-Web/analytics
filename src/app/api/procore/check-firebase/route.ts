@@ -1,7 +1,7 @@
 // Check what data is currently in Firebase
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+
 
 export async function GET(request: NextRequest) {
   try {

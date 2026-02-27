@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/firebase';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { getDocs, collection, deleteDoc, doc } from '@/firebaseStubs';
 
 export async function POST(request: NextRequest) {
   try {
     // Find all scopes with title "Scope" or "Scheduled Work"
     const scopesSnapshot = await getDocs(collection(db, 'projectScopes'));
-    const genericScopes = scopesSnapshot.docs.filter(doc => {
+    const genericScopes = scopesSnapshot.docs.filter((doc: any) => {
       const title = doc.data().title || '';
       return title === 'Scope' || title === 'Scheduled Work';
     });

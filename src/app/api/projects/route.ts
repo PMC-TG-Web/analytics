@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+
+
 import { firebaseConfig } from '@/firebaseConfig';
 
 // Initialize Firebase

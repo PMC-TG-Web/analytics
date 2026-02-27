@@ -1,8 +1,9 @@
 import { Resend } from 'resend';
 import { NextResponse } from 'next/server';
-import { collection, getDocs } from 'firebase/firestore';
+
 import { db } from '@/firebase';
 import { Certification } from '@/types/certifications';
+import { getDocs, collection } from '@/firebaseStubs';
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     
     // Fetch all certifications
     const snapshot = await getDocs(collection(db, "certifications"));
-    const certifications = snapshot.docs.map(doc => ({
+    const certifications = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data()
     })) as Certification[];

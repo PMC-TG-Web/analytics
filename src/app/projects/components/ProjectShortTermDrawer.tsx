@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { collection, getDocs, query, where, doc, setDoc, getDoc } from "firebase/firestore";
+
 import { db } from "@/firebase";
 import { Scope, Project } from "@/types";
 import { syncProjectWIP } from "@/utils/scheduleSync";

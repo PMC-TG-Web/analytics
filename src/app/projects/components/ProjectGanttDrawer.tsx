@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+
 import { db } from "@/firebase";
 import { Scope, GanttTask, ProjectInfo, ViewMode } from "@/types";
 import { ShortTermJob, LongTermJob, MonthJob, ShortTermDoc, LongTermDoc } from "@/types/schedule";

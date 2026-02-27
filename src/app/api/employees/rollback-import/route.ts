@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
+
 import { db } from "@/firebase";
 
+import { getDocs, collection, setDoc, doc, getDoc, deleteDoc, updateDoc, addDoc, writeBatch, query, where } from '@/firebaseStubs';
 // The names from the Company Directory import
 const importedNames = [
   "Mervin Allgyer", "Jose Alpizar", "Joseph Beiler", "Matt Beiler", "Kevin Buch", 
@@ -46,3 +47,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

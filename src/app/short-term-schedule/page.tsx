@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { collection, getDocs, doc, setDoc, getDoc, query, where, writeBatch, deleteDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/firebase";
+
+
 import ProtectedPage from "@/components/ProtectedPage";
 import Navigation from "@/components/Navigation";
 import { Scope, Project, ProjectInfo } from "@/types";

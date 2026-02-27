@@ -1542,9 +1542,7 @@ function ShortTermScheduleContent() {
             onScopesUpdated={async (jobKey, updatedScopes) => {
               const enriched = getEnrichedScopes(updatedScopes, allProjects);
               setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
-              if (typeof window !== "undefined") {
-                sessionStorage.removeItem("schedule_projectScopes");
-              }
+              sessionStorage.removeItem("schedule_projectScopes");
               // Reload schedules to see updated hours
               await loadSchedules();
               if (targetingCell) {

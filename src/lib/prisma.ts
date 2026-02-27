@@ -1,13 +1,3 @@
-import { PrismaClient } from '@prisma/client';
-
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    log: ['error'], // Only log errors in production
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+// Static export stub: Prisma is removed for static builds.
+// Any database calls should be removed or guarded at call sites.
+export const prisma = null as unknown as { [key: string]: never };

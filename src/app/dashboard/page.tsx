@@ -232,21 +232,12 @@ function DashboardContent() {
 
     const categorizedHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
     const totalHours = Math.max(bidSubmittedTotalHours, categorizedHours);
-    const otherHours = Math.max(0, totalHours - categorizedHours);
 
     const breakdown = Object.entries(totals).map(([label, value]) => ({
       label,
       hours: value,
       percent: totalHours > 0 ? (value / totalHours) * 100 : 0,
     }));
-
-    if (otherHours > 0) {
-      breakdown.push({
-        label: 'Other Hours',
-        hours: otherHours,
-        percent: totalHours > 0 ? (otherHours / totalHours) * 100 : 0,
-      });
-    }
 
     return { totalHours, breakdown };
   }, [displayStatusGroups]);

@@ -85,7 +85,7 @@ export default function DebugCookies() {
             <div>
               <p className="text-gray-300 font-semibold mb-2">Option 1: Login with Procore</p>
               <a 
-                href="/api/auth/procore/login?returnTo=/debug-cookies"
+                href="/api/auth/login?returnTo=/debug-cookies"
                 className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition-colors"
               >
                 Authenticate with Procore

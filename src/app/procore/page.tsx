@@ -78,8 +78,13 @@ function ProcoreContent() {
   }, []);
 
   const handleLogin = () => {
-    // Standard OAuth flow: redirect to the registered login route
-    window.location.href = "/api/auth/procore/login?returnTo=/procore";
+    // Standard OAuth flow: redirect to Auth0 login route
+    const loginUrl = "/api/auth/login?returnTo=/procore";
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      window.top!.location.href = loginUrl;
+      return;
+    }
+    window.location.href = loginUrl;
   };
 
   const handleExplore = async () => {
@@ -340,7 +345,7 @@ function ProcoreContent() {
           <span className="block sm:inline">{error}</span>
           {error.includes("expired") && (
             <button 
-              onClick={() => window.location.href = '/api/auth/procore/logout'}
+              onClick={() => window.location.href = '/api/auth/logout'}
               className="ml-4 underline font-bold"
             >
               Click here to Re-login

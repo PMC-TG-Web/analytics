@@ -5,19 +5,30 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
+    const pageSize = Math.min(500, Math.max(1, requestedPageSize));
+    const skip = (page - 1) * pageSize;
+
     // Get all schedules
-    const schedules = await prisma.schedule.findMany({
-      select: {
-        id: true,
-        jobKey: true,
-        customer: true,
-        projectName: true,
-        projectNumber: true,
-        status: true,
-        totalHours: true,
-        allocations: true,
-      },
-    });
+    const [total, schedules] = await Promise.all([
+      prisma.schedule.count(),
+      prisma.schedule.findMany({
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          jobKey: true,
+          customer: true,
+          projectName: true,
+          projectNumber: true,
+          status: true,
+          totalHours: true,
+          allocations: true,
+        },
+      }),
+    ]);
 
     // Transform allocations from JSON to the expected format
     const data = schedules.map((s) => ({
@@ -30,8 +41,17 @@ export async function GET(request: NextRequest) {
           })),
     }));
 
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
     return NextResponse.json({
       success: true,
+      count: data.length,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
       data,
     });
   } catch (error) {

@@ -1144,7 +1144,7 @@ function KPIPageContent({
 
       {procoreAuthError && (
         <div style={{ background: "#FEF2F2", color: "#991B1B", padding: "8px 12px", borderRadius: 6, marginBottom: 12, fontSize: 13, border: "1px solid #FCA5A5" }}>
-          Authentication with Procore required for live data. <a href="/api/auth/procore/login?returnTo=/kpi" style={{ color: "#15616D", fontWeight: 'bold', textDecoration: 'underline' }}>Click here to login</a>
+          Authentication with Procore required for live data. <a href="/api/auth/login?returnTo=/kpi" style={{ color: "#15616D", fontWeight: 'bold', textDecoration: 'underline' }}>Click here to login</a>
         </div>
       )}
 

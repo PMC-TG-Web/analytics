@@ -12,8 +12,17 @@ interface ProtectedPageProps {
 export default function ProtectedPage({ children, page, requireAuth = true }: ProtectedPageProps) {
   const { user, loading, error } = useAuth();
  
- // Detect if we're in an iframe (likely Procore)
- const inIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const navigateToLogin = () => {
+    const returnUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`;
+
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      window.top!.location.href = loginUrl;
+      return;
+    }
+
+    window.location.href = loginUrl;
+  };
 
   if (loading) {
     return (
@@ -50,10 +59,7 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
           </p>
            <div style={{ display: 'flex', gap: '12px' }}>
               <button 
-                onClick={() => {
-                  const returnUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
-                  window.location.href = `/api/auth/procore/login?returnTo=${encodeURIComponent(returnUrl)}`;
-                }}
+                onClick={navigateToLogin}
                 style={{
                   padding: "10px 20px",
                   background: "#15616D",

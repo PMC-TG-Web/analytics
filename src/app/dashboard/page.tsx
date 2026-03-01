@@ -215,40 +215,41 @@ function DashboardContent() {
       'Foundation Labor': 0,
     };
 
-    if (useSummary && summary?.laborBreakdown) {
-      Object.entries(summary.laborBreakdown).forEach(([groupName, hours]) => {
-        const normalized = groupName.toLowerCase();
-        if (normalized === targetGroups[0]) totals['Slab On Grade Labor'] += hours;
-        if (normalized === targetGroups[1]) totals['Site Concrete Labor'] += hours;
-        if (normalized === targetGroups[2]) totals['Wall Labor'] += hours;
-        if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
-      });
-    } else {
-      // Use dedupedByCustomer (line items after competitive bidding dedup) to preserve individual PMC groups
-      const bidProjects = (dedupedByCustomer || []).filter(p => p.status === 'Bid Submitted');
-      bidProjects.forEach((p) => {
-        const groupName = (p.pmcGroup ?? '').toString().trim();
-        const normalized = groupName.toLowerCase();
-        if (!normalized) return;
-        const hours = Number(p.hours ?? 0);
-        if (!Number.isFinite(hours)) return;
+    const bidSubmittedMetrics = displayStatusGroups['Bid Submitted'] as any;
+    const bidSubmittedTotalHours = Number(bidSubmittedMetrics?.hours ?? 0);
+    const laborByGroup = (bidSubmittedMetrics?.laborByGroup ?? {}) as Record<string, number>;
 
-        if (normalized === targetGroups[0]) totals['Slab On Grade Labor'] += hours;
-        if (normalized === targetGroups[1]) totals['Site Concrete Labor'] += hours;
-        if (normalized === targetGroups[2]) totals['Wall Labor'] += hours;
-        if (normalized === targetGroups[3]) totals['Foundation Labor'] += hours;
-      });
-    }
+    Object.entries(laborByGroup).forEach(([groupName, hours]) => {
+      const normalized = groupName.toLowerCase().trim();
+      const value = Number(hours) || 0;
+      if (value <= 0) return;
 
-    const totalHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
+      if (normalized === targetGroups[0]) totals['Slab On Grade Labor'] += value;
+      if (normalized === targetGroups[1]) totals['Site Concrete Labor'] += value;
+      if (normalized === targetGroups[2]) totals['Wall Labor'] += value;
+      if (normalized === targetGroups[3]) totals['Foundation Labor'] += value;
+    });
+
+    const categorizedHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    const totalHours = Math.max(bidSubmittedTotalHours, categorizedHours);
+    const otherHours = Math.max(0, totalHours - categorizedHours);
+
     const breakdown = Object.entries(totals).map(([label, value]) => ({
       label,
       hours: value,
       percent: totalHours > 0 ? (value / totalHours) * 100 : 0,
     }));
 
+    if (otherHours > 0) {
+      breakdown.push({
+        label: 'Other Hours',
+        hours: otherHours,
+        percent: totalHours > 0 ? (otherHours / totalHours) * 100 : 0,
+      });
+    }
+
     return { totalHours, breakdown };
-  }, [dedupedByCustomer, useSummary, summary]);
+  }, [displayStatusGroups]);
 
   // All status labor breakdown (across all project statuses)
   const allStatusesLabor = useMemo(() => {

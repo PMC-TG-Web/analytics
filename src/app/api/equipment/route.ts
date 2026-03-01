@@ -7,14 +7,34 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type');
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
+    const pageSize = Math.min(500, Math.max(1, requestedPageSize));
+    const skip = (page - 1) * pageSize;
 
-    const equipment = await prisma.equipment.findMany({
-      where: type ? { type } : undefined,
-      orderBy: { name: 'asc' },
-    });
+    const where = type ? { type } : undefined;
+
+    const [total, equipment] = await Promise.all([
+      prisma.equipment.count({ where }),
+      prisma.equipment.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
     return NextResponse.json({
       success: true,
+      count: equipment.length,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
       data: equipment,
     });
   } catch (error) {

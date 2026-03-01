@@ -34,75 +34,83 @@ export const getProjectKey = (project: Project): string => {
 };
 
 export function calculateAggregated(projects: Project[]): { aggregated: Project[]; dedupedByCustomer: Project[] } {
-  // Group by project identifier (number or name) to find duplicates across different customers
-  const projectIdentifierMap = new Map<string, Project[]>();
+  // Group by project name first; we'll select one customer group per duplicate name
+  const projectNameMap = new Map<string, Project[]>();
   projects.forEach((project) => {
-    const identifier = (project.projectNumber || project.projectName || "").toString().trim();
-    if (!identifier) return;
+    const projectName = (project.projectName ?? "").toString().trim().toLowerCase();
+    if (!projectName) return;
     
-    if (!projectIdentifierMap.has(identifier)) {
-      projectIdentifierMap.set(identifier, []);
+    if (!projectNameMap.has(projectName)) {
+      projectNameMap.set(projectName, []);
     }
-    projectIdentifierMap.get(identifier)!.push(project);
+    projectNameMap.get(projectName)!.push(project);
   });
   
-  // For each project identifier, keep only the most recent/relevant customer version
+  // For duplicate project names:
+  // 1) Prefer customer groups with Accepted/In Progress
+  // 2) Then keep the one with latest dateUpdated
+  // 3) If still tied, pick customer alphabetically
   const dedupedByCustomer: Project[] = [];
-  projectIdentifierMap.forEach((projectList) => {
+  projectNameMap.forEach((projectList) => {
     const customerMap = new Map<string, Project[]>();
-    projectList.forEach(p => {
-      const customer = (p.customer ?? "").toString().trim();
-      if (!customerMap.has(customer)) {
-        customerMap.set(customer, []);
+
+    projectList.forEach((project) => {
+      const customer = (project.customer ?? "").toString().trim();
+      const customerKey = customer.toLowerCase();
+      if (!customerMap.has(customerKey)) {
+        customerMap.set(customerKey, []);
       }
-      customerMap.get(customer)!.push(p);
+      customerMap.get(customerKey)!.push(project);
     });
-    
-    if (customerMap.size > 1) {
-      const priorityStatuses = ["Accepted", "In Progress", "Complete"];
-      let selectedProjects: Project[] = [];
-      
-      let foundPriorityCustomer = false;
-      customerMap.forEach((projs) => {
-        const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
-        if (hasPriorityStatus && !foundPriorityCustomer) {
-          selectedProjects = projs;
-          foundPriorityCustomer = true;
+
+    const customerGroups = Array.from(customerMap.entries()).map(([customerKey, rows]) => {
+      const hasPriorityStatus = rows.some((row) => {
+        const status = (row.status ?? "").toString().trim().toLowerCase();
+        return status === 'accepted' || status === 'in progress';
+      });
+
+      let latestUpdated: Date | null = null;
+      rows.forEach((row) => {
+        const updated = parseDateValue(row.dateUpdated) || parseDateValue(row.dateCreated);
+        if (updated && (!latestUpdated || updated > latestUpdated)) {
+          latestUpdated = updated;
         }
       });
-      
-      if (!foundPriorityCustomer) {
-        let latestDate: Date | null = null;
-        let latestCustomerProjs: Project[] = [];
-        
-        customerMap.forEach((projs) => {
-          const mostRecentProj = projs.reduce((latest, current) => {
-            const currentDate = parseDateValue(current.dateCreated);
-            const latestDateVal = parseDateValue(latest.dateCreated);
-            if (!currentDate) return latest;
-            if (!latestDateVal) return current;
-            return currentDate > latestDateVal ? current : latest;
-          }, projs[0]);
-          
-          const projDate = parseDateValue(mostRecentProj.dateCreated);
-          if (projDate && (!latestDate || projDate > latestDate)) {
-            latestDate = projDate;
-            latestCustomerProjs = projs;
-          }
-        });
-        
-        selectedProjects = latestCustomerProjs;
-      }
-      dedupedByCustomer.push(...selectedProjects);
-    } else {
-      projectList.forEach(p => dedupedByCustomer.push(p));
+
+      return {
+        customerKey,
+        customerDisplay: (rows[0]?.customer ?? "").toString().trim(),
+        rows,
+        hasPriorityStatus,
+        latestUpdated,
+      };
+    });
+
+    const priorityGroups = customerGroups.filter((group) => group.hasPriorityStatus);
+    const candidateGroups = priorityGroups.length > 0 ? priorityGroups : customerGroups;
+
+    candidateGroups.sort((a, b) => {
+      const timeA = a.latestUpdated ? a.latestUpdated.getTime() : -Infinity;
+      const timeB = b.latestUpdated ? b.latestUpdated.getTime() : -Infinity;
+      if (timeA !== timeB) return timeB - timeA;
+
+      return a.customerDisplay.localeCompare(b.customerDisplay);
+    });
+
+    const selected = candidateGroups[0];
+    if (selected) {
+      dedupedByCustomer.push(...selected.rows);
     }
   });
   
-  // Aggregate multiple line items for the same project number + customer
+  // Aggregate multiple line items for the same customer + project name
   const keyGroupMap = new Map<string, Project[]>();
   dedupedByCustomer.forEach((project) => {
-    const key = getProjectKey(project);
+    const customer = (project.customer ?? "").toString().trim().toLowerCase();
+    const projectName = (project.projectName ?? "").toString().trim().toLowerCase();
+    if (!customer || !projectName) return;
+
+    const key = `${customer}||${projectName}`;
     if (!keyGroupMap.has(key)) {
       keyGroupMap.set(key, []);
     }

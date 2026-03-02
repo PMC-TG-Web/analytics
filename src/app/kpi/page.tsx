@@ -63,6 +63,27 @@ function parseDateValue(value: any) {
   return null;
 }
 
+function isExcludedFromKPI(project: Project) {
+  if (project.projectArchived) return true;
+
+  const status = (project.status || "").toString().toLowerCase().trim();
+  if (status === "invitations" || status === "to do" || status === "todo" || status === "to-do") return true;
+
+  const customer = (project.customer ?? "").toString().toLowerCase();
+  if (customer.includes("sop inc")) return true;
+
+  const projectName = (project.projectName ?? "").toString().toLowerCase();
+  const excludedNames = ["pmc operations", "pmc shop time", "pmc test project"];
+  if (excludedNames.includes(projectName)) return true;
+  if (projectName.includes("sandbox")) return true;
+  if (projectName.includes("raymond king")) return true;
+
+  const projectNumber = (project.projectNumber ?? "").toString().toLowerCase();
+  if (projectNumber === "701 poplar church rd") return true;
+
+  return false;
+}
+
 function isValidMonthKey(month: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
@@ -232,7 +253,7 @@ const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> =
     },
     {
       kpi: "Revenue Actual Hours",
-      values: ["3,059", "", "", "", "", "", "", "", "", "", "", ""],
+      values: ["", "", "", "", "", "", "", "", "", "", "", ""],
     },
   ],
   [normalizeCardName("Gross Profit by Month")]: [
@@ -274,7 +295,7 @@ export default function KPIPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [kpiData, setKpiData] = useState<any[]>([]);
-  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>(defaultCardLoadData);
+  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>({});
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState<string>("");
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
@@ -295,7 +316,9 @@ export default function KPIPage() {
           return;
         }
         const kpiJson = await kpiRes.json();
-        setKpiData(kpiJson.data || []);
+        const data = kpiJson.data || [];
+        console.log(`[KPI] Fetched ${data.length} KPI entries for year ${currentYear}:`, data);
+        setKpiData(data);
       } catch (err) {
         console.warn("Error fetching KPI data (using empty defaults):", err);
         setKpiData([]);
@@ -314,15 +337,27 @@ export default function KPIPage() {
         let schedulesData = [];
         
         try {
-          // Fetch projects from API
+          // Fetch ALL projects from paginated API (dashboard mode includes Bid Submitted/Lost projects)
           console.log("[KPI] Fetching projects from API...");
-          const projectsScopesRes = await fetch("/api/projects-scopes");
-          if (projectsScopesRes.ok) {
-            const projectsScopesData = await projectsScopesRes.json();
-            projectsData = projectsScopesData.projects || [];
-          } else {
-            console.warn("[KPI] Projects API endpoint not available");
+          let page = 1;
+          let hasNextPage = true;
+          const allProjects: Project[] = [];
+
+          while (hasNextPage) {
+            const projectsRes = await fetch(`/api/projects?mode=dashboard&page=${page}&pageSize=500`);
+            if (!projectsRes.ok) {
+              console.warn("[KPI] Projects API endpoint not available");
+              break;
+            }
+
+            const projectsJson = await projectsRes.json();
+            const rows = projectsJson.data || [];
+            allProjects.push(...rows);
+            hasNextPage = Boolean(projectsJson.hasNextPage);
+            page += 1;
           }
+
+          projectsData = allProjects;
           setProjects(projectsData);
           console.log("[KPI] Loaded projects:", projectsData.length);
         } catch (err) {
@@ -502,11 +537,6 @@ function KPIPageContent({
     // Return immediately without waiting
   };
 
-  // Function to save manual bid submitted sales entry
-  const saveBidSubmittedSales = async (year: string, month: number, value: number) => {
-    await saveKpiField(year, month, 'bidSubmittedSales', value);
-  };
-
   // Load year filter from localStorage on mount
   useEffect(() => {
     const savedYear = localStorage.getItem("kpi-year-filter");
@@ -524,38 +554,47 @@ function KPIPageContent({
   // to support dynamic data source switching between Firestore and Procore Live.
 
   useEffect(() => {
-    async function loadCardDataFromFirestore() {
+    async function loadCardDataFromAPI() {
+      // Skip API call in SSR/static environments
+      if (typeof window === "undefined" || window.location?.protocol === "file:") {
+        setCardLoadWarning("");
+        return;
+      }
+
       try {
         const res = await fetch("/api/kpi-cards");
         if (!res.ok) {
-          console.warn("[KPI] KPI cards endpoint not available");
+          console.warn("[KPI] Failed to load KPI cards from API:", res.statusText);
+          setCardLoadData({});
+          setCardLoadWarning("KPI card data unavailable from database.");
           return;
         }
+
         const json = await res.json();
         const cards = json.data || [];
 
-        if (json.fallback) {
-          setCardLoadWarning(json.message || "Using local default KPI cards. Changes may not be saved to the database.");
-        } else {
-          setCardLoadWarning("");
-        }
-        
-        if (cards.length === 0) return;
-        
         const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
         cards.forEach((card: any) => {
           const cardNameNormalized = normalizeCardName(card.cardName);
-          mapped[cardNameNormalized] = card.rows || [];
+          mapped[cardNameNormalized] = Array.isArray(card.rows) ? card.rows : [];
         });
-        
-        if (Object.keys(mapped).length > 0) {
-          setCardLoadData(mapped);
+
+        setCardLoadData(mapped);
+        console.log("[KPI] Loaded", Object.keys(mapped).length, "KPI cards from API");
+
+        if (cards.length === 0) {
+          setCardLoadWarning("No KPI card data found in database. Seed cards or add data in KPI card management.");
+        } else {
+          setCardLoadWarning("");
         }
       } catch (error) {
-        console.error("Error loading KPI cards from Firestore:", error);
+        console.warn("[KPI] Error loading KPI cards:", error);
+        setCardLoadData({});
+        setCardLoadWarning("KPI card data unavailable from database.");
       }
     }
-    loadCardDataFromFirestore();
+    
+    loadCardDataFromAPI();
   }, []);
 
   const getProjectKey = (customer?: string, projectNumber?: string, projectName?: string) => {
@@ -565,7 +604,7 @@ function KPIPageContent({
   const qualifyingStatuses = ["In Progress", "Accepted", "Complete"];
 
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
-    const activeProjects = projects;
+    const activeProjects = projects.filter((project: Project) => !isExcludedFromKPI(project));
     
     const projectIdentifierMap = new Map<string, Project[]>();
     activeProjects.forEach((project: Project) => {
@@ -675,13 +714,13 @@ function KPIPageContent({
   let bidSubmittedWithoutDates = 0;
   
   aggregatedProjects.forEach((project) => {
-    const status = (project.status || "").trim();
-    if (status !== "Bid Submitted" && status !== "Estimating") return;
+    const status = (project.status || "").toString().trim();
+    if (status !== "Bid Submitted") return;
     
     const sales = Number(project.sales ?? 0);
     bidSubmittedTotal += sales;
     
-    const projectDate = getProjectDate(project);
+    const projectDate = parseDateValue(project.dateCreated);
     if (!projectDate) {
       bidSubmittedWithoutDates++;
       return;
@@ -694,7 +733,7 @@ function KPIPageContent({
   });
   
   console.log("[KPI] === Bid Submitted Breakdown ===");
-  console.log(`[KPI] Total Bid Submitted/Estimating projects (deduplicated): ${aggregatedProjects.filter(p => p.status === "Bid Submitted" || p.status === "Estimating").length}`);
+  console.log(`[KPI] Total Bid Submitted projects (deduplicated): ${aggregatedProjects.filter(p => (p.status || "").toString().trim() === "Bid Submitted").length}`);
   console.log(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
   console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
   console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
@@ -717,26 +756,7 @@ function KPIPageContent({
   const bidSubmittedHoursByMonth: Record<string, number> = {};
   
   // Filter projects first (like dashboard does), then deduplicate
-  const filteredProjects = projects.filter((p: Project) => {
-    if (p.projectArchived) return false;
-    
-    const customer = (p.customer ?? "").toString().toLowerCase();
-    if (customer.includes("sop inc")) return false;
-    const projectName = (p.projectName ?? "").toString().toLowerCase();
-    if (projectName === "pmc operations") return false;
-    if (projectName === "pmc shop time") return false;
-    if (projectName === "pmc test project") return false;
-    if (projectName.includes("sandbox")) return false;
-    if (projectName.includes("raymond king")) return false;
-    if (projectName === "alexander drive addition latest") return false;
-    // Don't filter out Todd Gilmore as estimator, otherwise user sees $0 if they are checking their own projects
-    // const estimator = (p.estimator ?? "").toString().trim().toLowerCase();
-    // if (estimator.includes("todd gilmore") || estimator.includes("gilmore todd")) return false;
-    const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
-    if (projectNumber === "701 poplar church rd") return false;
-    
-    return true;
-  });
+  const filteredProjects = projects.filter((project: Project) => !isExcludedFromKPI(project));
   
   console.log("[KPI] Total projects:", projects.length);
   console.log("[KPI] Filtered projects:", filteredProjects.length);
@@ -832,10 +852,10 @@ function KPIPageContent({
     
     // Sum hours for chosen customer's entries
     chosenProjects.forEach((project) => {
-      const status = (project.status || "").trim();
-      if (status !== "Bid Submitted" && status !== "Estimating") return;
+      const status = (project.status || "").toString().trim();
+      if (status !== "Bid Submitted") return;
       
-      const projectDate = getProjectDate(project);
+      const projectDate = parseDateValue(project.dateCreated);
       if (!projectDate) return;
       
       // Apply date range filter
@@ -972,9 +992,10 @@ function KPIPageContent({
       const rowLabel = (row.kpi || "").toLowerCase();
       const isGoalRow = rowLabel.includes("goal") || rowLabel.includes("allowance");
       const rowColor = isGoalRow ? "#E06C00" : "#15616D";
+      let rowValues = [...(row.values || [])]; // Default to template values
       
       // Check if this is a percentage column (contains % values)
-      const isPercentage = row.values.some((val: any) => String(val).includes("%"));
+      const isPercentage = rowValues.some((val: any) => String(val).includes("%"));
       
       let total: number;
       if (isPercentage && (cardName.toLowerCase().includes("gross profit") || cardName.toLowerCase().includes("profit"))) {
@@ -985,7 +1006,7 @@ function KPIPageContent({
           let numerator = 0;
           let denominator = 0;
           
-          row.values.forEach((val: any, idx: number) => {
+          rowValues.forEach((val: any, idx: number) => {
             const percentStr = String(val).replace("%", "").trim();
             const percent = parseFloat(percentStr);
             const revenueStr = String(revenueRow.values[idx]).replace(/[$,]/g, "").trim();
@@ -1000,14 +1021,14 @@ function KPIPageContent({
           total = denominator > 0 ? (numerator / denominator) * 100 : 0;
         } else {
           // Fallback: simple average if no revenue row found
-          const percentages = row.values
+          const percentages = rowValues
             .map((val: any) => parseFloat(String(val).replace("%", "").trim()))
             .filter((n: number) => !isNaN(n));
           total = percentages.length > 0 ? percentages.reduce((a: number, b: number) => a + b, 0) / percentages.length : 0;
         }
       } else {
         // For non-percentage values, sum as usual
-        const total_val = row.values.reduce((sum: number, val: any) => {
+        const total_val = rowValues.reduce((sum: number, val: any) => {
           const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
           return sum + (isNaN(numVal) ? 0 : numVal);
         }, 0);
@@ -1018,7 +1039,7 @@ function KPIPageContent({
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: isGoalRow ? "#f9f9f9" : "#ffffff" }}>
         <td style={{ padding: "6px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{row.kpi}</td>
         {monthNames.map((_, idx) => {
-          const value = row.values[idx] ?? "";
+          const value = rowValues[idx] ?? "";
           const formatted = formatCardValue(cardName, row.kpi, value);
           return (
             <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? rowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
@@ -1084,6 +1105,26 @@ function KPIPageContent({
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
 
+  const getCardActualMonthMap = (cardName: string): Record<number, number> => {
+    const rows = cardLoadData[normalizeCardName(cardName)] || [];
+    if (rows.length === 0) return {};
+
+    const actualRow =
+      rows.find((row: any) => {
+        const label = (row?.kpi || "").toString().toLowerCase();
+        return !label.includes("goal") && !label.includes("allowance");
+      }) || rows[0];
+
+    const map: Record<number, number> = {};
+    monthNames.forEach((_, idx) => {
+      const raw = actualRow?.values?.[idx];
+      const parsed = Number(String(raw ?? "").replace(/[^0-9.-]/g, ""));
+      map[idx + 1] = Number.isFinite(parsed) ? parsed : 0;
+    });
+
+    return map;
+  };
+
   const currentYear = new Date().getFullYear().toString();
   const combinedSalesYears = Array.from(new Set([
     ...scheduledSalesYears,
@@ -1093,23 +1134,20 @@ function KPIPageContent({
     .filter(year => year !== "2024")
     .sort();
 
-  const effectiveBidSubmittedYear = yearFilter && bidSubmittedSalesYears.includes(yearFilter)
-    ? yearFilter
-    : (bidSubmittedSalesYears[bidSubmittedSalesYears.length - 1] || "");
-  const bidSubmittedYearWarning = yearFilter && effectiveBidSubmittedYear && yearFilter !== effectiveBidSubmittedYear
-    ? `Bid Submitted data shown for ${effectiveBidSubmittedYear} (no data for ${yearFilter}).`
+  const bidSubmittedYearWarning = yearFilter && bidSubmittedSalesYears.length > 0 && !bidSubmittedSalesYears.includes(yearFilter)
+    ? `Bid Submitted data not available for ${yearFilter}.`
     : "";
 
   const filteredBidSubmittedSalesByMonth: Record<string, number> = {};
   const filteredBidSubmittedSalesMonths = bidSubmittedSalesMonths.filter(month => {
-    if (effectiveBidSubmittedYear) {
+    if (yearFilter) {
       const [year] = month.split("-");
-      if (year !== effectiveBidSubmittedYear) return false;
+      if (year !== yearFilter) return false;
     }
     filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
     return true;
   });
-  
+
   console.log("[KPI] Filtered bid submitted months:", filteredBidSubmittedSalesMonths);
   console.log("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
 
@@ -1328,172 +1366,183 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
-                  {monthNames.map((name, idx) => (
-                    <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
-                      {name}
-                    </th>
-                  ))}
-                  <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, width: "110px", fontSize: 12 }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCombinedSalesYears.map((year, yearIndex) => {
-                  const scheduledTotal = monthNames.reduce((sum, _, idx) => {
-                    const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
-                    const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                    return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
-                  }, 0);
-                  const bidSubmittedTotal = monthNames.reduce((sum, _, idx) => {
-                    const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales;
-                    const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                    return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
-                  }, 0);
-                  return (
-                  <React.Fragment key={year}>
-                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Scheduled" : `Scheduled ${year}`}</td>
-                      {monthNames.map((_, idx) => {
-                        const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
-                        const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                        const sales = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
-                        const isManual = manualValue !== undefined && manualValue !== null;
-                        const isEditing = editingCell?.year === year && editingCell?.month === idx + 1 && editingCell?.field === 'scheduledSales';
-                        
-                        return (
-                          <td 
-                            key={idx} 
-                            style={{ 
-                              padding: "4px 2px", 
-                              textAlign: "center", 
-                              color: sales > 0 ? ((yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
-                              fontWeight: sales > 0 ? 700 : 400, 
-                              fontSize: 12,
-                              cursor: "pointer",
-                              backgroundColor: isManual ? "#e8f5e9" : "transparent"
-                            }}
-                            onClick={() => {
-                              setEditingCell({ year, month: idx + 1, field: 'scheduledSales' });
-                              setEditValue(sales.toString());
-                            }}
-                          >
-                            {isEditing ? (
-                              <input
-                                ref={inputRef}
-                                type="number"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onBlur={() => {
-                                  const numValue = parseFloat(editValue) || 0;
-                                  saveKpiField(year, idx + 1, 'scheduledSales', numValue);
-                                  setEditingCell(null);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const numValue = parseFloat(editValue) || 0;
-                                    saveKpiField(year, idx + 1, 'scheduledSales', numValue);
-                                    setEditingCell(null);
-                                  }
-                                  if (e.key === "Escape") {
-                                    setEditingCell(null);
-                                  }
-                                }}
-                                autoFocus
-                                style={{
-                                  width: "85px",
-                                  textAlign: "center",
-                                  border: "1px solid #15616D",
-                                  borderRadius: "3px",
-                                  padding: "2px",
-                                  fontSize: 12,
-                                  fontWeight: 700
-                                }}
-                              />
-                            ) : (
-                              sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bid Subm." : `Bid Subm. ${year}`}</td>
-                      {monthNames.map((_, idx) => {
-                        const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales;
-                        const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                        const sales = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
-                        const isManual = manualValue !== undefined && manualValue !== null;
-                        const isEditing = editingCell?.year === year && editingCell?.month === idx + 1 && editingCell?.field === 'bidSubmittedSales';
-                        
-                        return (
-                          <td 
-                            key={idx} 
-                            style={{ 
-                              padding: "4px 2px", 
-                              textAlign: "center", 
-                              color: sales > 0 ? ((yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
-                              fontWeight: sales > 0 ? 700 : 400, 
-                              fontSize: 12,
-                              cursor: "pointer",
-                              backgroundColor: isManual ? "#e8f5e9" : "transparent"
-                            }}
-                            onClick={() => {
-                              setEditingCell({ year, month: idx + 1, field: 'bidSubmittedSales' });
-                              setEditValue(sales.toString());
-                            }}
-                          >
-                            {isEditing ? (
-                              <input
-                                ref={inputRef}
-                                type="number"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onBlur={() => {
-                                  const numValue = parseFloat(editValue) || 0;
-                                  saveKpiField(year, idx + 1, 'bidSubmittedSales', numValue);
-                                  setEditingCell(null);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const numValue = parseFloat(editValue) || 0;
-                                    saveKpiField(year, idx + 1, 'bidSubmittedSales', numValue);
-                                    setEditingCell(null);
-                                  }
-                                  if (e.key === "Escape") {
-                                    setEditingCell(null);
-                                  }
-                                }}
-                                autoFocus
-                                style={{
-                                  width: "85px",
-                                  textAlign: "center",
-                                  border: "1px solid #15616D",
-                                  borderRadius: "3px",
-                                  padding: "2px",
-                                  fontSize: 12,
-                                  fontWeight: 700
-                                }}
-                              />
-                            ) : (
-                              sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                );})}
-              </tbody>
-            </table>
+            {yearFilter ? (
+              // SINGLE YEAR MODE: Show 12 months
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #eee" }}>
+                    <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
+                    {monthNames.map((name, idx) => (
+                      <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, width: "90px", fontSize: 12 }}>
+                        {name}
+                      </th>
+                    ))}
+                    <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, width: "110px", fontSize: 12 }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCombinedSalesYears.map((year, yearIndex) => {
+                    const scheduledTotal = monthNames.reduce((sum, _, idx) => {
+                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
+                      const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
+                    }, 0);
+                    const bidSubmittedTotal = monthNames.reduce((sum, _, idx) => {
+                      const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + calculatedValue;
+                    }, 0);
+                    return (
+                    <React.Fragment key={year}>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                        <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
+                        {monthNames.map((_, idx) => {
+                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
+                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
+                          const sales = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+                          
+                          return (
+                            <td 
+                              key={idx} 
+                              style={{ 
+                                padding: "4px 2px", 
+                                textAlign: "center", 
+                                color: sales > 0 ? ((yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
+                                fontWeight: sales > 0 ? 700 : 400, 
+                                fontSize: 12
+                              }}
+                            >
+                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                        <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
+                        {monthNames.map((_, idx) => {
+                          const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                          const sales = calculatedValue;
+                          
+                          return (
+                            <td 
+                              key={idx} 
+                              style={{ 
+                                padding: "4px 2px", 
+                                textAlign: "center", 
+                                color: sales > 0 ? ((yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
+                                fontWeight: sales > 0 ? 700 : 400, 
+                                fontSize: 12
+                              }}
+                            >
+                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );} ) }
+                </tbody>
+              </table>
+            ) : (
+              // ALL YEARS MODE: Show all year-months as columns
+              (() => {
+                const allYearMonths: Array<{ year: string; month: number; label: string }> = [];
+                filteredCombinedSalesYears.forEach(year => {
+                  for (let month = 1; month <= 12; month++) {
+                    allYearMonths.push({
+                      year,
+                      month,
+                      label: `${monthNames[month - 1]} ${year}`
+                    });
+                  }
+                });
+                
+                const scheduledTotal = allYearMonths.reduce((sum, { year, month }) => {
+                  const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
+                  const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
+                  const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+                  return sum + value;
+                }, 0);
+                
+                const bidSubmittedTotal = allYearMonths.reduce((sum, { year, month }) => {
+                  const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
+                  const value = calculatedValue;
+                  return sum + value;
+                }, 0);
+                
+                return (
+                  <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #eee" }}>
+                        <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "100px", fontSize: 12 }}>Type</th>
+                        {allYearMonths.map((ym, idx) => (
+                          <th key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "80px", fontSize: 11, whiteSpace: "nowrap" }}>
+                            {ym.label}
+                          </th>
+                        ))}
+                        <th style={{ padding: "4px 6px", textAlign: "center", color: "#666", fontWeight: 600, minWidth: "100px", fontSize: 12 }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
+                        {allYearMonths.map(({ year, month }, idx) => {
+                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
+                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
+                          const sales = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+                          return (
+                            <td 
+                              key={idx} 
+                              style={{ 
+                                padding: "4px 2px", 
+                                textAlign: "center", 
+                                color: sales > 0 ? "#15616D" : "#999", 
+                                fontWeight: sales > 0 ? 700 : 400, 
+                                fontSize: 12
+                              }}
+                            >
+                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
+                        <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
+                        {allYearMonths.map(({ year, month }, idx) => {
+                          const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
+                          const sales = calculatedValue;
+                          return (
+                            <td 
+                              key={idx} 
+                              style={{ 
+                                padding: "4px 2px", 
+                                textAlign: "center", 
+                                color: sales > 0 ? "#E06C00" : "#999", 
+                                fontWeight: sales > 0 ? 700 : 400, 
+                                fontSize: 12
+                              }}
+                            >
+                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()
+            )}
           </div>
         </div>
       )}
@@ -1519,19 +1568,15 @@ function KPIPageContent({
               <tbody>
                 {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
                   const total = monthNames.reduce((sum, _, idx) => {
-                    const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales;
                     const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                    return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
+                    return sum + calculatedValue;
                   }, 0);
                   return (
                   <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                     <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
                     {monthNames.map((_, idx) => {
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales;
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                      const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
-                      const isManual = manualValue !== undefined && manualValue !== null;
-                      const isEditing = editingCell?.year === year && editingCell?.month === idx + 1;
+                      const value = calculatedValue;
                       
                       return (
                         <td 
@@ -1541,50 +1586,10 @@ function KPIPageContent({
                             textAlign: "center", 
                             color: value > 0 ? "#15616D" : "#999", 
                             fontWeight: value > 0 ? 700 : 400, 
-                            fontSize: 12,
-                            cursor: "pointer",
-                            backgroundColor: isManual ? "#e8f5e9" : "transparent"
-                          }}
-                          onClick={() => {
-                            setEditingCell({ year, month: idx + 1, field: 'bidSubmittedSales' });
-                            setEditValue(value.toString());
+                            fontSize: 12
                           }}
                         >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              type="number"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onBlur={() => {
-                                const numValue = parseFloat(editValue) || 0;
-                                saveBidSubmittedSales(year, idx + 1, numValue);
-                                setEditingCell(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  const numValue = parseFloat(editValue) || 0;
-                                  saveBidSubmittedSales(year, idx + 1, numValue);
-                                  setEditingCell(null);
-                                }
-                                if (e.key === "Escape") {
-                                  setEditingCell(null);
-                                }
-                              }}
-                              autoFocus
-                              style={{
-                                width: "85px",
-                                textAlign: "center",
-                                border: "1px solid #15616D",
-                                borderRadius: "3px",
-                                padding: "2px",
-                                fontSize: 12,
-                                fontWeight: 700
-                              }}
-                            />
-                          ) : (
-                            value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"
-                          )}
+                          {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                         </td>
                       );
                     })}
@@ -1664,77 +1669,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any, yearIndex: number) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                    <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
-                      const value = manualValue !== undefined && manualValue !== null ? manualValue : 0;
-                      const isManual = manualValue !== undefined && manualValue !== null;
-                      const isEditing = editingCell?.year === year && editingCell?.month === idx + 1 && editingCell?.field === 'scheduledSales';
-                      
-                      return (
-                        <td 
-                          key={idx} 
-                          style={{ 
-                            padding: "4px 2px", 
-                            textAlign: "center", 
-                            color: value > 0 ? "#15616D" : "#999", 
-                            fontWeight: value > 0 ? 700 : 400, 
-                            fontSize: 12,
-                            cursor: "pointer",
-                            backgroundColor: isManual ? "#e8f5e9" : "transparent"
-                          }}
-                          onClick={() => {
-                            setEditingCell({ year, month: idx + 1, field: 'scheduledSales' });
-                            setEditValue(value.toString());
-                          }}
-                        >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              type="number"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onBlur={() => {
-                                const numValue = parseFloat(editValue) || 0;
-                                saveKpiField(year, idx + 1, 'scheduledSales', numValue);
-                                setEditingCell(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  const numValue = parseFloat(editValue) || 0;
-                                  saveKpiField(year, idx + 1, 'scheduledSales', numValue);
-                                  setEditingCell(null);
-                                }
-                                if (e.key === "Escape") {
-                                  setEditingCell(null);
-                                }
-                              }}
-                              autoFocus
-                              style={{
-                                width: "85px",
-                                textAlign: "center",
-                                border: "1px solid #15616D",
-                                borderRadius: "3px",
-                                padding: "2px",
-                                fontSize: 12,
-                                fontWeight: 700
-                              }}
-                            />
-                          ) : (
-                            value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                );})}
                 <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                   <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
@@ -1806,24 +1740,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any, yearIndex: number) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                    <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const value = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.bidSubmittedSales || 0;
-                      return (
-                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
-                          {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Revenue By Month", "#15616D")}
               </tbody>
             </table>
@@ -1847,77 +1763,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.subs || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.subs;
-                      const value = manualValue !== undefined && manualValue !== null ? manualValue : 0;
-                      const isManual = manualValue !== undefined && manualValue !== null;
-                      const isEditing = editingCell?.year === year && editingCell?.month === idx + 1 && editingCell?.field === 'subs';
-                      
-                      return (
-                        <td 
-                          key={idx} 
-                          style={{ 
-                            padding: "4px 2px", 
-                            textAlign: "center", 
-                            fontSize: 12, 
-                            color: value > 0 ? "#222" : "#999",
-                            fontWeight: value > 0 ? 700 : 400,
-                            cursor: "pointer",
-                            backgroundColor: isManual ? "#e8f5e9" : "transparent"
-                          }}
-                          onClick={() => {
-                            setEditingCell({ year, month: idx + 1, field: 'subs' });
-                            setEditValue(value.toString());
-                          }}
-                        >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              type="number"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onBlur={() => {
-                                const numValue = parseFloat(editValue) || 0;
-                                saveKpiField(year, idx + 1, 'subs', numValue);
-                                setEditingCell(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  const numValue = parseFloat(editValue) || 0;
-                                  saveKpiField(year, idx + 1, 'subs', numValue);
-                                  setEditingCell(null);
-                                }
-                                if (e.key === "Escape") {
-                                  setEditingCell(null);
-                                }
-                              }}
-                              autoFocus
-                              style={{
-                                width: "85px",
-                                textAlign: "center",
-                                border: "1px solid #222",
-                                borderRadius: "3px",
-                                padding: "2px",
-                                fontSize: 12,
-                                fontWeight: 700
-                              }}
-                            />
-                          ) : (
-                            value.toLocaleString(undefined, { maximumFractionDigits: 0 }) || "—"
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      {total.toLocaleString()}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Subs By Month", "#15616D")}
               </tbody>
             </table>
@@ -1943,24 +1788,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any, yearIndex: number) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledHours || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee", backgroundColor: yearIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                    <td style={{ padding: "4px 6px", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const value = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledHours || 0;
-                      return (
-                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? (yearIndex % 2 === 0 ? "#15616D" : "#E06C00") : "#999", fontWeight: value > 0 ? 700 : 400 }}>
-                          {value > 0 ? value.toLocaleString() : "—"}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: yearIndex % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      {total.toLocaleString()}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Revenue Hours by Month", "#15616D")}
               </tbody>
             </table>
@@ -1984,24 +1811,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.grossProfit || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const value = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.grossProfit || 0;
-                      return (
-                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
-                          {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Gross Profit by Month", "#15616D")}
               </tbody>
             </table>
@@ -2025,24 +1834,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.cost || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const value = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.cost || 0;
-                      return (
-                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
-                          {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Profit by Month", "#15616D")}
               </tbody>
             </table>
@@ -2066,24 +1857,6 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set(kpiData.map((k: any) => k.year))).sort().filter((year: any) => !yearFilter || year === yearFilter).map((year: any) => {
-                  const total = monthNames.reduce((sum: number, _: string, idx: number) => sum + (kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.leadtimes || 0), 0);
-                  return (
-                  <tr key={String(year)} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "4px 6px", color: "#222", fontWeight: 700 }}>{String(year)}</td>
-                    {monthNames.map((_: string, idx: number) => {
-                      const value = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.leadtimes || 0;
-                      return (
-                        <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: value > 0 ? "#15616D" : "#999", fontWeight: value > 0 ? 700 : 400 }}>
-                          {value > 0 ? value.toLocaleString() : "—"}
-                        </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      {total.toLocaleString()}
-                    </td>
-                  </tr>
-                );})}
                 {renderCardRows("Leadtimes by Month", "#15616D")}
               </tbody>
             </table>

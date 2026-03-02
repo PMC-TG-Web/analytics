@@ -68,8 +68,7 @@ export default function SeedKPICardsPage() {
           <li>Leadtimes by Month (1 row)</li>
         </ul>
         <p style={{ margin: "10px 0" }}>
-          <strong>Note:</strong> Firestore security rules must allow authenticated writes to the{" "}
-          <code>kpiCards</code> collection for this to work.
+          <strong>Note:</strong> This seeds the database-backed KPI card store (category <code>KPI_CARDS</code>) via the API.
         </p>
       </div>
 

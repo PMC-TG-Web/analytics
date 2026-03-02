@@ -42,6 +42,7 @@ model Project {
   scopeTrackings        ScopeTracking[]
   productivityLogs      ProductivityLog[]
   productivitySummaries ProductivitySummary[]
+  pmcBreakdownCache     PMCBreakdownCache?
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -216,18 +217,28 @@ model KPIEntry {
   month             Int
   monthName         String
 
-  // Financial Metrics
+  // Financial Metrics - Database Fed
   bidSubmittedSales Float?
   scheduledSales    Float?
-  subs              Float?
-  estimates         Float?
-  grossProfit       Float?
-  cost              Float?
-
-  // Hours Metrics
   bidSubmittedHours Float?
   scheduledHours    Float?
   leadtimes         Float?
+
+  // Financial Metrics - Manual Entry
+  revenueActual     Float?    // Revenue by Month - manual
+  estimates         Float?    // Estimates by Month - Goal (manual)
+  estimatesActualHours Float? // Estimates by Month - Actual Hours (manual)
+  salesActualHours  Float?    // Sales by Month - Actual Hours (manual)
+  revenueActualHours Float?   // Revenue Hours by Month - Actual Hours (manual)
+  subsAllowance     Float?    // Subs by Month - Subcontractor Allowance (manual)
+  subActualHours    Float?    // Subs by Month - Sub Actual Hours (manual)
+  gpActualPercent   Float?    // Gross Profit by Month - GP Actual % (manual)
+  profitActualPercent Float?  // Profit by Month - Profit Actual % (manual)
+
+  // Legacy/Unused Fields
+  subs              Float?    // Deprecated: use subActualHours
+  grossProfit       Float?    // Deprecated: use gpActualPercent
+  cost              Float?    // Deprecated: not currently used
 
   // Timestamps
   createdAt         DateTime @default(now())
@@ -495,3 +506,69 @@ model Estimate {
   @@index([projectId])
   @@index([status])
 }
+
+// ==================== PMC GROUPS & CLASSIFICATION ====================
+model PMCGroup {
+  id              String   @id @default(cuid())
+  code            String   // e.g., "SITE", "FOUNDATION", "STRUCTURES", "INTERIOR", "SPECIAL"
+  name            String   // Display name: "Site Work", "Foundation", etc.
+  description     String?  @db.Text
+  color           String?  // Hex color for UI: #FF5733
+  displayOrder    Int      @default(0)
+  isActive        Boolean  @default(true)
+  
+  // Relationships
+  costitemMappings CostitemPMCMapping[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@unique([code])
+}
+
+model CostitemPMCMapping {
+  id              String   @id @default(cuid())
+  costitem        String   @unique // The exact Costitem string from CSV (e.g., "Slab On Grade Labor")
+  pmcGroupId      String?
+  pmcGroup        PMCGroup? @relation(fields: [pmcGroupId], references: [id], onDelete: SetNull)
+  
+  // Fallback PMC code if relation is null (useful for imports before PMCGroup exists)
+  pmcGroupCode    String?  // e.g., "FOUNDATION"
+  
+  // Audit trail
+  mappedByEmail   String?
+  source          String   @default("seed") // "seed", "imported", "manual"
+  notes           String?  @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([costitem])
+  @@index([pmcGroupId])
+  @@index([pmcGroupCode])
+  @@index([source])
+}
+
+model PMCBreakdownCache {
+  id              String   @id @default(cuid())
+  projectId       String   @unique
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // Granular breakdown: { "Slab On Grade Labor": 250.5, "Site Concrete Labor": 185.3, ... }
+  pmcBreakdown    Json     @default("{}")
+  
+  // Aggregated breakdown: { "FOUNDATION": 435.8, "SITE": 120.0, ... }
+  pmcGroupBreakdown Json   @default("{}")
+  
+  // Metadata
+  totalHours      Float    @default(0)
+  lastCalculated  DateTime @default(now())
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+}
+

@@ -1,0 +1,1073 @@
+[
+  {
+    "csvCustomer": "",
+    "csvProjectName": "701 Poplar Church Road",
+    "csvMonth": "2025-09",
+    "csvPercent": 100,
+    "csvHours": 240.07,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6cw006be3n4276jib6w",
+        "customer": "Heck Construction",
+        "projectName": "701 Poplar Church Road",
+        "projectNumber": "2509 - PCR",
+        "status": "In Progress",
+        "totalHours": 240.07
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Alderfer Eggs Curb",
+    "csvMonth": "2025-07",
+    "csvPercent": 100,
+    "csvHours": 37,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac8mp008je3n4jgqol4zp",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Alderfer Eggs Curb",
+        "projectNumber": "AE - 25 - 001",
+        "status": "Bid Submitted",
+        "totalHours": 37
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Alexander Drive Addition",
+    "csvMonth": "2025-09",
+    "csvPercent": 100,
+    "csvHours": 262,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac253002me3n4826hoxag",
+        "customer": "",
+        "projectName": "Alexander Drive Addition",
+        "projectNumber": "Alexander Drive Addition",
+        "status": "Estimating",
+        "totalHours": 262
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blue Ridge School",
+    "csvMonth": "2026-03",
+    "csvPercent": 30,
+    "csvHours": 169.87199999999996,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2th0036e3n4azyxuj7f",
+        "customer": "J.E. Horst Building and Remodeling",
+        "projectName": "Blue Ridge School",
+        "projectNumber": "2508 - BRS",
+        "status": "In Progress",
+        "totalHours": 566.2399999999999
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blue Ridge School",
+    "csvMonth": "2026-04",
+    "csvPercent": 70,
+    "csvHours": 396.3679999999999,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2th0036e3n4azyxuj7f",
+        "customer": "J.E. Horst Building and Remodeling",
+        "projectName": "Blue Ridge School",
+        "projectNumber": "2508 - BRS",
+        "status": "In Progress",
+        "totalHours": 566.2399999999999
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Burkholder Tractor",
+    "csvMonth": "2025-09",
+    "csvPercent": 10,
+    "csvHours": 153.249,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0ag0013e3n46hcnf8bu",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Burkholder Tractor",
+        "projectNumber": "2509 - BT",
+        "status": "In Progress",
+        "totalHours": 1532.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Burkholder Tractor",
+    "csvMonth": "2025-10",
+    "csvPercent": 68,
+    "csvHours": 1042.0932,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0ag0013e3n46hcnf8bu",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Burkholder Tractor",
+        "projectNumber": "2509 - BT",
+        "status": "In Progress",
+        "totalHours": 1532.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Burkholder Tractor",
+    "csvMonth": "2025-11",
+    "csvPercent": 15,
+    "csvHours": 229.8735,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0ag0013e3n46hcnf8bu",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Burkholder Tractor",
+        "projectNumber": "2509 - BT",
+        "status": "In Progress",
+        "totalHours": 1532.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Burkholder Tractor",
+    "csvMonth": "2025-12",
+    "csvPercent": 7,
+    "csvHours": 107.27430000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0ag0013e3n46hcnf8bu",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Burkholder Tractor",
+        "projectNumber": "2509 - BT",
+        "status": "In Progress",
+        "totalHours": 1532.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Butler Annville Pump House",
+    "csvMonth": "2026-03",
+    "csvPercent": 100,
+    "csvHours": 148,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7sv007pe3n4b6p291as",
+        "customer": "J.E. Horst Building and Remodeling",
+        "projectName": "Butler Annville Pump House",
+        "projectNumber": "2509 - BAPH",
+        "status": "In Progress",
+        "totalHours": 148
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings Ambassador Circle",
+    "csvMonth": "2025-08",
+    "csvPercent": 40,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac9700094e3n4hbfezbac",
+        "customer": "",
+        "projectName": "Ducklings Ambassador Circle",
+        "projectNumber": "Ducklings Ambassador Circle",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings Ambassador Circle",
+    "csvMonth": "2025-09",
+    "csvPercent": 12,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac9700094e3n4hbfezbac",
+        "customer": "",
+        "projectName": "Ducklings Ambassador Circle",
+        "projectNumber": "Ducklings Ambassador Circle",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings Ambassador Circle",
+    "csvMonth": "2025-10",
+    "csvPercent": 15,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac9700094e3n4hbfezbac",
+        "customer": "",
+        "projectName": "Ducklings Ambassador Circle",
+        "projectNumber": "Ducklings Ambassador Circle",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings Ambassador Circle",
+    "csvMonth": "2025-11",
+    "csvPercent": 15,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac9700094e3n4hbfezbac",
+        "customer": "",
+        "projectName": "Ducklings Ambassador Circle",
+        "projectNumber": "Ducklings Ambassador Circle",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings Ambassador Circle",
+    "csvMonth": "2025-12",
+    "csvPercent": 18,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac9700094e3n4hbfezbac",
+        "customer": "",
+        "projectName": "Ducklings Ambassador Circle",
+        "projectNumber": "Ducklings Ambassador Circle",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Dutch Cousins Campground",
+    "csvMonth": "2026-02",
+    "csvPercent": 85,
+    "csvHours": 529.975,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4ip004pe3n41hk129e9",
+        "customer": "J.E. Horst Building and Remodeling",
+        "projectName": "Dutch Cousins Campground",
+        "projectNumber": "2510 - DCC",
+        "status": "In Progress",
+        "totalHours": 623.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Dutch Cousins Campground",
+    "csvMonth": "2026-08",
+    "csvPercent": 15,
+    "csvHours": 93.52499999999999,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4ip004pe3n41hk129e9",
+        "customer": "J.E. Horst Building and Remodeling",
+        "projectName": "Dutch Cousins Campground",
+        "projectNumber": "2510 - DCC",
+        "status": "In Progress",
+        "totalHours": 623.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gables 608 Patio",
+    "csvMonth": "2025-07",
+    "csvPercent": 100,
+    "csvHours": 74,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7zp007we3n4iw6q89m6",
+        "customer": "CCS Building Group",
+        "projectName": "Gables 608 Patio",
+        "projectNumber": "2506 - GP",
+        "status": "Complete",
+        "totalHours": 74
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gables 833 Patio",
+    "csvMonth": "2025-05",
+    "csvPercent": 100,
+    "csvHours": 74,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac80q007xe3n4a8dz0wc7",
+        "customer": "CCS Building Group",
+        "projectName": "Gables 833 Patio",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 74
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gables 852 Patio",
+    "csvMonth": "2025-08",
+    "csvPercent": 100,
+    "csvHours": 74,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7yp007ve3n4sgv3k3oe",
+        "customer": "CCS Building Group",
+        "projectName": "Gables 852 Patio",
+        "projectNumber": "2505 - G852P",
+        "status": "Complete",
+        "totalHours": 74
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Giant #6582",
+    "csvMonth": "2026-01",
+    "csvPercent": 25,
+    "csvHours": 939,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0gk0018e3n4y171zjlr",
+        "customer": "Ames Construction, Inc.",
+        "projectName": "Giant #6582",
+        "projectNumber": "2508 - GI",
+        "status": "In Progress",
+        "totalHours": 3756
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Giant #6582",
+    "csvMonth": "2026-02",
+    "csvPercent": 2,
+    "csvHours": 75.12,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0gk0018e3n4y171zjlr",
+        "customer": "Ames Construction, Inc.",
+        "projectName": "Giant #6582",
+        "projectNumber": "2508 - GI",
+        "status": "In Progress",
+        "totalHours": 3756
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Giant #6582",
+    "csvMonth": "2026-04",
+    "csvPercent": 20,
+    "csvHours": 751.2,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0gk0018e3n4y171zjlr",
+        "customer": "Ames Construction, Inc.",
+        "projectName": "Giant #6582",
+        "projectNumber": "2508 - GI",
+        "status": "In Progress",
+        "totalHours": 3756
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Giant #6582",
+    "csvMonth": "2026-05",
+    "csvPercent": 30,
+    "csvHours": 1126.8,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0gk0018e3n4y171zjlr",
+        "customer": "Ames Construction, Inc.",
+        "projectName": "Giant #6582",
+        "projectNumber": "2508 - GI",
+        "status": "In Progress",
+        "totalHours": 3756
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Giant #6582",
+    "csvMonth": "2026-06",
+    "csvPercent": 23,
+    "csvHours": 863.88,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0gk0018e3n4y171zjlr",
+        "customer": "Ames Construction, Inc.",
+        "projectName": "Giant #6582",
+        "projectNumber": "2508 - GI",
+        "status": "In Progress",
+        "totalHours": 3756
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gish Furniture Site Work",
+    "csvMonth": "2026-03",
+    "csvPercent": 10,
+    "csvHours": 53.900000000000006,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4d3004ke3n4ozsg8cxs",
+        "customer": "Heck Construction",
+        "projectName": "Gish Furniture Sitework",
+        "projectNumber": "2512 - GFS",
+        "status": "In Progress",
+        "totalHours": 539
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gish Furniture Site Work",
+    "csvMonth": "2026-06",
+    "csvPercent": 90,
+    "csvHours": 485.1,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4d3004ke3n4ozsg8cxs",
+        "customer": "Heck Construction",
+        "projectName": "Gish Furniture Sitework",
+        "projectNumber": "2512 - GFS",
+        "status": "In Progress",
+        "totalHours": 539
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Gish Furniture Sitework",
+    "csvMonth": "2026-07",
+    "csvPercent": 100,
+    "csvHours": 539,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4d3004ke3n4ozsg8cxs",
+        "customer": "Heck Construction",
+        "projectName": "Gish Furniture Sitework",
+        "projectNumber": "2512 - GFS",
+        "status": "In Progress",
+        "totalHours": 539
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield Clubhouse",
+    "csvMonth": "2025-07",
+    "csvPercent": 80,
+    "csvHours": 448.8,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5py005se3n480wbuiqg",
+        "customer": "High Construction Company",
+        "projectName": "Greenfield Clubhouse",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 561
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield Clubhouse",
+    "csvMonth": "2025-08",
+    "csvPercent": 10,
+    "csvHours": 56.1,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5py005se3n480wbuiqg",
+        "customer": "High Construction Company",
+        "projectName": "Greenfield Clubhouse",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 561
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield Clubhouse",
+    "csvMonth": "2025-11",
+    "csvPercent": 10,
+    "csvHours": 56.1,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5py005se3n480wbuiqg",
+        "customer": "High Construction Company",
+        "projectName": "Greenfield Clubhouse",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 561
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield Clubhouse",
+    "csvMonth": "2025-12",
+    "csvPercent": 20,
+    "csvHours": 112.2,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5py005se3n480wbuiqg",
+        "customer": "High Construction Company",
+        "projectName": "Greenfield Clubhouse",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 561
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Guardian Barriers",
+    "csvMonth": "2025-10",
+    "csvPercent": 100,
+    "csvHours": 43,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac8hf008ee3n40n6f0g7n",
+        "customer": "Heck Construction",
+        "projectName": "Guardian Barriers",
+        "projectNumber": "2509 - GB",
+        "status": "Complete",
+        "totalHours": 43
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "John F Martin",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 1530,
+    "matchedProjects": [
+      {
+        "id": "cmm9abyyu0004e3n4f16ag6zi",
+        "customer": "Scenic Ridge Construction",
+        "projectName": "John F Martin",
+        "projectNumber": "2601 - JFM",
+        "status": "In Progress",
+        "totalHours": 3060
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "John F Martin",
+    "csvMonth": "2026-04",
+    "csvPercent": 50,
+    "csvHours": 1530,
+    "matchedProjects": [
+      {
+        "id": "cmm9abyyu0004e3n4f16ag6zi",
+        "customer": "Scenic Ridge Construction",
+        "projectName": "John F Martin",
+        "projectNumber": "2601 - JFM",
+        "status": "In Progress",
+        "totalHours": 3060
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Kemper Equipment",
+    "csvMonth": "2026-02",
+    "csvPercent": 100,
+    "csvHours": 337,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3ph003ye3n42y3yf0oj",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Kemper Equipment",
+        "projectNumber": "2505 - KE",
+        "status": "In Progress",
+        "totalHours": 337
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Loft Community Partners",
+    "csvMonth": "2025-11",
+    "csvPercent": 100,
+    "csvHours": 108,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac88q0085e3n4pbibmkbn",
+        "customer": "CCS Building Group",
+        "projectName": "Loft Community Partners",
+        "projectNumber": "2508 - LC",
+        "status": "Complete",
+        "totalHours": 108
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Londonderry Village Villa B",
+    "csvMonth": "2025-04",
+    "csvPercent": 15,
+    "csvHours": 83.4375,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6o2006le3n4pgcd2wi9",
+        "customer": "Funk Construction",
+        "projectName": "Londonderry Village Villa B",
+        "projectNumber": "LV-24-001",
+        "status": "Complete",
+        "totalHours": 556.25
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Londonderry Village Villa B",
+    "csvMonth": "2025-05",
+    "csvPercent": 25,
+    "csvHours": 139.0625,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6o2006le3n4pgcd2wi9",
+        "customer": "Funk Construction",
+        "projectName": "Londonderry Village Villa B",
+        "projectNumber": "LV-24-001",
+        "status": "Complete",
+        "totalHours": 556.25
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Londonderry Village Villa B",
+    "csvMonth": "2025-07",
+    "csvPercent": 60,
+    "csvHours": 333.75,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6o2006le3n4pgcd2wi9",
+        "customer": "Funk Construction",
+        "projectName": "Londonderry Village Villa B",
+        "projectNumber": "LV-24-001",
+        "status": "Complete",
+        "totalHours": 556.25
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mine Road Church",
+    "csvMonth": "2026-02",
+    "csvPercent": 45,
+    "csvHours": 138.375,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6x3006ue3n4kc0klmg7",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Mine Road Church",
+        "projectNumber": "2511-MRC",
+        "status": "In Progress",
+        "totalHours": 307.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mine Road Church",
+    "csvMonth": "2026-03",
+    "csvPercent": 25,
+    "csvHours": 76.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6x3006ue3n4kc0klmg7",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Mine Road Church",
+        "projectNumber": "2511-MRC",
+        "status": "In Progress",
+        "totalHours": 307.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mine Road Church",
+    "csvMonth": "2026-04",
+    "csvPercent": 30,
+    "csvHours": 92.25,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6x3006ue3n4kc0klmg7",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Mine Road Church",
+        "projectNumber": "2511-MRC",
+        "status": "In Progress",
+        "totalHours": 307.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales North Building",
+    "csvMonth": "2025-09",
+    "csvPercent": 100,
+    "csvHours": 248.53,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac604005ze3n42od6x05t",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Paneling Sales- North Building",
+        "projectNumber": null,
+        "status": "Complete",
+        "totalHours": 248.53
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Pine Building",
+    "csvMonth": "2025-08",
+    "csvPercent": 100,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac925008ye3n4ck4v7boc",
+        "customer": "",
+        "projectName": "Paneling Sales Pine Building",
+        "projectNumber": "Paneling Sales Pine Building",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Parking Garage Infill",
+    "csvMonth": "2025-02",
+    "csvPercent": 100,
+    "csvHours": 51,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac8dq008ae3n4rxy5mau3",
+        "customer": "CCS Building Group",
+        "projectName": "Parking Garage Infill",
+        "projectNumber": "PI-25-002",
+        "status": "Complete",
+        "totalHours": 51
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Penn Valley Gas",
+    "csvMonth": "2025-04",
+    "csvPercent": 71,
+    "csvHours": 345.0955,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3c1003ne3n47lda0xsa",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Penn Valley Gas",
+        "projectNumber": "PV-24-002",
+        "status": "In Progress",
+        "totalHours": 486.05
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Penn Valley Gas",
+    "csvMonth": "2025-05",
+    "csvPercent": 14,
+    "csvHours": 68.04700000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3c1003ne3n47lda0xsa",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Penn Valley Gas",
+        "projectNumber": "PV-24-002",
+        "status": "In Progress",
+        "totalHours": 486.05
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Sauders Feedmill",
+    "csvMonth": "2026-03",
+    "csvPercent": 100,
+    "csvHours": 190.5,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4e3004le3n43rcbk0jb",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Sauders Feedmill",
+        "projectNumber": "2511-SFM",
+        "status": "In Progress",
+        "totalHours": 190.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Main Building",
+    "csvMonth": "2026-05",
+    "csvPercent": 40,
+    "csvHours": 1076.1639999999995,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzo5000le3n4ajhbf3v3",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Main Building",
+        "projectNumber": "2506-SDMB",
+        "status": "In Progress",
+        "totalHours": 2690.409999999999
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Main Building",
+    "csvMonth": "2026-06",
+    "csvPercent": 40,
+    "csvHours": 1076.1639999999995,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzo5000le3n4ajhbf3v3",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Main Building",
+        "projectNumber": "2506-SDMB",
+        "status": "In Progress",
+        "totalHours": 2690.409999999999
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Main Building",
+    "csvMonth": "2026-07",
+    "csvPercent": 20,
+    "csvHours": 538.0819999999998,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzo5000le3n4ajhbf3v3",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Main Building",
+        "projectNumber": "2506-SDMB",
+        "status": "In Progress",
+        "totalHours": 2690.409999999999
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "UGI Middletown Warehouse",
+    "csvMonth": "2025-06",
+    "csvPercent": 20,
+    "csvHours": 207.8,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac1eg0021e3n4e9ic3pq8",
+        "customer": "Benchmark Construction Co., Inc.",
+        "projectName": "UGI Middletown Warehouse",
+        "projectNumber": "MW-25-001",
+        "status": "Complete",
+        "totalHours": 1039
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "UGI Middletown Warehouse",
+    "csvMonth": "2025-07",
+    "csvPercent": 30,
+    "csvHours": 311.7,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac1eg0021e3n4e9ic3pq8",
+        "customer": "Benchmark Construction Co., Inc.",
+        "projectName": "UGI Middletown Warehouse",
+        "projectNumber": "MW-25-001",
+        "status": "Complete",
+        "totalHours": 1039
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "UGI Middletown Warehouse",
+    "csvMonth": "2025-08",
+    "csvPercent": 27,
+    "csvHours": 280.53000000000003,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac1eg0021e3n4e9ic3pq8",
+        "customer": "Benchmark Construction Co., Inc.",
+        "projectName": "UGI Middletown Warehouse",
+        "projectNumber": "MW-25-001",
+        "status": "Complete",
+        "totalHours": 1039
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "UGI Middletown Warehouse",
+    "csvMonth": "2025-10",
+    "csvPercent": 15,
+    "csvHours": 155.85,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac1eg0021e3n4e9ic3pq8",
+        "customer": "Benchmark Construction Co., Inc.",
+        "projectName": "UGI Middletown Warehouse",
+        "projectNumber": "MW-25-001",
+        "status": "Complete",
+        "totalHours": 1039
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "UGI Middletown Warehouse",
+    "csvMonth": "2025-11",
+    "csvPercent": 8,
+    "csvHours": 83.12,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac1eg0021e3n4e9ic3pq8",
+        "customer": "Benchmark Construction Co., Inc.",
+        "projectName": "UGI Middletown Warehouse",
+        "projectNumber": "MW-25-001",
+        "status": "Complete",
+        "totalHours": 1039
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Veritas Academy",
+    "csvMonth": "2026-04",
+    "csvPercent": 30,
+    "csvHours": 203.25,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac43v004ce3n4y5bz8ayr",
+        "customer": "Warfel Construction",
+        "projectName": "Veritas Academy",
+        "projectNumber": "2511 - VA",
+        "status": "In Progress",
+        "totalHours": 677.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Veritas Academy",
+    "csvMonth": "2026-05",
+    "csvPercent": 40,
+    "csvHours": 271,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac43v004ce3n4y5bz8ayr",
+        "customer": "Warfel Construction",
+        "projectName": "Veritas Academy",
+        "projectNumber": "2511 - VA",
+        "status": "In Progress",
+        "totalHours": 677.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Veritas Academy",
+    "csvMonth": "2026-06",
+    "csvPercent": 30,
+    "csvHours": 203.25,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac43v004ce3n4y5bz8ayr",
+        "customer": "Warfel Construction",
+        "projectName": "Veritas Academy",
+        "projectNumber": "2511 - VA",
+        "status": "In Progress",
+        "totalHours": 677.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Washburn Dam",
+    "csvMonth": "2025-12",
+    "csvPercent": 30,
+    "csvHours": 148.56,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7k5007he3n4ehrqpgaq",
+        "customer": "Berg Construction",
+        "projectName": "Washburn Dam",
+        "projectNumber": "2508 - WD",
+        "status": "In Progress",
+        "totalHours": 495.2
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Washburn Dam",
+    "csvMonth": "2026-01",
+    "csvPercent": 20,
+    "csvHours": 99.04,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7k5007he3n4ehrqpgaq",
+        "customer": "Berg Construction",
+        "projectName": "Washburn Dam",
+        "projectNumber": "2508 - WD",
+        "status": "In Progress",
+        "totalHours": 495.2
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Washburn Dam",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 247.6,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7k5007he3n4ehrqpgaq",
+        "customer": "Berg Construction",
+        "projectName": "Washburn Dam",
+        "projectNumber": "2508 - WD",
+        "status": "In Progress",
+        "totalHours": 495.2
+      }
+    ]
+  }
+]

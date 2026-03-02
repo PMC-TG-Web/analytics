@@ -1,0 +1,1706 @@
+[
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Kendal Health Center",
+    "csvMonth": "2025-03",
+    "csvPercent": 5,
+    "csvHours": 156.45,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Kendal Health Center",
+    "csvMonth": "2025-04",
+    "csvPercent": 11,
+    "csvHours": 344.19,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Kendal Health Center",
+    "csvMonth": "2025-05",
+    "csvPercent": 16,
+    "csvHours": 500.64,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Kendal Health Center",
+    "csvMonth": "2025-06",
+    "csvPercent": 4,
+    "csvHours": 125.16,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin",
+    "csvMonth": "2025-08",
+    "csvPercent": 17,
+    "csvHours": 81.94,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin",
+    "csvMonth": "2025-10",
+    "csvPercent": 60,
+    "csvHours": 289.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin",
+    "csvMonth": "2025-12",
+    "csvPercent": 23,
+    "csvHours": 110.86,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Alderfer Eggs",
+    "csvMonth": "2025-03",
+    "csvPercent": 100,
+    "csvHours": 80,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Bench Mark Program",
+    "csvMonth": "2025-01",
+    "csvPercent": 100,
+    "csvHours": 30,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blackhawk Ventures",
+    "csvMonth": "2025-08",
+    "csvPercent": 40,
+    "csvHours": 360.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blackhawk Ventures",
+    "csvMonth": "2025-10",
+    "csvPercent": 35,
+    "csvHours": 315.7,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blackhawk Ventures",
+    "csvMonth": "2025-11",
+    "csvPercent": 15,
+    "csvHours": 135.3,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Blackhawk Ventures",
+    "csvMonth": "2025-12",
+    "csvPercent": 10,
+    "csvHours": 90.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Brecknock Orchards",
+    "csvMonth": "2025-11",
+    "csvPercent": 15,
+    "csvHours": 153,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Brecknock Orchards",
+    "csvMonth": "2025-12",
+    "csvPercent": 57,
+    "csvHours": 581.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Brecknock Orchards",
+    "csvMonth": "2026-03",
+    "csvPercent": 28,
+    "csvHours": 285.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-06",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-07",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-08",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-09",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-10",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-11",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2026-12",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2027-01",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District",
+    "csvMonth": "2027-02",
+    "csvPercent": 10,
+    "csvHours": 617.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners",
+    "csvMonth": "2025-10",
+    "csvPercent": 15,
+    "csvHours": 77.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners",
+    "csvMonth": "2025-11",
+    "csvPercent": 35,
+    "csvHours": 180.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 257.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "CHS Elizabethtown",
+    "csvMonth": "2025-09",
+    "csvPercent": 45,
+    "csvHours": 514.35,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "CHS Elizabethtown",
+    "csvMonth": "2025-10",
+    "csvPercent": 55,
+    "csvHours": 628.65,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "CHS Elizabethtown",
+    "csvMonth": "2025-11",
+    "csvPercent": 100,
+    "csvHours": 178,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Assoc",
+    "csvMonth": "2025-09",
+    "csvPercent": 40,
+    "csvHours": 183.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Assoc",
+    "csvMonth": "2025-12",
+    "csvPercent": 40,
+    "csvHours": 183.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Assoc",
+    "csvMonth": "2026-04",
+    "csvPercent": 20,
+    "csvHours": 91.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay",
+    "csvMonth": "2025-10",
+    "csvPercent": 25,
+    "csvHours": 310.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay",
+    "csvMonth": "2025-11",
+    "csvPercent": 45,
+    "csvHours": 558.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay",
+    "csvMonth": "2025-12",
+    "csvPercent": 30,
+    "csvHours": 372.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Country Meadows",
+    "csvMonth": "2025-02",
+    "csvPercent": 35,
+    "csvHours": 67.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Country Meadows",
+    "csvMonth": "2025-03",
+    "csvPercent": 35,
+    "csvHours": 67.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Country Meadows",
+    "csvMonth": "2025-05",
+    "csvPercent": 30,
+    "csvHours": 58.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Country Meadows Freezer",
+    "csvMonth": "2025-03",
+    "csvPercent": 100,
+    "csvHours": 54,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Dental Suite Slab",
+    "csvMonth": "2025-01",
+    "csvPercent": 100,
+    "csvHours": 96,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Ducklings",
+    "csvMonth": "2025-09",
+    "csvPercent": 100,
+    "csvHours": 303.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Engel Architects",
+    "csvMonth": "2026-01",
+    "csvPercent": 100,
+    "csvHours": 21.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "E-Zee Milking Shop",
+    "csvMonth": "2025-04",
+    "csvPercent": 75,
+    "csvHours": 123,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "E-Zee Milking Shop",
+    "csvMonth": "2025-06",
+    "csvPercent": 25,
+    "csvHours": 41,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Family Treasures",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 325,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Family Treasures",
+    "csvMonth": "2026-04",
+    "csvPercent": 50,
+    "csvHours": 325,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Ephrata",
+    "csvMonth": "2025-10",
+    "csvPercent": 100,
+    "csvHours": 18,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2025-11",
+    "csvPercent": 7,
+    "csvHours": 80.36,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2026-02",
+    "csvPercent": 25,
+    "csvHours": 287,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2026-04",
+    "csvPercent": 14,
+    "csvHours": 160.72,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2026-10",
+    "csvPercent": 21,
+    "csvHours": 241.08,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2026-11",
+    "csvPercent": 20,
+    "csvHours": 229.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store",
+    "csvMonth": "2026-12",
+    "csvPercent": 15,
+    "csvHours": 172.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-01",
+    "csvPercent": 11,
+    "csvHours": 849.64,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-02",
+    "csvPercent": 15,
+    "csvHours": 1158.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-03",
+    "csvPercent": 7,
+    "csvHours": 540.68,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-04",
+    "csvPercent": 10,
+    "csvHours": 772.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-05",
+    "csvPercent": 1,
+    "csvHours": 77.24,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-06",
+    "csvPercent": 3,
+    "csvHours": 231.72,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-07",
+    "csvPercent": 1,
+    "csvHours": 77.24,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-08",
+    "csvPercent": 5,
+    "csvHours": 386.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-09",
+    "csvPercent": 2,
+    "csvHours": 154.48,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Greenfield North",
+    "csvMonth": "2025-10",
+    "csvPercent": 11,
+    "csvHours": 849.64,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-07",
+    "csvPercent": 22,
+    "csvHours": 596.42,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-08",
+    "csvPercent": 23,
+    "csvHours": 623.53,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-09",
+    "csvPercent": 22,
+    "csvHours": 596.42,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-10",
+    "csvPercent": 4,
+    "csvHours": 108.44,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-10",
+    "csvPercent": 100,
+    "csvHours": 29.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2025-11",
+    "csvPercent": 9,
+    "csvHours": 243.99,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSC",
+    "csvMonth": "2026-03",
+    "csvPercent": 0,
+    "csvHours": 0,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "GSK",
+    "csvMonth": "2025-06",
+    "csvPercent": 7,
+    "csvHours": 108.57,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "HCS",
+    "csvMonth": "2025-11",
+    "csvPercent": 60,
+    "csvHours": 121.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "HCS",
+    "csvMonth": "2025-12",
+    "csvPercent": 40,
+    "csvHours": 81.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Honey Brook Hardware",
+    "csvMonth": "2025-06",
+    "csvPercent": 55,
+    "csvHours": 651.75,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Honey Brook Hardware",
+    "csvMonth": "2025-07",
+    "csvPercent": 25,
+    "csvHours": 296.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Honey Brook Hardware",
+    "csvMonth": "2025-09",
+    "csvPercent": 20,
+    "csvHours": 237,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-01",
+    "csvPercent": 7,
+    "csvHours": 221.55,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-02",
+    "csvPercent": 22,
+    "csvHours": 696.3,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-03",
+    "csvPercent": 30,
+    "csvHours": 949.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-04",
+    "csvPercent": 20,
+    "csvHours": 633,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-05",
+    "csvPercent": 20,
+    "csvHours": 633,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Hotel Hershey",
+    "csvMonth": "2025-06",
+    "csvPercent": 11,
+    "csvHours": 348.15,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jelkes Fabrication",
+    "csvMonth": "2025-02",
+    "csvPercent": 100,
+    "csvHours": 20,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jono Hardware",
+    "csvMonth": "2025-06",
+    "csvPercent": 12,
+    "csvHours": 144.48,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jono Hardware",
+    "csvMonth": "2025-08",
+    "csvPercent": 35,
+    "csvHours": 421.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jono Hardware",
+    "csvMonth": "2025-09",
+    "csvPercent": 15,
+    "csvHours": 180.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jono Hardware",
+    "csvMonth": "2026-04",
+    "csvPercent": 38,
+    "csvHours": 457.52,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jubilee Ministries",
+    "csvMonth": "2025-11",
+    "csvPercent": 50,
+    "csvHours": 214,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jubilee Ministries",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 214,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "LabCorp",
+    "csvMonth": "2025-06",
+    "csvPercent": 50,
+    "csvHours": 150,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "LabCorp",
+    "csvMonth": "2025-07",
+    "csvPercent": 50,
+    "csvHours": 150,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "LEMSA",
+    "csvMonth": "2025-01",
+    "csvPercent": 50,
+    "csvHours": 247,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "LEMSA",
+    "csvMonth": "2025-02",
+    "csvPercent": 35,
+    "csvHours": 113.75,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Leola Produce Ph 2",
+    "csvMonth": "2025-01",
+    "csvPercent": 30,
+    "csvHours": 34.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Leola Produce Ph 2",
+    "csvMonth": "2025-03",
+    "csvPercent": 70,
+    "csvHours": 79.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Linden Hall Generator Pad",
+    "csvMonth": "2025-05",
+    "csvPercent": 100,
+    "csvHours": 95,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Marlee Parking Exp",
+    "csvMonth": "2025-08",
+    "csvPercent": 100,
+    "csvHours": 37,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Martin Appliance",
+    "csvMonth": "2025-04",
+    "csvPercent": 10,
+    "csvHours": 41.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Martin Appliance",
+    "csvMonth": "2025-05",
+    "csvPercent": 28,
+    "csvHours": 115.92,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Martin Appliance",
+    "csvMonth": "2025-06",
+    "csvPercent": 40,
+    "csvHours": 165.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Martin Appliance",
+    "csvMonth": "2025-07",
+    "csvPercent": 22,
+    "csvHours": 91.08,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg volunteer Fire Dept",
+    "csvMonth": "2025-12",
+    "csvPercent": 18,
+    "csvHours": 318.06,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg volunteer Fire Dept",
+    "csvMonth": "2026-02",
+    "csvPercent": 18,
+    "csvHours": 318.06,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg volunteer Fire Dept",
+    "csvMonth": "2026-03",
+    "csvPercent": 20,
+    "csvHours": 353.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg volunteer Fire Dept",
+    "csvMonth": "2026-04",
+    "csvPercent": 15,
+    "csvHours": 265.05,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg volunteer Fire Dept",
+    "csvMonth": "2026-05",
+    "csvPercent": 29,
+    "csvHours": 512.43,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Mediation",
+    "csvMonth": "2025-12",
+    "csvPercent": 5,
+    "csvHours": 94.55,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Mediation",
+    "csvMonth": "2026-01",
+    "csvPercent": 55,
+    "csvHours": 1040.05,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Mediation",
+    "csvMonth": "2026-02",
+    "csvPercent": 40,
+    "csvHours": 756.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-03",
+    "csvPercent": 21,
+    "csvHours": 657.72,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-04",
+    "csvPercent": 9,
+    "csvHours": 281.88,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-05",
+    "csvPercent": 5,
+    "csvHours": 156.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-06",
+    "csvPercent": 5,
+    "csvHours": 156.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-07",
+    "csvPercent": 9,
+    "csvHours": 281.88,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-08",
+    "csvPercent": 7,
+    "csvHours": 219.24,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-09",
+    "csvPercent": 11,
+    "csvHours": 344.52,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-11",
+    "csvPercent": 10,
+    "csvHours": 313.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Ph 1B",
+    "csvMonth": "2025-12",
+    "csvPercent": 23,
+    "csvHours": 720.36,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2025-04",
+    "csvPercent": 4,
+    "csvHours": 102.36,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2025-05",
+    "csvPercent": 22,
+    "csvHours": 562.98,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2025-06",
+    "csvPercent": 10,
+    "csvHours": 255.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2026-03",
+    "csvPercent": 25,
+    "csvHours": 639.75,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2026-04",
+    "csvPercent": 25,
+    "csvHours": 639.75,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2026-05",
+    "csvPercent": 9,
+    "csvHours": 230.31,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area School",
+    "csvMonth": "2026-06",
+    "csvPercent": 5,
+    "csvHours": 127.95,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MK Legacy Truss",
+    "csvMonth": "2025-01",
+    "csvPercent": 5,
+    "csvHours": 76.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MK Legacy Truss",
+    "csvMonth": "2025-02",
+    "csvPercent": 40,
+    "csvHours": 612,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MK Legacy Truss",
+    "csvMonth": "2025-03",
+    "csvPercent": 33,
+    "csvHours": 504.9,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MK Legacy Truss",
+    "csvMonth": "2025-04",
+    "csvPercent": 7,
+    "csvHours": 107.1,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MVE",
+    "csvMonth": "2025-06",
+    "csvPercent": 50,
+    "csvHours": 132.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "MVE",
+    "csvMonth": "2025-08",
+    "csvPercent": 50,
+    "csvHours": 132.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "North East International",
+    "csvMonth": "2025-03",
+    "csvPercent": 25,
+    "csvHours": 72.75,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Apron",
+    "csvMonth": "2025-04",
+    "csvPercent": 100,
+    "csvHours": 216,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Lumber Building",
+    "csvMonth": "2025-06",
+    "csvPercent": 60,
+    "csvHours": 216,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Lumber Building",
+    "csvMonth": "2025-07",
+    "csvPercent": 30,
+    "csvHours": 108,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Lumber Building",
+    "csvMonth": "2025-09",
+    "csvPercent": 10,
+    "csvHours": 36,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Main",
+    "csvMonth": "2025-11",
+    "csvPercent": 40,
+    "csvHours": 257.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Main",
+    "csvMonth": "2025-12",
+    "csvPercent": 60,
+    "csvHours": 386.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Roofing Building",
+    "csvMonth": "2025-04",
+    "csvPercent": 100,
+    "csvHours": 226,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales Storage Building",
+    "csvMonth": "2025-05",
+    "csvPercent": 100,
+    "csvHours": 186,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paragon",
+    "csvMonth": "2025-10",
+    "csvPercent": 100,
+    "csvHours": 148,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Providence Building Supply",
+    "csvMonth": "2025-05",
+    "csvPercent": 85,
+    "csvHours": 348.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Rapid Response",
+    "csvMonth": "2025-04",
+    "csvPercent": 100,
+    "csvHours": 146,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Reach Christian School",
+    "csvMonth": "2025-06",
+    "csvPercent": 100,
+    "csvHours": 50,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Regupol 2024",
+    "csvMonth": "2025-01",
+    "csvPercent": 55,
+    "csvHours": 441.1,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Regupol 2024",
+    "csvMonth": "2025-02",
+    "csvPercent": 25,
+    "csvHours": 200.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Regupol 2024",
+    "csvMonth": "2025-03",
+    "csvPercent": 20,
+    "csvHours": 160.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Rock Hill Building 1",
+    "csvMonth": "2025-07",
+    "csvPercent": 100,
+    "csvHours": 325,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 143.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door",
+    "csvMonth": "2026-06",
+    "csvPercent": 55,
+    "csvHours": 788.7,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door",
+    "csvMonth": "2026-07",
+    "csvPercent": 25,
+    "csvHours": 358.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door",
+    "csvMonth": "2026-08",
+    "csvPercent": 10,
+    "csvHours": 143.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-01",
+    "csvPercent": 32,
+    "csvHours": 788.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-02",
+    "csvPercent": 2,
+    "csvHours": 49.3,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-03",
+    "csvPercent": 5,
+    "csvHours": 123.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-04",
+    "csvPercent": 27,
+    "csvHours": 665.55,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-05",
+    "csvPercent": 9,
+    "csvHours": 221.85,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt L",
+    "csvMonth": "2025-06",
+    "csvPercent": 19,
+    "csvHours": 468.35,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt O Site Sidewalks",
+    "csvMonth": "2025-04",
+    "csvPercent": 100,
+    "csvHours": 126,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt P",
+    "csvMonth": "2025-01",
+    "csvPercent": 5,
+    "csvHours": 123.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Apt P Site Sidewalks",
+    "csvMonth": "2025-07",
+    "csvPercent": 100,
+    "csvHours": 80,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Site 3A",
+    "csvMonth": "2026-04",
+    "csvPercent": 30,
+    "csvHours": 544.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Site 3A",
+    "csvMonth": "2026-05",
+    "csvPercent": 35,
+    "csvHours": 635.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Site 3A",
+    "csvMonth": "2026-06",
+    "csvPercent": 35,
+    "csvHours": 635.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "St Annes 45 & 46",
+    "csvMonth": "2025-06",
+    "csvPercent": 35,
+    "csvHours": 208.95,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "St Annes 45 & 46",
+    "csvMonth": "2025-08",
+    "csvPercent": 30,
+    "csvHours": 179.1,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "St Annes 45 & 46",
+    "csvMonth": "2025-09",
+    "csvPercent": 35,
+    "csvHours": 208.95,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "St John Vianney",
+    "csvMonth": "2025-06",
+    "csvPercent": 70,
+    "csvHours": 100.8,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "St John Vianney",
+    "csvMonth": "2025-08",
+    "csvPercent": 30,
+    "csvHours": 43.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-04",
+    "csvPercent": 10,
+    "csvHours": 398.85,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-05",
+    "csvPercent": 5,
+    "csvHours": 199.425,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-06",
+    "csvPercent": 15,
+    "csvHours": 598.275,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-07",
+    "csvPercent": 20,
+    "csvHours": 797.7,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-08",
+    "csvPercent": 25,
+    "csvHours": 997.125,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Steven Feed Mill Schoeneck",
+    "csvMonth": "2026-09",
+    "csvPercent": 25,
+    "csvHours": 997.125,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stewartstown Church",
+    "csvMonth": "2025-07",
+    "csvPercent": 35,
+    "csvHours": 145.95,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stewartstown Church",
+    "csvMonth": "2025-08",
+    "csvPercent": 25,
+    "csvHours": 104.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stewartstown Church",
+    "csvMonth": "2025-10",
+    "csvPercent": 25,
+    "csvHours": 104.25,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stewartstown Church",
+    "csvMonth": "2026-01",
+    "csvPercent": 15,
+    "csvHours": 62.55,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stoltzfus Hardwoods",
+    "csvMonth": "2026-01",
+    "csvPercent": 100,
+    "csvHours": 284,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai",
+    "csvMonth": "2026-05",
+    "csvPercent": 25,
+    "csvHours": 397.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai",
+    "csvMonth": "2026-06",
+    "csvPercent": 25,
+    "csvHours": 397.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai",
+    "csvMonth": "2026-07",
+    "csvPercent": 25,
+    "csvHours": 397.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai",
+    "csvMonth": "2026-08",
+    "csvPercent": 25,
+    "csvHours": 397.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Center",
+    "csvMonth": "2025-09",
+    "csvPercent": 25,
+    "csvHours": 128.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Center",
+    "csvMonth": "2025-10",
+    "csvPercent": 13,
+    "csvHours": 66.82,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Center",
+    "csvMonth": "2025-11",
+    "csvPercent": 62,
+    "csvHours": 318.68,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Hershey",
+    "csvMonth": "2025-01",
+    "csvPercent": 10,
+    "csvHours": 102.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Hershey",
+    "csvMonth": "2025-05",
+    "csvPercent": 46,
+    "csvHours": 471.96,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Hershey",
+    "csvMonth": "2025-06",
+    "csvPercent": 2,
+    "csvHours": 20.52,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Hershey",
+    "csvMonth": "2025-07",
+    "csvPercent": 2,
+    "csvHours": 20.52,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Pottsville",
+    "csvMonth": "2025-07",
+    "csvPercent": 10,
+    "csvHours": 141.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Suites",
+    "csvMonth": "2025-01",
+    "csvPercent": 2,
+    "csvHours": 67.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Suites",
+    "csvMonth": "2025-02",
+    "csvPercent": 13,
+    "csvHours": 438.1,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Townplace Suites",
+    "csvMonth": "2025-03",
+    "csvPercent": 28,
+    "csvHours": 943.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian",
+    "csvMonth": "2026-02",
+    "csvPercent": 20,
+    "csvHours": 124.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian",
+    "csvMonth": "2026-03",
+    "csvPercent": 65,
+    "csvHours": 404.3,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian",
+    "csvMonth": "2026-04",
+    "csvPercent": 5,
+    "csvHours": 31.1,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 62.2,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Wildflower Commons",
+    "csvMonth": "2025-12",
+    "csvPercent": 70,
+    "csvHours": 225.4,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Wildflower Commons",
+    "csvMonth": "2026-01",
+    "csvPercent": 30,
+    "csvHours": 96.6,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-01",
+    "csvPercent": 17,
+    "csvHours": 476,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-02",
+    "csvPercent": 1,
+    "csvHours": 28,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Providence Building Supply",
+    "csvMonth": "2025-03",
+    "csvPercent": 15,
+    "csvHours": 61.5,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-03",
+    "csvPercent": 10,
+    "csvHours": 280,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-04",
+    "csvPercent": 8,
+    "csvHours": 224,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-05",
+    "csvPercent": 2,
+    "csvHours": 56,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-10",
+    "csvPercent": 8,
+    "csvHours": 224,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "South Pointe Memory Care ph 1",
+    "csvMonth": "2025-11",
+    "csvPercent": 15,
+    "csvHours": 420,
+    "matchedProjects": []
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Jonas King Sidewalk",
+    "csvMonth": "2026-03",
+    "csvPercent": 100,
+    "csvHours": 32,
+    "matchedProjects": []
+  }
+]

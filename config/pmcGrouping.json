@@ -1,0 +1,121 @@
+{
+  "pmcGroups": [
+    {
+      "code": "SITE",
+      "name": "Site Work",
+      "description": "Site preparation, grading, demolition, temporary facilities",
+      "color": "#8B4513",
+      "displayOrder": 1,
+      "keywords": ["site", "grading", "demo", "demolition", "temporary", "mobilization", "clearing", "prep", "fill", "grade"]
+    },
+    {
+      "code": "FOUNDATION",
+      "name": "Foundation & Concrete",
+      "description": "Footings, slabs, concrete work, sub-grade elements",
+      "color": "#A9A9A9",
+      "displayOrder": 2,
+      "keywords": ["footing", "slab", "concrete", "rebar", "subgrade", "basement", "pier", "spread", "continuous", "floor"]
+    },
+    {
+      "code": "STRUCTURES",
+      "name": "Structural Elements",
+      "description": "Columns, beams, framing, load-bearing elements",
+      "color": "#696969",
+      "displayOrder": 3,
+      "keywords": ["column", "beam", "structure", "structural", "framing", "frame", "steel", "decking", "joist", "girder"]
+    },
+    {
+      "code": "EXTERIOR",
+      "name": "Exterior & Envelope",
+      "description": "Walls, roofing, windows, doors, exterior finishes",
+      "color": "#CD853F",
+      "displayOrder": 4,
+      "keywords": ["wall", "exterior", "roof", "window", "door", "siding", "envelope", "shingle", "metal", "brick", "stone", "cladding"]
+    },
+    {
+      "code": "INTERIOR",
+      "name": "Interior & Finishes",
+      "description": "Interior walls, flooring, bathroom, kitchen fixtures",
+      "color": "#DEB887",
+      "displayOrder": 5,
+      "keywords": ["interior", "drywall", "paint", "floor", "bathroom", "kitchen", "finish", "tile", "carpet", "plumbing", "fixture"]
+    },
+    {
+      "code": "MEP",
+      "name": "MEP (Mechanical/Electrical/Plumbing)",
+      "description": "HVAC, electrical systems, plumbing, specialty systems",
+      "color": "#4169E1",
+      "displayOrder": 6,
+      "keywords": ["hvac", "mechanical", "electrical", "plumbing", "mep", "pipe", "duct", "wire", "circuit", "pump", "breaker"]
+    },
+    {
+      "code": "EQUIPMENT",
+      "name": "Equipment & Labor",
+      "description": "Equipment rental, labor rates, operator costs",
+      "color": "#FF8C00",
+      "displayOrder": 7,
+      "keywords": ["equipment", "labor", "rental", "operator", "crew", "travel", "bobcat", "crane", "pump", "lift", "forklift"]
+    },
+    {
+      "code": "MATERIALS",
+      "name": "Materials & Supplies",
+      "description": "Raw materials, supplies, consumables",
+      "color": "#DAA520",
+      "displayOrder": 8,
+      "keywords": ["material", "concrete", "cement", "sand", "stone", "gravel", "brick", "block", "supply", "lumber", "coating"]
+    },
+    {
+      "code": "SPECIAL",
+      "name": "Special & Miscellaneous",
+      "description": "Specialty work, contingencies, unforeseen conditions",
+      "color": "#9932CC",
+      "displayOrder": 9,
+      "keywords": ["special", "misc", "contingency", "allowance", "unknown", "tbd", "other", "testing"]
+    }
+  ],
+  "mappingStrategy": {
+    "description": "Rule-based categorization of Costitems into PMC groups. Rules are applied in order.",
+    "rules": [
+      {
+        "type": "exact",
+        "pmcCode": "EQUIPMENT",
+        "patterns": ["Travel Labor", "Operator", "Foreman", "Crew", "Labor Rate"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "FOUNDATION",
+        "patterns": ["Footing", "Spread", "Continuous Footer", "Slab", "Concrete", "Rebar", "Pier"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "STRUCTURES",
+        "patterns": ["Column", "Beam", "Joist", "Decking", "Girder", "Frame", "Structural"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "EXTERIOR",
+        "patterns": ["Wall", "Roof", "Window", "Door", "Siding", "Exterior", "Cladding", "Shingle", "Envelope"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "INTERIOR",
+        "patterns": ["Interior", "Drywall", "Paint", "Flooring", "Floor", "Bathroom", "Kitchen", "Tile", "Carpet"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "MEP",
+        "patterns": ["HVAC", "Electrical", "Plumbing", "Mechanical", "Duct", "Pipe", "Wire", "Circuit", "Pump"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "EQUIPMENT",
+        "patterns": ["Rental", "Equipment", "Bobcat", "Crane", "Pump", "Lift", "Forklift", "Loader"]
+      },
+      {
+        "type": "keyword",
+        "pmcCode": "MATERIALS",
+        "patterns": ["Concrete", "Cement", "Sand", "Stone", "Gravel", "Brick", "Block", "Material", "Supply", "Lumber"]
+      }
+    ]
+  }
+}

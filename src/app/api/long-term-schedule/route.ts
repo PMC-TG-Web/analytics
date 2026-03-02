@@ -187,9 +187,6 @@ export async function POST(request: NextRequest) {
         // No scopes found, use generic scope
         recordsToCreate.push({
           jobKey,
-          customer: customer || '',
-          projectNumber: projectNumber || '',
-          projectName: projectName || '',
           date: firstWeekdayStr,
           hours: totalMonthlyHours,
           scopeOfWork: 'Project Work',
@@ -205,9 +202,6 @@ export async function POST(request: NextRequest) {
 
           recordsToCreate.push({
             jobKey,
-            customer: customer || '',
-            projectNumber: projectNumber || '',
-            projectName: projectName || '',
             date: firstWeekdayStr,
             hours: scopeHours,
             scopeOfWork: scope.title || 'Scheduled Work',

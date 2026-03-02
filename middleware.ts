@@ -12,25 +12,33 @@ export async function middleware(request: NextRequest) {
     !auth0ClientId ||
     !auth0Secret;
 
+  const { pathname } = request.nextUrl;
+
+  // Skip auth for API routes (except auth routes themselves)
+  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/')) {
+    return NextResponse.next();
+  }
+
+  // In dev mode without Auth0 config, bypass all middleware
   if (isDev && auth0Misconfigured) {
     return NextResponse.next();
   }
 
-  const response = await auth0.middleware(request);
-  const { pathname, search } = request.nextUrl;
-
-  if (pathname.startsWith('/api/auth')) {
+  // In production or if Auth0 is configured, enforce auth
+  // Allow auth routes
+  if (pathname.startsWith('/api/auth/')) {
+    const response = await auth0.middleware(request);
     return response;
   }
 
   const session = await auth0.getSession(request);
   if (!session) {
     const loginUrl = new URL('/api/auth/login', request.url);
-    loginUrl.searchParams.set('returnTo', `${pathname}${search}`);
+    loginUrl.searchParams.set('returnTo', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  return response;
+  return await auth0.middleware(request);
 }
 
 export const config = {

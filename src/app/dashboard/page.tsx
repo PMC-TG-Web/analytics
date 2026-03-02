@@ -231,7 +231,7 @@ function DashboardContent() {
     });
 
     const categorizedHours = Object.values(totals).reduce((sum, value) => sum + value, 0);
-    const totalHours = Math.max(bidSubmittedTotalHours, categorizedHours);
+    const totalHours = categorizedHours;
 
     const breakdown = Object.entries(totals).map(([label, value]) => ({
       label,

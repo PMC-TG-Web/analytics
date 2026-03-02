@@ -102,14 +102,12 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
 
     setUpdating(true);
     try {
-      const response = await fetch("/api/updateProjectStatus", {
-        method: "POST",
+      const response = await fetch("/api/projects", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: project.id,
-          newStatus: newStatus,
+          status: newStatus,
           projectNumber: project.projectNumber,
-          projectName: project.projectName,
           customer: project.customer,
         }),
       });

@@ -140,6 +140,86 @@ export async function POST(request: NextRequest) {
     const startDate = firstDayOfMonth.toISOString().split('T')[0];
     const endDate = lastDayOfMonth.toISOString().split('T')[0];
 
+    // Find all scopes for this project that are active in this month
+    const projectScopes = await prisma.projectScope.findMany({
+      where: {
+        jobKey: jobKey,
+      },
+    });
+
+    // Filter scopes active in this month (date range overlap)
+    const activeScopesInMonth = projectScopes.filter((scope) => {
+      if (!scope.startDate || !scope.endDate) return true; // Include scopes without dates
+      return scope.startDate <= endDate && scope.endDate >= startDate;
+    });
+
+    // If no scopes found, create records with generic "Scheduled Work" scope
+    if (activeScopesInMonth.length === 0) {
+      // Delete existing ActiveSchedule records for this job and month
+      await prisma.activeSchedule.deleteMany({
+        where: {
+          jobKey,
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+
+      // Create records for generic scope
+      const recordsToCreate = [];
+      weeks.forEach((week: { weekNumber?: number; hours?: number }) => {
+        const weekNumber = week.weekNumber || 1;
+        const hours = week.hours || 0;
+
+        if (hours <= 0) return;
+
+        const weekStartDay = (weekNumber - 1) * 7 + 1;
+        const weekEndDay = Math.min(weekNumber * 7, lastDayOfMonth.getDate());
+
+        const businessDays = [];
+        for (let day = weekStartDay; day <= weekEndDay; day++) {
+          const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
+          const dayOfWeek = date.getDay();
+          if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            businessDays.push(date);
+          }
+        }
+
+        const hoursPerDay = businessDays.length > 0 ? hours / businessDays.length : 0;
+
+        businessDays.forEach((date) => {
+          const dateStr = date.toISOString().split('T')[0];
+          recordsToCreate.push({
+            jobKey,
+            customer: customer || '',
+            projectNumber: projectNumber || '',
+            projectName: projectName || '',
+            date: dateStr,
+            hours: hoursPerDay,
+            scopeOfWork: 'Project Work',
+            source: 'wip-page',
+          });
+        });
+      });
+
+      if (recordsToCreate.length > 0) {
+        await prisma.activeSchedule.createMany({
+          data: recordsToCreate,
+          skipDuplicates: true,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Updated ${recordsToCreate.length} schedule records for ${jobKey} (no scopes found)`,
+        data: { recordsCreated: recordsToCreate.length },
+      });
+    }
+
+    // Calculate total hours of all active scopes
+    const totalScopeHours = activeScopesInMonth.reduce((sum, scope) => sum + (scope.hours || 0), 0);
+
     // Delete existing ActiveSchedule records for this job and month
     await prisma.activeSchedule.deleteMany({
       where: {
@@ -151,49 +231,49 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create new ActiveSchedule records for each week's hours
+    // Distribute monthly hours across scopes proportionally
     const recordsToCreate = [];
 
     weeks.forEach((week: { weekNumber?: number; hours?: number }) => {
       const weekNumber = week.weekNumber || 1;
-      const hours = week.hours || 0;
+      const weekHours = week.hours || 0;
 
-      if (hours <= 0) return; // Skip weeks with 0 hours
+      if (weekHours <= 0) return;
 
-      // Calculate date range for this week
-      // Week 1 = days 1-7, Week 2 = days 8-14, etc.
       const weekStartDay = (weekNumber - 1) * 7 + 1;
       const weekEndDay = Math.min(weekNumber * 7, lastDayOfMonth.getDate());
 
-      // Distribute hours evenly across business days (Mon-Fri) in the week
       const businessDays = [];
       for (let day = weekStartDay; day <= weekEndDay; day++) {
         const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
         const dayOfWeek = date.getDay();
-        // Monday = 1, Tuesday = 2, ..., Friday = 5
         if (dayOfWeek >= 1 && dayOfWeek <= 5) {
           businessDays.push(date);
         }
       }
 
-      const hoursPerDay = businessDays.length > 0 ? hours / businessDays.length : 0;
+      // Distribute week's hours across scopes
+      activeScopesInMonth.forEach((scope) => {
+        const scopeHourFraction = totalScopeHours > 0 ? (scope.hours || 0) / totalScopeHours : 1 / activeScopesInMonth.length;
+        const scopeWeekHours = weekHours * scopeHourFraction;
+        const hoursPerDay = businessDays.length > 0 ? scopeWeekHours / businessDays.length : 0;
 
-      businessDays.forEach((date) => {
-        const dateStr = date.toISOString().split('T')[0];
-        recordsToCreate.push({
-          jobKey,
-          customer: customer || '',
-          projectNumber: projectNumber || '',
-          projectName: projectName || '',
-          date: dateStr,
-          hours: hoursPerDay,
-          scopeOfWork: 'Scheduled Work',
-          source: 'wip-page',
+        businessDays.forEach((date) => {
+          const dateStr = date.toISOString().split('T')[0];
+          recordsToCreate.push({
+            jobKey,
+            customer: customer || '',
+            projectNumber: projectNumber || '',
+            projectName: projectName || '',
+            date: dateStr,
+            hours: hoursPerDay,
+            scopeOfWork: scope.title || 'Scheduled Work',
+            source: 'wip-page',
+          });
         });
       });
     });
 
-    // Bulk create ActiveSchedule records
     if (recordsToCreate.length > 0) {
       await prisma.activeSchedule.createMany({
         data: recordsToCreate,
@@ -203,8 +283,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Updated ${recordsToCreate.length} schedule records for ${jobKey}`,
-      data: { recordsCreated: recordsToCreate.length },
+      message: `Updated ${recordsToCreate.length} schedule records for ${jobKey} across ${activeScopesInMonth.length} scope(s)`,
+      data: { 
+        recordsCreated: recordsToCreate.length,
+        scopesUsed: activeScopesInMonth.length,
+      },
     });
   } catch (error) {
     console.error('Failed to save long-term schedule:', error);

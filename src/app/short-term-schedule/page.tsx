@@ -8,7 +8,6 @@ import Navigation from "@/components/Navigation";
 import { Scope, Project, ProjectInfo } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
-import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 import { getActiveScheduleDocId, recalculateScopeTracking } from "@/utils/activeScheduleUtils";
 
 interface DayData {

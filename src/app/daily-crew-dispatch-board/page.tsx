@@ -6,7 +6,6 @@ import Link from "next/link";
 import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
-import { syncProjectWIP, syncGanttWithShortTerm } from "@/utils/scheduleSync";
 import { useAuth } from "@/hooks/useAuth";
 import { loadActiveScheduleForDateRange } from "@/utils/activeScheduleLoader";
 
@@ -518,9 +517,6 @@ function DailyCrewDispatchBoardContent() {
           if (!response.ok) {
             console.warn("[DispatchBoard] short-term-schedule API endpoint not available");
           }
-          
-          await syncProjectWIP(jobKey);
-          await syncGanttWithShortTerm(jobKey);
         } catch (error) {
           console.warn("[DispatchBoard] Error saving schedule:", error);
         }

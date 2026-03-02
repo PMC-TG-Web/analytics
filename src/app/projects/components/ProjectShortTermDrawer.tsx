@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 
 import { Scope, Project } from "@/types";
-import { syncProjectWIP } from "@/utils/scheduleSync";
 
 interface DayData {
   dayNumber: number;
@@ -121,7 +120,6 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
       
       const result = await response.json();
       if (result.success) {
-        await syncProjectWIP(project.jobKey);
         onClose();
       } else {
         alert("Error saving schedule: " + result.error);

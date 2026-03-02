@@ -166,7 +166,6 @@ export async function POST(request: NextRequest) {
       projectName,
       month,
       weeks,
-      docId,
     } = body;
 
     if (!jobKey || !month) {
@@ -243,13 +242,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove the specific month from shortTermData
-    const shortTermData = (schedule.shortTermData as Record<string, any>) || {};
+    const shortTermData = (schedule.shortTermData as Record<string, unknown>) || {};
     delete shortTermData[month];
 
     await prisma.schedule.update({
       where: { jobKey },
       data: {
-        shortTermData: Object.keys(shortTermData).length > 0 ? shortTermData : {},
+        shortTermData: Object.keys(shortTermData).length > 0 ? (shortTermData as any) : {},
       },
     });
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get all projects with status not in ["Bid Submitted", "Lost"]
     const projects = await prisma.project.findMany({

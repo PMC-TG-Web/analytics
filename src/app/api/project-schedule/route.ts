@@ -86,8 +86,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Extract month data from shortTermData JSON
-    const shortTermData = (schedule.shortTermData as any) || {};
-    const monthData = shortTermData[month];
+    const shortTermData = (schedule.shortTermData as Record<string, unknown>) || {};
+    const monthData = shortTermData[month] as { weeks?: unknown[] } | undefined;
 
     if (!monthData) {
       // Return empty structure for this month
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       select: { shortTermData: true },
     });
 
-    const existingData = (existingSchedule?.shortTermData as any) || {};
+    const existingData = (existingSchedule?.shortTermData as Record<string, unknown>) || {};
 
     // Upsert the schedule document
     const schedule = await prisma.schedule.upsert({

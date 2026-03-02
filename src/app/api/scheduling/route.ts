@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get all schedules
     const schedules = await prisma.schedule.findMany({
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     // Convert allocations array format to object if needed
     let allocationsObj: Record<string, number> = {};
     if (Array.isArray(allocations)) {
-      allocations.forEach((alloc: any) => {
+      allocations.forEach((alloc: { month: string; percent: number }) => {
         allocationsObj[alloc.month] = alloc.percent;
       });
     } else {

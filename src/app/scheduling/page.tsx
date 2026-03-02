@@ -11,6 +11,12 @@ type Project = {
   status?: string;
   pmcgroup?: boolean;
   projectManager?: string;
+  projectArchived?: boolean;
+  estimator?: string;
+  dateCreated?: string | Date;
+  jobKey?: string;
+  costitems?: string;
+  costType?: string;
 };
 
 type JobSchedule = {
@@ -20,6 +26,27 @@ type JobSchedule = {
   status: string;
   totalHours: number;
   allocations: Record<string, number>;
+};
+
+type ApiProject = Project;
+
+type ApiSchedule = {
+  jobKey: string;
+  customer: string;
+  projectName: string;
+  status?: string;
+  totalHours: number;
+  allocations: Record<string, number> | Array<{ month: string; percent: number }>;
+};
+
+type ApiScope = {
+  jobKey: string;
+  title: string;
+  startDate?: string;
+  endDate?: string;
+  hours?: number;
+  description?: string;
+  tasks?: string[];
 };
 
 function formatMonthLabel(month: string) {
@@ -45,10 +72,10 @@ function normalizeMonths(list: string[]) {
   ).sort();
 }
 
-function parseDateValue(value: any): Date | null {
+function parseDateValue(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
-  if (typeof value === 'object' && value.toDate) {
+  if (typeof value === 'object' && value !== null && 'toDate' in value && typeof value.toDate === 'function') {
     const date = value.toDate();
     return date instanceof Date && !isNaN(date.getTime()) ? date : null;
   }
@@ -125,7 +152,7 @@ function SchedulingContent() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [savingJobKey, setSavingJobKey] = useState<string>("");
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
-  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, any[]>>({});
+  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, ApiScope[]>>({});
 
   const internalDistributeValue = (totalValue: number, startDate: string, endDate: string) => {
     const start = new Date(startDate);
@@ -134,7 +161,7 @@ function SchedulingContent() {
     const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1);
     const dailyRate = totalValue / totalDays;
     const distribution: Record<string, number> = {};
-    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const current = new Date(start.getFullYear(), start.getMonth(), 1);
     const last = new Date(end.getFullYear(), end.getMonth(), 1);
     while (current.getTime() <= last.getTime()) {
       const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
@@ -173,13 +200,13 @@ function SchedulingContent() {
           const schedulesRes = await fetch("/api/scheduling");
           if (!schedulesRes.ok) throw new Error("Not found");
           const schedulesJson = await schedulesRes.json();
-          schedulesArray = (schedulesJson.data || []).map((s: any) => {
+          schedulesArray = (schedulesJson.data || []).map((s: ApiSchedule) => {
           // Handle both object and array formats for allocations
           let allocations: Record<string, number> = {};
           if (s.allocations) {
             if (Array.isArray(s.allocations)) {
               // Array format: convert to object
-              allocations = s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
+              allocations = s.allocations.reduce((acc: Record<string, number>, alloc: { month: string; percent: number }) => {
                 acc[alloc.month] = alloc.percent;
                 return acc;
               }, {});
@@ -210,8 +237,8 @@ function SchedulingContent() {
           if (!scopesRes.ok) throw new Error("Failed to fetch scopes");
           const scopesJson = await scopesRes.json();
           const rawScopes = scopesJson.data || [];
-          const scopesMap: Record<string, any[]> = {};
-          rawScopes.forEach((scope: any) => {
+          const scopesMap: Record<string, ApiScope[]> = {};
+          rawScopes.forEach((scope: ApiScope) => {
             if (scope.jobKey) {
               if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
               scopesMap[scope.jobKey].push(scope);
@@ -246,6 +273,7 @@ function SchedulingContent() {
       }
     }
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -264,7 +292,7 @@ function SchedulingContent() {
     
     // Step 1: Filter active projects with exclusions
     const activeProjects = projects.filter((p) => {
-      if ((p as any).projectArchived) return false;
+      if (p.projectArchived) return false;
       const customer = (p.customer ?? "").toString().toLowerCase();
       if (customer.includes("sop inc")) return false;
       const projectName = (p.projectName ?? "").toString().toLowerCase();
@@ -325,21 +353,20 @@ function SchedulingContent() {
           
           customerMap.forEach((projs, customer) => {
             const mostRecentProj = projs.reduce((latest, current) => {
-              const currentDate = parseDateValue((current as any).dateCreated);
-              const latestDateVal = parseDateValue((latest as any).dateCreated);
+              const currentDate = parseDateValue(current.dateCreated);
+              const latestDateVal = parseDateValue(latest.dateCreated);
               if (!currentDate) return latest;
               if (!latestDateVal) return current;
               return currentDate.getTime() > latestDateVal.getTime() ? current : latest;
             }, projs[0]);
             
-            const projDate = parseDateValue((mostRecentProj as any).dateCreated);
+            const projDate = parseDateValue(mostRecentProj.dateCreated);
             if (projDate && (!latestDate || projDate.getTime() > latestDate.getTime())) {
               latestDate = projDate;
               latestCustomer = customer;
             }
           });
           
-          selectedCustomer = latestCustomer;
           selectedProjects = customerMap.get(latestCustomer) || [];
         }
         
@@ -516,7 +543,7 @@ function SchedulingContent() {
       setUpdatingStatus(jobKey);
       
       // Parse the jobKey to get customer, projectNumber, and projectName
-      const [customer, projectNumber, projectName] = jobKey.split("~");
+      const [customer, projectNumber] = jobKey.split("~");
       
       // Update projects via API
       const updateRes = await fetch("/api/projects", {
@@ -542,7 +569,7 @@ function SchedulingContent() {
         const projectsRes = await fetch("/api/projects");
         if (projectsRes.ok) {
           const projectsJson = await projectsRes.json();
-          const projectsData = (projectsJson.data || []).map((p: any) => ({
+          const projectsData = (projectsJson.data || []).map((p: ApiProject) => ({
             id: p.id,
             ...(p as Omit<Project, "id">),
           }));
@@ -557,19 +584,21 @@ function SchedulingContent() {
         const schedulesRes = await fetch("/api/scheduling");
         if (schedulesRes.ok) {
           const schedulesJson = await schedulesRes.json();
-          const schedulesArray = (schedulesJson.data || []).map((s: any) => ({
+          const schedulesArray = (schedulesJson.data || []).map((s: ApiSchedule) => ({
             jobKey: s.jobKey,
             customer: s.customer,
             projectName: s.projectName,
             status: s.status || "Unknown",
             totalHours: s.totalHours,
-            allocations: s.allocations.reduce((acc: Record<string, number>, alloc: any) => {
-              acc[alloc.month] = alloc.percent;
-              return acc;
-            }, {}),
+            allocations: Array.isArray(s.allocations)
+              ? s.allocations.reduce((acc: Record<string, number>, alloc: { month: string; percent: number }) => {
+                  acc[alloc.month] = alloc.percent;
+                  return acc;
+                }, {})
+              : s.allocations,
           }));
           setSchedules(schedulesArray);
-          console.log("Schedules refreshed, new status:", schedulesArray.find((s: any) => s.jobKey === jobKey)?.status);
+          console.log("Schedules refreshed, new status:", schedulesArray.find((s) => s.jobKey === jobKey)?.status);
         }
       } catch (scheduleRefreshError) {
         console.warn("Failed to refresh schedules:", scheduleRefreshError);
@@ -657,8 +686,8 @@ function SchedulingContent() {
       }
 
       // Sort by regular columns
-      let aVal: any = a[sortColumn as keyof JobSchedule];
-      let bVal: any = b[sortColumn as keyof JobSchedule];
+      const aVal = a[sortColumn as keyof JobSchedule];
+      const bVal = b[sortColumn as keyof JobSchedule];
 
       if (typeof aVal === "number" && typeof bVal === "number") {
         return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
@@ -690,7 +719,7 @@ function SchedulingContent() {
         
         projectsWithGanttData.add(jobKey);
 
-        const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
+        const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
         const projectCostItems = jobProjects.map(p => ({
           costitems: (p.costitems || "").toLowerCase(),
           hours: typeof p.hours === "number" ? p.hours : 0,
@@ -766,7 +795,7 @@ function SchedulingContent() {
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length === 0) return;
 
-      const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
+      const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
       const projectCostItems = jobProjects.map(p => ({
         costitems: (p.costitems || "").toLowerCase(),
         hours: typeof p.hours === "number" ? p.hours : 0,
@@ -798,11 +827,6 @@ function SchedulingContent() {
       setSortColumn(column);
       setSortDirection("asc");
     }
-  }
-
-  function clearFilters() {
-    setCustomerFilter("");
-    setJobFilter("");
   }
 
   if (loading) {
@@ -855,7 +879,7 @@ function SchedulingContent() {
                 const jobInfo = uniqueJobs.find(j => j.key === jobKey);
                 if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
 
-                const jobProjects = (projects as any[]).filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
+                const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
                 const projectCostItems = jobProjects.map(p => ({
                   costitems: (p.costitems || "").toLowerCase(),
                   hours: typeof p.hours === "number" ? p.hours : 0,

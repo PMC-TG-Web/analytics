@@ -7,11 +7,22 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const isActive = searchParams.get('isActive');
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
+    const pageSize = Math.min(500, Math.max(1, requestedPageSize));
+    const skip = (page - 1) * pageSize;
 
-    const employees = await prisma.employee.findMany({
-      where: isActive !== null ? { isActive: isActive === 'true' } : undefined,
-      orderBy: { firstName: 'asc' },
-    });
+    const where = isActive !== null ? { isActive: isActive === 'true' } : undefined;
+
+    const [total, employees] = await Promise.all([
+      prisma.employee.count({ where }),
+      prisma.employee.findMany({
+        where,
+        orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+        skip,
+        take: pageSize,
+      }),
+    ]);
 
     // Unpack customFields to top-level properties for UI compatibility
     const formattedEmployees = employees.map(emp => {
@@ -47,8 +58,17 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
     return NextResponse.json({
       success: true,
+      count: formattedEmployees.length,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
       data: formattedEmployees,
     });
   } catch (error) {

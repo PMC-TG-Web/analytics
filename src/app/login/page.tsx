@@ -6,6 +6,17 @@ function LoginContent() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
+  const navigateToLogin = () => {
+    const loginUrl = "/api/auth/login?returnTo=/wip";
+
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      window.top!.location.href = loginUrl;
+      return;
+    }
+
+    router.push(loginUrl);
+  };
+
   useEffect(() => {
     // Check URL for error parameter
     const searchParams = new URLSearchParams(window.location.search);
@@ -15,16 +26,21 @@ function LoginContent() {
       return;
     }
 
-    // Auto-redirect to Procore login
+    // Auto-redirect to login
     const timer = setTimeout(() => {
-      router.replace("/api/auth/procore/login?returnTo=/wip");
+      const loginUrl = "/api/auth/login?returnTo=/wip";
+      if (typeof window !== 'undefined' && window.self !== window.top) {
+        window.top!.location.href = loginUrl;
+      } else {
+        router.replace(loginUrl);
+      }
     }, 100);
 
     return () => clearTimeout(timer);
   }, [router]);
 
   const handleManualLogin = () => {
-    router.push("/api/auth/procore/login?returnTo=/wip");
+    navigateToLogin();
   };
 
   return (

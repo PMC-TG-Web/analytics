@@ -260,9 +260,9 @@ async function loadMatches() {
 
   matched.forEach((row) => {
     const proj = row.matchedProjects[0];
-    const jobKey = [proj.customer, proj.projectNumber, proj.projectName]
-      .filter(Boolean)
-      .join('~');
+    // Always keep all 3 parts of jobKey (customer~projectNumber~projectName)
+    // Don't filter out nulls - keep empty strings to match WIP page format
+    const jobKey = `${proj.customer || ''}~${proj.projectNumber || ''}~${proj.projectName || ''}`;
     const key = `${jobKey}|${row.csvMonth}`;
 
     // Group for ActiveSchedule (weekly hours)

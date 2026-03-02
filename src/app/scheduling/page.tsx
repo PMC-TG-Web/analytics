@@ -148,6 +148,7 @@ function SchedulingContent() {
   const [saving, setSaving] = useState(false);
   const [customerFilter, setCustomerFilter] = useState<string>("");
   const [jobFilter, setJobFilter] = useState<string>("");
+  const [yearFilter, setYearFilter] = useState<string>("");
   const [sortColumn, setSortColumn] = useState<string>("customer");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [savingJobKey, setSavingJobKey] = useState<string>("");
@@ -674,7 +675,18 @@ function SchedulingContent() {
       const customerMatch = !customerFilter || job.customer === customerFilter;
       const jobMatch = !jobFilter || job.projectName.toLowerCase().includes(jobFilter.toLowerCase());
       const hasHours = job.totalHours > 0;
-      return customerMatch && jobMatch && hasHours;
+      
+      // Year filter: check if job has any scheduled hours in the selected year
+      let yearMatch = true;
+      if (yearFilter) {
+        yearMatch = Object.keys(job.allocations).some((month) => {
+          const hasAllocation = (job.allocations[month] || 0) > 0;
+          const matchesYear = month.startsWith(yearFilter);
+          return hasAllocation && matchesYear;
+        });
+      }
+      
+      return customerMatch && jobMatch && hasHours && yearMatch;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -700,7 +712,7 @@ function SchedulingContent() {
     });
 
     return sorted;
-  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, validMonths]);
+  }, [allJobs, customerFilter, jobFilter, yearFilter, sortColumn, sortDirection, validMonths]);
 
   // Calculate unscheduled hours
   const unscheduledHoursCalc = useMemo(() => {
@@ -930,20 +942,133 @@ function SchedulingContent() {
       <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#15616D", fontSize: 20, margin: 0 }}>Jobs</h2>
-          <button
-            onClick={addMonth}
-            style={{
-              padding: "8px 12px",
-              background: "#22c55e",
-              borderRadius: 8,
-              border: "none",
-              color: "#0b1215",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            + Add Month
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Active Filters Badge */}
+            {(yearFilter || customerFilter || jobFilter) && (
+              <div style={{ 
+                padding: "4px 12px", 
+                background: "#E06C00", 
+                color: "#ffffff", 
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 600
+              }}>
+                {[yearFilter && "Year", customerFilter && "Customer", jobFilter && "Project"].filter(Boolean).join(", ")} Active
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setYearFilter("");
+                setCustomerFilter("");
+                setJobFilter("");
+              }}
+              style={{
+                padding: "6px 14px",
+                background: "#E06C00",
+                border: "none",
+                color: "#ffffff",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              Clear Filters
+            </button>
+            <button
+              onClick={addMonth}
+              style={{
+                padding: "8px 12px",
+                background: "#22c55e",
+                borderRadius: 8,
+                border: "none",
+                color: "#0b1215",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              + Add Month
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(3, 1fr)", 
+          gap: 12, 
+          marginBottom: 20, 
+          padding: 16, 
+          background: "#f8f9fa", 
+          borderRadius: 8,
+          border: "1px solid #dee2e6"
+        }}>
+          <div>
+            <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Year</label>
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "#ffffff",
+                color: "#333333",
+                border: yearFilter ? "2px solid #E06C00" : "1px solid #ced4da",
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              <option value="">All Years</option>
+              {Array.from(new Set(validMonths.map(m => m.split('-')[0]))).sort().map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Customer</label>
+            <select
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "#ffffff",
+                color: "#333333",
+                border: customerFilter ? "2px solid #E06C00" : "1px solid #ced4da",
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              <option value="">All Customers</option>
+              {uniqueCustomers.map((customer) => (
+                <option key={customer} value={customer}>
+                  {customer}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Project Name</label>
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={jobFilter}
+              onChange={(e) => setJobFilter(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "#ffffff",
+                color: "#333333",
+                border: jobFilter ? "2px solid #E06C00" : "1px solid #ced4da",
+                borderRadius: 6,
+                fontSize: 14,
+              }}
+            />
+          </div>
         </div>
 
         <div style={{ maxHeight: "500px", overflowY: "auto" }}>
@@ -962,7 +1087,9 @@ function SchedulingContent() {
                 <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                   Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }}>Scheduled Hours</th>
+                <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }} title="Total hours scheduled across all time periods (including months not shown)">
+                  Total Scheduled
+                </th>
                 {validMonths.map((month) => (
                   <th key={month} onClick={() => handleSort(month)} style={{ textAlign: "center", padding: "12px 8px", color: sortColumn === month ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                     {formatMonthLabel(month)} {sortColumn === month && (sortDirection === "asc" ? "↑" : "↓")}
@@ -1001,16 +1128,17 @@ function SchedulingContent() {
                     <td style={{ padding: "12px 8px", color: "#E06C00", fontWeight: 700, textAlign: "right" }}>
                       {job.totalHours.toLocaleString()}
                     </td>
-                    <td style={{ padding: "12px 8px", color: "#15616D", fontWeight: 700, textAlign: "right" }}>
+                    <td 
+                      style={{ padding: "12px 8px", color: "#15616D", fontWeight: 700, textAlign: "right" }} 
+                      title="Total hours scheduled across ALL time periods (including months not currently displayed)"
+                    >
                       {(() => {
-                        // Priority 1: Gantt data
+                        // Priority 1: Gantt data (all months, not just visible)
                         const ganttHours = Object.values(jobGanttHoursMap[job.jobKey] || {}).reduce((sum, h) => sum + h, 0);
                         if (ganttHours > 0) return Math.round(ganttHours || 0);
 
-                        // Priority 2: Manual allocations
-                        const totalPercent = validMonths.reduce((sum, month) => {
-                          return sum + (job.allocations[month] ?? 0);
-                        }, 0);
+                        // Priority 2: Manual allocations (ALL months, not just visible ones)
+                        const totalPercent = Object.values(job.allocations).reduce((sum, percent) => sum + percent, 0);
                         const cappedPercent = Math.min(100, totalPercent);
                         return Math.round((job.totalHours * (cappedPercent / 100)) || 0);
                       })()}

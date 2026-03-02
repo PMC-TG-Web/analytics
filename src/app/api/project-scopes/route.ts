@@ -8,29 +8,66 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const jobKey = searchParams.get('jobKey');
 
-    const scopes = await prisma.projectScope.findMany({
-      where: jobKey ? { jobKey } : undefined,
-      select: {
-        id: true,
-        jobKey: true,
-        title: true,
-        startDate: true,
-        endDate: true,
-        manpower: true,
-        hours: true,
-        description: true,
-        tasks: true,
-      },
-    });
+    // Fetch both projects and scopes in parallel
+    const [projects, scopes] = await Promise.all([
+      prisma.project.findMany({
+        where: jobKey ? {
+          OR: [
+            { customer: { contains: jobKey } },
+            { projectNumber: { contains: jobKey } },
+            { projectName: { contains: jobKey } },
+          ]
+        } : undefined,
+        select: {
+          id: true,
+          customer: true,
+          projectNumber: true,
+          projectName: true,
+          status: true,
+          hours: true,
+          sales: true,
+          projectArchived: true,
+          cost: true,
+          laborSales: true,
+          laborCost: true,
+          dateCreated: true,
+          dateUpdated: true,
+          estimator: true,
+          projectManager: true,
+          customFields: true,
+        },
+      }),
+      prisma.projectScope.findMany({
+        where: jobKey ? { jobKey } : undefined,
+        select: {
+          id: true,
+          jobKey: true,
+          title: true,
+          startDate: true,
+          endDate: true,
+          manpower: true,
+          hours: true,
+          description: true,
+          tasks: true,
+        },
+      }),
+    ]);
+
+    // Add jobKey to each project for consistency
+    const projectsWithJobKey = projects.map(p => ({
+      ...p,
+      jobKey: `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`,
+    }));
 
     return NextResponse.json({
       success: true,
-      data: scopes,
+      projects: projectsWithJobKey,
+      scopes,
     });
   } catch (error) {
-    console.error('Failed to fetch scopes:', error);
+    console.error('Failed to fetch project scopes:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch scopes' },
+      { success: false, error: 'Failed to fetch project scopes' },
       { status: 500 }
     );
   }

@@ -798,6 +798,20 @@ function WIPReportContent() {
   
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+  // Calculate total scheduled hours per project (across ALL years, ignoring filters)
+  const projectTotalScheduledHours = new Map<string, number>();
+  schedules.forEach((schedule) => {
+    const status = (schedule.status || "").toString().toLowerCase().trim();
+    if (status !== "in progress") return;
+    
+    const projectKey = `${schedule.customer}~${schedule.projectName}`;
+    const totalScheduled = normalizeAllocations(schedule.allocations).reduce((sum, alloc) => {
+      return sum + (schedule.totalHours * (alloc.percent / 100));
+    }, 0);
+    
+    projectTotalScheduledHours.set(projectKey, (projectTotalScheduledHours.get(projectKey) || 0) + totalScheduled);
+  });
+
   // Filter schedules to ONLY include In Progress for the rest of the UI (counts, filters)
   const qualifyingSchedules = schedules.filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress");
 
@@ -1024,41 +1038,68 @@ function WIPReportContent() {
         <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ color: "#15616D", margin: 0 }}>Monthly Breakdown</h2>
-            <button
-              onClick={() => {
-                setCustomerFilter("");
-                setProjectFilter("");
-                setMonthFilter("");
-                setYearFilter("");
-              }}
-              style={{
-                padding: "6px 12px",
-                background: "transparent",
-                border: "1px solid #3a3d42",
-                color: "#9ca3af",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              Clear Filters
-            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* Active Filters Badge */}
+              {(yearFilter || customerFilter || projectFilter || monthFilter) && (
+                <div style={{ 
+                  padding: "4px 12px", 
+                  background: "#E06C00", 
+                  color: "#ffffff", 
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 600
+                }}>
+                  {[yearFilter && "Year", customerFilter && "Customer", projectFilter && "Project", monthFilter && "Month"].filter(Boolean).join(", ")} Active
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setCustomerFilter("");
+                  setProjectFilter("");
+                  setMonthFilter("");
+                  setYearFilter("");
+                }}
+                style={{
+                  padding: "8px 16px",
+                  background: "#E06C00",
+                  border: "none",
+                  color: "#ffffff",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Clear All Filters
+              </button>
+            </div>
           </div>
 
           {/* Filters */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(4, 1fr)", 
+            gap: 12, 
+            marginBottom: 20, 
+            padding: 16, 
+            background: "#f8f9fa", 
+            borderRadius: 8,
+            border: "1px solid #dee2e6"
+          }}>
             <div>
-              <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Year</label>
+              <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Year</label>
               <select
                 value={yearFilter}
                 onChange={(e) => setYearFilter(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 10px",
-                  background: "#1a1d23",
-                  color: "#e5e7eb",
-                  border: "1px solid #3a3d42",
+                  padding: "10px 12px",
+                  background: "#ffffff",
+                  color: "#333333",
+                  border: yearFilter ? "2px solid #E06C00" : "1px solid #ced4da",
                   borderRadius: 6,
+                  fontSize: 14,
+                  cursor: "pointer",
                 }}
               >
                 <option value="">All Years</option>
@@ -1070,17 +1111,19 @@ function WIPReportContent() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Customer</label>
+              <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Customer</label>
               <select
                 value={customerFilter}
                 onChange={(e) => setCustomerFilter(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 10px",
-                  background: "#1a1d23",
-                  color: "#e5e7eb",
-                  border: "1px solid #3a3d42",
+                  padding: "10px 12px",
+                  background: "#ffffff",
+                  color: "#333333",
+                  border: customerFilter ? "2px solid #E06C00" : "1px solid #ced4da",
                   borderRadius: 6,
+                  fontSize: 14,
+                  cursor: "pointer",
                 }}
               >
                 <option value="">All Customers</option>
@@ -1092,17 +1135,19 @@ function WIPReportContent() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Project</label>
+              <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Project</label>
               <select
                 value={projectFilter}
                 onChange={(e) => setProjectFilter(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 10px",
-                  background: "#1a1d23",
-                  color: "#e5e7eb",
-                  border: "1px solid #3a3d42",
+                  padding: "10px 12px",
+                  background: "#ffffff",
+                  color: "#333333",
+                  border: projectFilter ? "2px solid #E06C00" : "1px solid #ced4da",
                   borderRadius: 6,
+                  fontSize: 14,
+                  cursor: "pointer",
                 }}
               >
                 <option value="">All Projects</option>
@@ -1114,17 +1159,19 @@ function WIPReportContent() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 6 }}>Month</label>
+              <label style={{ fontSize: 13, color: "#15616D", display: "block", marginBottom: 6, fontWeight: 600 }}>Filter by Month</label>
               <select
                 value={monthFilter}
                 onChange={(e) => setMonthFilter(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 10px",
-                  background: "#1a1d23",
-                  color: "#e5e7eb",
-                  border: "1px solid #3a3d42",
+                  padding: "10px 12px",
+                  background: "#ffffff",
+                  color: "#333333",
+                  border: monthFilter ? "2px solid #E06C00" : "1px solid #ced4da",
                   borderRadius: 6,
+                  fontSize: 14,
+                  cursor: "pointer",
                 }}
               >
                 <option value="">All Months</option>
@@ -1152,39 +1199,47 @@ function WIPReportContent() {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontSize: 12, color: "#666", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #ddd", fontWeight: 600 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr", gap: 12, fontSize: 12, color: "#666", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #ddd", fontWeight: 600 }}>
                     <div>Customer</div>
                     <div>Project</div>
-                    <div style={{ textAlign: "right" }}>Hours</div>
+                    <div style={{ textAlign: "right" }}>This Month</div>
+                    <div style={{ textAlign: "right" }}>Total Sched</div>
                   </div>
                   {data.jobs.length > 0 ? (
-                    data.jobs.filter((job) => (job.hours ?? 0) > 0).map((job, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => openGanttModal(job.customer, job.projectName, job.projectNumber)}
-                        style={{ 
-                          display: "grid", 
-                          gridTemplateColumns: "repeat(3, 1fr)", 
-                          gap: 12, 
-                          fontSize: 13, 
-                          color: "#222", 
-                          marginBottom: 8, 
-                          paddingBottom: 8, 
-                          borderBottom: "1px solid #f0f0f0",
-                          cursor: "pointer",
-                          padding: "8px",
-                          borderRadius: "4px",
-                          backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f9f9f9",
-                          transition: "background 0.2s"
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "#f5f5f5"}
-                        onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? "#ffffff" : "#f9f9f9"}
-                      >
-                        <div>{job.customer}</div>
-                        <div>{job.projectName}</div>
-                        <div style={{ textAlign: "right", color: "#E06C00", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
-                      </div>
-                    ))
+                    data.jobs.filter((job) => (job.hours ?? 0) > 0).map((job, idx) => {
+                      const projectKey = `${job.customer}~${job.projectName}`;
+                      const totalScheduled = projectTotalScheduledHours.get(projectKey) || 0;
+                      return (
+                        <div 
+                          key={idx} 
+                          onClick={() => openGanttModal(job.customer, job.projectName, job.projectNumber)}
+                          style={{ 
+                            display: "grid", 
+                            gridTemplateColumns: "2fr 2fr 1fr 1fr", 
+                            gap: 12, 
+                            fontSize: 13, 
+                            color: "#222", 
+                            marginBottom: 8, 
+                            paddingBottom: 8, 
+                            borderBottom: "1px solid #f0f0f0",
+                            cursor: "pointer",
+                            padding: "8px",
+                            borderRadius: "4px",
+                            backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f9f9f9",
+                            transition: "background 0.2s"
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#f5f5f5"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? "#ffffff" : "#f9f9f9"}
+                        >
+                          <div>{job.customer}</div>
+                          <div>{job.projectName}</div>
+                          <div style={{ textAlign: "right", color: "#E06C00", fontWeight: 600 }}>{job.hours.toFixed(1)}</div>
+                          <div style={{ textAlign: "right", color: "#666", fontSize: 12 }} title="Total scheduled hours across all time periods">
+                            {totalScheduled.toFixed(0)}
+                          </div>
+                        </div>
+                      );
+                    })
                   ) : (
                     <div style={{ color: "#999", padding: 12, textAlign: "center" }}>No jobs scheduled for this month</div>
                   )}

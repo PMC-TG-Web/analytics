@@ -161,7 +161,7 @@ function WIPReportContent() {
 
         // Parallelize all primary data fetches
         const [projectsScopesRes, schedulesRes] = await Promise.all([
-          fetch("/api/projects-scopes"),
+          fetch("/api/project-scopes"),
           fetch("/api/scheduling"),
         ]);
 

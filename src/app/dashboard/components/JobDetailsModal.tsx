@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { getProjectLineItems } from "../projectQueries";
 import { Project } from "@/types";
 
 interface JobDetailsModalProps {
@@ -13,7 +12,7 @@ interface JobDetailsModalProps {
 }
 
 export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpdate }: JobDetailsModalProps) {
-  const [lineItems, setLineItems] = useState<Project[]>([]);
+  const [lineItems, setLineItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "cost" | "sales">("name");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -32,40 +31,27 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
   ];
 
   useEffect(() => {
-    // FIX Issue #1 & #2: Ensure all required fields exist before fetching
-    if (isOpen && project?.projectNumber && project?.projectName && project?.customer) {
-      const fetchLineItems = async () => {
-        setLoading(true);
-        try {
-          const items = await getProjectLineItems(
-            project.projectNumber!,
-            project.projectName!,
-            project.customer!
-          );
-          setLineItems(items);
-          setNewStatus(project.status || "");
-          setUpdateMessage(null);
-        } catch (error) {
-          console.error("Error fetching line items:", error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchLineItems();
+    // Load line items from project's customFields instead of API
+    if (isOpen && project) {
+      const customFields = project.customFields as any;
+      const items = customFields?.lineItems || [];
+      setLineItems(items);
+      setNewStatus(project.status || "");
+      setUpdateMessage(null);
     }
-  }, [isOpen, project?.projectNumber, project?.projectName, project?.customer, project?.status]);
+  }, [isOpen, project]);
 
-  // FIX Issue #3: Use useMemo for all aggregations
+  // Group line items by costType
   const groupedItems = useMemo(() => {
     return lineItems.reduce((acc, item) => {
       const type = (item.costType || "Unassigned") as string;
       if (!acc[type]) acc[type] = [];
       acc[type].push(item);
       return acc;
-    }, {} as Record<string, Project[]>);
+    }, {} as Record<string, any[]>);
   }, [lineItems]);
 
-  const aggregateByType = (items: Project[], type: string) => {
+  const aggregateByType = (items: any[], type: string) => {
     return items
       .filter(item => item.costType === type)
       .reduce(
@@ -82,21 +68,21 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
   const partsAgg = useMemo(() => aggregateByType(lineItems, "Part"), [lineItems]);
   const equipmentAgg = useMemo(() => aggregateByType(lineItems, "Equipment"), [lineItems]);
   
-  const withoutMgmtAgg = useMemo(() => {
-    return lineItems
-      .filter(item => item.costType !== "Management" && item.costType !== "Supervisor")
-      .reduce(
-        (acc, item) => ({
-          sales: (acc.sales || 0) + (item.sales || 0),
-          cost: (acc.cost || 0) + (item.cost || 0),
-        }),
-        { sales: 0, cost: 0 }
-      );
-  }, [lineItems]);
+  // PM-related cost items to exclude from hours (but not sales/cost)
+  const pmCostItems = [
+    'management',
+    'management labor',
+    'supervision',
+    '7. management labor',
+    '1 hr. per 30 manhours, 1 in 50 with a supervisor'
+  ];
 
   const hoursWithoutPM = useMemo(() => 
     lineItems
-      .filter(item => item.costType !== "PM" && item.costType !== "Management")
+      .filter(item => {
+        const costitem = (item.costitems || '').toLowerCase().trim();
+        return !pmCostItems.includes(costitem);
+      })
       .reduce((sum, item) => sum + (item.hours || 0), 0),
     [lineItems]
   );
@@ -174,7 +160,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
     { label: "Cost", value: project.cost, prefix: "$", decimals: 0 },
     { label: "Profit", value: (project.sales ?? 0) - (project.cost ?? 0), prefix: "$", decimals: 0 },
     { label: "Markup %", value: project.cost && project.cost > 0 ? (((project.sales ?? 0) - project.cost) / project.cost * 100) : 0, suffix: "%", decimals: 1 },
-    { label: "Profit/Hr (net)", value: hoursWithoutPM > 0 ? (withoutMgmtAgg.sales - withoutMgmtAgg.cost) / hoursWithoutPM : 0, prefix: "$", decimals: 2 },
+    { label: "Profit/Hr (net)", value: hoursWithoutPM > 0 ? ((project.sales ?? 0) - (project.cost ?? 0)) / hoursWithoutPM : 0, prefix: "$", decimals: 2 },
     { label: "Total Labor Hrs", value: project.hours, decimals: 0 },
     { label: "Labor Markup %", value: laborAgg.cost && laborAgg.cost > 0 ? (((laborAgg.sales ?? 0) - laborAgg.cost) / laborAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
     { label: "Subs Markup %", value: subsAgg.cost && subsAgg.cost > 0 ? (((subsAgg.sales ?? 0) - subsAgg.cost) / subsAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
@@ -307,15 +293,44 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                 <div className="py-20 text-center text-gray-400 font-medium italic">No line items found.</div>
               ) : (
                 <div className="space-y-4">
-                  {Object.entries(groupedItems).sort().map(([type, items]) => {
-                    const sortedItems = [...items].sort((a, b) => {
+                  {Object.entries(groupedItems as Record<string, any[]>).sort().map(([type, items]) => {
+                    const typedItems = items as any[];
+                    const itemsWithCost = typedItems.filter((item) => (item.cost || 0) > 0);
+                    if (itemsWithCost.length === 0) return null;
+
+                    // Aggregate duplicate costitems within this type
+                    const aggregatedItems = itemsWithCost.reduce((acc, item) => {
+                      const key = (item.costitems || "Unknown").toString().toLowerCase().trim();
+                      if (!acc[key]) {
+                        acc[key] = {
+                          costitems: item.costitems || "Unknown",
+                          quantity: 0,
+                          hours: 0,
+                          cost: 0,
+                          sales: 0,
+                          laborSales: 0,
+                          laborCost: 0,
+                        };
+                      }
+                      acc[key].quantity += item.quantity || 0;
+                      acc[key].hours += item.hours || 0;
+                      acc[key].cost += item.cost || 0;
+                      acc[key].sales += item.sales || 0;
+                      acc[key].laborSales += item.laborSales || 0;
+                      acc[key].laborCost += item.laborCost || 0;
+                      return acc;
+                    }, {} as Record<string, any>);
+                    
+                    const aggregatedItemsArray = Object.values(aggregatedItems) as any[];
+                    
+                    const sortedItems = [...aggregatedItemsArray].sort((a, b) => {
                       if (sortBy === "name") return (a.costitems || "").toString().localeCompare((b.costitems || "").toString());
                       if (sortBy === "cost") return (b.cost || 0) - (a.cost || 0);
                       return (b.sales || 0) - (a.sales || 0);
                     });
                     const isExpanded = expandedGroups[type];
-                    const typeSales = items.reduce((sum, i) => sum + (i.sales || 0), 0);
-                    const typeCost = items.reduce((sum, i) => sum + (i.cost || 0), 0);
+                    const typeSales = itemsWithCost.reduce((sum, i) => sum + (i.sales || 0), 0);
+                    const typeCost = itemsWithCost.reduce((sum, i) => sum + (i.cost || 0), 0);
 
                     return (
                       <div key={type} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
@@ -325,7 +340,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                         >
                           <div className="flex items-center gap-3">
                             <span className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
-                            <span className="font-bold text-gray-800">{type} ({items.length})</span>
+                            <span className="font-bold text-gray-800">{type} ({aggregatedItemsArray.length})</span>
                           </div>
                           <div className="flex gap-6 text-sm">
                             <span className="text-blue-600 font-semibold">${typeSales.toLocaleString()} sales</span>

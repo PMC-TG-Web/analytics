@@ -81,12 +81,23 @@ export function JobsListModal({
             </div>
           ) : (
             <div className="grid gap-2">
-              {filteredProjects.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => onSelectProject(project)}
-                  className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left cursor-pointer transition-all hover:bg-gray-100 hover:border-[#15616D] group"
-                >
+              {filteredProjects.map((project) => {
+                // Calculate hours without PM using pmcGroup breakdown
+                const pmcGroup = project.customFields?.pmcGroup || {};
+                const pmHours = (pmcGroup['PM'] || 0) + (pmcGroup['pm'] || 0);
+                const totalHours = project.hours || 0;
+                const hoursWithoutPM = totalHours - pmHours;
+                
+                // Calculate Profit/Hr: Total Profit ÷ Hours excluding PM
+                const profit = (project.sales ?? 0) - (project.cost ?? 0);
+                const profitPerHour = hoursWithoutPM > 0 ? profit / hoursWithoutPM : 0;
+                
+                return (
+                  <button
+                    key={project.id}
+                    onClick={() => onSelectProject(project)}
+                    className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left cursor-pointer transition-all hover:bg-gray-100 hover:border-[#15616D] group"
+                  >
                   <div className="grid grid-cols-2 gap-4 mb-2">
                     <div>
                       <div className="text-xs text-gray-500">Project Number</div>
@@ -107,7 +118,7 @@ export function JobsListModal({
                       {project.projectName || "N/A"}
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-4 gap-4 mb-2">
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Status</div>
                       <div
@@ -138,8 +149,32 @@ export function JobsListModal({
                       </div>
                     </div>
                   </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Hours</div>
+                      <div className="text-sm font-semibold text-gray-700">
+                        {totalHours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Profit/Hr</div>
+                      <div className="text-sm font-semibold text-purple-600">
+                        ${profitPerHour.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Labor Hours</div>
+                      <div className="text-sm font-semibold text-gray-700">
+                        {hoursWithoutPM.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      {/* Empty cell for alignment */}
+                    </div>
+                  </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

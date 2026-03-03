@@ -7,6 +7,7 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState<string>("/wip");
   const [framed, setFramed] = useState(false);
+  const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
   const navigateToLogin = () => {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
@@ -31,20 +32,7 @@ function LoginContent() {
 
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
-      return;
     }
-
-    // Auto-redirect to login in normal browser context (old behavior)
-    if (isFramed) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnToParam || '/wip')}`;
-      router.replace(loginUrl);
-    }, 100);
-
-    return () => clearTimeout(timer);
   }, [router]);
 
   const handleManualLogin = () => {
@@ -75,21 +63,39 @@ function LoginContent() {
         )}
 
         {framed ? (
-          <a
-            href={`/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-          >
-            Open Login in New Tab
-          </a>
+          <div className="space-y-3">
+            <a
+              href={`/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+            >
+              Login with Email (New Tab)
+            </a>
+            <a
+              href={procoreAppUrl}
+              target="_top"
+              rel="noopener noreferrer"
+              className="block w-full text-center bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+            >
+              Open from Procore
+            </a>
+          </div>
         ) : (
-          <button
-            onClick={handleManualLogin}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-          >
-            Continue to Login
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={handleManualLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+            >
+              Login with Email
+            </button>
+            <a
+              href={procoreAppUrl}
+              className="block w-full text-center bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+            >
+              Open from Procore
+            </a>
+          </div>
         )}
       </div>
     </div>

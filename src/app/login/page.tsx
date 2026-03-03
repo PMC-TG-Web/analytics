@@ -1,25 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+
+import { useEffect, useRef, useState } from "react";
 
 function LoginContent() {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState<string>("/wip");
   const [framed, setFramed] = useState(false);
+  const [status, setStatus] = useState<string>("Choose a login method.");
+  const pollRef = useRef<number | null>(null);
+
   const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
-  const navigateToLogin = () => {
-    const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
-
-    router.push(loginUrl);
-  };
-
   useEffect(() => {
-    // Check URL for error parameter
     const searchParams = new URLSearchParams(window.location.search);
-    const errorParam = searchParams.get('error');
-    const returnToParam = searchParams.get('returnTo');
+    const errorParam = searchParams.get("error");
+    const returnToParam = searchParams.get("returnTo");
+
     if (returnToParam) setReturnTo(returnToParam);
 
     let isFramed = false;
@@ -33,70 +29,112 @@ function LoginContent() {
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
     }
-  }, [router]);
 
-  const handleManualLogin = () => {
-    navigateToLogin();
+    return () => {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+      }
+    };
+  }, []);
+
+  const redirectToProcoreApp = () => {
+    try {
+      window.location.assign(procoreAppUrl);
+    } catch {
+      window.location.href = procoreAppUrl;
+    }
+  };
+
+  const startAuthPolling = (popup: Window | null) => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        if (res.ok) {
+          if (popup && !popup.closed) {
+            popup.close();
+          }
+          if (pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          setStatus("Login successful. Opening Procore app...");
+          redirectToProcoreApp();
+          return;
+        }
+
+        if (popup && popup.closed) {
+          setStatus("Login window closed. Click a login button to try again.");
+          if (pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch {
+        // keep polling
+      }
+    }, 1000);
+  };
+
+  const openLoginPopup = () => {
+    setError(null);
+    setStatus("Waiting for login...");
+
+    const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+    const popup = window.open(
+      loginUrl,
+      "analytics_auth",
+      "popup=yes,width=520,height=760,left=200,top=80"
+    );
+
+    if (!popup) {
+      setError("Popup blocked. Please allow popups and try again.");
+      setStatus("Popup was blocked.");
+      return;
+    }
+
+    startAuthPolling(popup);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800 p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
         <h1 className="text-3xl font-bold text-center text-slate-800 mb-8">Analytics</h1>
-        
+
         {error ? (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-700 text-sm font-medium">Error: {error}</p>
             <p className="text-red-600 text-xs mt-2">If this persists, contact your administrator.</p>
           </div>
-        ) : framed ? (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-amber-800 text-sm font-medium">Login in embedded mode</p>
-            <p className="text-amber-700 text-xs mt-2">
-              Your browser is inside an embedded frame. If login does not open automatically, use the button below.
-            </p>
-          </div>
         ) : (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-700 text-sm">Redirecting to login...</p>
+            <p className="text-blue-700 text-sm">{status}</p>
+            {framed && (
+              <p className="text-blue-600 text-xs mt-2">
+                You are in an embedded Procore frame, so login opens in a popup.
+              </p>
+            )}
           </div>
         )}
 
-        {framed ? (
-          <div className="space-y-3">
-            <a
-              href={`/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-            >
-              Login with Email (New Tab)
-            </a>
-            <a
-              href={procoreAppUrl}
-              target="_top"
-              rel="noopener noreferrer"
-              className="block w-full text-center bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-            >
-              Open from Procore
-            </a>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <button
-              onClick={handleManualLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-            >
-              Login with Email
-            </button>
-            <a
-              href={procoreAppUrl}
-              className="block w-full text-center bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
-            >
-              Open from Procore
-            </a>
-          </div>
-        )}
+        <div className="space-y-3">
+          <button
+            onClick={openLoginPopup}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+          >
+            Login with Email
+          </button>
+          <button
+            onClick={openLoginPopup}
+            className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
+          >
+            Login with Procore
+          </button>
+        </div>
       </div>
     </div>
   );

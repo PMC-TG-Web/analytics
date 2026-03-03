@@ -5,6 +5,8 @@ import Navigation from "@/components/Navigation";
 import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
 import { ProjectInfo, Scope, Project } from "@/types";
 import { getEnrichedScopes } from "@/utils/projectUtils";
+import { useActiveScheduleGantt, useGanttTimeline } from "./hooks/useActiveScheduleGantt";
+import { WIPGanttChart } from "./components/WIPGanttChart";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -111,6 +113,7 @@ function WIPReportContent() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'table' | 'gantt'>('table');
 
   const qualifyingStatus = "In Progress";
 
@@ -151,6 +154,10 @@ function WIPReportContent() {
     }
     return "";
   });
+
+  // Gantt data from activeSchedule
+  const { entries: ganttEntries, loading: ganttLoading } = useActiveScheduleGantt();
+  const { units } = useGanttTimeline(ganttEntries, 'week');
 
   useEffect(() => {
     async function fetchData() {
@@ -928,10 +935,59 @@ function WIPReportContent() {
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>WIP Report</h1>
-        <Navigation currentPage="wip" />
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, background: "#fff", padding: 4, borderRadius: 8, border: "1px solid #ddd" }}>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '8px 16px',
+                background: viewMode === 'table' ? '#15616D' : 'transparent',
+                color: viewMode === 'table' ? '#fff' : '#666',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 600,
+                transition: 'all 0.2s',
+              }}
+            >
+              Table
+            </button>
+            <button
+              onClick={() => setViewMode('gantt')}
+              style={{
+                padding: '8px 16px',
+                background: viewMode === 'gantt' ? '#FF9500' : 'transparent',
+                color: viewMode === 'gantt' ? '#fff' : '#666',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 600,
+                transition: 'all 0.2s',
+              }}
+            >
+              Gantt
+            </button>
+          </div>
+          <Navigation currentPage="wip" />
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      {viewMode === 'gantt' ? (
+        // Gantt View
+        <div style={{ background: "#ffffff", borderRadius: 12, padding: 24, border: "1px solid #ddd" }}>
+          <h2 style={{ color: "#15616D", marginBottom: 16 }}>Schedule Timeline</h2>
+          <WIPGanttChart
+            entries={ganttEntries}
+            units={units}
+            unitWidth={120}
+            loading={ganttLoading}
+          />
+        </div>
+      ) : (
+        // Table View (original content)
+        <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 12 }}>
         <SummaryCard label="Total Scheduled Hours" value={filteredTotalHours.toFixed(1)} />
         <SummaryCard label="Average Monthly Hours" value={filteredAvgHours.toFixed(1)} />
@@ -1361,6 +1417,8 @@ function WIPReportContent() {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </main>
   );

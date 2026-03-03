@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { syncAllocationToActiveSchedule, deleteAllocationFromActiveSchedule } from '@/utils/syncActiveSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -162,9 +163,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Sync to activeSchedule (only for month-level allocations)
+    if (periodType === 'month') {
+      const syncResult = await syncAllocationToActiveSchedule(
+        scheduleId,
+        period,
+        hours,
+        'schedules'
+      );
+      
+      if (syncResult.errors.length > 0) {
+        console.warn('Sync warnings:', syncResult.errors);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Allocation saved successfully',
+      message: 'Allocation saved and synced to activeSchedule',
       data: allocation,
     });
   } catch (error) {
@@ -189,6 +204,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Delete from activeSchedule first
+    await deleteAllocationFromActiveSchedule(scheduleId, period);
+
+    // Delete allocation
     await prisma.scheduleAllocation.delete({
       where: {
         scheduleId_period: {
@@ -200,7 +219,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Allocation deleted successfully',
+      message: 'Allocation and activeSchedule entries deleted successfully',
     });
   } catch (error) {
     console.error('Failed to delete allocation:', error);

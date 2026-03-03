@@ -25,20 +25,26 @@ export async function GET(request: NextRequest) {
           projectNumber: true,
           status: true,
           totalHours: true,
-          allocations: true,
+          allocationsList: {
+            select: {
+              period: true,
+              hours: true,
+              percent: true,
+            },
+            orderBy: { period: 'asc' },
+          },
         },
       }),
     ]);
 
-    // Transform allocations from JSON to the expected format
+    // Transform allocations to the expected format
     const data = schedules.map((s) => ({
       ...s,
-      allocations: Array.isArray(s.allocations)
-        ? s.allocations
-        : Object.entries(s.allocations || {}).map(([month, percent]) => ({
-            month,
-            percent,
-          })),
+      allocations: s.allocationsList.map((alloc) => ({
+        month: alloc.period,
+        percent: alloc.percent || 0,
+        hours: alloc.hours,
+      })),
     }));
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -83,17 +89,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert allocations array format to object if needed
-    let allocationsObj: Record<string, number> = {};
-    if (Array.isArray(allocations)) {
-      allocations.forEach((alloc: { month: string; percent: number }) => {
-        allocationsObj[alloc.month] = alloc.percent;
-      });
-    } else {
-      allocationsObj = allocations || {};
-    }
-
-    // Upsert schedule (update if exists, create if not)
+    // Create or update schedule (without allocations - those are managed separately)
     const schedule = await prisma.schedule.upsert({
       where: { jobKey },
       create: {
@@ -103,7 +99,6 @@ export async function POST(request: NextRequest) {
         projectNumber,
         status,
         totalHours,
-        allocations: allocationsObj,
       },
       update: {
         customer,
@@ -111,9 +106,35 @@ export async function POST(request: NextRequest) {
         projectNumber,
         status,
         totalHours,
-        allocations: allocationsObj,
       },
     });
+
+    // If allocations are provided, create/update ScheduleAllocation records
+    if (allocations && Array.isArray(allocations)) {
+      for (const alloc of allocations) {
+        const { month, percent, hours } = alloc;
+        if (!month) continue;
+
+        await prisma.scheduleAllocation.upsert({
+          where: {
+            scheduleId_period: {
+              scheduleId: schedule.id,
+              period: month,
+            },
+          },
+          create: {
+            scheduleId: schedule.id,
+            period: month,
+            hours: hours || 0,
+            percent: percent || 0,
+          },
+          update: {
+            hours: hours || 0,
+            percent: percent || 0,
+          },
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

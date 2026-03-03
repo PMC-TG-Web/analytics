@@ -90,8 +90,13 @@ model Schedule {
   status            String?
   totalHours        Float?
   
-  // Relationships to allocations (no JSON)
-  allocations       ScheduleAllocation[]
+  // NEW: Normalized allocations table
+  allocationsList   ScheduleAllocation[]
+  
+  // LEGACY: Keep JSON columns for backward compatibility during migration
+  allocations       Json?    @default("{}")
+  shortTermData     Json?
+  longTermData      Json?
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

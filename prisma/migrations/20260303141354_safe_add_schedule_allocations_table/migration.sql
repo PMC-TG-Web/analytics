@@ -1,4 +1,4 @@
--- CreateTable ScheduleAllocation
+-- CreateTable
 CREATE TABLE "ScheduleAllocation" (
     "id" TEXT NOT NULL,
     "scheduleId" TEXT NOT NULL,
@@ -12,16 +12,17 @@ CREATE TABLE "ScheduleAllocation" (
     CONSTRAINT "ScheduleAllocation_pkey" PRIMARY KEY ("id")
 );
 
--- Add foreign key
-ALTER TABLE "ScheduleAllocation" ADD CONSTRAINT "ScheduleAllocation_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "Schedule"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- Create indexes
-CREATE UNIQUE INDEX "ScheduleAllocation_scheduleId_period_key" ON "ScheduleAllocation"("scheduleId", "period");
+-- CreateIndex
 CREATE INDEX "ScheduleAllocation_scheduleId_idx" ON "ScheduleAllocation"("scheduleId");
+
+-- CreateIndex
 CREATE INDEX "ScheduleAllocation_period_idx" ON "ScheduleAllocation"("period");
+
+-- CreateIndex
 CREATE INDEX "ScheduleAllocation_periodType_idx" ON "ScheduleAllocation"("periodType");
 
--- Drop JSON columns from Schedule table
-ALTER TABLE "Schedule" DROP COLUMN IF EXISTS "allocations";
-ALTER TABLE "Schedule" DROP COLUMN IF EXISTS "shortTermData";
-ALTER TABLE "Schedule" DROP COLUMN IF EXISTS "longTermData";
+-- CreateIndex
+CREATE UNIQUE INDEX "ScheduleAllocation_scheduleId_period_key" ON "ScheduleAllocation"("scheduleId", "period");
+
+-- AddForeignKey
+ALTER TABLE "ScheduleAllocation" ADD CONSTRAINT "ScheduleAllocation_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "Schedule"("id") ON DELETE CASCADE ON UPDATE CASCADE;

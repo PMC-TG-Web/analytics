@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         projectNumber: true,
         projectName: true,
         totalHours: true,
-        allocations: {
+        allocationsList: {
           select: {
             period: true,
             periodType: true,
@@ -64,13 +64,13 @@ export async function GET(request: NextRequest) {
           projectNumber: schedule.projectNumber || '',
           projectName: schedule.projectName || '',
           totalHours: schedule.totalHours || 0,
-          allocations: schedule.allocations || [],
+          allocations: schedule.allocationsList || [],
         },
       });
     }
 
     // Month-specific query (for drawer editor)
-    const allocation = schedule?.allocations?.find((a) => a.period === month);
+    const allocation = schedule?.allocationsList?.find((a) => a.period === month);
 
     if (!allocation) {
       // Return empty structure if no allocation exists for this month

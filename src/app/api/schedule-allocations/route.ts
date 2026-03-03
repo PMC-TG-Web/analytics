@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       const schedule = await prisma.schedule.findUnique({
         where: { jobKey },
         include: {
-          allocations: {
+          allocationsList: {
             orderBy: { period: 'asc' },
           },
         },

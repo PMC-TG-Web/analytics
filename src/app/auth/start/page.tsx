@@ -8,12 +8,22 @@ export default function AuthStartPage() {
     const returnTo = params.get("returnTo") || "/";
     const loginPath = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
-    if (window.top && window.top !== window) {
-      window.top.location.href = loginPath;
-      return;
-    }
+    try {
+      if (window.top && window.top !== window) {
+        try {
+          window.top.location.assign(loginPath);
+          return;
+        } catch {
+          // Some embedded/sandboxed contexts block top navigation.
+          // Fall back to same-frame navigation.
+        }
+      }
 
-    window.location.href = loginPath;
+      window.location.assign(loginPath);
+    } catch {
+      // Last-resort fallback if assign throws for any reason.
+      window.location.href = loginPath;
+    }
   }, []);
 
   return (

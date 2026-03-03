@@ -90,13 +90,8 @@ model Schedule {
   status            String?
   totalHours        Float?
   
-  // Store schedule data as JSON
-  // Format: { "2026-01": 120, "2026-02": 80, ... }
-  allocations       Json?    @default("{}")
-  
-  // Separate collections for short/long term (stored as JSON for flexibility)
-  shortTermData     Json?
-  longTermData      Json?
+  // Relationships to allocations (no JSON)
+  allocations       ScheduleAllocation[]
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -106,6 +101,26 @@ model Schedule {
   @@index([customer])
   @@index([projectNumber])
   @@index([status])
+}
+
+// ==================== SCHEDULE ALLOCATIONS (Monthly/Weekly breakdown) ====================
+model ScheduleAllocation {
+  id                String   @id @default(cuid())
+  scheduleId        String
+  schedule          Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  
+  period            String   @db.VarChar(10) // "2026-03" for month, "2026-W10" for week
+  periodType        String   @default("month") // "month" or "week"
+  hours             Float
+  percent           Float?   // Percentage of total hours
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([scheduleId, period])
+  @@index([scheduleId])
+  @@index([period])
+  @@index([periodType])
 }
 
 // ==================== ACTIVE SCHEDULE ====================

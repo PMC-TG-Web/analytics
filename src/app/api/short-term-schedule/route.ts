@@ -165,7 +165,8 @@ export async function POST(request: NextRequest) {
       projectNumber,
       projectName,
       month,
-      weeks,
+      hours,
+      percent,
     } = body;
 
     if (!jobKey || !month) {
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store schedule data in Schedule table's shortTermData JSON field
+    // Ensure Schedule exists
     const schedule = await prisma.schedule.upsert({
       where: { jobKey },
       create: {
@@ -184,28 +185,38 @@ export async function POST(request: NextRequest) {
         projectNumber,
         projectName,
         status: 'In Progress',
-        shortTermData: {
-          [month]: {
-            weeks,
-            updatedAt: new Date().toISOString(),
-          },
+      },
+      update: {},
+    });
+
+    // Create or update allocation for this month
+    const allocation = await prisma.scheduleAllocation.upsert({
+      where: {
+        scheduleId_period: {
+          scheduleId: schedule.id,
+          period: month,
         },
       },
+      create: {
+        scheduleId: schedule.id,
+        period: month,
+        periodType: 'month',
+        hours: hours || 0,
+        percent: percent || 0,
+      },
       update: {
-        shortTermData: {
-          ...{}, // Preserve existing months
-          [month]: {
-            weeks,
-            updatedAt: new Date().toISOString(),
-          },
-        },
+        hours: hours || 0,
+        percent: percent || 0,
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Schedule saved successfully',
-      data: schedule,
+      message: 'Schedule allocation saved successfully',
+      data: {
+        scheduleId: schedule.id,
+        allocation,
+      },
     });
   } catch (error) {
     console.error('Failed to save short-term schedule:', error);
@@ -229,7 +240,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get existing schedule and remove the month's data
+    // Find the schedule and delete the allocation
     const schedule = await prisma.schedule.findUnique({
       where: { jobKey },
     });
@@ -241,20 +252,18 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Remove the specific month from shortTermData
-    const shortTermData = (schedule.shortTermData as Record<string, unknown>) || {};
-    delete shortTermData[month];
-
-    await prisma.schedule.update({
-      where: { jobKey },
-      data: {
-        shortTermData: Object.keys(shortTermData).length > 0 ? (shortTermData as any) : {},
+    await prisma.scheduleAllocation.delete({
+      where: {
+        scheduleId_period: {
+          scheduleId: schedule.id,
+          period: month,
+        },
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Schedule deleted successfully',
+      message: 'Schedule allocation deleted successfully',
     });
   } catch (error) {
     console.error('Failed to delete short-term schedule:', error);

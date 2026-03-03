@@ -27,8 +27,16 @@ export async function GET(request: NextRequest) {
         customer: true,
         projectNumber: true,
         projectName: true,
-        shortTermData: true,
-        longTermData: true,
+        totalHours: true,
+        allocations: {
+          select: {
+            period: true,
+            periodType: true,
+            hours: true,
+            percent: true,
+          },
+          orderBy: { period: 'asc' },
+        },
       },
     });
 
@@ -43,8 +51,7 @@ export async function GET(request: NextRequest) {
             customer: customer || '',
             projectNumber: projectNumber || '',
             projectName: projectName || '',
-            shortTermData: {},
-            longTermData: {},
+            allocations: [],
           },
         });
       }
@@ -56,15 +63,17 @@ export async function GET(request: NextRequest) {
           customer: schedule.customer || '',
           projectNumber: schedule.projectNumber || '',
           projectName: schedule.projectName || '',
-          shortTermData: schedule.shortTermData || {},
-          longTermData: schedule.longTermData || {},
+          totalHours: schedule.totalHours || 0,
+          allocations: schedule.allocations || [],
         },
       });
     }
 
     // Month-specific query (for drawer editor)
-    if (!schedule) {
-      // Return empty structure if no schedule exists yet
+    const allocation = schedule?.allocations?.find((a) => a.period === month);
+
+    if (!allocation) {
+      // Return empty structure if no allocation exists for this month
       const [customer, projectNumber, projectName] = jobKey.split('~');
       return NextResponse.json({
         success: true,
@@ -74,39 +83,10 @@ export async function GET(request: NextRequest) {
           projectNumber: projectNumber || '',
           projectName: projectName || '',
           month,
-          weeks: Array.from({ length: 6 }, (_, i) => ({
-            weekNumber: i + 1,
-            days: Array.from({ length: 7 }, (_, j) => ({
-              dayNumber: j + 1,
-              hours: 0,
-            })),
-          })),
-        },
-      });
-    }
-
-    // Extract month data from shortTermData JSON
-    const shortTermData = (schedule.shortTermData as Record<string, unknown>) || {};
-    const monthData = shortTermData[month] as { weeks?: unknown[] } | undefined;
-
-    if (!monthData) {
-      // Return empty structure for this month
-      const [customer, projectNumber, projectName] = jobKey.split('~');
-      return NextResponse.json({
-        success: true,
-        data: {
-          jobKey,
-          customer: customer || '',
-          projectNumber: projectNumber || '',
-          projectName: projectName || '',
-          month,
-          weeks: Array.from({ length: 6 }, (_, i) => ({
-            weekNumber: i + 1,
-            days: Array.from({ length: 7 }, (_, j) => ({
-              dayNumber: j + 1,
-              hours: 0,
-            })),
-          })),
+          allocation: {
+            hours: 0,
+            percent: 0,
+          },
         },
       });
     }
@@ -119,7 +99,10 @@ export async function GET(request: NextRequest) {
         projectNumber: schedule.projectNumber || '',
         projectName: schedule.projectName || '',
         month,
-        weeks: monthData.weeks || [],
+        allocation: {
+          hours: allocation.hours,
+          percent: allocation.percent,
+        },
       },
     });
   } catch (error) {
@@ -134,51 +117,59 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobKey, customer, projectNumber, projectName, month, weeks } = body;
+    const { jobKey, customer, projectNumber, projectName, month, hours, percent } = body;
 
-    if (!jobKey || !month) {
+    if (!jobKey || !month || typeof hours !== 'number') {
       return NextResponse.json(
-        { success: false, error: 'jobKey and month are required' },
+        { success: false, error: 'jobKey, month, and hours are required' },
         { status: 400 }
       );
     }
 
-    // Fetch existing schedule data to merge
-    const existingSchedule = await prisma.schedule.findUnique({
-      where: { jobKey },
-      select: { shortTermData: true },
-    });
-
-    const existingData = (existingSchedule?.shortTermData as Record<string, unknown>) || {};
-
-    // Upsert the schedule document
+    // Ensure schedule exists
     const schedule = await prisma.schedule.upsert({
       where: { jobKey },
-      update: {
-        shortTermData: {
-          ...existingData,
-          [month]: { weeks },
-        },
-      },
+      update: {},
       create: {
         jobKey,
         customer,
         projectNumber,
         projectName,
-        shortTermData: {
-          [month]: { weeks },
+      },
+      select: { id: true },
+    });
+
+    // Create or update allocation
+    const allocation = await prisma.scheduleAllocation.upsert({
+      where: {
+        scheduleId_period: {
+          scheduleId: schedule.id,
+          period: month,
         },
       },
-      select: {
-        id: true,
-        jobKey: true,
+      create: {
+        scheduleId: schedule.id,
+        period: month,
+        periodType: 'month',
+        hours,
+        percent,
+      },
+      update: {
+        hours,
+        percent,
       },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Schedule saved',
-      data: { id: schedule.id, jobKey: schedule.jobKey },
+      data: { 
+        scheduleId: schedule.id,
+        allocationId: allocation.id,
+        period: month,
+        hours,
+        percent,
+      },
     });
   } catch (error) {
     console.error('Failed to save project schedule:', error);

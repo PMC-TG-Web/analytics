@@ -1,0 +1,1277 @@
+[
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin 34 Denver Road",
+    "csvMonth": "2025-08",
+    "csvPercent": 17,
+    "csvHours": 84.49000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2oz0032e3n41syyjqjh",
+        "customer": "AB Martin",
+        "projectName": "AB Martin 34 Denver Road",
+        "projectNumber": "2508-AB",
+        "status": "Complete",
+        "totalHours": 497
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin 34 Denver Road",
+    "csvMonth": "2025-10",
+    "csvPercent": 60,
+    "csvHours": 298.2,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2oz0032e3n41syyjqjh",
+        "customer": "AB Martin",
+        "projectName": "AB Martin 34 Denver Road",
+        "projectNumber": "2508-AB",
+        "status": "Complete",
+        "totalHours": 497
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "AB Martin 34 Denver Road",
+    "csvMonth": "2025-12",
+    "csvPercent": 23,
+    "csvHours": 114.31,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2oz0032e3n41syyjqjh",
+        "customer": "AB Martin",
+        "projectName": "AB Martin 34 Denver Road",
+        "projectNumber": "2508-AB",
+        "status": "Complete",
+        "totalHours": 497
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-06",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-07",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-08",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-09",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-10",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-11",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2026-12",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2027-01",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Broadcasting District Site",
+    "csvMonth": "2027-02",
+    "csvPercent": 10,
+    "csvHours": 638.4000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzvl000re3n4avgjlqbg",
+        "customer": "CH+N Site",
+        "projectName": "Broadcasting District Site",
+        "projectNumber": "2507-BS",
+        "status": "In Progress",
+        "totalHours": 6384
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners for Life",
+    "csvMonth": "2025-10",
+    "csvPercent": 15,
+    "csvHours": 79.64999999999999,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4xp0052e3n4z3efslxe",
+        "customer": "C. Raymond Davis & Sons, Inc.",
+        "projectName": "Canine Partners for Life",
+        "projectNumber": "2508 - CP",
+        "status": "In Progress",
+        "totalHours": 531
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners for Life",
+    "csvMonth": "2025-11",
+    "csvPercent": 35,
+    "csvHours": 185.85,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4xp0052e3n4z3efslxe",
+        "customer": "C. Raymond Davis & Sons, Inc.",
+        "projectName": "Canine Partners for Life",
+        "projectNumber": "2508 - CP",
+        "status": "In Progress",
+        "totalHours": 531
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Canine Partners for Life",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 265.5,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac4xp0052e3n4z3efslxe",
+        "customer": "C. Raymond Davis & Sons, Inc.",
+        "projectName": "Canine Partners for Life",
+        "projectNumber": "2508 - CP",
+        "status": "In Progress",
+        "totalHours": 531
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Associates Lancaster",
+    "csvMonth": "2025-09",
+    "csvPercent": 40,
+    "csvHours": 188.996,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5f2005ie3n4ej9a6sql",
+        "customer": "B.R. Kreider & Son, Inc.",
+        "projectName": "Clark Associates Lancaster",
+        "projectNumber": "CAL - 25 - 001",
+        "status": "Complete",
+        "totalHours": 472.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Associates Lancaster",
+    "csvMonth": "2025-12",
+    "csvPercent": 40,
+    "csvHours": 188.996,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5f2005ie3n4ej9a6sql",
+        "customer": "B.R. Kreider & Son, Inc.",
+        "projectName": "Clark Associates Lancaster",
+        "projectNumber": "CAL - 25 - 001",
+        "status": "Complete",
+        "totalHours": 472.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Clark Associates Lancaster",
+    "csvMonth": "2026-04",
+    "csvPercent": 20,
+    "csvHours": 94.498,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5f2005ie3n4ej9a6sql",
+        "customer": "B.R. Kreider & Son, Inc.",
+        "projectName": "Clark Associates Lancaster",
+        "projectNumber": "CAL - 25 - 001",
+        "status": "Complete",
+        "totalHours": 472.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay Loadout Addition",
+    "csvMonth": "2025-10",
+    "csvPercent": 25,
+    "csvHours": 321.125,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac57c005be3n4tpyit98n",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Coplay Loadout Addition",
+        "projectNumber": "2508 - CL",
+        "status": "In Progress",
+        "totalHours": 1284.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay Loadout Addition",
+    "csvMonth": "2025-11",
+    "csvPercent": 45,
+    "csvHours": 578.025,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac57c005be3n4tpyit98n",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Coplay Loadout Addition",
+        "projectNumber": "2508 - CL",
+        "status": "In Progress",
+        "totalHours": 1284.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Coplay Loadout Addition",
+    "csvMonth": "2025-12",
+    "csvPercent": 30,
+    "csvHours": 385.34999999999997,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac57c005be3n4tpyit98n",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Coplay Loadout Addition",
+        "projectNumber": "2508 - CL",
+        "status": "In Progress",
+        "totalHours": 1284.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Family Treasures Wholesale",
+    "csvMonth": "2026-03",
+    "csvPercent": 50,
+    "csvHours": 397.745,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac143001se3n4h3f7r4dg",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Family Treasures Wholesale",
+        "projectNumber": "2506 - FTW",
+        "status": "In Progress",
+        "totalHours": 795.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Family Treasures Wholesale",
+    "csvMonth": "2026-04",
+    "csvPercent": 50,
+    "csvHours": 397.745,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac143001se3n4h3f7r4dg",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Family Treasures Wholesale",
+        "projectNumber": "2506 - FTW",
+        "status": "In Progress",
+        "totalHours": 795.49
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store - Ephrata State Street",
+    "csvMonth": "2025-10",
+    "csvPercent": 100,
+    "csvHours": 19,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac8pj008me3n4cjcaclif",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store - Ephrata State Street",
+        "projectNumber": "2510 - GSE",
+        "status": "Complete",
+        "totalHours": 19
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2025-11",
+    "csvPercent": 7,
+    "csvHours": 100.31700000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2026-02",
+    "csvPercent": 25,
+    "csvHours": 358.275,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2026-04",
+    "csvPercent": 14,
+    "csvHours": 200.63400000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2026-10",
+    "csvPercent": 21,
+    "csvHours": 300.95099999999996,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2026-11",
+    "csvPercent": 20,
+    "csvHours": 286.62,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Goods Store Quarryville",
+    "csvMonth": "2026-12",
+    "csvPercent": 15,
+    "csvHours": 214.96499999999997,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac0z5001oe3n46odq8brt",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Goods Store Quarryville",
+        "projectNumber": "2601 - GSQ",
+        "status": "In Progress",
+        "totalHours": 1433.1
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg Volunteer Fire Department",
+    "csvMonth": "2025-12",
+    "csvPercent": 18,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac95i0092e3n4g5ab08fh",
+        "customer": "",
+        "projectName": "Mechanicsburg Volunteer Fire Department",
+        "projectNumber": "Mechanicsburg Volunteer Fire Department",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg Volunteer Fire Department",
+    "csvMonth": "2026-02",
+    "csvPercent": 18,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac95i0092e3n4g5ab08fh",
+        "customer": "",
+        "projectName": "Mechanicsburg Volunteer Fire Department",
+        "projectNumber": "Mechanicsburg Volunteer Fire Department",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg Volunteer Fire Department",
+    "csvMonth": "2026-03",
+    "csvPercent": 20,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac95i0092e3n4g5ab08fh",
+        "customer": "",
+        "projectName": "Mechanicsburg Volunteer Fire Department",
+        "projectNumber": "Mechanicsburg Volunteer Fire Department",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg Volunteer Fire Department",
+    "csvMonth": "2026-04",
+    "csvPercent": 15,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac95i0092e3n4g5ab08fh",
+        "customer": "",
+        "projectName": "Mechanicsburg Volunteer Fire Department",
+        "projectNumber": "Mechanicsburg Volunteer Fire Department",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Mechanicsburg Volunteer Fire Department",
+    "csvMonth": "2026-05",
+    "csvPercent": 29,
+    "csvHours": 0,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac95i0092e3n4g5ab08fh",
+        "customer": "",
+        "projectName": "Mechanicsburg Volunteer Fire Department",
+        "projectNumber": "Mechanicsburg Volunteer Fire Department",
+        "status": "Estimating",
+        "totalHours": 0
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Meditation Building",
+    "csvMonth": "2025-12",
+    "csvPercent": 5,
+    "csvHours": 97.4,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac27c002oe3n4fa29c7dw",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care Meditation Building",
+        "projectNumber": "2511 - MCMB",
+        "status": "In Progress",
+        "totalHours": 1948
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Meditation Building",
+    "csvMonth": "2026-01",
+    "csvPercent": 55,
+    "csvHours": 1071.4,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac27c002oe3n4fa29c7dw",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care Meditation Building",
+        "projectNumber": "2511 - MCMB",
+        "status": "In Progress",
+        "totalHours": 1948
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care Meditation Building",
+    "csvMonth": "2026-02",
+    "csvPercent": 40,
+    "csvHours": 779.2,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac27c002oe3n4fa29c7dw",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care Meditation Building",
+        "projectNumber": "2511 - MCMB",
+        "status": "In Progress",
+        "totalHours": 1948
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2025-04",
+    "csvPercent": 4,
+    "csvHours": 132.5516,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2025-05",
+    "csvPercent": 22,
+    "csvHours": 729.0338,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2025-06",
+    "csvPercent": 10,
+    "csvHours": 331.379,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2026-03",
+    "csvPercent": 25,
+    "csvHours": 828.4475,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2026-04",
+    "csvPercent": 25,
+    "csvHours": 828.4475,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2026-05",
+    "csvPercent": 9,
+    "csvHours": 298.24109999999996,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Middletown Area Primary School",
+    "csvMonth": "2026-06",
+    "csvPercent": 5,
+    "csvHours": 165.6895,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac031000xe3n4op0rzldo",
+        "customer": "CH+N Site",
+        "projectName": "Middletown Area Primary School",
+        "projectNumber": "MAPS - 25 - 001",
+        "status": "In Progress",
+        "totalHours": 3313.79
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales- Main Building",
+    "csvMonth": "2025-11",
+    "csvPercent": 40,
+    "csvHours": 265.31200000000007,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5bt005fe3n4jq4442up",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Paneling Sales- Main Building",
+        "projectNumber": "PAN-25-001",
+        "status": "Complete",
+        "totalHours": 663.2800000000001
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Paneling Sales- Main Building",
+    "csvMonth": "2025-12",
+    "csvPercent": 60,
+    "csvHours": 397.968,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac5bt005fe3n4jq4442up",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Paneling Sales- Main Building",
+        "projectNumber": "PAN-25-001",
+        "status": "Complete",
+        "totalHours": 663.2800000000001
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Site",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 147.19000000000003,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzwk000se3n4a2t8dkkc",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Site",
+        "projectNumber": "SDS-25-001",
+        "status": "In Progress",
+        "totalHours": 1471.9
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Site",
+    "csvMonth": "2026-06",
+    "csvPercent": 55,
+    "csvHours": 809.5450000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzwk000se3n4a2t8dkkc",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Site",
+        "projectNumber": "SDS-25-001",
+        "status": "In Progress",
+        "totalHours": 1471.9
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Site",
+    "csvMonth": "2026-07",
+    "csvPercent": 25,
+    "csvHours": 367.975,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzwk000se3n4a2t8dkkc",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Site",
+        "projectNumber": "SDS-25-001",
+        "status": "In Progress",
+        "totalHours": 1471.9
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Shank Door Site",
+    "csvMonth": "2026-08",
+    "csvPercent": 10,
+    "csvHours": 147.19000000000003,
+    "matchedProjects": [
+      {
+        "id": "cmm9abzwk000se3n4a2t8dkkc",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Shank Door Site",
+        "projectNumber": "SDS-25-001",
+        "status": "In Progress",
+        "totalHours": 1471.9
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care 3A",
+    "csvMonth": "2026-04",
+    "csvPercent": 30,
+    "csvHours": 559.05,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac48f004ge3n4knvn9rws",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care 3A",
+        "projectNumber": "2510 - MC3A",
+        "status": "In Progress",
+        "totalHours": 1863.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care 3A",
+    "csvMonth": "2026-05",
+    "csvPercent": 35,
+    "csvHours": 652.2249999999999,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac48f004ge3n4knvn9rws",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care 3A",
+        "projectNumber": "2510 - MC3A",
+        "status": "In Progress",
+        "totalHours": 1863.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Memory Care 3A",
+    "csvMonth": "2026-06",
+    "csvPercent": 35,
+    "csvHours": 652.2249999999999,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac48f004ge3n4knvn9rws",
+        "customer": "CCS Building Group",
+        "projectName": "Memory Care 3A",
+        "projectNumber": "2510 - MC3A",
+        "status": "In Progress",
+        "totalHours": 1863.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-04",
+    "csvPercent": 10,
+    "csvHours": 411.15000000000003,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-05",
+    "csvPercent": 5,
+    "csvHours": 205.57500000000002,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-06",
+    "csvPercent": 15,
+    "csvHours": 616.725,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-07",
+    "csvPercent": 20,
+    "csvHours": 822.3000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-08",
+    "csvPercent": 25,
+    "csvHours": 1027.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stevens Feed Mill Schoeneck",
+    "csvMonth": "2026-09",
+    "csvPercent": 25,
+    "csvHours": 1027.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac3j4003te3n459iesan8",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stevens Feed Mill Schoeneck",
+        "projectNumber": "2509 - SFMS",
+        "status": "In Progress",
+        "totalHours": 4111.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Stoltzfus Hardwoods- Storage Building",
+    "csvMonth": "2026-01",
+    "csvPercent": 100,
+    "csvHours": 293,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac35n003he3n4dl2s1x25",
+        "customer": "Hoover Building Specialists, Inc.",
+        "projectName": "Stoltzfus Hardwoods- Storage Building",
+        "projectNumber": "2506-SH",
+        "status": "In Progress",
+        "totalHours": 293
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai Health Center",
+    "csvMonth": "2026-05",
+    "csvPercent": 25,
+    "csvHours": 436.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2im002we3n4hm2fjmh0",
+        "customer": "Warfel Construction",
+        "projectName": "Tel Hai Health Center",
+        "projectNumber": "2506 - TH",
+        "status": "In Progress",
+        "totalHours": 1747.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai Health Center",
+    "csvMonth": "2026-06",
+    "csvPercent": 25,
+    "csvHours": 436.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2im002we3n4hm2fjmh0",
+        "customer": "Warfel Construction",
+        "projectName": "Tel Hai Health Center",
+        "projectNumber": "2506 - TH",
+        "status": "In Progress",
+        "totalHours": 1747.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai Health Center",
+    "csvMonth": "2026-07",
+    "csvPercent": 25,
+    "csvHours": 436.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2im002we3n4hm2fjmh0",
+        "customer": "Warfel Construction",
+        "projectName": "Tel Hai Health Center",
+        "projectNumber": "2506 - TH",
+        "status": "In Progress",
+        "totalHours": 1747.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Tel Hai Health Center",
+    "csvMonth": "2026-08",
+    "csvPercent": 25,
+    "csvHours": 436.875,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac2im002we3n4hm2fjmh0",
+        "customer": "Warfel Construction",
+        "projectName": "Tel Hai Health Center",
+        "projectNumber": "2506 - TH",
+        "status": "In Progress",
+        "totalHours": 1747.5
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Experience",
+    "csvMonth": "2025-09",
+    "csvPercent": 25,
+    "csvHours": 132.12,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac55b0059e3n4xe144uox",
+        "customer": "CGA Construction",
+        "projectName": "The Learning Experience",
+        "projectNumber": "2505 - TLE",
+        "status": "Complete",
+        "totalHours": 528.48
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Experience",
+    "csvMonth": "2025-10",
+    "csvPercent": 13,
+    "csvHours": 68.70240000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac55b0059e3n4xe144uox",
+        "customer": "CGA Construction",
+        "projectName": "The Learning Experience",
+        "projectNumber": "2505 - TLE",
+        "status": "Complete",
+        "totalHours": 528.48
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "The Learning Experience",
+    "csvMonth": "2025-11",
+    "csvPercent": 62,
+    "csvHours": 327.6576,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac55b0059e3n4xe144uox",
+        "customer": "CGA Construction",
+        "projectName": "The Learning Experience",
+        "projectNumber": "2505 - TLE",
+        "status": "Complete",
+        "totalHours": 528.48
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian Addition",
+    "csvMonth": "2026-02",
+    "csvPercent": 20,
+    "csvHours": 136.20000000000002,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6300062e3n4x2rmmclh",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Westminster Presbyterian Addition",
+        "projectNumber": "2505-WP",
+        "status": "In Progress",
+        "totalHours": 681
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian Addition",
+    "csvMonth": "2026-03",
+    "csvPercent": 65,
+    "csvHours": 442.65000000000003,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6300062e3n4x2rmmclh",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Westminster Presbyterian Addition",
+        "projectNumber": "2505-WP",
+        "status": "In Progress",
+        "totalHours": 681
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian Addition",
+    "csvMonth": "2026-04",
+    "csvPercent": 5,
+    "csvHours": 34.050000000000004,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6300062e3n4x2rmmclh",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Westminster Presbyterian Addition",
+        "projectNumber": "2505-WP",
+        "status": "In Progress",
+        "totalHours": 681
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Westminster Presbyterian Addition",
+    "csvMonth": "2026-05",
+    "csvPercent": 10,
+    "csvHours": 68.10000000000001,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac6300062e3n4x2rmmclh",
+        "customer": "Centurion Construction Group, LLC",
+        "projectName": "Westminster Presbyterian Addition",
+        "projectNumber": "2505-WP",
+        "status": "In Progress",
+        "totalHours": 681
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Wildflower Commons - Future Building",
+    "csvMonth": "2025-12",
+    "csvPercent": 70,
+    "csvHours": 232.08499999999998,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7h3007ee3n49vya6y3w",
+        "customer": "CGA Construction",
+        "projectName": "Wildflower Commons - Future Building",
+        "projectNumber": "25050 - WCFB",
+        "status": "Complete",
+        "totalHours": 331.55
+      }
+    ]
+  },
+  {
+    "csvCustomer": "",
+    "csvProjectName": "Wildflower Commons - Future Building",
+    "csvMonth": "2026-01",
+    "csvPercent": 30,
+    "csvHours": 99.465,
+    "matchedProjects": [
+      {
+        "id": "cmm9ac7h3007ee3n49vya6y3w",
+        "customer": "CGA Construction",
+        "projectName": "Wildflower Commons - Future Building",
+        "projectNumber": "25050 - WCFB",
+        "status": "Complete",
+        "totalHours": 331.55
+      }
+    ]
+  }
+]

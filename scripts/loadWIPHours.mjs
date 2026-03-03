@@ -59,7 +59,7 @@ async function analyzeMatches() {
   console.log('========================================\n');
 
   // Load CSV
-  const csvPath = path.join(__dirname, '..', '..', 'Downloads', 'WIPHours.csv');
+  const csvPath = path.join(__dirname, 'WIP2.csv');
   if (!fs.existsSync(csvPath)) {
     console.error(`❌ CSV file not found at: ${csvPath}`);
     process.exit(1);

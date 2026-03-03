@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSearchParams } from "next/navigation";
 
 export default function AuthStartPage() {
-  const searchParams = useSearchParams();
-
   useEffect(() => {
-    const returnTo = searchParams.get("returnTo") || "/";
+    const params = new URLSearchParams(window.location.search);
+    const returnTo = params.get("returnTo") || "/";
     const loginPath = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (window.top && window.top !== window) {
@@ -16,7 +14,7 @@ export default function AuthStartPage() {
     }
 
     window.location.href = loginPath;
-  }, [searchParams]);
+  }, []);
 
   return (
     <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif", color: "#1f2937" }}>

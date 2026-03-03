@@ -31,9 +31,14 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Allow login handoff page (used to break out of iframe before Auth0 redirect)
+  if (pathname === '/auth/start') {
+    return NextResponse.next();
+  }
+
   const session = await auth0.getSession(request);
   if (!session) {
-    const loginUrl = new URL('/api/auth/login', request.url);
+    const loginUrl = new URL('/auth/start', request.url);
     loginUrl.searchParams.set('returnTo', pathname);
     return NextResponse.redirect(loginUrl);
   }

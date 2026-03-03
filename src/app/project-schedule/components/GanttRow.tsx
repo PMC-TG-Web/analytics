@@ -57,9 +57,6 @@ export const GanttRow = memo(function GanttRow({
               {task.title || "Scope"}
             </div>
             <div className="flex gap-3 text-[11px] text-gray-400 mt-1">
-              {typeof task.sales === "number" && task.sales > 0 && (
-                <span>Sales: ${task.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              )}
               {typeof task.hours === "number" && task.hours > 0 && (
                 <span>Hours: {task.hours.toFixed(1)}</span>
               )}

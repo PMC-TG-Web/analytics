@@ -85,24 +85,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (action === 'active-schedule') {
+    if (action === 'active-schedule' || action === 'activeSchedules') {
       // GET active schedule for date range
       const startDate = searchParams.get('startDate');
       const endDate = searchParams.get('endDate');
 
-      if (!startDate || !endDate) {
-        return NextResponse.json(
-          { success: false, error: 'startDate and endDate are required' },
-          { status: 400 }
-        );
-      }
-
       const activeSchedules = await prisma.activeSchedule.findMany({
         where: {
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
+          ...(startDate && endDate && {
+            date: {
+              gte: startDate,
+              lte: endDate,
+            },
+          }),
         },
         select: {
           id: true,
@@ -114,6 +109,7 @@ export async function GET(request: NextRequest) {
           manpower: true,
           source: true,
         },
+        orderBy: { date: 'asc' },
       });
 
       return NextResponse.json({

@@ -181,7 +181,8 @@ function EquipmentContent() {
     const lineItems = allProjects.filter((p: any) => getProjectKey(p) === jobKey);
     const uniqueSOWs = new Set<string>();
     lineItems.forEach((item: any) => {
-      const sow = item.scopeOfWork || item.pmcGroup || item.costType;
+      // pmcGroup is an object, not a string - skip it
+      const sow = item.scopeOfWork || item.costType;
       if (sow && sow !== "Unassigned") uniqueSOWs.add(sow);
     });
 

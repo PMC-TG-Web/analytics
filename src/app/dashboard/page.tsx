@@ -11,7 +11,6 @@ import {
   getProjectKey,
   isExcludedFromDashboard
 } from "@/utils/projectUtils";
-import { filterLaborHours } from "@/utils/pmcHoursUtils";
 import { SummaryCard } from "./components/SummaryCard";
 import { FunnelChart } from "./components/FunnelChart";
 import { TopContractorsCard } from "./components/TopContractorsCard";
@@ -284,35 +283,20 @@ function DashboardContent() {
 
   const pmHours = useMemo(() => {
     const pmGroupTotals: Record<string, number> = {};
-    
-    if (useSummary && summary?.pmcGroupHours) {
-      // Use summary data
-      Object.entries(summary.pmcGroupHours).forEach(([label, hours]) => {
-        pmGroupTotals[label] = hours;
-      });
-    } else {
-      // Calculate from dedupedByCustomer (only Bid Submitted)
-      const allProjects = (dedupedByCustomer || []).filter(
-        p => p.status === 'Bid Submitted' && !p.projectArchived
-      );
-      
-      allProjects.forEach((p) => {
-        // pmcGroup is an object like { "PM": 172.36, "Wall Labor": 2457, ... }
-        if (!p.pmcGroup || typeof p.pmcGroup !== 'object') return;
-        
-        // Extract PM-related hours from the breakdown
-        Object.entries(p.pmcGroup).forEach(([groupName, hours]) => {
-          const normalized = groupName.toLowerCase().trim();
-          // Only match groups that are "pm" or start with "pm "
-          if (!normalized || !(normalized === 'pm' || normalized.startsWith('pm '))) return;
-          
-          const value = Number(hours ?? 0);
-          if (!Number.isFinite(value) || value <= 0) return;
-          
-          pmGroupTotals[groupName] = (pmGroupTotals[groupName] ?? 0) + value;
-        });
-      });
-    }
+
+    // Keep PM Focus Hours consistent with Bid Submitted status card
+    const bidSubmittedMetrics = displayStatusGroups['Bid Submitted'] as any;
+    const laborByGroup = (bidSubmittedMetrics?.laborByGroup ?? {}) as Record<string, number>;
+
+    Object.entries(laborByGroup).forEach(([groupName, hours]) => {
+      const normalized = groupName.toLowerCase().trim();
+      if (!normalized || !(normalized === 'pm' || normalized.startsWith('pm '))) return;
+
+      const value = Number(hours ?? 0);
+      if (!Number.isFinite(value) || value <= 0) return;
+
+      pmGroupTotals[groupName] = (pmGroupTotals[groupName] ?? 0) + value;
+    });
 
     const totalHours = Object.values(pmGroupTotals).reduce((sum, value) => sum + value, 0);
     const breakdown = Object.entries(pmGroupTotals)
@@ -324,7 +308,7 @@ function DashboardContent() {
       }));
 
     return { totalHours, breakdown };
-  }, [dedupedByCustomer, useSummary, summary]);
+  }, [displayStatusGroups]);
 
   // Calculate ALL PMC Group hours (from projects with pmcBreakdown)
   if (loading) {

@@ -61,8 +61,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      data: scopes,
       projects: projectsWithJobKey,
-      scopes,
+      scopes, // Keep for backwards compatibility
     });
   } catch (error) {
     console.error('Failed to fetch project scopes:', error);

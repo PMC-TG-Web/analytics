@@ -149,8 +149,8 @@ function LongTermScheduleContent() {
           
           if (itemHours <= 0 && itemSales <= 0) return;
           
-          // Use scopeOfWork first, then pmcGroup, then costType
-          const groupName = (item as any).scopeOfWork || (item as any).pmcGroup || (item as any).pmcgroup || item.costType || 'Other';
+          // Use scopeOfWork first, then costType (pmcGroup is an object, not a string)
+          const groupName = (item as any).scopeOfWork || item.costType || 'Other';
           
           if (!groups[groupName]) {
             groups[groupName] = { title: groupName, hours: 0, sales: 0, cost: 0 };

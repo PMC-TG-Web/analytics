@@ -86,15 +86,31 @@ export function useProjectSchedule() {
 
         if (!projectCostItems[itemJobKey]) projectCostItems[itemJobKey] = [];
 
-        projectCostItems[itemJobKey].push({
-          costitems: (proj.costitems || "").toString(),
-          scopeOfWork: (proj.scopeOfWork || "").toString(),
-          pmcGroup: (proj.pmcGroup || proj.pmcgroup || "").toString(),
-          sales: typeof proj.sales === "number" ? proj.sales : 0,
-          cost: typeof proj.cost === "number" ? proj.cost : 0,
-          hours: typeof proj.hours === "number" ? proj.hours : 0,
-          costType: typeof proj.costType === "string" ? proj.costType : "",
-        });
+        // Extract lineItems from customFields if available
+        if (proj.customFields && Array.isArray(proj.customFields.lineItems)) {
+          proj.customFields.lineItems.forEach((lineItem: any) => {
+            projectCostItems[itemJobKey].push({
+              costitems: (lineItem.costitems || lineItem.name || "").toString(),
+              scopeOfWork: (lineItem.scopeOfWork || "").toString(),
+              pmcGroup: "", // pmcGroup is project-level, not lineItem-level
+              sales: typeof lineItem.sales === "number" ? lineItem.sales : 0,
+              cost: typeof lineItem.cost === "number" ? lineItem.cost : 0,
+              hours: typeof lineItem.hours === "number" ? lineItem.hours : 0,
+              costType: typeof lineItem.costType === "string" ? lineItem.costType : "",
+            });
+          });
+        } else {
+          // Fallback to project-level data if no lineItems
+          projectCostItems[itemJobKey].push({
+            costitems: (proj.costitems || "").toString(),
+            scopeOfWork: (proj.scopeOfWork || "").toString(),
+            pmcGroup: (proj.pmcGroup || proj.pmcgroup || "").toString(),
+            sales: typeof proj.sales === "number" ? proj.sales : 0,
+            cost: typeof proj.cost === "number" ? proj.cost : 0,
+            hours: typeof proj.hours === "number" ? proj.hours : 0,
+            costType: typeof proj.costType === "string" ? proj.costType : "",
+          });
+        }
       });
 
       const scopesMap: Record<string, Scope[]> = {};
@@ -116,30 +132,43 @@ export function useProjectSchedule() {
         }
 
         const title = typeof data.title === "string" && data.title.trim() ? data.title : "Scope";
-        const costItems = projectCostItems[jobKey] || [];
-        const titleLower = title.toLowerCase();
-        const titleWithoutQty = titleLower
-          .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
-          .trim();
+        // Use scope data from database first, fallback to matching costItems
+        let scopeSales = typeof data.sales === "number" ? data.sales : undefined;
+        let scopeCost = typeof data.cost === "number" ? data.cost : undefined;
+        let scopeHours = typeof data.hours === "number" ? data.hours : undefined;
 
-        const matchedItems = costItems.filter((item) =>
-          item.scopeOfWork.includes(titleWithoutQty) || 
-          titleWithoutQty.includes(item.scopeOfWork) ||
-          item.costitems.includes(titleWithoutQty) || 
-          titleWithoutQty.includes(item.costitems)
-        );
+        // Only try to match costItems if we don't have hours/sales from database
+        if (scopeHours === undefined || scopeSales === undefined) {
+          const costItems = projectCostItems[jobKey] || [];
+          const titleLower = title.toLowerCase();
+          const titleWithoutQty = titleLower
+            .replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "")
+            .trim();
 
-        const totals = matchedItems.reduce(
-          (acc, item) => {
-            acc.sales += item.sales;
-            acc.cost += item.cost;
-            if (!item.costType.toLowerCase().includes("management")) {
-              acc.hours += item.hours;
-            }
-            return acc;
-          },
-          { sales: 0, cost: 0, hours: 0 }
-        );
+          const matchedItems = costItems.filter((item) =>
+            item.scopeOfWork.includes(titleWithoutQty) || 
+            titleWithoutQty.includes(item.scopeOfWork) ||
+            item.costitems.includes(titleWithoutQty) || 
+            titleWithoutQty.includes(item.costitems)
+          );
+
+          if (matchedItems.length > 0) {
+            const totals = matchedItems.reduce(
+              (acc, item) => {
+                acc.sales += item.sales;
+                acc.cost += item.cost;
+                if (!item.costType.toLowerCase().includes("management")) {
+                  acc.hours += item.hours;
+                }
+                return acc;
+              },
+              { sales: 0, cost: 0, hours: 0 }
+            );
+            scopeSales = scopeSales ?? totals.sales;
+            scopeCost = scopeCost ?? totals.cost;
+            scopeHours = scopeHours ?? totals.hours;
+          }
+        }
 
         const scope: Scope = {
           id: data.id || `${jobKey}-${title}`,
@@ -150,9 +179,9 @@ export function useProjectSchedule() {
           manpower: data.manpower,
           description: data.description,
           tasks: Array.isArray(data.tasks) ? data.tasks : [],
-          sales: matchedItems.length > 0 ? totals.sales : undefined,
-          cost: matchedItems.length > 0 ? totals.cost : undefined,
-          hours: matchedItems.length > 0 ? totals.hours : (typeof data.hours === "number" ? data.hours : undefined),
+          sales: scopeSales,
+          cost: scopeCost,
+          hours: scopeHours,
         };
 
         if (!scopesMap[jobKey]) scopesMap[jobKey] = [];
@@ -185,7 +214,8 @@ export function useProjectSchedule() {
 
         costItems.forEach(item => {
           if (item.hours <= 0 && item.sales <= 0) return;
-          const groupName = item.scopeOfWork || item.pmcGroup || item.costType || "Other";
+          // pmcGroup is an object, not a string - skip it
+          const groupName = item.scopeOfWork || item.costType || "Other";
           if (!groups[groupName]) {
             groups[groupName] = { title: groupName, hours: 0, sales: 0 };
           }
@@ -519,6 +549,9 @@ export function useProjectSchedule() {
       // If still no dates, this project doesn't have a timeline yet or any scopes to show
       if (!projectStart || !projectEnd) return [];
 
+      // Filter out projects that end completely before the start date filter
+      if (projectEnd.getTime() < startDateRange.getTime()) return [];
+
       const projectTask: GanttTask = {
         type: "project",
         jobKey: project.jobKey,
@@ -555,7 +588,7 @@ export function useProjectSchedule() {
     };
 
     return projects.flatMap(getProjectTasks);
-  }, [viewMode, projects, shortTermJobs, longTermJobs, monthJobs, scopesByJobKey]);
+  }, [viewMode, projects, shortTermJobs, longTermJobs, monthJobs, scopesByJobKey, startDateRange]);
 
   const units = useMemo(() => {
     const items: { key: string; label: string; date: Date }[] = [];

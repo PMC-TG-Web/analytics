@@ -623,38 +623,30 @@ function SchedulingContent() {
   const allJobs = useMemo(() => {
     const qualifyingStatuses = ["In Progress"];
     
-    // Ensure all existing schedules have all months initialized and get current status
+    // Ensure all existing schedules have all months initialized
     const updatedSchedules = schedules.map((schedule) => {
       const allocations: Record<string, number> = { ...schedule.allocations };
       validMonths.forEach((month) => {
         allocations[month] = allocations[month] ?? 0;
       });
-      // Get hours and status from uniqueJobs (projects data)
+      // Get hours from uniqueJobs (projects data) if available, otherwise use schedule's totalHours
       const currentJob = uniqueJobs.find((j) => j.key === schedule.jobKey);
-      // Use schedule's status if it's explicitly set (not "Unknown"), otherwise use project's status
-      const status = (schedule.status && schedule.status !== "Unknown") 
-        ? schedule.status 
-        : (currentJob?.status || schedule.status || "Unknown");
+      const totalHours = currentJob?.totalHours || schedule.totalHours || 0;
       
       return { 
         ...schedule, 
         allocations,
-        status,
-        totalHours: currentJob?.totalHours || schedule.totalHours || 0,
+        totalHours,
       };
     });
 
-    // Check against ALL schedules (before filtering) to prevent re-adding jobs that were marked Complete
-    const allScheduleKeys = new Set(schedules.map((s) => s.jobKey));
-    const qualifyingKeys = new Set(uniqueJobs.map(j => j.key));
-    
+    // Filter schedules directly by status (don't require them to have matching projects)
     const filteredSchedules = updatedSchedules.filter((schedule) => {
-      // Must be a qualifying job (not excluded by global filters)
-      if (!qualifyingKeys.has(schedule.jobKey || "")) return false;
-      // Only include schedules with qualifying status
       return qualifyingStatuses.includes(schedule.status || "");
     });
 
+    // Add any qualifying jobs from uniqueJobs that don't have schedules yet
+    const allScheduleKeys = new Set(schedules.map((s) => s.jobKey));
     const toAdd = uniqueJobs.filter((job) => !allScheduleKeys.has(job.key)).map((job) => {
       const allocations: Record<string, number> = {};
       validMonths.forEach((month) => {
@@ -765,19 +757,23 @@ function SchedulingContent() {
     });
 
     const totalQualifyingHours = filteredJobs.reduce((sum, job) => {
-      // Find the schedule for this job to see if it has hours allocated outside the filtered months
+      // Calculate what percentage of this job is allocated to the displayed months
       const schedule = schedules.find(s => s.jobKey === job.jobKey);
-      let excludedHours = 0;
+      let percentInDisplayMonths = 100; // Default: full job budget available
+      
       if (schedule) {
-        Object.entries(schedule.allocations).forEach(([month, percent]) => {
-          // Exclude hours NOT in the displayed months (if year filter active)
-          if (!displayMonths.includes(month)) {
-            excludedHours += ((schedule.totalHours || 0) * ((percent || 0) / 100));
-          }
+        // Sum percentages allocated in displayed months
+        percentInDisplayMonths = 0;
+        displayMonths.forEach((month) => {
+          percentInDisplayMonths += (schedule.allocations[month] ?? 0);
         });
+        // Cap at 100% (don't count overscheduling)
+        percentInDisplayMonths = Math.min(100, percentInDisplayMonths);
       }
-      // Return budget available for the filtered months
-      return sum + Math.max(0, (job.totalHours || 0) - excludedHours);
+      
+      // Only count the portion of hours that are (or should be) allocated to displayed months
+      const qualifyingHours = (job.totalHours || 0) * (percentInDisplayMonths / 100);
+      return sum + qualifyingHours;
     }, 0);
     
     // 2. Calculate scheduled hours for jobs WITHOUT Gantt data

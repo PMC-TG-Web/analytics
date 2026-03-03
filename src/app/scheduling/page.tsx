@@ -66,7 +66,7 @@ function normalizeMonths(list: string[]) {
       list.filter((month) => {
         if (!isValidMonthKey(month)) return false;
         const [year] = month.split("-");
-        return Number(year) >= 2026;
+        return Number(year) >= 2025;
       })
     )
   ).sort();
@@ -88,10 +88,10 @@ function parseDateValue(value: unknown): Date | null {
 
 function getNextMonths(count: number) {
   const months: string[] = [];
-  // Generate all months for 2026 and beyond
+  // Generate all months for 2025 and beyond
   const now = new Date();
   const currentYear = now.getFullYear();
-  const startYear = Math.max(2026, currentYear);
+  const startYear = Math.max(2025, currentYear);
   
   // Generate all 12 months of the start year
   for (let m = 1; m <= 12; m++) {
@@ -129,10 +129,10 @@ function SchedulingContent() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // Filter out any months before 2026
+          // Filter out any months before 2025
           const filtered = normalizeMonths(parsed);
           
-          // Ensure we have all 12 months of 2026 at minimum
+          // Ensure we have all 12 months of 2025 at minimum
           const baseMonths = getNextMonths(12);
           const allMonths = normalizeMonths([...baseMonths, ...filtered]);
           
@@ -178,6 +178,12 @@ function SchedulingContent() {
   };
 
   const validMonths = useMemo(() => normalizeMonths(months), [months]);
+
+  // Filter months by year if year filter is active
+  const displayMonths = useMemo(() => {
+    if (!yearFilter) return validMonths;
+    return validMonths.filter(month => month.startsWith(yearFilter));
+  }, [validMonths, yearFilter]);
 
   useEffect(() => {
     async function fetchData() {
@@ -257,7 +263,7 @@ function SchedulingContent() {
           Object.entries(schedule.allocations).forEach(([month, percent]) => {
             if (!isValidMonthKey(month) || percent <= 0) return;
             const [year] = month.split("-");
-            if (Number(year) < 2026) return;
+            if (Number(year) < 2025) return;
             scheduledMonths.add(month);
           });
         });
@@ -714,19 +720,21 @@ function SchedulingContent() {
     return sorted;
   }, [allJobs, customerFilter, jobFilter, yearFilter, sortColumn, sortDirection, validMonths]);
 
-  // Calculate unscheduled hours
+  // Calculate unscheduled hours (respects filters)
   const unscheduledHoursCalc = useMemo(() => {
-    // Only include jobs that are currently qualifying (In Progress)
-    const qualifyingJobKeys = new Set(uniqueJobs.map(j => j.key));
+    // Use filtered jobs instead of all uniqueJobs
+    const qualifyingJobKeys = new Set(filteredJobs.map(j => j.jobKey));
     const projectsWithGanttData = new Set<string>();
     let totalScheduledGanttHours = 0;
 
-    // 1. Calculate hours from Gantt scopes for qualifying months (2026+)
+    // 1. Calculate hours from Gantt scopes for qualifying months (filtered by year if active)
     Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
+      if (!qualifyingJobKeys.has(jobKey)) return; // Respect filters
+      
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length > 0) {
         // Find if this job is qualifying
-        const jobInfo = uniqueJobs.find(j => j.key === jobKey);
+        const jobInfo = filteredJobs.find(j => j.jobKey === jobKey);
         if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
         
         projectsWithGanttData.add(jobKey);
@@ -746,7 +754,8 @@ function SchedulingContent() {
           if (scopeHours > 0) {
             const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
             Object.entries(dist).forEach(([month, hours]) => {
-              if (validMonths.includes(month)) {
+              // Use displayMonths (filtered) instead of validMonths
+              if (displayMonths.includes(month)) {
                 totalScheduledGanttHours += hours;
               }
             });
@@ -755,20 +764,19 @@ function SchedulingContent() {
       }
     });
 
-    const totalQualifyingHours = uniqueJobs.reduce((sum, job) => {
-      // Find the schedule for this job to see if it has hours in 2025
-      const schedule = schedules.find(s => s.jobKey === job.key);
+    const totalQualifyingHours = filteredJobs.reduce((sum, job) => {
+      // Find the schedule for this job to see if it has hours allocated outside the filtered months
+      const schedule = schedules.find(s => s.jobKey === job.jobKey);
       let excludedHours = 0;
       if (schedule) {
         Object.entries(schedule.allocations).forEach(([month, percent]) => {
-          const [year] = month.split("-");
-          // If year is 2025 or before, exclude it from the "Qualifying" budget for this 2026+ view
-          if (parseInt(year) < 2026) {
+          // Exclude hours NOT in the displayed months (if year filter active)
+          if (!displayMonths.includes(month)) {
             excludedHours += ((schedule.totalHours || 0) * ((percent || 0) / 100));
           }
         });
       }
-      // Return remaining budget (Budget - 2025 hours)
+      // Return budget available for the filtered months
       return sum + Math.max(0, (job.totalHours || 0) - excludedHours);
     }, 0);
     
@@ -781,8 +789,8 @@ function SchedulingContent() {
         return true;
       })
       .reduce((sum, schedule) => {
-        // Only count hours in our valid (2026+) months
-        const totalPercent = validMonths.reduce((jobSum, month) => {
+        // Only count hours in the displayed months (respects year filter)
+        const totalPercent = displayMonths.reduce((jobSum, month) => {
           const percent = schedule.allocations[month] ?? 0;
           return jobSum + percent;
         }, 0);
@@ -797,7 +805,7 @@ function SchedulingContent() {
       totalScheduled: totalScheduled || 0,
       unscheduled: Math.max(0, (totalQualifyingHours || 0) - (totalScheduled || 0)),
     };
-  }, [uniqueJobs, schedules, validMonths, scopesByJobKey, projects]);
+  }, [filteredJobs, schedules, displayMonths, scopesByJobKey, projects]);
 
   // Pre-calculate Gantt hours per job/month for the table cells
   const jobGanttHoursMap = useMemo(() => {
@@ -877,18 +885,18 @@ function SchedulingContent() {
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-          {validMonths.map((month) => {
+          {displayMonths.map((month) => {
             const projectsWithGanttData = new Set<string>();
             let monthTotalGanttHours = 0;
 
-            // Step 1: Calculate Gantt hours for this month
+            // Step 1: Calculate Gantt hours for this month (filtered jobs only)
             Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
               const validScopes = scopes.filter(s => s.startDate && s.endDate);
               if (validScopes.length > 0) {
                 projectsWithGanttData.add(jobKey);
                 
-                // Only include if the job is In Progress
-                const jobInfo = uniqueJobs.find(j => j.key === jobKey);
+                // Only include if the job is In Progress and in filtered jobs
+                const jobInfo = filteredJobs.find(j => j.jobKey === jobKey);
                 if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
 
                 const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
@@ -913,8 +921,8 @@ function SchedulingContent() {
               }
             });
 
-            // Step 2: Calculate manual schedule hours for jobs WITHOUT Gantt data
-            const manualScheduledHours = allJobs.reduce((sum, job) => {
+            // Step 2: Calculate manual schedule hours for jobs WITHOUT Gantt data (filtered jobs only)
+            const manualScheduledHours = filteredJobs.reduce((sum, job) => {
               // Skip if this job has Gantt data (already counted in Step 1)
               if (job && projectsWithGanttData.has(job.jobKey)) return sum;
               
@@ -1090,7 +1098,7 @@ function SchedulingContent() {
                 <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }} title="Total hours scheduled across all time periods (including months not shown)">
                   Total Scheduled
                 </th>
-                {validMonths.map((month) => (
+                {displayMonths.map((month) => (
                   <th key={month} onClick={() => handleSort(month)} style={{ textAlign: "center", padding: "12px 8px", color: sortColumn === month ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
                     {formatMonthLabel(month)} {sortColumn === month && (sortDirection === "asc" ? "↑" : "↓")}
                   </th>
@@ -1129,7 +1137,15 @@ function SchedulingContent() {
                       {job.totalHours.toLocaleString()}
                     </td>
                     <td 
-                      style={{ padding: "12px 8px", color: "#15616D", fontWeight: 700, textAlign: "right" }} 
+                      style={{ 
+                        padding: "12px 8px", 
+                        color: (() => {
+                          const totalPercent = Object.values(job.allocations).reduce((sum, percent) => sum + percent, 0);
+                          return totalPercent > 100 ? "#ef4444" : "#15616D"; // Red if over-scheduled
+                        })(),
+                        fontWeight: 700, 
+                        textAlign: "right" 
+                      }} 
                       title="Total hours scheduled across ALL time periods (including months not currently displayed)"
                     >
                       {(() => {
@@ -1137,13 +1153,12 @@ function SchedulingContent() {
                         const ganttHours = Object.values(jobGanttHoursMap[job.jobKey] || {}).reduce((sum, h) => sum + h, 0);
                         if (ganttHours > 0) return Math.round(ganttHours || 0);
 
-                        // Priority 2: Manual allocations (ALL months, not just visible ones)
+                        // Priority 2: Manual allocations (ALL months, not just visible ones) - NO CAP
                         const totalPercent = Object.values(job.allocations).reduce((sum, percent) => sum + percent, 0);
-                        const cappedPercent = Math.min(100, totalPercent);
-                        return Math.round((job.totalHours * (cappedPercent / 100)) || 0);
+                        return Math.round((job.totalHours * (totalPercent / 100)) || 0);
                       })()}
                     </td>
-                    {validMonths.map((month) => {
+                    {displayMonths.map((month) => {
                       const ganttHours = jobGanttHoursMap[job.jobKey]?.[month] ?? 0;
                       const manualValue = job.allocations[month];
 

@@ -9,9 +9,11 @@ interface Employee {
   firstName: string;
   lastName: string;
   email: string;
+  workEmail?: string;
   personalEmail?: string;
   phone?: string;
   workPhone?: string;
+  employeePhone?: string;
   jobTitle: string;
   address?: string;
   city?: string;
@@ -122,8 +124,11 @@ function EmployeesContent() {
   });
 
   useEffect(() => {
-    loadEmployees();
-    loadJobTitles();
+    // Only load on client side
+    if (typeof window !== 'undefined') {
+      loadEmployees();
+      loadJobTitles();
+    }
   }, []);
 
   // Cache helpers
@@ -253,6 +258,11 @@ function EmployeesContent() {
 
       // Cache miss, fetch from API
       const response = await fetch('/api/employees');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const result = await response.json();
       
       if (result.success && Array.isArray(result.data)) {
@@ -273,10 +283,13 @@ function EmployeesContent() {
         
         setEmployees(employeeData);
         setCachedData('employees', employeeData);
+      } else {
+        throw new Error('Invalid response format');
       }
     } catch (error) {
       console.error("Failed to load employees:", error);
-      alert("Failed to load employees");
+      console.error("Error details:", error instanceof Error ? error.message : String(error));
+      alert(`Failed to load employees: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -422,11 +435,124 @@ function EmployeesContent() {
     setDownloadModalVisible(true);
   }
 
-  function executeDownload() {
-    const url = `/api/employees/export?includeInactive=${includeInactiveEmployees}`;
-    window.location.href = url;
-    setDownloadModalVisible(false);
-    setIncludeInactiveEmployees(false);
+  async function executeDownload() {
+    try {
+      // Dynamically import jsPDF to avoid SSR issues
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+      
+      // Fetch employees
+      let employeesData = employees;
+      if (includeInactiveEmployees && employees.some(e => !e.isActive)) {
+        // Already have inactive employees
+      } else if (includeInactiveEmployees) {
+        // Need to fetch all employees including inactive
+        const response = await fetch('/api/employees?isActive=null');
+        const result = await response.json();
+        if (result.success) {
+          employeesData = result.data;
+        }
+      }
+      
+      // Create PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      
+      // Add logo
+      const logoImg = new Image();
+      logoImg.src = '/logo.png';
+      await new Promise((resolve) => {
+        logoImg.onload = resolve;
+      });
+      
+      // Logo dimensions (keep aspect ratio, make it small)
+      const logoHeight = 16;
+      const logoWidth = (logoImg.width / logoImg.height) * logoHeight;
+      doc.addImage(logoImg, 'PNG', pageWidth / 2 - logoWidth / 2, 8, logoWidth, logoHeight);
+      
+      // Header line below logo
+      doc.setDrawColor(20, 184, 166); // Teal color
+      doc.setLineWidth(1.5);
+      doc.line(15, 26, pageWidth - 15, 26);
+      
+      // Title
+      doc.setTextColor(20, 184, 166);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Employee Contact List', pageWidth / 2, 32, { align: 'center' });
+      
+      // Generated date
+      doc.setTextColor(31, 41, 55);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.text(`Generated: ${currentDate}`, 15, 32);
+      
+      // Prepare table data
+      const tableData = employeesData.map(emp => {
+        const workEmail = emp.workEmail || '';
+
+        const personalPhoneCandidate =
+          emp.employeePhone ||
+          (emp.phone && emp.phone !== emp.workPhone ? emp.phone : '') ||
+          '';
+
+        const personalPhone = personalPhoneCandidate.includes('@') ? '' : personalPhoneCandidate;
+
+        return [
+          `${emp.firstName} ${emp.lastName}`,
+          emp.jobTitle || '',
+          emp.workPhone || emp.phone || '',
+          personalPhone,
+          workEmail
+        ];
+      });
+      
+      // Generate table - compact to fit on one page
+      autoTable(doc, {
+        startY: 38,
+        head: [['Name', 'Job Title', 'Work Phone', 'Personal Phone', 'Work Email']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [20, 184, 166], // Teal
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7,
+          halign: 'left',
+          cellPadding: 1.5
+        },
+        bodyStyles: {
+          fontSize: 6,
+          textColor: [31, 41, 55],
+          cellPadding: 1.2,
+          minCellHeight: 5.5
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245] // Light gray
+        },
+        columnStyles: {
+          0: { cellWidth: 38 }, // Name
+          1: { cellWidth: 32 }, // Job Title
+          2: { cellWidth: 32 }, // Work Phone
+          3: { cellWidth: 32 }, // Personal Phone
+          4: { cellWidth: 46 }  // Work Email
+        },
+        margin: { left: 10, right: 10, bottom: 10 },
+        tableLineWidth: 0.1,
+        tableLineColor: [229, 231, 235]
+      });
+      
+      // Download
+      const filename = `employee-contact-list-${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(filename);
+      
+      setDownloadModalVisible(false);
+      setIncludeInactiveEmployees(false);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      alert('Failed to generate PDF report');
+    }
   }
 
   async function deleteEmployee(employee: Employee) {

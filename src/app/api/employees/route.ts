@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     // Unpack customFields to top-level properties for UI compatibility
     const formattedEmployees = employees.map(emp => {
-      const custom = (emp.customFields as any) || {};
+      const custom = (emp.customFields ?? {}) as Record<string, unknown>;
       return {
         id: emp.id,
         firstName: emp.firstName,
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         createdAt: emp.createdAt.toISOString(),
         updatedAt: emp.updatedAt.toISOString(),
         // Unpack custom fields
+        workEmail: custom.workEmail || custom.WorkEmail,
         workPhone: custom.workPhone || custom.WorkPhone,
         employeePhone: custom.employeePhone || custom.EmployeePhone,
         personalEmail: custom.otherEmail || custom.Other_Email,

@@ -39,14 +39,17 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Transform allocations to the expected format
-    const data = schedules.map((s) => ({
-      ...s,
-      allocations: s.allocationsList.map((alloc) => ({
-        month: alloc.period,
-        percent: alloc.percent || 0,
-        hours: alloc.hours,
-      })),
-    }));
+    const data = schedules.map((s) => {
+      const { allocationsList, ...rest } = s;
+      return {
+        ...rest,
+        allocations: allocationsList.map((alloc) => ({
+          month: alloc.period,
+          percent: alloc.percent || 0,
+          hours: alloc.hours,
+        })),
+      };
+    });
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 

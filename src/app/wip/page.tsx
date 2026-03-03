@@ -200,19 +200,12 @@ function WIPReportContent() {
         }
 
         console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
-        const projectLookup = new Map();
-        projectsData.forEach(p => {
-          const key = `${p.customer || "" }~${p.projectNumber || "" }~${p.projectName || "" }`;
-          projectLookup.set(key, p);
-        });
 
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
-          const jobKey = schedule.jobKey || "";
-          const matchingProject = projectLookup.get(jobKey);
-          
+          // Keep the status from the schedule data (already populated from DB)
           return {
             ...schedule,
-            status: matchingProject?.status || "Unknown"
+            status: schedule.status || "Unknown"
           };
         });
 

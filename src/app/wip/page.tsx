@@ -155,8 +155,12 @@ function WIPReportContent() {
     return "";
   });
 
-  // Gantt data from activeSchedule
-  const { entries: ganttEntries, loading: ganttLoading } = useActiveScheduleGantt();
+  // Gantt data from activeSchedule (show current month through +6 months)
+  const ganttStartDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    .toISOString().split('T')[0];
+  const ganttEndDate = new Date(new Date().getFullYear(), new Date().getMonth() + 6, 0)
+    .toISOString().split('T')[0];
+  const { entries: ganttEntries, loading: ganttLoading } = useActiveScheduleGantt(ganttStartDate, ganttEndDate);
   const { units } = useGanttTimeline(ganttEntries, 'week');
 
   useEffect(() => {

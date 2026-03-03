@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { syncAllocationToActiveSchedule } from '@/utils/syncActiveSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +134,14 @@ export async function POST(request: NextRequest) {
             percent: percent || 0,
           },
         });
+
+        // Sync to activeSchedule for monthly allocations
+        await syncAllocationToActiveSchedule(
+          schedule.id,
+          month,
+          hours || 0,
+          'schedules'
+        );
       }
     }
 

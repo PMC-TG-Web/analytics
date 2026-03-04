@@ -640,9 +640,28 @@ function SchedulingContent() {
       };
     });
 
-    // Filter schedules directly by status (don't require them to have matching projects)
+    // Filter schedules by status and smart year filtering
     const filteredSchedules = updatedSchedules.filter((schedule) => {
-      return qualifyingStatuses.includes(schedule.status || "");
+      if (!qualifyingStatuses.includes(schedule.status || "")) return false;
+      
+      // If year filter is NOT active, show all In Progress
+      if (!yearFilter) return true;
+      
+      // If year filter IS active, show if:
+      // 1. Has allocations in filtered year, OR
+      // 2. Has unscheduled hours (total allocation < 100%)
+      const hasYearAllocation = displayMonths.some((month) => {
+        return (schedule.allocations[month] ?? 0) > 0;
+      });
+      
+      if (hasYearAllocation) return true;
+      
+      // Check if fully scheduled (100% or more allocated)
+      const totalPercent = Object.values(schedule.allocations).reduce((sum, percent) => sum + percent, 0);
+      const isFullyScheduled = totalPercent >= 100;
+      
+      // Show if NOT fully scheduled (has room for more allocations)
+      return !isFullyScheduled;
     });
 
     // Add any qualifying jobs from uniqueJobs that don't have schedules yet
@@ -662,7 +681,7 @@ function SchedulingContent() {
       };
     });
     return [...filteredSchedules, ...toAdd];
-  }, [schedules, uniqueJobs, validMonths]);
+  }, [schedules, uniqueJobs, validMonths, displayMonths, yearFilter]);
 
   const uniqueCustomers = useMemo(() => {
     return Array.from(new Set(allJobs.map((j) => j.customer))).sort();
@@ -674,17 +693,7 @@ function SchedulingContent() {
       const jobMatch = !jobFilter || job.projectName.toLowerCase().includes(jobFilter.toLowerCase());
       const hasHours = job.totalHours > 0;
       
-      // Year filter: check if job has any scheduled hours in the selected year
-      let yearMatch = true;
-      if (yearFilter) {
-        yearMatch = Object.keys(job.allocations).some((month) => {
-          const hasAllocation = (job.allocations[month] || 0) > 0;
-          const matchesYear = month.startsWith(yearFilter);
-          return hasAllocation && matchesYear;
-        });
-      }
-      
-      return customerMatch && jobMatch && hasHours && yearMatch;
+      return customerMatch && jobMatch && hasHours;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -710,44 +719,36 @@ function SchedulingContent() {
     });
 
     return sorted;
-  }, [allJobs, customerFilter, jobFilter, yearFilter, sortColumn, sortDirection, validMonths]);
+  }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, validMonths]);
 
-  // Calculate unscheduled hours (respects filters)
+  // Calculate unscheduled hours (ALWAYS uses all In Progress projects, ignores year filter)
   const unscheduledHoursCalc = useMemo(() => {
-    // Use filtered jobs instead of all uniqueJobs
-    const qualifyingJobKeys = new Set(filteredJobs.map(j => j.jobKey));
+    // Use ALL jobs (allJobs, not filtered), to get true qualifying hours
+    const qualifyingJobKeys = new Set(allJobs.map(j => j.jobKey));
     const projectsWithGanttData = new Set<string>();
     let totalScheduledGanttHours = 0;
 
-    // 1. Calculate hours from Gantt scopes for qualifying months (filtered by year if active)
+    // 1. Calculate hours from Gantt scopes across ALL time (not filtered by year)
     Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
-      if (!qualifyingJobKeys.has(jobKey)) return; // Respect filters
+      if (!qualifyingJobKeys.has(jobKey)) return;
       
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length > 0) {
         // Find if this job is qualifying
-        const jobInfo = filteredJobs.find(j => j.jobKey === jobKey);
+        const jobInfo = allJobs.find(j => j.jobKey === jobKey);
         if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
         
         projectsWithGanttData.add(jobKey);
 
-        const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
-        const projectCostItems = jobProjects.map(p => ({
-          costitems: (p.costitems || "").toLowerCase(),
-          hours: typeof p.hours === "number" ? p.hours : 0,
-          costType: typeof p.costType === "string" ? p.costType : "",
-        }));
-
+        // Use scope hours directly (removed broken cost item matching)
         validScopes.forEach(scope => {
-          const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
-          const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
-          const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
+          const scopeHours = typeof scope.hours === "number" ? scope.hours : 0;
           
           if (scopeHours > 0) {
             const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
             Object.entries(dist).forEach(([month, hours]) => {
-              // Use displayMonths (filtered) instead of validMonths
-              if (displayMonths.includes(month)) {
+              // Use ALL months (validMonths), not just filtered year (displayMonths)
+              if (validMonths.includes(month)) {
                 totalScheduledGanttHours += hours;
               }
             });
@@ -756,41 +757,26 @@ function SchedulingContent() {
       }
     });
 
-    const totalQualifyingHours = filteredJobs.reduce((sum, job) => {
-      // Calculate what percentage of this job is allocated to the displayed months
-      const schedule = schedules.find(s => s.jobKey === job.jobKey);
-      let percentInDisplayMonths = 100; // Default: full job budget available
-      
-      if (schedule) {
-        // Sum percentages allocated in displayed months
-        percentInDisplayMonths = 0;
-        displayMonths.forEach((month) => {
-          percentInDisplayMonths += (schedule.allocations[month] ?? 0);
-        });
-        // Cap at 100% (don't count overscheduling)
-        percentInDisplayMonths = Math.min(100, percentInDisplayMonths);
-      }
-      
-      // Only count the portion of hours that are (or should be) allocated to displayed months
-      const qualifyingHours = (job.totalHours || 0) * (percentInDisplayMonths / 100);
-      return sum + qualifyingHours;
+    // Total qualifying hours = ALL In Progress jobs (ignores year filter)
+    const totalQualifyingHours = allJobs.reduce((sum, job) => {
+      if (job.status === 'Complete') return sum;
+      return sum + (job.totalHours || 0);
     }, 0);
     
-    // 2. Calculate scheduled hours for jobs WITHOUT Gantt data
-    const totalManualScheduledHours = schedules
-      .filter(schedule => {
-        if (!qualifyingJobKeys.has(schedule.jobKey || "")) return false;
-        if (schedule.status === 'Complete') return false;
-        if (projectsWithGanttData.has(schedule.jobKey || "")) return false;
+    // 2. Calculate scheduled hours for jobs WITHOUT Gantt data (across ALL time)
+    const totalManualScheduledHours = allJobs
+      .filter(job => {
+        if (job.status === 'Complete') return false;
+        if (projectsWithGanttData.has(job.jobKey || "")) return false;
         return true;
       })
-      .reduce((sum, schedule) => {
-        // Only count hours in the displayed months (respects year filter)
-        const totalPercent = displayMonths.reduce((jobSum, month) => {
-          const percent = schedule.allocations[month] ?? 0;
+      .reduce((sum, job) => {
+        // Count hours across ALL months (validMonths), not just filtered year
+        const totalPercent = validMonths.reduce((jobSum, month) => {
+          const percent = job.allocations[month] ?? 0;
           return jobSum + percent;
         }, 0);
-        const jobScheduledHours = (schedule.totalHours || 0) * (totalPercent / 100);
+        const jobScheduledHours = (job.totalHours || 0) * (totalPercent / 100);
         return sum + jobScheduledHours;
       }, 0);
     
@@ -801,7 +787,7 @@ function SchedulingContent() {
       totalScheduled: totalScheduled || 0,
       unscheduled: Math.max(0, (totalQualifyingHours || 0) - (totalScheduled || 0)),
     };
-  }, [filteredJobs, schedules, displayMonths, scopesByJobKey, projects]);
+  }, [allJobs, validMonths, scopesByJobKey]);
 
   // Pre-calculate Gantt hours per job/month for the table cells
   const jobGanttHoursMap = useMemo(() => {
@@ -811,18 +797,10 @@ function SchedulingContent() {
       const validScopes = scopes.filter(s => s.startDate && s.endDate);
       if (validScopes.length === 0) return;
 
-      const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
-      const projectCostItems = jobProjects.map(p => ({
-        costitems: (p.costitems || "").toLowerCase(),
-        hours: typeof p.hours === "number" ? p.hours : 0,
-        costType: typeof p.costType === "string" ? p.costType : "",
-      }));
-
       map[jobKey] = {};
       validScopes.forEach(scope => {
-        const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
-        const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
-        const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
+        // Use scope hours directly (removed broken cost item matching)
+        const scopeHours = typeof scope.hours === "number" ? scope.hours : 0;
         
         if (scopeHours > 0) {
           const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
@@ -834,7 +812,7 @@ function SchedulingContent() {
     });
     
     return map;
-  }, [scopesByJobKey, projects]);
+  }, [scopesByJobKey]);
 
   function handleSort(column: string) {
     if (sortColumn === column) {
@@ -895,17 +873,9 @@ function SchedulingContent() {
                 const jobInfo = filteredJobs.find(j => j.jobKey === jobKey);
                 if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
 
-                const jobProjects = projects.filter(p => ((p.jobKey || `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`) === jobKey));
-                const projectCostItems = jobProjects.map(p => ({
-                  costitems: (p.costitems || "").toLowerCase(),
-                  hours: typeof p.hours === "number" ? p.hours : 0,
-                  costType: typeof p.costType === "string" ? p.costType : "",
-                }));
-
+                // Use scope hours directly (removed broken cost item matching)
                 validScopes.forEach(scope => {
-                  const titleWithoutQty = (scope.title || "Scope").trim().toLowerCase().replace(/^[\d,]+\s*(sq\s*ft\.?|ln\s*ft\.?|each|lf)?\s*([-–]\s*)?/i, "").trim();
-                  const matchedItems = projectCostItems.filter((item) => item.costitems.includes(titleWithoutQty) || titleWithoutQty.includes(item.costitems));
-                  const scopeHours = matchedItems.reduce((acc, item) => !item.costType.toLowerCase().includes("management") ? acc + item.hours : acc, 0) || (typeof scope.hours === "number" ? scope.hours : 0);
+                  const scopeHours = typeof scope.hours === "number" ? scope.hours : 0;
                   
                   if (scopeHours > 0) {
                     const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);

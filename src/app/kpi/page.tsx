@@ -366,14 +366,27 @@ export default function KPIPage() {
         }
 
         try {
-          // Fetch schedules (currently always from Firestore)
-          const schedulesRes = await fetch("/api/scheduling");
-          if (schedulesRes.ok) {
+          // Fetch ALL schedules from paginated API
+          let page = 1;
+          let hasNextPage = true;
+          const allSchedules: any[] = [];
+
+          while (hasNextPage) {
+            const schedulesRes = await fetch(`/api/scheduling?page=${page}&pageSize=500`);
+            if (!schedulesRes.ok) {
+              console.warn("[KPI] Schedules API endpoint not available");
+              break;
+            }
+
             const schedulesJson = await schedulesRes.json();
-            schedulesData = schedulesJson.data || schedulesJson.schedules || [];
-          } else {
-            console.warn("[KPI] Schedules API endpoint not available");
+            const rows = schedulesJson.data || schedulesJson.schedules || [];
+            allSchedules.push(...rows);
+            hasNextPage = Boolean(schedulesJson.hasNextPage);
+            page += 1;
           }
+
+          schedulesData = allSchedules;
+          console.log("[KPI] Loaded schedules:", schedulesData.length);
         } catch (err) {
           console.warn("[KPI] Error fetching schedules (using empty defaults):", err);
         }

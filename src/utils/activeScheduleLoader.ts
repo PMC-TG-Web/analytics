@@ -139,10 +139,12 @@ export interface WeekProject {
 
 /**
  * Load schedule data aggregated by week for long-term schedule view
+ * Only includes projects that have been initiated in the Gantt chart (have ProjectScope entries)
  */
 export async function loadActiveScheduleByWeek(
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  initiatedJobKeys?: Set<string> // Projects with ProjectScope entries (initiated from Gantt)
 ): Promise<{
   weekColumns: Array<{ weekStartDate: Date; weekLabel: string }>;
   jobRows: WeekProject[];
@@ -162,6 +164,9 @@ export async function loadActiveScheduleByWeek(
     const jobMap = new Map<string, WeekProject>();
     
     activeSchedules.forEach((entry: any) => {
+      // GATE: Only include projects that have been initiated from Gantt (have ProjectScope entries)
+      if (initiatedJobKeys && !initiatedJobKeys.has(entry.jobKey)) return;
+      
       // Parse the date
       const entryDate = new Date(entry.date);
       if (isNaN(entryDate.getTime())) return;

@@ -695,7 +695,11 @@ function ShortTermScheduleContent() {
       }
       
       // Load data from activeSchedule API response
+      // Only show projects that have been initiated from Gantt (have ProjectScope entries)
       activeSchedules.forEach((entry: any) => {
+        // GATE: Only include if project has scopes (initiated from Gantt)
+        if (!scopesObj[entry.jobKey]) return;
+        
         const dateKey = entry.date;
         const dateCol = dayMap.get(dateKey);
         

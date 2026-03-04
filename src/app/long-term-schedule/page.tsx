@@ -202,8 +202,11 @@ function LongTermScheduleContent() {
       const fifteenWeeksFromStart = new Date(currentWeekStart);
       fifteenWeeksFromStart.setDate(fifteenWeeksFromStart.getDate() + (15 * 7));
       
+      // Only show projects that have been initiated from Gantt (have ProjectScope entries)
+      const initiatedJobKeys = new Set<string>(Object.keys(scopesObj));
+      
       // Load schedule data from activeSchedule aggregated by week
-      const { weekColumns, jobRows } = await loadActiveScheduleByWeek(currentWeekStart, fifteenWeeksFromStart);
+      const { weekColumns, jobRows } = await loadActiveScheduleByWeek(currentWeekStart, fifteenWeeksFromStart, initiatedJobKeys);
       
       console.log('[LongTermSchedule] Loaded from activeSchedule:', jobRows.length, 'jobs', weekColumns.length, 'weeks');
       

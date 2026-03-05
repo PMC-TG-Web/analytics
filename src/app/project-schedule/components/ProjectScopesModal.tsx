@@ -49,6 +49,12 @@ const calculateWorkDays = (startValue?: unknown, endValue?: unknown) => {
 };
 
 const computeScopeHours = (scope: Partial<Scope>) => {
+  // Priority 1: Use manually entered hours (total budgeted)
+  const hoursRaw = scope.hours;
+  const hoursValue = typeof hoursRaw === "number" ? hoursRaw : parseFloat(String(hoursRaw));
+  if (Number.isFinite(hoursValue) && hoursValue > 0) return hoursValue;
+
+  // Priority 2: Fall back to manpower calculation if hours not set
   const manpowerRaw = scope.manpower;
   const manpowerValue = typeof manpowerRaw === "number" ? manpowerRaw : parseFloat(String(manpowerRaw));
   const days = calculateWorkDays(scope.startDate, scope.endDate);
@@ -56,10 +62,6 @@ const computeScopeHours = (scope: Partial<Scope>) => {
   if (Number.isFinite(manpowerValue) && manpowerValue > 0 && days > 0) {
     return manpowerValue * 10 * days;
   }
-
-  const hoursRaw = scope.hours;
-  const hoursValue = typeof hoursRaw === "number" ? hoursRaw : parseFloat(String(hoursRaw));
-  if (Number.isFinite(hoursValue) && hoursValue > 0) return hoursValue;
 
   return 0;
 };
@@ -180,8 +182,14 @@ export function ProjectScopesModal({
         payload.hours = computedHours;
       }
 
+      const isGeneratedScopeId = !!activeScopeId && (
+        activeScopeId.startsWith('fallback-') ||
+        activeScopeId.startsWith('virtual-') ||
+        activeScopeId.startsWith('generated-')
+      );
+
       let savedScope;
-      if (activeScopeId) {
+      if (activeScopeId && !isGeneratedScopeId) {
         const response = await fetch('/api/project-scopes', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -204,13 +212,19 @@ export function ProjectScopesModal({
         if (!result.success) throw new Error(result.error || 'Failed to create scope');
         savedScope = result.data;
         const newScope: Scope = { ...savedScope } as Scope;
-        onScopesUpdated(project.jobKey, [...scopes, newScope]);
+
+        const filteredScopes = isGeneratedScopeId
+          ? scopes.filter((scope) => scope.id !== activeScopeId)
+          : scopes;
+
+        onScopesUpdated(project.jobKey, [...filteredScopes, newScope]);
         setActiveScopeId(savedScope.id);
       }
       alert("Scope saved successfully!");
     } catch (error) {
-      console.error("Failed to save scope:", error);
-      alert("Failed to save scope.");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Failed to save scope:", errorMessage, error);
+      alert(`Failed to save scope: ${errorMessage}`);
     } finally {
       setIsSaving(false);
     }
@@ -277,10 +291,12 @@ export function ProjectScopesModal({
               </div>
             )}
             <div className="grid gap-2 max-h-40 overflow-y-auto">
-              {scopes.length === 0 ? (
+              {scopes.filter(s => !s.id?.startsWith('fallback-') && !s.id?.startsWith('virtual-') && !s.id?.startsWith('generated-')).length === 0 ? (
                 <div className="text-sm text-gray-500">No scopes yet.</div>
               ) : (
-                scopes.map((scope) => {
+                scopes
+                  .filter(s => !s.id?.startsWith('fallback-') && !s.id?.startsWith('virtual-') && !s.id?.startsWith('generated-'))
+                  .map((scope) => {
                   const scopeHours = computeScopeHours(scope);
                   const scheduledHours = getScheduledHoursForScope(scope);
                   const unscheduledHours = Math.max(scopeHours - scheduledHours, 0);

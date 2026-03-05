@@ -181,6 +181,7 @@ function SchedulingContent() {
 
   // Filter months by year if year filter is active
   const displayMonths = useMemo(() => {
+    if (!validMonths || validMonths.length === 0) return [];
     if (!yearFilter) return validMonths;
     return validMonths.filter(month => month.startsWith(yearFilter));
   }, [validMonths, yearFilter]);
@@ -238,22 +239,33 @@ function SchedulingContent() {
         }
         setSchedules(schedulesArray);
 
-        // Fetch scopes from API
+        // Fetch scopes from Gantt V2 API
         try {
-          const scopesRes = await fetch("/api/project-scopes");
-          if (!scopesRes.ok) throw new Error("Failed to fetch scopes");
+          const scopesRes = await fetch("/api/gantt-v2/projects");
+          if (!scopesRes.ok) throw new Error("Failed to fetch Gantt V2 scopes");
           const scopesJson = await scopesRes.json();
-          const rawScopes = scopesJson.data || [];
+          const ganttProjects = scopesJson.data || [];
           const scopesMap: Record<string, ApiScope[]> = {};
-          rawScopes.forEach((scope: ApiScope) => {
-            if (scope.jobKey) {
-              if (!scopesMap[scope.jobKey]) scopesMap[scope.jobKey] = [];
-              scopesMap[scope.jobKey].push(scope);
+          
+          ganttProjects.forEach((project: any) => {
+            const jobKey = `${project.customer || ''}~${project.projectNumber || ''}~${project.projectName || ''}`;
+            
+            if (project.scopes && Array.isArray(project.scopes)) {
+              scopesMap[jobKey] = project.scopes.map((scope: any) => ({
+                jobKey,
+                title: scope.title,
+                startDate: scope.startDate,
+                endDate: scope.endDate,
+                hours: typeof scope.scheduledHours === "number" ? scope.scheduledHours : 0,
+                description: scope.notes || '',
+                tasks: [],
+              }));
             }
           });
+          
           setScopesByJobKey(scopesMap);
         } catch (error) {
-          console.warn("Failed to load scopes from API:", error);
+          console.warn("Failed to load scopes from Gantt V2 API:", error);
           setScopesByJobKey({});
         }
 
@@ -625,7 +637,7 @@ function SchedulingContent() {
     
     // Ensure all existing schedules have all months initialized
     const updatedSchedules = schedules.map((schedule) => {
-      const allocations: Record<string, number> = { ...schedule.allocations };
+      const allocations: Record<string, number> = schedule.allocations ? { ...schedule.allocations } : {};
       validMonths.forEach((month) => {
         allocations[month] = allocations[month] ?? 0;
       });
@@ -642,7 +654,7 @@ function SchedulingContent() {
 
     // Filter schedules by status and smart year filtering
     const filteredSchedules = updatedSchedules.filter((schedule) => {
-      if (!qualifyingStatuses.includes(schedule.status || "")) return false;
+      if (!schedule || !qualifyingStatuses.includes(schedule.status || "")) return false;
       
       // If year filter is NOT active, show all In Progress
       if (!yearFilter) return true;
@@ -650,14 +662,18 @@ function SchedulingContent() {
       // If year filter IS active, show if:
       // 1. Has allocations in filtered year, OR
       // 2. Has unscheduled hours (total allocation < 100%)
-      const hasYearAllocation = displayMonths.some((month) => {
-        return (schedule.allocations[month] ?? 0) > 0;
-      });
+      let hasYearAllocation = false;
+      if (displayMonths && displayMonths.length > 0) {
+        hasYearAllocation = displayMonths.some((month) => {
+          const value = schedule.allocations && schedule.allocations[month];
+          return (typeof value === 'number' && value > 0);
+        });
+      }
       
       if (hasYearAllocation) return true;
       
       // Check if fully scheduled (100% or more allocated)
-      const totalPercent = Object.values(schedule.allocations).reduce((sum, percent) => sum + percent, 0);
+      const totalPercent = schedule.allocations ? Object.values(schedule.allocations).reduce((sum, percent) => sum + (typeof percent === 'number' ? percent : 0), 0) : 0;
       const isFullyScheduled = totalPercent >= 100;
       
       // Show if NOT fully scheduled (has room for more allocations)
@@ -721,97 +737,68 @@ function SchedulingContent() {
     return sorted;
   }, [allJobs, customerFilter, jobFilter, sortColumn, sortDirection, validMonths]);
 
-  // Calculate unscheduled hours (ALWAYS uses all In Progress projects, ignores year filter)
+  // Calculate unscheduled hours (truly unscheduled - constant regardless of year filter)
   const unscheduledHoursCalc = useMemo(() => {
-    // Use ALL jobs (allJobs, not filtered), to get true qualifying hours
-    const qualifyingJobKeys = new Set(allJobs.map(j => j.jobKey));
-    const projectsWithGanttData = new Set<string>();
-    let totalScheduledGanttHours = 0;
+    if (!allJobs || allJobs.length === 0 || !validMonths || validMonths.length === 0) {
+      return {
+        totalQualifying: 0,
+        totalScheduled: 0,
+        unscheduled: 0,
+      };
+    }
 
-    // 1. Calculate hours from Gantt scopes across ALL time (not filtered by year)
-    Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
-      if (!qualifyingJobKeys.has(jobKey)) return;
-      
-      const validScopes = scopes.filter(s => s.startDate && s.endDate);
-      if (validScopes.length > 0) {
-        // Find if this job is qualifying
-        const jobInfo = allJobs.find(j => j.jobKey === jobKey);
-        if (!jobInfo || (jobInfo.status || "").toLowerCase().trim() !== "in progress") return;
-        
-        projectsWithGanttData.add(jobKey);
-
-        // Use scope hours directly (removed broken cost item matching)
-        validScopes.forEach(scope => {
-          const scopeHours = typeof scope.hours === "number" ? scope.hours : 0;
-          
-          if (scopeHours > 0) {
-            const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
-            Object.entries(dist).forEach(([month, hours]) => {
-              // Use ALL months (validMonths), not just filtered year (displayMonths)
-              if (validMonths.includes(month)) {
-                totalScheduledGanttHours += hours;
-              }
-            });
-          }
-        });
-      }
-    });
-
-    // Total qualifying hours = ALL In Progress jobs (ignores year filter)
+    // Total qualifying hours = ALL In Progress jobs (total pool)
     const totalQualifyingHours = allJobs.reduce((sum, job) => {
-      if (job.status === 'Complete') return sum;
-      return sum + (job.totalHours || 0);
+      if (job?.status === 'Complete') return sum;
+      return sum + (job?.totalHours || 0);
     }, 0);
     
-    // 2. Calculate scheduled hours for jobs WITHOUT Gantt data (across ALL time)
+    // Calculate scheduled hours - respects year filter for display purposes
+    // Use displayMonths when year filter is active, otherwise use validMonths (all time)
+    const monthsToSum = (yearFilter && displayMonths && displayMonths.length > 0) ? displayMonths : validMonths;
     const totalManualScheduledHours = allJobs
-      .filter(job => {
-        if (job.status === 'Complete') return false;
-        if (projectsWithGanttData.has(job.jobKey || "")) return false;
-        return true;
-      })
+      .filter(job => job?.status !== 'Complete')
       .reduce((sum, job) => {
-        // Count hours across ALL months (validMonths), not just filtered year
-        const totalPercent = validMonths.reduce((jobSum, month) => {
-          const percent = job.allocations[month] ?? 0;
-          return jobSum + percent;
+        if (!job || !monthsToSum) return sum;
+        const totalPercent = monthsToSum.reduce((jobSum, month) => {
+          const percent = (job.allocations && typeof job.allocations === 'object' && job.allocations[month]) ?? 0;
+          return jobSum + (typeof percent === 'number' ? percent : 0);
         }, 0);
         const jobScheduledHours = (job.totalHours || 0) * (totalPercent / 100);
         return sum + jobScheduledHours;
       }, 0);
-    
-    const totalScheduled = (totalScheduledGanttHours || 0) + (totalManualScheduledHours || 0);
+
+    // Truly unscheduled = jobs with zero allocation in ANY year (not dependent on year filter)
+    const trulyUnscheduledHours = allJobs
+      .filter(job => job?.status !== 'Complete')
+      .reduce((sum, job) => {
+        if (!job || !validMonths) return sum;
+        const totalAllocationPercent = validMonths.reduce((jobSum, month) => {
+          const percent = (job.allocations && typeof job.allocations === 'object' && job.allocations[month]) ?? 0;
+          return jobSum + (typeof percent === 'number' ? percent : 0);
+        }, 0);
+        if (totalAllocationPercent === 0) {
+          return sum + (job.totalHours || 0);
+        }
+        return sum;
+      }, 0);
 
     return {
       totalQualifying: totalQualifyingHours || 0,
-      totalScheduled: totalScheduled || 0,
-      unscheduled: Math.max(0, (totalQualifyingHours || 0) - (totalScheduled || 0)),
+      totalScheduled: totalManualScheduledHours || 0,
+      unscheduled: trulyUnscheduledHours || 0,
     };
-  }, [allJobs, validMonths, scopesByJobKey]);
+  }, [allJobs, validMonths, displayMonths, yearFilter]);
 
-  // Pre-calculate Gantt hours per job/month for the table cells
-  const jobGanttHoursMap = useMemo(() => {
-    const map: Record<string, Record<string, number>> = {};
-    
+  // Track which jobs have Gantt V2 data for visual highlighting
+  const jobsWithGantt = useMemo(() => {
+    const set = new Set<string>();
     Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
-      const validScopes = scopes.filter(s => s.startDate && s.endDate);
-      if (validScopes.length === 0) return;
-
-      map[jobKey] = {};
-      validScopes.forEach(scope => {
-        // Use scope hours directly (removed broken cost item matching)
-        const scopeHours = typeof scope.hours === "number" ? scope.hours : 0;
-        
-        if (scopeHours > 0) {
-          const dist = internalDistributeValue(scopeHours, scope.startDate!, scope.endDate!);
-          Object.entries(dist).forEach(([month, hours]) => {
-            map[jobKey][month] = (map[jobKey][month] || 0) + hours;
-          });
-        }
-      });
+      if (scopes && scopes.length > 0) {
+        set.add(jobKey);
+      }
     });
-    
-    return map;
+    return set;
   }, [scopesByJobKey]);
 
   function handleSort(column: string) {
@@ -863,7 +850,7 @@ function SchedulingContent() {
             const projectsWithGanttData = new Set<string>();
             let monthTotalGanttHours = 0;
 
-            // Step 1: Calculate Gantt hours for this month (filtered jobs only)
+            // Step 1: Calculate Gantt V2 hours for this month (filtered jobs only)
             Object.entries(scopesByJobKey).forEach(([jobKey, scopes]) => {
               const validScopes = scopes.filter(s => s.startDate && s.endDate);
               if (validScopes.length > 0) {
@@ -887,16 +874,13 @@ function SchedulingContent() {
               }
             });
 
-            // Step 2: Calculate manual schedule hours for jobs WITHOUT Gantt data (filtered jobs only)
+            // Calculate manual schedule hours for all filtered jobs (no Gantt override)
             const manualScheduledHours = filteredJobs.reduce((sum, job) => {
-              // Skip if this job has Gantt data (already counted in Step 1)
-              if (job && projectsWithGanttData.has(job.jobKey)) return sum;
-              
               const allocation = job.allocations[month] || 0;
               return sum + ((job.totalHours || 0) * (allocation / 100));
             }, 0);
 
-            const totalHours = monthTotalGanttHours + manualScheduledHours;
+            const totalHours = manualScheduledHours;
 
             return (
               <div key={month} style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #ddd", textAlign: "center" }}>
@@ -1075,8 +1059,9 @@ function SchedulingContent() {
             <tbody>
               {filteredJobs.map((job) => {
                 const statusColor = job.status === "In Progress" ? "#E06C00" : "#ef4444";
+                const hasGantt = jobsWithGantt.has(job.jobKey);
                 return (
-                  <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
+                  <tr key={job.jobKey} style={{ borderBottom: "1px solid #eee", background: hasGantt ? "#e0f2f1" : "#fafafa" }}>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.customer}</td>
                     <td style={{ padding: "12px 8px", color: "#222" }}>{job.projectName}</td>
                     <td style={{ padding: "12px 8px" }}>
@@ -1115,44 +1100,32 @@ function SchedulingContent() {
                       title="Total hours scheduled across ALL time periods (including months not currently displayed)"
                     >
                       {(() => {
-                        // Priority 1: Gantt data (all months, not just visible)
-                        const ganttHours = Object.values(jobGanttHoursMap[job.jobKey] || {}).reduce((sum, h) => sum + h, 0);
-                        if (ganttHours > 0) return Math.round(ganttHours || 0);
-
-                        // Priority 2: Manual allocations (ALL months, not just visible ones) - NO CAP
+                        // Manual allocations (ALL months, not just visible ones)
                         const totalPercent = Object.values(job.allocations).reduce((sum, percent) => sum + percent, 0);
                         return Math.round((job.totalHours * (totalPercent / 100)) || 0);
                       })()}
                     </td>
                     {displayMonths.map((month) => {
-                      const ganttHours = jobGanttHoursMap[job.jobKey]?.[month] ?? 0;
                       const manualValue = job.allocations[month];
 
                       return (
                         <td key={`${job.jobKey}-${month}`} style={{ padding: "8px", textAlign: "center" }}>
-                          {ganttHours > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <div style={{ color: '#E06C00', fontWeight: 600 }}>{Math.round(ganttHours || 0)} hrs</div>
-                              <div style={{ color: '#aaa', fontSize: '9px', textTransform: 'uppercase' }}>Gantt</div>
-                            </div>
-                          ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={manualValue === 0 || manualValue === undefined ? '' : manualValue}
-                              onChange={(e) => updatePercent(job.jobKey, month, parseInt(e.target.value || "0", 10))}
-                              style={{
-                                width: "60px",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                background: "#fff",
-                                color: "#222",
-                                border: "1px solid #ddd",
-                                textAlign: "center",
-                              }}
-                            />
-                          )}
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={manualValue === 0 || manualValue === undefined ? '' : manualValue}
+                            onChange={(e) => updatePercent(job.jobKey, month, parseInt(e.target.value || "0", 10))}
+                            style={{
+                              width: "60px",
+                              padding: "6px 8px",
+                              borderRadius: 6,
+                              background: "#fff",
+                              color: "#222",
+                              border: "1px solid #ddd",
+                              textAlign: "center",
+                            }}
+                          />
                         </td>
                       );
                     })}

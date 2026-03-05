@@ -40,6 +40,7 @@ interface DayColumn {
 interface DayProject {
   jobKey: string;
   scopeOfWork?: string; // Which scope these hours belong to
+  source?: string;
   customer: string;
   projectNumber: string;
   projectName: string;
@@ -111,6 +112,8 @@ function ShortTermScheduleContent() {
   const [projectSearch, setProjectSearch] = useState("");
   const [isAddingProject, setIsAddingProject] = useState<boolean>(false);
   const [scopeSelectionModal, setScopeSelectionModal] = useState<{ jobKey: string; projects: Project[] } | null>(null);
+  const [customScopeName, setCustomScopeName] = useState<string>("");
+  const [selectedCustomProject, setSelectedCustomProject] = useState<Project | null>(null);
   const [targetingCell, setTargetingCell] = useState<{ date: Date; foremanId: string } | null>(null);
   const [draggedProject, setDraggedProject] = useState<{
     project: DayProject | Project;
@@ -348,6 +351,14 @@ function ShortTermScheduleContent() {
       const targetMonthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
       const position = getWeekDayPositionForDate(targetMonthStr, targetDate);
 
+      console.log('[SHORT-TERM] handleDrop - Case 2:', {
+        sourceDateKey,
+        targetDateKey,
+        sourceForemanId,
+        targetForemanId,
+        sourceProject: { jobKey: sourceProject.jobKey, scopeOfWork: sourceProject.scopeOfWork }
+      });
+
       await moveProject(
         sourceProject, 
         sourceDateKey!, 
@@ -361,6 +372,7 @@ function ShortTermScheduleContent() {
       await loadSchedules();
     } catch (error) {
       console.error("Failed to move project:", error);
+      alert(`Error moving project: ${String(error)}`);
     } finally {
       setSaving(false);
       setDraggedProject(null);
@@ -409,27 +421,124 @@ function ShortTermScheduleContent() {
         const hoursToSchedule = manpower > 0 ? manpower * 10 : 8; // Calculate from manpower, or fallback to 8
         const scopeOfWork = (p.scopeOfWork || "Scheduled Work").trim();
         
-        const newProject: DayProject = {
-          jobKey,
-          scopeOfWork,
-          customer: p.customer || "",
-          projectNumber: p.projectNumber || "",
-          projectName: p.projectName || "",
-          hours: hoursToSchedule,
-          foreman: foremanId === "__unassigned__" ? "" : foremanId,
-          employees: [],
-          month: targetMonthStr,
-          weekNumber: position.weekNumber,
-          dayNumber: position.dayNumber
-        };
-        await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, hoursToSchedule);
+        // Add new project to schedule (no source date, just creating new entry)
+        const response = await fetch('/api/short-term-schedule/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobKey,
+            scopeOfWork,
+            sourceDateKey: null,  // No source for new entries
+            sourceForemanId: null,
+            targetDateKey: dateKey,
+            targetForemanId: foremanId === "__unassigned__" ? null : foremanId,
+            hours: hoursToSchedule,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to add project: ${response.statusText}`);
+        }
+
         await loadSchedules();
         setTargetingCell(null);
         setIsAddingProject(false);
         setScopeSelectionModal(null);
+        setCustomScopeName("");
       } finally {
         setSaving(false);
       }
+    }
+  }
+
+  async function handleCreateCustomScope() {
+    if (!targetingCell || !customScopeName.trim()) return;
+    
+    const { date, foremanId } = targetingCell;
+    const dateKey = formatDateKey(date);
+    
+    if (!scopeSelectionModal) return;
+    
+    // Use the first project as the base for jobKey
+    const p = scopeSelectionModal.projects[0];
+    const jobKey = getProjectKey(p);
+    
+    setSaving(true);
+    try {
+      const response = await fetch('/api/short-term-schedule/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobKey,
+          scopeOfWork: customScopeName.trim(),
+          sourceDateKey: null,
+          sourceForemanId: null,
+          targetDateKey: dateKey,
+          targetForemanId: foremanId === "__unassigned__" ? null : foremanId,
+          hours: 10, // Default 10 hours for custom scopes
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create custom scope: ${response.statusText}`);
+      }
+
+      await loadSchedules();
+      setTargetingCell(null);
+      setIsAddingProject(false);
+      setScopeSelectionModal(null);
+      setCustomScopeName("");
+    } catch (error) {
+      console.error('Failed to create custom scope:', error);
+      alert(`Error: ${String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleQuickCustomScopeFromProject(project: Project, providedScopeName?: string) {
+    if (!targetingCell) return;
+
+    const customName = (providedScopeName && providedScopeName.trim())
+      ? providedScopeName.trim()
+      : window.prompt("Enter custom scope name", "Helping Jason");
+    if (!customName || !customName.trim()) return;
+
+    const { date, foremanId } = targetingCell;
+    const dateKey = formatDateKey(date);
+    const jobKey = getProjectKey(project);
+
+    setSaving(true);
+    try {
+      const response = await fetch('/api/short-term-schedule/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobKey,
+          scopeOfWork: customName.trim(),
+          sourceDateKey: null,
+          sourceForemanId: null,
+          targetDateKey: dateKey,
+          targetForemanId: foremanId === "__unassigned__" ? null : foremanId,
+          hours: 10,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create custom scope: ${response.statusText}`);
+      }
+
+      await loadSchedules();
+      setTargetingCell(null);
+      setIsAddingProject(false);
+      setScopeSelectionModal(null);
+      setCustomScopeName("");
+      setSelectedCustomProject(null);
+    } catch (error) {
+      console.error('Failed to create custom scope from project list:', error);
+      alert(`Error: ${String(error)}`);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -442,26 +551,73 @@ function ShortTermScheduleContent() {
     targetWeekNum: number,
     targetDayNum: number
   ) {
-    // Since we're using APIs now, the move is handled through updateProjectAssignment
-    // This function will be deprecated, but keep for compatibility
-    await updateProjectAssignment(project, targetDateKey, sourceForemanId, targetForemanId, project.hours);
+    // Move the project through the API
+    await updateProjectAssignment(project, sourceDateKey, targetDateKey, sourceForemanId, targetForemanId, project.hours);
   }
 
   async function updateProjectAssignment(
     project: DayProject, 
-    dateKey: string, 
+    sourceDateKey: string,
+    targetDateKey: string,
     currentForemanId: string,
     newForemanId: string | null,
     newHours: number
   ) {
     const { jobKey, scopeOfWork: scopeFromProject } = project;
     const scopeOfWork = scopeFromProject || "Scheduled Work";
-    const foremanValue = newForemanId === "__unassigned__" || !newForemanId ? "" : newForemanId;
     
-    // Since we're storing in activeSchedule and using Prisma, 
-    // the save happens through the page save flow, not here
-    // This is now a placeholder that coordinates with the page state
-    console.log("Project assignment updated:", { jobKey, scopeOfWork, dateKey, newHours, foremanValue });
+    console.log('[SHORT-TERM] Calling move API:', {
+      jobKey,
+      scopeOfWork,
+      sourceDateKey,
+      targetDateKey,
+      currentForemanId,
+      newForemanId,
+      newHours,
+    });
+    
+    const response = await fetch('/api/short-term-schedule/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobKey,
+        scopeOfWork,
+        sourceDateKey,
+        sourceForemanId: currentForemanId,
+        targetDateKey,
+        targetForemanId: newForemanId,
+        hours: newHours,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[SHORT-TERM] Move failed:', errorText);
+      throw new Error(`Failed to move project: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    console.log('[SHORT-TERM] Move successful:', result);
+  }
+
+  async function deleteCustomScopeAssignment(project: DayProject, dateKey: string) {
+    const scopeOfWork = (project.scopeOfWork || '').trim();
+    if (!scopeOfWork) return;
+
+    const response = await fetch('/api/short-term-schedule/move', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobKey: project.jobKey,
+        scopeOfWork,
+        date: dateKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to delete custom scope: ${errorText}`);
+    }
   }
 
   function getWeekDates(weekStart: Date): Date[] {
@@ -581,75 +737,8 @@ function ShortTermScheduleContent() {
         status: t.status
       }));
 
-      // Set projects and generate scopes
+      // Set projects (only those initiated from Gantt actual schedule)
       const projs = projects;
-      setAllProjects(projs);
-      
-      const projectsByJobKey: Record<string, any[]> = {};
-      projs.forEach((p: any) => {
-        const pKey = `${p.customer}~${p.projectNumber}~${p.projectName}`;
-        if (!projectsByJobKey[pKey]) projectsByJobKey[pKey] = [];
-        projectsByJobKey[pKey].push(p);
-      });
-
-      // Generate scopes for the modal
-      const scopesByJobKeyAndName: Record<string, Record<string, Scope>> = {};
-      projs.forEach((p: any) => {
-        const jobKey = `${p.customer}~${p.projectNumber}~${p.projectName}`;
-        const scopeName = (p.scopeOfWork || 'Default Scope').trim();
-
-        if (!scopesByJobKeyAndName[jobKey]) scopesByJobKeyAndName[jobKey] = {};
-
-        const key = scopeName.toLowerCase();
-        if (!scopesByJobKeyAndName[jobKey][key]) {
-          scopesByJobKeyAndName[jobKey][key] = {
-            id: `generated-${jobKey}-${scopeName}`,
-            jobKey: jobKey,
-            title: scopeName,
-            hours: 0,
-            manpower: 0,
-            startDate: '',
-            endDate: '',
-            description: ''
-          };
-        }
-        scopesByJobKeyAndName[jobKey][key].hours! += (p.hours || 0);
-      });
-
-      const generatedScopes: Scope[] = [];
-      Object.values(scopesByJobKeyAndName).forEach(scopesForJob => {
-        generatedScopes.push(...Object.values(scopesForJob));
-      });
-
-      const realScopeTitlesByJobKey = new Map<string, Set<string>>();
-      rawScopes.forEach((scope: Scope) => {
-        const jobKey = scope.jobKey || "";
-        if (!jobKey) return;
-        const titleKey = (scope.title || "").trim().toLowerCase();
-        if (!realScopeTitlesByJobKey.has(jobKey)) {
-          realScopeTitlesByJobKey.set(jobKey, new Set<string>());
-        }
-        if (titleKey) realScopeTitlesByJobKey.get(jobKey)!.add(titleKey);
-      });
-
-      const fallbackScopes = generatedScopes.filter((scope: Scope) => {
-        if (!scope.jobKey) return false;
-        const titleKey = (scope.title || "").trim().toLowerCase();
-        const existingTitles = realScopeTitlesByJobKey.get(scope.jobKey);
-        return !titleKey || !existingTitles || !existingTitles.has(titleKey);
-      });
-
-      const enrichedScopes: Scope[] = [...rawScopes, ...fallbackScopes];
-
-      const scopesObj: Record<string, Scope[]> = {};
-      enrichedScopes.forEach((scope: Scope) => {
-        if (scope.jobKey) {
-          if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
-          scopesObj[scope.jobKey].push(scope);
-        }
-      });
-      
-      setScopesByJobKey(scopesObj);
 
       // Fetch active schedule for next 5 weeks
       const today = new Date();
@@ -671,6 +760,68 @@ function ShortTermScheduleContent() {
       const schedRes = await fetch(`/api/short-term-schedule?action=active-schedule&startDate=${startDateStr}&endDate=${endDateStr}`);
       const schedData = schedRes.ok ? await schedRes.json() : { data: [] };
       const activeSchedules = schedData.data || [];
+      const ganttInitiatedSchedules = activeSchedules.filter((entry: any) => {
+        const source = (entry.source || '').toLowerCase();
+        return source === 'gantt' || source === 'wip-page';
+      });
+      const initiatedJobKeys = new Set(ganttInitiatedSchedules.map((entry: any) => entry.jobKey).filter(Boolean));
+
+      // Create synthetic projects from Gantt V2 activeSchedule entries
+      const ganttProjects: Project[] = [];
+      const seenJobKeys = new Set<string>();
+      
+      ganttInitiatedSchedules.forEach((entry: any) => {
+        const jobKey = entry.jobKey;
+        if (!jobKey || seenJobKeys.has(jobKey)) return;
+        
+        seenJobKeys.add(jobKey);
+        ganttProjects.push({
+          id: jobKey,
+          projectNumber: entry.projectNumber || '',
+          projectName: entry.projectName || '',
+          customer: entry.customer || '',
+          status: 'In Progress',
+          hours: 0,
+          projectManager: '',
+        } as Project);
+      });
+
+      // Combine regular projects with Gantt projects
+      const regularProjects = projs.filter((p: Project) => initiatedJobKeys.has(getProjectKey(p)));
+      setAllProjects([...regularProjects, ...ganttProjects]);
+
+      // Use only scopes for projects initiated from Gantt actual schedule
+      const scopesObj: Record<string, Scope[]> = {};
+      rawScopes.forEach((scope: Scope) => {
+        if (!scope.jobKey || !initiatedJobKeys.has(scope.jobKey)) return;
+        if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
+        scopesObj[scope.jobKey].push(scope);
+      });
+      
+      // Also add synthetic scopes from Gantt activeSchedule entries
+      ganttInitiatedSchedules.forEach((entry: any) => {
+        const jobKey = entry.jobKey;
+        if (!jobKey) return;
+        
+        if (!scopesObj[jobKey]) scopesObj[jobKey] = [];
+        
+        // Check if scope already exists
+        const existingScope = scopesObj[jobKey].find(s => s.title === entry.scopeOfWork);
+        if (!existingScope) {
+          scopesObj[jobKey].push({
+            id: `${jobKey}-${entry.scopeOfWork}`,
+            jobKey: jobKey,
+            title: entry.scopeOfWork || 'Scheduled Work',
+            hours: 0,
+            manpower: 0,
+            startDate: '',
+            endDate: '',
+            description: '',
+          });
+        }
+      });
+      
+      setScopesByJobKey(scopesObj);
       
       // Build day map and project assignments
       const dayMap = new Map<string, DayColumn>();
@@ -695,9 +846,8 @@ function ShortTermScheduleContent() {
       }
       
       // Load data from activeSchedule API response
-      // Only show projects that have been initiated from Gantt (have ProjectScope entries)
-      activeSchedules.forEach((entry: any) => {
-        // GATE: Only include if project has scopes (initiated from Gantt)
+      // Only show projects initiated from Gantt actual schedule
+      ganttInitiatedSchedules.forEach((entry: any) => {
         if (!scopesObj[entry.jobKey]) return;
         
         const dateKey = entry.date;
@@ -707,6 +857,7 @@ function ShortTermScheduleContent() {
           projectsByDay[dateKey].push({
             jobKey: entry.jobKey,
             scopeOfWork: entry.scopeOfWork || 'Scheduled Work',
+            source: entry.source || '',
             customer: entry.customer || '',
             projectNumber: entry.projectNumber || '',
             projectName: entry.projectName || '',
@@ -899,73 +1050,116 @@ function ShortTermScheduleContent() {
         </div>
 
         {isAddingProject && (
-          <div className="mb-8 bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden transform transition-all">
-            <div className={`p-4 md:p-6 border-b flex flex-col md:flex-row items-center justify-between gap-4 ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-              <h2 className="text-sm md:text-lg font-black text-gray-900 uppercase tracking-tight italic">
-                {targetingCell 
-                  ? `Targeting: ${targetingCell.date.toLocaleDateString()} · ${
-                    [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
-                  }`
-                  : 'Search for Project'
-                }
-              </h2>
-              <div className="relative w-full md:w-96 flex items-center gap-3">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Search name, customer, or number..."
-                    value={projectSearch}
-                    onChange={(e) => setProjectSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-orange-200 focus:border-orange-500 focus:outline-none text-sm font-bold shadow-sm"
-                    autoFocus
-                  />
-                  <svg className="absolute left-3 top-2.5 h-4 w-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setIsAddingProject(false); setTargetingCell(null); }}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className={`p-6 border-b flex flex-col md:flex-row items-center justify-between gap-4 ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight italic flex-1">
+                  {targetingCell 
+                    ? `Targeting: ${targetingCell.date.toLocaleDateString()} · ${
+                      [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
+                    }`
+                    : 'Search for Project'
+                  }
+                </h2>
                 <button 
                   onClick={() => {
                     setIsAddingProject(false);
                     setTargetingCell(null);
                   }}
-                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                  className="p-2 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
                 >
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-            </div>
-            <div className="p-4 md:p-6 max-h-[400px] overflow-y-auto">
-              {projectSearch.length < 2 && !targetingCell ? (
-                <div className="text-center py-10">
-                   <div className="text-orange-900/20 text-4xl mb-3">🔍</div>
-                   <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to search or click Assign on a cell...</div>
+              <div className="p-6 border-b">
+                <div className="relative w-full flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Search name, customer, or number..."
+                      value={projectSearch}
+                      onChange={(e) => setProjectSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-orange-200 focus:border-orange-500 focus:outline-none text-sm font-bold shadow-sm"
+                      autoFocus
+                    />
+                    <svg className="absolute left-3 top-3.5 h-4 w-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(() => {
-                    // When targeting a cell with no search, show all active projects (filtered by status)
-                    // Otherwise, filter by search term
-                    const filtered = projectSearch.length >= 2
-                      ? allProjects.filter(p => 
-                        p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
-                        p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
-                        p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
-                      )
-                      : targetingCell
-                      ? allProjects.filter(p => p.status && !['Lost', 'Bid Submitted'].includes(p.status)) // Show active projects
-                      : [];
-                    
-                    const grouped: Record<string, Project[]> = {};
-                    filtered.forEach(p => {
-                      const jobKey = getProjectKey(p);
-                      if (!grouped[jobKey]) grouped[jobKey] = [];
-                      grouped[jobKey].push(p);
+                {targetingCell && (
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-700 mb-2">No Starting Scope Mode</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Type custom scope (e.g., Helping Jason), then click a project below"
+                        value={customScopeName}
+                        onChange={(e) => setCustomScopeName(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-blue-300 focus:border-blue-500 focus:outline-none text-sm font-bold"
+                      />
+                      <button
+                        onClick={() => {
+                          if (!selectedCustomProject) {
+                            alert("Select a project card below first.");
+                            return;
+                          }
+                          if (!customScopeName.trim()) {
+                            alert("Enter a custom scope name first.");
+                            return;
+                          }
+                          handleQuickCustomScopeFromProject(selectedCustomProject, customScopeName.trim());
+                        }}
+                        disabled={saving}
+                        className="px-3 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Create
+                      </button>
+                      <button
+                        onClick={() => { setCustomScopeName(""); setSelectedCustomProject(null); }}
+                        className="px-3 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-100"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[10px] font-bold uppercase tracking-widest text-blue-700/70">
+                      {selectedCustomProject ? `Selected: ${selectedCustomProject.projectName}` : 'Step 1: select a project card below'}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                {projectSearch.length < 2 && !targetingCell ? (
+                  <div className="text-center py-10">
+                     <div className="text-orange-900/20 text-4xl mb-3">🔍</div>
+                     <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to search or use the cell Assign button...</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(() => {
+                      // When targeting a cell with no search, show all active projects (filtered by status)
+                      // Otherwise, filter by search term
+                      const filtered = projectSearch.length >= 2
+                        ? allProjects.filter(p => 
+                          p.projectName?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                          p.customer?.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                          p.projectNumber?.toLowerCase().includes(projectSearch.toLowerCase())
+                        )
+                        : targetingCell
+                        ? allProjects.filter(p => p.status && !['Lost', 'Bid Submitted'].includes(p.status)) // Show active projects
+                        : [];
+                      
+                      const grouped: Record<string, Project[]> = {};
+                      filtered.forEach(p => {
+                        const jobKey = getProjectKey(p);
+                        if (!grouped[jobKey]) grouped[jobKey] = [];
+                        grouped[jobKey].push(p);
 
-                    });
-                    
-                    return Object.entries(grouped).slice(0, 50).map(([jobKey, projects], idx) => {
+                      });
+                      
+                      return Object.entries(grouped).slice(0, 50).map(([jobKey, projects], idx) => {
                       const p = projects[0]; // Representative project
                       
                       // Count unique scopes
@@ -977,9 +1171,19 @@ function ShortTermScheduleContent() {
                           key={`${jobKey}-${idx}`}
                           draggable
                           onDragStart={() => handleDragStart(p)}
-                          onClick={() => handleSearchProjectClick(p)}
+                          onClick={() => {
+                            if (targetingCell && customScopeName.trim()) {
+                              setSelectedCustomProject(p);
+                              return;
+                            }
+                            handleSearchProjectClick(p);
+                          }}
                           className={`flex items-center p-4 border-2 rounded-2xl transition-all cursor-grab active:cursor-grabbing group shadow-sm bg-white hover:scale-[1.02] ${
-                            targetingCell ? 'border-green-100 hover:border-green-500 hover:bg-green-50' : 'border-gray-50 hover:border-orange-500 hover:bg-orange-50'
+                            targetingCell
+                              ? selectedCustomProject && selectedCustomProject.id === p.id
+                                ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                : 'border-green-100 hover:border-green-500 hover:bg-green-50'
+                              : 'border-gray-50 hover:border-orange-500 hover:bg-orange-50'
                           }`}
                         >
                           <div className="flex-1 overflow-hidden">
@@ -987,6 +1191,19 @@ function ShortTermScheduleContent() {
                             <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} · #{p.projectNumber}</div>
                             {scopeCount > 1 && (
                               <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Unique Scopes</div>
+                            )}
+                            {targetingCell && (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleQuickCustomScopeFromProject(p);
+                                }}
+                                disabled={saving}
+                                className="mt-2 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50"
+                              >
+                                + Custom Scope
+                              </button>
                             )}
                           </div>
                           <div className={`ml-3 opacity-30 group-hover:opacity-100 transition-opacity ${targetingCell ? 'text-green-500' : 'text-orange-500'}`}>
@@ -1006,9 +1223,7 @@ function ShortTermScheduleContent() {
                   })()}
                 </div>
               )}
-            </div>
-            <div className="bg-gray-50 p-4 text-[10px] font-black uppercase tracking-widest text-gray-400 border-t border-gray-100 italic">
-              <span className="text-orange-600 ml-2">Scheduling System v2.0</span>
+              </div>
             </div>
           </div>
         )}
@@ -1175,9 +1390,21 @@ function ShortTermScheduleContent() {
                                             <button
                                               onClick={async (e) => {
                                                 e.stopPropagation();
+                                                const isUnassignedRow = foreman.id === "__unassigned__";
+                                                const isCustomScope = (project.source || '').toLowerCase() === 'wip-page';
+
+                                                if (isUnassignedRow && isCustomScope) {
+                                                  if (confirm(`Delete custom scope \"${project.scopeOfWork || 'Scheduled Work'}\" from ${project.projectName}?`)) {
+                                                    setSaving(true);
+                                                    try { await deleteCustomScopeAssignment(project, dateKey); await loadSchedules(); }
+                                                    finally { setSaving(false); }
+                                                  }
+                                                  return;
+                                                }
+
                                                 if (confirm(`Move ${project.projectName} to unassigned?`)) {
                                                   setSaving(true);
-                                                  try { await updateProjectAssignment(project, dateKey, foreman.id, "", project.hours); await loadSchedules(); }
+                                                  try { await updateProjectAssignment(project, dateKey, dateKey, foreman.id, "", project.hours); await loadSchedules(); }
                                                   finally { setSaving(false); }
                                                 }
                                               }}
@@ -1199,7 +1426,7 @@ function ShortTermScheduleContent() {
                                                   const newHrs = parseFloat(e.target.value);
                                                   if (!isNaN(newHrs) && newHrs !== project.hours) {
                                                     setSaving(true);
-                                                    try { await updateProjectAssignment(project, dateKey, foreman.id, foreman.id, newHrs); await loadSchedules(); }
+                                                    try { await updateProjectAssignment(project, dateKey, dateKey, foreman.id, foreman.id, newHrs); await loadSchedules(); }
                                                     finally { setSaving(false); }
                                                   }
                                                 }}
@@ -1304,7 +1531,7 @@ function ShortTermScheduleContent() {
                         }
                         if (workDaysInRange > 0) { newProject.hours = (targetScope.hours || 0) / workDaysInRange; }
                       }
-                      if (newProject.hours > 0) { await updateProjectAssignment(newProject, dateKey, foremanId, foremanId, newProject.hours); }
+                      if (newProject.hours > 0) { await updateProjectAssignment(newProject, dateKey, dateKey, foremanId, foremanId, newProject.hours); }
                     }
                   }
                 }
@@ -1316,25 +1543,57 @@ function ShortTermScheduleContent() {
 
         {/* Scope Selection Modal */}
         {scopeSelectionModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setScopeSelectionModal(null)}>
-            <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setScopeSelectionModal(null); setCustomScopeName(""); }}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-6 border-b border-gray-200">
                 <div className="flex justify-between items-center">
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tight">{scopeSelectionModal.projects[0]?.projectName}</h3>
                     <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer} · #{scopeSelectionModal.projects[0]?.projectNumber}</p>
                   </div>
                   <button
-                    onClick={() => setScopeSelectionModal(null)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    onClick={() => { setScopeSelectionModal(null); setCustomScopeName(""); }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-4"
                   >
                     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-                <div className="mt-3 text-xs font-black text-orange-600 uppercase tracking-widest">Select Scope of Work ({scopeSelectionModal.projects.length} unique options)</div>
               </div>
+              
+              {/* Custom Scope Input */}
+              <div className="p-6 border-b border-gray-200 bg-blue-50">
+                <div className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Create Custom Scope</div>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    placeholder="e.g., Helping Jason, Lead Helper, etc."
+                    value={customScopeName}
+                    onChange={(e) => setCustomScopeName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && customScopeName.trim()) {
+                        handleCreateCustomScope();
+                      }
+                    }}
+                    className="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:outline-none font-bold text-sm"
+                    disabled={saving}
+                  />
+                  <button
+                    onClick={handleCreateCustomScope}
+                    disabled={!customScopeName.trim() || saving}
+                    className="px-4 py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {saving ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Existing Scopes */}
+              <div className="p-6 border-b border-gray-200">
+                <div className="text-xs font-black text-orange-600 uppercase tracking-widest mb-3">Select Existing Scope ({scopeSelectionModal.projects.length} options)</div>
+              </div>
+
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {scopeSelectionModal.projects.map((project, idx) => (
@@ -1343,6 +1602,7 @@ function ShortTermScheduleContent() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        setCustomScopeName("");
                         handleScopeSelect(project);
                       }}
                       disabled={saving}

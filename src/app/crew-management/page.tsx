@@ -39,10 +39,17 @@ function CrewManagementContent() {
     try {
       setLoading(true);
       
-      // Load employees from API
-      const response = await fetch('/api/employees?isActive=true');
-      const result = await response.json();
-      const allEmployees = result.success ? result.data || [] : [];
+      // Load employees and crew templates in parallel
+      const [employeesResponse, crewTemplatesResponse] = await Promise.all([
+        fetch('/api/employees?isActive=true'),
+        fetch('/api/crew-templates')
+      ]);
+      
+      const employeesResult = await employeesResponse.json();
+      const crewTemplatesResult = await crewTemplatesResponse.json();
+      
+      const allEmployees = employeesResult.success ? employeesResult.data || [] : [];
+      const crewTemplates = crewTemplatesResult.success ? crewTemplatesResult.data || [] : [];
 
       // Filter by job title
       const foremenList = allEmployees.filter((emp: any) => 
@@ -70,12 +77,30 @@ function CrewManagementContent() {
       setRightHandMen(rightHandMenList);
       setLaborers(laborersList);
 
-      // Initialize empty crew assignments
+      // Load existing crew assignments from templates
       const assignments: Record<string, CrewAssignment> = {};
+      const assignedLaborers = new Set<string>(); // Track already assigned laborers
+      
       foremenList.forEach((foreman: Employee) => {
+        // Try to find existing crew template for this foreman (by name)
+        const templateName = `Crew - ${foreman.firstName} ${foreman.lastName}`;
+        const existingTemplate = crewTemplates.find((t: any) => t.name === templateName);
+        
+        // Filter out any crew members that are already assigned to another foreman
+        let crewMemberIds = existingTemplate?.crewMemberIds || [];
+        const filteredCrewMemberIds = crewMemberIds.filter((laborerId: string) => {
+          if (assignedLaborers.has(laborerId)) {
+            console.warn(`Laborer ${laborerId} is assigned to multiple foremen, removing duplicate from ${foreman.firstName} ${foreman.lastName}`);
+            return false;
+          }
+          assignedLaborers.add(laborerId);
+          return true;
+        });
+        
         assignments[foreman.id] = {
           foremanId: foreman.id,
-          crewMemberIds: []
+          rightHandManId: existingTemplate?.rightHandManId || undefined,
+          crewMemberIds: filteredCrewMemberIds
         };
       });
       setCrewAssignments(assignments);
@@ -90,24 +115,58 @@ function CrewManagementContent() {
   async function saveCrewAssignment(foremanId: string) {
     try {
       setSaving(foremanId);
-      const assignment = crewAssignments[foremanId];
+      const assignment = crewAssignments[foremanId] || { foremanId, crewMemberIds: [] };
+      const foreman = foremen.find(f => f.id === foremanId);
       
-      // Save to crew template API
+      if (!foreman) {
+        throw new Error('Foreman not found');
+      }
+      
+      // Check for duplicate crew member assignments
+      const duplicates: string[] = [];
+      Object.entries(crewAssignments).forEach(([fid, otherAssignment]) => {
+        if (fid !== foremanId && otherAssignment.crewMemberIds) {
+          otherAssignment.crewMemberIds.forEach((laborerId: string) => {
+            if (assignment.crewMemberIds?.includes(laborerId)) {
+              const laborer = laborers.find(l => l.id === laborerId);
+              if (laborer) {
+                const otherForeman = foremen.find(f => f.id === fid);
+                duplicates.push(`${laborer.firstName} ${laborer.lastName} (already assigned to ${otherForeman?.firstName} ${otherForeman?.lastName})`);
+              }
+            }
+          });
+        }
+      });
+      
+      if (duplicates.length > 0) {
+        alert(`Cannot save: The following crew members are already assigned to other foremen:\n\n${duplicates.join('\n')}\n\nPlease remove them from the other crew first.`);
+        setSaving(null);
+        return;
+      }
+      
+      // POST will upsert based on name
+      const payload: any = {
+        name: `Crew - ${foreman.firstName} ${foreman.lastName}`,
+        crewMemberIds: assignment.crewMemberIds || [],
+        rightHandManId: assignment.rightHandManId || null,
+        foremanId: foremanId,
+      };
+      
       const response = await fetch('/api/crew-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `Crew - ${foremen.find(f => f.id === foremanId)?.lastName || foremanId}`,
-          members: assignment.crewMemberIds,
-        }),
+        body: JSON.stringify(payload),
       });
       
-      if (!response.ok) throw new Error('Failed to save crew assignment');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save crew assignment');
+      }
       
       alert("Crew assignment saved successfully!");
     } catch (error) {
       console.error("Error saving crew assignment:", error);
-      alert("Failed to save crew assignment");
+      alert(`Failed to save crew assignment: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(null);
     }
@@ -117,7 +176,8 @@ function CrewManagementContent() {
     setCrewAssignments(prev => ({
       ...prev,
       [foremanId]: {
-        ...prev[foremanId],
+        foremanId,
+        crewMemberIds: prev[foremanId]?.crewMemberIds || [],
         rightHandManId: rightHandManId || undefined
       }
     }));
@@ -133,8 +193,8 @@ function CrewManagementContent() {
       return {
         ...prev,
         [foremanId]: {
-          ...prev[foremanId],
           foremanId,
+          rightHandManId: prev[foremanId]?.rightHandManId,
           crewMemberIds: newMembers
         }
       };

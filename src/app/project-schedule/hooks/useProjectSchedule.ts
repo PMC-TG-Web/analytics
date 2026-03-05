@@ -34,15 +34,17 @@ export function useProjectSchedule() {
       console.log("[useProjectSchedule] Starting data fetch...");
       
       // Parallelize all API fetches
-      const [projectsRes, scopesRes, activeScheduleRes] = await Promise.all([
+      const [projectsRes, scopesRes, activeScheduleRes, scheduleAllocationsRes] = await Promise.all([
         fetch('/api/projects'),
         fetch('/api/project-scopes'),
-        fetch('/api/short-term-schedule?action=activeSchedules')
+        fetch('/api/short-term-schedule?action=activeSchedules'),
+        fetch('/api/schedule-allocations')
       ]);
 
       const projectsData = await projectsRes.json();
       const scopesData = await scopesRes.json();
       const activeScheduleData = await activeScheduleRes.json();
+      const scheduleAllocationsData = await scheduleAllocationsRes.json();
 
       console.log(`[useProjectSchedule] Fetched all data in ${Date.now() - start}ms`);
       
@@ -339,6 +341,185 @@ export function useProjectSchedule() {
         monthJob.totalHours += hours;
       });
 
+      // Process ScheduleAllocation data (monthly allocations from WIP3)
+      // Position projects on the first weekday of each allocated month
+      const getFirstWeekdayOfMonth = (yearMonth: string): Date | null => {
+        const match = yearMonth.match(/^(\d{4})-(\d{2})$/);
+        if (!match) return null;
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1; // 0-indexed
+        const date = new Date(year, month, 1);
+        // Find first weekday (skip weekends)
+        while (date.getDay() === 0 || date.getDay() === 6) {
+          date.setDate(date.getDate() + 1);
+        }
+        date.setHours(0, 0, 0, 0);
+        return date;
+      };
+
+      const scheduleAllocations = (scheduleAllocationsData.success && Array.isArray(scheduleAllocationsData.data)) 
+        ? scheduleAllocationsData.data 
+        : [];
+      
+      console.log(`[useProjectSchedule] Processing ${scheduleAllocations.length} schedule allocations`);
+
+      scheduleAllocations.forEach((allocation: any) => {
+        if (!allocation.schedule || !allocation.schedule.jobKey || !allocation.period) return;
+        const jobKey = normalizeJobKey(allocation.schedule.jobKey);
+        const hours = typeof allocation.hours === "number" ? allocation.hours : 0;
+        if (hours <= 0) return;
+
+        const firstWeekday = getFirstWeekdayOfMonth(allocation.period);
+        if (!firstWeekday) return;
+
+        // Get project info from the allocation's schedule data
+        const info = {
+          customer: allocation.schedule.customer || "",
+          projectNumber: allocation.schedule.projectNumber || "",
+          projectName: allocation.schedule.projectName || "",
+          projectDocId: docMap[jobKey] || "",
+        };
+
+        // Add to shortTermMap
+        if (!shortTermMap.has(jobKey)) {
+          shortTermMap.set(jobKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            dates: [],
+            totalHours: 0,
+            scopes: scopesMap[jobKey] || [],
+          });
+        }
+        const stJob = shortTermMap.get(jobKey)!;
+        stJob.dates.push(firstWeekday);
+        stJob.totalHours += hours;
+
+        // Add to longTermMap
+        if (!longTermMap.has(jobKey)) {
+          longTermMap.set(jobKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            weekStarts: [],
+            totalHours: 0,
+            scopes: scopesMap[jobKey] || [],
+          });
+        }
+        const ltJob = longTermMap.get(jobKey)!;
+        const weekStart = new Date(firstWeekday);
+        const day = weekStart.getDay();
+        const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+        weekStart.setDate(diff);
+        weekStart.setHours(0, 0, 0, 0);
+        ltJob.weekStarts.push(weekStart);
+        ltJob.totalHours += hours;
+
+        // Add to monthMap
+        const monthMapKey = `${jobKey}__${allocation.period}`;
+        if (!monthMap.has(monthMapKey)) {
+          monthMap.set(monthMapKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            month: allocation.period,
+            totalHours: 0,
+            scopes: scopesMap[jobKey] || [],
+          });
+        }
+        const monthJob = monthMap.get(monthMapKey)!;
+        monthJob.totalHours += hours;
+      });
+
+      // Add ALL projects with scopes to the Gantt, even if not yet scheduled
+      // Use scope start/end dates to position them
+      console.log(`[useProjectSchedule] Adding projects with scopes to Gantt...`);
+      Object.entries(scopesMap).forEach(([jobKey, scopes]) => {
+        if (!scopes || scopes.length === 0) return;
+        
+        // Skip if already in the maps (from activeSchedule or scheduleAllocation)
+        if (shortTermMap.has(jobKey)) return;
+
+        const info = getProjectInfo(jobKey);
+        const totalScopeHours = scopes.reduce((sum, scope) => sum + (scope.hours || 0), 0);
+        
+        // Find earliest start date and latest end date from scopes
+        let earliestStart: Date | null = null;
+        let latestEnd: Date | null = null;
+        
+        scopes.forEach(scope => {
+          const scopeStart = parseDateInput(scope.startDate || "");
+          const scopeEnd = parseDateInput(scope.endDate || "");
+          
+          if (scopeStart) {
+            if (!earliestStart || scopeStart < earliestStart) {
+              earliestStart = scopeStart;
+            }
+          }
+          if (scopeEnd) {
+            if (!latestEnd || scopeEnd > latestEnd) {
+              latestEnd = scopeEnd;
+            }
+          }
+        });
+
+        // If we have dates from scopes, use them to position on Gantt
+        if (earliestStart) {
+          // Add to shortTermMap
+          shortTermMap.set(jobKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            dates: [earliestStart],
+            totalHours: totalScopeHours,
+            scopes: scopes,
+          });
+
+          // Add to longTermMap
+          const weekStart = new Date(earliestStart);
+          const day = weekStart.getDay();
+          const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+          weekStart.setDate(diff);
+          weekStart.setHours(0, 0, 0, 0);
+
+          longTermMap.set(jobKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            weekStarts: [weekStart],
+            totalHours: totalScopeHours,
+            scopes: scopes,
+          });
+
+          // Add to monthMap
+          const monthKey = `${earliestStart.getFullYear()}-${String(earliestStart.getMonth() + 1).padStart(2, "0")}`;
+          const monthMapKey = `${jobKey}__${monthKey}`;
+          monthMap.set(monthMapKey, {
+            jobKey,
+            customer: info.customer,
+            projectNumber: info.projectNumber,
+            projectName: info.projectName,
+            projectDocId: info.projectDocId,
+            month: monthKey,
+            totalHours: totalScopeHours,
+            scopes: scopes,
+          });
+        }
+      });
+
+      console.log(`[useProjectSchedule] Total projects in Gantt: ${shortTermMap.size}`);
+
+      // Re-deduplicate after adding schedule allocations
       shortTermMap.forEach((job) => {
         const unique = new Map<string, Date>();
         job.dates.forEach((d) => unique.set(d.toISOString().split("T")[0], d));

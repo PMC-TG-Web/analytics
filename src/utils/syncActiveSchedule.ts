@@ -202,3 +202,157 @@ export async function deleteAllocationFromActiveSchedule(
     });
   }
 }
+
+/**
+ * Sync a ProjectScope to ActiveSchedule
+ * Creates daily entries for each working day in the scope's date range
+ */
+export async function syncProjectScopeToActiveSchedule(
+  scopeId: string
+): Promise<SyncResult> {
+  const result: SyncResult = {
+    created: 0,
+    updated: 0,
+    deleted: 0,
+    errors: [],
+  };
+
+  try {
+    const scope = await prisma.projectScope.findUnique({
+      where: { id: scopeId },
+    });
+
+    if (!scope) {
+      result.errors.push(`Scope ${scopeId} not found`);
+      return result;
+    }
+
+    if (!scope.startDate || !scope.endDate) {
+      // No dates set, remove any existing activeSchedule entries for this scope
+      await prisma.activeSchedule.deleteMany({
+        where: {
+          jobKey: scope.jobKey,
+          scopeOfWork: scope.title,
+          source: 'gantt',
+        },
+      });
+      result.deleted++;
+      return result;
+    }
+
+    const startDate = new Date(scope.startDate);
+    const endDate = new Date(scope.endDate);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      result.errors.push(`Invalid dates for scope ${scopeId}`);
+      return result;
+    }
+
+    // Calculate working days in range
+    let workingDays = 0;
+    const workingDates: Date[] = [];
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        workingDays++;
+        workingDates.push(new Date(d));
+      }
+    }
+
+    if (workingDays === 0) {
+      result.errors.push(`No working days in scope ${scopeId} date range`);
+      return result;
+    }
+
+    // Calculate hours per day
+    const totalHours = scope.hours || 0;
+    const manpower = scope.manpower || 0;
+    const hoursPerDay = manpower > 0 ? manpower * 10 : totalHours / workingDays;
+
+    const existingAssignments = await prisma.activeSchedule.findMany({
+      where: {
+        jobKey: scope.jobKey,
+        scopeOfWork: scope.title,
+        source: 'gantt',
+      },
+      select: {
+        date: true,
+        foreman: true,
+      },
+    });
+
+    const foremanByDate = new Map(
+      existingAssignments
+        .filter((entry) => Boolean(entry.foreman))
+        .map((entry) => [entry.date, entry.foreman as string])
+    );
+    const defaultForeman =
+      existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
+
+    // Delete existing entries for this scope
+    await prisma.activeSchedule.deleteMany({
+      where: {
+        jobKey: scope.jobKey,
+        scopeOfWork: scope.title,
+        source: 'gantt',
+      },
+    });
+
+    // Create new entries for each working day
+    for (const date of workingDates) {
+      const dateStr = date.toISOString().split('T')[0];
+      
+      await prisma.activeSchedule.upsert({
+        where: {
+          jobKey_scopeOfWork_date: {
+            jobKey: scope.jobKey,
+            scopeOfWork: scope.title,
+            date: dateStr,
+          },
+        },
+        create: {
+          jobKey: scope.jobKey,
+          scopeOfWork: scope.title,
+          date: dateStr,
+          hours: hoursPerDay,
+          manpower: manpower > 0 ? Math.round(manpower) : null,
+          foreman: foremanByDate.get(dateStr) ?? defaultForeman,
+          source: 'gantt',
+        },
+        update: {
+          hours: hoursPerDay,
+          manpower: manpower > 0 ? Math.round(manpower) : null,
+          source: 'gantt',
+        },
+      });
+      result.created++;
+    }
+
+    return result;
+  } catch (error) {
+    result.errors.push(`Failed to sync scope: ${String(error)}`);
+    return result;
+  }
+}
+
+/**
+ * Delete activeSchedule entries for a ProjectScope
+ */
+export async function deleteProjectScopeFromActiveSchedule(
+  scopeId: string
+): Promise<void> {
+  const scope = await prisma.projectScope.findUnique({
+    where: { id: scopeId },
+    select: { jobKey: true, title: true },
+  });
+
+  if (!scope) return;
+
+  await prisma.activeSchedule.deleteMany({
+    where: {
+      jobKey: scope.jobKey,
+      scopeOfWork: scope.title,
+      source: 'gantt',
+    },
+  });
+}

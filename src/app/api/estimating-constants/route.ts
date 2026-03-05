@@ -8,14 +8,20 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
 
-    const constants = await prisma.estimatingConstant.findMany({
-      where: category ? { category } : undefined,
-      orderBy: { name: 'asc' },
-    });
+    const [constants, rebarConstants] = await Promise.all([
+      prisma.estimatingConstant.findMany({
+        where: category ? { category } : undefined,
+        orderBy: { name: 'asc' },
+      }),
+      prisma.rebarConstant.findMany({
+        orderBy: { size: 'asc' },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: constants,
+      rebarData: rebarConstants,
     });
   } catch (error) {
     console.error('Failed to fetch constants:', error);

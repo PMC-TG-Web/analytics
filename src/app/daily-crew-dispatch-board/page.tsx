@@ -141,9 +141,21 @@ function DailyCrewDispatchBoardContent() {
     }
   }, [showTimeOffModal, currentUserEmployee]);
 
+  // Load schedules on component mount
   useEffect(() => {
     loadSchedules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-reload when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadSchedules();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   function getWeekDates(weekStart: Date): Date[] {
@@ -230,22 +242,39 @@ function DailyCrewDispatchBoardContent() {
       };
 
       const [
-        employeesData,
-        projectScopesData, 
-        projectsData, 
-        timeOffData, 
-        holidaysData,
-        crewsData
+        employeesPayload,
+        projectScopesPayload,
+        projectsPayload,
+        timeOffPayload,
+        holidaysPayload,
+        crewsPayload
       ] = await Promise.all([
         cachedEmployees ? Promise.resolve(cachedEmployees) : safeJsonFetch('/api/employees'),
-        cachedScopes ? Promise.resolve(cachedScopes) : safeJsonFetch('/api/projects-scopes').then(data => data?.scopes || []),
+        cachedScopes ? Promise.resolve(cachedScopes) : safeJsonFetch('/api/project-scopes'),
         safeJsonFetch('/api/projects'),
         safeJsonFetch('/api/time-off'),
         cachedHolidays ? Promise.resolve(cachedHolidays) : safeJsonFetch('/api/holidays'),
-        safeJsonFetch('/api/crews')
+        safeJsonFetch('/api/crew-templates')
       ]);
 
-      console.log(`[DispatchBoard] Fetched all data in ${Date.now() - start}ms`);
+      const employeesData = Array.isArray(employeesPayload)
+        ? employeesPayload
+        : (employeesPayload?.data || []);
+      const projectScopesData = Array.isArray(projectScopesPayload)
+        ? projectScopesPayload
+        : (projectScopesPayload?.scopes || projectScopesPayload?.data || []);
+      const projectsData = Array.isArray(projectsPayload)
+        ? projectsPayload
+        : (projectsPayload?.data || []);
+      const timeOffData = Array.isArray(timeOffPayload)
+        ? timeOffPayload
+        : (timeOffPayload?.data || []);
+      const holidaysData = Array.isArray(holidaysPayload)
+        ? holidaysPayload
+        : (holidaysPayload?.data || []);
+      const crewsData = Array.isArray(crewsPayload)
+        ? crewsPayload
+        : (crewsPayload?.data || []);
 
       const allEmps = cachedEmployees || (employeesData || [])
         .filter((emp: any) => emp.isActive !== false)
@@ -260,6 +289,16 @@ function DailyCrewDispatchBoardContent() {
       setAllEmployees(allEmps);
       const foremenList = allEmps.filter((emp: any) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
       setForemen(foremenList);
+      const foremanIdSet = new Set(foremenList.map((f: any) => f.id));
+      const foremanNameToId = new Map(
+        foremenList.map((f: any) => [`${f.firstName} ${f.lastName}`.trim().toLowerCase(), f.id])
+      );
+
+      const resolveForemanId = (rawForeman?: string) => {
+        if (!rawForeman) return "";
+        if (foremanIdSet.has(rawForeman)) return rawForeman;
+        return foremanNameToId.get(rawForeman.trim().toLowerCase()) || "";
+      };
 
       const requests = (timeOffData || []) as TimeOffRequest[];
       setTimeOffRequests(requests);
@@ -288,22 +327,29 @@ function DailyCrewDispatchBoardContent() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const displayDate = new Date(today);
+      const localDateKey = formatDateKey(displayDate);
+      const utcDateKey = displayDate.toISOString().split('T')[0];
 
-      // Load schedule data from activeSchedule for today only
-      const { projectsByDate } = await loadActiveScheduleForDateRange(displayDate, displayDate);
+      // Load schedule data from activeSchedule for today's local date, with UTC-safe fallback
+      const rangeStart = localDateKey <= utcDateKey ? new Date(`${localDateKey}T00:00:00`) : new Date(`${utcDateKey}T00:00:00`);
+      const rangeEnd = localDateKey >= utcDateKey ? new Date(`${localDateKey}T00:00:00`) : new Date(`${utcDateKey}T00:00:00`);
+      const { projectsByDate } = await loadActiveScheduleForDateRange(rangeStart, rangeEnd);
       
       const dayMap = new Map<string, DayColumn>();
       const projectsByDay: Record<string, DayProject[]> = {};
 
-      const dateKey = formatDateKey(displayDate);
+      const dateKey = localDateKey;
       dayMap.set(dateKey, {
         date: displayDate,
         dayLabel: displayDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         weekNumber: 1,
       });
 
-      // Initialize projectsByDay from activeSchedule
-      const activeScheduleProjects = projectsByDate[dateKey] || [];
+      // Initialize projectsByDay from activeSchedule using both local and UTC keys
+      const activeScheduleProjects = [
+        ...(projectsByDate[localDateKey] || []),
+        ...(utcDateKey !== localDateKey ? (projectsByDate[utcDateKey] || []) : []),
+      ];
       projectsByDay[dateKey] = activeScheduleProjects.map(p => ({
         jobKey: p.jobKey,
         customer: p.customer,
@@ -317,8 +363,6 @@ function DailyCrewDispatchBoardContent() {
         dayNumber: displayDate.getDay() || 7,
       }));
 
-      console.log(`[DispatchBoard] Loaded ${projectsByDay[dateKey].length} projects from activeSchedule for ${dateKey}`);
-
       const columns = Array.from(dayMap.values()).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
       setDayColumns(columns);
 
@@ -326,45 +370,51 @@ function DailyCrewDispatchBoardContent() {
       foremenList.forEach((foreman: any) => {
         foremanDateMap[foreman.id] = {};
         columns.forEach((col: any) => {
-          const dateKey = col.date.toISOString().split('T')[0];
+          const dateKey = formatDateKey(col.date);
           foremanDateMap[foreman.id][dateKey] = [];
         });
       });
       foremanDateMap.__unassigned__ = {};
       columns.forEach((col: any) => {
-        const dateKey = col.date.toISOString().split('T')[0];
+        const dateKey = formatDateKey(col.date);
         foremanDateMap.__unassigned__[dateKey] = [];
       });
 
       Object.entries(projectsByDay).forEach(([dateKey, projects]: any) => {
         projects.forEach((project: any) => {
-          if (project.foreman) {
-            if (!foremanDateMap[project.foreman]) foremanDateMap[project.foreman] = {};
-            if (!foremanDateMap[project.foreman][dateKey]) foremanDateMap[project.foreman][dateKey] = [];
-            foremanDateMap[project.foreman][dateKey].push(project);
+          const resolvedForemanId = resolveForemanId(project.foreman) as string | null;
+          if (resolvedForemanId) {
+            project.foreman = resolvedForemanId;
+            if (!foremanDateMap[resolvedForemanId]) foremanDateMap[resolvedForemanId] = {};
+            if (!foremanDateMap[resolvedForemanId][dateKey]) foremanDateMap[resolvedForemanId][dateKey] = [];
+            foremanDateMap[resolvedForemanId][dateKey].push(project);
           } else {
+            if (!foremanDateMap.__unassigned__[dateKey]) foremanDateMap.__unassigned__[dateKey] = [];
             foremanDateMap.__unassigned__[dateKey].push(project);
           }
         });
       });
       setForemanDateProjects(foremanDateMap);
 
-      // Load saved crew templates from API
+      // Load saved crew templates from API, indexed by foremanId
+      // Match crews to foremen by template name pattern: "Crew - FirstName LastName"
       const savedCrews: Record<string, { rightHandManId?: string; crewMemberIds: string[] }> = {};
-      (crewsData || []).forEach((crew: any) => {
-        savedCrews[crew.id] = {
-          rightHandManId: crew.rightHandManId,
-          crewMemberIds: crew.crewMemberIds || crew.members || []
-        };
+      foremenList.forEach((foreman: any) => {
+        const templateName = `Crew - ${foreman.firstName} ${foreman.lastName}`;
+        const matchingCrew = (crewsData || []).find((crew: any) => crew.name === templateName);
+        if (matchingCrew) {
+          savedCrews[foreman.id] = {
+            rightHandManId: matchingCrew.rightHandManId,
+            crewMemberIds: matchingCrew.crewMemberIds || matchingCrew.members || []
+          };
+        }
       });
       
-      console.log('[DispatchBoard] Loaded saved crews:', savedCrews);
-
       const crewMap: Record<string, Record<string, string[]>> = {};
       Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
         if (!crewMap[dateKey]) crewMap[dateKey] = {};
         projects.forEach(project => {
-          const foremanId = project.foreman;
+          const foremanId = resolveForemanId(project.foreman) as string | null;
           if (foremanId) {
             if (!crewMap[dateKey][foremanId]) {
               crewMap[dateKey][foremanId] = [];
@@ -372,7 +422,6 @@ function DailyCrewDispatchBoardContent() {
               // Apply default crew for this foreman on this day (first time we see them)
               if (savedCrews[foremanId]) {
                 const defaultCrew = savedCrews[foremanId];
-                console.log(`[DispatchBoard] Applying default crew for foreman ${foremanId} on ${dateKey}:`, defaultCrew);
                 
                 // Add right hand man if assigned
                 if (defaultCrew.rightHandManId) {
@@ -399,7 +448,6 @@ function DailyCrewDispatchBoardContent() {
         });
       });
       
-      console.log('[DispatchBoard] Final crew assignments:', crewMap);
       setCrewAssignments(crewMap);
     } catch (error) {
       console.warn("[DispatchBoard] Failed to load schedules:", error);
@@ -540,10 +588,6 @@ function DailyCrewDispatchBoardContent() {
     setSendingEmail(true);
     try {
       // Find recipients: Management, PMs, Office, Foremen
-      const recipientRoles = ["Office Staff", "Foreman", "Lead foreman", "Project Manager", "Executive", "General Manager"];
-      
-      console.log("Debug - All active employees:", allEmployees.filter(e => e.isActive).length);
-      console.log("Debug - Searching for roles:", recipientRoles);
       
       // FOR TESTING: Distro restricted to Todd only
       const recipients = ["todd@pmcdecor.com"];
@@ -570,7 +614,6 @@ function DailyCrewDispatchBoardContent() {
       if (recipients.length === 0) {
         // Fallback: If no managers found, at least notify the current user if they have an email
         if (user?.email) {
-          console.log("No recipients found, falling back to current user:", user.email);
           recipients.push(user.email);
         } else {
           console.warn("[DispatchBoard] No recipients found with valid emails");
@@ -601,12 +644,7 @@ function DailyCrewDispatchBoardContent() {
       if (!response.ok) {
         console.warn("[DispatchBoard] notify-absence API endpoint not available");
       } else {
-        const responseData = await response.json();
-        const smsSent = responseData?.sms?.sent || 0;
-        const smsError = responseData?.sms?.error;
-        const smsSummary = smsSent > 0 ? ` and texted ${smsSent} number${smsSent > 1 ? "s" : ""}` : "";
-        const smsWarning = smsError ? ` SMS error: ${smsError}` : "";
-        console.log(`Notification sent to ${recipients.length} team members${smsSummary}.${smsWarning}`);
+        await response.json();
       }
 
       setShowSickModal(false);
@@ -717,7 +755,7 @@ function DailyCrewDispatchBoardContent() {
   
   const globalCapacityHours = (fieldWorkers.length * 10) - totalHoursOff;
   const globalAssignedCount = getAssignedEmployeesForDate(dateKey).length;
-  const globalActualHours = globalAssignedCount * 10;
+  const globalActualHours = (foremen.length + globalAssignedCount) * 10; // foremen + crew members
 
   return (
     <main className="h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900 overflow-hidden flex flex-col">
@@ -790,20 +828,6 @@ function DailyCrewDispatchBoardContent() {
                     {isHoliday.isPaid && <span className="bg-white/20 text-[8px] px-1 rounded font-bold">PAID</span>}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowTimeOffModal(true)}
-                    className="bg-stone-800 hover:bg-stone-900 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg shadow-stone-800/20 transition-all font-sans"
-                  >
-                    Request Time Off
-                  </button>
-                  <button
-                    onClick={() => setShowSickModal(true)}
-                    className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg shadow-red-600/30 transition-all font-sans"
-                  >
-                    Report Personnel Absence
-                  </button>
-                </div>
               </div>
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="text-[10px] font-black text-red-900 uppercase tracking-[0.2em]">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
@@ -826,7 +850,6 @@ function DailyCrewDispatchBoardContent() {
               <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic">Capacity Used</span>
               <span className="text-xl font-black text-orange-600">{globalActualHours.toFixed(0)}<span className="text-[10px] font-bold opacity-30">/{globalCapacityHours}</span></span>
             </div>
-            <div className="w-px bg-gray-100 mx-1"></div>
             <Navigation currentPage="crew-dispatch" />
           </div>
         </div>
@@ -837,7 +860,7 @@ function DailyCrewDispatchBoardContent() {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
               const scheduledHrs = projects.reduce((sum, p) => sum + p.hours, 0);
               const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
-              const actualHrs = currentEmployees.length * 10;
+              const actualHrs = (1 + currentEmployees.length) * 10; // 10h for foreman + crew
               const diff = actualHrs - scheduledHrs;
               const statusColor = Math.abs(diff) < 2 ? 'bg-green-500' : diff > 0 ? 'bg-blue-500' : 'bg-red-500';
               const crewList = currentEmployees
@@ -863,13 +886,13 @@ function DailyCrewDispatchBoardContent() {
                       <div className="text-[9px] uppercase font-black text-stone-400 tracking-[0.2em] mb-3 italic">Assigned Projects</div>
                       <div className="space-y-3">
                         {projects.map((p, pIdx) => (
-                          <div key={pIdx} className="bg-gray-50 px-4 py-3 rounded-2xl flex justify-between items-center border border-gray-100 shadow-sm">
-                            <div className="overflow-hidden">
-                              <div className="font-black text-stone-800 text-xs truncate leading-tight uppercase italic">{p.projectName}</div>
-                              <div className="text-[10px] text-red-900 font-bold tracking-widest opacity-60 truncate uppercase mt-0.5">{p.customer}</div>
+                          <div key={pIdx} className="bg-gradient-to-r from-blue-50 to-blue-25 px-4 py-4 rounded-lg flex justify-between items-start border-2 border-blue-200 shadow-md hover:shadow-lg transition-shadow">
+                            <div className="overflow-hidden flex-1">
+                              <div className="text-sm font-black text-blue-900 uppercase tracking-wider leading-tight mb-2">{p.projectName}</div>
+                              <div className="text-xs text-blue-600 font-semibold">{p.customer}</div>
                             </div>
-                            <div className="bg-white px-3 py-1.5 rounded-xl text-red-900 font-black text-xs ml-2 border border-red-50 shadow-sm">
-                              {p.hours.toFixed(0)} <span className="opacity-30 uppercase text-[8px]">H</span>
+                            <div className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-black ml-3 shadow-md whitespace-nowrap">
+                              {p.hours.toFixed(0)} <span className="text-xs opacity-75">HRS</span>
                             </div>
                           </div>
                         ))}
@@ -929,7 +952,7 @@ function DailyCrewDispatchBoardContent() {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
               const scheduledHrs = projects.reduce((sum, p) => sum + p.hours, 0);
               const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
-              const actualHrs = currentEmployees.length * 10;
+              const actualHrs = (1 + currentEmployees.length) * 10; // 10h for foreman + crew
               const availableEmployees = getAvailableEmployeesForForeman(dateKey, foreman.id);
               
               const diff = actualHrs - scheduledHrs;
@@ -966,12 +989,12 @@ function DailyCrewDispatchBoardContent() {
                       </div>
                       <div className="space-y-1.5 max-h-[140px] overflow-y-auto no-scrollbar">
                         {projects.map((p, pIdx) => (
-                          <div key={pIdx} className="bg-gray-50 px-2 py-2 rounded-xl flex justify-between items-center border border-gray-100 shadow-sm hover:border-red-900/20 transition-all">
+                          <div key={pIdx} className="bg-gradient-to-r from-blue-600 to-blue-700 px-3 py-2.5 rounded-lg flex justify-between items-center border border-blue-800 shadow-md hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-800">
                             <div className="overflow-hidden pr-2">
-                              <div className="font-black text-stone-800 text-[10px] truncate max-w-[150px] uppercase leading-tight italic">{p.projectName}</div>
-                              <div className="text-[8px] font-bold text-red-900 truncate uppercase opacity-40 tracking-widest mt-0.5">{p.customer}</div>
+                              <div className="font-black text-white text-xs truncate max-w-[150px] uppercase leading-tight">{p.projectName}</div>
+                              <div className="text-[9px] font-semibold text-blue-100 truncate uppercase mt-0.5">{p.customer}</div>
                             </div>
-                            <div className="bg-white px-2 py-1 rounded-lg shadow-sm border border-red-50 text-red-900 font-extrabold text-[10px] ml-auto">
+                            <div className="bg-white px-2.5 py-1.5 rounded-lg shadow-md text-blue-700 font-black text-xs ml-auto">
                               {p.hours.toFixed(0)}h
                             </div>
                           </div>

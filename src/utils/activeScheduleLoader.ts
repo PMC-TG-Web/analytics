@@ -46,14 +46,18 @@ export async function loadActiveScheduleForDateRange(
     activeSchedules.forEach((entry: any) => {
       const dateKey = entry.date;
       
+      // Filter to only include gantt and wip-page entries (exclude other/null sources)
+      const source = (entry.source || '').toLowerCase();
+      if (source !== 'gantt' && source !== 'wip-page') return;
+      
       if (!entry.jobKey || !dateKey || !entry.hours) return;
       
       if (!projectsByDate[dateKey]) {
         projectsByDate[dateKey] = [];
       }
       
-      // For aggregation: sum hours by jobKey per day
-      const existing = projectsByDate[dateKey].find(p => p.jobKey === entry.jobKey);
+      // For aggregation: match by both jobKey AND scopeOfWork (to keep custom scopes separate)
+      const existing = projectsByDate[dateKey].find(p => p.jobKey === entry.jobKey && p.scopeOfWork === entry.scopeOfWork);
       
       if (existing) {
         existing.hours += entry.hours;
@@ -164,6 +168,10 @@ export async function loadActiveScheduleByWeek(
     const jobMap = new Map<string, WeekProject>();
     
     activeSchedules.forEach((entry: any) => {
+      // Filter to only include gantt and wip-page entries (exclude other/null sources)
+      const source = (entry.source || '').toLowerCase();
+      if (source !== 'gantt' && source !== 'wip-page') return;
+      
       // GATE: Only include projects that have been initiated from Gantt (have ProjectScope entries)
       if (initiatedJobKeys && !initiatedJobKeys.has(entry.jobKey)) return;
       

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { syncProjectScopeToActiveSchedule, deleteProjectScopeFromActiveSchedule } from '@/utils/syncActiveSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +100,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Sync to ActiveSchedule so it appears on long-term schedule
+    try {
+      const syncResult = await syncProjectScopeToActiveSchedule(scope.id);
+      console.log(`[project-scopes POST] Synced scope ${scope.id} to ActiveSchedule:`, syncResult);
+    } catch (syncError) {
+      console.error('[project-scopes POST] Failed to sync to ActiveSchedule:', syncError);
+    }
+
     return NextResponse.json({
       success: true,
       data: scope,
@@ -136,6 +145,14 @@ export async function PUT(request: NextRequest) {
         ...(tasks !== undefined && { tasks: tasks || null }),
       },
     });
+
+    // Sync to ActiveSchedule so it appears on long-term schedule
+    try {
+      const syncResult = await syncProjectScopeToActiveSchedule(id);
+      console.log(`[project-scopes PUT] Synced scope ${id} to ActiveSchedule:`, syncResult);
+    } catch (syncError) {
+      console.error('[project-scopes PUT] Failed to sync to ActiveSchedule:', syncError);
+    }
 
     return NextResponse.json({
       success: true,

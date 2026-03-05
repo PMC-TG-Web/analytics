@@ -21,6 +21,7 @@ function ConstantsContent() {
       const result = await response.json();
       if (result.success) {
         setConstants(result.data || []);
+        setRebarConstants(result.rebarData || []);
       }
       setLoading(false);
     } catch (error) {

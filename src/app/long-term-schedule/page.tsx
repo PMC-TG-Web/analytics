@@ -1,238 +1,242 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState, useMemo } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import Navigation from "@/components/Navigation";
-import { Scope, Project } from "@/types";
-import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
-import { getEnrichedScopes } from "@/utils/projectUtils";
-import { loadActiveScheduleByWeek } from "@/utils/activeScheduleLoader";
-
-interface WeekData {
-  weekNumber: number;
-  hours: number;
-}
-
-interface ScheduleDoc {
-  jobKey: string;
-  customer: string;
-  projectNumber: string;
-  projectName: string;
-  month: string;
-  weeks: WeekData[];
-  totalHours: number;
-  updatedAt: string;
-}
 
 interface WeekColumn {
   weekStartDate: Date;
   weekLabel: string;
 }
 
-interface JobRow {
-  jobKey: string;
-  customer: string;
-  projectNumber: string;
-  projectName: string;
-  weekHours: Record<string, number>; // weekKey -> hours
+interface WeekAllocation {
+  hours: number;
+  projects: Array<{ jobKey: string; scopeOfWork: string; hours: number }>;
+}
+
+interface ForemanRow {
+  id: string;
+  name: string;
+  weekAllocations: Record<string, WeekAllocation>;
   totalHours: number;
 }
 
-export default function LongTermSchedulePage() {
-  return <LongTermScheduleContent />;
+interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  jobTitle: string;
+  isActive?: boolean;
 }
 
-function LongTermScheduleContent() {
+interface ActiveScheduleEntry {
+  jobKey: string;
+  scopeOfWork?: string;
+  date: string;
+  hours: number;
+  foreman?: string | null;
+  source?: string | null;
+}
+
+function getCurrentWeekMonday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const monday = new Date(today);
+  const dayOfWeek = monday.getDay();
+  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  monday.setDate(monday.getDate() + daysToMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function formatWeekLabel(date: Date): string {
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export default function LongTermSchedulePage() {
   const [weekColumns, setWeekColumns] = useState<WeekColumn[]>([]);
-  const [jobRows, setJobRows] = useState<JobRow[]>([]);
+  const [foremanRows, setForemanRows] = useState<ForemanRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
-  const [selectedGanttProject, setSelectedGanttProject] = useState<Project | null>(null);
+  const [draggedProject, setDraggedProject] = useState<{ jobKey: string; scopeOfWork: string } | null>(null);
 
   useEffect(() => {
     loadSchedules();
   }, []);
 
-  function openGanttModal(customer: string, projectName: string, projectNumber: string) {
-    const jobKey = `${customer || ""}~${projectNumber || ""}~${projectName || ""}`;
-    const project = allProjects.find((p) => {
-      const pKey = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-      return pKey === jobKey;
-    });
-
-    if (project) {
-      setSelectedGanttProject({ ...project, jobKey });
-    } else {
-      console.warn("Project not found for key:", jobKey);
-    }
-  }
-
-  function getMonthWeekDates(monthStr: string): Date[] {
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthStr)) return [];
-    const [year, month] = monthStr.split("-").map(Number);
-    const dates: Date[] = [];
-    
-    // Find first Monday of the month
-    let date = new Date(year, month - 1, 1);
-    while (date.getDay() !== 1) {
-      date.setDate(date.getDate() + 1);
-    }
-    
-    // Collect all Mondays in this month
-    while (date.getMonth() === month - 1) {
-      dates.push(new Date(date));
-      date.setDate(date.getDate() + 7);
-    }
-    
-    return dates;
-  }
-
   async function loadSchedules() {
     try {
-      console.log('[LongTermSchedule] Loading schedules from API...');
-      
-      // Load projects and scopes via API
-      const [projectsRes, scopesRes] = await Promise.all([
-        fetch('/api/projects'),
-        fetch('/api/project-scopes')
-      ]);
-      
-      const projectsData = await projectsRes.json();
-      const scopesData = await scopesRes.json();
-      
-      const projs = projectsData.data || [];
-      console.log('[LongTermSchedule] Loaded projects:', projs.length);
-      setAllProjects(projs);
-      
-      const rawScopes = (scopesData.data || []).map((scope: any) => ({
-        id: scope.id,
-        jobKey: scope.jobKey,
-        scopeOfWork: scope.scopeOfWork,
-        startDate: scope.startDate,
-        endDate: scope.endDate,
-        hours: scope.hours,
-      })) as Scope[];
-      console.log('[LongTermSchedule] Loaded raw scopes:', rawScopes.length);
-      const enrichedScopes = getEnrichedScopes(rawScopes, projs);
-      console.log('[LongTermSchedule] Enriched scopes:', enrichedScopes.length);
-      const scopesObj: Record<string, Scope[]> = {};
-      enrichedScopes.forEach(scope => {
-        if (scope.jobKey) {
-          if (!scopesObj[scope.jobKey]) scopesObj[scope.jobKey] = [];
-          scopesObj[scope.jobKey].push(scope);
-        }
-      });
-      console.log('[LongTermSchedule] Scopes by jobKey:', Object.keys(scopesObj).length, 'jobs');
-      
-      // BACKFILL: Generate virtual scopes for projects without explicit scopes
-      let backfilledCount = 0;
-      projs.forEach(project => {
-        const jobKey = `${project.customer || ''}~${project.projectNumber || ''}~${project.projectName || ''}`;
-        
-        // Skip if this project already has scopes
-        if (scopesObj[jobKey] && scopesObj[jobKey].length > 0) return;
-        
-        // Get all cost items for this project (projects collection has one row per cost item)
-        const projectCostItems = projs.filter(p => {
-          const pKey = `${p.customer || ''}~${p.projectNumber || ''}~${p.projectName || ''}`;
-          return pKey === jobKey;
-        });
-        
-        // Group cost items by scopeOfWork/pmcGroup/costType
-        const groups: Record<string, { title: string; hours: number; sales: number; cost: number }> = {};
-        
-        projectCostItems.forEach(item => {
-          const itemHours = typeof item.hours === 'number' ? item.hours : 0;
-          const itemSales = typeof item.sales === 'number' ? item.sales : 0;
-          const itemCost = typeof item.cost === 'number' ? item.cost : 0;
-          
-          if (itemHours <= 0 && itemSales <= 0) return;
-          
-          // Use scopeOfWork first, then costType (pmcGroup is an object, not a string)
-          const groupName = (item as any).scopeOfWork || item.costType || 'Other';
-          
-          if (!groups[groupName]) {
-            groups[groupName] = { title: groupName, hours: 0, sales: 0, cost: 0 };
-          }
-          
-          // Don't count management hours
-          if (!(item.costType || '').toLowerCase().includes('management')) {
-            groups[groupName].hours += itemHours;
-          }
-          groups[groupName].sales += itemSales;
-          groups[groupName].cost += itemCost;
-        });
-        
-        // Create virtual scopes from groups
-        const virtualScopes = Object.values(groups)
-          .filter(g => g.hours > 0 || g.sales > 0)
-          .map((group, idx) => ({
-            id: `virtual-${jobKey}-${idx}`,
-            jobKey,
-            title: group.title,
-            hours: group.hours,
-            sales: group.sales,
-            cost: group.cost,
-            startDate: '',
-            endDate: '',
-            tasks: []
-          }));
-        
-        if (virtualScopes.length > 0) {
-          scopesObj[jobKey] = virtualScopes;
-          backfilledCount++;
-        }
-      });
-      
-      console.log('[LongTermSchedule] Backfilled virtual scopes for', backfilledCount, 'projects');
-      setScopesByJobKey(scopesObj);
+      const currentWeekStart = getCurrentWeekMonday();
 
-      // Calculate the date range for next 15 weeks (including current week)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Find the Monday of the current week
-      const currentWeekStart = new Date(today);
-      const dayOfWeek = currentWeekStart.getDay();
-      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      currentWeekStart.setDate(currentWeekStart.getDate() + daysToMonday);
-      currentWeekStart.setHours(0, 0, 0, 0);
-      
-      const fifteenWeeksFromStart = new Date(currentWeekStart);
-      fifteenWeeksFromStart.setDate(fifteenWeeksFromStart.getDate() + (15 * 7));
-      
-      // Only show projects that have been initiated from Gantt (have ProjectScope entries)
-      const initiatedJobKeys = new Set<string>(Object.keys(scopesObj));
-      
-      // Load schedule data from activeSchedule aggregated by week
-      const { weekColumns, jobRows } = await loadActiveScheduleByWeek(currentWeekStart, fifteenWeeksFromStart, initiatedJobKeys);
-      
-      console.log('[LongTermSchedule] Loaded from activeSchedule:', jobRows.length, 'jobs', weekColumns.length, 'weeks');
-      
-      setWeekColumns(weekColumns);
-      setJobRows(jobRows);
+      const generatedWeeks: WeekColumn[] = [];
+      for (let i = 0; i < 15; i++) {
+        const weekStartDate = new Date(currentWeekStart);
+        weekStartDate.setDate(weekStartDate.getDate() + i * 7);
+        generatedWeeks.push({
+          weekStartDate,
+          weekLabel: formatWeekLabel(weekStartDate),
+        });
+      }
+      setWeekColumns(generatedWeeks);
+
+      const rangeEnd = new Date(currentWeekStart);
+      rangeEnd.setDate(rangeEnd.getDate() + 15 * 7 - 1);
+      const startDate = currentWeekStart.toISOString().split("T")[0];
+      const endDate = rangeEnd.toISOString().split("T")[0];
+
+      const [employeesRes, scheduleRes] = await Promise.all([
+        fetch("/api/short-term-schedule?action=employees"),
+        fetch(`/api/short-term-schedule?action=active-schedule&startDate=${startDate}&endDate=${endDate}`),
+      ]);
+
+      const employeesJson = await employeesRes.json();
+      const scheduleJson = await scheduleRes.json();
+
+      const employees: Employee[] = employeesJson?.data || [];
+      const activeSchedules: ActiveScheduleEntry[] = scheduleJson?.data || [];
+      const ganttInitiatedSchedules = activeSchedules.filter((entry) => {
+        const source = (entry.source || "").toLowerCase();
+        return source === "gantt" || source === "wip-page";
+      });
+
+      const foremen = employees
+        .filter((emp) =>
+          emp.isActive &&
+          (
+            emp.jobTitle === "Foreman" ||
+            emp.jobTitle === "Lead foreman" ||
+            emp.jobTitle === "Lead Foreman" ||
+            emp.jobTitle === "Lead Foreman / Project Manager"
+          )
+        )
+        .slice(0, 6);
+
+      const hasUnassignedEntries = ganttInitiatedSchedules.some((entry) => !entry.foreman);
+
+      while (foremen.length < 6) {
+        const n = foremen.length + 1;
+        foremen.push({
+          id: `placeholder-${n}`,
+          firstName: `Foreman ${n}`,
+          lastName: "",
+          jobTitle: "Foreman",
+          isActive: true,
+        });
+      }
+
+      const rowEmployees = hasUnassignedEntries
+        ? [
+            ...foremen,
+            {
+              id: "__unassigned__",
+              firstName: "Unassigned",
+              lastName: "",
+              jobTitle: "Foreman",
+              isActive: true,
+            },
+          ]
+        : foremen;
+
+      const rows: ForemanRow[] = rowEmployees.map((foreman) => {
+        const weekAllocations: Record<string, WeekAllocation> = {};
+        generatedWeeks.forEach((week) => {
+          weekAllocations[week.weekStartDate.toISOString()] = { hours: 0, projects: [] };
+        });
+
+        ganttInitiatedSchedules.forEach((entry) => {
+          if (foreman.id === "__unassigned__") {
+            if (entry.foreman) return;
+          } else {
+            if (!entry.foreman || entry.foreman !== foreman.id) return;
+          }
+
+          const entryDate = new Date(`${entry.date}T00:00:00`);
+          entryDate.setHours(0, 0, 0, 0);
+          const diffDays = Math.floor((entryDate.getTime() - currentWeekStart.getTime()) / (24 * 60 * 60 * 1000));
+          if (diffDays < 0) return;
+
+          const weekIndex = Math.floor(diffDays / 7);
+          if (weekIndex < 0 || weekIndex >= generatedWeeks.length) return;
+
+          const weekKey = generatedWeeks[weekIndex].weekStartDate.toISOString();
+          const allocation = weekAllocations[weekKey];
+          allocation.hours += Number(entry.hours || 0);
+          
+          // Find or create project entry
+          const projectKey = `${entry.jobKey}|${entry.scopeOfWork || 'Unnamed Scope'}`;
+          let projectEntry = allocation.projects.find(p => `${p.jobKey}|${p.scopeOfWork}` === projectKey);
+          if (!projectEntry) {
+            projectEntry = { jobKey: entry.jobKey, scopeOfWork: entry.scopeOfWork || 'Unnamed Scope', hours: 0 };
+            allocation.projects.push(projectEntry);
+          }
+          projectEntry.hours += Number(entry.hours || 0);
+        });
+
+        const totalHours = Object.values(weekAllocations).reduce((sum, alloc) => sum + alloc.hours, 0);
+        return {
+          id: foreman.id,
+          name: `${foreman.firstName || ""} ${foreman.lastName || ""}`.trim() || "Foreman",
+          weekAllocations,
+          totalHours,
+        };
+      });
+
+      setForemanRows(rows);
     } catch (error) {
-      console.error("Failed to load schedules:", error);
+      console.error("Failed to load long-term schedule:", error);
+      setForemanRows([]);
     } finally {
       setLoading(false);
     }
   }
 
-  const weekTotals = useMemo(() => {
-    return weekColumns.map(col => {
-      let sum = 0;
-      const weekKey = col.weekStartDate.toISOString();
-      jobRows.forEach(row => {
-        sum += row.weekHours[weekKey] || 0;
+  async function assignProjectToForeman(jobKey: string, scopeOfWork: string, foremanId: string) {
+    try {
+      const res = await fetch('/api/gantt-v2/long-term/assign', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobKey,
+          scopeOfWork,
+          foreman: foremanId === '__unassigned__' ? null : foremanId,
+        }),
       });
-      return sum;
-    });
-  }, [weekColumns, jobRows]);
 
-  const grandTotal = useMemo(() => {
-    return weekTotals.reduce((sum, current) => sum + current, 0);
-  }, [weekTotals]);
+      const data = await res.json();
+      if (data.success) {
+        await loadSchedules(); // Reload to reflect changes
+      } else {
+        console.error('Failed to assign foreman:', data.error);
+        alert('Failed to assign foreman: ' + data.error);
+      }
+    } catch (err) {
+      console.error('Error assigning foreman:', err);
+      alert('Error assigning foreman');
+    }
+  }
+
+  function handleDragStart(jobKey: string, scopeOfWork: string) {
+    setDraggedProject({ jobKey, scopeOfWork });
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault(); // Allow drop
+  }
+
+  function handleDrop(e: React.DragEvent, targetForemanId: string) {
+    e.preventDefault();
+    if (draggedProject) {
+      assignProjectToForeman(draggedProject.jobKey, draggedProject.scopeOfWork, targetForemanId);
+      setDraggedProject(null);
+    }
+  }
+
+  const weekTotals = useMemo(() => {
+    return weekColumns.map((col) => {
+      const weekKey = col.weekStartDate.toISOString();
+      return foremanRows.reduce((sum, row) => sum + (row.weekAllocations[weekKey]?.hours || 0), 0);
+    });
+  }, [weekColumns, foremanRows]);
+
+  const grandTotal = useMemo(() => weekTotals.reduce((sum, current) => sum + current, 0), [weekTotals]);
 
   return (
     <main className="min-h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900">
@@ -243,77 +247,29 @@ function LongTermScheduleContent() {
               Long-Term <span className="text-teal-600">Schedule</span>
             </h1>
             <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 border-l-2 border-teal-600/30 pl-3">
-              15-Week Project Forecast
+              15-Week Foreman View (Gantt-Initiated Only)
             </p>
           </div>
           <Navigation currentPage="long-term-schedule" />
         </div>
 
-        {weekColumns.length === 0 ? (
+        {loading ? (
           <div className="bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-12 text-center">
-             <p className="text-gray-400 font-black uppercase tracking-[0.2em]">No Long-Term Data Found</p>
+            <p className="text-gray-400 font-black uppercase tracking-[0.2em]">Loading Long-Term Data...</p>
+          </div>
+        ) : weekColumns.length === 0 || foremanRows.length === 0 ? (
+          <div className="bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-12 text-center">
+            <p className="text-gray-400 font-black uppercase tracking-[0.2em]">No Long-Term Data Found</p>
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Mobile Cards for Field Users */}
-            <div className="md:hidden flex-1 overflow-y-auto space-y-6 custom-scrollbar pb-10">
-              {jobRows.filter(job => job.totalHours > 0).map((job) => (
-                <div 
-                  key={job.jobKey} 
-                  onClick={() => openGanttModal(job.customer, job.projectName, job.projectNumber)}
-                  className="bg-gray-50 rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden active:scale-95 transition-all"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <h3 className="font-black text-gray-900 text-base uppercase leading-tight italic truncate pr-4">{job.projectName}</h3>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{job.customer}</p>
-                    </div>
-                    <div className="bg-teal-600 text-white px-3 py-1 rounded-xl text-xs font-black shadow-lg shadow-teal-600/20">
-                      {job.totalHours.toFixed(0)}h
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {weekColumns.filter(w => job.weekHours[w.weekStartDate.toISOString()] > 0).slice(0, 4).map((week) => {
-                      const weekKey = week.weekStartDate.toISOString();
-                      const hours = job.weekHours[weekKey];
-                      const fte = hours / 50;
-                      return (
-                        <div key={weekKey} className="bg-white p-3 rounded-xl border border-teal-50">
-                          <p className="text-[8px] font-black uppercase text-gray-400 mb-1">{week.weekLabel}</p>
-                          <div className="flex items-center justify-between">
-                            <span className="font-black text-gray-900 text-sm">{hours.toFixed(1)}h</span>
-                            <span className="text-[9px] font-bold text-orange-600">{fte.toFixed(1)} FTE</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-                  {job.totalHours > 0 && (
-                     <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-teal-600">Project Status</span>
-                        <div className="flex items-center gap-1.5">
-                           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                           <span className="text-[9px] font-bold text-gray-400 uppercase">Active Schedule</span>
-                        </div>
-                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
             <div className="hidden md:block flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="overflow-x-auto h-full custom-scrollbar">
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-stone-800">
-                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg">
-                        Project Name
-                      </th>
-                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg" style={{left: '192px'}}>
-                        Customer
+                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-56 shadow-lg">
+                        Foreman
                       </th>
                       {weekColumns.map((week) => (
                         <th key={week.weekStartDate.toISOString()} className="text-center py-5 px-4 text-xs font-black text-white border-r border-stone-700 min-w-[150px]">
@@ -322,50 +278,59 @@ function LongTermScheduleContent() {
                         </th>
                       ))}
                       <th className="text-center py-6 px-6 text-xs font-black text-white bg-teal-900 border-l border-teal-800 uppercase tracking-widest">
-                        Total Σ
+                        Total Sum
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {jobRows.filter(job => job.totalHours > 0).map((job, idx) => (
-                      <tr 
-                        key={job.jobKey} 
-                        className={`border-b border-gray-50 group hover:bg-teal-50/30 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-                        onClick={() => openGanttModal(job.customer, job.projectName, job.projectNumber)}
-                      >
-                        <td className="sticky left-0 z-20 bg-inherit py-4 px-6 text-[11px] font-black text-gray-900 uppercase tracking-wider italic border-r border-gray-100 shadow-md">
-                          {job.projectName}
-                        </td>
-                        <td className="sticky z-20 bg-inherit py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest border-r border-gray-100 shadow-md" style={{left: '192px'}}>
-                          {job.customer}
+                    {foremanRows.map((row, idx) => (
+                      <tr key={row.id} className={`border-b border-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                        <td 
+                          className="sticky left-0 z-20 bg-inherit py-4 px-6 text-[11px] font-black text-gray-900 uppercase tracking-wider italic border-r border-gray-100 shadow-md"
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, row.id)}
+                        >
+                          {row.name}
                         </td>
                         {weekColumns.map((week) => {
                           const weekKey = week.weekStartDate.toISOString();
-                          const hours = job.weekHours[weekKey] || 0;
-                          const fte = hours / 50;
+                          const allocation = row.weekAllocations[weekKey];
+                          const hours = allocation?.hours || 0;
                           return (
-                            <td key={weekKey} className={`text-center py-4 px-4 text-xs border-r border-gray-50 transition-all ${hours > 0 ? 'bg-teal-50/20' : ''}`}>
-                              {hours > 0 ? (
+                            <td
+                              key={weekKey}
+                              className={`text-center py-2 px-2 text-xs border-r border-gray-50 transition-all align-top ${hours > 0 ? "bg-teal-50/20" : ""}`}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, row.id)}
+                            >
+                              {hours > 0 && (
                                 <div className="space-y-1">
                                   <div className="font-black text-gray-900 text-sm tracking-tight">{hours.toFixed(1)}<span className="text-[9px] opacity-30 ml-0.5">H</span></div>
-                                  <div className="text-[9px] font-black text-orange-600 uppercase tracking-tighter bg-orange-50 px-1.5 py-0.5 rounded-full border border-orange-100 inline-block">{fte.toFixed(1)} FTE</div>
+                                  {allocation.projects.map((proj, idx) => (
+                                    <div 
+                                      key={idx} 
+                                      className="text-[8px] text-left text-gray-600 mt-1 px-1 cursor-move bg-white/50 rounded border border-gray-200 hover:border-teal-400 hover:bg-teal-50 transition-colors"
+                                      draggable
+                                      onDragStart={() => handleDragStart(proj.jobKey, proj.scopeOfWork)}
+                                    >
+                                      <div className="font-bold truncate">{proj.scopeOfWork}</div>
+                                      <div className="text-gray-400 truncate">{proj.jobKey.split('~')[2] || proj.jobKey}</div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ) : (
-                                <span className="text-gray-200 select-none opacity-20">—</span>
                               )}
                             </td>
                           );
                         })}
                         <td className="text-center py-4 px-6 text-sm font-black bg-stone-50 border-l border-gray-100">
-                          <div className="text-gray-900">{job.totalHours.toFixed(1)}</div>
-                          <div className="text-[9px] font-black text-teal-600 uppercase">{(job.totalHours / 50).toFixed(1)} Total FTE</div>
+                          <div className="text-gray-900">{row.totalHours.toFixed(1)}</div>
+                          <div className="text-[9px] font-black text-teal-600 uppercase">{(row.totalHours / 50).toFixed(1)} Total FTE</div>
                         </td>
                       </tr>
                     ))}
-                    
-                    {/* Grand Totals Footer */}
+
                     <tr className="bg-stone-800 text-white font-black uppercase tracking-widest italic">
-                      <td className="sticky left-0 z-20 bg-stone-800 py-6 px-6 text-xs border-r border-stone-700 shadow-lg" colSpan={2}>
+                      <td className="sticky left-0 z-20 bg-stone-800 py-6 px-6 text-xs border-r border-stone-700 shadow-lg">
                         Weekly Cumulative Load
                       </td>
                       {weekTotals.map((total, idx) => (
@@ -383,25 +348,57 @@ function LongTermScheduleContent() {
                 </table>
               </div>
             </div>
+
+            <div className="md:hidden flex-1 overflow-y-auto space-y-6 custom-scrollbar pb-10">
+              {foremanRows.map((row) => (
+                <div 
+                  key={row.id} 
+                  className="bg-gray-50 rounded-2xl p-5 border border-gray-100 shadow-sm"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, row.id)}
+                >
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-black text-gray-900 text-base uppercase leading-tight italic truncate pr-4">{row.name}</h3>
+                    <div className="bg-teal-600 text-white px-3 py-1 rounded-xl text-xs font-black shadow-lg shadow-teal-600/20">
+                      {row.totalHours.toFixed(0)}h
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {weekColumns
+                      .filter((w) => (row.weekAllocations[w.weekStartDate.toISOString()]?.hours || 0) > 0)
+                      .slice(0, 4)
+                      .map((week) => {
+                        const weekKey = week.weekStartDate.toISOString();
+                        const allocation = row.weekAllocations[weekKey];
+                        const hours = allocation?.hours || 0;
+                        return (
+                          <div key={weekKey} className="bg-white p-3 rounded-xl border border-teal-50">
+                            <p className="text-[8px] font-black uppercase text-gray-400 mb-1">{week.weekLabel}</p>
+                            <div className="mb-2">
+                              <span className="font-black text-gray-900 text-sm">{hours.toFixed(1)}h</span>
+                            </div>
+                            {allocation?.projects.map((proj, idx) => (
+                              <div 
+                                key={idx} 
+                                className="text-[8px] text-gray-600 mt-1 cursor-move bg-white rounded border border-gray-200 p-1 hover:border-teal-400 hover:bg-teal-50 transition-colors"
+                                draggable
+                                onDragStart={() => handleDragStart(proj.jobKey, proj.scopeOfWork)}
+                              >
+                                <div className="font-bold truncate">{proj.scopeOfWork}</div>
+                                <div className="text-gray-400 truncate">{proj.jobKey.split('~')[2] || proj.jobKey}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {selectedGanttProject && (
-        <ProjectScopesModal
-          project={selectedGanttProject as any}
-          scopes={scopesByJobKey[selectedGanttProject.jobKey || ""] || []}
-          selectedScopeId={null}
-          onClose={() => setSelectedGanttProject(null)}
-          onScopesUpdated={(jobKey, updatedScopes) => {
-            const enriched = getEnrichedScopes(updatedScopes, allProjects);
-            setScopesByJobKey(prev => ({ ...prev, [jobKey]: enriched }));
-            loadSchedules();
-          }}
-        />
-      )}
     </main>
   );
 }
-
-

@@ -9,9 +9,20 @@ export async function GET() {
       orderBy: { name: 'asc' },
     });
 
+    // Transform templates to unwrap members field
+    const transformedTemplates = templates.map(template => {
+      const membersData = template.members as any;
+      return {
+        ...template,
+        crewMemberIds: membersData?.crewMemberIds || membersData || [],
+        rightHandManId: membersData?.rightHandManId || null,
+        foremanId: membersData?.foremanId || null
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: templates,
+      data: transformedTemplates,
     });
   } catch (error) {
     console.error('Failed to fetch crew templates:', error);
@@ -25,7 +36,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, members } = body;
+    const { name, description, members, crewMemberIds, rightHandManId, foremanId } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -34,13 +45,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const template = await prisma.crewTemplate.create({
-      data: {
-        name,
-        description: description || null,
-        members: members || [],
-      },
+    // Store structured data in members field
+    const membersData = {
+      crewMemberIds: crewMemberIds || members || [],
+      rightHandManId: rightHandManId || null,
+      foremanId: foremanId || null
+    };
+
+    // Check if a template with this name already exists (upsert behavior)
+    const existing = await prisma.crewTemplate.findFirst({
+      where: { name }
     });
+
+    let template;
+    if (existing) {
+      // Update existing template
+      template = await prisma.crewTemplate.update({
+        where: { id: existing.id },
+        data: {
+          description: description || null,
+          members: membersData,
+        },
+      });
+    } else {
+      // Create new template
+      template = await prisma.crewTemplate.create({
+        data: {
+          name,
+          description: description || null,
+          members: membersData,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,

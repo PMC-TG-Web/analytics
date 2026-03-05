@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
     await prisma.activeSchedule.deleteMany({
       where: {
         jobKey,
+        source: 'wip-page',
         date: {
           gte: startDate,
           lte: endDate,

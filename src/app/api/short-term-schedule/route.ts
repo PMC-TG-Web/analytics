@@ -112,9 +112,20 @@ export async function GET(request: NextRequest) {
         orderBy: { date: 'asc' },
       });
 
+      // Parse jobKey to extract customer, projectNumber, projectName
+      const enrichedSchedules = activeSchedules.map(schedule => {
+        const parts = (schedule.jobKey || '').split('~');
+        return {
+          ...schedule,
+          customer: parts[0] || '',
+          projectNumber: parts[1] || '',
+          projectName: parts[2] || '',
+        };
+      });
+
       return NextResponse.json({
         success: true,
-        data: activeSchedules,
+        data: enrichedSchedules,
       });
     }
 

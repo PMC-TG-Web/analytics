@@ -592,7 +592,20 @@ function WIPReportContent() {
     
     // Simple pool breakdown from in-progress schedules
     const allSchedulesHours = inProgressSchedules.reduce((sum, s) => sum + (s.totalHours || 0), 0);
-    let totalPoolHours = allSchedulesHours;
+    
+    // Add projects that don't have schedules yet (always included in pool)
+    const scheduledJobKeysInMemo = new Set(inProgressSchedules.map(s => 
+      s.jobKey || `${s.customer || ""}~${s.projectNumber || ""}~${s.projectName || ""}`
+    ));
+    
+    const projectsWithoutSchedulesInMemo = projects
+      .filter(p => {
+        const key = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+        return (p.status || "").toString().toLowerCase().trim() === "in progress" && !scheduledJobKeysInMemo.has(key);
+      });
+    
+    const projectsWithoutSchedulesHours = projectsWithoutSchedulesInMemo.reduce((sum, p) => sum + (p.hours || 0), 0);
+    let totalPoolHours = allSchedulesHours + projectsWithoutSchedulesHours;
     const poolBreakdown = inProgressSchedules.map(s => ({
       jobKey: s.jobKey || "",
       budget: s.totalHours || 0,
@@ -759,25 +772,45 @@ function WIPReportContent() {
     return null;
   }
   
-  // Unscheduled calculation uses the unified pool from useMemo
-  const scheduledHoursForQualifying = (yearFilter ? filteredInProgressHoursFromGantt : inProgressScheduledHoursForGantt) + schedules.reduce((sum, schedule) => {
-    const status = (schedule.status || "").toString().toLowerCase().trim();
-    if (status !== "in progress") return sum;
-    const key = schedule.jobKey || `${schedule.customer ?? ""}~${schedule.projectNumber ?? ""}~${schedule.projectName ?? ""}`;
-    if (projectsWithGanttData.has(key)) return sum;
-    if (customerFilter && schedule.customer !== customerFilter) return sum;
-    if (projectFilter && schedule.projectName !== projectFilter) return sum;
+  // Unscheduled calculation - truly unscheduled hours (constant regardless of year filter)
+  // Unscheduled = jobs with zero allocation across ALL years
+  const inProgressProjects = schedules.filter(schedule => 
+    (schedule.status || "").toString().toLowerCase().trim() === "in progress"
+  );
 
+  // Add projects that don't have schedules yet
+  const scheduledJobKeys = new Set(inProgressProjects.map(s => 
+    s.jobKey || `${s.customer || ""}~${s.projectNumber || ""}~${s.projectName || ""}`
+  ));
+  
+  const projectsWithoutSchedules = projects
+    .filter(p => {
+      const key = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+      return (p.status || "").toString().toLowerCase().trim() === "in progress" && !scheduledJobKeys.has(key);
+    });
+
+  // Total pool = all In Progress schedules + projects without schedules (CONSTANT)
+  const totalPoolHoursForUnscheduled = inProgressProjects.reduce((sum, s) => sum + (s.totalHours || 0), 0) +
+    projectsWithoutSchedules.reduce((sum, p) => sum + (p.hours || 0), 0);
+
+  // Calculate scheduled hours - respects year filter
+  let scheduledHoursForQualifying = inProgressProjects.reduce((sum, schedule) => {
     const scheduledHours = normalizeAllocations(schedule.allocations).reduce((scheduleSum, alloc) => {
       if (!isValidMonthKey(alloc.month)) return scheduleSum;
+      // When year filter is active, only count allocations in that year
       if (yearFilter && !alloc.month.startsWith(yearFilter)) return scheduleSum;
       return scheduleSum + (schedule.totalHours * (alloc.percent / 100));
     }, 0);
-
     return sum + scheduledHours;
   }, 0);
 
-  const unscheduledHours = Math.max(0, totalPoolHours - scheduledHoursForQualifying);
+  // Unscheduled = truly unscheduled (no allocation in ANY year)
+  const trulyUnscheduledPool = inProgressProjects.filter(schedule => {
+    const totalAllocation = normalizeAllocations(schedule.allocations).reduce((sum, alloc) => sum + (alloc.percent || 0), 0);
+    return totalAllocation === 0;
+  }).reduce((sum, s) => sum + (s.totalHours || 0), 0) + projectsWithoutSchedules.reduce((sum, p) => sum + (p.hours || 0), 0);
+
+  const unscheduledHours = trulyUnscheduledPool;
 
   const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};

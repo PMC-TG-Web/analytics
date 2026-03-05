@@ -455,15 +455,17 @@ function EstimatingToolsContent() {
   }, [calculateFooter]);
 
   const saveCalculation = async (type: string, label: string, data: { inputs: Record<string, unknown>; result: string; summary?: string; totalCY?: number; totalTons?: number }, overrideProjectId?: string) => {
+    // Check label first, before everything else
+    if (!label || label.trim() === "") {
+      alert("Please enter a name/label for this calculation.");
+      return;
+    }
+
     const projectIdToUse = overrideProjectId || selectedProjectId;
 
     if (!projectIdToUse) {
       setPendingSaveData({ type, label, data });
       setShowProjectModal(true);
-      return;
-    }
-    if (!label) {
-      alert("Please enter a name/label for this calculation.");
       return;
     }
 
@@ -478,7 +480,7 @@ function EstimatingToolsContent() {
           projectName: project?.projectName || "Unknown",
           projectId: projectIdToUse,
           customer: project?.customer || "Unknown",
-          label: label,
+          label: label.trim(),
           type: type,
           inputs: data.inputs,
           result: data.result,
@@ -489,17 +491,16 @@ function EstimatingToolsContent() {
       });
       const result = await response.json();
       if (result.success) {
-        // Removed success alert for smoother UX
-        fetchData(); // Refresh recent
+        alert(`✓ Saved "${label.trim()}" to ${project?.projectName || 'project'}!`);
+        fetchData(); // Refresh recent calculations list
       } else {
-        alert("Failed to save.");
+        alert("Failed to save: " + (result.error || "Unknown error"));
       }
     } catch (e) {
-      console.error(e);
-      alert("Failed to save.");
+      console.error('Save error:', e);
+      alert("Failed to save: " + String(e));
     } finally {
       setSaving(false);
-      setPendingSaveData(null);
     }
   };
 
@@ -828,10 +829,9 @@ function EstimatingToolsContent() {
                     <div 
                       key={p.id}
                       onClick={() => {
-                        setSelectedProjectId(p.id);
-                        setShowProjectModal(false);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
                         if (pendingSaveData) {
+                          setShowProjectModal(false);
+                          setPendingSaveData(null);
                           saveCalculation(pendingSaveData.type, pendingSaveData.label, pendingSaveData.data, p.id);
                         }
                       }}

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import "../globals-responsive.css";
 
 import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";
@@ -735,7 +736,10 @@ function DailyCrewDispatchBoardContent() {
   let totalHoursOff = 0;
   let workersOffCount = 0;
   const peopleOffToday: { name: string, hours: number, type: string }[] = [];
-  const fieldWorkers = allEmployees.filter(e => (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && e.isActive);
+  const fieldWorkers = allEmployees.filter(e => {
+    const title = e.jobTitle?.toLowerCase() || "";
+    return (title === "laborer" || title === "right hand men" || title === "right hand man" || title === "right hand man/ sealhard crew leader") && e.isActive;
+  });
 
   fieldWorkers.forEach(worker => {
     const matchingReq = timeOffRequests.find(req => 
@@ -753,20 +757,20 @@ function DailyCrewDispatchBoardContent() {
     }
   });
   
-  const globalCapacityHours = (fieldWorkers.length * 10) - totalHoursOff;
+  const globalCapacityHours = ((foremen.length + fieldWorkers.length) * 10) - totalHoursOff;
   const globalAssignedCount = getAssignedEmployeesForDate(dateKey).length;
   const globalActualHours = (foremen.length + globalAssignedCount) * 10; // foremen + crew members
 
   return (
-    <main className="h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900 overflow-hidden flex flex-col">
-      <div className="max-w-full mx-auto w-full flex-1 flex flex-col bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200">
+    <main className="h-screen bg-neutral-100 p-2 md:p-4 lg:p-6 font-sans text-slate-900 overflow-hidden flex flex-col">
+      <div className="max-w-full mx-auto w-full flex-1 flex flex-col bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200" style={{borderRadius: 'var(--radius-lg)'}}>
         
         {/* Mobile Mini Header */}
         <div className="md:hidden border-b border-gray-100 bg-white px-4 py-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-lg shadow-red-900/20">
-                <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50">
+              <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-lg shadow-red-900/20" style={{borderRadius: 'var(--radius-md)', padding: 'var(--space-4)'}}>
+                <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50" style={{fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)'}}>
                   {today?.date.toLocaleDateString("en-US", { month: "short" })}
                 </span>
                 <span className="text-2xl font-black leading-none text-white">{today?.date.getDate()}</span>
@@ -809,22 +813,22 @@ function DailyCrewDispatchBoardContent() {
           </div>
         </div>
 
-        {/* Kiosk-Style Header - Branded */}
-        <div className="hidden md:flex flex-row justify-between items-center px-6 py-4 bg-white border-b border-gray-100">
+        {/* Kiosk-Style Header - Branded with TV-responsive scaling */}
+        <div className="hidden md:flex flex-row justify-between items-center px-6 py-4 bg-white border-b border-gray-100 lg:px-8 lg:py-6">
           <div className="flex items-center gap-6">
-            <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-xl shadow-red-900/30">
+            <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-xl shadow-red-900/30 lg:px-6 lg:py-4">
               <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
-              <span className="text-2xl font-black leading-none text-white">{today?.date.getDate()}</span>
+              <span className="text-2xl font-black leading-none text-white lg:text-4xl">{today?.date.getDate()}</span>
             </div>
-            <div className="h-10 w-px bg-gray-100"></div>
+            <div className="h-10 w-px bg-gray-100 lg:h-16"></div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-black tracking-tighter text-gray-900 uppercase italic leading-none">
+                <h1 className="text-2xl font-black tracking-tighter text-gray-900 uppercase italic leading-none lg:text-4xl">
                   Crew Dispatch <span className="text-red-900">Board</span>
                 </h1>
                 {isHoliday && (
-                  <div className="bg-orange-500 text-white px-3 py-1 rounded-lg flex items-center gap-2 animate-bounce shadow-lg shadow-orange-500/20">
-                    <span className="text-[10px] font-black uppercase tracking-widest">{isHoliday.name}</span>
+                  <div className="bg-orange-500 text-white px-3 py-1 rounded-lg flex items-center gap-2 animate-bounce shadow-lg shadow-orange-500/20 lg:px-5 lg:py-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest lg:text-sm">{isHoliday.name}</span>
                     {isHoliday.isPaid && <span className="bg-white/20 text-[8px] px-1 rounded font-bold">PAID</span>}
                   </div>
                 )}
@@ -837,20 +841,23 @@ function DailyCrewDispatchBoardContent() {
             </div>
           </div>
           
-          <div className="flex gap-3">
-            <div className="px-5 py-2 rounded-2xl bg-stone-800 flex flex-col items-center justify-center min-w-[70px] shadow-lg shadow-stone-800/10">
-              <span className="text-[8px] uppercase font-black text-stone-500 tracking-widest mb-1 italic">Away</span>
-              <span className="text-xl font-black text-white">{workersOffCount}</span>
+          <div className="flex gap-3 lg:gap-5 items-center">
+            <div className="px-5 py-2 rounded-2xl bg-stone-800 flex flex-col items-center justify-center min-w-[120px] shadow-lg shadow-stone-800/10 lg:px-8 lg:py-4 lg:min-w-[180px]">
+              <span className="text-[8px] uppercase font-black text-stone-500 tracking-widest mb-1 italic lg:text-sm">Away</span>
+              <span className="text-xl font-black text-white lg:text-3xl">{workersOffCount}</span>
             </div>
-            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[100px] shadow-sm">
-              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic">Total Sched</span>
-              <span className="text-xl font-black text-red-900">{globalScheduledHours.toFixed(0)} <span className="text-[10px] font-bold opacity-30">H</span></span>
+            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[120px] shadow-sm lg:px-8 lg:py-4 lg:min-w-[180px]">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic lg:text-sm">Total Sched</span>
+              <span className="text-xl font-black text-red-900 lg:text-3xl">{globalScheduledHours.toFixed(0)} <span className="text-[10px] font-bold opacity-30 lg:text-sm">H</span></span>
             </div>
-            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[120px] shadow-sm">
-              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic">Capacity Used</span>
-              <span className="text-xl font-black text-orange-600">{globalActualHours.toFixed(0)}<span className="text-[10px] font-bold opacity-30">/{globalCapacityHours}</span></span>
+            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[120px] shadow-sm lg:px-8 lg:py-4 lg:min-w-[180px]">
+              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic lg:text-sm">Capacity Used</span>
+              <span className="text-xl font-black text-orange-600 lg:text-3xl">{globalActualHours.toFixed(0)}<span className="text-[10px] font-bold opacity-30 lg:text-sm">/{globalCapacityHours}</span></span>
             </div>
-            <Navigation currentPage="crew-dispatch" />
+            <Link href="/short-term-schedule" className="ml-auto px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              Back
+            </Link>
           </div>
         </div>
 
@@ -965,36 +972,36 @@ function DailyCrewDispatchBoardContent() {
                   className={`bg-white rounded-2xl border-2 ${statusBorder} flex flex-col overflow-hidden shadow-xl shadow-gray-200/20 group h-full transition-all duration-300`}
                 >
                   {/* Card Header - Branded */}
-                  <div className="px-3 py-2 flex justify-between items-center bg-stone-800 border-b border-stone-700">
-                    <h3 className="text-xs font-black text-white uppercase italic tracking-wider truncate max-w-[120px]">{foreman.firstName} {foreman.lastName[0]}.</h3>
-                    <div className="flex items-center gap-3">
+                  <div className="px-2 py-1.5 flex justify-between items-center bg-stone-800 border-b border-stone-700">
+                    <h3 className="text-[10px] font-black text-white uppercase italic tracking-wider truncate max-w-[120px]">{foreman.firstName} {foreman.lastName[0]}.</h3>
+                    <div className="flex items-center gap-2">
                       <div className="text-right">
-                        <div className="text-xs font-black text-red-500 leading-none">{actualHrs}</div>
-                        <div className="text-[6px] font-black text-white/40 uppercase tracking-tighter mt-0.5">ACT</div>
+                        <div className="text-[10px] font-black text-red-500 leading-none">{actualHrs}</div>
+                        <div className="text-[5px] font-black text-white/40 uppercase tracking-tighter">ACT</div>
                       </div>
-                      <div className="w-px h-6 bg-stone-700"></div>
+                      <div className="w-px h-5 bg-stone-700"></div>
                       <div className="text-right">
-                        <div className="text-xs font-black text-stone-400 leading-none">{scheduledHrs}</div>
-                        <div className="text-[6px] font-black text-white/40 uppercase tracking-tighter mt-0.5">SCH</div>
+                        <div className="text-[10px] font-black text-stone-400 leading-none">{scheduledHrs}</div>
+                        <div className="text-[5px] font-black text-white/40 uppercase tracking-tighter">SCH</div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-2 space-y-3 flex-1 flex flex-col min-h-0 bg-white">
+                  <div className="p-1.5 space-y-2 flex-1 flex flex-col min-h-0 bg-white">
                     {/* Projects Section - Branded */}
-                    <div className="flex-none pb-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${statusColor} shadow-lg shadow-black/10`}></div>
-                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Project Assignments</h4>
+                    <div className="flex-none pb-0.5">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${statusColor} shadow-lg shadow-black/10`}></div>
+                        <h4 className="text-[7px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Project Assignments</h4>
                       </div>
-                      <div className="space-y-1.5 max-h-[140px] overflow-y-auto no-scrollbar">
+                      <div className="space-y-1 max-h-[80px] overflow-y-auto no-scrollbar">
                         {projects.map((p, pIdx) => (
-                          <div key={pIdx} className="bg-gradient-to-r from-blue-600 to-blue-700 px-3 py-2.5 rounded-lg flex justify-between items-center border border-blue-800 shadow-md hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-800">
-                            <div className="overflow-hidden pr-2">
-                              <div className="font-black text-white text-xs truncate max-w-[150px] uppercase leading-tight">{p.projectName}</div>
-                              <div className="text-[9px] font-semibold text-blue-100 truncate uppercase mt-0.5">{p.customer}</div>
+                          <div key={pIdx} className="bg-gradient-to-r from-blue-600 to-blue-700 px-2 py-2 rounded-lg flex justify-between items-center border border-blue-800 shadow-sm hover:shadow-md transition-all hover:from-blue-700 hover:to-blue-800">
+                            <div className="overflow-hidden pr-2 flex-1">
+                              <div className="font-black text-white text-[11px] truncate uppercase leading-tight">{p.projectName}</div>
+                              <div className="text-[9px] font-semibold text-blue-100 truncate uppercase">{p.customer}</div>
                             </div>
-                            <div className="bg-white px-2.5 py-1.5 rounded-lg shadow-md text-blue-700 font-black text-xs ml-auto">
+                            <div className="bg-white px-2 py-0.5 rounded-lg shadow-sm text-blue-700 font-black text-[9px] ml-auto whitespace-nowrap">
                               {p.hours.toFixed(0)}h
                             </div>
                           </div>
@@ -1004,28 +1011,12 @@ function DailyCrewDispatchBoardContent() {
 
                     {/* Personnel Selection - Interactive Toggle UI */}
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="flex justify-between items-center mb-1.5 px-1">
-                        <h4 className="text-[8px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Assigned Crew ({currentEmployees.length})</h4>
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-900 shadow-sm animate-pulse"></div>
+                      <div className="flex justify-between items-center mb-1 px-0.5">
+                        <h4 className="text-[7px] uppercase font-black text-stone-400 tracking-[0.2em] italic">Crew ({currentEmployees.length})</h4>
+                        <div className="w-1 h-1 rounded-full bg-red-900 shadow-sm animate-pulse"></div>
                       </div>
                       
-                      <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex flex-col min-h-0 shadow-inner">
-                        <div className="px-2 py-1.5 border-b border-gray-100 bg-white">
-                          <div className="relative">
-                            <input 
-                              type="text"
-                              placeholder="SEARCH EMPLOYEES..."
-                              value={personnelSearch[foreman.id] || ""}
-                              onChange={(e) => setPersonnelSearch(prev => ({ ...prev, [foreman.id]: e.target.value }))}
-                              className="w-full pl-7 pr-2 py-1 text-[9px] font-black bg-gray-50 border-none rounded-lg focus:outline-none focus:ring-1 focus:ring-red-900 uppercase tracking-widest placeholder:text-gray-300 transition-all"
-                            />
-                            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-red-900 opacity-30" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                            </svg>
-                          </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-1.5 space-y-1 bg-gray-50/50">
+                      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-0.5">
                           {/* Currently Assigned */}
                           {currentEmployees.map(empId => {
                             const emp = allEmployees.find(e => e.id === empId);
@@ -1038,10 +1029,10 @@ function DailyCrewDispatchBoardContent() {
                                   updateCrewAssignment(dateKey, foreman.id, newSelected);
                                 }}
                                 disabled={saving}
-                                className="w-full flex items-center justify-between px-2.5 py-1.5 bg-red-900 text-white rounded-lg text-[9px] font-black hover:bg-red-800 transition-all text-left shadow-lg shadow-red-900/20 active:scale-95 border border-red-800"
+                                className="w-full flex items-center justify-between px-1.5 py-0.5 bg-red-900 text-white rounded-lg text-[8px] font-black hover:bg-red-800 transition-all text-left shadow-md shadow-red-900/20 active:scale-95 border border-red-800"
                               >
                                 <span className="truncate uppercase tracking-tight italic">{emp.firstName} {emp.lastName}</span>
-                                <svg className="shrink-0" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
                                   <polyline points="20 6 9 17 4 12" />
                                 </svg>
                               </button>
@@ -1051,11 +1042,6 @@ function DailyCrewDispatchBoardContent() {
                           {/* Available to Assign */}
                           {availableEmployees
                             .filter(emp => !currentEmployees.includes(emp.id))
-                            .filter(emp => {
-                              const search = (personnelSearch[foreman.id] || "").toLowerCase();
-                              if (!search) return true;
-                              return `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(search);
-                            })
                             .map(emp => {
                               const hoursOff = timeOffRequests
                                 .filter(req => req.employeeId === emp.id && dateKey >= req.startDate && dateKey <= req.endDate)
@@ -1069,26 +1055,25 @@ function DailyCrewDispatchBoardContent() {
                                     updateCrewAssignment(dateKey, foreman.id, newSelected);
                                   }}
                                   disabled={saving}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 bg-white border border-gray-100 text-stone-600 rounded-lg text-[9px] font-black hover:border-red-900/40 hover:text-red-900 transition-all text-left group shadow-sm active:scale-95"
+                                  className="w-full flex items-center justify-between px-1.5 py-0.5 bg-white border border-gray-100 text-stone-600 rounded-lg text-[8px] font-black hover:border-red-900/40 hover:text-red-900 transition-all text-left group shadow-sm active:scale-95"
                                 >
                                   <div className="flex flex-col truncate">
                                     <span className="truncate uppercase tracking-tight">{emp.firstName} {emp.lastName}</span>
-                                    {hoursOff > 0 && <span className="text-[7px] text-orange-600 font-black leading-none italic tracking-widest mt-0.5">ABSENT</span>}
+                                    {hoursOff > 0 && <span className="text-[6px] text-orange-600 font-black leading-none italic tracking-widest">ABSENT</span>}
                                   </div>
-                                  <svg className="opacity-0 group-hover:opacity-100 text-red-900 shrink-0 transform group-hover:rotate-90 transition-all" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                  <svg className="opacity-0 group-hover:opacity-100 text-red-900 shrink-0 transform group-hover:rotate-90 transition-all" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
                                     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                                   </svg>
                                 </button>
                               );
                             })
                           }
-                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Utilization Indicator */}
-                  <div className="h-1.5 w-full bg-gray-100 mt-auto">
+                  <div className="h-1 w-full bg-gray-100 mt-auto">
                     <div 
                       className={`h-full transition-all duration-500 ease-out shadow-sm ${statusColor}`} 
                       style={{ width: `${Math.min(100, (actualHrs / (scheduledHrs || 1)) * 100)}%` }}

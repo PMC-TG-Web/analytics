@@ -1,0 +1,107 @@
+/* Responsive scaling for all screen sizes - works perfectly from phone to 55" TV */
+
+:root {
+  /* Base font size - scales fluidly from 14px (mobile) to 32px (4K TV) */
+  --base-font-size: clamp(14px, 2vw, 32px);
+  
+  /* Heading sizes */
+  --text-2xl: clamp(20px, 3vw, 40px);
+  --text-xl: clamp(18px, 2.5vw, 36px);
+  --text-lg: clamp(16px, 2.2vw, 32px);
+  --text-base: clamp(14px, 2vw, 28px);
+  --text-sm: clamp(12px, 1.8vw, 24px);
+  --text-xs: clamp(10px, 1.5vw, 20px);
+  
+  /* Spacing - scales padding, margins, gaps */
+  --space-1: clamp(4px, 0.5vw, 8px);
+  --space-2: clamp(6px, 0.75vw, 12px);
+  --space-3: clamp(8px, 1vw, 16px);
+  --space-4: clamp(12px, 1.5vw, 24px);
+  --space-5: clamp(16px, 2vw, 32px);
+  --space-6: clamp(20px, 2.5vw, 40px);
+  
+  /* Border radius - for modern look at scale */
+  --radius-lg: clamp(16px, 1.5vw, 24px);
+  --radius-md: clamp(12px, 1.2vw, 20px);
+  --radius-sm: clamp(8px, 0.8vw, 12px);
+  
+  /* Shadow scaling */
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 15px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* TV-specific optimizations (1600px+ or 4K displays) */
+@media (min-width: 1600px) {
+  :root {
+    --base-font-size: clamp(28px, 2vw, 40px);
+    --text-2xl: clamp(36px, 3vw, 52px);
+    --text-xl: clamp(32px, 2.5vw, 48px);
+    --space-5: clamp(28px, 2vw, 48px);
+    --space-6: clamp(36px, 2.5vw, 56px);
+  }
+}
+
+/* Apply responsive values to elements */
+body {
+  font-size: var(--base-font-size);
+  line-height: 1.5;
+}
+
+/* Utility classes for responsive sizing */
+.text-2xl { font-size: var(--text-2xl); }
+.text-xl { font-size: var(--text-xl); }
+.text-lg { font-size: var(--text-lg); }
+.text-base { font-size: var(--base-font-size); }
+.text-sm { font-size: var(--text-sm); }
+.text-xs { font-size: var(--text-xs); }
+
+/* Responsive padding */
+.px-2 { padding-left: var(--space-2); padding-right: var(--space-2); }
+.px-3 { padding-left: var(--space-3); padding-right: var(--space-3); }
+.px-4 { padding-left: var(--space-4); padding-right: var(--space-4); }
+.px-5 { padding-left: var(--space-5); padding-right: var(--space-5); }
+.px-6 { padding-left: var(--space-6); padding-right: var(--space-6); }
+
+.py-2 { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.py-3 { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.py-4 { padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.py-5 { padding-top: var(--space-5); padding-bottom: var(--space-5); }
+
+.p-2 { padding: var(--space-2); }
+.p-3 { padding: var(--space-3); }
+.p-4 { padding: var(--space-4); }
+.p-5 { padding: var(--space-5); }
+
+/* Responsive gaps */
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+.gap-5 { gap: var(--space-5); }
+.gap-6 { gap: var(--space-6); }
+
+/* Responsive margins */
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-5 { margin-top: var(--space-5); }
+
+/* Responsive border radius */
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-2xl { border-radius: clamp(12px, 2vw, 24px); }
+.rounded-xl { border-radius: clamp(10px, 1.5vw, 20px); }
+
+/* Min width for stat cards */
+.min-w-fit { min-width: fit-content; }
+
+/* Responsive line heights for large screens */
+@media (min-width: 1920px) {
+  .leading-tight { line-height: 1.35; }
+  .leading-none { line-height: 1.1; }
+}

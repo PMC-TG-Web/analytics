@@ -387,15 +387,13 @@ model EstimatingConstant {
 }
 
 model RebarConstant {
-  id                  String   @id @default(cuid())
-  size                String   @unique // e.g., "#1", "#2", etc.
-  softMetric          String?  // Soft metric designation
-  nominalDiameter     Float    // Nominal diameter in inches
-  weightPerFoot       Float    // Weight per foot in pounds
-  overlap             Float?   // Overlap in feet
+  id          String   @id @default(cuid())
+  size        String   // e.g., "#1", "#2", etc.
+  weight      Float    // Weight per unit
+  spacing     Float?   // Spacing information
   
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([size])
 }

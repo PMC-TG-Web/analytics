@@ -841,19 +841,7 @@ function DailyCrewDispatchBoardContent() {
             </div>
           </div>
           
-          <div className="flex gap-3 lg:gap-5 items-center">
-            <div className="px-5 py-2 rounded-2xl bg-stone-800 flex flex-col items-center justify-center min-w-[120px] shadow-lg shadow-stone-800/10 lg:px-8 lg:py-4 lg:min-w-[180px]">
-              <span className="text-[8px] uppercase font-black text-stone-500 tracking-widest mb-1 italic lg:text-sm">Away</span>
-              <span className="text-xl font-black text-white lg:text-3xl">{workersOffCount}</span>
-            </div>
-            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[120px] shadow-sm lg:px-8 lg:py-4 lg:min-w-[180px]">
-              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic lg:text-sm">Total Sched</span>
-              <span className="text-xl font-black text-red-900 lg:text-3xl">{globalScheduledHours.toFixed(0)} <span className="text-[10px] font-bold opacity-30 lg:text-sm">H</span></span>
-            </div>
-            <div className="px-5 py-2 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center min-w-[120px] shadow-sm lg:px-8 lg:py-4 lg:min-w-[180px]">
-              <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic lg:text-sm">Capacity Used</span>
-              <span className="text-xl font-black text-orange-600 lg:text-3xl">{globalActualHours.toFixed(0)}<span className="text-[10px] font-bold opacity-30 lg:text-sm">/{globalCapacityHours}</span></span>
-            </div>
+          <div className="flex items-center">
             <Link href="/short-term-schedule" className="ml-auto px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               Back
@@ -973,7 +961,7 @@ function DailyCrewDispatchBoardContent() {
                 >
                   {/* Card Header - Branded */}
                   <div className="px-2 py-1.5 flex justify-between items-center bg-stone-800 border-b border-stone-700">
-                    <h3 className="text-[10px] font-black text-white uppercase italic tracking-wider truncate max-w-[120px]">{foreman.firstName} {foreman.lastName[0]}.</h3>
+                    <h3 className="text-[14px] font-black text-white uppercase italic tracking-wider truncate max-w-[120px]">{foreman.firstName} {foreman.lastName[0]}.</h3>
                     <div className="flex items-center gap-2">
                       <div className="text-right">
                         <div className="text-[10px] font-black text-red-500 leading-none">{actualHrs}</div>
@@ -998,8 +986,7 @@ function DailyCrewDispatchBoardContent() {
                         {projects.map((p, pIdx) => (
                           <div key={pIdx} className="bg-gradient-to-r from-blue-600 to-blue-700 px-2 py-2 rounded-lg flex justify-between items-center border border-blue-800 shadow-sm hover:shadow-md transition-all hover:from-blue-700 hover:to-blue-800">
                             <div className="overflow-hidden pr-2 flex-1">
-                              <div className="font-black text-white text-[11px] truncate uppercase leading-tight">{p.projectName}</div>
-                              <div className="text-[9px] font-semibold text-blue-100 truncate uppercase">{p.customer}</div>
+                              <div className="font-black text-white text-[13px] truncate uppercase leading-tight">{p.projectName}</div>
                             </div>
                             <div className="bg-white px-2 py-0.5 rounded-lg shadow-sm text-blue-700 font-black text-[9px] ml-auto whitespace-nowrap">
                               {p.hours.toFixed(0)}h
@@ -1029,7 +1016,7 @@ function DailyCrewDispatchBoardContent() {
                                   updateCrewAssignment(dateKey, foreman.id, newSelected);
                                 }}
                                 disabled={saving}
-                                className="w-full flex items-center justify-between px-1.5 py-0.5 bg-red-900 text-white rounded-lg text-[8px] font-black hover:bg-red-800 transition-all text-left shadow-md shadow-red-900/20 active:scale-95 border border-red-800"
+                                className="w-full flex items-center justify-between px-1.5 py-0.5 bg-red-900 text-white rounded-lg text-[11px] font-black hover:bg-red-800 transition-all text-left shadow-md shadow-red-900/20 active:scale-95 border border-red-800"
                               >
                                 <span className="truncate uppercase tracking-tight italic">{emp.firstName} {emp.lastName}</span>
                                 <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -1055,7 +1042,7 @@ function DailyCrewDispatchBoardContent() {
                                     updateCrewAssignment(dateKey, foreman.id, newSelected);
                                   }}
                                   disabled={saving}
-                                  className="w-full flex items-center justify-between px-1.5 py-0.5 bg-white border border-gray-100 text-stone-600 rounded-lg text-[8px] font-black hover:border-red-900/40 hover:text-red-900 transition-all text-left group shadow-sm active:scale-95"
+                                  className="w-full flex items-center justify-between px-1.5 py-0.5 bg-white border border-gray-100 text-stone-600 rounded-lg text-[11px] font-black hover:border-red-900/40 hover:text-red-900 transition-all text-left group shadow-sm active:scale-95"
                                 >
                                   <div className="flex flex-col truncate">
                                     <span className="truncate uppercase tracking-tight">{emp.firstName} {emp.lastName}</span>

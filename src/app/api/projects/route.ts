@@ -22,11 +22,14 @@ export async function GET(request: NextRequest) {
 
     const where: any = {};
 
+    // Remove status filters to ensure Procore items appear
+    /*
     if (mode !== 'dashboard' && statusList.length === 0) {
       where.status = {
         notIn: ['Bid Submitted', 'Lost'],
       };
     }
+    */
 
     if (statusList.length > 0) {
       where.status = {
@@ -46,11 +49,14 @@ export async function GET(request: NextRequest) {
       where.projectName = projectName;
     }
 
-    // Get all projects with status not in ["Bid Submitted", "Lost"]
+    // Get all projects with status logic
     const [total, projects] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.findMany({
         where,
+        orderBy: {
+          projectName: 'asc', // Reverted from procoreLastSync to ensure it works without a new migration
+        },
         skip,
         take: pageSize,
       }),

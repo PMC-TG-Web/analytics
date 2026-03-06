@@ -54,6 +54,24 @@ function ProjectsContent() {
     direction: 'asc'
   });
 
+  const resolveDisplayCustomer = (project: any): string => {
+    const directCustomer = typeof project?.customer === 'string' ? project.customer.trim() : '';
+    if (directCustomer && !['unknown', 'n/a', 'na', 'none'].includes(directCustomer.toLowerCase())) {
+      return directCustomer;
+    }
+
+    const customFields = project?.customFields && typeof project.customFields === 'object' && !Array.isArray(project.customFields)
+      ? project.customFields
+      : {};
+
+    const customerLabel = typeof customFields.customerLabel === 'string' ? customFields.customerLabel.trim() : '';
+    if (customerLabel && !['unknown', 'n/a', 'na', 'none'].includes(customerLabel.toLowerCase())) {
+      return customerLabel;
+    }
+
+    return 'Unknown';
+  };
+
   // Assignment Modal Form
   const [assignForm, setAssignForm] = useState({
     equipmentId: "",
@@ -83,12 +101,24 @@ function ProjectsContent() {
 
       let projects = (projData.success && Array.isArray(projData.data)) ? projData.data : [];
       
-      // Filter projects based on showArchived
-      if (!showArchived) {
-        projects = projects.filter((p: any) => !["Lost", "Invitations"].includes(p.status || "") && !p.projectArchived);
-      } else {
-        projects = projects.filter((p: any) => !["Lost", "Invitations"].includes(p.status || ""));
-      }
+      // Filter projects: 
+      // 1. Must have a Procore ID (stored in customFields)
+      // 2. Exclude "Lost" (Optional: adjust as needed)
+      // 3. Respect archived filter
+      projects = projects.filter((p: any) => {
+        const customFields = p.customFields && typeof p.customFields === 'object' ? p.customFields : {};
+        const hasProcoreId = !!(customFields.procoreId || customFields.bidBoardId);
+        
+        // Loosen status restriction to show Procore synced bids
+        const isNotLost = p.status !== "Lost";
+        const isActuallyArchived = p.projectArchived === true;
+        
+        if (!hasProcoreId) return false;
+        if (!isNotLost) return false;
+        if (!showArchived && isActuallyArchived) return false;
+        
+        return true;
+      });
 
       setProjectsData(projects);
       setScopesData((scopeData.success && Array.isArray(scopeData.data)) ? scopeData.data : []);
@@ -117,7 +147,7 @@ function ProjectsContent() {
           jobKey: key,
           projectName: p.projectName || "Unknown",
           projectNumber: p.projectNumber || "",
-          customer: p.customer || "Unknown",
+          customer: resolveDisplayCustomer(p),
           status: p.status || "Unknown",
           totalSales: 0,
           totalCost: 0,

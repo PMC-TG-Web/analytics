@@ -115,7 +115,7 @@ export default function VendorsPage() {
               </tr>
             ) : (
               filteredVendors.map((vendor) => (
-                <tr key={vendor.id} style={{ borderBottom: '1px solid #f3f4f6', hover: { backgroundColor: '#f9fafb' } }}>
+                <tr key={vendor.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '1rem', fontWeight: '500', color: '#111827' }}>{vendor.name}</td>
                   <td style={{ padding: '1rem', color: '#6b7280', fontSize: '0.875rem', fontFamily: 'monospace' }}>{vendor.id}</td>
                   <td style={{ padding: '1rem', fontSize: '0.875rem' }}>

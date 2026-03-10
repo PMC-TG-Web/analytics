@@ -53,6 +53,7 @@ ChartJS.register(dataLabelsPlugin);
 type Allocation = {
   month: string;
   percent: number;
+  hours?: number;
 };
 
 type Schedule = {
@@ -79,7 +80,19 @@ type MonthlyWIP = {
 
 function normalizeAllocations(allocations: Schedule["allocations"] | null | undefined): Allocation[] {
   if (!allocations) return [];
-  if (Array.isArray(allocations)) return allocations;
+  if (Array.isArray(allocations)) {
+    const byMonth = new Map<string, Allocation>();
+    allocations.forEach((entry: any) => {
+      const month = String(entry?.month || "");
+      if (!month) return;
+      byMonth.set(month, {
+        month,
+        percent: Number(entry?.percent) || 0,
+        hours: typeof entry?.hours === "number" ? entry.hours : undefined,
+      });
+    });
+    return Array.from(byMonth.values());
+  }
 
   return Object.entries(allocations).map(([month, percent]) => ({
     month,
@@ -105,6 +118,25 @@ function formatMonthLabelShort(month: string) {
   return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
 }
 
+function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: string; projectName: string } {
+  const [customer = "", projectNumber = "", projectName = ""] = (jobKey || "").split("~");
+  return { customer, projectNumber, projectName };
+}
+
+function parseDateFromUnknown(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function") {
+    const date = (value as any).toDate();
+    return date instanceof Date && !isNaN(date.getTime()) ? date : null;
+  }
+  if (typeof value === "string") {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
 export default function WIPReportPage() {
   return <WIPReportContent />;
 }
@@ -112,6 +144,7 @@ export default function WIPReportPage() {
 function WIPReportContent() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectsForHours, setProjectsForHours] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'gantt'>('table');
 
@@ -163,6 +196,35 @@ function WIPReportContent() {
   const { entries: ganttEntries, loading: ganttLoading } = useActiveScheduleGantt(ganttStartDate, ganttEndDate);
   const { units } = useGanttTimeline(ganttEntries, 'week');
 
+  const fetchAllPages = async <T,>(baseUrl: string): Promise<T[]> => {
+    const allData: T[] = [];
+    let page = 1;
+    const pageSize = 500;
+
+    while (true) {
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      const res = await fetch(`${baseUrl}${separator}page=${page}&pageSize=${pageSize}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${baseUrl} (page ${page})`);
+      }
+
+      const json = await res.json();
+      const pageData: T[] = Array.isArray(json.data) ? json.data : [];
+      allData.push(...pageData);
+
+      const hasNextPage =
+        Boolean(json.hasNextPage) ||
+        (typeof json.totalPages === "number" && page < json.totalPages);
+
+      if (!hasNextPage || pageData.length === 0) break;
+      page += 1;
+
+      if (page > 100) break;
+    }
+
+    return allData;
+  };
+
   useEffect(() => {
     async function fetchData() {
       try {
@@ -171,15 +233,16 @@ function WIPReportContent() {
         const start = Date.now();
 
         // Parallelize all primary data fetches
-        const [projectsScopesRes, schedulesRes] = await Promise.all([
+        const [projectsScopesRes, schedulesData, projectsForHoursData] = await Promise.all([
           fetch("/api/project-scopes"),
-          fetch("/api/scheduling"),
+          fetchAllPages<any>("/api/scheduling"),
+          fetchAllPages<any>("/api/projects"),
         ]);
 
         let projectsData: any[] = [];
         let projectsSnapshot: any[] = [];
         let scopesSnapshot: any[] = [];
-        let schedulesData: any[] = [];
+        let schedulesDataLocal: any[] = [];
 
         // Handle projects-scopes response
         if (projectsScopesRes.ok) {
@@ -192,25 +255,23 @@ function WIPReportContent() {
         }
 
         // Handle schedules response
-        if (schedulesRes.ok) {
-          const schedulesJson = await schedulesRes.json();
-          console.log("[WIP] Scheduling API response:", schedulesJson);
-          schedulesData = schedulesJson.data || [];
-          console.log("[WIP] Raw schedules from API:", schedulesData.length, "records");
-          if (schedulesData.length > 0) {
+        if (Array.isArray(schedulesData)) {
+          schedulesDataLocal = schedulesData;
+          console.log("[WIP] Raw schedules from API:", schedulesDataLocal.length, "records");
+          if (schedulesDataLocal.length > 0) {
             console.log("[WIP] First schedule sample:", {
-              jobKey: schedulesData[0]?.jobKey,
-              status: schedulesData[0]?.status,
-              allocations: schedulesData[0]?.allocations?.length
+              jobKey: schedulesDataLocal[0]?.jobKey,
+              status: schedulesDataLocal[0]?.status,
+              allocations: schedulesDataLocal[0]?.allocations?.length
             });
           }
         } else {
-          console.warn("[WIP] Scheduling API endpoint not available, status:", schedulesRes.status);
+          console.warn("[WIP] Scheduling API endpoint not available");
         }
 
         console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
 
-        const schedulesWithStatus = schedulesData.map((schedule: any) => {
+        const schedulesWithStatus = schedulesDataLocal.map((schedule: any) => {
           // Keep the status from the schedule data (already populated from DB)
           return {
             ...schedule,
@@ -221,6 +282,7 @@ function WIPReportContent() {
         console.log("[WIP] Schedules after mapping:", schedulesWithStatus.length, "records");
 
         setProjects(projectsData);
+        setProjectsForHours(projectsForHoursData);
         setSchedules(schedulesWithStatus);
         console.log("[WIP] Called setSchedules with:", schedulesWithStatus.length, "records");
         
@@ -240,6 +302,7 @@ function WIPReportContent() {
       } catch (error) {
         console.warn("[WIP] Error loading data (using empty defaults):", error);
         setProjects([]);
+        setProjectsForHours([]);
         setSchedules([]);
         setScopesByJobKey({});
       } finally {
@@ -248,6 +311,153 @@ function WIPReportContent() {
     }
     fetchData();
   }, []);
+
+  const schedulePageJobs = React.useMemo(() => {
+    const qualifyingStatuses = ["In Progress"];
+    const priorityStatuses = ["In Progress"];
+
+    const activeProjects = projectsForHours.filter((p) => {
+      if (p.projectArchived) return false;
+      const customer = (p.customer ?? "").toString().toLowerCase();
+      if (customer.includes("sop inc")) return false;
+      const projectName = (p.projectName ?? "").toString().toLowerCase();
+      if (projectName === "pmc operations") return false;
+      if (projectName === "pmc shop time") return false;
+      if (projectName === "pmc test project") return false;
+      if (projectName.includes("sandbox")) return false;
+      if (projectName.includes("raymond king")) return false;
+      if (projectName === "alexander drive addition latest") return false;
+      const projectNumber = (p.projectNumber ?? "").toString().toLowerCase();
+      if (projectNumber === "701 poplar church rd") return false;
+      return true;
+    });
+
+    const projectIdentifierMap = new Map<string, any[]>();
+    activeProjects.forEach((project) => {
+      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
+      if (!identifier) return;
+      if (!projectIdentifierMap.has(identifier)) {
+        projectIdentifierMap.set(identifier, []);
+      }
+      projectIdentifierMap.get(identifier)!.push(project);
+    });
+
+    const dedupedByCustomer: any[] = [];
+    projectIdentifierMap.forEach((projectList) => {
+      const customerMap = new Map<string, any[]>();
+      projectList.forEach((p) => {
+        const customer = (p.customer ?? "").toString().trim();
+        if (!customerMap.has(customer)) {
+          customerMap.set(customer, []);
+        }
+        customerMap.get(customer)!.push(p);
+      });
+
+      if (customerMap.size > 1) {
+        let selectedProjects: any[] = [];
+        let foundPriorityCustomer = false;
+
+        customerMap.forEach((projs) => {
+          const hasPriorityStatus = projs.some((p) => priorityStatuses.includes(p.status || ""));
+          if (hasPriorityStatus && !foundPriorityCustomer) {
+            selectedProjects = projs;
+            foundPriorityCustomer = true;
+          }
+        });
+
+        if (!foundPriorityCustomer) {
+          let latestCustomer = "";
+          let latestDate: Date | null = null;
+
+          customerMap.forEach((projs, customer) => {
+            const mostRecentProj = projs.reduce((latest, current) => {
+              const currentDate = parseDateFromUnknown(current.dateCreated);
+              const latestDateVal = parseDateFromUnknown(latest.dateCreated);
+              if (!currentDate) return latest;
+              if (!latestDateVal) return current;
+              return currentDate.getTime() > latestDateVal.getTime() ? current : latest;
+            }, projs[0]);
+
+            const projDate = parseDateFromUnknown(mostRecentProj.dateCreated);
+            if (projDate && (!latestDate || projDate.getTime() > latestDate.getTime())) {
+              latestDate = projDate;
+              latestCustomer = customer;
+            }
+          });
+
+          selectedProjects = customerMap.get(latestCustomer) || [];
+        }
+
+        dedupedByCustomer.push(...selectedProjects);
+      } else {
+        projectList.forEach((p) => dedupedByCustomer.push(p));
+      }
+    });
+
+    const filteredByStatus = dedupedByCustomer.filter((p) => {
+      if (!qualifyingStatuses.includes(p.status || "")) return false;
+      if (p.pmcgroup) return false;
+      return true;
+    });
+
+    const keyMap = new Map<string, any[]>();
+    filteredByStatus.forEach((p) => {
+      const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
+      if (!keyMap.has(key)) {
+        keyMap.set(key, []);
+      }
+      keyMap.get(key)!.push(p);
+    });
+
+    const schedulesByExactKey = new Map<string, Schedule>();
+    const schedulesByProjectNumName = new Map<string, Schedule>();
+    const schedulesByProjectNumber = new Map<string, Schedule[]>();
+
+    schedules.forEach((s) => {
+      schedulesByExactKey.set(s.jobKey, s);
+      const parts = parseJobKeyParts(s.jobKey);
+      const numNameKey = `${parts.projectNumber}~${parts.projectName}`;
+      if (parts.projectNumber || parts.projectName) {
+        schedulesByProjectNumName.set(numNameKey, s);
+      }
+      if (parts.projectNumber) {
+        const arr = schedulesByProjectNumber.get(parts.projectNumber) || [];
+        arr.push(s);
+        schedulesByProjectNumber.set(parts.projectNumber, arr);
+      }
+    });
+
+    const results: Schedule[] = [];
+    keyMap.forEach((projectGroup, key) => {
+      const representative = projectGroup[0];
+      const totalHours = projectGroup.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+
+      const keyParts = parseJobKeyParts(key);
+      let matchedSchedule = schedulesByExactKey.get(key);
+      if (!matchedSchedule) {
+        matchedSchedule = schedulesByProjectNumName.get(`${keyParts.projectNumber}~${keyParts.projectName}`);
+      }
+      if (!matchedSchedule && keyParts.projectNumber) {
+        const byNumber = schedulesByProjectNumber.get(keyParts.projectNumber) || [];
+        if (byNumber.length === 1) {
+          matchedSchedule = byNumber[0];
+        }
+      }
+
+      results.push({
+        id: matchedSchedule?.id || key,
+        jobKey: key,
+        customer: representative.customer ?? "Unknown",
+        projectNumber: representative.projectNumber ?? "",
+        projectName: representative.projectName ?? "Unnamed",
+        totalHours,
+        status: "In Progress",
+        allocations: normalizeAllocations(matchedSchedule?.allocations || []),
+      });
+    });
+
+    return results;
+  }, [projectsForHours, schedules]);
 
   // Save filters to localStorage whenever they change
   useEffect(() => {
@@ -516,7 +726,7 @@ function WIPReportContent() {
     const qualifyingKeyMap = new Map<string, any[]>();
     
     // Filter schedules by status first
-    const inProgressSchedules = schedules.filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress");
+    const inProgressSchedules = schedulePageJobs;
     
     console.log("[WIP] In Progress schedules:", inProgressSchedules.length, "out of", schedules.length);
     
@@ -528,8 +738,9 @@ function WIPReportContent() {
         if (!isValidMonthKey(alloc.month)) return;
         
         // Calculate hours for this allocation
-        const allocatedHours = (schedule as any).allocations?.find((a: any) => a.month === alloc.month)?.hours || 
-                              (schedule.totalHours * (alloc.percent / 100));
+        const allocatedHours = (typeof alloc.hours === "number")
+          ? alloc.hours
+          : (schedule.totalHours * (alloc.percent / 100));
         
         if (!monthlyData[alloc.month]) {
           monthlyData[alloc.month] = { month: alloc.month, hours: 0, jobs: [] };
@@ -620,8 +831,9 @@ function WIPReportContent() {
     // Calculate qualifying schedules and all in-progress hours
     const allInProgressScheduledHours = inProgressSchedules.reduce((sum, s) => {
       const allocHours = normalizeAllocations(s.allocations).reduce((allocSum, alloc) => {
-        const h = (s as any).allocations?.find((a: any) => a.month === alloc.month)?.hours || 
-                  (s.totalHours * (alloc.percent / 100));
+        const h = (typeof alloc.hours === "number")
+          ? alloc.hours
+          : (s.totalHours * (alloc.percent / 100));
         return allocSum + h;
       }, 0);
       return sum + allocHours;
@@ -632,8 +844,9 @@ function WIPReportContent() {
         const allocHours = normalizeAllocations(s.allocations)
           .filter(a => a.month.startsWith(yearFilter))
           .reduce((allocSum, alloc) => {
-            const h = (s as any).allocations?.find((a: any) => a.month === alloc.month)?.hours || 
-                      (s.totalHours * (alloc.percent / 100));
+            const h = (typeof alloc.hours === "number")
+              ? alloc.hours
+              : (s.totalHours * (alloc.percent / 100));
             return allocSum + h;
           }, 0);
         return sum + allocHours;
@@ -652,7 +865,7 @@ function WIPReportContent() {
       filteredInProgressHours,
       poolBreakdown
     };
-  }, [scopesByJobKey, projects, schedules, yearFilter, qualifyingStatus]);
+  }, [scopesByJobKey, projects, schedulePageJobs, yearFilter, qualifyingStatus]);
 
   const months = Object.keys(monthlyData).sort();
   
@@ -698,9 +911,7 @@ function WIPReportContent() {
 
   // Calculate total scheduled hours per project (across ALL years, ignoring filters)
   const projectTotalScheduledHours = new Map<string, number>();
-  schedules.forEach((schedule) => {
-    const status = (schedule.status || "").toString().toLowerCase().trim();
-    if (status !== "in progress") return;
+  schedulePageJobs.forEach((schedule) => {
     
     const projectKey = `${schedule.customer}~${schedule.projectName}`;
     const totalScheduled = normalizeAllocations(schedule.allocations).reduce((sum, alloc) => {
@@ -711,7 +922,7 @@ function WIPReportContent() {
   });
 
   // Filter schedules to ONLY include In Progress for the rest of the UI (counts, filters)
-  const qualifyingSchedules = schedules.filter(s => (s.status || "").toString().toLowerCase().trim() === "in progress");
+  const qualifyingSchedules = schedulePageJobs;
 
   // Debug logging
   if (typeof window !== 'undefined') {
@@ -774,9 +985,7 @@ function WIPReportContent() {
   
   // Unscheduled calculation - truly unscheduled hours (constant regardless of year filter)
   // Unscheduled = jobs with zero allocation across ALL years
-  const inProgressProjects = schedules.filter(schedule => 
-    (schedule.status || "").toString().toLowerCase().trim() === "in progress"
-  );
+  const inProgressProjects = schedulePageJobs;
 
   // Add projects that don't have schedules yet
   const scheduledJobKeys = new Set(inProgressProjects.map(s => 

@@ -60,6 +60,11 @@ function isValidMonthKey(month: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
+function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: string; projectName: string } {
+  const [customer = "", projectNumber = "", projectName = ""] = (jobKey || "").split("~");
+  return { customer, projectNumber, projectName };
+}
+
 function normalizeMonths(list: string[]) {
   return Array.from(
     new Set(
@@ -155,6 +160,57 @@ function SchedulingContent() {
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, ApiScope[]>>({});
 
+  const fetchAllPages = async <T,>(baseUrl: string): Promise<T[]> => {
+    const allData: T[] = [];
+    let page = 1;
+    const pageSize = 500;
+
+    while (true) {
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      const res = await fetch(`${baseUrl}${separator}page=${page}&pageSize=${pageSize}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${baseUrl} (page ${page})`);
+      }
+
+      const json = await res.json();
+      const pageData: T[] = Array.isArray(json.data) ? json.data : [];
+      allData.push(...pageData);
+
+      const hasNextPage =
+        Boolean(json.hasNextPage) ||
+        (typeof json.totalPages === "number" && page < json.totalPages);
+
+      if (!hasNextPage || pageData.length === 0) break;
+      page += 1;
+
+      if (page > 100) break;
+    }
+
+    return allData;
+  };
+
+  const mapApiSchedulesToJobSchedules = (schedulesRaw: ApiSchedule[]): JobSchedule[] => {
+    return schedulesRaw.map((s) => {
+      const allocations: Record<string, number> = {};
+      if (Array.isArray(s.allocations)) {
+        s.allocations.forEach((alloc) => {
+          allocations[alloc.month] = alloc.percent;
+        });
+      } else {
+        Object.assign(allocations, s.allocations);
+      }
+
+      return {
+        jobKey: s.jobKey,
+        customer: s.customer,
+        projectName: s.projectName,
+        status: s.status || "",
+        totalHours: s.totalHours,
+        allocations,
+      };
+    });
+  };
+
   const internalDistributeValue = (totalValue: number, startDate: string, endDate: string) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -189,55 +245,32 @@ function SchedulingContent() {
   useEffect(() => {
     async function fetchData() {
       try {
+        let schedulesArray: JobSchedule[] = [];
+
         // Fetch projects from API
-        const projectsRes = await fetch("/api/projects");
-        if (!projectsRes.ok) {
+        const projectsRaw = await fetchAllPages<ApiProject>("/api/projects");
+        if (!projectsRaw.length) {
           console.warn("Failed to fetch projects from API");
           setProjects([]);
         } else {
-          const projectsJson = await projectsRes.json();
-          const projectsData = (projectsJson.data || []).map((p: any) => ({
+          const projectsData = projectsRaw.map((p: any) => ({
             id: p.id,
             ...(p as Omit<Project, "id">),
           }));
           setProjects(projectsData);
         }
 
-        let schedulesArray: JobSchedule[] = [];
+        // Fetch saved schedule allocations from database
         try {
-          const schedulesRes = await fetch("/api/scheduling");
-          if (!schedulesRes.ok) throw new Error("Not found");
-          const schedulesJson = await schedulesRes.json();
-          schedulesArray = (schedulesJson.data || []).map((s: ApiSchedule) => {
-          // Handle both object and array formats for allocations
-          let allocations: Record<string, number> = {};
-          if (s.allocations) {
-            if (Array.isArray(s.allocations)) {
-              // Array format: convert to object
-              allocations = s.allocations.reduce((acc: Record<string, number>, alloc: { month: string; percent: number }) => {
-                acc[alloc.month] = alloc.percent;
-                return acc;
-              }, {});
-            } else {
-              // Already an object: use as-is
-              allocations = s.allocations;
-            }
-          }
-          
-          return {
-            jobKey: s.jobKey,
-            customer: s.customer,
-            projectName: s.projectName,
-            status: s.status || "Unknown",
-            totalHours: s.totalHours,
-            allocations,
-          };
-        });
-        } catch (error) {
-          console.warn("Failed to load schedules from API:", error);
+          const schedulesRaw = await fetchAllPages<ApiSchedule>("/api/scheduling");
+          const transformedSchedules = mapApiSchedulesToJobSchedules(schedulesRaw);
+          schedulesArray = transformedSchedules;
+          setSchedules(transformedSchedules);
+        } catch (err) {
+          console.warn("Failed to load schedules from API:", err);
           schedulesArray = [];
+          setSchedules([]);
         }
-        setSchedules(schedulesArray);
 
         // Fetch scopes from Gantt V2 API
         try {
@@ -585,10 +618,9 @@ function SchedulingContent() {
       
       // Refresh the projects data
       try {
-        const projectsRes = await fetch("/api/projects");
-        if (projectsRes.ok) {
-          const projectsJson = await projectsRes.json();
-          const projectsData = (projectsJson.data || []).map((p: ApiProject) => ({
+        const projectsRaw = await fetchAllPages<ApiProject>("/api/projects");
+        if (projectsRaw.length > 0) {
+          const projectsData = projectsRaw.map((p: ApiProject) => ({
             id: p.id,
             ...(p as Omit<Project, "id">),
           }));
@@ -598,29 +630,15 @@ function SchedulingContent() {
         console.warn("Failed to refresh projects:", error);
       }
       
-      // Refresh schedules data
+      // Refresh schedule allocations after status update
       try {
-        const schedulesRes = await fetch("/api/scheduling");
-        if (schedulesRes.ok) {
-          const schedulesJson = await schedulesRes.json();
-          const schedulesArray = (schedulesJson.data || []).map((s: ApiSchedule) => ({
-            jobKey: s.jobKey,
-            customer: s.customer,
-            projectName: s.projectName,
-            status: s.status || "Unknown",
-            totalHours: s.totalHours,
-            allocations: Array.isArray(s.allocations)
-              ? s.allocations.reduce((acc: Record<string, number>, alloc: { month: string; percent: number }) => {
-                  acc[alloc.month] = alloc.percent;
-                  return acc;
-                }, {})
-              : s.allocations,
-          }));
-          setSchedules(schedulesArray);
-          console.log("Schedules refreshed, new status:", schedulesArray.find((s) => s.jobKey === jobKey)?.status);
+        const schedulesRaw = await fetchAllPages<ApiSchedule>("/api/scheduling");
+        if (schedulesRaw.length > 0) {
+          const transformedSchedules = mapApiSchedulesToJobSchedules(schedulesRaw);
+          setSchedules(transformedSchedules);
         }
-      } catch (scheduleRefreshError) {
-        console.warn("Failed to refresh schedules:", scheduleRefreshError);
+      } catch (err) {
+        console.warn("Failed to refresh schedules:", err);
       }
       
       alert(`Status updated to ${newStatus} successfully!`);
@@ -633,60 +651,45 @@ function SchedulingContent() {
   }
 
   const allJobs = useMemo(() => {
-    const qualifyingStatuses = ["In Progress"];
-    
-    // Ensure all existing schedules have all months initialized
-    const updatedSchedules = schedules.map((schedule) => {
-      const allocations: Record<string, number> = schedule.allocations ? { ...schedule.allocations } : {};
-      validMonths.forEach((month) => {
-        allocations[month] = allocations[month] ?? 0;
-      });
-      // Get hours from uniqueJobs (projects data) if available, otherwise use schedule's totalHours
-      const currentJob = uniqueJobs.find((j) => j.key === schedule.jobKey);
-      const totalHours = currentJob?.totalHours || schedule.totalHours || 0;
-      
-      return { 
-        ...schedule, 
-        allocations,
-        totalHours,
-      };
-    });
+    const schedulesByExactKey = new Map<string, JobSchedule>();
+    const schedulesByProjectNumName = new Map<string, JobSchedule>();
+    const schedulesByProjectNumber = new Map<string, JobSchedule[]>();
 
-    // Filter schedules by status and smart year filtering
-    const filteredSchedules = updatedSchedules.filter((schedule) => {
-      if (!schedule || !qualifyingStatuses.includes(schedule.status || "")) return false;
-      
-      // If year filter is NOT active, show all In Progress
-      if (!yearFilter) return true;
-      
-      // If year filter IS active, show if:
-      // 1. Has allocations in filtered year, OR
-      // 2. Has unscheduled hours (total allocation < 100%)
-      let hasYearAllocation = false;
-      if (displayMonths && displayMonths.length > 0) {
-        hasYearAllocation = displayMonths.some((month) => {
-          const value = schedule.allocations && schedule.allocations[month];
-          return (typeof value === 'number' && value > 0);
-        });
+    schedules.forEach((s) => {
+      schedulesByExactKey.set(s.jobKey, s);
+      const parts = parseJobKeyParts(s.jobKey);
+      const numNameKey = `${parts.projectNumber}~${parts.projectName}`;
+      if (parts.projectNumber || parts.projectName) {
+        schedulesByProjectNumName.set(numNameKey, s);
       }
-      
-      if (hasYearAllocation) return true;
-      
-      // Check if fully scheduled (100% or more allocated)
-      const totalPercent = schedule.allocations ? Object.values(schedule.allocations).reduce((sum, percent) => sum + (typeof percent === 'number' ? percent : 0), 0) : 0;
-      const isFullyScheduled = totalPercent >= 100;
-      
-      // Show if NOT fully scheduled (has room for more allocations)
-      return !isFullyScheduled;
+      if (parts.projectNumber) {
+        const arr = schedulesByProjectNumber.get(parts.projectNumber) || [];
+        arr.push(s);
+        schedulesByProjectNumber.set(parts.projectNumber, arr);
+      }
     });
 
-    // Add any qualifying jobs from uniqueJobs that don't have schedules yet
-    const allScheduleKeys = new Set(schedules.map((s) => s.jobKey));
-    const toAdd = uniqueJobs.filter((job) => !allScheduleKeys.has(job.key)).map((job) => {
+    return uniqueJobs.map((job) => {
+      const jobParts = parseJobKeyParts(job.key);
+      let savedSchedule = schedulesByExactKey.get(job.key);
+
+      if (!savedSchedule) {
+        const numNameKey = `${jobParts.projectNumber}~${jobParts.projectName}`;
+        savedSchedule = schedulesByProjectNumName.get(numNameKey);
+      }
+
+      if (!savedSchedule && jobParts.projectNumber) {
+        const byNumber = schedulesByProjectNumber.get(jobParts.projectNumber) || [];
+        if (byNumber.length === 1) {
+          savedSchedule = byNumber[0];
+        }
+      }
+
       const allocations: Record<string, number> = {};
       validMonths.forEach((month) => {
-        allocations[month] = 0;
+        allocations[month] = savedSchedule?.allocations[month] ?? 0;
       });
+
       return {
         jobKey: job.key,
         customer: job.customer,
@@ -696,8 +699,7 @@ function SchedulingContent() {
         allocations,
       };
     });
-    return [...filteredSchedules, ...toAdd];
-  }, [schedules, uniqueJobs, validMonths, displayMonths, yearFilter]);
+  }, [uniqueJobs, validMonths, schedules]);
 
   const uniqueCustomers = useMemo(() => {
     return Array.from(new Set(allJobs.map((j) => j.customer))).sort();

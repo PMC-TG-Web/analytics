@@ -37,11 +37,16 @@ function choosePrimaryGroup(breakdown) {
 }
 
 async function main() {
-  const csvPath = path.join(__dirname, '..', 'PMCGrouping.csv');
+  // Look next to the script first, then fall back to project root
+  let csvPath = path.join(__dirname, 'PMCGrouping.csv');
   if (!fs.existsSync(csvPath)) {
-    console.error('PMCGrouping.csv not found at', csvPath);
+    csvPath = path.join(__dirname, '..', 'PMCGrouping.csv');
+  }
+  if (!fs.existsSync(csvPath)) {
+    console.error('PMCGrouping.csv not found. Tried:', path.join(__dirname, 'PMCGrouping.csv'), 'and', path.join(__dirname, '..', 'PMCGrouping.csv'));
     process.exit(1);
   }
+  console.log('Using PMCGrouping.csv at:', csvPath);
 
   console.log('Building cost-item → PMC group map from PMCGrouping.csv...');
   const costItemMap = buildCostItemMap(csvPath);

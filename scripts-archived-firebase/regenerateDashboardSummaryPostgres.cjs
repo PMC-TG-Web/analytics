@@ -8,6 +8,7 @@
  * Run: node scripts-archived-firebase/regenerateDashboardSummaryPostgres.cjs
  */
 
+// Note: PMCGrouping.csv lookup is handled by applyPMCGroupings.cjs (run that first)
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 

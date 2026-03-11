@@ -187,12 +187,21 @@ function DashboardContent() {
       groups[status].count += 1;
       
       // Aggregate pmcGroup hours by group
-      if (p.pmcGroup && typeof p.pmcGroup === 'object') {
-        Object.entries(p.pmcGroup).forEach(([group, hours]) => {
+      // Prefer pmcGroup (mapped 9-category keys), fall back to pmcBreakdown (raw cost-item keys)
+      const groupSource =
+        p.pmcGroup && typeof p.pmcGroup === 'object' && Object.keys(p.pmcGroup).length > 0
+          ? p.pmcGroup
+          : p.pmcBreakdown && typeof p.pmcBreakdown === 'object'
+          ? p.pmcBreakdown
+          : null;
+
+      if (groupSource) {
+        Object.entries(groupSource).forEach(([group, hours]) => {
           const h = Number(hours) || 0;
-          if (h > 0) {
-            groups[status].laborByGroup[group] = (groups[status].laborByGroup[group] || 0) + h;
-          }
+          if (h <= 0) return;
+          // Map "Management" (from pmcBreakdown) to "PM" so PM Focus Hours card picks it up
+          const normalizedGroup = group.toLowerCase() === 'management' ? 'PM' : group;
+          groups[status].laborByGroup[normalizedGroup] = (groups[status].laborByGroup[normalizedGroup] || 0) + h;
         });
       }
     });

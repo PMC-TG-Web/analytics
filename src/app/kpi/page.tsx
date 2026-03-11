@@ -287,8 +287,8 @@ const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> =
 function getProjectDate(project: any) {
   const created = parseDateValue(project.dateCreated);
   const updated = parseDateValue(project.dateUpdated);
-  if (created) return created;
-  return updated || null;
+  if (updated && updated.getFullYear() >= 2026) return updated;
+  return created || updated || null;
 }
 
 export default function KPIPage() {
@@ -733,7 +733,7 @@ function KPIPageContent({
     const sales = Number(project.sales ?? 0);
     bidSubmittedTotal += sales;
     
-    const projectDate = parseDateValue(project.dateCreated);
+    const projectDate = getProjectDate(project);
     if (!projectDate) {
       bidSubmittedWithoutDates++;
       return;
@@ -821,14 +821,14 @@ function KPIPageContent({
         
         customerMap.forEach((projs, customer) => {
           const mostRecent = projs.reduce((latest, current) => {
-            const currentDate = parseDateValue(current.dateCreated);
-            const latestDateVal = parseDateValue(latest.dateCreated);
+            const currentDate = getProjectDate(current);
+            const latestDateVal = getProjectDate(latest);
             if (!currentDate) return latest;
             if (!latestDateVal) return current;
             return currentDate > latestDateVal ? current : latest;
           }, projs[0]);
           
-          const projDate = parseDateValue(mostRecent.dateCreated);
+          const projDate = getProjectDate(mostRecent);
           const projSales = projs.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
           customerDates.push([customer, projDate, projSales]);
         });
@@ -868,7 +868,7 @@ function KPIPageContent({
       const status = (project.status || "").toString().trim();
       if (status !== "Bid Submitted") return;
       
-      const projectDate = parseDateValue(project.dateCreated);
+      const projectDate = getProjectDate(project);
       if (!projectDate) return;
       
       // Apply date range filter
@@ -1870,7 +1870,33 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {renderCardRows("Leadtimes by Month", "#15616D")}
+                <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                  <td style={{ padding: "6px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Leadtime Hours</td>
+                  {monthNames.map((_, idx) => {
+                    let hours = 0;
+                    if (yearFilter) {
+                      hours = bidSubmittedHoursYearMonthMap[yearFilter]?.[idx + 1] || 0;
+                    } else {
+                      hours = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + (yearData[idx + 1] || 0), 0);
+                    }
+                    return (
+                      <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: hours > 0 ? "#15616D" : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
+                        {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td style={{ padding: "6px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {(() => {
+                      let total = 0;
+                      if (yearFilter) {
+                        total = Object.values(bidSubmittedHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                      } else {
+                        total = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                      }
+                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                    })()}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

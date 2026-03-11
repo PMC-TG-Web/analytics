@@ -21,6 +21,24 @@ export const getProjectDate = (project: Project): Date | null => {
   return updated || created || null;
 };
 
+const STATUS_NORMALIZATION: Record<string, string> = {
+  'BID_SUBMITTED':    'Bid Submitted',
+  'IN_PROGRESS':      'In Progress',
+  'COMPLETE':         'Complete',
+  'INVITATION':       'Invitations',
+  'LOST':             'Lost',
+  'TO_DO':            'To Do',
+  'ESTIMATING':       'Estimating',
+  'ACCEPTED':         'Accepted',
+  'Bidding':          'Bid Submitted',
+  'Pre-Construction': 'Estimating',
+};
+
+export const normalizeStatus = (status: string | null | undefined): string => {
+  const s = (status ?? '').toString().trim();
+  return STATUS_NORMALIZATION[s] ?? s;
+};
+
 export const getProjectKey = (project: Project): string => {
   const customer = (project.customer ?? "").toString().trim();
   const number = (project.projectNumber ?? "").toString().trim();
@@ -65,7 +83,7 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
 
     const customerGroups = Array.from(customerMap.entries()).map(([customerKey, rows]) => {
       const hasPriorityStatus = rows.some((row) => {
-        const status = (row.status ?? "").toString().trim().toLowerCase();
+        const status = normalizeStatus(row.status).toLowerCase();
         return status === 'accepted' || status === 'in progress';
       });
 
@@ -143,6 +161,7 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
     
     baseProject.dateUpdated = mostRecentProject.dateUpdated;
     baseProject.dateCreated = mostRecentProject.dateCreated;
+    baseProject.status = normalizeStatus(baseProject.status);
     
     aggregated.push(baseProject);
   });

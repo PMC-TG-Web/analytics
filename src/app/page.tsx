@@ -444,7 +444,7 @@ function HomeContent() {
                   <div className="w-1.5 md:w-2 h-5 md:h-6 bg-red-900 rounded-full"></div>
                   Quick Access
                 </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2 md:gap-3">
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2 md:gap-3">
                   {[
                     { label: 'Dashboard', href: '/dashboard', color: 'bg-stone-50 text-stone-700 hover:bg-stone-100' },
                     { label: 'WIP Report', href: '/wip', color: 'bg-red-50 text-red-900 hover:bg-red-100' },
@@ -456,7 +456,7 @@ function HomeContent() {
                     <Link 
                       key={link.label}
                       href={link.href}
-                      className={`p-3 md:p-4 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-tight text-center transition-all hover:scale-105 active:scale-95 ${link.color}`}
+                      className={`p-3 md:p-4 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-tight leading-tight text-center break-words transition-all hover:scale-105 active:scale-95 ${link.color}`}
                     >
                       {link.label}
                     </Link>

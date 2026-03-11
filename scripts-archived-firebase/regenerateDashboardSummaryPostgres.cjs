@@ -12,6 +12,15 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// ── Status priority (mirrors the fix in projectUtils.ts) ──────────────────
+const STATUS_PRIORITY = {
+  'accepted': 6, 'in progress': 5, 'bid submitted': 4,
+  'estimating': 3, 'complete': 2, 'lost': 1,
+};
+function statusPriority(s) {
+  return STATUS_PRIORITY[(s || '').toLowerCase().trim()] ?? 0;
+}
+
 // ── Status normalisation (mirrors projectUtils.ts normalizeStatus) ─────────
 const STATUS_NORMALIZATION = {
   'bid submitted':    'Bid Submitted',
@@ -180,25 +189,32 @@ async function main() {
 
   const aggregated = [];
   byKey.forEach((rows) => {
-    const base = { ...rows[0] };
-    base.sales  = rows.reduce((s, p) => s + (Number(p.sales)      || 0), 0);
-    base.cost   = rows.reduce((s, p) => s + (Number(p.cost)       || 0), 0);
-    base.hours  = rows.reduce((s, p) => s + (Number(p.hours)      || 0), 0);
-    base.laborSales = rows.reduce((s, p) => s + (Number(p.laborSales) || 0), 0);
-    base.laborCost  = rows.reduce((s, p) => s + (Number(p.laborCost)  || 0), 0);
+    // Only aggregate rows with the highest-priority status to avoid
+    // double-counting when the same project+customer has rows across
+    // multiple statuses (e.g. Bid Submitted → Accepted transition).
+    const maxPri = Math.max(...rows.map(r => statusPriority(r.status)));
+    const dominant = rows.filter(r => statusPriority(r.status) === maxPri);
+    const toSum = dominant.length > 0 ? dominant : rows;
 
-    // Merge pmcGroup from all rows
-    const merged = mergePmcGroups(rows);
+    const base = { ...toSum[0] };
+    base.sales  = toSum.reduce((s, p) => s + (Number(p.sales)      || 0), 0);
+    base.cost   = toSum.reduce((s, p) => s + (Number(p.cost)       || 0), 0);
+    base.hours  = toSum.reduce((s, p) => s + (Number(p.hours)      || 0), 0);
+    base.laborSales = toSum.reduce((s, p) => s + (Number(p.laborSales) || 0), 0);
+    base.laborCost  = toSum.reduce((s, p) => s + (Number(p.laborCost)  || 0), 0);
+
+    // Merge pmcGroup from dominant-status rows only
+    const merged = mergePmcGroups(toSum);
     base._mergedPmcGroup = merged; // temp field for step 3
 
     // Keep most recent date
-    const mostRecent = rows.reduce((latest, r) => {
+    const mostRecent = toSum.reduce((latest, r) => {
       const d = getProjectDate(r);
       const ld = getProjectDate(latest);
       if (!d) return latest;
       if (!ld) return r;
       return d > ld ? r : latest;
-    }, rows[0]);
+    }, toSum[0]);
     base.dateUpdated = mostRecent.dateUpdated;
     base.dateCreated = mostRecent.dateCreated;
 

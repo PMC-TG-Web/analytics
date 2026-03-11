@@ -135,6 +135,15 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
     keyGroupMap.get(key)!.push(project);
   });
   
+  // Status priority for dominant-status selection within a key group
+  const STATUS_PRIORITY: Record<string, number> = {
+    'accepted': 6, 'in progress': 5, 'bid submitted': 4,
+    'estimating': 3, 'complete': 2, 'lost': 1,
+  };
+  function statusPriority(s?: string) {
+    return STATUS_PRIORITY[(s || '').toLowerCase().trim()] ?? 0;
+  }
+
   const aggregated: Project[] = [];
   keyGroupMap.forEach((groupProjects) => {
     const sorted = groupProjects.sort((a, b) => {
@@ -142,20 +151,26 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
       const nameB = (b.projectName ?? "").toString().toLowerCase();
       return nameA.localeCompare(nameB);
     });
-    
-    const baseProject = { ...sorted[0] };
-    baseProject.sales = sorted.reduce((sum, p) => sum + (p.sales ?? 0), 0);
-    baseProject.cost = sorted.reduce((sum, p) => sum + (p.cost ?? 0), 0);
-    baseProject.hours = sorted.reduce((sum, p) => sum + (p.hours ?? 0), 0);
-    baseProject.projectedPreconstHours = sorted.reduce((sum, p) => sum + (Number(p.projectedPreconstHours) || 0), 0);
-    baseProject.laborSales = sorted.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
-    baseProject.laborCost = sorted.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
 
-    // Merge pmcGroup/pmcBreakdown: sum hours per category from all rows in the group
-    // This handles cases where some rows have lineItems-derived breakdowns and others don't
+    // When rows have mixed statuses (e.g. Bid Submitted + Accepted for the same
+    // project), only aggregate rows with the highest-priority status to avoid
+    // double-counting hours across status transitions.
+    const maxPriority = Math.max(...sorted.map(p => statusPriority(p.status)));
+    const dominant = sorted.filter(p => statusPriority(p.status) === maxPriority);
+    const rowsToSum = dominant.length > 0 ? dominant : sorted;
+
+    const baseProject = { ...rowsToSum[0] };
+    baseProject.sales = rowsToSum.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+    baseProject.cost = rowsToSum.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+    baseProject.hours = rowsToSum.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+    baseProject.projectedPreconstHours = rowsToSum.reduce((sum, p) => sum + (Number(p.projectedPreconstHours) || 0), 0);
+    baseProject.laborSales = rowsToSum.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
+    baseProject.laborCost = rowsToSum.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
+
+    // Merge pmcGroup/pmcBreakdown from dominant-status rows only
     const mergedPmcGroup: Record<string, number> = {};
     let anyHasPmcGroup = false;
-    for (const p of sorted) {
+    for (const p of rowsToSum) {
       const pmg = p.pmcGroup;
       if (pmg && typeof pmg === 'object' && !Array.isArray(pmg)) {
         anyHasPmcGroup = true;
@@ -172,13 +187,13 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
       baseProject.pmcBreakdown = mergedPmcGroup;
     }
 
-    const mostRecentProject = sorted.reduce((latest, current) => {
+    const mostRecentProject = rowsToSum.reduce((latest, current) => {
       const latestDate = getProjectDate(latest);
       const currentDate = getProjectDate(current);
       if (!currentDate) return latest;
       if (!latestDate) return current;
       return currentDate > latestDate ? current : latest;
-    }, sorted[0]);
+    }, rowsToSum[0]);
     
     baseProject.dateUpdated = mostRecentProject.dateUpdated;
     baseProject.dateCreated = mostRecentProject.dateCreated;

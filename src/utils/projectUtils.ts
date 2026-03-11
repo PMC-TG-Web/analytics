@@ -151,6 +151,27 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
     baseProject.laborSales = sorted.reduce((sum, p) => sum + (p.laborSales ?? 0), 0);
     baseProject.laborCost = sorted.reduce((sum, p) => sum + (p.laborCost ?? 0), 0);
 
+    // Merge pmcGroup/pmcBreakdown: sum hours per category from all rows in the group
+    // This handles cases where some rows have lineItems-derived breakdowns and others don't
+    const mergedPmcGroup: Record<string, number> = {};
+    let anyHasPmcGroup = false;
+    for (const p of sorted) {
+      const pmg = p.pmcGroup;
+      if (pmg && typeof pmg === 'object' && !Array.isArray(pmg)) {
+        anyHasPmcGroup = true;
+        for (const [cat, hrs] of Object.entries(pmg)) {
+          const h = Number(hrs) || 0;
+          if (h > 0) {
+            mergedPmcGroup[cat] = (mergedPmcGroup[cat] || 0) + h;
+          }
+        }
+      }
+    }
+    if (anyHasPmcGroup) {
+      baseProject.pmcGroup = mergedPmcGroup;
+      baseProject.pmcBreakdown = mergedPmcGroup;
+    }
+
     const mostRecentProject = sorted.reduce((latest, current) => {
       const latestDate = getProjectDate(latest);
       const currentDate = getProjectDate(current);

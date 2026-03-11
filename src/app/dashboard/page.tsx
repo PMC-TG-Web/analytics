@@ -203,6 +203,12 @@ function DashboardContent() {
           const normalizedGroup = group.toLowerCase() === 'management' ? 'PM' : group;
           groups[status].laborByGroup[normalizedGroup] = (groups[status].laborByGroup[normalizedGroup] || 0) + h;
         });
+      } else {
+        // No pmcGroup data — add hours to "Unassigned" so total hours are visible
+        const h = Number(p.hours) || 0;
+        if (h > 0) {
+          groups[status].laborByGroup['Unassigned'] = (groups[status].laborByGroup['Unassigned'] || 0) + h;
+        }
       }
     });
     

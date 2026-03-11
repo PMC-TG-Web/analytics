@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Project } from "@/types";
+import { getProjectLineItems } from "../projectQueries";
 
 interface JobDetailsModalProps {
   isOpen: boolean;
@@ -31,14 +32,61 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
   ];
 
   useEffect(() => {
-    // Load line items from project's customFields instead of API
-    if (isOpen && project) {
-      const customFields = project.customFields as any;
-      const items = customFields?.lineItems || [];
-      setLineItems(items);
+    let cancelled = false;
+
+    async function loadLineItems() {
+      if (!isOpen || !project) return;
+
+      setLoading(true);
       setNewStatus(project.status || "");
       setUpdateMessage(null);
+
+      try {
+        const projectRows = await getProjectLineItems(
+          project.projectNumber || "",
+          project.projectName || "",
+          project.customer || ""
+        );
+
+        const filteredRows = projectRows.filter((row) => {
+          if (row.projectArchived) return false;
+          if (project.status && row.status && row.status !== project.status) return false;
+          return true;
+        });
+
+        const mergedItems = filteredRows.flatMap((row) => {
+          const customFields = row.customFields as any;
+          return Array.isArray(customFields?.lineItems) ? customFields.lineItems : [];
+        });
+
+        const fallbackCustomFields = project.customFields as any;
+        const fallbackItems = Array.isArray(fallbackCustomFields?.lineItems)
+          ? fallbackCustomFields.lineItems
+          : [];
+
+        if (!cancelled) {
+          setLineItems(mergedItems.length > 0 ? mergedItems : fallbackItems);
+        }
+      } catch (error) {
+        const fallbackCustomFields = project.customFields as any;
+        const fallbackItems = Array.isArray(fallbackCustomFields?.lineItems)
+          ? fallbackCustomFields.lineItems
+          : [];
+        if (!cancelled) {
+          setLineItems(fallbackItems);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
+
+    loadLineItems();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, project]);
 
   // Group line items by costType

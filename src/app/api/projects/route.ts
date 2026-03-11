@@ -10,17 +10,23 @@ export async function GET(request: NextRequest) {
     const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
     const pageSize = Math.min(500, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
-    const mode = (searchParams.get('mode') || '').trim().toLowerCase();
     const customer = (searchParams.get('customer') || '').trim();
     const projectNumber = (searchParams.get('projectNumber') || '').trim();
     const projectName = (searchParams.get('projectName') || '').trim();
     const statusesParam = (searchParams.get('statuses') || '').trim();
+    const includeArchived = (searchParams.get('includeArchived') || '').trim().toLowerCase() === 'true';
 
     const statusList = statusesParam
       ? statusesParam.split(',').map((value) => value.trim()).filter((value) => value.length > 0)
       : [];
 
     const where: any = {};
+
+    if (!includeArchived) {
+      where.projectArchived = {
+        not: true,
+      };
+    }
 
     // Remove status filters to ensure Procore items appear
     /*

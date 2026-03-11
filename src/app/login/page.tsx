@@ -28,6 +28,23 @@ function LoginContent() {
 
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
+    } else if (isFramed) {
+      // When embedded in Procore, automatically open the login popup
+      // so the user doesn't have to click a button on session expiry.
+      const rt = returnToParam || "/wip";
+      const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(rt)}`;
+      setStatus("Opening sign-in window...");
+      const popup = window.open(
+        loginUrl,
+        "analytics_auth",
+        "popup=yes,width=520,height=760,left=200,top=80"
+      );
+      if (popup) {
+        startAuthPolling(popup);
+      } else {
+        // Popup blocked — fall back to showing the button.
+        setStatus("Click below to sign in.");
+      }
     }
 
     return () => {
@@ -35,6 +52,7 @@ function LoginContent() {
         window.clearInterval(pollRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const redirectToProcoreApp = () => {

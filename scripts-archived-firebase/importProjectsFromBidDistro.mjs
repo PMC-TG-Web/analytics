@@ -97,7 +97,7 @@ async function main() {
     const status = trim(row.status);
     const estimator = trim(row.estimator);
 
-    const dateUpdated = parseDate(row.dateUpdated) || parseDate(row.ProjectUpdateDate);
+    const dateUpdated = parseDate(row.ProjectUpdateDate || row.dateUpdated);
     const dateCreated = parseDate(row.dateCreated);
 
     const existing = projectMap.get(key) ?? {

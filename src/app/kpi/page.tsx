@@ -753,6 +753,27 @@ function KPIPageContent({
   });
   const bidSubmittedSalesYears = Object.keys(bidSubmittedSalesYearMonthMap).sort();
 
+  const newBidsSalesByMonth: Record<string, number> = {};
+  aggregatedBidSubmittedProjects.forEach((project) => {
+    const createdDate = parseDateValue(project.dateCreated);
+    if (!createdDate) return;
+
+    const sales = Number(project.sales ?? 0);
+    if (!Number.isFinite(sales)) return;
+
+    const monthKey = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
+    newBidsSalesByMonth[monthKey] = (newBidsSalesByMonth[monthKey] || 0) + sales;
+  });
+
+  const newBidsSalesYearMonthMap: Record<string, Record<number, number>> = {};
+  Object.keys(newBidsSalesByMonth).sort().forEach((month) => {
+    const [year, m] = month.split("-");
+    if (!newBidsSalesYearMonthMap[year]) {
+      newBidsSalesYearMonthMap[year] = {};
+    }
+    newBidsSalesYearMonthMap[year][Number(m)] = newBidsSalesByMonth[month];
+  });
+
   const bidSubmittedHoursByMonth: Record<string, number> = {};
   
   // Use the same aggregated pool as Bid Submitted sales, so hours stay consistent
@@ -1421,51 +1442,101 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter).map((year, yearIndex) => {
-                  const total = monthNames.reduce((sum, _, idx) => {
-                    const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                    return sum + calculatedValue;
-                  }, 0);
-                  return (
-                  <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                    <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
-                    {monthNames.map((_, idx) => {
+                {(() => {
+                  const estimateYears = bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter);
+                  const rowColors = ["#15616D", "#E06C00"];
+                  let rowIndex = 0;
+
+                  const rows: React.ReactNode[] = [];
+
+                  estimateYears.forEach((year) => {
+                    const bidsColor = rowColors[rowIndex % 2];
+                    const bidsTotal = monthNames.reduce((sum, _, idx) => {
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
-                      const value = calculatedValue;
-                      
-                      return (
-                        <td 
-                          key={idx} 
-                          style={{ 
-                            padding: "4px 2px", 
-                            textAlign: "center", 
-                            color: value > 0 ? "#15616D" : "#999", 
-                            fontWeight: value > 0 ? 700 : 400, 
-                            fontSize: 12
-                          }}
-                        >
-                          {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                      return sum + calculatedValue;
+                    }, 0);
+
+                    rows.push(
+                      <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                        <td style={{ padding: "4px 6px", color: bidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
+                        {monthNames.map((_, idx) => {
+                          const value = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                          return (
+                            <td
+                              key={idx}
+                              style={{
+                                padding: "4px 2px",
+                                textAlign: "center",
+                                color: value > 0 ? bidsColor : "#999",
+                                fontWeight: value > 0 ? 700 : 400,
+                                fontSize: 12
+                              }}
+                            >
+                              {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: bidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${bidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
-                      );
-                    })}
-                    <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                      ${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                );})}
-                <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal</td>
+                      </tr>
+                    );
+                    rowIndex += 1;
+
+                    const newBidsColor = rowColors[rowIndex % 2];
+                    const newBidsTotal = monthNames.reduce((sum, _, idx) => {
+                      const calculatedValue = newBidsSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + calculatedValue;
+                    }, 0);
+
+                    rows.push(
+                      <tr key={`new-bids-${year}`} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                        <td style={{ padding: "4px 6px", color: newBidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "New Bids" : `New Bids ${year}`}</td>
+                        {monthNames.map((_, idx) => {
+                          const value = newBidsSalesYearMonthMap[year]?.[idx + 1] || 0;
+                          return (
+                            <td
+                              key={idx}
+                              style={{
+                                padding: "4px 2px",
+                                textAlign: "center",
+                                color: value > 0 ? newBidsColor : "#999",
+                                fontWeight: value > 0 ? 700 : 400,
+                                fontSize: 12
+                              }}
+                            >
+                              {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: newBidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          ${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    );
+                    rowIndex += 1;
+                  });
+
+                  const goalColor = rowColors[rowIndex % 2];
+                  rows.push(
+                    <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                      <td style={{ padding: "4px 6px", color: goalColor, fontWeight: 700, fontSize: 13 }}>Goal</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12 }}>
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: goalColor, fontWeight: 700, fontSize: 12 }}>
                       $6,700,000
                     </td>
                   ))}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: goalColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     ${(6700000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
                 </tr>
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                  <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
+                  );
+                  rowIndex += 1;
+
+                  const actHoursColor = rowColors[rowIndex % 2];
+                  rows.push(
+                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: actHoursColor, fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {monthNames.map((_, idx) => {
                     let hours = 0;
                     if (yearFilter) {
@@ -1474,12 +1545,12 @@ function KPIPageContent({
                       hours = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + (yearData[idx + 1] || 0), 0);
                     }
                     return (
-                      <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? "#15616D" : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
+                      <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? actHoursColor : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
                         {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
                       </td>
                     );
                   })}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: actHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(() => {
                       let total = 0;
                       if (yearFilter) {
@@ -1491,17 +1562,26 @@ function KPIPageContent({
                     })()}
                   </td>
                 </tr>
-                <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
+                  );
+                  rowIndex += 1;
+
+                  const goalHoursColor = rowColors[rowIndex % 2];
+                  rows.push(
+                <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
+                  <td style={{ padding: "4px 6px", color: goalHoursColor, fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
                   {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12 }}>
+                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: goalHoursColor, fontWeight: 700, fontSize: 12 }}>
                       29,000
                     </td>
                   ))}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                  <td style={{ padding: "4px 6px", textAlign: "center", color: goalHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(29000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
                 </tr>
+                  );
+
+                  return rows;
+                })()}
               </tbody>
             </table>
           </div>

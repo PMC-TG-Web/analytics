@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/auditLog';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    await logAuditEvent(request, {
+      action: existing ? 'update' : 'create',
+      resource: 'crew-template',
+      target: template.id,
+      details: {
+        name: template.name,
+        memberCount: Array.isArray(membersData.crewMemberIds) ? membersData.crewMemberIds.length : 0,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       data: template,
@@ -112,6 +123,16 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    await logAuditEvent(request, {
+      action: 'update',
+      resource: 'crew-template',
+      target: template.id,
+      details: {
+        name: template.name,
+        updatedFields: Object.keys(body ?? {}),
+      },
+    });
+
     return NextResponse.json({
       success: true,
       data: template,
@@ -139,6 +160,12 @@ export async function DELETE(request: NextRequest) {
 
     await prisma.crewTemplate.delete({
       where: { id },
+    });
+
+    await logAuditEvent(request, {
+      action: 'delete',
+      resource: 'crew-template',
+      target: id,
     });
 
     return NextResponse.json({

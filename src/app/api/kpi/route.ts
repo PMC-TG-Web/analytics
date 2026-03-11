@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/auditLog';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -101,6 +102,17 @@ export async function POST(request: NextRequest) {
         month,
         monthName: getMonthName(month),
         ...updateData,
+      },
+    });
+
+    await logAuditEvent(request, {
+      action: 'update',
+      resource: 'kpi-entry',
+      target: entryKey,
+      details: {
+        year,
+        month,
+        updatedFields: Object.keys(updateData),
       },
     });
 

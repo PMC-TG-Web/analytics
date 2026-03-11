@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { NextResponse } from 'next/server';
+import { logAuditEvent } from '@/lib/auditLog';
+import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
@@ -42,7 +43,7 @@ function choosePrimaryGroup(groupTotals: Record<string, number>) {
   return entries[0][0];
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const csvPath = path.join(process.cwd(), 'Bid_Distro-Preconstruction-Enriched.csv');
     if (!fs.existsSync(csvPath)) {
@@ -143,6 +144,19 @@ export async function POST() {
       if (source === 'customer+name') mappedByCustomerName += 1;
       updated += 1;
     }
+
+    await logAuditEvent(request, {
+      action: 'admin',
+      resource: 'pmc-group-mapping',
+      details: {
+        csvRows: rows.length,
+        projectsScanned: projects.length,
+        projectsUpdated: updated,
+        mappedByTriple,
+        mappedByCustomerName,
+        unmapped,
+      },
+    });
 
     return NextResponse.json({
       success: true,

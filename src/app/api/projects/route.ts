@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/auditLog';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -123,6 +124,18 @@ export async function PUT(request: NextRequest) {
       },
       data: {
         status,
+      },
+    });
+
+    await logAuditEvent(request, {
+      action: 'update',
+      resource: 'project-status',
+      target: `${customer ?? 'unknown-customer'}|${projectNumber ?? 'unknown-project'}`,
+      details: {
+        status,
+        customer,
+        projectNumber,
+        updatedCount: updated.count,
       },
     });
 

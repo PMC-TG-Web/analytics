@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
+import { hasPageAccess, resolvePermissionForPath } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rateLimit';
+
+const API_RATE_LIMIT = 300;
+const API_RATE_WINDOW_MS = 60 * 1000;
 
 export async function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
@@ -13,11 +18,8 @@ export async function middleware(request: NextRequest) {
     !auth0Secret;
 
   const { pathname } = request.nextUrl;
-
-  // Skip auth for API routes (except auth routes themselves)
-  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/')) {
-    return NextResponse.next();
-  }
+  const isApiRoute = pathname.startsWith('/api/');
+  const isAuthApiRoute = pathname.startsWith('/api/auth/');
 
   // In dev mode without Auth0 config, bypass all middleware
   if (isDev && auth0Misconfigured) {
@@ -26,13 +28,45 @@ export async function middleware(request: NextRequest) {
 
   // In production or if Auth0 is configured, enforce auth
   // Allow auth routes
-  if (pathname.startsWith('/api/auth/')) {
+  if (isAuthApiRoute) {
     const response = await auth0.middleware(request);
     return response;
   }
 
+  let apiRateLimit:
+    | ReturnType<typeof checkRateLimit>
+    | null = null;
+
+  if (isApiRoute) {
+    const clientId = getClientIdentifier(request.headers);
+    apiRateLimit = checkRateLimit({
+      key: `${clientId}:${pathname}`,
+      limit: API_RATE_LIMIT,
+      windowMs: API_RATE_WINDOW_MS,
+    });
+
+    if (apiRateLimit.limited) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(apiRateLimit.retryAfter),
+            'X-RateLimit-Limit': String(apiRateLimit.limit),
+            'X-RateLimit-Remaining': String(apiRateLimit.remaining),
+            'X-RateLimit-Reset': String(Math.floor(apiRateLimit.resetAt / 1000)),
+          },
+        }
+      );
+    }
+  }
+
   // Allow login page
   if (pathname === '/login') {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/forbidden') {
     return NextResponse.next();
   }
 
@@ -43,9 +77,40 @@ export async function middleware(request: NextRequest) {
 
   const session = await auth0.getSession(request);
   if (!session) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { success: false, error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('returnTo', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  const userEmail = session.user.email ?? null;
+  const requiredPermission = resolvePermissionForPath(pathname);
+
+  if (requiredPermission && !hasPageAccess(userEmail, requiredPermission)) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+    const forbiddenUrl = new URL('/forbidden', request.url);
+    forbiddenUrl.searchParams.set('from', pathname);
+    return NextResponse.redirect(forbiddenUrl);
+  }
+
+  if (isApiRoute && apiRateLimit) {
+    const response = NextResponse.next();
+    response.headers.set('X-RateLimit-Limit', String(apiRateLimit.limit));
+    response.headers.set('X-RateLimit-Remaining', String(apiRateLimit.remaining));
+    response.headers.set('X-RateLimit-Reset', String(Math.floor(apiRateLimit.resetAt / 1000)));
+    return response;
   }
 
   return await auth0.middleware(request);

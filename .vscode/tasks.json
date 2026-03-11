@@ -119,6 +119,11 @@
 			"label": "Check Job Key Formats Deep Search",
 			"type": "shell",
 			"command": "node scripts/checkJobKeyFormats.mjs"
+		},
+		{
+			"label": "Verify Procore Iframe Headers",
+			"type": "shell",
+			"command": "node scripts/verifyIframeHeaders.mjs https://analytics-nine-phi.vercel.app"
 		}
 	]
 }

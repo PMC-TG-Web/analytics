@@ -1,5 +1,15 @@
 import type { NextConfig } from "next";
 
+const frameAncestors = [
+  "'self'",
+  "https://*.procore.com",
+  "https://procore.com",
+  ...(process.env.FRAME_ANCESTORS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+].join(" ");
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
   images: {
@@ -13,10 +23,6 @@ const nextConfig: NextConfig = {
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains; preload",
-          },
-          {
-            key: "X-Frame-Options",
-            value: "DENY",
           },
           {
             key: "X-Content-Type-Options",
@@ -33,7 +39,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:;",
+              `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:; frame-ancestors ${frameAncestors};`,
           },
           {
             key: "Permissions-Policy",

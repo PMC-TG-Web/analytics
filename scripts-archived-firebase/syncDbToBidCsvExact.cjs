@@ -131,7 +131,7 @@ async function main() {
         laborSales: 0,
         laborCost: 0,
         dateCreated: parseDate(r.dateCreated),
-        dateUpdated: parseDate(r.dateUpdated || r.ProjectUpdateDate),
+        dateUpdated: parseDate(r.ProjectUpdateDate || r.dateUpdated),
         lineCount: 0,
       });
     }
@@ -145,7 +145,7 @@ async function main() {
     g.lineCount += 1;
 
     const dCreated = parseDate(r.dateCreated);
-    const dUpdated = parseDate(r.dateUpdated || r.ProjectUpdateDate);
+    const dUpdated = parseDate(r.ProjectUpdateDate || r.dateUpdated);
     if (dCreated && (!g.dateCreated || dCreated > g.dateCreated)) g.dateCreated = dCreated;
     if (dUpdated && (!g.dateUpdated || dUpdated > g.dateUpdated)) g.dateUpdated = dUpdated;
   }

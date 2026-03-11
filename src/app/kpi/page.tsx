@@ -38,6 +38,8 @@ type Project = {
   sales?: number;
   cost?: number;
   hours?: number;
+  ProjectUpdateDate?: any;
+  projectUpdateDate?: any;
   dateCreated?: any;
   dateUpdated?: any;
   projectArchived?: boolean;
@@ -285,10 +287,80 @@ const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> =
 };
 
 function getProjectDate(project: any) {
+  const projectUpdated = parseDateValue(project.ProjectUpdateDate ?? project.projectUpdateDate);
+  if (projectUpdated) return projectUpdated;
+
   const created = parseDateValue(project.dateCreated);
   const updated = parseDateValue(project.dateUpdated);
   if (updated && updated.getFullYear() >= 2026) return updated;
   return created || updated || null;
+}
+
+function selectBestProjectEntry(projects: Project[]) {
+  if (projects.length === 0) return null;
+
+  const preferredStatuses = new Set(["Accepted", "In Progress"]);
+  const preferredCandidates = projects.filter((project) => preferredStatuses.has((project.status || "").toString().trim()));
+  const candidates = preferredCandidates.length > 0 ? preferredCandidates : projects;
+
+  return candidates.reduce((best, current) => {
+    const bestDate = getProjectDate(best);
+    const currentDate = getProjectDate(current);
+
+    if (currentDate && !bestDate) return current;
+    if (currentDate && bestDate && currentDate.getTime() > bestDate.getTime()) return current;
+    if (currentDate && bestDate && currentDate.getTime() < bestDate.getTime()) return best;
+
+    const bestCreated = parseDateValue(best.dateCreated) || new Date(0);
+    const currentCreated = parseDateValue(current.dateCreated) || new Date(0);
+    if (currentCreated.getTime() > bestCreated.getTime()) return current;
+    if (currentCreated.getTime() < bestCreated.getTime()) return best;
+
+    const bestCustomer = (best.customer || "").toString();
+    const currentCustomer = (current.customer || "").toString();
+    return currentCustomer.localeCompare(bestCustomer) < 0 ? current : best;
+  }, candidates[0]);
+}
+
+function dedupeProjectsByName(projects: Project[]) {
+  const projectNameMap = new Map<string, Project[]>();
+
+  projects.forEach((project) => {
+    const projectName = (project.projectName || "").toString().trim();
+    if (!projectName) return;
+    if (!projectNameMap.has(projectName)) {
+      projectNameMap.set(projectName, []);
+    }
+    projectNameMap.get(projectName)!.push(project);
+  });
+
+  return Array.from(projectNameMap.values())
+    .map((items) => selectBestProjectEntry(items))
+    .filter((project): project is Project => Boolean(project));
+}
+
+function aggregateProjectsByFullKey(projects: Project[]) {
+  const keyGroupMap = new Map<string, Project[]>();
+
+  projects.forEach((project) => {
+    const key = `${project.customer ?? ""}~${project.projectNumber ?? ""}~${project.projectName ?? ""}`;
+    if (!keyGroupMap.has(key)) {
+      keyGroupMap.set(key, []);
+    }
+    keyGroupMap.get(key)!.push(project);
+  });
+
+  const aggregated: Project[] = [];
+  keyGroupMap.forEach((items) => {
+    const selected = selectBestProjectEntry(items) || items[0];
+    const base = { ...selected };
+    base.sales = items.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+    base.cost = items.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+    base.hours = items.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+    aggregated.push(base);
+  });
+
+  return aggregated;
 }
 
 export default function KPIPage() {
@@ -616,117 +688,32 @@ function KPIPageContent({
 
   const qualifyingStatuses = ["In Progress", "Accepted", "Complete"];
 
-  const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
-    const activeProjects = projects.filter((project: Project) => !isExcludedFromKPI(project));
-    
-    const projectIdentifierMap = new Map<string, Project[]>();
-    activeProjects.forEach((project: Project) => {
-      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
-      if (!identifier) return;
-      
-      if (!projectIdentifierMap.has(identifier)) {
-        projectIdentifierMap.set(identifier, []);
-      }
-      projectIdentifierMap.get(identifier)!.push(project);
-    });
-    
-    const dedupedByCustomer: Project[] = [];
-    projectIdentifierMap.forEach((projectList) => {
-      const customerMap = new Map<string, Project[]>();
-      projectList.forEach(p => {
-        const customer = (p.customer ?? "").toString().trim();
-        if (!customerMap.has(customer)) {
-          customerMap.set(customer, []);
-        }
-        customerMap.get(customer)!.push(p);
-      });
-      
-      if (customerMap.size > 1) {
-        const priorityStatuses = ["Accepted", "In Progress", "Complete"];
-        let selectedCustomer: string = "";
-        let selectedProjects: Project[] = [];
-        
-        let foundPriorityCustomer = false;
-        customerMap.forEach((projs, customer) => {
-          const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
-          if (hasPriorityStatus && !foundPriorityCustomer) {
-            selectedCustomer = customer;
-            selectedProjects = projs;
-            foundPriorityCustomer = true;
-          }
-        });
-        
-        if (!foundPriorityCustomer) {
-          let latestCustomer: string = "";
-          let latestDate: Date | null = null;
-          let maxSales: number = -1;
-          
-          customerMap.forEach((projs, customer) => {
-            const mostRecentProj = projs.reduce((latest, current) => {
-              const currentDate = getProjectDate(current);
-              const latestDateVal = getProjectDate(latest);
-              if (!currentDate) return latest;
-              if (!latestDateVal) return current;
-              return currentDate > latestDateVal ? current : latest;
-            }, projs[0]);
-            
-            const projDate = getProjectDate(mostRecentProj);
-            const projSales = projs.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
+  const filteredProjects = useMemo(
+    () => projects.filter((project: Project) => !isExcludedFromKPI(project)),
+    [projects]
+  );
 
-            // Prioritize highest sales volume if dates are similar, to avoid picking a $0 bid
-            if (projDate && (!latestDate || projDate > latestDate || (projDate.getTime() === latestDate.getTime() && projSales > maxSales))) {
-              latestDate = projDate;
-              latestCustomer = customer;
-              maxSales = projSales;
-            }
-          });
-          
-          selectedCustomer = latestCustomer;
-          selectedProjects = customerMap.get(latestCustomer) || [];
-        }
-        
-        dedupedByCustomer.push(...selectedProjects);
-      } else {
-        projectList.forEach(p => dedupedByCustomer.push(p));
-      }
-    });
-    
-    const keyGroupMap = new Map<string, Project[]>();
-    dedupedByCustomer.forEach((project) => {
-      const key = getProjectKey(project.customer, project.projectNumber, project.projectName);
-      if (!keyGroupMap.has(key)) {
-        keyGroupMap.set(key, []);
-      }
-      keyGroupMap.get(key)!.push(project);
-    });
-    
-    const map = new Map<string, Project>();
-    keyGroupMap.forEach((projects, key) => {
-      const sortedProjects = projects.sort((a, b) => {
-        const nameA = (a.projectName ?? "").toString().toLowerCase();
-        const nameB = (b.projectName ?? "").toString().toLowerCase();
-        return nameA.localeCompare(nameB);
-      });
-      
-      const baseProject = { ...sortedProjects[0] };
-      
-      baseProject.sales = sortedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
-      baseProject.cost = sortedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
-      baseProject.hours = sortedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
-      
-      map.set(key, baseProject);
-    });
-    return { aggregated: Array.from(map.values()), dedupedByCustomer };
-  }, [projects]);
+  const dedupedProjects = useMemo(() => dedupeProjectsByName(filteredProjects), [filteredProjects]);
 
-  // Bid Submitted sales - use the AGGREGATED (deduplicated) projects, not dedupedByCustomer
+  const aggregatedProjects = useMemo(() => aggregateProjectsByFullKey(dedupedProjects), [dedupedProjects]);
+
+  const aggregatedBidSubmittedProjects = useMemo(
+    () => aggregatedProjects.filter((project) => (project.status || "").toString().trim() === "Bid Submitted"),
+    [aggregatedProjects]
+  );
+
+  console.log("[KPI] Total projects:", projects.length);
+  console.log("[KPI] Filtered projects:", filteredProjects.length);
+
+  // Bid Submitted sales by month - use aggregatedProjects so we keep one
+  // selected customer version per project identifier.
   const bidSubmittedSalesByMonth: Record<string, number> = {};
   
   let bidSubmittedTotal = 0;
   let bidSubmittedWithDates = 0;
   let bidSubmittedWithoutDates = 0;
   
-  aggregatedProjects.forEach((project) => {
+  aggregatedBidSubmittedProjects.forEach((project) => {
     const status = (project.status || "").toString().trim();
     if (status !== "Bid Submitted") return;
     
@@ -746,7 +733,7 @@ function KPIPageContent({
   });
   
   console.log("[KPI] === Bid Submitted Breakdown ===");
-  console.log(`[KPI] Total Bid Submitted projects (deduplicated): ${aggregatedProjects.filter(p => (p.status || "").toString().trim() === "Bid Submitted").length}`);
+  console.log(`[KPI] Total Bid Submitted projects (deduplicated): ${aggregatedBidSubmittedProjects.length}`);
   console.log(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
   console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
   console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
@@ -768,128 +755,31 @@ function KPIPageContent({
 
   const bidSubmittedHoursByMonth: Record<string, number> = {};
   
-  // Filter projects first (like dashboard does), then deduplicate
-  const filteredProjects = projects.filter((project: Project) => !isExcludedFromKPI(project));
-  
-  console.log("[KPI] Total projects:", projects.length);
-  console.log("[KPI] Filtered projects:", filteredProjects.length);
-  
-  // Deduplicate by project, selecting one customer per project, then sum hours
-  const projectIdentifierMap = new Map<string, Project[]>();
-  filteredProjects.forEach((project: Project) => {
-    const identifier = (project.projectNumber || project.projectName || "").toString().trim();
-    if (!identifier) return;
-    if (!projectIdentifierMap.has(identifier)) {
-      projectIdentifierMap.set(identifier, []);
+  // Use the same aggregated pool as Bid Submitted sales, so hours stay consistent
+  aggregatedBidSubmittedProjects.forEach((project) => {
+    const status = (project.status || "").toString().trim();
+    if (status !== "Bid Submitted") return;
+
+    const projectDate = getProjectDate(project);
+    if (!projectDate) return;
+
+    if (startDate || endDate) {
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (projectDate < start) return;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (projectDate > end) return;
+      }
     }
-    projectIdentifierMap.get(identifier)!.push(project);
-  });
-  
-  projectIdentifierMap.forEach((projectList) => {
-    // Group by customer
-    const customerMap = new Map<string, Project[]>();
-    projectList.forEach(p => {
-      const customer = (p.customer ?? "").toString().trim();
-      if (!customerMap.has(customer)) {
-        customerMap.set(customer, []);
-      }
-      customerMap.get(customer)!.push(p);
-    });
-    
-    // Pick one customer
-    let chosenCustomer: string = "";
-    let chosenProjects: Project[] = [];
-    
-    if (customerMap.size > 1) {
-      const priorityStatuses = ["Accepted", "In Progress", "Complete"];
-      let foundPriority = false;
-      
-      // First try to find a customer with priority status
-      customerMap.forEach((projs, customer) => {
-        if (!foundPriority && projs.some(p => priorityStatuses.includes(p.status || ""))) {
-          chosenCustomer = customer;
-          chosenProjects = projs;
-          foundPriority = true;
-        }
-      });
-      
-      // If no priority status, pick the most recent, then alphabetical
-      if (!foundPriority) {
-        let latestCustomer = "";
-        let latestDate: Date | null = null;
-        const customerDates: Array<[string, Date | null, number]> = [];
-        
-        customerMap.forEach((projs, customer) => {
-          const mostRecent = projs.reduce((latest, current) => {
-            const currentDate = getProjectDate(current);
-            const latestDateVal = getProjectDate(latest);
-            if (!currentDate) return latest;
-            if (!latestDateVal) return current;
-            return currentDate > latestDateVal ? current : latest;
-          }, projs[0]);
-          
-          const projDate = getProjectDate(mostRecent);
-          const projSales = projs.reduce((sum, p) => sum + (Number(p.sales) || 0), 0);
-          customerDates.push([customer, projDate, projSales]);
-        });
-        
-        // Sort by date descending, then by sales descending, then by customer name ascending
-        customerDates.sort((a, b) => {
-          if (a[1] && b[1]) {
-            if (a[1].getTime() !== b[1].getTime()) {
-              return b[1].getTime() - a[1].getTime();
-            }
-          } else if (a[1]) {
-            return -1;
-          } else if (b[1]) {
-            return 1;
-          }
-          
-          // Dates are equal or both missing, sort by sales
-          const salesA = a[2] as number;
-          const salesB = b[2] as number;
-          if (salesA !== salesB) return salesB - salesA;
-          
-          return (a[0] as string).localeCompare(b[0] as string);
-        });
-        
-        chosenCustomer = customerDates[0][0] as string;
-        chosenProjects = customerMap.get(chosenCustomer) || [];
-      }
-    } else {
-      // Only one customer, take all their entries
-      customerMap.forEach((projs) => {
-        chosenProjects = projs;
-      });
-    }
-    
-    // Sum hours for chosen customer's entries
-    chosenProjects.forEach((project) => {
-      const status = (project.status || "").toString().trim();
-      if (status !== "Bid Submitted") return;
-      
-      const projectDate = getProjectDate(project);
-      if (!projectDate) return;
-      
-      // Apply date range filter
-      if (startDate || endDate) {
-        if (startDate) {
-          const start = new Date(startDate);
-          start.setHours(0, 0, 0, 0);
-          if (projectDate < start) return;
-        }
-        if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (projectDate > end) return;
-        }
-      }
-      
-      const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
-      const hours = Number(project.hours ?? 0);
-      if (!Number.isFinite(hours)) return;
-      bidSubmittedHoursByMonth[monthKey] = (bidSubmittedHoursByMonth[monthKey] || 0) + hours;
-    });
+
+    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+    const hours = Number(project.hours ?? 0);
+    if (!Number.isFinite(hours)) return;
+    bidSubmittedHoursByMonth[monthKey] = (bidSubmittedHoursByMonth[monthKey] || 0) + hours;
   });
   const bidSubmittedHoursYearMonthMap: Record<string, Record<number, number>> = {};
   Object.keys(bidSubmittedHoursByMonth).forEach((month) => {
@@ -902,78 +792,30 @@ function KPIPageContent({
 
   // In Progress hours calculation
   const inProgressHoursByMonth: Record<string, number> = {};
-  projectIdentifierMap.forEach((projectList) => {
-    const customerMap = new Map<string, Project[]>();
-    projectList.forEach(p => {
-      const customer = (p.customer ?? "").toString().trim();
-      if (!customerMap.has(customer)) {
-        customerMap.set(customer, []);
+  aggregatedProjects.forEach((project) => {
+    const status = (project.status || "").trim();
+    if (!qualifyingStatuses.includes(status)) return;
+
+    const projectDate = getProjectDate(project);
+    if (!projectDate) return;
+
+    if (startDate || endDate) {
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (projectDate < start) return;
       }
-      customerMap.get(customer)!.push(p);
-    });
-    
-    let chosenProjects: Project[] = [];
-    if (customerMap.size > 1) {
-      const priorityStatuses = ["Accepted", "In Progress", "Complete"];
-      let foundPriority = false;
-      customerMap.forEach((projs, customer) => {
-        if (!foundPriority && projs.some(p => priorityStatuses.includes(p.status || ""))) {
-          chosenProjects = projs;
-          foundPriority = true;
-        }
-      });
-      if (!foundPriority) {
-        const customerDates: Array<[string, Date | null]> = [];
-        customerMap.forEach((projs, customer) => {
-          const mostRecent = projs.reduce((latest, current) => {
-            const currentDate = parseDateValue(current.dateCreated);
-            const latestDateVal = parseDateValue(latest.dateCreated);
-            if (!currentDate) return latest;
-            if (!latestDateVal) return current;
-            return currentDate > latestDateVal ? current : latest;
-          }, projs[0]);
-          const projDate = parseDateValue(mostRecent.dateCreated);
-          customerDates.push([customer, projDate]);
-        });
-        customerDates.sort((a, b) => {
-          if (a[1] && b[1]) {
-            if (a[1] !== b[1]) return b[1].getTime() - a[1].getTime();
-          }
-          return a[0].localeCompare(b[0]);
-        });
-        chosenProjects = customerMap.get(customerDates[0][0]) || [];
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (projectDate > end) return;
       }
-    } else {
-      customerMap.forEach((projs) => {
-        chosenProjects = projs;
-      });
     }
-    
-    chosenProjects.forEach((project) => {
-      const status = (project.status || "").trim();
-      if (!qualifyingStatuses.includes(status)) return;
-      
-      const projectDate = getProjectDate(project);
-      if (!projectDate) return;
-      
-      if (startDate || endDate) {
-        if (startDate) {
-          const start = new Date(startDate);
-          start.setHours(0, 0, 0, 0);
-          if (projectDate < start) return;
-        }
-        if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (projectDate > end) return;
-        }
-      }
-      
-      const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
-      const hours = Number(project.hours ?? 0);
-      if (!Number.isFinite(hours)) return;
-      inProgressHoursByMonth[monthKey] = (inProgressHoursByMonth[monthKey] || 0) + hours;
-    });
+
+    const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+    const hours = Number(project.hours ?? 0);
+    if (!Number.isFinite(hours)) return;
+    inProgressHoursByMonth[monthKey] = (inProgressHoursByMonth[monthKey] || 0) + hours;
   });
   
   const inProgressHoursYearMonthMap: Record<string, Record<number, number>> = {};
@@ -1070,7 +912,7 @@ function KPIPageContent({
   const scheduledSalesByMonth: Record<string, number> = {};
   
   const scheduleSalesMap = new Map<string, number>();
-  projects.forEach((project: Project) => {
+  aggregatedProjects.forEach((project: Project) => {
     if (!qualifyingStatuses.includes(project.status || "")) return;
     
     const key = getProjectKey(project.customer, project.projectNumber, project.projectName);

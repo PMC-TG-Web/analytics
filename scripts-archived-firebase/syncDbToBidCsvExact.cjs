@@ -82,6 +82,12 @@ function parseDate(v) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function parseBoolean(v) {
+  if (!v) return false;
+  const s = String(v).trim().toLowerCase();
+  return s === 'true' || s === 'yes' || s === '1' || s === 'y';
+}
+
 async function main() {
   const csvPath = path.join(__dirname, '..', 'Bid_Distro-Preconstruction (1).csv');
   if (!fs.existsSync(csvPath)) {
@@ -134,6 +140,7 @@ async function main() {
         dateUpdated: parseDate(r.ProjectUpdateDate || r.dateUpdated),
         lineCount: 0,
         allLineItems: [],
+        projectArchived: parseBoolean(r.ProjectArchived),
       });
     }
 
@@ -227,7 +234,7 @@ async function main() {
           laborCost: csv.laborCost,
           dateCreated: csv.dateCreated,
           dateUpdated: csv.dateUpdated,
-          projectArchived: false,
+          projectArchived: csv.projectArchived,
           customFields: {
             ...existingCf,
             source: 'Bid_Distro-Preconstruction.csv',
@@ -240,11 +247,21 @@ async function main() {
       updated++;
 
       for (const ex of extras) {
-        await prisma.project.update({
-          where: { id: ex.id },
-          data: { projectArchived: true },
-        });
-        archivedDuplicates++;
+        // Only archive duplicates if the CSV says to archive the project
+        if (!csv.projectArchived) {
+          // Project is active in CSV, unarchive duplicates
+          await prisma.project.update({
+            where: { id: ex.id },
+            data: { projectArchived: false },
+          });
+        } else {
+          // Project is archived in CSV, archive duplicates
+          await prisma.project.update({
+            where: { id: ex.id },
+            data: { projectArchived: true },
+          });
+          archivedDuplicates++;
+        }
       }
     } else {
       await prisma.project.create({
@@ -261,7 +278,7 @@ async function main() {
           laborCost: csv.laborCost,
           dateCreated: csv.dateCreated,
           dateUpdated: csv.dateUpdated,
-          projectArchived: false,
+          projectArchived: csv.projectArchived,
           customFields: {
             source: 'Bid_Distro-Preconstruction.csv',
             csvSyncExact: true,

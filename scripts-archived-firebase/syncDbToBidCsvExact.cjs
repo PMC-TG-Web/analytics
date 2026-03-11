@@ -133,6 +133,7 @@ async function main() {
         dateCreated: parseDate(r.dateCreated),
         dateUpdated: parseDate(r.ProjectUpdateDate || r.dateUpdated),
         lineCount: 0,
+        allLineItems: [],
       });
     }
 
@@ -143,6 +144,18 @@ async function main() {
     g.laborSales += parseNum(r.LaborSales);
     g.laborCost += parseNum(r.LaborCost);
     g.lineCount += 1;
+
+   g.allLineItems.push({
+     costitems: r.Costitems?.trim() || '',
+     costType: r.CostType?.trim() || '',
+     quantity: parseNum(r.Quantity),
+     sales: parseNum(r.sales),
+     cost: parseNum(r.cost),
+     hours: parseNum(r.hours),
+     laborSales: parseNum(r.LaborSales),
+     laborCost: parseNum(r.LaborCost),
+     scopeOfWork: r.ScopeOfWork?.trim() || '',
+   });
 
     const dCreated = parseDate(r.dateCreated);
     const dUpdated = parseDate(r.ProjectUpdateDate || r.dateUpdated);
@@ -220,6 +233,7 @@ async function main() {
             source: 'Bid_Distro-Preconstruction.csv',
             csvSyncExact: true,
             csvLineCount: csv.lineCount,
+            lineItems: csv.allLineItems,
           },
         },
       });
@@ -252,6 +266,7 @@ async function main() {
             source: 'Bid_Distro-Preconstruction.csv',
             csvSyncExact: true,
             csvLineCount: csv.lineCount,
+            lineItems: csv.allLineItems,
           },
         },
       });

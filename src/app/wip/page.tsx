@@ -801,22 +801,8 @@ function WIPReportContent() {
       });
     });
     
-    // Simple pool breakdown from in-progress schedules
-    const allSchedulesHours = inProgressSchedules.reduce((sum, s) => sum + (s.totalHours || 0), 0);
-    
-    // Add projects that don't have schedules yet (always included in pool)
-    const scheduledJobKeysInMemo = new Set(inProgressSchedules.map(s => 
-      s.jobKey || `${s.customer || ""}~${s.projectNumber || ""}~${s.projectName || ""}`
-    ));
-    
-    const projectsWithoutSchedulesInMemo = projects
-      .filter(p => {
-        const key = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-        return (p.status || "").toString().toLowerCase().trim() === "in progress" && !scheduledJobKeysInMemo.has(key);
-      });
-    
-    const projectsWithoutSchedulesHours = projectsWithoutSchedulesInMemo.reduce((sum, p) => sum + (p.hours || 0), 0);
-    let totalPoolHours = allSchedulesHours + projectsWithoutSchedulesHours;
+    // Total pool should be based on the same deduped/filtered in-progress dataset
+    const totalPoolHours = inProgressSchedules.reduce((sum, s) => sum + (s.totalHours || 0), 0);
     const poolBreakdown = inProgressSchedules.map(s => ({
       jobKey: s.jobKey || "",
       budget: s.totalHours || 0,
@@ -987,20 +973,8 @@ function WIPReportContent() {
   // Unscheduled = jobs with zero allocation across ALL years
   const inProgressProjects = schedulePageJobs;
 
-  // Add projects that don't have schedules yet
-  const scheduledJobKeys = new Set(inProgressProjects.map(s => 
-    s.jobKey || `${s.customer || ""}~${s.projectNumber || ""}~${s.projectName || ""}`
-  ));
-  
-  const projectsWithoutSchedules = projects
-    .filter(p => {
-      const key = p.jobKey || `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-      return (p.status || "").toString().toLowerCase().trim() === "in progress" && !scheduledJobKeys.has(key);
-    });
-
-  // Total pool = all In Progress schedules + projects without schedules (CONSTANT)
-  const totalPoolHoursForUnscheduled = inProgressProjects.reduce((sum, s) => sum + (s.totalHours || 0), 0) +
-    projectsWithoutSchedules.reduce((sum, p) => sum + (p.hours || 0), 0);
+  // Total pool = all qualifying In Progress jobs from the same filtered dataset
+  const totalPoolHoursForUnscheduled = inProgressProjects.reduce((sum, s) => sum + (s.totalHours || 0), 0);
 
   // Calculate scheduled hours - respects year filter
   let scheduledHoursForQualifying = inProgressProjects.reduce((sum, schedule) => {
@@ -1017,7 +991,7 @@ function WIPReportContent() {
   const trulyUnscheduledPool = inProgressProjects.filter(schedule => {
     const totalAllocation = normalizeAllocations(schedule.allocations).reduce((sum, alloc) => sum + (alloc.percent || 0), 0);
     return totalAllocation === 0;
-  }).reduce((sum, s) => sum + (s.totalHours || 0), 0) + projectsWithoutSchedules.reduce((sum, p) => sum + (p.hours || 0), 0);
+  }).reduce((sum, s) => sum + (s.totalHours || 0), 0);
 
   const unscheduledHours = trulyUnscheduledPool;
 
@@ -1571,9 +1545,8 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
   const currentMonthIndex = sortedMonths.indexOf(currentYearMonth);
   
   // Calculate Leadtime - Box pattern with all hours:
-  // Calculate total of ALL scheduled hours (all months)
-  // Past months: frozen at their end-of-month value (visual reference)
-  // Current month and beyond: dynamic (includes all future work)
+  // Past months: frozen at month-end backlog (remaining hours AFTER that month).
+  // Current month and beyond: dynamic using current total scheduled backlog.
   const totalAllHours = sortedMonths.reduce((sum, month) => {
     return sum + (monthlyData[month]?.hours || 0);
   }, 0);
@@ -1582,16 +1555,11 @@ function HoursLineChart({ months, monthlyData, projects, yearFilter }: { months:
   
   sortedMonths.forEach((month, index) => {
     if (index < currentMonthIndex) {
-      // Past months: locked at their final cumulative value through that month
-      // Special case: Jan 2026 is hard-coded as 6.2
-      if (month === "2026-01") {
-        leadtimeData.push(6.2);
-      } else {
-        const cumulativeThrough = sortedMonths.slice(0, index + 1).reduce((sum, m) => {
-          return sum + (monthlyData[m]?.hours || 0);
-        }, 0);
-        leadtimeData.push(cumulativeThrough / 3938);
-      }
+      // Past months: locked at month-end remaining backlog
+      const remainingAfterMonth = sortedMonths.slice(index + 1).reduce((sum, m) => {
+        return sum + (monthlyData[m]?.hours || 0);
+      }, 0);
+      leadtimeData.push(remainingAfterMonth / 3938);
     } else {
       // Current month and future: dynamic using all hours total
       leadtimeData.push(totalAllHours / 3938);

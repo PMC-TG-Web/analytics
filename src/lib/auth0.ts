@@ -16,7 +16,7 @@ export const auth0 = new Auth0Client({
     // Keep users logged in for 30 days (absolute max).
     // Rolling: extend by 7 days each time they visit, up to the absolute limit.
     rolling: true,
-    rollingDuration: 60 * 60 * 24 * 7,      // 7 days
+    inactivityDuration: 60 * 60 * 24 * 7,   // 7 days
     absoluteDuration: 60 * 60 * 24 * 30,   // 30 days
     cookie: {
       sameSite: 'none',

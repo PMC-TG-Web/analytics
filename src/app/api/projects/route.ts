@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
     const pageSize = Math.min(500, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
+    const includeTotal = (searchParams.get('includeTotal') || '').trim().toLowerCase() === 'true';
     const customer = (searchParams.get('customer') || '').trim();
     const projectNumber = (searchParams.get('projectNumber') || '').trim();
     const projectName = (searchParams.get('projectName') || '').trim();
@@ -57,27 +58,47 @@ export async function GET(request: NextRequest) {
     }
 
     const queryWhere = Object.keys(where).length > 0 ? where : undefined;
+    const baseFindManyArgs = {
+      orderBy: {
+        projectName: 'asc' as const, // Reverted from procoreLastSync to ensure it works without a new migration
+      },
+      skip,
+    };
 
-    // Get all projects with status logic
-    const [total, projects] = await Promise.all([
-      queryWhere ? prisma.project.count({ where: queryWhere }) : prisma.project.count(),
-      queryWhere
-        ? prisma.project.findMany({
+    let total: number | undefined;
+    let hasNextPage = false;
+    let projects;
+
+    if (includeTotal) {
+      [total, projects] = await Promise.all([
+        queryWhere ? prisma.project.count({ where: queryWhere }) : prisma.project.count(),
+        queryWhere
+          ? prisma.project.findMany({
+              where: queryWhere,
+              ...baseFindManyArgs,
+              take: pageSize,
+            })
+          : prisma.project.findMany({
+              ...baseFindManyArgs,
+              take: pageSize,
+            }),
+      ]);
+      hasNextPage = skip + projects.length < total;
+    } else {
+      const pagePlusOne = queryWhere
+        ? await prisma.project.findMany({
             where: queryWhere,
-            orderBy: {
-              projectName: 'asc', // Reverted from procoreLastSync to ensure it works without a new migration
-            },
-            skip,
-            take: pageSize,
+            ...baseFindManyArgs,
+            take: pageSize + 1,
           })
-        : prisma.project.findMany({
-            orderBy: {
-              projectName: 'asc', // Reverted from procoreLastSync to ensure it works without a new migration
-            },
-            skip,
-            take: pageSize,
-          }),
-    ]);
+        : await prisma.project.findMany({
+            ...baseFindManyArgs,
+            take: pageSize + 1,
+          });
+
+      hasNextPage = pagePlusOne.length > pageSize;
+      projects = hasNextPage ? pagePlusOne.slice(0, pageSize) : pagePlusOne;
+    }
 
     const projectsWithPMC = projects.map((project) => {
       const customFields =
@@ -92,16 +113,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const totalPages = includeTotal && typeof total === 'number'
+      ? Math.max(1, Math.ceil(total / pageSize))
+      : (hasNextPage ? page + 1 : page);
 
     return NextResponse.json({
       success: true,
       count: projectsWithPMC.length,
-      total,
+      ...(typeof total === 'number' ? { total } : {}),
       page,
       pageSize,
       totalPages,
-      hasNextPage: page < totalPages,
+      hasNextPage,
       hasPreviousPage: page > 1,
       data: projectsWithPMC,
     });

@@ -57,18 +57,20 @@ export async function GET(request: NextRequest) {
     }
 
     const queryWhere = Object.keys(where).length > 0 ? where : undefined;
+    const countArgs = queryWhere ? { where: queryWhere } : {};
+    const findManyArgs = {
+      ...(queryWhere ? { where: queryWhere } : {}),
+      orderBy: {
+        projectName: 'asc' as const, // Reverted from procoreLastSync to ensure it works without a new migration
+      },
+      skip,
+      take: pageSize,
+    };
 
     // Get all projects with status logic
     const [total, projects] = await Promise.all([
-      prisma.project.count({ where: queryWhere }),
-      prisma.project.findMany({
-        where: queryWhere,
-        orderBy: {
-          projectName: 'asc', // Reverted from procoreLastSync to ensure it works without a new migration
-        },
-        skip,
-        take: pageSize,
-      }),
+      prisma.project.count(countArgs),
+      prisma.project.findMany(findManyArgs),
     ]);
 
     const projectsWithPMC = projects.map((project) => {

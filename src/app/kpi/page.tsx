@@ -305,6 +305,17 @@ function getProjectDate(project: any) {
   return created || updated || null;
 }
 
+function getSalesActHoursDate(project: any) {
+  // Sales card Act Hrs should not be shifted by late imports/updates.
+  // Prefer explicit project update date, then created date, then updated date.
+  const projectUpdated = parseDateValue(project.ProjectUpdateDate ?? project.projectUpdateDate);
+  if (projectUpdated) return projectUpdated;
+
+  const created = parseDateValue(project.dateCreated);
+  const updated = parseDateValue(project.dateUpdated);
+  return created || updated || null;
+}
+
 function selectBestProjectEntry(projects: Project[]) {
   if (projects.length === 0) return null;
 
@@ -376,7 +387,7 @@ export default function KPIPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [kpiData, setKpiData] = useState<any[]>([]);
-  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>({});
+  const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>(defaultCardLoadData);
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState<string>("");
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
@@ -677,11 +688,12 @@ function KPIPageContent({
       }
 
       try {
-        const res = await fetch("/api/kpi-cards");
+        const res = await fetch("/api/kpi-cards", { credentials: "include" });
         if (!res.ok) {
-          console.warn("[KPI] Failed to load KPI cards from API:", res.statusText);
-          setCardLoadData({});
-          setCardLoadWarning("KPI card data unavailable from database.");
+          const statusSummary = `${res.status} ${res.statusText}`.trim();
+          console.warn("[KPI] Failed to load KPI cards from API:", statusSummary);
+          setCardLoadData(defaultCardLoadData);
+          setCardLoadWarning(`KPI card API unavailable (${statusSummary}). Showing default KPI card values.`);
           return;
         }
 
@@ -698,14 +710,15 @@ function KPIPageContent({
         console.log("[KPI] Loaded", Object.keys(mapped).length, "KPI cards from API");
 
         if (cards.length === 0) {
-          setCardLoadWarning("No KPI card data found in database. Seed cards or add data in KPI card management.");
+          setCardLoadData(defaultCardLoadData);
+          setCardLoadWarning("No KPI card data found in database. Showing default KPI card values.");
         } else {
           setCardLoadWarning("");
         }
       } catch (error) {
         console.warn("[KPI] Error loading KPI cards:", error);
-        setCardLoadData({});
-        setCardLoadWarning("KPI card data unavailable from database.");
+        setCardLoadData(defaultCardLoadData);
+        setCardLoadWarning("KPI card API request failed. Showing default KPI card values.");
       }
     }
     
@@ -901,7 +914,7 @@ function KPIPageContent({
       const status = (project.status || "").toString().trim();
       if (!qualifyingStatuses.includes(status)) return;
 
-      const projectDate = getProjectDate(project);
+      const projectDate = getSalesActHoursDate(project);
       if (!projectDate) return;
 
       const hours = Number(project.hours ?? 0);
@@ -1100,7 +1113,7 @@ function KPIPageContent({
     const status = (project.status || "").trim();
     if (!qualifyingStatuses.includes(status)) return;
 
-    const projectDate = getProjectDate(project);
+    const projectDate = getSalesActHoursDate(project);
     if (!projectDate) return;
 
     if (startDate || endDate) {

@@ -56,11 +56,13 @@ export async function GET(request: NextRequest) {
       where.projectName = projectName;
     }
 
+    const queryWhere = Object.keys(where).length > 0 ? where : undefined;
+
     // Get all projects with status logic
     const [total, projects] = await Promise.all([
-      prisma.project.count({ where }),
+      prisma.project.count({ where: queryWhere }),
       prisma.project.findMany({
-        where,
+        where: queryWhere,
         orderBy: {
           projectName: 'asc', // Reverted from procoreLastSync to ensure it works without a new migration
         },

@@ -155,7 +155,9 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: newStatus,
+          id: project.id,
           projectNumber: project.projectNumber,
+          projectName: project.projectName,
           customer: project.customer,
         }),
       });
@@ -234,7 +236,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
             )}
             <div>
               <h2 className="m-0 text-[#15616D] text-2xl font-bold">
-                {project.projectNumber} - {project.projectName}
+                {project.projectName}
               </h2>
               <p className="m-0 text-gray-500 font-medium">
                 {project.customer} • {project.status}

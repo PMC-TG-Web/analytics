@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { status, customer, projectNumber } = body;
+    const { status, id, customer, projectNumber, projectName } = body;
 
     if (!status) {
       return NextResponse.json(
@@ -116,33 +116,50 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Update project status
-    const updated = await prisma.project.updateMany({
-      where: {
-        customer: customer,
-        projectNumber: projectNumber,
-      },
-      data: {
-        status,
-      },
-    });
+    // Prefer unique id updates to avoid collisions when project numbers are reused.
+    let updatedCount = 0;
+    if (id) {
+      const updated = await prisma.project.update({
+        where: { id },
+        data: { status },
+      });
+      updatedCount = updated ? 1 : 0;
+    } else {
+      const where: any = {};
+      if (customer) where.customer = customer;
+
+      // Project name is the most reliable business identifier in this dataset.
+      if (projectName) {
+        where.projectName = projectName;
+      } else if (projectNumber) {
+        where.projectNumber = projectNumber;
+      }
+
+      const updated = await prisma.project.updateMany({
+        where,
+        data: { status },
+      });
+      updatedCount = updated.count;
+    }
 
     await logAuditEvent(request, {
       action: 'update',
       resource: 'project-status',
-      target: `${customer ?? 'unknown-customer'}|${projectNumber ?? 'unknown-project'}`,
+      target: id ?? `${customer ?? 'unknown-customer'}|${projectNumber ?? 'unknown-project'}|${projectName ?? 'unknown-name'}`,
       details: {
         status,
+        id,
         customer,
         projectNumber,
-        updatedCount: updated.count,
+        projectName,
+        updatedCount,
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: `Updated ${updated.count} project(s)`,
-      data: { count: updated.count },
+      message: `Updated ${updatedCount} project(s)`,
+      data: { count: updatedCount },
     });
   } catch (error) {
     console.error('Failed to update project status:', error);

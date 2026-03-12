@@ -47,6 +47,15 @@ type Project = {
   projectManager?: string;
 };
 
+type KPIDrilldownEntry = {
+  id: string;
+  projectName: string;
+  projectNumber: string;
+  customer: string;
+  value: number;
+  dateLabel: string;
+};
+
 function parseDateValue(value: any) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -538,10 +547,31 @@ function KPIPageContent({
   procoreAuthError,
 }: any) {
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
   const [cardLoadWarning, setCardLoadWarning] = useState<string>("");
   const [editingCell, setEditingCell] = useState<{year: string; month: number; field: string} | null>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [kpiDrilldown, setKpiDrilldown] = useState<{
+    open: boolean;
+    title: string;
+    valueLabel: string;
+    valuePrefix: string;
+    month: number | null;
+    entries: KPIDrilldownEntry[];
+  }>({
+    open: false,
+    title: "",
+    valueLabel: "Value",
+    valuePrefix: "",
+    month: null,
+    entries: [],
+  });
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const renderTotalWithYtd = (totalDisplay: string, ytdDisplay: string) => {
+    void ytdDisplay;
+    return <span>{totalDisplay}</span>;
+  };
 
   // Manage input focus when editing
   useEffect(() => {
@@ -774,6 +804,259 @@ function KPIPageContent({
     newBidsSalesYearMonthMap[year][Number(m)] = newBidsSalesByMonth[month];
   });
 
+  const newBidsProjectsByMonth = useMemo(() => {
+    const result: Record<string, KPIDrilldownEntry[]> = {};
+
+    aggregatedBidSubmittedProjects.forEach((project) => {
+      const createdDate = parseDateValue(project.dateCreated);
+      if (!createdDate) return;
+
+      const sales = Number(project.sales ?? 0);
+      if (!Number.isFinite(sales)) return;
+
+      const monthKey = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
+      if (!result[monthKey]) {
+        result[monthKey] = [];
+      }
+
+      const customer = (project.customer || "Unknown Customer").toString();
+      const projectNumber = (project.projectNumber || "").toString();
+      const projectName = (project.projectName || "Unnamed Project").toString();
+
+      result[monthKey].push({
+        id: `${customer}~${projectNumber}~${projectName}`,
+        projectName,
+        projectNumber,
+        customer,
+        value: sales,
+        dateLabel: createdDate.toLocaleDateString(),
+      });
+    });
+
+    Object.keys(result).forEach((monthKey) => {
+      result[monthKey].sort((a, b) => b.value - a.value);
+    });
+
+    return result;
+  }, [aggregatedBidSubmittedProjects]);
+
+  const bidSubmittedSalesProjectsByMonth = useMemo(() => {
+    const result: Record<string, KPIDrilldownEntry[]> = {};
+
+    aggregatedBidSubmittedProjects.forEach((project) => {
+      const projectDate = getProjectDate(project);
+      if (!projectDate) return;
+
+      const sales = Number(project.sales ?? 0);
+      if (!Number.isFinite(sales) || sales <= 0) return;
+
+      const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+      if (!result[monthKey]) result[monthKey] = [];
+
+      result[monthKey].push({
+        id: `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`,
+        projectName: (project.projectName || "Unnamed Project").toString(),
+        projectNumber: (project.projectNumber || "").toString(),
+        customer: (project.customer || "Unknown Customer").toString(),
+        value: sales,
+        dateLabel: projectDate.toLocaleDateString(),
+      });
+    });
+
+    Object.keys(result).forEach((monthKey) => result[monthKey].sort((a, b) => b.value - a.value));
+    return result;
+  }, [aggregatedBidSubmittedProjects]);
+
+  const bidSubmittedHoursProjectsByMonth = useMemo(() => {
+    const result: Record<string, KPIDrilldownEntry[]> = {};
+
+    aggregatedBidSubmittedProjects.forEach((project) => {
+      const projectDate = getProjectDate(project);
+      if (!projectDate) return;
+
+      const hours = Number(project.hours ?? 0);
+      if (!Number.isFinite(hours) || hours <= 0) return;
+
+      const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+      if (!result[monthKey]) result[monthKey] = [];
+
+      result[monthKey].push({
+        id: `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`,
+        projectName: (project.projectName || "Unnamed Project").toString(),
+        projectNumber: (project.projectNumber || "").toString(),
+        customer: (project.customer || "Unknown Customer").toString(),
+        value: hours,
+        dateLabel: projectDate.toLocaleDateString(),
+      });
+    });
+
+    Object.keys(result).forEach((monthKey) => result[monthKey].sort((a, b) => b.value - a.value));
+    return result;
+  }, [aggregatedBidSubmittedProjects]);
+
+  const inProgressHoursProjectsByMonth = useMemo(() => {
+    const result: Record<string, KPIDrilldownEntry[]> = {};
+
+    aggregatedProjects.forEach((project) => {
+      const status = (project.status || "").toString().trim();
+      if (!qualifyingStatuses.includes(status)) return;
+
+      const projectDate = getProjectDate(project);
+      if (!projectDate) return;
+
+      const hours = Number(project.hours ?? 0);
+      if (!Number.isFinite(hours) || hours <= 0) return;
+
+      const monthKey = `${projectDate.getFullYear()}-${String(projectDate.getMonth() + 1).padStart(2, "0")}`;
+      if (!result[monthKey]) result[monthKey] = [];
+
+      result[monthKey].push({
+        id: `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`,
+        projectName: (project.projectName || "Unnamed Project").toString(),
+        projectNumber: (project.projectNumber || "").toString(),
+        customer: (project.customer || "Unknown Customer").toString(),
+        value: hours,
+        dateLabel: projectDate.toLocaleDateString(),
+      });
+    });
+
+    Object.keys(result).forEach((monthKey) => result[monthKey].sort((a, b) => b.value - a.value));
+    return result;
+  }, [aggregatedProjects]);
+
+  const scheduledSalesProjectsByMonth = useMemo(() => {
+    const result: Record<string, KPIDrilldownEntry[]> = {};
+    const keyToProject = new Map<string, Project>();
+
+    aggregatedProjects.forEach((project) => {
+      const key = getProjectKey(project.customer, project.projectNumber, project.projectName);
+      keyToProject.set(key, project);
+    });
+
+    schedules.forEach((schedule: Schedule) => {
+      const key = schedule.jobKey || getProjectKey(schedule.customer, schedule.projectNumber, schedule.projectName);
+      const project = keyToProject.get(key);
+      if (!project) return;
+      if (!qualifyingStatuses.includes((project.status || "").toString().trim())) return;
+
+      const projectSales = Number(project.sales ?? 0);
+      if (!Number.isFinite(projectSales) || projectSales <= 0) return;
+
+      normalizeAllocations(schedule.allocations).forEach((alloc) => {
+        const percent = Number(alloc.percent ?? 0);
+        if (!Number.isFinite(percent) || percent <= 0) return;
+
+        const monthKey = alloc.month;
+        if (!isValidMonthKey(monthKey)) return;
+
+        const monthlySales = projectSales * (percent / 100);
+        if (!result[monthKey]) result[monthKey] = [];
+
+        const scheduleProjectName = (schedule.projectName || "").toString().trim();
+        const scheduleProjectNumber = (schedule.projectNumber || "").toString().trim();
+        const scheduleCustomer = (schedule.customer || "").toString().trim();
+
+        const projectName = (project.projectName || "").toString().trim();
+        const projectNumber = (project.projectNumber || "").toString().trim();
+        const projectCustomer = (project.customer || "").toString().trim();
+
+        const useScheduleIdentity = Boolean(scheduleProjectName || scheduleProjectNumber || scheduleCustomer);
+
+        const displayProjectName = useScheduleIdentity
+          ? (scheduleProjectName || projectName || "Unnamed Project")
+          : (projectName || "Unnamed Project");
+
+        const displayProjectNumber = useScheduleIdentity
+          ? scheduleProjectNumber
+          : projectNumber;
+
+        const displayCustomer = useScheduleIdentity
+          ? (scheduleCustomer || projectCustomer || "Unknown Customer")
+          : (projectCustomer || "Unknown Customer");
+
+        result[monthKey].push({
+          id: `${displayCustomer}~${displayProjectNumber}~${displayProjectName}`,
+          projectName: displayProjectName,
+          projectNumber: displayProjectNumber,
+          customer: displayCustomer,
+          value: monthlySales,
+          dateLabel: monthKey,
+        });
+      });
+    });
+
+    Object.keys(result).forEach((monthKey) => result[monthKey].sort((a, b) => b.value - a.value));
+    return result;
+  }, [aggregatedProjects, schedules]);
+
+  const getDrilldownEntriesForYearMonth = (
+    sourceMap: Record<string, KPIDrilldownEntry[]>,
+    year: string | null,
+    month: number | null
+  ) => {
+    const allKeys = Object.keys(sourceMap);
+    const matchingKeys = allKeys.filter((key) => {
+      const [entryYear, entryMonth] = key.split("-");
+      if (year && entryYear !== year) return false;
+      if (month && Number(entryMonth) !== month) return false;
+      return true;
+    });
+
+    const entries = matchingKeys.flatMap((key) => sourceMap[key] || []);
+    entries.sort((a, b) => b.value - a.value);
+    return entries;
+  };
+
+  const openNewBidsDrilldown = (year: string, month: number | null) => {
+    const entries = getDrilldownEntriesForYearMonth(newBidsProjectsByMonth, year, month);
+
+    setKpiDrilldown({
+      open: true,
+      title: `New Bids ${month ? `${monthNames[month - 1]} ${year}` : `${year} Total`}`,
+      valueLabel: "Data Point (Sales)",
+      valuePrefix: "$",
+      month,
+      entries,
+    });
+  };
+
+  const openKpiDrilldown = (
+    title: string,
+    sourceMap: Record<string, KPIDrilldownEntry[]>,
+    options: { year: string | null; month: number | null; valueLabel: string; valuePrefix: string }
+  ) => {
+    const entries = getDrilldownEntriesForYearMonth(sourceMap, options.year, options.month);
+
+    setKpiDrilldown({
+      open: false,
+      title: "",
+      valueLabel: "Value",
+      valuePrefix: "",
+      month: null,
+      entries: [],
+    });
+
+    setKpiDrilldown({
+      open: true,
+      title,
+      valueLabel: options.valueLabel,
+      valuePrefix: options.valuePrefix,
+      month: options.month,
+      entries,
+    });
+  };
+
+  const closeKpiDrilldown = () => {
+    setKpiDrilldown({
+      open: false,
+      title: "",
+      valueLabel: "Value",
+      valuePrefix: "",
+      month: null,
+      entries: [],
+    });
+  };
+
   const bidSubmittedHoursByMonth: Record<string, number> = {};
   
   // Use the same aggregated pool as Bid Submitted sales, so hours stay consistent
@@ -874,6 +1157,7 @@ function KPIPageContent({
       const isPercentage = rowValues.some((val: any) => String(val).includes("%"));
       
       let total: number;
+      let ytdTotal: number;
       if (isPercentage && (cardName.toLowerCase().includes("gross profit") || cardName.toLowerCase().includes("profit"))) {
         // For GP/Profit percentages, calculate weighted average using Revenue as weights
         const revenueRow = cardLoadData[normalizeCardName(cardName)]?.find((r: any) => r.kpi === "Revenue" || r.kpi.includes("Revenue"));
@@ -895,12 +1179,33 @@ function KPIPageContent({
           });
           
           total = denominator > 0 ? (numerator / denominator) * 100 : 0;
+
+          let ytdNumerator = 0;
+          let ytdDenominator = 0;
+          rowValues.slice(0, ytdMonthCutoff).forEach((val: any, idx: number) => {
+            const percentStr = String(val).replace("%", "").trim();
+            const percent = parseFloat(percentStr);
+            const revenueStr = String(revenueRow.values[idx]).replace(/[$,]/g, "").trim();
+            const revenue = parseFloat(revenueStr);
+
+            if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
+              ytdNumerator += (percent / 100) * revenue;
+              ytdDenominator += revenue;
+            }
+          });
+          ytdTotal = ytdDenominator > 0 ? (ytdNumerator / ytdDenominator) * 100 : 0;
         } else {
           // Fallback: simple average if no revenue row found
           const percentages = rowValues
             .map((val: any) => parseFloat(String(val).replace("%", "").trim()))
             .filter((n: number) => !isNaN(n));
           total = percentages.length > 0 ? percentages.reduce((a: number, b: number) => a + b, 0) / percentages.length : 0;
+
+          const ytdPercentages = rowValues
+            .slice(0, ytdMonthCutoff)
+            .map((val: any) => parseFloat(String(val).replace("%", "").trim()))
+            .filter((n: number) => !isNaN(n));
+          ytdTotal = ytdPercentages.length > 0 ? ytdPercentages.reduce((a: number, b: number) => a + b, 0) / ytdPercentages.length : 0;
         }
       } else {
         // For non-percentage values, sum as usual
@@ -909,7 +1214,15 @@ function KPIPageContent({
           return sum + (isNaN(numVal) ? 0 : numVal);
         }, 0);
         total = total_val;
+
+        ytdTotal = rowValues.slice(0, ytdMonthCutoff).reduce((sum: number, val: any) => {
+          const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+          return sum + (isNaN(numVal) ? 0 : numVal);
+        }, 0);
       }
+
+      const totalFormatted = formatCardValue(cardName, row.kpi, isPercentage ? `${total.toFixed(2)}%` : total.toString());
+      const ytdFormatted = formatCardValue(cardName, row.kpi, isPercentage ? `${ytdTotal.toFixed(2)}%` : ytdTotal.toString());
       
       return (
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: isGoalRow ? "#f9f9f9" : "#ffffff" }}>
@@ -924,7 +1237,7 @@ function KPIPageContent({
           );
         })}
         <td style={{ padding: "6px 6px", textAlign: "center", color: rowColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-          {formatCardValue(cardName, row.kpi, isPercentage ? `${total.toFixed(2)}%` : total.toString())}
+          {renderTotalWithYtd(totalFormatted, ytdFormatted)}
         </td>
       </tr>
     );});
@@ -1263,7 +1576,16 @@ function KPIPageContent({
                       const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
                     }, 0);
+                    const scheduledYtdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
+                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === idx + 1)?.scheduledSales;
+                      const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + (manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue);
+                    }, 0);
                     const bidSubmittedTotal = monthNames.reduce((sum, _, idx) => {
+                      const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + calculatedValue;
+                    }, 0);
+                    const bidSubmittedYtdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return sum + calculatedValue;
                     }, 0);
@@ -1287,12 +1609,34 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {sales > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[idx]} ${year}`, scheduledSalesProjectsByMonth, { year, month: idx + 1, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  style={{ background: "transparent", border: "none", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {scheduledTotal > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openKpiDrilldown(`Scheduled ${year} Total`, scheduledSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                              style={{ background: "transparent", border: "none", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                            >
+                              {renderTotalWithYtd(
+                                `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                                `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              )}
+                            </button>
+                          ) : renderTotalWithYtd(
+                            `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                            `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          )}
                         </td>
                       </tr>
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
@@ -1312,12 +1656,34 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {sales > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(`Bid Submitted ${monthNames[idx]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month: idx + 1, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  style={{ background: "transparent", border: "none", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {bidSubmittedTotal > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openKpiDrilldown(`Bid Submitted ${year} Total`, bidSubmittedSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                              style={{ background: "transparent", border: "none", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                            >
+                              {renderTotalWithYtd(
+                                `$${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                                `$${bidSubmittedYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              )}
+                            </button>
+                          ) : renderTotalWithYtd(
+                            `$${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                            `$${bidSubmittedYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          )}
                         </td>
                       </tr>
                     </React.Fragment>
@@ -1344,8 +1710,21 @@ function KPIPageContent({
                   const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
                   return sum + value;
                 }, 0);
+                const scheduledYtdTotal = allYearMonths.reduce((sum, { year, month }) => {
+                  if (month > ytdMonthCutoff) return sum;
+                  const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
+                  const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
+                  const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+                  return sum + value;
+                }, 0);
                 
                 const bidSubmittedTotal = allYearMonths.reduce((sum, { year, month }) => {
+                  const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
+                  const value = calculatedValue;
+                  return sum + value;
+                }, 0);
+                const bidSubmittedYtdTotal = allYearMonths.reduce((sum, { year, month }) => {
+                  if (month > ytdMonthCutoff) return sum;
                   const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
                   const value = calculatedValue;
                   return sum + value;
@@ -1382,12 +1761,23 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {sales > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[month - 1]} ${year}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {renderTotalWithYtd(
+                            `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                            `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          )}
                         </td>
                       </tr>
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
@@ -1406,12 +1796,23 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 ? `$${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {sales > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(`Bid Submitted ${monthNames[month - 1]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  style={{ background: "transparent", border: "none", color: "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {renderTotalWithYtd(
+                            `$${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                            `$${bidSubmittedYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          )}
                         </td>
                       </tr>
                     </tbody>
@@ -1455,6 +1856,10 @@ function KPIPageContent({
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return sum + calculatedValue;
                     }, 0);
+                    const bidsYtdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
+                      const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + calculatedValue;
+                    }, 0);
 
                     rows.push(
                       <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: rowIndex % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
@@ -1472,12 +1877,34 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {value > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(`Bids Submitted ${monthNames[idx]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month: idx + 1, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  style={{ background: "transparent", border: "none", color: bidsColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: bidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${bidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {bidsTotal > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openKpiDrilldown(`Bids Submitted ${year} Total`, bidSubmittedSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                              style={{ background: "transparent", border: "none", color: bidsColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                            >
+                              {renderTotalWithYtd(
+                                `$${bidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                                `$${bidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              )}
+                            </button>
+                          ) : renderTotalWithYtd(
+                            `$${bidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                            `$${bidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          )}
                         </td>
                       </tr>
                     );
@@ -1485,6 +1912,10 @@ function KPIPageContent({
 
                     const newBidsColor = rowColors[rowIndex % 2];
                     const newBidsTotal = monthNames.reduce((sum, _, idx) => {
+                      const calculatedValue = newBidsSalesYearMonthMap[year]?.[idx + 1] || 0;
+                      return sum + calculatedValue;
+                    }, 0);
+                    const newBidsYtdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
                       const calculatedValue = newBidsSalesYearMonthMap[year]?.[idx + 1] || 0;
                       return sum + calculatedValue;
                     }, 0);
@@ -1505,12 +1936,56 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              {value > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openNewBidsDrilldown(year, idx + 1)}
+                                  style={{
+                                    background: "transparent",
+                                    border: "none",
+                                    color: newBidsColor,
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    fontSize: 12,
+                                    textDecoration: "underline",
+                                    padding: 0,
+                                  }}
+                                  title={`Show projects for New Bids ${monthNames[idx]} ${year}`}
+                                >
+                                  ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </button>
+                              ) : "—"}
                             </td>
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: newBidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          ${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {newBidsTotal > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openNewBidsDrilldown(year, null)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: newBidsColor,
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: 12,
+                                textDecoration: "underline",
+                                padding: 0,
+                              }}
+                              title={`Show all projects for New Bids ${year}`}
+                            >
+                              {renderTotalWithYtd(
+                                `$${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                                `$${newBidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              )}
+                            </button>
+                          ) : (
+                            renderTotalWithYtd(
+                              `$${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                              `$${newBidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            )
+                          )}
                         </td>
                       </tr>
                     );
@@ -1527,7 +2002,10 @@ function KPIPageContent({
                     </td>
                   ))}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: goalColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    ${(6700000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {renderTotalWithYtd(
+                      `$${(6700000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                      `$${(6700000 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    )}
                   </td>
                 </tr>
                   );
@@ -1546,19 +2024,47 @@ function KPIPageContent({
                     }
                     return (
                       <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? actHoursColor : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
-                        {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                        {hours > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${monthNames[idx]} ${yearFilter}` : `Act Hrs ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                            style={{ background: "transparent", border: "none", color: actHoursColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                          >
+                            {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </button>
+                        ) : "—"}
                       </td>
                     );
                   })}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: actHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(() => {
                       let total = 0;
+                      let ytdTotal = 0;
                       if (yearFilter) {
                         total = Object.values(bidSubmittedHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                        ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => sum + (bidSubmittedHoursYearMonthMap[yearFilter]?.[idx + 1] || 0), 0);
                       } else {
                         total = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                        ytdTotal = Object.values(bidSubmittedHoursYearMonthMap).reduce(
+                          (sum, yearData) => sum + monthNames.slice(0, ytdMonthCutoff).reduce((s, _, idx) => s + (yearData[idx + 1] || 0), 0),
+                          0
+                        );
                       }
-                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                      return total > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${yearFilter} Total` : "Act Hrs Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                          style={{ background: "transparent", border: "none", color: actHoursColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                        >
+                          {renderTotalWithYtd(
+                            total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                            ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                          )}
+                        </button>
+                      ) : renderTotalWithYtd(
+                        total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                        ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      );
                     })()}
                   </td>
                 </tr>
@@ -1575,7 +2081,10 @@ function KPIPageContent({
                     </td>
                   ))}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: goalHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    {(29000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {renderTotalWithYtd(
+                      (29000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                      (29000 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                    )}
                   </td>
                 </tr>
                   );
@@ -1612,7 +2121,10 @@ function KPIPageContent({
                     </td>
                   ))}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    ${(1000000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {renderTotalWithYtd(
+                      `$${(1000000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                      `$${(1000000 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    )}
                   </td>
                 </tr>
                 <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
@@ -1626,19 +2138,47 @@ function KPIPageContent({
                     }
                     return (
                       <td key={idx} style={{ padding: "4px 2px", textAlign: "center", fontSize: 12, color: hours > 0 ? "#15616D" : "#999", fontWeight: hours > 0 ? 700 : 400 }}>
-                        {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                        {hours > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openKpiDrilldown(yearFilter ? `Sales Act Hrs ${monthNames[idx]} ${yearFilter}` : `Sales Act Hrs ${monthNames[idx]} (All Years)`, inProgressHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                            style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                          >
+                            {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </button>
+                        ) : "—"}
                       </td>
                     );
                   })}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(() => {
                       let total = 0;
+                      let ytdTotal = 0;
                       if (yearFilter) {
                         total = Object.values(inProgressHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                        ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => sum + (inProgressHoursYearMonthMap[yearFilter]?.[idx + 1] || 0), 0);
                       } else {
                         total = Object.values(inProgressHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                        ytdTotal = Object.values(inProgressHoursYearMonthMap).reduce(
+                          (sum, yearData) => sum + monthNames.slice(0, ytdMonthCutoff).reduce((s, _, idx) => s + (yearData[idx + 1] || 0), 0),
+                          0
+                        );
                       }
-                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                      return total > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openKpiDrilldown(yearFilter ? `Sales Act Hrs ${yearFilter} Total` : "Sales Act Hrs Total (All Years)", inProgressHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                          style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                        >
+                          {renderTotalWithYtd(
+                            total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                            ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                          )}
+                        </button>
+                      ) : renderTotalWithYtd(
+                        total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                        ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      );
                     })()}
                   </td>
                 </tr>
@@ -1650,7 +2190,10 @@ function KPIPageContent({
                     </td>
                   ))}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    {(4300 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {renderTotalWithYtd(
+                      (4300 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                      (4300 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                    )}
                   </td>
                 </tr>
               </tbody>
@@ -1803,19 +2346,47 @@ function KPIPageContent({
                     }
                     return (
                       <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: hours > 0 ? "#15616D" : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
-                        {hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                        {hours > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openKpiDrilldown(yearFilter ? `Leadtime Hours ${monthNames[idx]} ${yearFilter}` : `Leadtime Hours ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                            style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                          >
+                            {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </button>
+                        ) : "—"}
                       </td>
                     );
                   })}
                   <td style={{ padding: "6px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(() => {
                       let total = 0;
+                      let ytdTotal = 0;
                       if (yearFilter) {
                         total = Object.values(bidSubmittedHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
+                        ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => sum + (bidSubmittedHoursYearMonthMap[yearFilter]?.[idx + 1] || 0), 0);
                       } else {
                         total = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
+                        ytdTotal = Object.values(bidSubmittedHoursYearMonthMap).reduce(
+                          (sum, yearData) => sum + monthNames.slice(0, ytdMonthCutoff).reduce((s, _, idx) => s + (yearData[idx + 1] || 0), 0),
+                          0
+                        );
                       }
-                      return total.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                      return total > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openKpiDrilldown(yearFilter ? `Leadtime Hours ${yearFilter} Total` : "Leadtime Hours Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                          style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                        >
+                          {renderTotalWithYtd(
+                            total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                            ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                          )}
+                        </button>
+                      ) : renderTotalWithYtd(
+                        total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                        ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      );
                     })()}
                   </td>
                 </tr>
@@ -1824,6 +2395,96 @@ function KPIPageContent({
           </div>
         </div>
       </div>
+
+      {kpiDrilldown.open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={closeKpiDrilldown}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              background: "#fff",
+              width: "min(900px, 100%)",
+              maxHeight: "80vh",
+              borderRadius: 10,
+              border: "1px solid #d4d4d4",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e5e5", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <h4 style={{ margin: 0, color: "#15616D", fontSize: 16 }}>
+                  {kpiDrilldown.title}
+                </h4>
+                <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                  {kpiDrilldown.entries.length} project{kpiDrilldown.entries.length === 1 ? "" : "s"} contributing to this data point
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeKpiDrilldown}
+                style={{
+                  border: "1px solid #d4d4d4",
+                  borderRadius: 6,
+                  background: "#fff",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ overflow: "auto", padding: 12 }}>
+              {kpiDrilldown.entries.length === 0 ? (
+                <div style={{ color: "#666", fontSize: 13 }}>No projects found for this KPI data point.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                      <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "32%" }}>Project</th>
+                      <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "28%" }}>Customer</th>
+                      <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "20%" }}>Created</th>
+                      <th style={{ textAlign: "right", padding: "8px 6px", color: "#666", width: "20%" }}>{kpiDrilldown.valueLabel}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpiDrilldown.entries.map((entry) => (
+                      <tr key={`${entry.id}-${entry.dateLabel}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: "8px 6px", color: "#222" }}>
+                          <div style={{ fontWeight: 600 }}>{entry.projectName}</div>
+                        </td>
+                        <td style={{ padding: "8px 6px", color: "#222" }}>{entry.customer}</td>
+                        <td style={{ padding: "8px 6px", color: "#444" }}>{entry.dateLabel}</td>
+                        <td style={{ padding: "8px 6px", color: "#15616D", textAlign: "right", fontWeight: 700 }}>
+                          {kpiDrilldown.valuePrefix}{entry.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -24,7 +24,6 @@ export function JobsListModal({
 
   const filteredProjects = projects.filter(
     (p) =>
-      (p.projectNumber ?? "").toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.projectName ?? "").toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.customer ?? "").toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -67,7 +66,7 @@ export function JobsListModal({
         <div className="px-8 py-4">
           <input
             type="text"
-            placeholder="Search by project number, name, or customer..."
+            placeholder="Search by project name or customer..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#15616D] focus:border-transparent"
@@ -98,13 +97,7 @@ export function JobsListModal({
                     onClick={() => onSelectProject(project)}
                     className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left cursor-pointer transition-all hover:bg-gray-100 hover:border-[#15616D] group"
                   >
-                  <div className="grid grid-cols-2 gap-4 mb-2">
-                    <div>
-                      <div className="text-xs text-gray-500">Project Number</div>
-                      <div className="text-sm font-semibold text-[#15616D]">
-                        {project.projectNumber || "N/A"}
-                      </div>
-                    </div>
+                  <div className="grid grid-cols-1 gap-4 mb-2">
                     <div>
                       <div className="text-xs text-gray-500">Customer</div>
                       <div className="text-sm font-semibold text-gray-900 line-clamp-1">

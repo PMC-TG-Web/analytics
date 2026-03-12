@@ -10,6 +10,16 @@ export async function GET(request: NextRequest) {
 
   // In dev mode without Auth0 config, return a mock user
   if (isDev && auth0Misconfigured) {
+    const selectedDevEmail = request.cookies.get('dev_user_email')?.value?.trim();
+    if (selectedDevEmail) {
+      const displayName = selectedDevEmail.split('@')[0] || 'Developer';
+      return NextResponse.json({
+        email: selectedDevEmail,
+        name: displayName,
+        sub: `dev-${selectedDevEmail}`,
+      });
+    }
+
     return NextResponse.json({
       email: 'dev@example.com',
       name: 'Developer',

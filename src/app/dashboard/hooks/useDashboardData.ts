@@ -60,7 +60,12 @@ export function useDashboardData() {
   const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
     const projectIdentifierMap = new Map<string, Project[]>();
     filteredProjects.forEach((project) => {
-      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
+      const customer = (project.customer || "").toString().trim().toLowerCase();
+      const projectName = (project.projectName || "").toString().trim().toLowerCase();
+      const projectNumber = (project.projectNumber || "").toString().trim().toLowerCase();
+      const identifier = projectName
+        ? `${customer}~~${projectName}`
+        : (projectNumber ? `${customer}~~${projectNumber}` : "");
       if (!identifier) return;
       if (!projectIdentifierMap.has(identifier)) projectIdentifierMap.set(identifier, []);
       projectIdentifierMap.get(identifier)!.push(project);

@@ -65,6 +65,33 @@ function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: st
   return { customer, projectNumber, projectName };
 }
 
+function normalizeCustomerValue(value: unknown): string {
+  const normalized = (value ?? "").toString().trim();
+  if (!normalized) return "";
+
+  const lower = normalized.toLowerCase();
+  const placeholders = new Set(["unknown", "unk", "n/a", "na", "none", "null", "undefined", "no customer"]);
+  if (placeholders.has(lower)) return "";
+
+  return normalized;
+}
+
+function resolveProjectCustomer(project: Pick<Project, "customer" | "jobKey">): string {
+  const directCustomer = normalizeCustomerValue(project.customer);
+  if (directCustomer) return directCustomer;
+
+  const parsed = parseJobKeyParts((project.jobKey ?? "").toString());
+  return normalizeCustomerValue(parsed.customer);
+}
+
+function resolveScheduleCustomer(schedule: Pick<JobSchedule, "customer" | "jobKey">): string {
+  const directCustomer = normalizeCustomerValue(schedule.customer);
+  if (directCustomer) return directCustomer;
+
+  const parsed = parseJobKeyParts(schedule.jobKey);
+  return normalizeCustomerValue(parsed.customer);
+}
+
 function normalizeMonths(list: string[]) {
   return Array.from(
     new Set(
@@ -202,7 +229,7 @@ function SchedulingContent() {
 
       return {
         jobKey: s.jobKey,
-        customer: s.customer,
+        customer: resolveScheduleCustomer({ customer: s.customer, jobKey: s.jobKey }),
         projectName: s.projectName,
         status: s.status || "",
         totalHours: s.totalHours,
@@ -378,7 +405,7 @@ function SchedulingContent() {
     projectIdentifierMap.forEach((projectList) => {
       const customerMap = new Map<string, typeof projectList>();
       projectList.forEach(p => {
-        const customer = (p.customer ?? "").toString().trim();
+        const customer = resolveProjectCustomer(p);
         if (!customerMap.has(customer)) {
           customerMap.set(customer, []);
         }
@@ -386,24 +413,29 @@ function SchedulingContent() {
       });
       
       if (customerMap.size > 1) {
-        let selectedCustomer = "";
         let selectedProjects: typeof projectList = [];
         let foundPriorityCustomer = false;
+        const customerEntries = Array.from(customerMap.entries()).sort(([a], [b]) => {
+          if (a && !b) return -1;
+          if (!a && b) return 1;
+          return 0;
+        });
         
-        customerMap.forEach((projs, customer) => {
+        customerEntries.forEach(([customer, projs]) => {
           const hasPriorityStatus = projs.some(p => priorityStatuses.includes(p.status || ""));
           if (hasPriorityStatus && !foundPriorityCustomer) {
-            selectedCustomer = customer;
             selectedProjects = projs;
             foundPriorityCustomer = true;
           }
         });
         
         if (!foundPriorityCustomer) {
-          let latestCustomer = "";
-          let latestDate: Date | null = null;
+          let latestNonEmptyCustomer = "";
+          let latestNonEmptyDate: Date | null = null;
+          let latestAnyCustomer = "";
+          let latestAnyDate: Date | null = null;
           
-          customerMap.forEach((projs, customer) => {
+          customerEntries.forEach(([customer, projs]) => {
             const mostRecentProj = projs.reduce((latest, current) => {
               const currentDate = parseDateValue(current.dateCreated);
               const latestDateVal = parseDateValue(latest.dateCreated);
@@ -413,13 +445,23 @@ function SchedulingContent() {
             }, projs[0]);
             
             const projDate = parseDateValue(mostRecentProj.dateCreated);
-            if (projDate && (!latestDate || projDate.getTime() > latestDate.getTime())) {
-              latestDate = projDate;
-              latestCustomer = customer;
+            if (projDate && (!latestAnyDate || projDate.getTime() > latestAnyDate.getTime())) {
+              latestAnyDate = projDate;
+              latestAnyCustomer = customer;
+            }
+            if (customer && projDate && (!latestNonEmptyDate || projDate.getTime() > latestNonEmptyDate.getTime())) {
+              latestNonEmptyDate = projDate;
+              latestNonEmptyCustomer = customer;
             }
           });
-          
-          selectedProjects = customerMap.get(latestCustomer) || [];
+
+          const preferredCustomer = latestNonEmptyCustomer || latestAnyCustomer;
+          selectedProjects = customerMap.get(preferredCustomer) || [];
+
+          if (!selectedProjects.length) {
+            const firstNonEmpty = customerEntries.find(([customer]) => Boolean(customer));
+            if (firstNonEmpty) selectedProjects = firstNonEmpty[1];
+          }
         }
         
         dedupedByCustomer.push(...selectedProjects);
@@ -438,7 +480,8 @@ function SchedulingContent() {
     // Step 5: Group by key (projectNumber + customer)
     const keyMap = new Map<string, typeof filteredByStatus>();
     filteredByStatus.forEach((p) => {
-      const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
+      const resolvedCustomer = resolveProjectCustomer(p);
+      const key = `${resolvedCustomer}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
       if (!keyMap.has(key)) {
         keyMap.set(key, []);
       }
@@ -456,10 +499,11 @@ function SchedulingContent() {
       
       const representative = sorted[0];
       const totalHours = projectGroup.reduce((sum, p) => sum + (p.hours ?? 0), 0);
+      const resolvedCustomer = resolveProjectCustomer(representative);
       
       results.push({
         key,
-        customer: representative.customer ?? "Unknown",
+        customer: resolvedCustomer || "Unknown",
         projectName: representative.projectName ?? "Unnamed",
         status: representative.status ?? "Unknown",
         totalHours,
@@ -690,9 +734,14 @@ function SchedulingContent() {
         allocations[month] = savedSchedule?.allocations[month] ?? 0;
       });
 
+      const mergedCustomer =
+        resolveProjectCustomer(job) ||
+        (savedSchedule ? resolveScheduleCustomer(savedSchedule) : "") ||
+        normalizeCustomerValue(jobParts.customer);
+
       return {
         jobKey: job.key,
-        customer: job.customer,
+        customer: mergedCustomer || "Unknown",
         projectName: job.projectName,
         status: job.status,
         totalHours: job.totalHours,

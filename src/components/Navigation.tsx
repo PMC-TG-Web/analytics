@@ -17,7 +17,7 @@ const navLinks: NavLink[] = [
   { href: "/projects", label: "Projects", page: "projects" },
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip" },
-  { href: "/scheduling", label: "Scheduling", page: "scheduling" },
+  { href: "/scheduling", label: "Wip Scheduling", page: "scheduling" },
   { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },
   { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule" },

@@ -9,31 +9,30 @@ interface NavLink {
   href: string;
   label: string;
   page: string;
-  color?: string;
 }
 
 const navLinks: NavLink[] = [
-  { href: "/", label: "Home", page: "home", color: "bg-red-900" },
-  { href: "/dashboard", label: "Dashboard", page: "dashboard", color: "bg-stone-800" },
-  { href: "/projects", label: "Projects", page: "projects", color: "bg-stone-700" },
-  { href: "/kpi", label: "KPI", page: "kpi", color: "bg-stone-800" },
-  { href: "/wip", label: "WIP", page: "wip", color: "bg-red-800" },
-  { href: "/scheduling", label: "Scheduling", page: "scheduling", color: "bg-stone-800" },
-  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch", color: "bg-red-900" },
-  { href: "/crew-management", label: "Crew Management", page: "crew-management", color: "bg-blue-900" },
-  { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule", color: "bg-red-800" },
-  { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule", color: "bg-stone-700" },
-  { href: "/project-schedule", label: "Project Gantt", page: "project-schedule", color: "bg-red-900" },
-  { href: "/estimating-tools", label: "Estimating", page: "estimating-tools", color: "bg-red-950" },
-  { href: "/constants", label: "Constants", page: "constants", color: "bg-stone-600" },
-  { href: "/employees", label: "Employees", page: "employees", color: "bg-stone-800" },
-  { href: "/certifications", label: "Certifications", page: "employees", color: "bg-stone-700" },
-  { href: "/equipment", label: "Equipment", page: "equipment", color: "bg-stone-800" },
-  { href: "/holidays", label: "Holidays", page: "holidays", color: "bg-stone-700" },
-  { href: "/procore", label: "Procore", page: "procore", color: "bg-orange-700" },
-  { href: "/onboarding/submissions", label: "Onboarding", page: "employees", color: "bg-stone-700" },
-  { href: "/employees/handbook", label: "Handbook", page: "handbook", color: "bg-stone-600" },
-  { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management", color: "bg-stone-900" },
+  { href: "/", label: "Home", page: "home" },
+  { href: "/dashboard", label: "Dashboard", page: "dashboard" },
+  { href: "/projects", label: "Projects", page: "projects" },
+  { href: "/kpi", label: "KPI", page: "kpi" },
+  { href: "/wip", label: "WIP", page: "wip" },
+  { href: "/scheduling", label: "Scheduling", page: "scheduling" },
+  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
+  { href: "/crew-management", label: "Crew Management", page: "crew-management" },
+  { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule" },
+  { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },
+  { href: "/project-schedule", label: "Project Gantt", page: "project-schedule" },
+  { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },
+  { href: "/constants", label: "Constants", page: "constants" },
+  { href: "/employees", label: "Employees", page: "employees" },
+  { href: "/certifications", label: "Certifications", page: "employees" },
+  { href: "/equipment", label: "Equipment", page: "equipment" },
+  { href: "/holidays", label: "Holidays", page: "holidays" },
+  { href: "/procore", label: "Procore", page: "procore" },
+  { href: "/onboarding/submissions", label: "Onboarding", page: "employees" },
+  { href: "/employees/handbook", label: "Handbook", page: "handbook" },
+  { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
 ];
 
 export const GlobalNavigationContext = createContext(false);
@@ -74,16 +73,18 @@ export default function Navigation({
         const isActive =
           currentPage === link.page ||
           isActivePath(pathname || "", link.href);
-        const bgColor = link.color || "bg-teal-800";
 
         return (
           <Link
             key={link.href}
             href={link.href}
             className={`
-              px-2.5 py-1.5 rounded text-[11px] font-black text-white no-underline transition-all
-              ${bgColor} 
-              ${isActive ? "ring-2 ring-white ring-inset opacity-100 scale-105" : "opacity-95 hover:opacity-100"}
+              px-2.5 py-1.5 rounded text-[11px] font-black no-underline transition-colors
+              ${
+                isActive
+                  ? "bg-teal-700 text-white border border-teal-800"
+                  : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300"
+              }
             `}
           >
             {link.label}
@@ -94,7 +95,7 @@ export default function Navigation({
       <a
       href="/api/auth/logout"
       target="_top"
-      className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-gray-800 hover:bg-black no-underline transition-all shadow-sm"
+      className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-red-700 border border-red-800 hover:bg-red-800 no-underline transition-colors"
     >
       Sign Out
     </a>

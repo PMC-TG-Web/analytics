@@ -17,7 +17,7 @@ export default function AppChrome({ children }: { children: ReactNode }) {
   return (
     <GlobalNavigationContext.Provider value={showGlobalNav}>
       {showGlobalNav && (
-        <header className="sticky top-0 z-50 border-b border-gray-300 bg-gray-900/95 px-6 py-3 backdrop-blur">
+        <header className="sticky top-0 z-50 border-b border-gray-300 bg-gray-100/95 px-6 py-3 backdrop-blur">
           <Navigation forceRender />
         </header>
       )}

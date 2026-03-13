@@ -384,7 +384,7 @@ function ProcoreContent() {
               <div className="bg-purple-100 border border-purple-400 text-purple-700 px-4 py-3 rounded mb-6">
                 <strong>Productivity Sync:</strong> {productivityResult.message}
                 <br/>
-                <a href="/productivity" className="underline font-bold mt-2 inline-block">View Productivity Dashboard -></a>
+                <a href="/productivity" className="underline font-bold mt-2 inline-block">View Productivity Dashboard {"\u2192"}</a>
               </div>
             )}
 

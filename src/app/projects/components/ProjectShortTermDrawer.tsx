@@ -179,7 +179,7 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
             }}
             className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50"
           >
-            ->
+            {"\u2192"}
           </button>
         </div>
 

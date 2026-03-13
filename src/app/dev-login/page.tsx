@@ -143,7 +143,7 @@ export default function DevLoginPage() {
                   fontWeight: 500,
                 }}
               >
-                Use real Auth0 login instead ->
+                Use real Auth0 login instead {"\u2192"}
               </a>
             </div>
           </>

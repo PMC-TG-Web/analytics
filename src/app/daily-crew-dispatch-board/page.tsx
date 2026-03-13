@@ -8,6 +8,7 @@ import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { loadActiveScheduleForDateRange } from "@/utils/activeScheduleLoader";
+import { addDays, formatDateInput, parseDateInput } from "@/utils/dateUtils";
 
 interface DayData {
   dayNumber: number; // 1-7 for Mon-Sun
@@ -82,6 +83,44 @@ const formatDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const DISPATCH_TIME_ZONE = "America/New_York";
+const DISPATCH_ROLLOVER_HOUR = 12;
+
+function getTimeZoneParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const getPartValue = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+
+  return {
+    year: getPartValue("year"),
+    month: getPartValue("month"),
+    day: getPartValue("day"),
+    hour: Number(getPartValue("hour")),
+  };
+}
+
+function getDefaultDispatchDate(now = new Date()) {
+  const easternParts = getTimeZoneParts(now, DISPATCH_TIME_ZONE);
+  let dispatchDate = parseDateInput(`${easternParts.year}-${easternParts.month}-${easternParts.day}`) || now;
+
+  if (easternParts.hour >= DISPATCH_ROLLOVER_HOUR) {
+    dispatchDate = addDays(dispatchDate, 1);
+  }
+
+  while (dispatchDate.getDay() === 0 || dispatchDate.getDay() === 6) {
+    dispatchDate = addDays(dispatchDate, 1);
+  }
+
+  return formatDateInput(dispatchDate);
+}
+
 export default function DailyCrewDispatchBoardPage() {
   return <DailyCrewDispatchBoardContent />;
 }
@@ -89,6 +128,8 @@ export default function DailyCrewDispatchBoardPage() {
 function DailyCrewDispatchBoardContent() {
   const { user } = useAuth();
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
+  const [selectedDispatchDate, setSelectedDispatchDate] = useState("");
+  const [usesAutoDispatchDate, setUsesAutoDispatchDate] = useState(true);
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
@@ -99,11 +140,14 @@ function DailyCrewDispatchBoardContent() {
   const [saving, setSaving] = useState(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
 
+  const selectedDispatchDateRef = React.useRef("");
+  const usesAutoDispatchDateRef = React.useRef(true);
+
   const isHoliday = React.useMemo(() => {
-    if (!dayColumns[0] || holidays.length === 0) return null;
-    const dateStr = formatDateKey(dayColumns[0].date);
+    if (!selectedDispatchDate || holidays.length === 0) return null;
+    const dateStr = selectedDispatchDate;
     return holidays.find(h => h.date === dateStr);
-  }, [dayColumns, holidays]);
+  }, [selectedDispatchDate, holidays]);
 
   // Find the employee record for the logged-in user
   const currentUserEmployee = React.useMemo(() => {
@@ -141,22 +185,59 @@ function DailyCrewDispatchBoardContent() {
     }
   }, [showTimeOffModal, currentUserEmployee]);
 
-  // Load schedules on component mount
   useEffect(() => {
-    loadSchedules();
+    selectedDispatchDateRef.current = selectedDispatchDate;
+  }, [selectedDispatchDate]);
+
+  useEffect(() => {
+    usesAutoDispatchDateRef.current = usesAutoDispatchDate;
+  }, [usesAutoDispatchDate]);
+
+  useEffect(() => {
+    setSelectedDispatchDate(getDefaultDispatchDate());
+    setUsesAutoDispatchDate(true);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDispatchDate) return;
+    loadSchedules(selectedDispatchDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDispatchDate]);
+
+  useEffect(() => {
+    const syncAutomaticDispatchDate = () => {
+      if (!usesAutoDispatchDateRef.current) return false;
+      const nextAutoDate = getDefaultDispatchDate();
+      if (nextAutoDate !== selectedDispatchDateRef.current) {
+        setSelectedDispatchDate(nextAutoDate);
+        return true;
+      }
+      return false;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      const dateChanged = syncAutomaticDispatchDate();
+      if (!dateChanged && selectedDispatchDateRef.current) {
+        loadSchedules(selectedDispatchDateRef.current);
+      }
+    };
+
+    const intervalId = window.setInterval(syncAutomaticDispatchDate, 60_000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-reload when page becomes visible
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadSchedules();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  const handleDispatchDateChange = (nextDate: string) => {
+    if (!nextDate) return;
+    setSelectedDispatchDate(nextDate);
+    setUsesAutoDispatchDate(nextDate === getDefaultDispatchDate());
+  };
 
   function getWeekDates(weekStart: Date): Date[] {
     const dates: Date[] = [];
@@ -196,8 +277,9 @@ function DailyCrewDispatchBoardContent() {
     return null;
   }
 
-  async function loadSchedules() {
+  async function loadSchedules(dispatchDateKey = selectedDispatchDateRef.current) {
     try {
+      if (!dispatchDateKey) return;
       setLoading(true);
       const start = Date.now();
       
@@ -324,13 +406,12 @@ function DailyCrewDispatchBoardContent() {
         }
       });
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const displayDate = new Date(today);
+      const displayDate = parseDateInput(dispatchDateKey) || new Date(`${dispatchDateKey}T00:00:00`);
+      displayDate.setHours(0, 0, 0, 0);
       const localDateKey = formatDateKey(displayDate);
       const utcDateKey = displayDate.toISOString().split('T')[0];
 
-      // Load schedule data from activeSchedule for today's local date, with UTC-safe fallback
+      // Load schedule data from activeSchedule for the selected local date, with UTC-safe fallback
       const rangeStart = localDateKey <= utcDateKey ? new Date(`${localDateKey}T00:00:00`) : new Date(`${utcDateKey}T00:00:00`);
       const rangeEnd = localDateKey >= utcDateKey ? new Date(`${localDateKey}T00:00:00`) : new Date(`${utcDateKey}T00:00:00`);
       const { projectsByDate } = await loadActiveScheduleForDateRange(rangeStart, rangeEnd);
@@ -719,10 +800,11 @@ function DailyCrewDispatchBoardContent() {
     );
   }
 
-  const today = dayColumns[0];
-  const dateKey = today ? formatDateKey(today.date) : "";
+  const activeDay = dayColumns[0];
+  const activeDate = activeDay?.date || (selectedDispatchDate ? parseDateInput(selectedDispatchDate) : null);
+  const dateKey = selectedDispatchDate || (activeDay ? formatDateKey(activeDay.date) : "");
   
-  // Totals for the whole company today
+  // Totals for the selected dispatch day
   let globalScheduledHours = 0;
   Object.values(foremanDateProjects).forEach(dateMap => {
     if (dateMap[dateKey]) {
@@ -734,7 +816,7 @@ function DailyCrewDispatchBoardContent() {
   
   let totalHoursOff = 0;
   let workersOffCount = 0;
-  const peopleOffToday: { name: string, hours: number, type: string }[] = [];
+  const peopleOffForDate: { name: string, hours: number, type: string }[] = [];
   const fieldWorkers = allEmployees.filter(e => {
     const title = e.jobTitle?.toLowerCase() || "";
     return (title === "laborer" || title === "right hand men" || title === "right hand man" || title === "right hand man/ sealhard crew leader") && e.isActive;
@@ -748,7 +830,7 @@ function DailyCrewDispatchBoardContent() {
       const hrs = matchingReq.hours || 10;
       totalHoursOff += hrs;
       workersOffCount++;
-      peopleOffToday.push({ 
+      peopleOffForDate.push({ 
         name: `${worker.firstName} ${worker.lastName}`, 
         hours: hrs,
         type: matchingReq.type 
@@ -770,14 +852,14 @@ function DailyCrewDispatchBoardContent() {
             <div className="flex items-center gap-3">
               <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-lg shadow-red-900/20" style={{borderRadius: 'var(--radius-md)', padding: 'var(--space-4)'}}>
                 <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50" style={{fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)'}}>
-                  {today?.date.toLocaleDateString("en-US", { month: "short" })}
+                  {activeDate?.toLocaleDateString("en-US", { month: "short" })}
                 </span>
-                <span className="text-2xl font-black leading-none text-white">{today?.date.getDate()}</span>
+                <span className="text-2xl font-black leading-none text-white">{activeDate?.getDate()}</span>
               </div>
               <div>
                 <h1 className="text-xl font-black tracking-tight text-gray-900 uppercase italic">Crew <span className="text-red-900">Dispatch</span></h1>
                 <div className="text-[10px] font-bold text-red-900/40 uppercase tracking-widest">
-                  {today?.date.toLocaleDateString("en-US", { weekday: "long" })}
+                  {activeDate?.toLocaleDateString("en-US", { weekday: "long" })}
                 </div>
               </div>
             </div>
@@ -795,6 +877,15 @@ function DailyCrewDispatchBoardContent() {
                 Report
               </button>
             </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dispatch Date</span>
+            <input
+              type="date"
+              value={selectedDispatchDate}
+              onChange={(e) => handleDispatchDateChange(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 focus:border-red-900/30 focus:outline-none"
+            />
           </div>
           <div className="mt-5 grid grid-cols-3 gap-3">
             <div className="px-3 py-2.5 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shadow-sm">
@@ -816,8 +907,8 @@ function DailyCrewDispatchBoardContent() {
         <div className="hidden md:flex flex-row justify-between items-center px-6 py-4 bg-white border-b border-gray-100 lg:px-8 lg:py-6">
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-center justify-center bg-red-900 px-4 py-2 rounded-2xl shadow-xl shadow-red-900/30 lg:px-6 lg:py-4">
-              <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50">{today?.date.toLocaleDateString("en-US", { month: "short" })}</span>
-              <span className="text-2xl font-black leading-none text-white lg:text-4xl">{today?.date.getDate()}</span>
+              <span className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 text-red-50">{activeDate?.toLocaleDateString("en-US", { month: "short" })}</span>
+              <span className="text-2xl font-black leading-none text-white lg:text-4xl">{activeDate?.getDate()}</span>
             </div>
             <div className="h-10 w-px bg-gray-100 lg:h-16"></div>
             <div>
@@ -833,15 +924,24 @@ function DailyCrewDispatchBoardContent() {
                 )}
               </div>
               <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-[10px] font-black text-red-900 uppercase tracking-[0.2em]">{today?.date.toLocaleDateString("en-US", { weekday: "long" })}</span>
+                <span className="text-[10px] font-black text-red-900 uppercase tracking-[0.2em]">{activeDate?.toLocaleDateString("en-US", { weekday: "long" })}</span>
                 <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest leading-none">|</span>
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic opacity-60">Paradise Masonry Field Operations</span>
               </div>
             </div>
           </div>
           
-          <div className="flex items-center">
-            <Link href="/short-term-schedule" className="ml-auto px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dispatch Date</span>
+              <input
+                type="date"
+                value={selectedDispatchDate}
+                onChange={(e) => handleDispatchDateChange(e.target.value)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-bold text-gray-700 focus:border-red-900/30 focus:outline-none"
+              />
+            </div>
+            <Link href="/short-term-schedule" className="px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               Back
             </Link>
@@ -1091,13 +1191,13 @@ function DailyCrewDispatchBoardContent() {
         )}
       </div>
 
-      {/* People Off Today - Ultra-small footer */}
-      {peopleOffToday.length > 0 && (
+      {/* People Off - Selected dispatch day */}
+      {peopleOffForDate.length > 0 && (
         <div className="mt-1 px-4 flex flex-wrap gap-x-2 gap-y-0.5 items-center justify-center opacity-40">
           <span className="text-[8px] font-black uppercase tracking-tighter text-gray-500 mr-1">Away:</span>
-          {peopleOffToday.map((person, idx) => (
+          {peopleOffForDate.map((person, idx) => (
             <span key={idx} className="text-[8px] font-bold text-gray-500 leading-none">
-              {person.name}{idx < peopleOffToday.length - 1 ? "," : ""}
+              {person.name}{idx < peopleOffForDate.length - 1 ? "," : ""}
             </span>
           ))}
         </div>

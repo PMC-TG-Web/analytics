@@ -123,6 +123,33 @@ function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: st
   return { customer, projectNumber, projectName };
 }
 
+function normalizeCustomerValue(value: unknown): string {
+  const normalized = (value ?? "").toString().trim();
+  if (!normalized) return "";
+
+  const lower = normalized.toLowerCase();
+  const placeholders = new Set(["unknown", "unk", "n/a", "na", "none", "null", "undefined", "no customer"]);
+  if (placeholders.has(lower)) return "";
+
+  return normalized;
+}
+
+function resolveProjectCustomer(project: Pick<Project, "customer" | "jobKey">): string {
+  const directCustomer = normalizeCustomerValue(project.customer);
+  if (directCustomer) return directCustomer;
+
+  const parsed = parseJobKeyParts((project.jobKey ?? "").toString());
+  return normalizeCustomerValue(parsed.customer);
+}
+
+function resolveScheduleCustomer(schedule: Pick<Schedule, "customer" | "jobKey">): string {
+  const directCustomer = normalizeCustomerValue(schedule.customer);
+  if (directCustomer) return directCustomer;
+
+  const parsed = parseJobKeyParts(schedule.jobKey || "");
+  return normalizeCustomerValue(parsed.customer);
+}
+
 function parseDateFromUnknown(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -346,7 +373,7 @@ function WIPReportContent() {
     projectIdentifierMap.forEach((projectList) => {
       const customerMap = new Map<string, any[]>();
       projectList.forEach((p) => {
-        const customer = (p.customer ?? "").toString().trim();
+        const customer = resolveProjectCustomer(p);
         if (!customerMap.has(customer)) {
           customerMap.set(customer, []);
         }
@@ -356,8 +383,13 @@ function WIPReportContent() {
       if (customerMap.size > 1) {
         let selectedProjects: any[] = [];
         let foundPriorityCustomer = false;
+        const customerEntries = Array.from(customerMap.entries()).sort(([a], [b]) => {
+          if (a && !b) return -1;
+          if (!a && b) return 1;
+          return 0;
+        });
 
-        customerMap.forEach((projs) => {
+        customerEntries.forEach(([, projs]) => {
           const hasPriorityStatus = projs.some((p) => priorityStatuses.includes(p.status || ""));
           if (hasPriorityStatus && !foundPriorityCustomer) {
             selectedProjects = projs;
@@ -366,10 +398,12 @@ function WIPReportContent() {
         });
 
         if (!foundPriorityCustomer) {
-          let latestCustomer = "";
-          let latestDate: Date | null = null;
+          let latestNonEmptyCustomer = "";
+          let latestNonEmptyDate: Date | null = null;
+          let latestAnyCustomer = "";
+          let latestAnyDate: Date | null = null;
 
-          customerMap.forEach((projs, customer) => {
+          customerEntries.forEach(([customer, projs]) => {
             const mostRecentProj = projs.reduce((latest, current) => {
               const currentDate = parseDateFromUnknown(current.dateCreated);
               const latestDateVal = parseDateFromUnknown(latest.dateCreated);
@@ -379,13 +413,23 @@ function WIPReportContent() {
             }, projs[0]);
 
             const projDate = parseDateFromUnknown(mostRecentProj.dateCreated);
-            if (projDate && (!latestDate || projDate.getTime() > latestDate.getTime())) {
-              latestDate = projDate;
-              latestCustomer = customer;
+            if (projDate && (!latestAnyDate || projDate.getTime() > latestAnyDate.getTime())) {
+              latestAnyDate = projDate;
+              latestAnyCustomer = customer;
+            }
+            if (customer && projDate && (!latestNonEmptyDate || projDate.getTime() > latestNonEmptyDate.getTime())) {
+              latestNonEmptyDate = projDate;
+              latestNonEmptyCustomer = customer;
             }
           });
 
-          selectedProjects = customerMap.get(latestCustomer) || [];
+          const preferredCustomer = latestNonEmptyCustomer || latestAnyCustomer;
+          selectedProjects = customerMap.get(preferredCustomer) || [];
+
+          if (!selectedProjects.length) {
+            const firstNonEmpty = customerEntries.find(([customer]) => Boolean(customer));
+            if (firstNonEmpty) selectedProjects = firstNonEmpty[1];
+          }
         }
 
         dedupedByCustomer.push(...selectedProjects);
@@ -402,7 +446,8 @@ function WIPReportContent() {
 
     const keyMap = new Map<string, any[]>();
     filteredByStatus.forEach((p) => {
-      const key = `${p.customer ?? ""}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
+      const resolvedCustomer = resolveProjectCustomer(p);
+      const key = `${resolvedCustomer}~${p.projectNumber ?? ""}~${p.projectName ?? ""}`;
       if (!keyMap.has(key)) {
         keyMap.set(key, []);
       }
@@ -444,10 +489,15 @@ function WIPReportContent() {
         }
       }
 
+      const mergedCustomer =
+        resolveProjectCustomer(representative) ||
+        (matchedSchedule ? resolveScheduleCustomer(matchedSchedule) : "") ||
+        normalizeCustomerValue(keyParts.customer);
+
       results.push({
         id: matchedSchedule?.id || key,
         jobKey: key,
-        customer: representative.customer ?? "Unknown",
+        customer: mergedCustomer || "Unknown",
         projectNumber: representative.projectNumber ?? "",
         projectName: representative.projectName ?? "Unnamed",
         totalHours,
@@ -733,6 +783,7 @@ function WIPReportContent() {
     // Build monthly data DIRECTLY from schedules allocations
     // This is the primary data source since we have normalized allocations
     inProgressSchedules.forEach(schedule => {
+      const scheduleCustomer = resolveScheduleCustomer(schedule) || "Unknown";
       const allocations = normalizeAllocations(schedule.allocations);
       allocations.forEach(alloc => {
         if (!isValidMonthKey(alloc.month)) return;
@@ -749,13 +800,13 @@ function WIPReportContent() {
         monthlyData[alloc.month].hours += allocatedHours;
         
         // Add job entry
-        const jobEntry = monthlyData[alloc.month].jobs.find(j => j.customer === schedule.customer && j.projectName === schedule.projectName);
+        const jobEntry = monthlyData[alloc.month].jobs.find(j => j.customer === scheduleCustomer && j.projectName === schedule.projectName);
         
         if (jobEntry) {
           jobEntry.hours += allocatedHours;
         } else {
           monthlyData[alloc.month].jobs.push({
-            customer: schedule.customer || "Unknown",
+            customer: scheduleCustomer,
             projectNumber: schedule.projectNumber || "N/A",
             projectName: schedule.projectName || "Unnamed",
             hours: allocatedHours,
@@ -807,7 +858,7 @@ function WIPReportContent() {
       jobKey: s.jobKey || "",
       budget: s.totalHours || 0,
       projectName: s.projectName || "Unnamed",
-      customer: s.customer || "Unknown",
+      customer: resolveScheduleCustomer(s) || "Unknown",
       hasSchedule: true,
       hasGantt: false,
       p_hours: 0,

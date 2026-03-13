@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Navigation, { GlobalNavigationContext } from "@/components/Navigation";
 
-const NAV_HIDDEN_PREFIXES = ["/login", "/auth", "/forbidden", "/dev-login"];
+const NAV_HIDDEN_PREFIXES = ["/login", "/auth", "/forbidden", "/dev-login", "/daily-crew-dispatch-board"];
 
 function shouldShowGlobalNav(pathname: string): boolean {
   return !NAV_HIDDEN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

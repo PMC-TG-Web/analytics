@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import "../globals-responsive.css";
+import styles from "./dispatch-responsive.module.css";
 
 import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
@@ -843,7 +843,7 @@ function DailyCrewDispatchBoardContent() {
   const globalActualHours = (foremen.length + globalAssignedCount) * 10; // foremen + crew members
 
   return (
-    <main className="h-screen bg-neutral-100 p-2 md:p-4 lg:p-6 font-sans text-slate-900 overflow-hidden flex flex-col">
+    <main className={`${styles.dispatchResponsive} h-screen bg-neutral-100 p-2 md:p-4 lg:p-6 font-sans text-slate-900 overflow-hidden flex flex-col`}>
       <div className="max-w-full mx-auto w-full flex-1 flex flex-col bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200" style={{borderRadius: 'var(--radius-lg)'}}>
         
         {/* Mobile Mini Header */}

@@ -21,7 +21,7 @@ export default function AppChrome({ children }: { children: ReactNode }) {
           <Navigation forceRender />
         </header>
       )}
-      {children}
+      <div className={showGlobalNav ? "app-content-with-nav" : "app-content"}>{children}</div>
     </GlobalNavigationContext.Provider>
   );
 }

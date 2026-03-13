@@ -55,3 +55,8 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Shared app shell spacing under global navigation */
+.app-content-with-nav {
+  padding-top: 0.5rem;
+}

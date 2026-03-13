@@ -282,7 +282,7 @@ function EndpointExplorerContent() {
                   className="w-4 h-4 text-blue-600"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  OK Only Working ({Object.values(testResults).filter(r => r.success).length})
+                  Only Working ({Object.values(testResults).filter(r => r.success).length})
                 </span>
               </label>
             </div>
@@ -301,7 +301,7 @@ function EndpointExplorerContent() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-xl">
-                      {expandedResources.has(resource) ? "v" : ">"}
+                      {expandedResources.has(resource) ? "\u25BC" : "\u25B6"}
                     </span>
                     <h3 className="text-lg font-semibold text-gray-900">
                       {resource}
@@ -363,7 +363,7 @@ function EndpointExplorerContent() {
                             >
                               <div className="flex items-center gap-2 mb-2">
                                 <span className={testResult.success ? "text-green-700" : "text-red-700"}>
-                                  {testResult.success ? "OK Success" : "❌ Error"}
+                                  {testResult.success ? "\u2714 Success" : "Error"}
                                 </span>
                                 {testResult.duration > 0 && (
                                   <span className="text-xs text-gray-600">

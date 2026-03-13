@@ -367,37 +367,37 @@ function ProjectsContent() {
                   className="col-span-3 cursor-pointer hover:text-teal-400 transition-colors flex items-center gap-2"
                   onClick={() => setSortConfig({ key: 'projectName', direction: sortConfig.key === 'projectName' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Project {sortConfig.key === 'projectName' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Project {sortConfig.key === 'projectName' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
                 <div 
                   className="col-span-2 cursor-pointer hover:text-teal-400 transition-colors flex items-center gap-2"
                   onClick={() => setSortConfig({ key: 'customer', direction: sortConfig.key === 'customer' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Customer {sortConfig.key === 'customer' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Customer {sortConfig.key === 'customer' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
                 <div 
                   className="col-span-1 text-center cursor-pointer hover:text-teal-400 transition-colors flex items-center justify-center gap-2"
                   onClick={() => setSortConfig({ key: 'status', direction: sortConfig.key === 'status' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
                 <div 
                   className="col-span-2 text-right text-teal-400 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'totalSales', direction: sortConfig.key === 'totalSales' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Sales {sortConfig.key === 'totalSales' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Sales {sortConfig.key === 'totalSales' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
                 <div 
                   className="col-span-2 text-right text-orange-400 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'totalHours', direction: sortConfig.key === 'totalHours' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Hours {sortConfig.key === 'totalHours' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Hours {sortConfig.key === 'totalHours' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
                 <div 
                   className="col-span-2 text-right cursor-pointer hover:text-teal-400 transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'startDate', direction: sortConfig.key === 'startDate' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Dates {sortConfig.key === 'startDate' && (sortConfig.direction === 'asc' ? '^' : 'v')}
+                  Dates {sortConfig.key === 'startDate' && (sortConfig.direction === 'asc' ? "\u2191" : "\u2193")}
                 </div>
               </div>
 
@@ -489,7 +489,7 @@ function ProjectsContent() {
                       {p.startDate ? p.startDate : 'TBD'}
                     </div>
                     <div className="text-[10px] font-black text-gray-500 uppercase mt-1">
-                      -> {p.endDate ? p.endDate : 'TBD'}
+                      {"\u2192"} {p.endDate ? p.endDate : 'TBD'}
                     </div>
                   </div>
                 </div>

@@ -1053,7 +1053,7 @@ function ShortTermScheduleContent() {
               <div className={`p-6 border-b flex flex-col md:flex-row items-center justify-between gap-4 ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight italic flex-1">
                   {targetingCell 
-                    ? `Targeting: ${targetingCell.date.toLocaleDateString()}  |  ${
+                    ? `Targeting: ${targetingCell.date.toLocaleDateString()} \u2022 ${
                       [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
                     }`
                     : 'Search for Project'
@@ -1186,7 +1186,7 @@ function ShortTermScheduleContent() {
                         >
                           <div className="flex-1 overflow-hidden">
                             <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
-                            <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer}  |  #{p.projectNumber}</div>
+                            <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} {"\u2022"} #{p.projectNumber}</div>
                             {scopeCount > 1 && (
                               <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Unique Scopes</div>
                             )}
@@ -1547,7 +1547,7 @@ function ShortTermScheduleContent() {
                 <div className="flex justify-between items-center">
                   <div className="flex-1">
                     <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tight">{scopeSelectionModal.projects[0]?.projectName}</h3>
-                    <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer}  |  #{scopeSelectionModal.projects[0]?.projectNumber}</p>
+                    <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer} {"\u2022"} #{scopeSelectionModal.projects[0]?.projectNumber}</p>
                   </div>
                   <button
                     onClick={() => { setScopeSelectionModal(null); setCustomScopeName(""); }}
@@ -1607,7 +1607,7 @@ function ShortTermScheduleContent() {
                       className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="font-black text-gray-900 text-sm uppercase italic tracking-tight">{project.scopeOfWork || 'Unnamed Scope'}</div>
-                      <div className="text-[10px] font-bold text-orange-600 uppercase mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to Schedule -></div>
+                      <div className="text-[10px] font-bold text-orange-600 uppercase mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to Schedule</div>
                     </button>
                   ))}
                 </div>

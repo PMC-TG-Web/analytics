@@ -812,7 +812,7 @@ function EmployeesContent() {
           <div>
             <h1 className="text-4xl font-black text-gray-950 uppercase tracking-tighter">Employees</h1>
             <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-1 italic">
-              {activeCount} active, {inactiveCount} inactive | Total: {employees.length}
+              {activeCount} active, {inactiveCount} inactive {"\u2022"} Total: {employees.length}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">

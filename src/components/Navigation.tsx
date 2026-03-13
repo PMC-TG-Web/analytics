@@ -17,7 +17,6 @@ const navLinks: NavLink[] = [
   { href: "/projects", label: "Projects", page: "projects" },
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip" },
-  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },
   { href: "/constants", label: "Constants", page: "constants" },
@@ -32,6 +31,7 @@ const navLinks: NavLink[] = [
 ];
 
 const scheduleLinks: NavLink[] = [
+  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
   { href: "/scheduling", label: "Wip Schedule", page: "scheduling" },
   { href: "/project-schedule", label: "Project Gantt", page: "project-schedule" },
   { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },

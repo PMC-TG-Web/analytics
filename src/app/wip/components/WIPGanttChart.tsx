@@ -99,7 +99,7 @@ export const WIPGanttChart = memo(function WIPGanttChart({
                   
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs rounded px-3 py-2 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                    {entry.startDate} → {entry.endDate}
+                    {entry.startDate} -> {entry.endDate}
                     <br />
                     {entry.totalHours.toFixed(1)} hours
                   </div>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
@@ -160,7 +160,7 @@ function parseCsv(text: string): string[][] {
 
 function formatCardValue(cardName: string, kpiName: string, rawValue: string) {
   const trimmed = (rawValue ?? "").toString().trim();
-  if (!trimmed) return "â€”";
+  if (!trimmed) return "—";
   if (trimmed.endsWith("%")) return trimmed;
 
   const numeric = Number(trimmed.replace(/[$,]/g, ""));
@@ -653,7 +653,7 @@ function KPIPageContent({
           console.warn(`[KPI] Could not refresh data:`, err);
         }
         
-        console.log(`[KPI] âœ“ Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
+        console.log(`[KPI] OK Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
       } catch (error) {
         console.warn(`[KPI] Error saving ${fieldName} (API not available):`, error);
         // Gracefully skip in static export mode - no alerts needed
@@ -1243,7 +1243,7 @@ function KPIPageContent({
           const value = rowValues[idx] ?? "";
           const formatted = formatCardValue(cardName, row.kpi, value);
           return (
-            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "â€”" ? rowColor : "#999", fontWeight: formatted !== "â€”" ? 700 : 400, fontSize: 12 }}>
+            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? rowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
               {formatted}
             </td>
           );
@@ -1483,7 +1483,7 @@ function KPIPageContent({
                 fontSize: 11,
               }}
             >
-              âœ•
+              x
             </button>
           )}
         </div>
@@ -1505,7 +1505,7 @@ function KPIPageContent({
               fontSize: 12,
             }}
           />
-          <span style={{ color: "#999", fontSize: 12 }}>â€“</span>
+          <span style={{ color: "#999", fontSize: 12 }}>–</span>
           <input
             type="date"
             value={endDate}
@@ -1536,7 +1536,7 @@ function KPIPageContent({
                 fontSize: 11,
               }}
             >
-              âœ•
+              x
             </button>
           )}
         </div>
@@ -1628,7 +1628,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -1675,7 +1675,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -1780,7 +1780,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -1815,7 +1815,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -1896,7 +1896,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -1965,7 +1965,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "â€”"}
+                              ) : "—"}
                             </td>
                           );
                         })}
@@ -2043,7 +2043,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "â€”"}
+                        ) : "—"}
                       </td>
                     );
                   })}
@@ -2157,7 +2157,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "â€”"}
+                        ) : "—"}
                       </td>
                     );
                   })}
@@ -2365,7 +2365,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "â€”"}
+                        ) : "—"}
                       </td>
                     );
                   })}

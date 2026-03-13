@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 // Trigger redeploy
 import React, { useEffect, useMemo, useState } from "react";
 import { JobsListModal } from "./components/JobsListModal";
@@ -203,7 +203,7 @@ function DashboardContent() {
           groups[status].laborByGroup[normalizedGroup] = (groups[status].laborByGroup[normalizedGroup] || 0) + h;
         });
       } else {
-        // No pmcGroup data â€” add hours to "Unassigned" so total hours are visible
+        // No pmcGroup data — add hours to "Unassigned" so total hours are visible
         const h = Number(p.hours) || 0;
         if (h > 0) {
           groups[status].laborByGroup['Unassigned'] = (groups[status].laborByGroup['Unassigned'] || 0) + h;
@@ -398,7 +398,7 @@ function DashboardContent() {
             onClick={handleExportCSV}
             className="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded shadow transition-colors flex items-center gap-1"
           >
-            <span>â†“</span> Export Projects to CSV
+            <span>v</span> Export Projects to CSV
           </button>
         </div>
       </div>

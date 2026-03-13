@@ -395,7 +395,7 @@ function CertificationsContent() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-xs text-gray-500">{cert.notes || "â€”"}</div>
+                        <div className="text-xs text-gray-500">{cert.notes || "-"}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button

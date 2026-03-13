@@ -400,7 +400,7 @@ export default function ProcoreTestPage() {
             }}
           >
             <h2 style={{ fontWeight: "600", marginBottom: "0.5rem", color: "#047857" }}>
-              ✓ Authenticated with Procore
+              OK Authenticated with Procore
             </h2>
             <div style={{ fontSize: "0.875rem" }}>
               <p><strong>User:</strong> {user.name || user.login}</p>

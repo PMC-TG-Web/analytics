@@ -153,7 +153,7 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
             Switch to Gantt
           </button>
           <button onClick={onClose} className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-xl hover:bg-gray-700 transition-colors">
-            ×
+            x
           </button>
         </div>
       </div>
@@ -179,7 +179,7 @@ export default function ProjectShortTermDrawer({ project, onClose, onOpenGantt }
             }}
             className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50"
           >
-            →
+            ->
           </button>
         </div>
 

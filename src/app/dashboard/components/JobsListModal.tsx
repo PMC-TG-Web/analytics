@@ -59,7 +59,7 @@ export function JobsListModal({
             onClick={onClose}
             className="bg-transparent border-none text-2xl cursor-pointer text-gray-500 hover:text-gray-700"
           >
-            ×
+            x
           </button>
         </div>
 

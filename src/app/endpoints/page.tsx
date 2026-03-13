@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useEffect, useState } from "react";
 
 
@@ -205,7 +205,7 @@ function EndpointExplorerContent() {
         <div className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              ðŸ” Endpoint Explorer
+              🔍 Endpoint Explorer
             </h1>
             <p className="text-gray-600">
               Discover all {data.totalEndpoints} Procore API endpoints
@@ -282,7 +282,7 @@ function EndpointExplorerContent() {
                   className="w-4 h-4 text-blue-600"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  âœ… Only Working ({Object.values(testResults).filter(r => r.success).length})
+                  OK Only Working ({Object.values(testResults).filter(r => r.success).length})
                 </span>
               </label>
             </div>
@@ -301,7 +301,7 @@ function EndpointExplorerContent() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-xl">
-                      {expandedResources.has(resource) ? "â–¼" : "â–¶"}
+                      {expandedResources.has(resource) ? "v" : ">"}
                     </span>
                     <h3 className="text-lg font-semibold text-gray-900">
                       {resource}
@@ -363,11 +363,11 @@ function EndpointExplorerContent() {
                             >
                               <div className="flex items-center gap-2 mb-2">
                                 <span className={testResult.success ? "text-green-700" : "text-red-700"}>
-                                  {testResult.success ? "âœ… Success" : "âŒ Error"}
+                                  {testResult.success ? "OK Success" : "❌ Error"}
                                 </span>
                                 {testResult.duration > 0 && (
                                   <span className="text-xs text-gray-600">
-                                    {testResult.statusCode} â€¢ {testResult.duration}ms â€¢ {(testResult.responseSize / 1024).toFixed(1)}KB
+                                    {testResult.statusCode} • {testResult.duration}ms • {(testResult.responseSize / 1024).toFixed(1)}KB
                                   </span>
                                 )}
                               </div>

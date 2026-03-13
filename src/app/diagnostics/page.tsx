@@ -23,7 +23,7 @@ export default function DiagnosticsPage() {
         success: response.ok,
         data: await response.json()
       };
-      console.log('✓ Health check passed', testResults.health);
+      console.log('OK Health check passed', testResults.health);
     } catch (error) {
       testResults.health = {
         error: (error as Error).message,
@@ -45,7 +45,7 @@ export default function DiagnosticsPage() {
         success: response.ok,
         data: await response.json()
       };
-      console.log('✓ GET /api/kpi passed', testResults.kpiGet);
+      console.log('OK GET /api/kpi passed', testResults.kpiGet);
     } catch (error) {
       testResults.kpiGet = {
         error: (error as Error).message,
@@ -76,7 +76,7 @@ export default function DiagnosticsPage() {
         success: response.ok,
         data: await response.json()
       };
-      console.log('✓ POST /api/kpi passed', testResults.kpiPost);
+      console.log('OK POST /api/kpi passed', testResults.kpiPost);
     } catch (error) {
       testResults.kpiPost = {
         error: (error as Error).message,
@@ -131,8 +131,8 @@ export default function DiagnosticsPage() {
       }
 
       const result = await response.json();
-      console.log('[TEST] ✓ Save successful:', result);
-      alert(`✓ Save successful! Response: ${JSON.stringify(result)}`);
+      console.log('[TEST] OK Save successful:', result);
+      alert(`OK Save successful! Response: ${JSON.stringify(result)}`);
     } catch (error) {
       console.error('[TEST] Error:', error);
       alert(`✗ Save failed: ${(error as Error).message}`);

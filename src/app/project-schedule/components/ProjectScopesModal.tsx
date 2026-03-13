@@ -253,7 +253,7 @@ export function ProjectScopesModal({
             <div className="text-lg font-bold">{project.projectName}</div>
             <div className="text-sm text-gray-500">{project.customer}</div>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl font-bold">✕</button>
+          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl font-bold">x</button>
         </div>
 
         <div className="space-y-5">
@@ -461,7 +461,7 @@ export function ProjectScopesModal({
                   {scopeDetail.tasks.map((task, index) => (
                     <div key={index} className="flex items-start justify-between gap-2 bg-white p-2 rounded border border-gray-200">
                       <div className="text-sm flex-1">{task}</div>
-                      <button type="button" onClick={() => handleRemoveTask(index)} className="text-red-500 hover:text-red-700 font-bold">✕</button>
+                      <button type="button" onClick={() => handleRemoveTask(index)} className="text-red-500 hover:text-red-700 font-bold">x</button>
                     </div>
                   ))}
                 </div>

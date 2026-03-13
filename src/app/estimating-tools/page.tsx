@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from "react";
 
 export default function EstimatingToolsPage() {
@@ -490,7 +490,7 @@ function EstimatingToolsContent() {
       });
       const result = await response.json();
       if (result.success) {
-        alert(`âœ“ Saved "${label.trim()}" to ${project?.projectName || 'project'}!`);
+        alert(`OK Saved "${label.trim()}" to ${project?.projectName || 'project'}!`);
         fetchData(); // Refresh recent calculations list
       } else {
         alert("Failed to save: " + (result.error || "Unknown error"));
@@ -1219,7 +1219,7 @@ function EstimatingToolsContent() {
               <input type="number" value={footerPierCount} onChange={e => setFooterPierCount(e.target.value)} style={inputStyle} placeholder="0" />
             </div>
             <div style={{ padding: "10px", background: "#f9fafb", borderRadius: "8px", border: "1px dashed #ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: "11px", color: "#666", textAlign: "center" }}>Chairs are calculated automatically: (LÃ—W)/16</span>
+              <span style={{ fontSize: "11px", color: "#666", textAlign: "center" }}>Chairs are calculated automatically: (LxW)/16</span>
             </div>
           </div>
 

@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       });
     }
 
-    console.log("✅ Successfully authenticated with Procore");
+    console.log("OK Successfully authenticated with Procore");
 
     // Redirect back to test page with success
     return NextResponse.redirect(

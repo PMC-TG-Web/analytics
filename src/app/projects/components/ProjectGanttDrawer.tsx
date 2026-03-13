@@ -311,7 +311,7 @@ export default function ProjectGanttDrawer({ project, onClose }: ProjectGanttDra
             ))}
           </div>
           <button onClick={onClose} className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-xl hover:bg-gray-700 transition-colors">
-            ×
+            x
           </button>
         </div>
       </div>

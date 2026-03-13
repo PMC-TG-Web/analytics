@@ -812,7 +812,7 @@ function EmployeesContent() {
           <div>
             <h1 className="text-4xl font-black text-gray-950 uppercase tracking-tighter">Employees</h1>
             <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-1 italic">
-              {activeCount} active, {inactiveCount} inactive â€¢ Total: {employees.length}
+              {activeCount} active, {inactiveCount} inactive | Total: {employees.length}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -952,10 +952,10 @@ function EmployeesContent() {
                         {employee.firstName} {employee.lastName}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.email}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{formatPhoneNumber(employee.phone || "") || "â€”"}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatPhoneNumber(employee.phone || "") || "-"}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.jobTitle}</td>
                       <td className="py-3 px-4 text-sm text-center font-semibold text-gray-900">
-                        {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "â€”"}
+                        {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "-"}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <button
@@ -1620,7 +1620,7 @@ function EmployeesContent() {
                                   <span className="text-[10px] font-black text-gray-600 uppercase">Issued: {cert.issueDate}</span>
                                 )}
                                 {cert.notes && (
-                                  <span className="text-[10px] font-bold text-gray-700 italic border-l-2 border-gray-300 pl-2 ml-1">â€” {cert.notes}</span>
+                                  <span className="text-[10px] font-bold text-gray-700 italic border-l-2 border-gray-300 pl-2 ml-1">- {cert.notes}</span>
                                 )}
                               </div>
                             </div>

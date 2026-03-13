@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -1018,13 +1018,13 @@ function ShortTermScheduleContent() {
                   const response = await fetch('/api/admin/cleanup-generic-scopes', { method: 'POST' });
                   const data = await response.json();
                   if (response.ok) {
-                    alert(`âœ… Cleanup complete!\n\n${data.message}`);
+                    alert(`OK Cleanup complete!\n\n${data.message}`);
                     await loadSchedules();
                   } else {
-                    alert(`âŒ Error: ${data.error}`);
+                    alert(`❌ Error: ${data.error}`);
                   }
                 } catch (error) {
-                  alert(`âŒ Failed: ${error}`);
+                  alert(`❌ Failed: ${error}`);
                 } finally {
                   setSaving(false);
                 }
@@ -1053,7 +1053,7 @@ function ShortTermScheduleContent() {
               <div className={`p-6 border-b flex flex-col md:flex-row items-center justify-between gap-4 ${targetingCell ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight italic flex-1">
                   {targetingCell 
-                    ? `Targeting: ${targetingCell.date.toLocaleDateString()} Â· ${
+                    ? `Targeting: ${targetingCell.date.toLocaleDateString()}  |  ${
                       [...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].find(f => f.id === targetingCell.foremanId)?.firstName
                     }`
                     : 'Search for Project'
@@ -1131,7 +1131,7 @@ function ShortTermScheduleContent() {
               <div className="flex-1 overflow-y-auto p-6">
                 {projectSearch.length < 2 && !targetingCell ? (
                   <div className="text-center py-10">
-                     <div className="text-orange-900/20 text-4xl mb-3">ðŸ”</div>
+                     <div className="text-orange-900/20 text-4xl mb-3">🔍</div>
                      <div className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Type to search or use the cell Assign button...</div>
                   </div>
                 ) : (
@@ -1186,7 +1186,7 @@ function ShortTermScheduleContent() {
                         >
                           <div className="flex-1 overflow-hidden">
                             <div className="font-black text-gray-900 text-sm truncate uppercase italic tracking-tight">{p.projectName}</div>
-                            <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer} Â· #{p.projectNumber}</div>
+                            <div className="text-[10px] font-bold text-gray-500 truncate uppercase mt-0.5">{p.customer}  |  #{p.projectNumber}</div>
                             {scopeCount > 1 && (
                               <div className="text-[9px] font-black text-orange-600 mt-1 italic">{scopeCount} Unique Scopes</div>
                             )}
@@ -1437,7 +1437,7 @@ function ShortTermScheduleContent() {
                                         );
                                       })}
                                       <div className="text-center py-1.5 text-[10px] font-black text-orange-600 bg-orange-50 uppercase tracking-widest rounded-xl border border-orange-100">
-                                        Î£ {dayTotal.toFixed(1)} <span className="opacity-50 text-[8px]">H Total</span>
+                                        Σ {dayTotal.toFixed(1)} <span className="opacity-50 text-[8px]">H Total</span>
                                       </div>
                                     </div>
                                   ) : (
@@ -1547,7 +1547,7 @@ function ShortTermScheduleContent() {
                 <div className="flex justify-between items-center">
                   <div className="flex-1">
                     <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tight">{scopeSelectionModal.projects[0]?.projectName}</h3>
-                    <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer} Â· #{scopeSelectionModal.projects[0]?.projectNumber}</p>
+                    <p className="text-sm font-bold text-gray-500 uppercase mt-1">{scopeSelectionModal.projects[0]?.customer}  |  #{scopeSelectionModal.projects[0]?.projectNumber}</p>
                   </div>
                   <button
                     onClick={() => { setScopeSelectionModal(null); setCustomScopeName(""); }}
@@ -1607,7 +1607,7 @@ function ShortTermScheduleContent() {
                       className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="font-black text-gray-900 text-sm uppercase italic tracking-tight">{project.scopeOfWork || 'Unnamed Scope'}</div>
-                      <div className="text-[10px] font-bold text-orange-600 uppercase mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to Schedule â†’</div>
+                      <div className="text-[10px] font-bold text-orange-600 uppercase mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to Schedule -></div>
                     </button>
                   ))}
                 </div>

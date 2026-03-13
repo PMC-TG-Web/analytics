@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { Project, Scope } from "@/types";
@@ -328,7 +328,7 @@ function ProjectsContent() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white border-2 border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:border-teal-500 outline-none transition-all shadow-sm placeholder:text-gray-500"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs">ðŸ”</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs">🔍</span>
               </div>
               <select
                 value={statusFilter}
@@ -367,37 +367,37 @@ function ProjectsContent() {
                   className="col-span-3 cursor-pointer hover:text-teal-400 transition-colors flex items-center gap-2"
                   onClick={() => setSortConfig({ key: 'projectName', direction: sortConfig.key === 'projectName' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Project {sortConfig.key === 'projectName' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Project {sortConfig.key === 'projectName' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
                 <div 
                   className="col-span-2 cursor-pointer hover:text-teal-400 transition-colors flex items-center gap-2"
                   onClick={() => setSortConfig({ key: 'customer', direction: sortConfig.key === 'customer' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Customer {sortConfig.key === 'customer' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Customer {sortConfig.key === 'customer' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
                 <div 
                   className="col-span-1 text-center cursor-pointer hover:text-teal-400 transition-colors flex items-center justify-center gap-2"
                   onClick={() => setSortConfig({ key: 'status', direction: sortConfig.key === 'status' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
                 <div 
                   className="col-span-2 text-right text-teal-400 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'totalSales', direction: sortConfig.key === 'totalSales' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Sales {sortConfig.key === 'totalSales' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Sales {sortConfig.key === 'totalSales' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
                 <div 
                   className="col-span-2 text-right text-orange-400 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'totalHours', direction: sortConfig.key === 'totalHours' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Hours {sortConfig.key === 'totalHours' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Hours {sortConfig.key === 'totalHours' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
                 <div 
                   className="col-span-2 text-right cursor-pointer hover:text-teal-400 transition-colors flex items-center justify-end gap-2"
                   onClick={() => setSortConfig({ key: 'startDate', direction: sortConfig.key === 'startDate' && sortConfig.direction === 'asc' ? 'desc' : 'asc' })}
                 >
-                  Dates {sortConfig.key === 'startDate' && (sortConfig.direction === 'asc' ? 'â†‘' : 'â†“')}
+                  Dates {sortConfig.key === 'startDate' && (sortConfig.direction === 'asc' ? '^' : 'v')}
                 </div>
               </div>
 
@@ -489,7 +489,7 @@ function ProjectsContent() {
                       {p.startDate ? p.startDate : 'TBD'}
                     </div>
                     <div className="text-[10px] font-black text-gray-500 uppercase mt-1">
-                      â†’ {p.endDate ? p.endDate : 'TBD'}
+                      -> {p.endDate ? p.endDate : 'TBD'}
                     </div>
                   </div>
                 </div>
@@ -543,7 +543,7 @@ function ProjectsContent() {
                 onClick={() => setSelectedProject(null)}
                 className="w-12 h-12 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-2xl hover:bg-gray-50 transition-colors shadow-sm text-gray-900"
               >
-                Ã—
+                x
               </button>
             </div>
 
@@ -560,14 +560,14 @@ function ProjectsContent() {
                       onClick={() => setSelectedGanttProject(selectedProject)}
                       className="px-4 py-2.5 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg flex items-center gap-2"
                     >
-                      <span>ðŸ“Š</span>
+                      <span>📊</span>
                       Gantt
                     </button>
                     <button
                       onClick={() => setSelectedShortTermProject(selectedProject)}
                       className="px-6 py-2.5 bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-900/20 flex items-center gap-2"
                     >
-                      <span>ðŸ“…</span>
+                      <span>📅</span>
                       Daily Schedule
                     </button>
                   </div>
@@ -585,8 +585,8 @@ function ProjectsContent() {
                           <div className="flex-1">
                             <h4 className="text-lg font-black text-gray-900 uppercase leading-none mb-2">{scope.title}</h4>
                             <div className="flex flex-wrap items-center gap-4 text-[11px] font-black text-gray-700 uppercase">
-                              <span className="flex items-center gap-1.5"><span className="text-gray-400">Start:</span> {scope.startDate || 'â€”'}</span>
-                              <span className="flex items-center gap-1.5"><span className="text-gray-400">End:</span> {scope.endDate || 'â€”'}</span>
+                              <span className="flex items-center gap-1.5"><span className="text-gray-400">Start:</span> {scope.startDate || '—'}</span>
+                              <span className="flex items-center gap-1.5"><span className="text-gray-400">End:</span> {scope.endDate || '—'}</span>
                               {scope.hours && <span className="text-teal-700">| {scope.hours} Hours</span>}
                             </div>
                           </div>

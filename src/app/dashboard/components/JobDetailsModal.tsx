@@ -247,7 +247,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
             onClick={onClose}
             className="text-3xl text-gray-400 hover:text-gray-600 transition-colors"
           >
-            ×
+            x
           </button>
         </div>
 
@@ -387,7 +387,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                           className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"
                         >
                           <div className="flex items-center gap-3">
-                            <span className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                            <span className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>v</span>
                             <span className="font-bold text-gray-800">{type} ({aggregatedItemsArray.length})</span>
                           </div>
                           <div className="flex gap-6 text-sm">

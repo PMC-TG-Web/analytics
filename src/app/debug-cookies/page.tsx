@@ -35,7 +35,7 @@ export default function DebugCookies() {
             <p className="text-gray-400">Loading auth...</p>
           ) : user ? (
             <>
-              <p className="text-green-400 font-semibold mb-2">✓ Authenticated</p>
+              <p className="text-green-400 font-semibold mb-2">OK Authenticated</p>
               <p className="text-gray-300">Email: <span className="text-blue-400">{user.email}</span></p>
             </>
           ) : (
@@ -67,12 +67,12 @@ export default function DebugCookies() {
           <h2 className="text-xl font-bold text-white mb-4">What You Need</h2>
           <div className="space-y-3 text-gray-300 text-sm">
             <div className="flex items-start gap-3">
-              <span className="text-blue-400">✓</span>
+              <span className="text-blue-400">OK</span>
               <span><strong>auth_session</strong> - For app authentication (you have this)</span>
             </div>
             <div className="flex items-start gap-3">
               <span className={user ? 'text-blue-400' : 'text-red-400'}>
-                {cookies['procore_access_token'] ? '✓' : '✗'}
+                {cookies['procore_access_token'] ? 'OK' : '✗'}
               </span>
               <span><strong>procore_access_token</strong> - For Procore API access (needed for dashboard)</span>
             </div>

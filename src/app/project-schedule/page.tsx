@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -554,7 +554,7 @@ export default function ProjectSchedulePage() {
                           </div>
                         </div>
                         <div className="mt-1 text-[11px] text-gray-500 ml-6">
-                          {scopes.length} scope{scopes.length !== 1 ? "s" : ""} Â· {project.scopedHours.toFixed(1)} hours
+                          {scopes.length} scope{scopes.length !== 1 ? "s" : ""}  |  {project.scopedHours.toFixed(1)} hours
                         </div>
                         <button
                           onClick={() => setSelectedProject(project)}
@@ -633,7 +633,7 @@ export default function ProjectSchedulePage() {
                                 </div>
                                 <div className="text-[11px] text-gray-500 mt-0.5">
                                   {scope.totalHours.toFixed(1)}h
-                                  {scope.scheduledHours > 0 && ` Â· ${scope.scheduledHours.toFixed(1)} scheduled`}
+                                  {scope.scheduledHours > 0 && `  |  ${scope.scheduledHours.toFixed(1)} scheduled`}
                                 </div>
                               </div>
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState } from "react";
 
 export default function SeedKPICardsPage() {
@@ -99,7 +99,7 @@ export default function SeedKPICardsPage() {
             color: "#3c3",
           }}
         >
-          âœ“ {message}
+          OK {message}
         </div>
       )}
 

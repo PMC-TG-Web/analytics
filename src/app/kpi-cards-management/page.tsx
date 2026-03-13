@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useEffect, useState } from "react";
 
 import { loadPayPeriods, distributeHours, formatPayPeriod, type PayPeriod } from "@/utils/payPeriodUtils";
@@ -521,7 +521,7 @@ function KPICardsManagementContent() {
                       fontSize: 12,
                       color: '#856404',
                     }}>
-                      âš ï¸ This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'}.
+                      Warning This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'}.
                     </div>
                   )}
                 </div>
@@ -602,7 +602,7 @@ function KPICardsManagementContent() {
             color: "#9a3412",
           }}
         >
-          <strong>âš ï¸ {warning}</strong>
+          <strong>Warning {warning}</strong>
         </div>
       )}
 
@@ -617,7 +617,7 @@ function KPICardsManagementContent() {
             color: "#c33",
           }}
         >
-          <strong>âš ï¸ {error}</strong>
+          <strong>Warning {error}</strong>
           {error.includes("No KPI cards found") && (
             <div style={{ marginTop: "10px", fontSize: "14px" }}>
               <p>To get started, visit <code style={{ backgroundColor: "#f0f0f0", padding: "2px 6px", borderRadius: "3px" }}>/seed-kpi-cards</code> to seed the database with default data.</p>

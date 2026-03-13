@@ -7,8 +7,8 @@ export async function GET(request: Request) {
   try {
     // Check configuration
     const config = {
-      clientId: procoreConfig.clientId ? "✓ Configured" : "✗ Missing",
-      clientSecret: procoreConfig.clientSecret ? "✓ Configured" : "✗ Missing",
+      clientId: procoreConfig.clientId ? "OK Configured" : "✗ Missing",
+      clientSecret: procoreConfig.clientSecret ? "OK Configured" : "✗ Missing",
       companyId: procoreConfig.companyId,
       apiUrl: procoreConfig.apiUrl,
       authUrl: procoreConfig.authUrl,

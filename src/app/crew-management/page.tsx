@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 
@@ -328,7 +328,7 @@ function CrewManagementContent() {
                                 onClick={() => toggleCrewMember(foreman.id, laborerId)}
                                 className="ml-1 text-blue-600 hover:text-blue-800 font-bold"
                               >
-                                Ã—
+                                x
                               </button>
                             </span>
                           ))}

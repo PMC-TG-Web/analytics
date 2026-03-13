@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { Equipment, EquipmentAssignment } from "@/types/equipment";
@@ -255,7 +255,7 @@ function EquipmentContent() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white border-2 border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:border-teal-500 outline-none transition-all shadow-sm placeholder:text-gray-500"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs">ðŸ”</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs">🔍</span>
               </div>
               <button
                 onClick={() => {
@@ -280,7 +280,7 @@ function EquipmentContent() {
               {/* Equipment List */}
               <div className="xl:col-span-2 space-y-6">
                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-8 h-8 bg-teal-100 text-teal-700 rounded-lg flex items-center justify-center text-xs">ðŸ› ï¸</span>
+                  <span className="w-8 h-8 bg-teal-100 text-teal-700 rounded-lg flex items-center justify-center text-xs">🛠️</span>
                   Inventory ({filteredEquipment.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -342,7 +342,7 @@ function EquipmentContent() {
               {/* Current Assignments Sidebar */}
               <div className="space-y-6">
                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-8 h-8 bg-orange-100 text-orange-700 rounded-lg flex items-center justify-center text-xs">ðŸ“…</span>
+                  <span className="w-8 h-8 bg-orange-100 text-orange-700 rounded-lg flex items-center justify-center text-xs">📅</span>
                   Active Schedule
                 </h2>
                 <div className="space-y-4">
@@ -359,7 +359,7 @@ function EquipmentContent() {
                             onClick={() => handleDeleteAssignment(assign.id)}
                             className="absolute top-4 right-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all font-black text-lg"
                           >
-                            Ã—
+                            x
                           </button>
                           <span className="text-[9px] font-black text-orange-700 uppercase tracking-widest block mb-1">{assign.equipmentName}</span>
                           <h4 className="text-sm font-black text-gray-950 uppercase mb-2 leading-tight">{assign.projectName}</h4>
@@ -397,7 +397,7 @@ function EquipmentContent() {
                   <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">Configure asset details</p>
                 </div>
                 <button onClick={() => setModalVisible(false)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-950">
-                  <span className="text-xl">Ã—</span>
+                  <span className="text-xl">x</span>
                 </button>
               </div>
 
@@ -478,7 +478,7 @@ function EquipmentContent() {
         <div className="fixed inset-0 bg-gray-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 sm:p-12 text-center">
-              <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-6">ðŸ“…</div>
+              <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-6">📅</div>
               <h2 className="text-2xl font-black text-gray-950 uppercase tracking-tight mb-2">Schedule Assignment</h2>
               <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mb-8">Scheduling: {selectedEqForAssign.name}</p>
 
@@ -511,8 +511,8 @@ function EquipmentContent() {
                         setAssignData({ 
                           ...assignData, 
                           scopeId: sId,
-                          startDate: (stag?.startDate && stag.startDate !== "â€”") ? stag.startDate : assignData.startDate,
-                          endDate: (stag?.endDate && stag.endDate !== "â€”") ? stag.endDate : assignData.endDate
+                          startDate: (stag?.startDate && stag.startDate !== "—") ? stag.startDate : assignData.startDate,
+                          endDate: (stag?.endDate && stag.endDate !== "—") ? stag.endDate : assignData.endDate
                         });
                       }}
                       className="w-full px-5 py-4 bg-white border-2 border-gray-100 focus:border-teal-500 text-gray-950 rounded-2xl text-sm font-bold outline-none appearance-none cursor-pointer"

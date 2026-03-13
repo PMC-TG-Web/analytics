@@ -10,30 +10,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-
-
-
 // ==================== PROJECTS ====================
 model Project {
-  id                    String   @id @default(cuid())
-  projectNumber         String?
-  projectName           String
-  customer              String?
-  status                String?  // "Bid Submitted", "Estimating", "In Progress", etc.
-  sales                 Float?
-  cost                  Float?
-  hours                 Float?
-  laborSales            Float?
-  laborCost             Float?
-  dateUpdated           DateTime?
-  dateCreated           DateTime?
-  projectArchived       Boolean? @default(false)
-  estimator             String?
-  projectManager        String?
-  
+  id              String    @id @default(cuid())
+  projectNumber   String?
+  projectName     String
+  customer        String?
+  status          String? // "Bid Submitted", "Estimating", "In Progress", etc.
+  sales           Float?
+  cost            Float?
+  hours           Float?
+  laborSales      Float?
+  laborCost       Float?
+  dateUpdated     DateTime?
+  dateCreated     DateTime?
+  projectArchived Boolean?  @default(false)
+  estimator       String?
+  projectManager  String?
+
   // Flexible data (store as JSON for fields not explicitly modeled)
-  customFields          Json?
+  customFields Json?
 
   // Relationships
   scopes                ProjectScope[]
@@ -44,8 +40,8 @@ model Project {
   productivitySummaries ProductivitySummary[]
   pmcBreakdownCache     PMCBreakdownCache?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectNumber])
   @@index([projectName])
@@ -57,21 +53,21 @@ model Project {
 
 // ==================== PROJECT SCOPES (Gantt Chart) ====================
 model ProjectScope {
-  id                String   @id @default(cuid())
-  jobKey            String   // Format: "customer~projectNumber~projectName"
-  projectId         String?  
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  title             String   // Scope title/name
-  startDate         String?  // YYYY-MM-DD format
-  endDate           String?  // YYYY-MM-DD format
-  manpower          Float?   // Daily manpower
-  hours             Float?   // Total hours
-  description       String?  @db.Text
-  tasks             Json?    // Array of task strings
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id        String   @id @default(cuid())
+  jobKey    String // Format: "customer~projectNumber~projectName"
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String // Scope title/name
+  startDate   String? // YYYY-MM-DD format
+  endDate     String? // YYYY-MM-DD format
+  manpower    Float? // Daily manpower
+  hours       Float? // Total hours
+  description String? @db.Text
+  tasks       Json? // Array of task strings
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([jobKey])
   @@index([projectId])
@@ -79,22 +75,22 @@ model ProjectScope {
 
 // ==================== SCHEDULES (WIP - Work In Progress) ====================
 model Schedule {
-  id                String   @id @default(cuid())
-  jobKey            String   @unique
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  customer          String?
-  projectNumber     String?
-  projectName       String?
-  status            String?
-  totalHours        Float?
-  
+  id        String   @id @default(cuid())
+  jobKey    String   @unique
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  customer      String?
+  projectNumber String?
+  projectName   String?
+  status        String?
+  totalHours    Float?
+
   // Normalized allocations table (single source of truth)
-  allocationsList   ScheduleAllocation[]
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  allocationsList ScheduleAllocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([jobKey])
   @@index([projectId])
@@ -105,17 +101,17 @@ model Schedule {
 
 // ==================== SCHEDULE ALLOCATIONS (Monthly/Weekly breakdown) ====================
 model ScheduleAllocation {
-  id                String   @id @default(cuid())
-  scheduleId        String
-  schedule          Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  
-  period            String   @db.VarChar(10) // "2026-03" for month, "2026-W10" for week
-  periodType        String   @default("month") // "month" or "week"
-  hours             Float
-  percent           Float?   // Percentage of total hours
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id         String   @id @default(cuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  period     String @db.VarChar(10) // "2026-03" for month, "2026-W10" for week
+  periodType String @default("month") // "month" or "week"
+  hours      Float
+  percent    Float? // Percentage of total hours
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([scheduleId, period])
   @@index([scheduleId])
@@ -125,19 +121,19 @@ model ScheduleAllocation {
 
 // ==================== ACTIVE SCHEDULE ====================
 model ActiveSchedule {
-  id                String   @id @default(cuid())
-  jobKey            String
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  scopeOfWork       String
-  date              String   @db.VarChar(10) // YYYY-MM-DD format
-  hours             Float
-  foreman           String?
-  manpower          Int?
-  source            String   // 'gantt' | 'short-term' | 'long-term' | 'schedules'
-  
-  lastModified      DateTime @default(now()) @updatedAt
+  id        String   @id @default(cuid())
+  jobKey    String
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  scopeOfWork String
+  date        String  @db.VarChar(10) // YYYY-MM-DD format
+  hours       Float
+  foreman     String?
+  manpower    Int?
+  source      String // 'gantt' | 'short-term' | 'long-term' | 'schedules'
+
+  lastModified DateTime @default(now()) @updatedAt
 
   @@unique([jobKey, scopeOfWork, date]) // Composite unique constraint
   @@index([jobKey])
@@ -147,17 +143,17 @@ model ActiveSchedule {
 
 // ==================== SCOPE TRACKING ====================
 model ScopeTracking {
-  id                String   @id @default(cuid())
-  jobKey            String
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  scopeOfWork       String
-  totalHours        Float
-  scheduledHours    Float
-  unscheduledHours  Float
-  
-  lastUpdated       DateTime @default(now()) @updatedAt
+  id        String   @id @default(cuid())
+  jobKey    String
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  scopeOfWork      String
+  totalHours       Float
+  scheduledHours   Float
+  unscheduledHours Float
+
+  lastUpdated DateTime @default(now()) @updatedAt
 
   @@unique([jobKey, scopeOfWork])
   @@index([jobKey])
@@ -166,23 +162,23 @@ model ScopeTracking {
 
 // ==================== PRODUCTIVITY ====================
 model ProductivityLog {
-  id                String   @id @default(cuid())
-  jobKey            String?
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  
-  date              DateTime
-  foreman           String?
-  crew              String?
-  hours             Float?
-  scopeOfWork       String?
-  notes             String?
-  
-  // Flexible data
-  customFields      Json?
+  id        String   @id @default(cuid())
+  jobKey    String?
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  date        DateTime
+  foreman     String?
+  crew        String?
+  hours       Float?
+  scopeOfWork String?
+  notes       String?
+
+  // Flexible data
+  customFields Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([jobKey])
   @@index([projectId])
@@ -190,17 +186,17 @@ model ProductivityLog {
 }
 
 model ProductivitySummary {
-  id                String   @id @default(cuid())
-  jobKey            String   @unique
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  
-  totalHours        Float
-  averageDaily      Float?
-  dates             Json?    // Array of dates worked
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id        String   @id @default(cuid())
+  jobKey    String   @unique
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  totalHours   Float
+  averageDaily Float?
+  dates        Json? // Array of dates worked
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([jobKey])
   @@index([projectId])
@@ -208,29 +204,29 @@ model ProductivitySummary {
 
 // ==================== DASHBOARD SUMMARY ====================
 model DashboardSummary {
-  id                String   @id @default("summary")
-  
-  totalSales        Float
-  totalCost         Float
-  totalHours        Float
-  
-  statusGroups      Json     // Record<string, { sales, cost, hours, count, laborByGroup }>
-  contractors       Json     // Record<string, { sales, cost, hours, count, byStatus }>
-  pmcGroupHours     Json     // Record<string, number>
-  laborBreakdown    Json?    // Record<string, number>
-  
-  lastUpdated       DateTime @updatedAt
+  id String @id @default("summary")
+
+  totalSales Float
+  totalCost  Float
+  totalHours Float
+
+  statusGroups   Json // Record<string, { sales, cost, hours, count, laborByGroup }>
+  contractors    Json // Record<string, { sales, cost, hours, count, byStatus }>
+  pmcGroupHours  Json // Record<string, number>
+  laborBreakdown Json? // Record<string, number>
+
+  lastUpdated DateTime @updatedAt
 
   @@index([id])
 }
 
 // ==================== KPI DATA ====================
 model KPIEntry {
-  id                String   @id @default(cuid())
-  entryKey          String   @unique // Format: "2026-01" (year-month)
-  year              String
-  month             Int
-  monthName         String
+  id        String @id @default(cuid())
+  entryKey  String @unique // Format: "2026-01" (year-month)
+  year      String
+  month     Int
+  monthName String
 
   // Financial Metrics - Database Fed
   bidSubmittedSales Float?
@@ -240,28 +236,28 @@ model KPIEntry {
   leadtimes         Float?
 
   // Financial Metrics - Manual Entry
-  revenueActual     Float?    // Revenue by Month - manual
-  estimates         Float?    // Estimates by Month - Goal (manual)
+  revenueActual        Float? // Revenue by Month - manual
+  estimates            Float? // Estimates by Month - Goal (manual)
   estimatesActualHours Float? // Estimates by Month - Actual Hours (manual)
-  salesActualHours  Float?    // Sales by Month - Actual Hours (manual)
-  revenueActualHours Float?   // Revenue Hours by Month - Actual Hours (manual)
-  subsAllowance     Float?    // Subs by Month - Subcontractor Allowance (manual)
-  subActualHours    Float?    // Subs by Month - Sub Actual Hours (manual)
-  gpActualPercent   Float?    // Gross Profit by Month - GP Actual % (manual)
-  profitActualPercent Float?  // Profit by Month - Profit Actual % (manual)
+  salesActualHours     Float? // Sales by Month - Actual Hours (manual)
+  revenueActualHours   Float? // Revenue Hours by Month - Actual Hours (manual)
+  subsAllowance        Float? // Subs by Month - Subcontractor Allowance (manual)
+  subActualHours       Float? // Subs by Month - Sub Actual Hours (manual)
+  gpActualPercent      Float? // Gross Profit by Month - GP Actual % (manual)
+  profitActualPercent  Float? // Profit by Month - Profit Actual % (manual)
 
   // Legacy/Unused Fields
-  subs              Float?    // Deprecated: use subActualHours
-  grossProfit       Float?    // Deprecated: use gpActualPercent
-  cost              Float?    // Deprecated: not currently used
+  subs        Float? // Deprecated: use subActualHours
+  grossProfit Float? // Deprecated: use gpActualPercent
+  cost        Float? // Deprecated: not currently used
 
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Optional: Link to user who created/edited
-  createdByEmail    String?
-  updatedByEmail    String?
+  createdByEmail String?
+  updatedByEmail String?
 
   @@index([year, month])
   @@index([entryKey])
@@ -269,13 +265,13 @@ model KPIEntry {
 
 // ==================== AUDIT LOG ====================
 model AuditLog {
-  id          String   @id @default(cuid())
-  action      String   // "CREATE", "UPDATE", "DELETE"
-  entity      String   // "Project", "KPIEntry", etc.
-  entityId    String
-  userEmail   String
-  changes     Json?    // Store what changed
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  action    String // "CREATE", "UPDATE", "DELETE"
+  entity    String // "Project", "KPIEntry", etc.
+  entityId  String
+  userEmail String
+  changes   Json? // Store what changed
+  createdAt DateTime @default(now())
 
   @@index([entityId])
   @@index([userEmail])
@@ -284,22 +280,22 @@ model AuditLog {
 
 // ==================== EMPLOYEES ====================
 model Employee {
-  id          String   @id @default(cuid())
-  firstName   String
-  lastName    String
-  jobTitle    String?
-  email       String?  @unique
-  phone       String?
-  isActive    Boolean  @default(true)
-  
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  jobTitle  String?
+  email     String? @unique
+  phone     String?
+  isActive  Boolean @default(true)
+
   // Flexible data for additional fields
   customFields Json?
-  
+
   // Relations
   certifications Certification[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([jobTitle])
   @@index([isActive])
@@ -308,39 +304,39 @@ model Employee {
 }
 
 model JobTitle {
-  id          String   @id @default(cuid())
-  title       String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  title     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([title])
 }
 
 // ==================== HOLIDAYS ====================
 model Holiday {
-  id          String   @id @default(cuid())
-  date        String   @db.VarChar(10) // YYYY-MM-DD format
+  id          String  @id @default(cuid())
+  date        String  @db.VarChar(10) // YYYY-MM-DD format
   name        String
   description String?
-  isPaid      Boolean  @default(true)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isPaid      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([date])
 }
 
 // ==================== TIME OFF REQUESTS ====================
 model TimeOffRequest {
-  id          String   @id @default(cuid())
-  employeeId  String
+  id           String  @id @default(cuid())
+  employeeId   String
   employeeName String?
-  dates       Json     // Array of date strings
-  reason      String?
-  status      String   @default("pending") // pending, approved, denied
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dates        Json // Array of date strings
+  reason       String?
+  status       String  @default("pending") // pending, approved, denied
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
   @@index([status])
@@ -348,13 +344,13 @@ model TimeOffRequest {
 
 // ==================== CREW TEMPLATES ====================
 model CrewTemplate {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
-  members     Json     // Array of employee IDs or employee data
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  members     Json // Array of employee IDs or employee data
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([name])
 }
@@ -366,51 +362,51 @@ model HandbookSignoff {
   displayName String?
   userAgent   String?
   signedAt    DateTime @default(now())
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
 }
 
 // ==================== ESTIMATING CONSTANTS ====================
 model EstimatingConstant {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  value       String   // Can be numeric string or any value
-  category    String   @default("General")
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id       String @id @default(cuid())
+  name     String @unique
+  value    String // Can be numeric string or any value
+  category String @default("General")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
 }
 
 model RebarConstant {
-  id          String   @id @default(cuid())
-  size        String   // e.g., "#1", "#2", etc.
-  weight      Float    // Weight per unit
-  spacing     Float?   // Spacing information
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id      String @id @default(cuid())
+  size    String // e.g., "#1", "#2", etc.
+  weight  Float // Weight per unit
+  spacing Float? // Spacing information
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([size])
 }
 
 // ==================== CERTIFICATIONS ====================
 model Certification {
-  id              String   @id @default(cuid())
-  employeeId      String
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  type            String
-  issueDate       String   // YYYY-MM-DD
-  expirationDate  String   // YYYY-MM-DD
-  notes           String?  @db.Text
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type           String
+  issueDate      String // YYYY-MM-DD
+  expirationDate String // YYYY-MM-DD
+  notes          String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
   @@index([expirationDate])
@@ -419,21 +415,21 @@ model Certification {
 
 // ==================== EQUIPMENT ====================
 model Equipment {
-  id              String   @id @default(cuid())
-  name            String
-  type            String   // e.g., "Truck", "Excavator", etc.
-  make            String?
-  model           String?
-  serialNumber    String?  @unique
-  
-  status          String   @default("Available") // Available, In Use, Maintenance
-  hourlyRate      Float?
-  dailyRate       Float?
-  notes           String?  @db.Text
-  isActive        Boolean  @default(true)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String  @id @default(cuid())
+  name         String
+  type         String // e.g., "Truck", "Excavator", etc.
+  make         String?
+  model        String?
+  serialNumber String? @unique
+
+  status     String  @default("Available") // Available, In Use, Maintenance
+  hourlyRate Float?
+  dailyRate  Float?
+  notes      String? @db.Text
+  isActive   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([type])
   @@index([status])
@@ -442,17 +438,17 @@ model Equipment {
 }
 
 model EquipmentAssignment {
-  id              String   @id @default(cuid())
-  equipmentId     String
-  projectId       String?
-  scopeId         String?
-  
-  startDate       String   // YYYY-MM-DD
-  endDate         String   // YYYY-MM-DD
-  notes           String?  @db.Text
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String  @id @default(cuid())
+  equipmentId String
+  projectId   String?
+  scopeId     String?
+
+  startDate String // YYYY-MM-DD
+  endDate   String // YYYY-MM-DD
+  notes     String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([equipmentId])
   @@index([projectId])
@@ -461,16 +457,16 @@ model EquipmentAssignment {
 
 // ==================== ONBOARDING ====================
 model OnboardingSubmission {
-  id              String   @id @default(cuid())
-  email           String
-  displayName     String?
-  
-  submittedAt     DateTime
-  hasBooklet      Boolean? // Understanding of Handbook
-  hasHandbook     Boolean? // Employee Handbook Receipt
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String  @id @default(cuid())
+  email       String
+  displayName String?
+
+  submittedAt DateTime
+  hasBooklet  Boolean? // Understanding of Handbook
+  hasHandbook Boolean? // Employee Handbook Receipt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([submittedAt])
@@ -505,18 +501,18 @@ model Status {
 
 // ==================== ESTIMATES ====================
 model Estimate {
-  id              String   @id @default(cuid())
-  projectId       String?
-  
-  title           String
-  description     String?  @db.Text
-  estimatedHours  Float?
-  estimatedCost   Float?
-  status          String   @default("Draft") // Draft, Submitted, Approved, Completed
-  
-  createdByEmail  String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String  @id @default(cuid())
+  projectId String?
+
+  title          String
+  description    String? @db.Text
+  estimatedHours Float?
+  estimatedCost  Float?
+  status         String  @default("Draft") // Draft, Submitted, Approved, Completed
+
+  createdByEmail String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([projectId])
   @@index([status])
@@ -524,41 +520,41 @@ model Estimate {
 
 // ==================== PMC GROUPS & CLASSIFICATION ====================
 model PMCGroup {
-  id              String   @id @default(cuid())
-  code            String   // e.g., "SITE", "FOUNDATION", "STRUCTURES", "INTERIOR", "SPECIAL"
-  name            String   // Display name: "Site Work", "Foundation", etc.
-  description     String?  @db.Text
-  color           String?  // Hex color for UI: #FF5733
-  displayOrder    Int      @default(0)
-  isActive        Boolean  @default(true)
-  
+  id           String  @id @default(cuid())
+  code         String // e.g., "SITE", "FOUNDATION", "STRUCTURES", "INTERIOR", "SPECIAL"
+  name         String // Display name: "Site Work", "Foundation", etc.
+  description  String? @db.Text
+  color        String? // Hex color for UI: #FF5733
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
   // Relationships
   costitemMappings CostitemPMCMapping[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([code])
   @@index([code])
   @@index([isActive])
-  @@unique([code])
 }
 
 model CostitemPMCMapping {
-  id              String   @id @default(cuid())
-  costitem        String   @unique // The exact Costitem string from CSV (e.g., "Slab On Grade Labor")
-  pmcGroupId      String?
-  pmcGroup        PMCGroup? @relation(fields: [pmcGroupId], references: [id], onDelete: SetNull)
-  
+  id         String    @id @default(cuid())
+  costitem   String    @unique // The exact Costitem string from CSV (e.g., "Slab On Grade Labor")
+  pmcGroupId String?
+  pmcGroup   PMCGroup? @relation(fields: [pmcGroupId], references: [id], onDelete: SetNull)
+
   // Fallback PMC code if relation is null (useful for imports before PMCGroup exists)
-  pmcGroupCode    String?  // e.g., "FOUNDATION"
-  
+  pmcGroupCode String? // e.g., "FOUNDATION"
+
   // Audit trail
-  mappedByEmail   String?
-  source          String   @default("seed") // "seed", "imported", "manual"
-  notes           String?  @db.Text
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  mappedByEmail String?
+  source        String  @default("seed") // "seed", "imported", "manual"
+  notes         String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([costitem])
   @@index([pmcGroupId])
@@ -567,23 +563,61 @@ model CostitemPMCMapping {
 }
 
 model PMCBreakdownCache {
-  id              String   @id @default(cuid())
-  projectId       String   @unique
-  project         Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   // Granular breakdown: { "Slab On Grade Labor": 250.5, "Site Concrete Labor": 185.3, ... }
-  pmcBreakdown    Json     @default("{}")
-  
+  pmcBreakdown Json @default("{}")
+
   // Aggregated breakdown: { "FOUNDATION": 435.8, "SITE": 120.0, ... }
-  pmcGroupBreakdown Json   @default("{}")
-  
+  pmcGroupBreakdown Json @default("{}")
+
   // Metadata
-  totalHours      Float    @default(0)
-  lastCalculated  DateTime @default(now())
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  totalHours     Float    @default(0)
+  lastCalculated DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectId])
 }
 
+model ProcoreCostCodeStaging {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  companyId  String   @map("company_id")
+  projectId  String   @map("project_id")
+  subJobId   String?  @map("sub_job_id")
+  costCodeId String   @map("cost_code_id")
+  parentId   String?  @map("parent_id")
+  originId   String?  @map("origin_id")
+  code       String?
+  fullCode   String?  @map("full_code")
+  name       String?
+  active     Boolean?
+  payload    Json
+  syncedAt   DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+
+  @@unique([companyId, projectId, subJobId, costCodeId])
+  @@index([projectId])
+  @@index([companyId])
+  @@index([costCodeId])
+  @@map("procore_cost_code_staging")
+}
+
+model ProcoreEstimatingCatalogItemStaging {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  companyId  String   @map("company_id")
+  itemId     String   @map("item_id")
+  baseUrl    String   @map("base_url")
+  name       String?
+  code       String?
+  costCodeId String?  @map("cost_code_id")
+  payload    Json
+  syncedAt   DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+
+  @@unique([companyId, itemId, baseUrl])
+  @@index([companyId])
+  @@index([itemId])
+  @@map("procore_estimating_catalog_item_staging")
+}

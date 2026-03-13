@@ -12,6 +12,26 @@ export default function ProcoreTestPage() {
   const [user, setUser] = useState<any>(null);
   const [bidBoardProjectId, setBidBoardProjectId] = useState("598134326278124");
   const [lookupEmail, setLookupEmail] = useState("levi@pmc-tg-web.com"); // Adjust based on common domain
+  const [costCodeProjectId, setCostCodeProjectId] = useState("598134326278124");
+  const [costCodeSubJobId, setCostCodeSubJobId] = useState("");
+  const [costCodeIds, setCostCodeIds] = useState("");
+  const [costCodePage, setCostCodePage] = useState("1");
+  const [costCodePerPage, setCostCodePerPage] = useState("100");
+  const [costCodeOriginId, setCostCodeOriginId] = useState("");
+  const [costCodeView, setCostCodeView] = useState("");
+  const [estimatingCatalogCompanyId, setEstimatingCatalogCompanyId] = useState("");
+  const [estimatingCatalogItemId, setEstimatingCatalogItemId] = useState("");
+  const [estimatingCatalogBaseUrl, setEstimatingCatalogBaseUrl] = useState(
+    "https://estimating-esticom-ccbd079470ce2b6.na-east-01-tugboat.procoretech-qa.com"
+  );
+  const [estimatingCatalogPerPage, setEstimatingCatalogPerPage] = useState("100");
+  const [estimatingCatalogMaxPages, setEstimatingCatalogMaxPages] = useState("200");
+  const [estimatingCatalogIdFilter, setEstimatingCatalogIdFilter] = useState("");
+  const [estimatingCatalogIdMin, setEstimatingCatalogIdMin] = useState("");
+  const [estimatingCatalogIdMax, setEstimatingCatalogIdMax] = useState("");
+  const [estimatingOnlyWithCostCode, setEstimatingOnlyWithCostCode] = useState(false);
+  const [estimatingExactCostCode, setEstimatingExactCostCode] = useState("");
+  const [estimatingCatalogId, setEstimatingCatalogId] = useState("");
 
   useEffect(() => {
     // Check configuration on load
@@ -379,6 +399,250 @@ export default function ProcoreTestPage() {
     }
   };
 
+  const fetchCostCodes = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    if (!costCodeProjectId.trim()) {
+      setError("Please enter a project ID for cost codes");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        project_id: costCodeProjectId.trim(),
+      });
+
+      if (costCodeSubJobId.trim()) {
+        params.set("sub_job_id", costCodeSubJobId.trim());
+      }
+
+      if (costCodePage.trim()) {
+        params.set("page", costCodePage.trim());
+      }
+
+      if (costCodePerPage.trim()) {
+        params.set("per_page", costCodePerPage.trim());
+      }
+
+      if (costCodeOriginId.trim()) {
+        params.set("filters[origin_id]", costCodeOriginId.trim());
+      }
+
+      if (costCodeView.trim()) {
+        params.set("view", costCodeView.trim());
+      }
+
+      const parsedIds = costCodeIds
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      parsedIds.forEach((id) => params.append("filters[id][]", id));
+
+      const endpoint = `/rest/v1.0/cost_codes?${params.toString()}`;
+
+      const response = await fetch("/api/procore/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken, endpoint }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncCostCodesToDb = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    if (!costCodeProjectId.trim()) {
+      setError("Please enter a project ID for cost codes");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const parsedIds = costCodeIds
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const response = await fetch("/api/procore/sync/cost-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          projectId: costCodeProjectId,
+          subJobId: costCodeSubJobId,
+          filterIds: parsedIds,
+          perPage: Number(costCodePerPage) || 100,
+          originId: costCodeOriginId,
+          view: costCodeView,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncEstimatingCatalogItemToDb = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    const effectiveCompanyId = estimatingCatalogCompanyId.trim() || String(config?.config?.companyId || "").trim();
+
+    if (!effectiveCompanyId) {
+      setError("Please enter a company ID (or ensure configuration includes one)");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/procore/sync/estimating-catalog-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          companyId: effectiveCompanyId,
+          itemId: estimatingCatalogItemId.trim(),
+          baseUrl: estimatingCatalogBaseUrl.trim(),
+          perPage: Number(estimatingCatalogPerPage) || 100,
+          maxPages: Number(estimatingCatalogMaxPages) || 50,
+          catalogId: estimatingCatalogIdFilter.trim(),
+          catalogIdMin: estimatingCatalogIdMin.trim() ? Number(estimatingCatalogIdMin) : null,
+          catalogIdMax: estimatingCatalogIdMax.trim() ? Number(estimatingCatalogIdMax) : null,
+          onlyWithCostCode: estimatingOnlyWithCostCode,
+          costCode: estimatingExactCostCode.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const testEstimatingByCatalogId = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    const effectiveCompanyId = estimatingCatalogCompanyId.trim() || String(config?.config?.companyId || "").trim();
+
+    if (!effectiveCompanyId) {
+      setError("Please enter a company ID (or ensure configuration includes one)");
+      setLoading(false);
+      return;
+    }
+
+    if (!estimatingCatalogId.trim()) {
+      setError("Please enter a Catalog ID");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/procore/estimating/catalog-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          companyId: effectiveCompanyId,
+          catalogId: estimatingCatalogId.trim(),
+          page: 1,
+          perPage: Number(estimatingCatalogPerPage) || 100,
+          baseUrl: estimatingCatalogBaseUrl.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEstimatingCatalogIdsByCompany = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    const effectiveCompanyId = estimatingCatalogCompanyId.trim() || String(config?.config?.companyId || "").trim();
+
+    if (!effectiveCompanyId) {
+      setError("Please enter a company ID (or ensure configuration includes one)");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/procore/estimating/catalogs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          companyId: effectiveCompanyId,
+          page: 1,
+          perPage: Number(estimatingCatalogPerPage) || 100,
+          maxPages: Number(estimatingCatalogMaxPages) || 50,
+          baseUrl: estimatingCatalogBaseUrl.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
       <Navigation />
@@ -519,6 +783,462 @@ export default function ProcoreTestPage() {
               fontFamily: "monospace",
             }}
           />
+        </div>
+
+        {/* Cost Codes Test */}
+        <div
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.5rem",
+            padding: "1.5rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "600", marginBottom: "1rem" }}>
+            Cost Codes Endpoint Test
+          </h2>
+          <p style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#6b7280" }}>
+            Builds and tests <strong>/rest/v1.0/cost_codes</strong> through the existing Procore test route.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Project ID
+              </label>
+              <input
+                type="text"
+                value={costCodeProjectId}
+                onChange={(e) => setCostCodeProjectId(e.target.value)}
+                placeholder="Required"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Sub Job ID
+              </label>
+              <input
+                type="text"
+                value={costCodeSubJobId}
+                onChange={(e) => setCostCodeSubJobId(e.target.value)}
+                placeholder="Optional"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Filter IDs
+              </label>
+              <input
+                type="text"
+                value={costCodeIds}
+                onChange={(e) => setCostCodeIds(e.target.value)}
+                placeholder="Comma-separated IDs"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Page
+              </label>
+              <input
+                type="text"
+                value={costCodePage}
+                onChange={(e) => setCostCodePage(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Per Page
+              </label>
+              <input
+                type="text"
+                value={costCodePerPage}
+                onChange={(e) => setCostCodePerPage(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Origin ID
+              </label>
+              <input
+                type="text"
+                value={costCodeOriginId}
+                onChange={(e) => setCostCodeOriginId(e.target.value)}
+                placeholder="Optional"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                View
+              </label>
+              <input
+                type="text"
+                value={costCodeView}
+                onChange={(e) => setCostCodeView(e.target.value)}
+                placeholder="Optional"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={fetchCostCodes}
+              disabled={loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim()}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim() ? "#9ca3af" : "#1d4ed8",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Loading..." : "Fetch Cost Codes"}
+            </button>
+            <button
+              onClick={syncCostCodesToDb}
+              disabled={loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim()}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim() ? "#9ca3af" : "#047857",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) || !costCodeProjectId.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Syncing..." : "Sync Cost Codes To DB"}
+            </button>
+            <code style={{ fontSize: "0.8rem", color: "#6b7280", wordBreak: "break-all" }}>
+              /rest/v1.0/cost_codes → procore_cost_code_staging
+            </code>
+          </div>
+        </div>
+
+        {/* Estimating Catalog Item Test */}
+        <div
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.5rem",
+            padding: "1.5rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "600", marginBottom: "1rem" }}>
+            Estimating Catalog Item Test
+          </h2>
+          <p style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#6b7280" }}>
+            Syncs one item or the entire catalog into <strong>procore_estimating_catalog_item_staging</strong>.
+            Leave Item ID blank to sync the full catalog with pagination.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Company ID
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogCompanyId}
+                onChange={(e) => setEstimatingCatalogCompanyId(e.target.value)}
+                placeholder={String(config?.config?.companyId || "Uses configured company ID")}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Item ID
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogItemId}
+                onChange={(e) => setEstimatingCatalogItemId(e.target.value)}
+                placeholder="Optional for full-catalog sync"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Catalog ID (API Test)
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogId}
+                onChange={(e) => setEstimatingCatalogId(e.target.value)}
+                placeholder="Enter catalog_id to test raw API response"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Per Page
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogPerPage}
+                onChange={(e) => setEstimatingCatalogPerPage(e.target.value)}
+                placeholder="100"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Max Pages
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogMaxPages}
+                onChange={(e) => setEstimatingCatalogMaxPages(e.target.value)}
+                placeholder="50"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Exact Cost Code
+              </label>
+              <input
+                type="text"
+                value={estimatingExactCostCode}
+                onChange={(e) => setEstimatingExactCostCode(e.target.value)}
+                placeholder="Optional (e.g., 03-300-20-10)"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Catalog ID Filter (Sync)
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogIdFilter}
+                onChange={(e) => setEstimatingCatalogIdFilter(e.target.value)}
+                placeholder="283211"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Catalog ID Min (Sync)
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogIdMin}
+                onChange={(e) => setEstimatingCatalogIdMin(e.target.value)}
+                placeholder="Optional"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Catalog ID Max (Sync)
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogIdMax}
+                onChange={(e) => setEstimatingCatalogIdMax(e.target.value)}
+                placeholder="Optional"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "end", paddingBottom: "0.5rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: "600" }}>
+                <input
+                  type="checkbox"
+                  checked={estimatingOnlyWithCostCode}
+                  onChange={(e) => setEstimatingOnlyWithCostCode(e.target.checked)}
+                />
+                Only items with cost code
+              </label>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Estimating Base URL
+              </label>
+              <input
+                type="text"
+                value={estimatingCatalogBaseUrl}
+                onChange={(e) => setEstimatingCatalogBaseUrl(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={fetchEstimatingCatalogIdsByCompany}
+              disabled={loading || (!accessToken && !isAuthenticated)}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) ? "#9ca3af" : "#7c3aed",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Loading..." : "Fetch Catalog IDs By Company"}
+            </button>
+            <button
+              onClick={testEstimatingByCatalogId}
+              disabled={loading || (!accessToken && !isAuthenticated) || !estimatingCatalogId.trim()}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) || !estimatingCatalogId.trim() ? "#9ca3af" : "#1d4ed8",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) || !estimatingCatalogId.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Testing..." : "Test Catalog ID API"}
+            </button>
+            <button
+              onClick={syncEstimatingCatalogItemToDb}
+              disabled={loading || (!accessToken && !isAuthenticated)}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) ? "#9ca3af" : "#0f766e",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Syncing..." : (estimatingCatalogItemId.trim() ? "Sync Catalog Item To DB" : "Sync Full Catalog To DB")}
+            </button>
+            <code style={{ fontSize: "0.8rem", color: "#6b7280", wordBreak: "break-all" }}>
+              procore_estimating_catalog_item_staging
+            </code>
+          </div>
         </div>
 
         {/* Bid Board Project ID Lookup */}

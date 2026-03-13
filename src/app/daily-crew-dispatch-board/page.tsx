@@ -1,10 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import "../globals-responsive.css";
 
-import Navigation from "@/components/Navigation";
 import { Scope, Project, Holiday } from "@/types";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { useAuth } from "@/hooks/useAuth";

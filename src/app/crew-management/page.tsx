@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
-import Navigation from "@/components/Navigation";
 
 interface Employee {
   id: string;
@@ -249,7 +248,6 @@ function CrewManagementContent() {
             <h1 className="text-3xl font-bold text-gray-900">Crew Management</h1>
             <p className="text-gray-600 mt-2">Assign right hand men and crew members to foremen</p>
           </div>
-          <Navigation currentPage="crew-management" />
         </div>
 
         {foremen.length === 0 ? (
@@ -330,7 +328,7 @@ function CrewManagementContent() {
                                 onClick={() => toggleCrewMember(foreman.id, laborerId)}
                                 className="ml-1 text-blue-600 hover:text-blue-800 font-bold"
                               >
-                                ×
+                                Ã—
                               </button>
                             </span>
                           ))}

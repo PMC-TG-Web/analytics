@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 import React, { useEffect, useState } from "react";
 
-import Navigation from "@/components/Navigation";
 import { loadPayPeriods, distributeHours, formatPayPeriod, type PayPeriod } from "@/utils/payPeriodUtils";
 
 type KPICardRow = {
@@ -522,7 +521,7 @@ function KPICardsManagementContent() {
                       fontSize: 12,
                       color: '#856404',
                     }}>
-                      ⚠️ This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'}.
+                      âš ï¸ This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'}.
                     </div>
                   )}
                 </div>
@@ -580,7 +579,6 @@ function KPICardsManagementContent() {
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <h1 style={{ margin: 0 }}>KPI Cards Management</h1>
-        <Navigation currentPage="kpi-cards-management" />
       </div>
       
       <div style={{ marginBottom: "20px", fontSize: "14px", color: "#666" }}>
@@ -604,7 +602,7 @@ function KPICardsManagementContent() {
             color: "#9a3412",
           }}
         >
-          <strong>⚠️ {warning}</strong>
+          <strong>âš ï¸ {warning}</strong>
         </div>
       )}
 
@@ -619,7 +617,7 @@ function KPICardsManagementContent() {
             color: "#c33",
           }}
         >
-          <strong>⚠️ {error}</strong>
+          <strong>âš ï¸ {error}</strong>
           {error.includes("No KPI cards found") && (
             <div style={{ marginTop: "10px", fontSize: "14px" }}>
               <p>To get started, visit <code style={{ backgroundColor: "#f0f0f0", padding: "2px 6px", borderRadius: "3px" }}>/seed-kpi-cards</code> to seed the database with default data.</p>

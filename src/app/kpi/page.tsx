@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import Navigation from "@/components/Navigation";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -161,7 +160,7 @@ function parseCsv(text: string): string[][] {
 
 function formatCardValue(cardName: string, kpiName: string, rawValue: string) {
   const trimmed = (rawValue ?? "").toString().trim();
-  if (!trimmed) return "—";
+  if (!trimmed) return "â€”";
   if (trimmed.endsWith("%")) return trimmed;
 
   const numeric = Number(trimmed.replace(/[$,]/g, ""));
@@ -654,7 +653,7 @@ function KPIPageContent({
           console.warn(`[KPI] Could not refresh data:`, err);
         }
         
-        console.log(`[KPI] ✓ Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
+        console.log(`[KPI] âœ“ Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
       } catch (error) {
         console.warn(`[KPI] Error saving ${fieldName} (API not available):`, error);
         // Gracefully skip in static export mode - no alerts needed
@@ -1244,7 +1243,7 @@ function KPIPageContent({
           const value = rowValues[idx] ?? "";
           const formatted = formatCardValue(cardName, row.kpi, value);
           return (
-            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? rowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "â€”" ? rowColor : "#999", fontWeight: formatted !== "â€”" ? 700 : 400, fontSize: 12 }}>
               {formatted}
             </td>
           );
@@ -1379,7 +1378,6 @@ function KPIPageContent({
     <main className="p-4" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222", paddingTop: 12, paddingBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
         <h1 style={{ color: "#15616D", fontSize: 24, margin: 0 }}>KPI Dashboard</h1>
-        <Navigation currentPage="kpi" />
       </div>
 
       {procoreAuthError && (
@@ -1485,7 +1483,7 @@ function KPIPageContent({
                 fontSize: 11,
               }}
             >
-              ✕
+              âœ•
             </button>
           )}
         </div>
@@ -1507,7 +1505,7 @@ function KPIPageContent({
               fontSize: 12,
             }}
           />
-          <span style={{ color: "#999", fontSize: 12 }}>–</span>
+          <span style={{ color: "#999", fontSize: 12 }}>â€“</span>
           <input
             type="date"
             value={endDate}
@@ -1538,7 +1536,7 @@ function KPIPageContent({
                 fontSize: 11,
               }}
             >
-              ✕
+              âœ•
             </button>
           )}
         </div>
@@ -1630,7 +1628,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -1677,7 +1675,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -1782,7 +1780,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -1817,7 +1815,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -1898,7 +1896,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -1967,7 +1965,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : "â€”"}
                             </td>
                           );
                         })}
@@ -2045,7 +2043,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "—"}
+                        ) : "â€”"}
                       </td>
                     );
                   })}
@@ -2159,7 +2157,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "—"}
+                        ) : "â€”"}
                       </td>
                     );
                   })}
@@ -2367,7 +2365,7 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "—"}
+                        ) : "â€”"}
                       </td>
                     );
                   })}

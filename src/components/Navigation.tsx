@@ -1,5 +1,7 @@
 "use client";
 import Link from "next/link";
+import { createContext, useContext } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPageAccess } from "@/lib/permissions";
 
@@ -34,8 +36,27 @@ const navLinks: NavLink[] = [
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management", color: "bg-stone-900" },
 ];
 
-export default function Navigation({ currentPage }: { currentPage?: string }) {
+export const GlobalNavigationContext = createContext(false);
+
+function isActivePath(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export default function Navigation({
+  currentPage,
+  forceRender = false,
+}: {
+  currentPage?: string;
+  forceRender?: boolean;
+}) {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
+  const isGlobalNavigationManaged = useContext(GlobalNavigationContext);
+
+  if (isGlobalNavigationManaged && !forceRender) {
+    return null;
+  }
   
   // Show navigation even without authentication for static export
   if (loading) {
@@ -50,8 +71,9 @@ export default function Navigation({ currentPage }: { currentPage?: string }) {
           return null;
         }
 
-        // Improved active check
-        const isActive = currentPage === link.page || (typeof window !== 'undefined' && window.location.pathname === link.href);
+        const isActive =
+          currentPage === link.page ||
+          isActivePath(pathname || "", link.href);
         const bgColor = link.color || "bg-teal-800";
 
         return (

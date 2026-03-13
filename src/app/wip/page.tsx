@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import Navigation from "@/components/Navigation";
 import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
 import { ProjectInfo, Scope, Project } from "@/types";
 import { getEnrichedScopes } from "@/utils/projectUtils";
@@ -1129,7 +1128,6 @@ function WIPReportContent() {
               Gantt
             </button>
           </div>
-          <Navigation currentPage="wip" />
         </div>
       </div>
 
@@ -1216,7 +1214,7 @@ function WIPReportContent() {
                         const hours = yearMonthMap[year][idx + 1] || 0;
                         return (
                           <td key={idx} style={{ padding: "12px", textAlign: "center", color: hours > 0 ? "#22c55e" : "#6b7280", fontWeight: hours > 0 ? 700 : 400 }}>
-                            {hours > 0 ? hours.toFixed(0) : "—"}
+                            {hours > 0 ? hours.toFixed(0) : "â€”"}
                           </td>
                         );
                       })}
@@ -1234,7 +1232,7 @@ function WIPReportContent() {
                     const monthTotal = filteredYears.reduce((sum, year) => sum + (yearMonthMap[year][idx + 1] || 0), 0);
                     return (
                       <td key={idx} style={{ padding: "12px", textAlign: "center", color: "#15616D" }}>
-                        {monthTotal > 0 ? monthTotal.toFixed(0) : "—"}
+                        {monthTotal > 0 ? monthTotal.toFixed(0) : "â€”"}
                       </td>
                     );
                   })}

@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Navigation from "@/components/Navigation";
 
 interface WeekColumn {
   weekStartDate: Date;
@@ -250,7 +249,6 @@ export default function LongTermSchedulePage() {
               15-Week Foreman View (Gantt-Initiated Only)
             </p>
           </div>
-          <Navigation currentPage="long-term-schedule" />
         </div>
 
         {loading ? (

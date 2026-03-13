@@ -1,6 +1,5 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect } from "react";
-import Navigation from "@/components/Navigation";
 
 export default function ConstantsPage() {
   return <ConstantsContent />;
@@ -100,7 +99,6 @@ function ConstantsContent() {
             Backup to CSV
           </button>
         </div>
-        <Navigation currentPage="constants" />
       </div>
 
       <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>

@@ -1,6 +1,5 @@
-"use client";
+﻿"use client";
 import React, { useState } from "react";
-import Navigation from "@/components/Navigation";
 
 export default function SeedKPICardsPage() {
   const [loading, setLoading] = useState(false);
@@ -42,7 +41,6 @@ export default function SeedKPICardsPage() {
       <div style={{ maxWidth: "600px", margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginBottom: "32px" }}>
           <h1 style={{ margin: 0, color: "#333", fontSize: "24px" }}>Seed KPI Cards Database</h1>
-          <Navigation currentPage="seed-kpi-cards" />
         </div>
 
         <div
@@ -101,7 +99,7 @@ export default function SeedKPICardsPage() {
             color: "#3c3",
           }}
         >
-          ✓ {message}
+          âœ“ {message}
         </div>
       )}
 

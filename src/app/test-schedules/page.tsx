@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
-import Navigation from "@/components/Navigation";
 
 export default function TestSchedules() {
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -28,7 +27,6 @@ export default function TestSchedules() {
     <div style={{ padding: 40, fontFamily: "monospace" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Schedules Database Contents</h1>
-        <Navigation currentPage="test-schedules" />
       </div>
       <p>Total schedules: {schedules.length}</p>
       <hr />

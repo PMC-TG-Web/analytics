@@ -1,6 +1,5 @@
-"use client";
+﻿"use client";
 import React, { useEffect, useMemo, useState } from "react";
-import Navigation from "@/components/Navigation";
 
 type Project = {
   id: string;
@@ -873,7 +872,6 @@ function SchedulingContent() {
     <main className="p-8" style={{ fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh", color: "#222" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ color: "#15616D", fontSize: 32, margin: 0 }}>Scheduling</h1>
-        <Navigation currentPage="scheduling" />
       </div>
 
       <div style={{ background: "#ffffff", borderRadius: 12, padding: 16, border: "1px solid #ddd", marginBottom: 24 }}>
@@ -1085,23 +1083,23 @@ function SchedulingContent() {
             <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
               <tr style={{ borderBottom: "2px solid #ddd", background: "#f9f9f9" }}>
                 <th onClick={() => handleSort("customer")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "customer" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
-                  Customer {sortColumn === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
+                  Customer {sortColumn === "customer" && (sortDirection === "asc" ? "â†‘" : "â†“")}
                 </th>
                 <th onClick={() => handleSort("projectName")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "projectName" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
-                  Job Name {sortColumn === "projectName" && (sortDirection === "asc" ? "↑" : "↓")}
+                  Job Name {sortColumn === "projectName" && (sortDirection === "asc" ? "â†‘" : "â†“")}
                 </th>
                 <th onClick={() => handleSort("status")} style={{ textAlign: "left", padding: "12px 8px", color: sortColumn === "status" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
-                  Status {sortColumn === "status" && (sortDirection === "asc" ? "↑" : "↓")}
+                  Status {sortColumn === "status" && (sortDirection === "asc" ? "â†‘" : "â†“")}
                 </th>
                 <th onClick={() => handleSort("totalHours")} style={{ textAlign: "right", padding: "12px 8px", color: sortColumn === "totalHours" ? "#E06C00" : "#666", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
-                  Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "↑" : "↓")}
+                  Total Hours {sortColumn === "totalHours" && (sortDirection === "asc" ? "â†‘" : "â†“")}
                 </th>
                 <th style={{ textAlign: "right", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }} title="Total hours scheduled across all time periods (including months not shown)">
                   Total Scheduled
                 </th>
                 {displayMonths.map((month) => (
                   <th key={month} onClick={() => handleSort(month)} style={{ textAlign: "center", padding: "12px 8px", color: sortColumn === month ? "#22c55e" : "#9ca3af", fontWeight: 600, cursor: "pointer", userSelect: "none" }}>
-                    {formatMonthLabel(month)} {sortColumn === month && (sortDirection === "asc" ? "↑" : "↓")}
+                    {formatMonthLabel(month)} {sortColumn === month && (sortDirection === "asc" ? "â†‘" : "â†“")}
                   </th>
                 ))}
                 <th style={{ textAlign: "center", padding: "12px 8px", color: "#9ca3af", fontWeight: 600 }}>Actions</th>

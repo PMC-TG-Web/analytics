@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { OnboardingSubmission } from "@/types/onboarding";
-import Navigation from "@/components/Navigation";
 
 export default function OnboardingPage() {
   const [formData, setFormData] = useState<Partial<OnboardingSubmission>>({
@@ -118,7 +117,6 @@ export default function OnboardingPage() {
               <h1 className="text-3xl sm:text-4xl font-black text-gray-950 uppercase tracking-tighter mb-2">Employee Onboarding</h1>
               <p className="text-gray-500 font-bold uppercase text-[9px] sm:text-[10px] tracking-[0.2em] italic px-4">Personnel & Payroll Information Request</p>
             </div>
-            <Navigation currentPage="employees" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8 pb-20 sm:pb-0">

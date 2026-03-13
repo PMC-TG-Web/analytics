@@ -1,6 +1,5 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect } from "react";
-import Navigation from "@/components/Navigation";
 
 export default function EstimatingToolsPage() {
   return <EstimatingToolsContent />;
@@ -491,7 +490,7 @@ function EstimatingToolsContent() {
       });
       const result = await response.json();
       if (result.success) {
-        alert(`✓ Saved "${label.trim()}" to ${project?.projectName || 'project'}!`);
+        alert(`âœ“ Saved "${label.trim()}" to ${project?.projectName || 'project'}!`);
         fetchData(); // Refresh recent calculations list
       } else {
         alert("Failed to save: " + (result.error || "Unknown error"));
@@ -718,7 +717,6 @@ function EstimatingToolsContent() {
     <main style={{ padding: "32px", background: "#f5f5f5", minHeight: "100vh", color: "#222", fontFamily: "sans-serif" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <h1 style={{ color: "#15616D", fontSize: "32px", margin: 0 }}>Estimating Tools</h1>
-        <Navigation currentPage="estimating-tools" />
       </div>
 
       {/* Project Selector Bar */}
@@ -1221,7 +1219,7 @@ function EstimatingToolsContent() {
               <input type="number" value={footerPierCount} onChange={e => setFooterPierCount(e.target.value)} style={inputStyle} placeholder="0" />
             </div>
             <div style={{ padding: "10px", background: "#f9fafb", borderRadius: "8px", border: "1px dashed #ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: "11px", color: "#666", textAlign: "center" }}>Chairs are calculated automatically: (L×W)/16</span>
+              <span style={{ fontSize: "11px", color: "#666", textAlign: "center" }}>Chairs are calculated automatically: (LÃ—W)/16</span>
             </div>
           </div>
 

@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 
-import Navigation from "@/components/Navigation";
 import { Holiday } from "@/types";
 
 export default function HolidaysPage() {
@@ -262,7 +261,6 @@ function HolidaysContent() {
                 {seeding ? "Seeding..." : "Seed 2026"}
               </button>
             )}
-            <Navigation currentPage="holidays" />
           </div>
         </div>
 

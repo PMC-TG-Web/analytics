@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useMemo } from "react";
-import Navigation from "@/components/Navigation";
 import { Certification } from "@/types/certifications";
 
 
@@ -235,7 +234,6 @@ function CertificationsContent() {
             </div>
             <p className="text-gray-600 mt-1 uppercase text-xs font-black tracking-widest italic">Compliance & Safety Tracking</p>
           </div>
-          <Navigation currentPage="employees" />
         </div>
 
         {/* Form Grid */}
@@ -397,7 +395,7 @@ function CertificationsContent() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-xs text-gray-500">{cert.notes || "—"}</div>
+                        <div className="text-xs text-gray-500">{cert.notes || "â€”"}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button

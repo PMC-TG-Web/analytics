@@ -12,6 +12,18 @@ export interface SyncResult {
   errors: string[];
 }
 
+function parseDateOnly(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateOnly(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getWorkingDaysInMonth(year: number, month: number): number {
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd = new Date(year, month, 0);
@@ -240,8 +252,8 @@ export async function syncProjectScopeToActiveSchedule(
       return result;
     }
 
-    const startDate = new Date(scope.startDate);
-    const endDate = new Date(scope.endDate);
+    const startDate = parseDateOnly(scope.startDate);
+    const endDate = parseDateOnly(scope.endDate);
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       result.errors.push(`Invalid dates for scope ${scopeId}`);
@@ -300,7 +312,7 @@ export async function syncProjectScopeToActiveSchedule(
 
     // Create new entries for each working day
     for (const date of workingDates) {
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = formatDateOnly(date);
       
       await prisma.activeSchedule.upsert({
         where: {

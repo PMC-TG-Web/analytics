@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobKey, title, startDate, endDate, manpower, hours, description, tasks } = body;
+    const { jobKey, title, startDate, endDate, manpower, hours, description, tasks, syncToActiveSchedule } = body;
 
     if (!jobKey || !title) {
       return NextResponse.json(
@@ -100,12 +100,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Sync to ActiveSchedule so it appears on long-term schedule
-    try {
-      const syncResult = await syncProjectScopeToActiveSchedule(scope.id);
-      console.log(`[project-scopes POST] Synced scope ${scope.id} to ActiveSchedule:`, syncResult);
-    } catch (syncError) {
-      console.error('[project-scopes POST] Failed to sync to ActiveSchedule:', syncError);
+    const shouldSync = syncToActiveSchedule !== false;
+    if (shouldSync) {
+      // Sync to ActiveSchedule so it appears on long-term schedule
+      try {
+        const syncResult = await syncProjectScopeToActiveSchedule(scope.id);
+        console.log(`[project-scopes POST] Synced scope ${scope.id} to ActiveSchedule:`, syncResult);
+      } catch (syncError) {
+        console.error('[project-scopes POST] Failed to sync to ActiveSchedule:', syncError);
+      }
     }
 
     return NextResponse.json({
@@ -124,7 +127,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, title, startDate, endDate, manpower, hours, description, tasks } = body;
+    const { id, title, startDate, endDate, manpower, hours, description, tasks, syncToActiveSchedule } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -146,12 +149,15 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    // Sync to ActiveSchedule so it appears on long-term schedule
-    try {
-      const syncResult = await syncProjectScopeToActiveSchedule(id);
-      console.log(`[project-scopes PUT] Synced scope ${id} to ActiveSchedule:`, syncResult);
-    } catch (syncError) {
-      console.error('[project-scopes PUT] Failed to sync to ActiveSchedule:', syncError);
+    const shouldSync = syncToActiveSchedule !== false;
+    if (shouldSync) {
+      // Sync to ActiveSchedule so it appears on long-term schedule
+      try {
+        const syncResult = await syncProjectScopeToActiveSchedule(id);
+        console.log(`[project-scopes PUT] Synced scope ${id} to ActiveSchedule:`, syncResult);
+      } catch (syncError) {
+        console.error('[project-scopes PUT] Failed to sync to ActiveSchedule:', syncError);
+      }
     }
 
     return NextResponse.json({

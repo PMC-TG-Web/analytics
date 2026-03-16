@@ -41,7 +41,19 @@ export async function POST(request: NextRequest) {
 
     if (scopeId && jobKey) {
       // Sync a specific scope
-      const hours = await syncActiveScheduleToScope(scopeId, jobKey);
+      const scope = await prisma.$queryRawUnsafe<Array<{ title: string }>>(
+        `SELECT title FROM gantt_v2_scopes WHERE id = $1 LIMIT 1`,
+        scopeId
+      );
+
+      if (!scope || scope.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Scope not found' },
+          { status: 404 }
+        );
+      }
+
+      const hours = await syncActiveScheduleToScope(scopeId, jobKey, scope[0].title);
       totalHours = hours;
       syncedScopes = 1;
     } else if (projectId) {
@@ -69,8 +81,11 @@ export async function POST(request: NextRequest) {
       const scopes = await prisma.$queryRawUnsafe<Array<{
         id: string;
         title: string;
+        start_date: Date | null;
+        end_date: Date | null;
+        total_hours: number;
       }>>(`
-        SELECT id, title
+        SELECT id, title, start_date, end_date, total_hours
         FROM gantt_v2_scopes
         WHERE project_id = $1
       `, projectId);
@@ -88,6 +103,7 @@ export async function POST(request: NextRequest) {
 
       const activeEntries = await prisma.activeSchedule.findMany({
         where: {
+          source: 'gantt',
           OR: [
             ...(projectNumber ? [{ jobKey: { contains: projectNumber } }] : []),
             { jobKey: { contains: projectNamePrefix } },
@@ -129,6 +145,12 @@ export async function POST(request: NextRequest) {
           `DELETE FROM gantt_v2_schedule_entries WHERE scope_id = $1`,
           scope.id
         );
+
+        // If a scope is unscheduled in Gantt (missing dates or non-positive hours),
+        // keep schedule entries cleared even if activeSchedule contains historical rows.
+        if (!scope.start_date || !scope.end_date || Number(scope.total_hours || 0) <= 0) {
+          continue;
+        }
 
         const byDate = entriesByScopeIdAndDate.get(scope.id);
         if (!byDate || byDate.size === 0) continue;

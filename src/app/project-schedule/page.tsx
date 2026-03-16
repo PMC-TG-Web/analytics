@@ -29,6 +29,22 @@ type ScopeRow = {
   remainingHours: number;
 };
 
+type SchedulingDiagnostics = {
+  totals: {
+    monthlyPlannedHours: number;
+    weeklyPlannedHours: number;
+    scopePlannedHours: number;
+    scheduledHours: number;
+    remainingScopeHours: number;
+    driftVsScopePlanHours: number;
+    driftVsMonthlyPlanHours: number;
+  };
+  active: {
+    bySource: Record<string, number>;
+    byScope: Record<string, { plannedHours: number; scheduledHours: number; driftHours: number }>;
+  };
+};
+
 const monthLabel = (value: Date) =>
   value.toLocaleString("en-US", { month: "short", year: "2-digit" });
 
@@ -52,6 +68,9 @@ function ScopeModal({
   const [scopes, setScopes] = useState<ScopeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<SchedulingDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: "",
     title: "",
@@ -70,42 +89,78 @@ function ScopeModal({
       setScopes(json?.data || []);
       console.log(`[SCOPE] Loaded ${json?.data?.length || 0} scopes for project ${project.projectName}`);
 
-      // Automatically sync active schedule hours to scopes
-      if (project.projectNumber) {
-        console.log(`[SCOPE] Starting sync with projectId=${project.id}, projectNumber=${project.projectNumber}`);
-        try {
-          const syncRes = await fetch("/api/gantt-v2/sync-schedule", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: project.id,
-              projectNumber: project.projectNumber,
-            }),
-          });
+      // Automatically sync active schedule hours to scopes.
+      // Project-level sync can resolve matches by project metadata even when projectNumber is blank.
+      console.log(`[SCOPE] Starting sync with projectId=${project.id}, projectNumber=${project.projectNumber || '<blank>'}`);
+      try {
+        const syncRes = await fetch("/api/gantt-v2/sync-schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            projectNumber: project.projectNumber,
+          }),
+        });
 
-          const syncData = await syncRes.json();
-          console.log(`[SCOPE] Sync response:`, syncData);
-          
-          // Reload scopes to show updated scheduled hours
-          const reloadRes = await fetch(`/api/gantt-v2/projects/${project.id}/scopes`);
-          const reloadJson = await reloadRes.json();
-          setScopes(reloadJson?.data || []);
-          console.log(`[SCOPE] Reloaded scopes after sync:`, reloadJson?.data);
-        } catch (syncError) {
-          console.warn("[SCOPE] Failed to sync active schedule:", syncError);
-          // Continue with unsynced data
-        }
-      } else {
-        console.warn('[SCOPE] No projectNumber available for sync');
+        const syncData = await syncRes.json();
+        console.log(`[SCOPE] Sync response:`, syncData);
+        
+        // Reload scopes to show updated scheduled hours
+        const reloadRes = await fetch(`/api/gantt-v2/projects/${project.id}/scopes`);
+        const reloadJson = await reloadRes.json();
+        setScopes(reloadJson?.data || []);
+        console.log(`[SCOPE] Reloaded scopes after sync:`, reloadJson?.data);
+      } catch (syncError) {
+        console.warn("[SCOPE] Failed to sync active schedule:", syncError);
+        // Continue with unsynced data
       }
     } finally {
       setLoading(false);
     }
   }, [project.id]);
 
+  const jobKey = useMemo(
+    () => `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`,
+    [project.customer, project.projectName, project.projectNumber]
+  );
+
+  const loadDiagnostics = useCallback(async () => {
+    if (!jobKey.trim()) {
+      setDiagnostics(null);
+      setDiagnosticsError("Missing job key context for diagnostics.");
+      return;
+    }
+
+    setDiagnosticsLoading(true);
+    setDiagnosticsError(null);
+
+    try {
+      const params = new URLSearchParams({ jobKey });
+      const res = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
+      const json = await res.json();
+
+      if (!res.ok || !json?.success) {
+        setDiagnostics(null);
+        setDiagnosticsError(json?.error || "Failed to load diagnostics.");
+        return;
+      }
+
+      setDiagnostics((json?.data || null) as SchedulingDiagnostics | null);
+    } catch (error) {
+      setDiagnostics(null);
+      setDiagnosticsError(error instanceof Error ? error.message : "Failed to load diagnostics.");
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  }, [jobKey]);
+
   useEffect(() => {
     loadScopes();
   }, [loadScopes]);
+
+  useEffect(() => {
+    loadDiagnostics();
+  }, [loadDiagnostics]);
 
   const resetForm = () => {
     setForm({ id: "", title: "", startDate: "", endDate: "", totalHours: "", crewSize: "", notes: "" });
@@ -159,6 +214,7 @@ function ScopeModal({
       }
 
       await loadScopes();
+      await loadDiagnostics();
       onSaved();
       resetForm();
     } finally {
@@ -169,9 +225,17 @@ function ScopeModal({
   const deleteScope = async (scopeId: string) => {
     await fetch(`/api/gantt-v2/scopes/${scopeId}`, { method: "DELETE" });
     await loadScopes();
+    await loadDiagnostics();
     onSaved();
     if (form.id === scopeId) resetForm();
   };
+
+  const selectedScopeDiagnostics = useMemo(() => {
+    if (!diagnostics?.active?.byScope) return null;
+    const key = (form.title || "").trim();
+    if (!key) return null;
+    return diagnostics.active.byScope[key] || null;
+  }, [diagnostics, form.title]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
@@ -182,6 +246,47 @@ function ScopeModal({
             <p className="text-sm text-gray-500">Scopes</p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">Close</button>
+        </div>
+
+        <div className="border border-gray-200 rounded-lg p-3 mb-4 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-gray-800">Scheduling Diagnostics</h3>
+            {diagnosticsLoading && <span className="text-xs text-gray-500">Refreshing...</span>}
+          </div>
+          {diagnosticsError ? (
+            <div className="text-xs text-red-600">{diagnosticsError}</div>
+          ) : diagnostics ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-gray-700">
+                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                  <div className="text-gray-500">Scope Planned</div>
+                  <div className="font-semibold">{diagnostics.totals.scopePlannedHours.toFixed(1)}h</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                  <div className="text-gray-500">Scheduled</div>
+                  <div className="font-semibold">{diagnostics.totals.scheduledHours.toFixed(1)}h</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                  <div className="text-gray-500">Remaining</div>
+                  <div className="font-semibold">{diagnostics.totals.remainingScopeHours.toFixed(1)}h</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                  <div className="text-gray-500">Drift vs Scope Plan</div>
+                  <div className={`font-semibold ${diagnostics.totals.driftVsScopePlanHours > 0 ? "text-red-600" : "text-gray-900"}`}>
+                    {diagnostics.totals.driftVsScopePlanHours.toFixed(1)}h
+                  </div>
+                </div>
+              </div>
+
+              {selectedScopeDiagnostics && (
+                <div className="mt-2 text-[11px] text-gray-700">
+                  Scope "{form.title}": planned {selectedScopeDiagnostics.plannedHours.toFixed(1)}h, scheduled {selectedScopeDiagnostics.scheduledHours.toFixed(1)}h, drift {selectedScopeDiagnostics.driftHours.toFixed(1)}h
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-xs text-gray-500">No diagnostics data available.</div>
+          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
@@ -257,6 +362,7 @@ function ScopeModal({
 export default function ProjectSchedulePage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("month");
@@ -435,6 +541,32 @@ export default function ProjectSchedulePage() {
     await loadProjects();
   };
 
+  const filteredProjects = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    if (!normalizedSearch) return projects;
+
+    return projects
+      .map((project) => {
+        const projectName = (project.projectName || "").toLowerCase();
+        const customer = (project.customer || "").toLowerCase();
+        const projectNumber = (project.projectNumber || "").toLowerCase();
+        const projectMatches =
+          projectName.includes(normalizedSearch) ||
+          customer.includes(normalizedSearch) ||
+          projectNumber.includes(normalizedSearch);
+
+        if (projectMatches) return project;
+
+        const matchedScopes = (project.scopes || []).filter((scope) =>
+          (scope.title || "").toLowerCase().includes(normalizedSearch)
+        );
+
+        if (matchedScopes.length === 0) return null;
+        return { ...project, scopes: matchedScopes };
+      })
+      .filter((project): project is ProjectRow => project !== null);
+  }, [projects, searchTerm]);
+
   const timelineStart = timeline[0];
   const timelineEnd = timeline[timeline.length - 1];
 
@@ -443,8 +575,16 @@ export default function ProjectSchedulePage() {
       <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-100 pb-4 mb-4">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-gray-900">Gantt V2</h1>
-            <p className="text-xs font-semibold text-gray-500">New page on isolated database tables</p>
+            <p className="text-xs font-semibold text-gray-500">Project scope timeline and scheduling view</p>
+          </div>
+          <div className="w-full md:w-[360px]">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search project, customer, number, or scope"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            />
           </div>
         </div>
 
@@ -509,13 +649,19 @@ export default function ProjectSchedulePage() {
 
           {loading ? (
             <div className="p-4 text-sm text-gray-500">Loading...</div>
-          ) : projects.length === 0 ? (
-            <div className="p-4 text-sm text-gray-500">No projects yet in Gantt V2.</div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="p-4 text-sm text-gray-500">
+              {searchTerm.trim() ? "No projects match your search." : "No projects yet."}
+            </div>
           ) : (
-            projects.map((project) => {
+            filteredProjects.map((project) => {
               const scopes = project.scopes || [];
               const isCollapsed = collapsedProjects.has(project.id);
               const projectAllocations = project.scheduleAllocations || [];
+              const projectTotalHours =
+                project.scopedHours > 0
+                  ? project.scopedHours
+                  : projectAllocations.reduce((sum, alloc) => sum + Number(alloc.hours || 0), 0);
               return (
                 <React.Fragment key={project.id}>
                   {/* Project header row */}
@@ -554,7 +700,7 @@ export default function ProjectSchedulePage() {
                           </div>
                         </div>
                         <div className="mt-1 text-[11px] text-gray-500 ml-6">
-                          {scopes.length} scope{scopes.length !== 1 ? "s" : ""} {"\u2022"} {project.scopedHours.toFixed(1)} hours
+                          {scopes.length} scope{scopes.length !== 1 ? "s" : ""} {"\u2022"} {projectTotalHours.toFixed(1)} hours
                         </div>
                         <button
                           onClick={() => setSelectedProject(project)}
@@ -601,11 +747,62 @@ export default function ProjectSchedulePage() {
                   {!isCollapsed && (
                     <>
                       {scopes.length === 0 ? (
-                        <div className="grid border-t border-gray-100" style={{ gridTemplateColumns: `320px repeat(${timeline.length}, ${getColumnWidth()})` }}>
-                          <div className="sticky left-0 bg-white border-r border-gray-200 px-3 py-2 ml-6">
-                            <div className="text-xs italic text-gray-400">No scopes yet</div>
+                        projectTotalHours > 0 && projectAllocations.length > 0 ? (
+                          <div className="grid border-t border-gray-100" style={{ gridTemplateColumns: `320px repeat(${timeline.length}, ${getColumnWidth()})` }}>
+                            <div className="sticky left-0 bg-white border-r border-gray-200 px-3 py-2 ml-6">
+                              <div
+                                onClick={() => {
+                                  setSelectedScopeId(null);
+                                  setSelectedProject(project);
+                                }}
+                                className="text-xs font-medium text-gray-700 truncate cursor-pointer hover:text-blue-700"
+                              >
+                                Unscoped Allocation
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">
+                                {projectTotalHours.toFixed(1)}h from schedule allocations
+                              </div>
+                            </div>
+
+                            <div className="col-span-full relative" style={{ gridColumn: `2 / span ${timeline.length}` }}>
+                              <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${timeline.length}, ${getColumnWidth()})` }}>
+                                {timeline.map((t) => (
+                                  <div key={`${project.id}-unscoped-${t.toISOString()}`} className="border-r border-gray-100" />
+                                ))}
+                              </div>
+
+                              {projectAllocations.map((alloc) => {
+                                const allocIdx = getAllocationTimelineIndex(alloc.period);
+                                if (allocIdx === -1) return null;
+
+                                return (
+                                  <div
+                                    key={`${project.id}-unscoped-${alloc.period}`}
+                                    onClick={() => {
+                                      setSelectedScopeId(null);
+                                      setSelectedProject(project);
+                                    }}
+                                    className="absolute top-1.5 h-6 rounded bg-green-500 text-white text-xs font-semibold px-2 flex items-center cursor-pointer hover:bg-green-600"
+                                    style={{
+                                      left: `calc(${(allocIdx / timeline.length) * 100}% + 4px)`,
+                                      width: `calc(${(1 / timeline.length) * 100}% - 8px)`,
+                                    }}
+                                  >
+                                    {Number(alloc.hours || 0).toFixed(0)}h
+                                  </div>
+                                );
+                              })}
+
+                              <div className="h-8" />
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="grid border-t border-gray-100" style={{ gridTemplateColumns: `320px repeat(${timeline.length}, ${getColumnWidth()})` }}>
+                            <div className="sticky left-0 bg-white border-r border-gray-200 px-3 py-2 ml-6">
+                              <div className="text-xs italic text-gray-400">No scopes yet</div>
+                            </div>
+                          </div>
+                        )
                       ) : (
                         scopes.map((scope) => {
                           const start = asDate(scope.startDate);
@@ -617,7 +814,7 @@ export default function ProjectSchedulePage() {
                           // If scope has dates, use those; otherwise use schedule allocations
                           const allocations = projectAllocations;
                           const scopeHours = scope.totalHours || 0;
-                          const projectHours = project.scopedHours || 0;
+                          const projectHours = projectTotalHours || 0;
 
                           return (
                             <div key={scope.id} className="grid border-t border-gray-100" style={{ gridTemplateColumns: `320px repeat(${timeline.length}, ${getColumnWidth()})` }}>

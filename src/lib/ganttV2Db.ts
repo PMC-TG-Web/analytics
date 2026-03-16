@@ -185,13 +185,95 @@ export async function getGanttV2Projects(): Promise<GanttV2ProjectRow[]> {
 }
 
 export async function getGanttV2ProjectsWithScopes(): Promise<GanttV2ProjectWithScopes[]> {
+  const normalizeIdentity = (value: string | null | undefined) =>
+    (value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const toSqlDate = (value: unknown): string | null => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = new Date(trimmed);
+      if (Number.isNaN(parsed.getTime())) return null;
+      return parsed.toISOString().slice(0, 10);
+    }
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) return null;
+      return value.toISOString().slice(0, 10);
+    }
+    return null;
+  };
+
   // First get all projects with summary info
   const projects = await getGanttV2Projects();
+
+  // Legacy source of scopes used by short-term and prior schedule flows.
+  const legacyScopes = await prisma.projectScope.findMany({
+    select: {
+      id: true,
+      jobKey: true,
+      title: true,
+      startDate: true,
+      endDate: true,
+      manpower: true,
+      hours: true,
+      description: true,
+    },
+  });
+
+  const legacyScopesByIdentity = new Map<string, typeof legacyScopes>();
+  for (const scope of legacyScopes) {
+    const [customer = '', , projectName = ''] = String(scope.jobKey || '').split('~');
+    const key = `${normalizeIdentity(customer)}||${normalizeIdentity(projectName)}`;
+    if (!key || key === '||') continue;
+    const rows = legacyScopesByIdentity.get(key) || [];
+    rows.push(scope);
+    legacyScopesByIdentity.set(key, rows);
+  }
   
   // For each project, fetch its scopes and schedule allocations
   const projectsWithScopes: GanttV2ProjectWithScopes[] = await Promise.all(
     projects.map(async (project) => {
-      const scopes = await getGanttV2Scopes(project.id);
+      let scopes = await getGanttV2Scopes(project.id);
+
+      const projectIdentityKey = `${normalizeIdentity(project.customer)}||${normalizeIdentity(project.projectName)}`;
+      const legacyForProject = legacyScopesByIdentity.get(projectIdentityKey) || [];
+
+      if (legacyForProject.length > 0) {
+        const existingTitles = new Set(scopes.map((scope) => normalizeIdentity(scope.title)));
+        let insertedLegacyScope = false;
+
+        for (const legacyScope of legacyForProject) {
+          const legacyTitle = (legacyScope.title || '').toString().trim();
+          if (!legacyTitle) continue;
+          if (existingTitles.has(normalizeIdentity(legacyTitle))) continue;
+
+          await prisma.$executeRawUnsafe(
+            `
+              INSERT INTO gantt_v2_scopes (id, project_id, title, start_date, end_date, total_hours, crew_size, notes)
+              VALUES ($1, $2, $3, CAST($4 AS date), CAST($5 AS date), $6, $7, $8)
+            `,
+            crypto.randomUUID(),
+            project.id,
+            legacyTitle,
+            toSqlDate(legacyScope.startDate),
+            toSqlDate(legacyScope.endDate),
+            Number(legacyScope.hours || 0),
+            legacyScope.manpower === null || legacyScope.manpower === undefined ? null : Number(legacyScope.manpower),
+            (legacyScope.description || '').toString().trim() || 'Migrated from legacy projectScope'
+          );
+
+          existingTitles.add(normalizeIdentity(legacyTitle));
+          insertedLegacyScope = true;
+        }
+
+        if (insertedLegacyScope) {
+          scopes = await getGanttV2Scopes(project.id);
+        }
+      }
       
       const scheduleOrFilters: Array<{
         projectId?: string;
@@ -229,9 +311,67 @@ export async function getGanttV2ProjectsWithScopes(): Promise<GanttV2ProjectWith
       const scheduleAllocations = Array.from(allocationsByPeriod.entries())
         .map(([period, hours]) => ({ period, hours }))
         .sort((a, b) => a.period.localeCompare(b.period));
+
+      const scheduleTotalHours = schedules.reduce(
+        (sum, schedule) => sum + Number(schedule.totalHours || 0),
+        0
+      );
+
+      const allocationTotalHours = scheduleAllocations.reduce(
+        (sum, allocation) => sum + Number(allocation.hours || 0),
+        0
+      );
+
+      const effectiveScopedHours =
+        project.scopedHours > 0
+          ? project.scopedHours
+          : scheduleTotalHours > 0
+            ? scheduleTotalHours
+            : allocationTotalHours;
+
+      // If there is exactly one existing scope with no budgeted hours,
+      // hydrate it from schedule totals so cards/modals don't show 0.0h.
+      if (
+        scopes.length === 1 &&
+        Number(scopes[0]?.totalHours || 0) <= 0 &&
+        effectiveScopedHours > 0
+      ) {
+        await prisma.$executeRawUnsafe(
+          `
+            UPDATE gantt_v2_scopes
+            SET total_hours = $1,
+                updated_at = NOW()
+            WHERE id = $2
+          `,
+          effectiveScopedHours,
+          scopes[0].id
+        );
+
+        scopes = await getGanttV2Scopes(project.id);
+      }
+
+      // Enforce invariant: if a project has planned hours, it must have at least one scope.
+      if (scopes.length === 0 && effectiveScopedHours > 0) {
+        const defaultScopeId = crypto.randomUUID();
+        await prisma.$executeRawUnsafe(
+          `
+            INSERT INTO gantt_v2_scopes (id, project_id, title, start_date, end_date, total_hours, crew_size, notes)
+            VALUES ($1, $2, $3, NULL, NULL, $4, NULL, $5)
+          `,
+          defaultScopeId,
+          project.id,
+          'Primary Scope',
+          effectiveScopedHours,
+          'Auto-created from schedule allocations'
+        );
+
+        scopes = await getGanttV2Scopes(project.id);
+      }
       
       return {
         ...project,
+        scopeCount: scopes.length,
+        scopedHours: effectiveScopedHours,
         scopes,
         scheduleAllocations,
       };
@@ -242,6 +382,22 @@ export async function getGanttV2ProjectsWithScopes(): Promise<GanttV2ProjectWith
 }
 
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
+  // Defensive cleanup: scopes without schedule bounds should never retain scheduled rows.
+  await prisma.$executeRawUnsafe(
+    `
+      DELETE FROM gantt_v2_schedule_entries e
+      USING gantt_v2_scopes s
+      WHERE e.scope_id = s.id
+        AND s.project_id = $1
+        AND (
+          s.start_date IS NULL
+          OR s.end_date IS NULL
+          OR COALESCE(s.total_hours, 0) <= 0
+        )
+    `,
+    projectId
+  );
+
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;
@@ -263,7 +419,11 @@ export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeR
         s.total_hours,
         s.crew_size,
         s.notes,
-        COALESCE(SUM(e.scheduled_hours), 0)::float8 AS scheduled_hours
+        CASE
+          WHEN s.start_date IS NULL OR s.end_date IS NULL OR COALESCE(s.total_hours, 0) <= 0
+            THEN 0
+          ELSE COALESCE(SUM(e.scheduled_hours), 0)
+        END::float8 AS scheduled_hours
       FROM gantt_v2_scopes s
       LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
       WHERE s.project_id = $1
@@ -396,13 +556,18 @@ export async function getGanttV2LongTermSummary(startMonth?: string, months = 15
  * Sync activeSchedule hours to gantt_v2_schedule_entries for a given scope
  * This aggregates daily hours from activeSchedule and populates gantt_v2_schedule_entries
  */
-export async function syncActiveScheduleToScope(scopeId: string, jobKey: string): Promise<number> {
+export async function syncActiveScheduleToScope(
+  scopeId: string,
+  jobKey: string,
+  scopeTitle?: string
+): Promise<number> {
   // Find activeSchedule entries for this jobKey and aggregate by date
   // Only sync entries from Gantt (source: 'gantt'), exclude custom scopes (source: 'wip-page')
   const activeScheduleHours = await prisma.activeSchedule.findMany({
     where: {
       jobKey,
-      OR: [{ source: 'gantt' }, { source: null }], // Include gantt entries and entries without source
+      ...(scopeTitle ? { scopeOfWork: scopeTitle.trim() } : {}),
+      source: 'gantt',
     },
   });
 
@@ -437,7 +602,7 @@ export async function syncActiveScheduleToScope(scopeId: string, jobKey: string)
     
     await prisma.$executeRawUnsafe(`
       INSERT INTO gantt_v2_schedule_entries (id, scope_id, work_date, scheduled_hours)
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1, $2, $3::date, $4)
     `, id, scopeId, workDate, hours);
   }
 

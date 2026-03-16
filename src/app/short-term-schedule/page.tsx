@@ -77,11 +77,41 @@ interface Employee {
   isActive?: boolean;
 }
 
+const isForemanRole = (jobTitle?: string) => {
+  const title = (jobTitle || '').toLowerCase();
+  return (
+    title === 'foreman' ||
+    title === 'forman' ||
+    title === 'lead foreman' ||
+    title === 'lead foreman / project manager'
+  );
+};
+
+const isDispatchCapacityFieldRole = (jobTitle?: string) => {
+  const title = (jobTitle || '').toLowerCase();
+  return (
+    title === 'laborer' ||
+    title === 'right hand men' ||
+    title === 'right hand man' ||
+    title === 'right hand man/ sealhard crew leader'
+  );
+};
+
 const formatDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getDayProjectRenderKey = (project: DayProject, dateKey: string, foremanId: string) => {
+  return [
+    project.jobKey || '',
+    project.scopeOfWork || '',
+    dateKey,
+    foremanId || '',
+    project.source || '',
+  ].join('||');
 };
 
 export default function ShortTermSchedulePage() {
@@ -100,6 +130,7 @@ function ShortTermScheduleContent() {
   const [foremanDateProjects, setForemanDateProjects] = useState<Record<string, Record<string, DayProject[]>>>({}); // foremanId -> dateKey -> projects
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [companyCapacity, setCompanyCapacity] = useState<number>(210); // Standard 210, will be dynamic
   const [dailyCapacity, setDailyCapacity] = useState<Record<string, number>>({});
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -108,6 +139,11 @@ function ShortTermScheduleContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedGanttProject, setSelectedGanttProject] = useState<ProjectInfo | null>(null);
+  const [selectedGanttScopeTitle, setSelectedGanttScopeTitle] = useState<string | null>(null);
+  const [selectedGanttDateKey, setSelectedGanttDateKey] = useState<string | null>(null);
+  const [selectedGanttHours, setSelectedGanttHours] = useState<number | null>(null);
+  const [selectedGanttForemanId, setSelectedGanttForemanId] = useState<string | null>(null);
+  const [selectedGanttDayEditMode, setSelectedGanttDayEditMode] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [isAddingProject, setIsAddingProject] = useState<boolean>(false);
   const [scopeSelectionModal, setScopeSelectionModal] = useState<{ jobKey: string; projects: Project[] } | null>(null);
@@ -170,7 +206,15 @@ function ShortTermScheduleContent() {
     };
   }, []);
 
-  function openGanttModal(customer: string, projectName: string, projectNumber: string) {
+  function openGanttModal(
+    customer: string,
+    projectName: string,
+    projectNumber: string,
+    scopeTitle?: string,
+    dateKey?: string,
+    scheduledHours?: number,
+    foremanId?: string
+  ) {
     const jobKey = getProjectKey({ customer, projectName, projectNumber } as Project);
     const project = allProjects.find((p) => {
       const pKey = getProjectKey(p);
@@ -185,6 +229,11 @@ function ShortTermScheduleContent() {
         projectNumber: project.projectNumber || "",
         projectDocId: project.id
       });
+      setSelectedGanttScopeTitle(scopeTitle?.trim() || null);
+      setSelectedGanttDateKey(dateKey || null);
+      setSelectedGanttHours(typeof scheduledHours === 'number' ? scheduledHours : null);
+      setSelectedGanttForemanId(foremanId || null);
+      setSelectedGanttDayEditMode(Boolean(dateKey));
     } else {
       console.warn("Project not found for key:", jobKey);
     }
@@ -461,15 +510,40 @@ function ShortTermScheduleContent() {
     // Use the first project as the base for jobKey
     const p = scopeSelectionModal.projects[0];
     const jobKey = getProjectKey(p);
+    const customTitle = customScopeName.trim();
     
     setSaving(true);
     try {
+      const scopeExists = (scopesByJobKey[jobKey] || []).some(
+        (scope) => (scope.title || '').trim().toLowerCase() === customTitle.toLowerCase()
+      );
+
+      if (!scopeExists) {
+        const persistScopeResponse = await fetch('/api/project-scopes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobKey,
+            title: customTitle,
+            hours: 10,
+            manpower: 1,
+            description: 'Custom scope created from Short-Term Schedule',
+            tasks: [],
+            syncToActiveSchedule: false,
+          }),
+        });
+
+        if (!persistScopeResponse.ok) {
+          throw new Error(`Failed to persist custom scope: ${persistScopeResponse.statusText}`);
+        }
+      }
+
       const response = await fetch('/api/short-term-schedule/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobKey,
-          scopeOfWork: customScopeName.trim(),
+          scopeOfWork: customTitle,
           sourceDateKey: null,
           sourceForemanId: null,
           targetDateKey: dateKey,
@@ -506,15 +580,40 @@ function ShortTermScheduleContent() {
     const { date, foremanId } = targetingCell;
     const dateKey = formatDateKey(date);
     const jobKey = getProjectKey(project);
+    const normalizedCustomName = customName.trim();
 
     setSaving(true);
     try {
+      const scopeExists = (scopesByJobKey[jobKey] || []).some(
+        (scope) => (scope.title || '').trim().toLowerCase() === normalizedCustomName.toLowerCase()
+      );
+
+      if (!scopeExists) {
+        const persistScopeResponse = await fetch('/api/project-scopes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobKey,
+            title: normalizedCustomName,
+            hours: 10,
+            manpower: 1,
+            description: 'Custom scope created from Short-Term Schedule',
+            tasks: [],
+            syncToActiveSchedule: false,
+          }),
+        });
+
+        if (!persistScopeResponse.ok) {
+          throw new Error(`Failed to persist custom scope: ${persistScopeResponse.statusText}`);
+        }
+      }
+
       const response = await fetch('/api/short-term-schedule/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobKey,
-          scopeOfWork: customName.trim(),
+          scopeOfWork: normalizedCustomName,
           sourceDateKey: null,
           sourceForemanId: null,
           targetDateKey: dateKey,
@@ -680,7 +779,7 @@ function ShortTermScheduleContent() {
   async function loadSchedules() {
     try {
       // Fetch all data from API
-      const res = await fetch('/api/short-term-schedule');
+      const res = await fetch('/api/short-term-schedule', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch data');
       const { data } = await res.json();
 
@@ -696,21 +795,15 @@ function ShortTermScheduleContent() {
       
       setAllEmployees(allEmps);
 
-      // Calculate capacity from active field staff
-      const activeFieldStaff = allEmps.filter((e: any) => 
-        e.isActive && (
-          e.jobTitle === "Foreman" || 
-          e.jobTitle === "Lead foreman" || 
-          e.jobTitle === "Lead Foreman" || 
-          e.jobTitle === "Lead Foreman / Project Manager" || 
-          e.jobTitle === "Field Worker" || 
-          e.jobTitle === "Field worker"
-        )
+      // Match Crew Dispatch base capacity roles
+      const dispatchCapacityStaff = allEmps.filter((e: any) =>
+        e.isActive && (isForemanRole(e.jobTitle) || isDispatchCapacityFieldRole(e.jobTitle))
       );
-      setCompanyCapacity(activeFieldStaff.length * 10);
+      const baseDispatchCapacity = dispatchCapacityStaff.length * 10;
+      setCompanyCapacity(baseDispatchCapacity);
       
       const foremenList = allEmps.filter((emp: any) => 
-        emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead Foreman / Project Manager")
+        emp.isActive && isForemanRole(emp.jobTitle)
       );
       setForemen(foremenList);
       
@@ -718,7 +811,7 @@ function ShortTermScheduleContent() {
       const rawScopes: Scope[] = scopes.map((s: any) => ({
         id: s.id,
         jobKey: s.jobKey,
-        title: s.scopeOfWork,
+        title: s.title || s.scopeOfWork || 'Scope',
         hours: s.hours,
         manpower: 0,
         startDate: s.startDate || '',
@@ -726,15 +819,36 @@ function ShortTermScheduleContent() {
         description: ''
       }));
 
-      // Fetch time off requests
-      const timeOffData = timeOffs.map((t: any) => ({
-        id: t.id,
-        employeeId: t.employeeId,
-        employeeName: t.employeeName,
-        dates: t.dates || [],
-        reason: t.reason,
-        status: t.status
-      }));
+      // Normalize time off requests for date range calculations
+      const normalizedTimeOffs: TimeOffRequest[] = (timeOffs || []).flatMap((t: any) => {
+        const dates = Array.isArray(t?.dates)
+          ? t.dates.filter((d: unknown) => typeof d === 'string' && d)
+          : [];
+
+        if (typeof t?.startDate === 'string' && typeof t?.endDate === 'string') {
+          return [{
+            id: t.id,
+            employeeId: t.employeeId,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            type: (t.type || 'Other') as TimeOffRequest['type'],
+            hours: Number(t.hours) > 0 ? Number(t.hours) : undefined,
+          }];
+        }
+
+        if (dates.length === 0) return [];
+        const sortedDates = [...dates].sort();
+
+        return [{
+          id: t.id,
+          employeeId: t.employeeId,
+          startDate: sortedDates[0],
+          endDate: sortedDates[sortedDates.length - 1],
+          type: (t.type || 'Other') as TimeOffRequest['type'],
+          hours: Number(t.hours) > 0 ? Number(t.hours) : undefined,
+        }];
+      });
+      setTimeOffRequests(normalizedTimeOffs);
 
       // Set projects (only those initiated from Gantt actual schedule)
       const projs = projects;
@@ -756,7 +870,10 @@ function ShortTermScheduleContent() {
       const endDateStr = formatDateKey(new Date(fiveWeeksFromStart.getTime() - 1));
       
       // Fetch active schedules from API
-      const schedRes = await fetch(`/api/short-term-schedule?action=active-schedule&startDate=${startDateStr}&endDate=${endDateStr}`);
+      const schedRes = await fetch(
+        `/api/short-term-schedule?action=active-schedule&startDate=${startDateStr}&endDate=${endDateStr}`,
+        { cache: 'no-store' }
+      );
       const schedData = schedRes.ok ? await schedRes.json() : { data: [] };
       const activeSchedules = schedData.data || [];
       const ganttInitiatedSchedules = activeSchedules.filter((entry: any) => {
@@ -874,10 +991,17 @@ function ShortTermScheduleContent() {
       const foremanDateMap: Record<string, Record<string, DayProject[]>> = {};
       Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
         projects.forEach(project => {
-          const fid = project.foreman || "__unassigned__";
+          const rawForemanId = project.foreman || "__unassigned__";
+          const visibleForeman =
+            rawForemanId !== "__unassigned__" &&
+            foremenList.some((f) => f.id === rawForemanId);
+          const fid = visibleForeman ? rawForemanId : "__unassigned__";
           if (!foremanDateMap[fid]) foremanDateMap[fid] = {};
           if (!foremanDateMap[fid][dateKey]) foremanDateMap[fid][dateKey] = [];
-          foremanDateMap[fid][dateKey].push(project);
+          foremanDateMap[fid][dateKey].push({
+            ...project,
+            foreman: fid === "__unassigned__" ? '' : project.foreman,
+          });
         });
       });
       setForemanDateProjects(foremanDateMap);
@@ -906,6 +1030,26 @@ function ShortTermScheduleContent() {
       });
       setCrewAssignments(crewMap);
 
+      // Match Crew Dispatch day capacity logic: base capacity minus daily time off
+      const dailyDispatchCapacity: Record<string, number> = {};
+      const dayKeys = Array.from(dayMap.keys());
+
+      dayKeys.forEach((dateKey) => {
+        let totalHoursOff = 0;
+
+        dispatchCapacityStaff.forEach((employee: any) => {
+          const employeeHoursOff = normalizedTimeOffs
+            .filter((req) => req.employeeId === employee.id && dateKey >= req.startDate && dateKey <= req.endDate)
+            .reduce((sum, req) => sum + (req.hours || 10), 0);
+
+          // Cap individual daily deduction to one workday
+          totalHoursOff += Math.min(employeeHoursOff, 10);
+        });
+
+        dailyDispatchCapacity[dateKey] = Math.max(baseDispatchCapacity - totalHoursOff, 0);
+      });
+
+      setDailyCapacity(dailyDispatchCapacity);
       setDayColumns(Array.from(dayMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([_, col]) => col));
       
       setLoading(false);
@@ -948,7 +1092,15 @@ function ShortTermScheduleContent() {
     
     return allEmployees.filter(e => 
       e.isActive && 
-      (e.jobTitle === "Field Worker" || e.jobTitle === "Field worker") && 
+      (
+        e.jobTitle === "Laborer" ||
+        e.jobTitle === "Trainer" ||
+        e.jobTitle === "Field Worker" ||
+        e.jobTitle === "Field worker" ||
+        e.jobTitle === "Right Hand Man" ||
+        e.jobTitle === "Right Hand Man/ Sealhard Crew Leader"
+      ) && 
+      !timeOffRequests.some(req => req.employeeId === e.id && dateKey >= req.startDate && dateKey <= req.endDate && (req.hours || 10) >= 10) &&
       !assignedToOthers.includes(e.id)
     );
   }
@@ -1273,10 +1425,12 @@ function ShortTermScheduleContent() {
                                </h4>
                              </div>
                              <div className="space-y-2">
-                               {projects.map((p, pIdx) => (
+                              {projects.map((p) => {
+                                const projectKey = getDayProjectRenderKey(p, dateKey, foreman.id);
+                                return (
                                  <div 
-                                    key={pIdx} 
-                                    onClick={() => openGanttModal(p.customer, p.projectName, p.projectNumber)}
+                                    key={projectKey} 
+                                    onClick={() => openGanttModal(p.customer, p.projectName, p.projectNumber, p.scopeOfWork, dateKey, p.hours, foreman.id)}
                                     className="bg-white border-2 border-orange-50 p-3 rounded-xl shadow-sm active:scale-95 transition-all"
                                   >
                                    <div className="font-black text-gray-900 text-xs uppercase leading-tight italic truncate pr-8">{p.projectName}</div>
@@ -1285,7 +1439,8 @@ function ShortTermScheduleContent() {
                                      <div className="bg-orange-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black shadow-sm shadow-orange-600/20">{p.hours.toFixed(0)} <span className="opacity-50">H</span></div>
                                    </div>
                                  </div>
-                               ))}
+                                );
+                              })}
                              </div>
                           </div>
                         );
@@ -1373,17 +1528,18 @@ function ShortTermScheduleContent() {
                                 <div className="flex flex-col h-full min-h-[100px]">
                                   {projects.length > 0 ? (
                                     <div className="space-y-3 mb-3">
-                                      {projects.map((project, projIdx) => {
+                                      {projects.map((project) => {
+                                        const projectKey = getDayProjectRenderKey(project, dateKey, foreman.id);
                                         const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
                                         return (
                                           <div 
-                                            key={projIdx} 
+                                            key={projectKey} 
                                             draggable={!saving}
                                             onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
                                             className={`relative group/proj border-2 rounded-2xl p-3 cursor-grab transition-all shadow-sm ${
                                               isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-4 ring-yellow-400/20 scale-105 z-10' : 'bg-white border-orange-100 hover:border-orange-500'
                                             }`}
-                                            onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber)}
+                                            onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber, project.scopeOfWork, dateKey, project.hours, foreman.id)}
                                           >
                                             <button
                                               onClick={async (e) => {
@@ -1417,6 +1573,7 @@ function ShortTermScheduleContent() {
                                             <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest truncate">{project.customer}</div>
                                             <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
                                               <input
+                                                key={`${projectKey}|${project.hours}`}
                                                 type="number"
                                                 step="0.5"
                                                 defaultValue={project.hours.toFixed(1)}
@@ -1480,9 +1637,19 @@ function ShortTermScheduleContent() {
             allScopes={scopesByJobKey}
             scheduledHoursByJobKeyDate={scheduledHoursByJobKeyDate}
             selectedScopeId={null}
+            selectedScopeTitle={selectedGanttScopeTitle}
+            selectedScheduleDate={selectedGanttDateKey}
+            selectedScheduledHours={selectedGanttHours}
+            selectedForemanId={selectedGanttForemanId}
+            dayEditMode={selectedGanttDayEditMode}
             companyCapacity={companyCapacity}
             onClose={() => {
               setSelectedGanttProject(null);
+              setSelectedGanttScopeTitle(null);
+              setSelectedGanttDateKey(null);
+              setSelectedGanttHours(null);
+              setSelectedGanttForemanId(null);
+              setSelectedGanttDayEditMode(false);
               setTargetingCell(null);
             }}
             onScopesUpdated={async (jobKey, updatedScopes) => {

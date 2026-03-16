@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureGanttV2Schema } from '@/lib/ganttV2Db';
+import { syncGanttScopeToActiveSchedule } from '@/lib/scheduling/ganttScopeSync';
+import { SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,132 +16,15 @@ async function syncScopeToActiveSchedule(
   totalHours: number,
   crewSize: number | null
 ): Promise<void> {
-  console.log('[SYNC] Starting sync for scope:', { scopeId, title, startDate, endDate, totalHours, crewSize });
-  
-  // Only sync if we have dates and hours
-  if (!startDate || !endDate || totalHours <= 0) {
-    console.log('[SYNC] Cleaning up: missing dates or hours');
-    // If no dates/hours, clean up any existing entries
-    const project = await prisma.$queryRawUnsafe<Array<{
-      customer: string | null;
-      project_number: string | null;
-      project_name: string;
-    }>>(
-      `SELECT customer, project_number, project_name FROM gantt_v2_projects WHERE id = $1 LIMIT 1`,
-      projectId
-    );
-
-    if (project && project.length > 0) {
-      const { customer, project_number, project_name } = project[0];
-      const jobKey = `${customer || ''}~${project_number || ''}~${project_name || ''}`;
-      
-      await prisma.activeSchedule.deleteMany({
-        where: {
-          jobKey,
-          scopeOfWork: title,
-          source: 'gantt',
-        },
-      });
-    }
-    return;
-  }
-
-  // Get project info to construct jobKey
-  console.log('[SYNC] Looking up project:', projectId);
-  let project;
-  try {
-    project = await prisma.$queryRawUnsafe<Array<{
-      customer: string | null;
-      project_number: string | null;
-      project_name: string;
-    }>>(
-      `SELECT customer, project_number, project_name FROM gantt_v2_projects WHERE id = $1 LIMIT 1`,
-      projectId
-    );
-    console.log('[SYNC] Project lookup result:', project);
-  } catch (err) {
-    console.error('[SYNC] Project lookup error:', err);
-    return;
-  }
-
-  if (!project || project.length === 0) {
-    console.error(`Project not found for scope sync: ${projectId}`);
-    return;
-  }
-
-  const { customer, project_number, project_name } = project[0];
-  const jobKey = `${customer || ''}~${project_number || ''}~${project_name || ''}`;
-  console.log('[SYNC] Constructed jobKey:', jobKey);
-
-  // Parse dates
-  console.log('[SYNC] About to parse dates: startDate=' + startDate + ', endDate=' + endDate);
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  console.log('[SYNC] Parsed to:', start.toISOString(), 'through', end.toISOString());
-  
-  // Calculate working days and hours per day
-  const workingDays: Date[] = [];
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday-Friday
-      workingDays.push(new Date(d));
-    }
-  }
-
-  if (workingDays.length === 0) {
-    console.warn(`No working days in scope ${scopeId} date range`);
-    return;
-  }
-
-  const hoursPerDay = crewSize && crewSize > 0
-    ? crewSize * 10 // If crew size provided, use that
-    : totalHours / workingDays.length; // Otherwise distribute evenly
-
-  const existingAssignments = await prisma.activeSchedule.findMany({
-    where: {
-      jobKey,
-      scopeOfWork: title,
-      source: 'gantt',
-    },
-    select: {
-      date: true,
-      foreman: true,
-    },
+  await syncGanttScopeToActiveSchedule({
+    scopeId,
+    projectId,
+    title,
+    startDate,
+    endDate,
+    totalHours,
+    crewSize,
   });
-
-  const foremanByDate = new Map(
-    existingAssignments
-      .filter((entry) => Boolean(entry.foreman))
-      .map((entry) => [entry.date, entry.foreman as string])
-  );
-  const defaultForeman =
-    existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
-
-  // Delete existing entries for this scope
-  await prisma.activeSchedule.deleteMany({
-    where: {
-      jobKey,
-      scopeOfWork: title,
-      source: 'gantt',
-    },
-  });
-
-  // Create new entries for each working day
-  for (const date of workingDays) {
-    const dateStr = date.toISOString().split('T')[0];
-    
-    await prisma.activeSchedule.create({
-      data: {
-        jobKey,
-        scopeOfWork: title,
-        date: dateStr,
-        hours: hoursPerDay,
-        manpower: crewSize && crewSize > 0 ? Math.round(crewSize) : null,
-        foreman: foremanByDate.get(dateStr) ?? defaultForeman,
-        source: 'gantt',
-      },
-    });
-  }
 }
 
 type RouteParams = {
@@ -200,23 +85,33 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     );
 
     // Sync to ActiveSchedule
-    try {
-      await syncScopeToActiveSchedule(
-        scopeId,
-        projectId,
-        title,
-        startDate,
-        endDate,
-        Number.isFinite(totalHours) ? totalHours : 0,
-        crewSize
-      );
-      console.log('[PUT] Scope sync complete');
-    } catch (syncErr) {
-      console.error('[PUT] Sync error:', syncErr);
-    }
+    await syncScopeToActiveSchedule(
+      scopeId,
+      projectId,
+      title,
+      startDate,
+      endDate,
+      Number.isFinite(totalHours) ? totalHours : 0,
+      crewSize
+    );
+    console.log('[PUT] Scope sync complete');
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SchedulingConflictError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          conflict: {
+            code: error.code,
+            details: error.details ?? null,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { success: false, error: `Failed to update Gantt V2 scope: ${String(error)}` },
       { status: 500 }

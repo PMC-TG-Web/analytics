@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { reconcileDailyAssignment, SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
 
 export const dynamic = 'force-dynamic';
 
@@ -212,10 +213,17 @@ export async function POST(request: NextRequest) {
       }
 
       if (recordsToCreate.length > 0) {
-        await prisma.activeSchedule.createMany({
-          data: recordsToCreate,
-          skipDuplicates: true,
-        });
+        for (const record of recordsToCreate) {
+          await reconcileDailyAssignment({
+            jobKey: record.jobKey,
+            scopeOfWork: record.scopeOfWork,
+            targetDateKey: record.date,
+            targetForemanId: null,
+            hours: record.hours,
+            fallbackSource: record.source,
+            enforceScopeHourCap: true,
+          });
+        }
       }
 
       return NextResponse.json({
@@ -236,6 +244,20 @@ export async function POST(request: NextRequest) {
       data: { recordsCreated: 0 },
     });
   } catch (error) {
+    if (error instanceof SchedulingConflictError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          conflict: {
+            code: error.code,
+            details: error.details ?? null,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     console.error('Failed to save long-term schedule:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to save schedule' },

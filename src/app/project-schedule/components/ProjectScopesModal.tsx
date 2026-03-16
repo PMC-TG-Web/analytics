@@ -1,6 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 import { ProjectInfo, Scope } from "@/types";
+
+type GanttProjectResponse = {
+  id: string;
+  projectName: string;
+  customer: string | null;
+  projectNumber: string | null;
+  scopes?: Array<{
+    id: string;
+    title: string;
+    startDate: string | null;
+    endDate: string | null;
+    totalHours: number;
+    crewSize: number | null;
+    notes: string | null;
+  }>;
+};
 
 interface ProjectScopesModalProps {
   project: ProjectInfo;
@@ -9,6 +25,11 @@ interface ProjectScopesModalProps {
   companyCapacity?: number; // Total available hours per day
   scheduledHoursByJobKeyDate?: Record<string, Record<string, number>>; // jobKey -> dateKey -> hours
   selectedScopeId: string | null;
+  selectedScopeTitle?: string | null;
+  selectedScheduleDate?: string | null;
+  selectedScheduledHours?: number | null;
+  selectedForemanId?: string | null;
+  dayEditMode?: boolean;
   onClose: () => void;
   onScopesUpdated: (jobKey: string, scopes: Scope[]) => void;
 }
@@ -16,7 +37,18 @@ interface ProjectScopesModalProps {
 const parseScopeDate = (value: unknown): Date | null => {
   if (!value) return null;
   if (value instanceof Date) return value;
-  if (typeof value === "string" || typeof value === "number") {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      const d = new Date(Number(year), Number(month) - 1, Number(day));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "number") {
     const d = new Date(value);
     return isNaN(d.getTime()) ? null : d;
   }
@@ -73,10 +105,18 @@ export function ProjectScopesModal({
   companyCapacity = 210, // Default to 210 if not provided
   scheduledHoursByJobKeyDate,
   selectedScopeId,
+  selectedScopeTitle,
+  selectedScheduleDate,
+  selectedScheduledHours,
+  selectedForemanId,
+  dayEditMode = false,
   onClose,
   onScopesUpdated,
 }: ProjectScopesModalProps) {
   const [activeScopeId, setActiveScopeId] = useState<string | null>(selectedScopeId);
+  const [ganttProjectId, setGanttProjectId] = useState<string | null>(null);
+  const [canonicalScopes, setCanonicalScopes] = useState<Scope[] | null>(null);
+  const [projectBudgetHours, setProjectBudgetHours] = useState<number | null>(null);
   const [scopeDetail, setScopeDetail] = useState<Partial<Scope>>({
     title: "",
     startDate: "",
@@ -87,6 +127,153 @@ export function ProjectScopesModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [newTask, setNewTask] = useState("");
+
+  const normalize = (value: string | null | undefined) =>
+    (value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const matchesProjectIdentity = (
+    item: { customer?: string | null; projectName?: string | null }
+  ) => {
+    const normalizedItemCustomer = normalize(item.customer);
+    const normalizedProjectCustomer = normalize(project.customer);
+    const normalizedItemName = normalize(item.projectName);
+    const normalizedProjectName = normalize(project.projectName);
+
+    const customerMatch =
+      normalizedItemCustomer === normalizedProjectCustomer ||
+      normalizedItemCustomer.includes(normalizedProjectCustomer) ||
+      normalizedProjectCustomer.includes(normalizedItemCustomer);
+
+    const nameMatch =
+      normalizedItemName === normalizedProjectName ||
+      normalizedItemName.includes(normalizedProjectName) ||
+      normalizedProjectName.includes(normalizedItemName);
+
+    return customerMatch && nameMatch;
+  };
+
+  const identityFallbackScopes = useMemo(() => {
+    if (scopes.length > 0) return scopes;
+    if (!allScopes) return scopes;
+
+    const matched = Object.entries(allScopes).find(([jobKey]) => {
+      const [customer = "", , projectName = ""] = String(jobKey).split("~");
+      return matchesProjectIdentity({ customer, projectName });
+    });
+
+    return matched ? matched[1] : scopes;
+  }, [allScopes, scopes, project.customer, project.projectName]);
+
+  // Never let a failed canonical lookup hide already-known scopes from the grid.
+  const effectiveScopes =
+    canonicalScopes && canonicalScopes.length > 0 ? canonicalScopes : identityFallbackScopes;
+
+  const getEffectiveScopeHours = (scope: Partial<Scope>) => {
+    const scopeHours = computeScopeHours(scope);
+    if (scopeHours > 0) return scopeHours;
+
+    // If this project is effectively single-scope and scope hours are missing,
+    // fall back to schedule-level budgeted hours from the scheduling/WIP chain.
+    if ((effectiveScopes?.length || 0) <= 1 && projectBudgetHours && projectBudgetHours > 0) {
+      return projectBudgetHours;
+    }
+
+    return 0;
+  };
+
+  const displayedTotalBudgetedHours =
+    projectBudgetHours && projectBudgetHours > 0
+      ? projectBudgetHours
+      : effectiveScopes.reduce((sum, s) => sum + getEffectiveScopeHours(s), 0);
+
+  const mapGanttScopes = (rows: NonNullable<GanttProjectResponse["scopes"]>): Scope[] =>
+    rows.map((scope) => ({
+      id: scope.id,
+      jobKey: project.jobKey,
+      title: scope.title,
+      startDate: scope.startDate || "",
+      endDate: scope.endDate || "",
+      manpower: scope.crewSize ?? undefined,
+      hours: Number(scope.totalHours || 0),
+      description: scope.notes || "",
+      tasks: [],
+    }));
+
+  const loadCanonicalScopes = async (): Promise<Scope[] | null> => {
+    const response = await fetch('/api/gantt-v2/projects');
+    const result = await response.json();
+    if (!response.ok || !result?.success || !Array.isArray(result?.data)) {
+      setGanttProjectId(null);
+      setCanonicalScopes(null);
+      return null;
+    }
+
+    const match = (result.data as GanttProjectResponse[]).find((item) =>
+      matchesProjectIdentity({ customer: item.customer, projectName: item.projectName })
+    );
+
+    if (!match) {
+      setGanttProjectId(null);
+      setCanonicalScopes(null);
+      return null;
+    }
+
+    const mappedScopes = mapGanttScopes(match.scopes || []);
+    setGanttProjectId(match.id);
+    setCanonicalScopes(mappedScopes);
+    return mappedScopes;
+  };
+
+  const loadProjectBudgetHours = async () => {
+    const params = new URLSearchParams({ jobKey: project.jobKey || '' });
+
+    const response = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
+    const result = await response.json();
+
+    if (response.ok && result?.success) {
+      const hours = Number(result?.data?.schedule?.totalHours || 0);
+      if (Number.isFinite(hours) && hours > 0) {
+        setProjectBudgetHours(hours);
+        return;
+      }
+    }
+
+    // Fallback: resolve schedule totalHours by project identity when jobKey formats drift.
+    // Fallback: scan scheduling pages by identity so we don't lose hours for rows beyond page 1.
+    let page = 1;
+    let foundHours: number | null = null;
+
+    while (page <= 20) {
+      const schedulesRes = await fetch(`/api/scheduling?page=${page}&pageSize=500`);
+      const schedulesJson = await schedulesRes.json();
+
+      if (!schedulesRes.ok || !schedulesJson?.success || !Array.isArray(schedulesJson?.data)) {
+        break;
+      }
+
+      const match = (schedulesJson.data as Array<{
+        customer?: string | null;
+        projectName?: string | null;
+        totalHours?: number | null;
+      }>).find(matchesProjectIdentity);
+
+      const matchHours = Number(match?.totalHours || 0);
+      if (Number.isFinite(matchHours) && matchHours > 0) {
+        foundHours = matchHours;
+        break;
+      }
+
+      if (!schedulesJson?.hasNextPage) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    setProjectBudgetHours(foundHours);
+  };
 
   const getScheduledHoursForScope = (scope: Scope) => {
     if (!scheduledHoursByJobKeyDate || !project.jobKey) return 0;
@@ -114,11 +301,39 @@ export function ProjectScopesModal({
   };
 
   useEffect(() => {
-    setActiveScopeId(selectedScopeId);
-  }, [selectedScopeId]);
+    if (selectedScopeId) {
+      setActiveScopeId(selectedScopeId);
+      return;
+    }
+
+    if (selectedScopeTitle) {
+      const match = effectiveScopes.find(
+        (scope) => normalize(scope.title) === normalize(selectedScopeTitle)
+      );
+      if (match) {
+        setActiveScopeId(match.id);
+        return;
+      }
+    }
+
+    setActiveScopeId(null);
+  }, [selectedScopeId, selectedScopeTitle, effectiveScopes]);
 
   useEffect(() => {
-    const scope = scopes.find((item) => item.id === activeScopeId);
+    loadCanonicalScopes().catch((error) => {
+      console.error('Failed to load canonical gantt scopes:', error);
+      setGanttProjectId(null);
+      setCanonicalScopes(null);
+    });
+
+    loadProjectBudgetHours().catch((error) => {
+      console.error('Failed to load project budget hours:', error);
+      setProjectBudgetHours(null);
+    });
+  }, [project.customer, project.projectName, project.jobKey]);
+
+  useEffect(() => {
+    const scope = effectiveScopes.find((item) => item.id === activeScopeId);
     if (!scope) {
       setScopeDetail({
         title: "",
@@ -134,14 +349,20 @@ export function ProjectScopesModal({
 
     setScopeDetail({
       title: scope.title || "",
-      startDate: scope.startDate || "",
-      endDate: scope.endDate || "",
-      manpower: scope.manpower,
-      hours: computeScopeHours(scope),
+      startDate: selectedScheduleDate || scope.startDate || "",
+      endDate: selectedScheduleDate || scope.endDate || "",
+      manpower:
+        typeof selectedScheduledHours === 'number' && Number.isFinite(selectedScheduledHours)
+          ? selectedScheduledHours / 10
+          : scope.manpower,
+      hours:
+        typeof selectedScheduledHours === 'number' && Number.isFinite(selectedScheduledHours)
+          ? selectedScheduledHours
+          : getEffectiveScopeHours(scope),
       description: scope.description || "",
       tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
     });
-  }, [activeScopeId, scopes]);
+  }, [activeScopeId, effectiveScopes, selectedScheduleDate, selectedScheduledHours, projectBudgetHours]);
 
   const handleAddTask = () => {
     const trimmed = newTask.trim();
@@ -163,6 +384,38 @@ export function ProjectScopesModal({
   const handleSaveScope = async () => {
     setIsSaving(true);
     try {
+      if (dayEditMode && !selectedScheduleDate) {
+        throw new Error('Day edit context is missing. Close and reopen the card from the schedule grid.');
+      }
+
+      if (selectedScheduleDate && (selectedScopeTitle || scopeDetail.title)) {
+        const scopeName = (scopeDetail.title || selectedScopeTitle || '').trim();
+        const dayHoursRaw = scopeDetail.hours;
+        const dayHours = typeof dayHoursRaw === 'number' ? dayHoursRaw : parseFloat(String(dayHoursRaw || '0'));
+
+        const response = await fetch('/api/short-term-schedule/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobKey: project.jobKey,
+            scopeOfWork: scopeName,
+            sourceDateKey: selectedScheduleDate,
+            targetDateKey: selectedScheduleDate,
+            targetForemanId: selectedForemanId === '__unassigned__' ? null : selectedForemanId,
+            hours: Number.isFinite(dayHours) ? dayHours : 0,
+          }),
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.error || 'Failed to update daily assignment');
+        }
+
+        onScopesUpdated(project.jobKey, effectiveScopes);
+        onClose();
+        return;
+      }
+
       const payload: Record<string, any> = {
         jobKey: project.jobKey,
         title: (scopeDetail.title || "Scope").trim() || "Scope",
@@ -189,38 +442,77 @@ export function ProjectScopesModal({
       );
 
       let savedScope;
-      if (activeScopeId && !isGeneratedScopeId) {
-        const response = await fetch('/api/project-scopes', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: activeScopeId, ...payload }),
-        });
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error || 'Failed to update scope');
-        savedScope = result.data;
-        const updatedScopes = scopes.map((scope) =>
-          scope.id === activeScopeId ? { ...scope, ...savedScope } : scope
+      if (ganttProjectId) {
+        const ganttPayload = {
+          title: payload.title,
+          startDate: payload.startDate || null,
+          endDate: payload.endDate || null,
+          totalHours: computedHours,
+          crewSize: payload.manpower ?? null,
+          notes: payload.description || null,
+        };
+
+        if (activeScopeId && !isGeneratedScopeId) {
+          const response = await fetch(`/api/gantt-v2/scopes/${activeScopeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ganttPayload),
+          });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to update scope');
+        } else {
+          const response = await fetch(`/api/gantt-v2/projects/${ganttProjectId}/scopes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ganttPayload),
+          });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to create scope');
+          savedScope = result.data;
+          if (savedScope?.id) {
+            setActiveScopeId(savedScope.id);
+          }
+        }
+
+        const refreshedScopes = await loadCanonicalScopes();
+        onScopesUpdated(
+          project.jobKey,
+          refreshedScopes && refreshedScopes.length > 0 ? refreshedScopes : effectiveScopes
         );
-        onScopesUpdated(project.jobKey, updatedScopes);
       } else {
-        const response = await fetch('/api/project-scopes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error || 'Failed to create scope');
-        savedScope = result.data;
-        const newScope: Scope = { ...savedScope } as Scope;
+        if (activeScopeId && !isGeneratedScopeId) {
+          const response = await fetch('/api/project-scopes', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: activeScopeId, ...payload }),
+          });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to update scope');
+          savedScope = result.data;
+          const updatedScopes = effectiveScopes.map((scope) =>
+            scope.id === activeScopeId ? { ...scope, ...savedScope } : scope
+          );
+          onScopesUpdated(project.jobKey, updatedScopes);
+        } else {
+          const response = await fetch('/api/project-scopes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to create scope');
+          savedScope = result.data;
+          const newScope: Scope = { ...savedScope } as Scope;
 
-        const filteredScopes = isGeneratedScopeId
-          ? scopes.filter((scope) => scope.id !== activeScopeId)
-          : scopes;
+          const filteredScopes = isGeneratedScopeId
+            ? effectiveScopes.filter((scope) => scope.id !== activeScopeId)
+            : effectiveScopes;
 
-        onScopesUpdated(project.jobKey, [...filteredScopes, newScope]);
-        setActiveScopeId(savedScope.id);
+          onScopesUpdated(project.jobKey, [...filteredScopes, newScope]);
+          setActiveScopeId(savedScope.id);
+        }
       }
-      alert("Scope saved successfully!");
+      onClose();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Failed to save scope:", errorMessage, error);
@@ -262,7 +554,7 @@ export function ProjectScopesModal({
             <div>
               <span className="font-semibold">Total Budgeted Hours:</span>
               <p className="mt-1 text-orange-700 font-bold text-base">
-                {scopes.reduce((sum, s) => sum + computeScopeHours(s), 0).toFixed(1)}
+                {displayedTotalBudgetedHours.toFixed(1)}
               </p>
             </div>
             <div className="col-span-2"><span className="font-semibold">Job Key:</span><p className="mt-1">{project.jobKey || "—"}</p></div>
@@ -291,13 +583,13 @@ export function ProjectScopesModal({
               </div>
             )}
             <div className="grid gap-2 max-h-40 overflow-y-auto">
-              {scopes.filter(s => !s.id?.startsWith('fallback-') && !s.id?.startsWith('virtual-') && !s.id?.startsWith('generated-')).length === 0 ? (
+              {effectiveScopes.filter(s => !s.id?.startsWith('fallback-') && !s.id?.startsWith('virtual-') && !s.id?.startsWith('generated-')).length === 0 ? (
                 <div className="text-sm text-gray-500">No scopes yet.</div>
               ) : (
-                scopes
+                effectiveScopes
                   .filter(s => !s.id?.startsWith('fallback-') && !s.id?.startsWith('virtual-') && !s.id?.startsWith('generated-'))
                   .map((scope) => {
-                  const scopeHours = computeScopeHours(scope);
+                  const scopeHours = getEffectiveScopeHours(scope);
                   const scheduledHours = getScheduledHoursForScope(scope);
                   const unscheduledHours = Math.max(scopeHours - scheduledHours, 0);
                   return (

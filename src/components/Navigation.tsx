@@ -31,11 +31,11 @@ const navLinks: NavLink[] = [
 ];
 
 const scheduleLinks: NavLink[] = [
-  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
   { href: "/scheduling", label: "Wip Schedule", page: "scheduling" },
   { href: "/project-schedule", label: "Project Gantt", page: "project-schedule" },
   { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },
   { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule" },
+  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
 ];
 
 export const GlobalNavigationContext = createContext(false);

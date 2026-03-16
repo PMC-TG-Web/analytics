@@ -378,18 +378,7 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp: any) => emp.isActive !== false && isForemanRole(emp.jobTitle));
-      setForemen(foremenList);
-      const foremanIdSet = new Set(foremenList.map((f: any) => f.id));
-      const foremanNameToId = new Map(
-        foremenList.map((f: any) => [`${f.firstName} ${f.lastName}`.trim().toLowerCase(), f.id])
-      );
-
-      const resolveForemanId = (rawForeman?: string) => {
-        if (!rawForeman) return "";
-        if (foremanIdSet.has(rawForeman)) return rawForeman;
-        return foremanNameToId.get(rawForeman.trim().toLowerCase()) || "";
-      };
+      let foremenList = allEmps.filter((emp: any) => emp.isActive !== false && isForemanRole(emp.jobTitle));
 
       const requests = (timeOffData || []) as TimeOffRequest[];
       setTimeOffRequests(requests);
@@ -440,6 +429,44 @@ function DailyCrewDispatchBoardContent() {
         ...(projectsByDate[localDateKey] || []),
         ...(utcDateKey !== localDateKey ? (projectsByDate[utcDateKey] || []) : []),
       ];
+
+      if (foremenList.length === 0 && activeScheduleProjects.length > 0) {
+        const foremanIds = Array.from(
+          new Set(
+            activeScheduleProjects
+              .map((p) => (p.foreman || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const recoveredForemen = foremanIds.map((foremanId) => {
+          const employee = allEmps.find((emp: any) => emp.id === foremanId);
+          if (employee) return employee;
+          return {
+            id: foremanId,
+            firstName: 'Foreman',
+            lastName: foremanId.slice(0, 6),
+            jobTitle: 'Foreman',
+            isActive: true,
+          } as Employee;
+        });
+
+        if (recoveredForemen.length > 0) {
+          foremenList = recoveredForemen;
+        }
+      }
+
+      setForemen(foremenList);
+      const foremanIdSet = new Set(foremenList.map((f: any) => f.id));
+      const foremanNameToId = new Map(
+        foremenList.map((f: any) => [`${f.firstName} ${f.lastName}`.trim().toLowerCase(), f.id])
+      );
+
+      const resolveForemanId = (rawForeman?: string) => {
+        if (!rawForeman) return "";
+        if (foremanIdSet.has(rawForeman)) return rawForeman;
+        return foremanNameToId.get(rawForeman.trim().toLowerCase()) || "";
+      };
       projectsByDay[dateKey] = activeScheduleProjects.map(p => ({
         jobKey: p.jobKey,
         customer: p.customer,
@@ -1049,7 +1076,7 @@ function DailyCrewDispatchBoardContent() {
         <div className="hidden md:block flex-1 overflow-hidden p-2 bg-gray-50">
           <div 
             className="grid grid-rows-2 grid-flow-col gap-2 h-full"
-            style={{ gridTemplateColumns: `repeat(${Math.ceil(foremen.length / 2)}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(foremen.length / 2))}, minmax(0, 1fr))` }}
           >
             {foremen.map((foreman) => {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);

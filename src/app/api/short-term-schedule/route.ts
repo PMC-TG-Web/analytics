@@ -3,6 +3,84 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+type StoredTimeOffPayload = {
+  startDate?: string;
+  endDate?: string;
+  type?: string;
+  hours?: number;
+  dates?: string[];
+};
+
+const DEFAULT_TIME_OFF_TYPE = 'Vacation';
+const DEFAULT_TIME_OFF_HOURS = 10;
+
+function toDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function expandDateRange(startDate: string, endDate: string): string[] {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const dates: string[] = [];
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(toDateKey(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+function normalizeTimeOffRecord(row: {
+  id: string;
+  employeeId: string;
+  employeeName: string | null;
+  dates: unknown;
+  reason: string | null;
+  status: string;
+}) {
+  const payload = (row.dates && typeof row.dates === 'object' && !Array.isArray(row.dates)
+    ? (row.dates as StoredTimeOffPayload)
+    : null);
+
+  const explicitDates = Array.isArray(payload?.dates)
+    ? payload.dates.filter((d): d is string => typeof d === 'string' && d.length > 0)
+    : Array.isArray(row.dates)
+      ? (row.dates as unknown[]).filter((d): d is string => typeof d === 'string' && d.length > 0)
+      : [];
+
+  const startDate =
+    (typeof payload?.startDate === 'string' && payload.startDate) ||
+    explicitDates[0] ||
+    '';
+  const endDate =
+    (typeof payload?.endDate === 'string' && payload.endDate) ||
+    explicitDates[explicitDates.length - 1] ||
+    startDate;
+
+  return {
+    id: row.id,
+    employeeId: row.employeeId,
+    employeeName: row.employeeName,
+    startDate,
+    endDate,
+    type: (payload?.type || DEFAULT_TIME_OFF_TYPE) as
+      | 'Vacation'
+      | 'Sick'
+      | 'Personal'
+      | 'Other'
+      | 'Company timeoff',
+    hours: Number(payload?.hours) > 0 ? Number(payload?.hours) : DEFAULT_TIME_OFF_HOURS,
+    dates: explicitDates.length > 0 ? explicitDates : (startDate && endDate ? expandDateRange(startDate, endDate) : []),
+    reason: row.reason || '',
+    status: row.status || 'approved',
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -36,7 +114,7 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: timeOffRequests,
+        data: timeOffRequests.map(normalizeTimeOffRecord),
       });
     }
 
@@ -135,7 +213,16 @@ export async function GET(request: NextRequest) {
         where: { isActive: true },
         orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
       }),
-      prisma.timeOffRequest.findMany(),
+      prisma.timeOffRequest.findMany({
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          dates: true,
+          reason: true,
+          status: true,
+        },
+      }),
       prisma.projectScope.findMany(),
       prisma.project.findMany({
         where: {
@@ -149,7 +236,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         employees,
-        timeOffs,
+        timeOffs: timeOffs.map(normalizeTimeOffRecord),
         scopes,
         projects,
       },

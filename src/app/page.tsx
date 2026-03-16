@@ -448,9 +448,11 @@ function HomeContent() {
                   {[
                     { label: 'Dashboard', href: '/dashboard', color: 'bg-stone-50 text-stone-700 hover:bg-stone-100' },
                     { label: 'WIP Report', href: '/wip', color: 'bg-red-50 text-red-900 hover:bg-red-100' },
+                    { label: 'Call Off Request', href: '/daily-crew-dispatch-board?action=calloff', color: 'bg-red-900 text-white hover:bg-red-950' },
+                    { label: 'Time Off Request', href: '/daily-crew-dispatch-board?action=timeoff', color: 'bg-stone-800 text-white hover:bg-stone-900' },
                     { label: 'Project Gantt', href: '/project-schedule', color: 'bg-gray-50 text-gray-700 hover:bg-gray-100' },
-                    { label: 'Equipment', href: '/equipment', color: 'bg-stone-800 text-white hover:bg-stone-900' },
-                    { label: 'Field Log', href: '/field', color: 'bg-red-900 text-white hover:bg-red-950' },
+                    { label: 'Equipment', href: '/equipment', color: 'bg-stone-50 text-stone-700 hover:bg-stone-100' },
+                    { label: 'Field Log', href: '/field', color: 'bg-red-50 text-red-900 hover:bg-red-100' },
                     { label: 'Employees', href: '/employees', color: 'bg-neutral-50 text-neutral-600 hover:bg-neutral-100' },
                   ].map(link => (
                     <Link 

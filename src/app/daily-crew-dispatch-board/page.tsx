@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import styles from "./dispatch-responsive.module.css";
 
 import { Scope, Project, Holiday } from "@/types";
@@ -126,6 +127,7 @@ export default function DailyCrewDispatchBoardPage() {
 }
 
 function DailyCrewDispatchBoardContent() {
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [dayColumns, setDayColumns] = useState<DayColumn[]>([]);
   const [selectedDispatchDate, setSelectedDispatchDate] = useState("");
@@ -184,6 +186,17 @@ function DailyCrewDispatchBoardContent() {
       setSelectedPersonnelId(currentUserEmployee.id);
     }
   }, [showTimeOffModal, currentUserEmployee]);
+
+  useEffect(() => {
+    const action = (searchParams.get("action") || "").toLowerCase();
+    if (action === "calloff") {
+      setShowSickModal(true);
+      return;
+    }
+    if (action === "timeoff") {
+      setShowTimeOffModal(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     selectedDispatchDateRef.current = selectedDispatchDate;
@@ -874,7 +887,7 @@ function DailyCrewDispatchBoardContent() {
                 onClick={() => setShowSickModal(true)}
                 className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md shadow-red-600/20 transition-all font-sans"
               >
-                Report
+                Call Off
               </button>
             </div>
           </div>
@@ -932,6 +945,18 @@ function DailyCrewDispatchBoardContent() {
           </div>
           
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowTimeOffModal(true)}
+              className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all"
+            >
+              Time Off
+            </button>
+            <button
+              onClick={() => setShowSickModal(true)}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-red-600/20"
+            >
+              Call Off
+            </button>
             <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dispatch Date</span>
               <input
@@ -1210,7 +1235,7 @@ function DailyCrewDispatchBoardContent() {
           <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100">
             <div className="bg-red-900 p-8 text-white text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.1),transparent)] pointer-events-none"></div>
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter">Report <span className="text-red-400">Absence</span></h2>
+              <h2 className="text-2xl font-black uppercase italic tracking-tighter">Call Off <span className="text-red-400">Notification</span></h2>
               <p className="text-red-200/60 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Field Operations</p>
             </div>
             
@@ -1280,7 +1305,7 @@ function DailyCrewDispatchBoardContent() {
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                       Sending...
                     </>
-                  ) : 'Send Notification'}
+                  ) : 'Send Call Off Notification'}
                 </button>
                 <button
                   disabled={sendingEmail}

@@ -141,19 +141,35 @@ export async function POST(request: NextRequest) {
       }
 
       for (const scope of scopes) {
-        await prisma.$executeRawUnsafe(
-          `DELETE FROM gantt_v2_schedule_entries WHERE scope_id = $1`,
-          scope.id
-        );
-
         // If a scope is unscheduled in Gantt (missing dates or non-positive hours),
         // keep schedule entries cleared even if activeSchedule contains historical rows.
         if (!scope.start_date || !scope.end_date || Number(scope.total_hours || 0) <= 0) {
+          console.warn('[SYNC-SCHEDULE] Clearing scope entries for unscheduled scope', {
+            projectId,
+            scopeId: scope.id,
+            title: scope.title,
+          });
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM gantt_v2_schedule_entries WHERE scope_id = $1`,
+            scope.id
+          );
           continue;
         }
 
         const byDate = entriesByScopeIdAndDate.get(scope.id);
         if (!byDate || byDate.size === 0) continue;
+
+        console.warn('[SYNC-SCHEDULE] Replacing scope entries from matched activeSchedule rows', {
+          projectId,
+          scopeId: scope.id,
+          title: scope.title,
+          dayCount: byDate.size,
+        });
+
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM gantt_v2_schedule_entries WHERE scope_id = $1`,
+          scope.id
+        );
 
         syncedScopes += 1;
 

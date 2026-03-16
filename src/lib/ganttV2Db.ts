@@ -382,22 +382,6 @@ export async function getGanttV2ProjectsWithScopes(): Promise<GanttV2ProjectWith
 }
 
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
-  // Defensive cleanup: scopes without schedule bounds should never retain scheduled rows.
-  await prisma.$executeRawUnsafe(
-    `
-      DELETE FROM gantt_v2_schedule_entries e
-      USING gantt_v2_scopes s
-      WHERE e.scope_id = s.id
-        AND s.project_id = $1
-        AND (
-          s.start_date IS NULL
-          OR s.end_date IS NULL
-          OR COALESCE(s.total_hours, 0) <= 0
-        )
-    `,
-    projectId
-  );
-
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;

@@ -41,6 +41,14 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
   const jobKey = `${customer || ""}~${project_number || ""}~${project_name || ""}`;
 
   if (!startDate || !endDate || totalHours <= 0) {
+    console.warn('[GANTT-SCOPE-SYNC] Clearing active schedule for unscheduled scope', {
+      projectId,
+      jobKey,
+      title,
+      startDate,
+      endDate,
+      totalHours,
+    });
     await prisma.activeSchedule.deleteMany({
       where: {
         jobKey,
@@ -71,6 +79,13 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
   }
 
   if (workingDays.length === 0) {
+    console.warn('[GANTT-SCOPE-SYNC] Clearing active schedule for scope with zero working days', {
+      projectId,
+      jobKey,
+      title,
+      startDate,
+      endDate,
+    });
     await prisma.activeSchedule.deleteMany({
       where: {
         jobKey,
@@ -109,6 +124,13 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       .map((entry) => [entry.date, entry.foreman as string])
   );
   const defaultForeman = existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
+
+  console.warn('[GANTT-SCOPE-SYNC] Replacing gantt active schedule rows', {
+    projectId,
+    jobKey,
+    title,
+    workingDays: workingDays.length,
+  });
 
   await prisma.activeSchedule.deleteMany({
     where: {

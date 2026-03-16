@@ -83,6 +83,15 @@ const formatDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const isForemanRole = (jobTitle?: string) => {
+  const title = (jobTitle || '').toLowerCase().trim();
+  return (
+    title.includes('foreman') ||
+    title.includes('forman') ||
+    title.includes('project manager')
+  );
+};
+
 const DISPATCH_TIME_ZONE = "America/New_York";
 const DISPATCH_ROLLOVER_HOUR = 12;
 
@@ -369,7 +378,7 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp: any) => emp.isActive && (emp.jobTitle === "Foreman" || emp.jobTitle === "Forman" || emp.jobTitle === "Lead Foreman" || emp.jobTitle === "Lead foreman" || emp.jobTitle === "Lead Foreman / Project Manager"));
+      const foremenList = allEmps.filter((emp: any) => emp.isActive !== false && isForemanRole(emp.jobTitle));
       setForemen(foremenList);
       const foremanIdSet = new Set(foremenList.map((f: any) => f.id));
       const foremanNameToId = new Map(

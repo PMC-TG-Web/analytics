@@ -320,7 +320,7 @@ function DailyCrewDispatchBoardContent() {
       // Fetch data from API endpoints instead of Firebase
       const safeJsonFetch = async (url: string) => {
         try {
-          const res = await fetch(url);
+          const res = await fetch(url, { cache: 'no-store' });
           if (!res.ok) {
             console.warn(`[DispatchBoard] API endpoint not available: ${url}`);
             return null;
@@ -378,7 +378,7 @@ function DailyCrewDispatchBoardContent() {
       if (!cachedEmployees) setCache('dispatch_employees', allEmps);
       
       setAllEmployees(allEmps);
-      const foremenList = allEmps.filter((emp: any) => emp.isActive !== false && isForemanRole(emp.jobTitle));
+      let foremenList = allEmps.filter((emp: any) => emp.isActive !== false && isForemanRole(emp.jobTitle));
       setForemen(foremenList);
       const foremanIdSet = new Set(foremenList.map((f: any) => f.id));
       const foremanNameToId = new Map(
@@ -388,7 +388,18 @@ function DailyCrewDispatchBoardContent() {
       const resolveForemanId = (rawForeman?: string) => {
         if (!rawForeman) return "";
         if (foremanIdSet.has(rawForeman)) return rawForeman;
-        return foremanNameToId.get(rawForeman.trim().toLowerCase()) || "";
+        const byKnownName = foremanNameToId.get(rawForeman.trim().toLowerCase());
+        if (byKnownName) return byKnownName;
+
+        // Chrome/stale-cache safety: allow direct employee-id or name fallback from active roster.
+        const byEmployeeId = allEmps.find((emp: any) => emp.id === rawForeman && emp.isActive !== false);
+        if (byEmployeeId) return byEmployeeId.id;
+
+        const byEmployeeName = allEmps.find((emp: any) => {
+          const full = `${emp.firstName || ''} ${emp.lastName || ''}`.trim().toLowerCase();
+          return full === rawForeman.trim().toLowerCase() && emp.isActive !== false;
+        });
+        return byEmployeeName?.id || "";
       };
 
       const requests = (timeOffData || []) as TimeOffRequest[];
@@ -440,6 +451,34 @@ function DailyCrewDispatchBoardContent() {
         ...(projectsByDate[localDateKey] || []),
         ...(utcDateKey !== localDateKey ? (projectsByDate[utcDateKey] || []) : []),
       ];
+
+      // If role matching produced no foremen, recover from active schedule foreman IDs.
+      if (foremenList.length === 0 && activeScheduleProjects.length > 0) {
+        const foremanIdsFromSchedule = Array.from(
+          new Set(
+            activeScheduleProjects
+              .map((p) => (p.foreman || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const recoveredForemen = foremanIdsFromSchedule.map((fid) => {
+          const employee = allEmps.find((emp: any) => emp.id === fid);
+          if (employee) return employee;
+          return {
+            id: fid,
+            firstName: 'Foreman',
+            lastName: fid.slice(0, 6),
+            jobTitle: 'Foreman',
+            isActive: true,
+          } as Employee;
+        });
+
+        if (recoveredForemen.length > 0) {
+          foremenList = recoveredForemen;
+          setForemen(recoveredForemen);
+        }
+      }
       projectsByDay[dateKey] = activeScheduleProjects.map(p => ({
         jobKey: p.jobKey,
         customer: p.customer,

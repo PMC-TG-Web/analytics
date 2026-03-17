@@ -134,6 +134,7 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/job-titles', permission: 'employees' },
   { prefix: '/api/status', permission: 'projects' },
   { prefix: '/api/short-term-schedule', permission: 'short-term-schedule' },
+  { prefix: '/api/concrete-orders', permission: 'crew-dispatch' },
   { prefix: '/api/long-term-schedule', permission: 'long-term-schedule' },
   { prefix: '/api/project-schedule', permission: 'project-schedule' },
   { prefix: '/api/project-scopes', permission: 'project' },

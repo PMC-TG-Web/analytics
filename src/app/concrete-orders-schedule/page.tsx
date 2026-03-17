@@ -7,7 +7,6 @@ type ActiveScheduleEntry = {
   customer?: string;
   projectNumber?: string;
   projectName?: string;
-  date: string;
   source?: string | null;
 };
 
@@ -53,14 +52,11 @@ function formatHeaderDate(dateKey: string): string {
 
 const ORDER_STORAGE_KEY = "concrete-orders-entries-v1";
 
-function newOrderId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export default function ConcreteOrdersSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ConcreteRow[]>([]);
   const [orders, setOrders] = useState<ConcreteOrder[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [activeProject, setActiveProject] = useState<ConcreteRow | null>(null);
   const [orderDate, setOrderDate] = useState("");
   const [orderTime, setOrderTime] = useState("");
@@ -69,25 +65,42 @@ export default function ConcreteOrdersSchedulePage() {
 
   useEffect(() => {
     void loadSchedule();
-    loadSavedOrders();
+    void loadOrders();
   }, []);
 
-  function loadSavedOrders() {
+  async function loadOrders() {
     try {
+      const response = await fetch("/api/concrete-orders", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to fetch concrete orders");
+      }
+
+      const json = await response.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+      setOrders(data);
+
+      // One-time migration for historical local orders.
       const raw = localStorage.getItem(ORDER_STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setOrders(parsed);
-      }
-    } catch (error) {
-      console.error("Failed to load saved concrete orders:", error);
-    }
-  }
 
-  function saveOrders(nextOrders: ConcreteOrder[]) {
-    setOrders(nextOrders);
-    localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(nextOrders));
+      const localOrders = JSON.parse(raw);
+      if (!Array.isArray(localOrders) || localOrders.length === 0) return;
+
+      for (const order of localOrders) {
+        await fetch("/api/concrete-orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(order),
+        });
+      }
+
+      localStorage.removeItem(ORDER_STORAGE_KEY);
+      const refreshed = await fetch("/api/concrete-orders", { cache: "no-store" });
+      const refreshedJson = await refreshed.json();
+      setOrders(Array.isArray(refreshedJson?.data) ? refreshedJson.data : []);
+    } catch (error) {
+      console.error("Failed to load concrete orders:", error);
+    }
   }
 
   async function loadSchedule() {
@@ -158,28 +171,45 @@ export default function ConcreteOrdersSchedulePage() {
     setActiveProject(null);
   }
 
-  function submitOrder() {
+  async function submitOrder() {
     if (!activeProject) return;
     if (!orderDate || !orderTime || !orderYards || !orderCompany) return;
 
     const parsedYards = Number(orderYards);
     if (!Number.isFinite(parsedYards) || parsedYards <= 0) return;
 
-    const nextOrders: ConcreteOrder[] = [
-      ...orders,
-      {
-        id: newOrderId(),
-        jobKey: activeProject.jobKey,
-        projectName: activeProject.projectName,
-        concreteCompany: orderCompany,
-        date: orderDate,
-        time: orderTime,
-        totalYards: parsedYards,
-      },
-    ];
+    try {
+      setSavingOrder(true);
+      const response = await fetch("/api/concrete-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobKey: activeProject.jobKey,
+          projectName: activeProject.projectName,
+          concreteCompany: orderCompany,
+          date: orderDate,
+          time: orderTime,
+          totalYards: parsedYards,
+        }),
+      });
 
-    saveOrders(nextOrders);
-    closeProjectModal();
+      if (!response.ok) {
+        throw new Error("Failed to save concrete order");
+      }
+
+      const json = await response.json();
+      const saved = json?.data as ConcreteOrder | undefined;
+      if (saved) {
+        setOrders((prev) => [...prev, saved]);
+      }
+
+      closeProjectModal();
+    } catch (error) {
+      console.error("Failed to save concrete order:", error);
+      alert("Unable to save concrete order. Please try again.");
+    } finally {
+      setSavingOrder(false);
+    }
   }
 
   const activeProjectOrders = activeProject
@@ -328,36 +358,36 @@ export default function ConcreteOrdersSchedulePage() {
                 />
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Date</span>
-                <input
-                  type="date"
-                  value={orderDate}
-                  onChange={(event) => setOrderDate(event.target.value)}
-                  className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Time</span>
-                <input
-                  type="time"
-                  value={orderTime}
-                  onChange={(event) => setOrderTime(event.target.value)}
-                  className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Total Yards</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={orderYards}
-                  onChange={(event) => setOrderYards(event.target.value)}
-                  className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="0"
-                />
-              </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Date</span>
+                  <input
+                    type="date"
+                    value={orderDate}
+                    onChange={(event) => setOrderDate(event.target.value)}
+                    className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Time</span>
+                  <input
+                    type="time"
+                    value={orderTime}
+                    onChange={(event) => setOrderTime(event.target.value)}
+                    className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Total Yards</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={orderYards}
+                    onChange={(event) => setOrderYards(event.target.value)}
+                    className="h-10 px-3 rounded-lg border border-gray-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="0"
+                  />
+                </label>
               </div>
             </div>
 
@@ -372,9 +402,10 @@ export default function ConcreteOrdersSchedulePage() {
               <button
                 type="button"
                 onClick={submitOrder}
-                className="h-10 px-4 rounded-lg bg-orange-600 text-white text-xs font-black uppercase tracking-widest hover:bg-orange-700"
+                disabled={savingOrder}
+                className="h-10 px-4 rounded-lg bg-orange-600 text-white text-xs font-black uppercase tracking-widest hover:bg-orange-700 disabled:opacity-60"
               >
-                Save Order
+                {savingOrder ? "Saving..." : "Save Order"}
               </button>
             </div>
 
@@ -384,7 +415,7 @@ export default function ConcreteOrdersSchedulePage() {
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {activeProjectOrders.map((order) => (
                     <div key={order.id} className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700">
-                      <span className="font-black text-stone-800">{order.concreteCompany || "—"}</span>
+                      <span className="font-black text-stone-800">{order.concreteCompany || "-"}</span>
                       <span className="mx-1 text-gray-300">|</span>
                       {order.date} at {order.time}
                       <span className="mx-1 text-gray-300">|</span>
@@ -397,8 +428,6 @@ export default function ConcreteOrdersSchedulePage() {
           </div>
         </div>
       )}
-
-
     </main>
   );
 }

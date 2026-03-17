@@ -169,41 +169,64 @@ function DailyCrewDispatchBoardContent() {
 
   // Early Pour sidebar (from concrete orders local storage)
   const [earlyPourOrders, setEarlyPourOrders] = useState<Array<{ id: string; projectName: string; date: string; time: string; totalYards: number }>>([]);
+  const earlyPourRequestSeq = React.useRef(0);
 
-  const dispatchAnchorDateKey = React.useMemo(() => {
+  const effectiveDispatchDateKey = React.useMemo(() => {
     if (selectedDispatchDate) return selectedDispatchDate;
     if (dayColumns[0]?.date) return formatDateKey(dayColumns[0].date);
-    return formatDateKey(new Date());
+    return "";
   }, [selectedDispatchDate, dayColumns]);
 
   React.useEffect(() => {
-    function loadEarlyPours() {
+    async function loadEarlyPours() {
       try {
-        const raw = localStorage.getItem("concrete-orders-entries-v1");
-        if (!raw) return;
-        const all = JSON.parse(raw);
-        if (!Array.isArray(all)) return;
-        const anchorDate = parseDateInput(dispatchAnchorDateKey);
-        if (!anchorDate) return;
+        if (!effectiveDispatchDateKey) {
+          setEarlyPourOrders([]);
+          return;
+        }
+
+        const requestId = ++earlyPourRequestSeq.current;
+        const anchorDate = parseDateInput(effectiveDispatchDateKey);
+        if (!anchorDate) {
+          setEarlyPourOrders([]);
+          return;
+        }
+
         anchorDate.setHours(0, 0, 0, 0);
         const weekOut = new Date(anchorDate);
         weekOut.setDate(weekOut.getDate() + 7);
         const anchorKey = formatDateKey(anchorDate);
         const weekOutKey = formatDateKey(weekOut);
+
+        const response = await fetch(
+          `/api/concrete-orders?startDate=${anchorKey}&endDate=${weekOutKey}&beforeTime=06:00`,
+          { cache: 'no-store' }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch concrete orders');
+        }
+
+        const json = await response.json();
+        const all = Array.isArray(json?.data) ? json.data : [];
+
         const filtered = all.filter((o: { date: string; time: string }) => {
           if (!o.date || !o.time) return false;
-          return o.date >= anchorKey && o.date <= weekOutKey && o.time < "06:00";
+          return o.time < "06:00";
         });
         filtered.sort((a: { date: string; time: string }, b: { date: string; time: string }) =>
           `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
         );
+
+        // Ignore stale responses from older dispatch date requests.
+        if (requestId !== earlyPourRequestSeq.current) return;
         setEarlyPourOrders(filtered);
       } catch {
-        // silently ignore
+        setEarlyPourOrders([]);
       }
     }
-    loadEarlyPours();
-  }, [dispatchAnchorDateKey]);
+    void loadEarlyPours();
+  }, [effectiveDispatchDateKey]);
 
   // Absence Alert State
   const [showSickModal, setShowSickModal] = useState(false);
@@ -1250,17 +1273,17 @@ function DailyCrewDispatchBoardContent() {
                 <p className="text-xs text-gray-400 font-bold italic text-center py-6">No early pours this week</p>
               ) : (
                 earlyPourOrders.map((order) => {
-                  const tomorrow = new Date();
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const tomorrow = new Date(today);
                   tomorrow.setDate(tomorrow.getDate() + 1);
                   const tomorrowKey = formatDateKey(tomorrow);
                   const isTomorrow = order.date === tomorrowKey;
                   return (
-                  <div key={order.id} className={`rounded-xl px-3 py-2.5 border ${isTomorrow ? "bg-red-900 border-red-800 shadow-lg shadow-red-900/30" : "bg-orange-50 border-orange-200"}`}>
+                  <div key={order.id} className={`rounded-xl px-3 py-2.5 border ${isTomorrow ? "bg-red-900 border-red-500 ring-2 ring-red-400/40 shadow-xl shadow-red-900/40" : "bg-orange-50 border-orange-200"}`}>
                     {isTomorrow && (
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-ping absolute"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
-                        <span className="text-[9px] font-black uppercase tracking-widest text-orange-400">Tomorrow</span>
+                      <div className="mb-2 rounded-md bg-orange-400 text-red-950 text-[9px] font-black uppercase tracking-[0.18em] px-2 py-1 text-center shadow-sm">
+                        Tomorrow Pour
                       </div>
                     )}
                     <div className={`text-sm font-black uppercase tracking-tight ${isTomorrow ? "text-white" : "text-stone-900"}`}>

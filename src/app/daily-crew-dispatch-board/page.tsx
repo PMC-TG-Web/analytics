@@ -157,6 +157,44 @@ function DailyCrewDispatchBoardContent() {
     return allEmployees.find(e => e.email?.toLowerCase() === user.email.toLowerCase());
   }, [user, allEmployees]);
 
+  // Early Pour sidebar (from concrete orders local storage)
+  const [earlyPourOrders, setEarlyPourOrders] = useState<Array<{ id: string; projectName: string; date: string; time: string; totalYards: number }>>([]);
+
+  const dispatchAnchorDateKey = React.useMemo(() => {
+    if (selectedDispatchDate) return selectedDispatchDate;
+    if (dayColumns[0]?.date) return formatDateKey(dayColumns[0].date);
+    return formatDateKey(new Date());
+  }, [selectedDispatchDate, dayColumns]);
+
+  React.useEffect(() => {
+    function loadEarlyPours() {
+      try {
+        const raw = localStorage.getItem("concrete-orders-entries-v1");
+        if (!raw) return;
+        const all = JSON.parse(raw);
+        if (!Array.isArray(all)) return;
+        const anchorDate = parseDateInput(dispatchAnchorDateKey);
+        if (!anchorDate) return;
+        anchorDate.setHours(0, 0, 0, 0);
+        const weekOut = new Date(anchorDate);
+        weekOut.setDate(weekOut.getDate() + 7);
+        const anchorKey = formatDateKey(anchorDate);
+        const weekOutKey = formatDateKey(weekOut);
+        const filtered = all.filter((o: { date: string; time: string }) => {
+          if (!o.date || !o.time) return false;
+          return o.date >= anchorKey && o.date <= weekOutKey && o.time < "06:00";
+        });
+        filtered.sort((a: { date: string; time: string }, b: { date: string; time: string }) =>
+          `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
+        );
+        setEarlyPourOrders(filtered);
+      } catch {
+        // silently ignore
+      }
+    }
+    loadEarlyPours();
+  }, [dispatchAnchorDateKey]);
+
   // Absence Alert State
   const [showSickModal, setShowSickModal] = useState(false);
   const [sickEmployeeId, setSickEmployeeId] = useState("");
@@ -1045,7 +1083,8 @@ function DailyCrewDispatchBoardContent() {
         </div>
 
         {/* Dispatch Grid - Compressed "No-Scroll" Layout */}
-        <div className="hidden md:block flex-1 overflow-hidden p-2 bg-gray-50">
+        <div className="hidden md:flex flex-1 overflow-hidden bg-gray-50 gap-0">
+          <div className="flex-1 overflow-hidden p-2">
           <div 
             className="grid grid-rows-2 grid-flow-col gap-2 h-full"
             style={{ gridTemplateColumns: `repeat(${Math.ceil(foremen.length / 2)}, minmax(0, 1fr))` }}
@@ -1056,7 +1095,7 @@ function DailyCrewDispatchBoardContent() {
               const currentEmployees = crewAssignments[dateKey]?.[foreman.id] || [];
               const actualHrs = (1 + currentEmployees.length) * 10; // 10h for foreman + crew
               const availableEmployees = getAvailableEmployeesForForeman(dateKey, foreman.id);
-              
+
               const diff = actualHrs - scheduledHrs;
               const statusColor = Math.abs(diff) < 2 ? 'bg-green-500' : diff > 0 ? 'bg-blue-500' : 'bg-red-500';
               const statusBorder = Math.abs(diff) < 2 ? 'border-green-500/30' : diff > 0 ? 'border-blue-500/30' : 'border-red-500/40';
@@ -1186,6 +1225,49 @@ function DailyCrewDispatchBoardContent() {
                 </div>
               );
             })}
+          </div>
+          </div>
+
+          {/* Early Pours Sidebar */}
+          <div className="w-1/4 min-w-[200px] max-w-[280px] flex flex-col bg-white border-l border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 bg-stone-800 border-b border-stone-700 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
+              <span className="text-xs font-black uppercase tracking-widest text-white italic">Early Pours</span>
+              <span className="ml-auto text-[9px] font-black text-orange-400 uppercase tracking-widest">Next 7 Days</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 no-scrollbar">
+              {earlyPourOrders.length === 0 ? (
+                <p className="text-xs text-gray-400 font-bold italic text-center py-6">No early pours this week</p>
+              ) : (
+                earlyPourOrders.map((order) => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  const tomorrowKey = formatDateKey(tomorrow);
+                  const isTomorrow = order.date === tomorrowKey;
+                  return (
+                  <div key={order.id} className={`rounded-xl px-3 py-2.5 border ${isTomorrow ? "bg-red-900 border-red-800 shadow-lg shadow-red-900/30" : "bg-orange-50 border-orange-200"}`}>
+                    {isTomorrow && (
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-ping absolute"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-orange-400">Tomorrow</span>
+                      </div>
+                    )}
+                    <div className={`text-sm font-black uppercase tracking-tight ${isTomorrow ? "text-white" : "text-stone-900"}`}>
+                      {new Date(`${order.date}T00:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 gap-2">
+                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-lg whitespace-nowrap ${isTomorrow ? "bg-orange-400/20 text-orange-300" : "bg-orange-100 text-orange-700"}`}>
+                        {new Date(`2000-01-01T${order.time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                      </span>
+                      <span className={`text-[11px] font-black whitespace-nowrap ${isTomorrow ? "text-white/80" : "text-stone-600"}`}>{order.totalYards} YD</span>
+                    </div>
+                    <div className={`text-[10px] font-bold uppercase italic leading-tight truncate mt-1 ${isTomorrow ? "text-white/50" : "text-gray-400"}`}>{order.projectName}</div>
+                  </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 

@@ -123,7 +123,17 @@ function getDefaultDispatchDate(now = new Date()) {
 }
 
 export default function DailyCrewDispatchBoardPage() {
-  return <DailyCrewDispatchBoardContent />;
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+          <div className="text-xl font-semibold text-gray-600 italic">Initializing Dispatch Board...</div>
+        </div>
+      }
+    >
+      <DailyCrewDispatchBoardContent />
+    </React.Suspense>
+  );
 }
 
 function DailyCrewDispatchBoardContent() {

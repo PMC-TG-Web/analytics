@@ -39,6 +39,7 @@ export interface Holiday {
   name: string;
   date: string; // YYYY-MM-DD
   isPaid?: boolean;
+  description?: string;
 }
 
 export interface ProjectInfo {

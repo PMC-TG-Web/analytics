@@ -43,6 +43,17 @@ function normalizeHours(value: number | null | undefined): number {
   return value;
 }
 
+async function isPaidHoliday(dateKey: string): Promise<boolean> {
+  const holiday = await prisma.holiday.findFirst({
+    where: {
+      date: dateKey,
+      isPaid: true,
+    },
+    select: { id: true },
+  });
+  return Boolean(holiday);
+}
+
 export async function reconcileDailyAssignment(command: DailyAssignmentCommand): Promise<DailyAssignmentResult> {
   const jobKey = command.jobKey;
   const scopeOfWork = normalizeScopeOfWork(command.scopeOfWork);
@@ -55,6 +66,18 @@ export async function reconcileDailyAssignment(command: DailyAssignmentCommand):
 
   if (!jobKey || !scopeOfWork || !targetDateKey) {
     throw new Error("jobKey, scopeOfWork, and targetDateKey are required");
+  }
+
+  if (await isPaidHoliday(targetDateKey)) {
+    throw new SchedulingConflictError(
+      `Cannot schedule work on paid holiday ${targetDateKey}.`,
+      "PAID_HOLIDAY_BLOCKED",
+      {
+        jobKey,
+        scopeOfWork,
+        targetDateKey,
+      }
+    );
   }
 
   return prisma.$transaction(async (tx) => {

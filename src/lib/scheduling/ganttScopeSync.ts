@@ -23,6 +23,20 @@ function formatDateOnly(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+async function getPaidHolidaySet(startDate: string, endDate: string): Promise<Set<string>> {
+  const rows = await prisma.holiday.findMany({
+    where: {
+      isPaid: true,
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    select: { date: true },
+  });
+  return new Set(rows.map((row) => row.date));
+}
+
 export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParams): Promise<void> {
   const { scopeId, projectId, title, startDate, endDate, totalHours, crewSize } = params;
 
@@ -69,11 +83,13 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
 
   const start = parseDateOnly(startDate);
   const end = parseDateOnly(endDate);
+  const paidHolidaySet = await getPaidHolidaySet(startDate, endDate);
 
   const workingDays: Date[] = [];
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dayOfWeek = d.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+    const dateKey = formatDateOnly(d);
+    if (dayOfWeek >= 1 && dayOfWeek <= 5 && !paidHolidaySet.has(dateKey)) {
       workingDays.push(new Date(d));
     }
   }

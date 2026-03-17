@@ -4,6 +4,91 @@ import { useEffect, useState } from "react";
 
 import { Holiday } from "@/types";
 
+const PMC_2026_HOLIDAYS: Holiday[] = [
+  {
+    name: "GOOD FRIDAY",
+    date: "2026-04-03",
+    isPaid: true,
+    description: "First Year: CLOSED / PAID HOLIDAY. After One (1) Year: CLOSED ++",
+  },
+  {
+    name: "EASTER MONDAY",
+    date: "2026-04-06",
+    isPaid: false,
+    description: "First Year: N/A. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "ASCENSION DAY",
+    date: "2026-05-14",
+    isPaid: false,
+    description: "First Year: N/A. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "PENTECOST",
+    date: "2026-05-25",
+    isPaid: false,
+    description: "First Year: N/A. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "MEMORIAL DAY",
+    date: "2026-05-25",
+    isPaid: true,
+    description: "First Year: PAID HOLIDAY. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "INDEPENDENCE DAY",
+    date: "2026-07-03",
+    isPaid: true,
+    description: "First Year: PAID HOLIDAY. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "LABOR DAY",
+    date: "2026-09-07",
+    isPaid: true,
+    description: "First Year: PAID HOLIDAY. After One (1) Year: OPTIONAL **",
+  },
+  {
+    name: "AMISH HOLIDAY",
+    date: "2026-10-11",
+    isPaid: false,
+    description: "First Year: N/A. After One (1) Year: SUNDAY - N/A",
+  },
+  {
+    name: "THANKSGIVING",
+    date: "2026-11-26",
+    isPaid: true,
+    description: "First Year: CLOSED / PAID HOLIDAY. After One (1) Year: CLOSED ++",
+  },
+  {
+    name: "CHRISTMAS",
+    date: "2026-12-25",
+    isPaid: true,
+    description: "First Year: CLOSED / PAID HOLIDAY. After One (1) Year: CLOSED ++",
+  },
+  {
+    name: "2ND CHRISTMAS",
+    date: "2026-12-26",
+    isPaid: false,
+    description: "First Year: N/A. After One (1) Year: SATURDAY - N/A",
+  },
+  {
+    name: "NEW YEARS",
+    date: "2027-01-01",
+    isPaid: true,
+    description: "First Year: CLOSED / PAID HOLIDAY. After One (1) Year: CLOSED ++",
+  },
+];
+
+function toIsoDate(dateStr: string): string | null {
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const parts = trimmed.split('/').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
+  const [month, day, year] = parts;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 export default function HolidaysPage() {
   return <HolidaysContent />;
 }
@@ -22,6 +107,7 @@ function HolidaysContent() {
     name: "",
     date: "",
     isPaid: true,
+    description: "",
   });
 
   useEffect(() => {
@@ -51,6 +137,7 @@ function HolidaysContent() {
         name: holiday.name,
         date: holiday.date,
         isPaid: holiday.isPaid ?? true,
+        description: holiday.description || "",
       });
     } else {
       setEditingHoliday(null);
@@ -58,6 +145,7 @@ function HolidaysContent() {
         name: "",
         date: "",
         isPaid: true,
+        description: "",
       });
     }
     setModalVisible(true);
@@ -96,29 +184,12 @@ function HolidaysContent() {
   };
 
   const handleSeed = async () => {
-    if (!confirm("This will add standard 2026 holidays. Continue?")) return;
+    if (!confirm("This will add the PMC holiday calendar. Continue?")) return;
     setSeeding(true);
     try {
-      const standardHolidays = [
-        { name: "New Year's Day", date: "2026-01-01", isPaid: true },
-        { name: "Martin Luther King Jr. Day", date: "2026-01-19", isPaid: true },
-        { name: "Presidents' Day", date: "2026-02-16", isPaid: true },
-        { name: "Good Friday", date: "2026-04-03", isPaid: true },
-        { name: "Memorial Day", date: "2026-05-25", isPaid: true },
-        { name: "Juneteenth", date: "2026-06-19", isPaid: true },
-        { name: "Independence Day (Observed)", date: "2026-07-03", isPaid: true },
-        { name: "Labor Day", date: "2026-09-07", isPaid: true },
-        { name: "Veterans Day", date: "2026-11-11", isPaid: true },
-        { name: "Thanksgiving Day", date: "2026-11-26", isPaid: true },
-        { name: "Day after Thanksgiving", date: "2026-11-27", isPaid: true },
-        { name: "Christmas Eve", date: "2026-12-24", isPaid: true },
-        { name: "Christmas Day", date: "2026-12-25", isPaid: true },
-        { name: "New Year's Eve", date: "2026-12-31", isPaid: true }
-      ];
-
       // Filter out holidays that already exist
-      const newHolidays = standardHolidays.filter(
-        h => !holidays.some(existing => existing.date === h.date)
+      const newHolidays = PMC_2026_HOLIDAYS.filter(
+        h => !holidays.some(existing => existing.date === h.date && existing.name === h.name)
       );
       
       if (newHolidays.length > 0) {
@@ -153,23 +224,36 @@ function HolidaysContent() {
       try {
         const text = event.target?.result as string;
         const lines = text.split('\n');
-        // skip header if it exists
-        const startIdx = lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('date') ? 1 : 0;
+        const firstLine = (lines[0] || '').toLowerCase();
+        const startIdx = firstLine.includes('name') || firstLine.includes('holiday') || firstLine.includes('date') ? 1 : 0;
         
         let count = 0;
-        const newHolidaysToImport: any[] = [];
+        const newHolidaysToImport: Holiday[] = [];
         for (let i = startIdx; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
-          
-          const [name, date, isPaid] = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
-          if (name && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            const exists = holidays.some(h => h.date === date);
+
+          const columns = line.match(/("[^"]*(?:""[^"]*)*"|[^,]+)/g)?.map((s) =>
+            s.trim().replace(/^"|"$/g, '').replace(/""/g, '"')
+          ) || [];
+
+          const [name, rawDate, firstYear, afterOneYear] = columns;
+          const date = rawDate ? toIsoDate(rawDate) : null;
+
+          if (name && date) {
+            const descriptionParts = [
+              firstYear ? `First Year: ${firstYear}` : null,
+              afterOneYear ? `After One (1) Year: ${afterOneYear}` : null,
+            ].filter(Boolean);
+
+            const normalizedName = name.trim();
+            const exists = holidays.some(h => h.date === date && h.name === normalizedName);
             if (!exists) {
               newHolidaysToImport.push({
-                name,
+                name: normalizedName,
                 date,
-                isPaid: isPaid?.toLowerCase() === 'true' || isPaid === '1' || isPaid?.toLowerCase() === 'paid'
+                isPaid: /paid holiday|closed/i.test(`${firstYear || ''} ${afterOneYear || ''}`),
+                description: descriptionParts.join('. '),
               });
               count++;
             }
@@ -193,7 +277,7 @@ function HolidaysContent() {
         await loadHolidays();
       } catch (error) {
         console.error("Import error:", error);
-        alert("Error importing CSV. Ensure format is: Name,YYYY-MM-DD,true/false");
+        alert("Error importing CSV. Ensure the file includes Holiday/Name and Date columns.");
       } finally {
         setImporting(false);
         e.target.value = "";
@@ -264,6 +348,23 @@ function HolidaysContent() {
           </div>
         </div>
 
+        <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-gray-900 shadow-sm">
+          <h2 className="text-sm font-black uppercase tracking-widest text-amber-900 mb-3">
+            PMC Holiday Policy Notes
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm leading-relaxed">
+            <div>
+              <p><span className="font-black">Optional (**):</span> You need to ask for the day off. Otherwise, the company will assume you are working that day.</p>
+              <p className="mt-2"><span className="font-black">Closed (++):</span> You can choose whether to take the day as paid or unpaid where noted.</p>
+            </div>
+            <div>
+              <p>During your first year, after 90 days of active full-time employment, you are paid for the holidays listed in the First Year column whether you work or not, until your first-year anniversary.</p>
+              <p className="mt-2">Thereafter, each April 1st you receive 12 days at 9 hours per day to use for paid holidays, vacation, optional holidays, or another day of your choosing, with one additional day per year of employment up to 15 vacation days.</p>
+              <p className="mt-2 font-black uppercase tracking-wide text-[11px] text-amber-900">Fiscal Year: April 1st to March 31st</p>
+            </div>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
@@ -286,6 +387,9 @@ function HolidaysContent() {
                   </div>
                   <p className="text-lg font-semibold text-gray-900">{new Date(holiday.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                   <p className="text-gray-500 text-xs mt-1 uppercase font-black tracking-widest">{holiday.date}</p>
+                  {holiday.description && (
+                    <p className="text-gray-600 text-xs mt-3 max-w-xs leading-relaxed">{holiday.description}</p>
+                  )}
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
@@ -357,6 +461,15 @@ function HolidaysContent() {
                   <label htmlFor="isPaid" className="text-xs font-black text-gray-700 cursor-pointer uppercase tracking-wider">
                     Paid Holiday
                   </label>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Description</label>
+                  <textarea
+                    value={formData.description || ""}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full min-h-24 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:border-teal-300 focus:ring-1 focus:ring-teal-200 outline-none transition-colors"
+                    placeholder="Holiday policy or notes"
+                  />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button

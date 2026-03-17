@@ -3,13 +3,13 @@
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
-    "long-term-schedule", "project-schedule", "projects", "project",
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
-    "long-term-schedule", "project-schedule", "projects", "project",
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
      "estimating-tools", "constants", "equipment", 
     "certifications", "kpi-cards-management", "holidays", "handbook"
   ],
@@ -18,18 +18,18 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
-    "crew-dispatch", "short-term-schedule", "long-term-schedule", "constants", "handbook"
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
-    "long-term-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
   ],
   "PMs": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
-    "long-term-schedule", "project-schedule", "wip", "projects", "equipment", "handbook"
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "wip", "projects", "equipment", "handbook"
   ],
   "FIELD": [
-    "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "project-schedule", "handbook"
+    "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "project-schedule", "handbook"
   ],
  
 };
@@ -96,6 +96,7 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/daily-crew-dispatch-board', permission: 'crew-dispatch' },
   { prefix: '/short-term-schedule', permission: 'short-term-schedule' },
   { prefix: '/long-term-schedule', permission: 'long-term-schedule' },
+  { prefix: '/concrete-orders-schedule', permission: 'concrete-orders-schedule' },
   { prefix: '/project-schedule', permission: 'project-schedule' },
   { prefix: '/kpi-cards-management', permission: 'kpi-cards-management' },
   { prefix: '/estimating-tools', permission: 'estimating-tools' },

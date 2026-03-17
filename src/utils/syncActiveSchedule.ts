@@ -24,19 +24,18 @@ function formatDateOnly(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getWorkingDaysInMonth(year: number, month: number): number {
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-  
-  let workingDays = 0;
-  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    // Count Monday-Friday (1-5)
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-      workingDays++;
-    }
-  }
-  return workingDays;
+async function getPaidHolidaySet(startDate: string, endDate: string): Promise<Set<string>> {
+  const rows = await prisma.holiday.findMany({
+    where: {
+      isPaid: true,
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    select: { date: true },
+  });
+  return new Set(rows.map((row) => row.date));
 }
 
 function getAllDatesInMonth(year: number, month: number): string[] {
@@ -46,6 +45,24 @@ function getAllDatesInMonth(year: number, month: number): string[] {
   const dates: string[] = [];
   for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+}
+
+async function getWorkingDatesInMonth(year: number, month: number): Promise<string[]> {
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+  const startKey = formatDateOnly(monthStart);
+  const endKey = formatDateOnly(monthEnd);
+  const paidHolidaySet = await getPaidHolidaySet(startKey, endKey);
+
+  const dates: string[] = [];
+  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    const dateKey = formatDateOnly(d);
+    if (dayOfWeek >= 1 && dayOfWeek <= 5 && !paidHolidaySet.has(dateKey)) {
+      dates.push(dateKey);
+    }
   }
   return dates;
 }
@@ -87,11 +104,14 @@ export async function syncAllocationToActiveSchedule(
       return result;
     }
 
-    // Get all dates in the month
-    const datesInMonth = getAllDatesInMonth(year, month);
+    // Get working dates in the month (Mon-Fri excluding paid holidays)
+    const datesInMonth = await getWorkingDatesInMonth(year, month);
     
-    // Calculate daily hours (evenly distributed across all days)
+    // Calculate daily hours (evenly distributed across working days only)
     const dailyHours = datesInMonth.length > 0 ? hours / datesInMonth.length : 0;
+
+    const monthStartKey = `${yearStr}-${monthStr.padStart(2, '0')}-01`;
+    const monthEndKey = formatDateOnly(new Date(year, month, 0));
 
     // Delete existing activeSchedule entries for this month
     const deleteResult = await prisma.activeSchedule.deleteMany({
@@ -99,8 +119,8 @@ export async function syncAllocationToActiveSchedule(
         jobKey: schedule.jobKey,
         scopeOfWork: 'Scheduled work',
         date: {
-          gte: datesInMonth[0],
-          lte: datesInMonth[datesInMonth.length - 1],
+          gte: monthStartKey,
+          lte: monthEndKey,
         },
         source: sourceType,
       },
@@ -261,11 +281,13 @@ export async function syncProjectScopeToActiveSchedule(
     }
 
     // Calculate working days in range
+    const paidHolidaySet = await getPaidHolidaySet(scope.startDate, scope.endDate);
     let workingDays = 0;
     const workingDates: Date[] = [];
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       const dayOfWeek = d.getDay();
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      const dateKey = formatDateOnly(d);
+      if (dayOfWeek >= 1 && dayOfWeek <= 5 && !paidHolidaySet.has(dateKey)) {
         workingDays++;
         workingDates.push(new Date(d));
       }

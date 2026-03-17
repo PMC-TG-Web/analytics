@@ -57,15 +57,27 @@ export async function POST(request: NextRequest) {
     
     // Handle batch creation (for seed/import)
     if (Array.isArray(body)) {
-      const holidays = await prisma.holiday.createMany({
-        data: body.map((h) => ({
-          name: h.name,
-          date: h.date,
-          isPaid: h.isPaid ?? true,
-          description: h.description || null,
-        })),
-        skipDuplicates: true,
+      const normalized = body
+        .map((h) => ({
+          name: String(h?.name || '').trim(),
+          date: String(h?.date || '').trim(),
+          isPaid: h?.isPaid ?? true,
+          description: h?.description ? String(h.description).trim() : null,
+        }))
+        .filter((h) => h.name && h.date);
+
+      const existing = await prisma.holiday.findMany({
+        select: { name: true, date: true },
       });
+      const existingPairs = new Set(existing.map((h) => `${h.name}__${h.date}`));
+
+      const uniqueNewRows = normalized.filter((h) => !existingPairs.has(`${h.name}__${h.date}`));
+
+      const holidays = uniqueNewRows.length
+        ? await prisma.holiday.createMany({
+            data: uniqueNewRows,
+          })
+        : { count: 0 };
 
       return NextResponse.json({
         success: true,

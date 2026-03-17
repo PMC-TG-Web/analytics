@@ -816,6 +816,7 @@ function DailyCrewDispatchBoardContent() {
   const activeDay = dayColumns[0];
   const activeDate = activeDay?.date || (selectedDispatchDate ? parseDateInput(selectedDispatchDate) : null);
   const dateKey = selectedDispatchDate || (activeDay ? formatDateKey(activeDay.date) : "");
+  const isPaidHoliday = Boolean(isHoliday?.isPaid);
   
   // Totals for the selected dispatch day
   let globalScheduledHours = 0;
@@ -851,7 +852,7 @@ function DailyCrewDispatchBoardContent() {
     }
   });
   
-  const globalCapacityHours = ((foremen.length + fieldWorkers.length) * 10) - totalHoursOff;
+  const globalCapacityHours = isPaidHoliday ? 0 : ((foremen.length + fieldWorkers.length) * 10) - totalHoursOff;
   const globalAssignedCount = getAssignedEmployeesForDate(dateKey).length;
   const globalActualHours = (foremen.length + globalAssignedCount) * 10; // foremen + crew members
 
@@ -876,21 +877,13 @@ function DailyCrewDispatchBoardContent() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => setShowTimeOffModal(true)}
-                className="bg-stone-800 hover:bg-stone-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md transition-all font-sans"
-              >
-                Time Off
-              </button>
-              <button
-                onClick={() => setShowSickModal(true)}
-                className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-md shadow-red-600/20 transition-all font-sans"
-              >
-                Call Off
-              </button>
-            </div>
           </div>
+          {isPaidHoliday && (
+            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+              <div className="text-[9px] font-black uppercase tracking-widest text-rose-700">Day Off</div>
+              <div className="text-[10px] font-bold text-rose-600">{isHoliday?.name || "Paid Holiday"}</div>
+            </div>
+          )}
           <div className="mt-3 flex items-center gap-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dispatch Date</span>
             <input
@@ -911,7 +904,7 @@ function DailyCrewDispatchBoardContent() {
             </div>
             <div className="px-3 py-2.5 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shadow-sm">
               <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-1 italic">Capacity</span>
-              <span className="text-lg font-black text-orange-600">{globalActualHours.toFixed(0)}h</span>
+              <span className="text-lg font-black text-orange-600">{globalCapacityHours.toFixed(0)}h</span>
             </div>
           </div>
         </div>
@@ -930,9 +923,11 @@ function DailyCrewDispatchBoardContent() {
                   Crew Dispatch <span className="text-red-900">Board</span>
                 </h1>
                 {isHoliday && (
-                  <div className="bg-orange-500 text-white px-3 py-1 rounded-lg flex items-center gap-2 animate-bounce shadow-lg shadow-orange-500/20 lg:px-5 lg:py-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest lg:text-sm">{isHoliday.name}</span>
-                    {isHoliday.isPaid && <span className="bg-white/20 text-[8px] px-1 rounded font-bold">PAID</span>}
+                  <div className={`${isHoliday.isPaid ? 'bg-rose-600 shadow-rose-500/20' : 'bg-orange-500 shadow-orange-500/20'} text-white px-3 py-1 rounded-lg flex items-center gap-2 animate-bounce shadow-lg lg:px-5 lg:py-2`}>
+                    <span className="text-[10px] font-black uppercase tracking-widest lg:text-sm">
+                      {isHoliday.isPaid ? 'DAY OFF - ' : ''}{isHoliday.name}
+                    </span>
+                    {isHoliday.isPaid && <span className="bg-white/20 text-[8px] px-1 rounded font-bold">PAID HOLIDAY</span>}
                   </div>
                 )}
               </div>
@@ -945,18 +940,6 @@ function DailyCrewDispatchBoardContent() {
           </div>
           
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowTimeOffModal(true)}
-              className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all"
-            >
-              Time Off
-            </button>
-            <button
-              onClick={() => setShowSickModal(true)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-red-600/20"
-            >
-              Call Off
-            </button>
             <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dispatch Date</span>
               <input
@@ -1136,11 +1119,16 @@ function DailyCrewDispatchBoardContent() {
                               <button
                                 key={emp.id}
                                 onClick={() => {
+                                  if (isPaidHoliday) return;
                                   const newSelected = currentEmployees.filter(id => id !== empId);
                                   updateCrewAssignment(dateKey, foreman.id, newSelected);
                                 }}
-                                disabled={saving}
-                                className="w-full flex items-center justify-between px-1.5 py-0.5 bg-red-900 text-white rounded-lg text-[11px] font-black hover:bg-red-800 transition-all text-left shadow-md shadow-red-900/20 active:scale-95 border border-red-800"
+                                disabled={saving || isPaidHoliday}
+                                className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-lg text-[11px] font-black transition-all text-left shadow-md active:scale-95 border ${
+                                  isPaidHoliday
+                                  ? 'bg-rose-100 text-rose-300 border-rose-200 cursor-not-allowed shadow-none'
+                                  : 'bg-red-900 text-white hover:bg-red-800 shadow-red-900/20 border-red-800'
+                                }`}
                               >
                                 <span className="truncate uppercase tracking-tight italic">{emp.firstName} {emp.lastName}</span>
                                 <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -1162,11 +1150,16 @@ function DailyCrewDispatchBoardContent() {
                                 <button
                                   key={emp.id}
                                   onClick={() => {
+                                    if (isPaidHoliday) return;
                                     const newSelected = [...currentEmployees, emp.id];
                                     updateCrewAssignment(dateKey, foreman.id, newSelected);
                                   }}
-                                  disabled={saving}
-                                  className="w-full flex items-center justify-between px-1.5 py-0.5 bg-white border border-gray-100 text-stone-600 rounded-lg text-[11px] font-black hover:border-red-900/40 hover:text-red-900 transition-all text-left group shadow-sm active:scale-95"
+                                  disabled={saving || isPaidHoliday}
+                                  className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-lg text-[11px] font-black transition-all text-left group shadow-sm active:scale-95 ${
+                                    isPaidHoliday
+                                    ? 'bg-rose-50 border border-rose-100 text-rose-300 cursor-not-allowed'
+                                    : 'bg-white border border-gray-100 text-stone-600 hover:border-red-900/40 hover:text-red-900'
+                                  }`}
                                 >
                                   <div className="flex flex-col truncate">
                                     <span className="truncate uppercase tracking-tight">{emp.firstName} {emp.lastName}</span>

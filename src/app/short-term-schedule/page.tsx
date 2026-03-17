@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 
-import { Scope, Project, ProjectInfo } from "@/types";
+import { Scope, Project, ProjectInfo, Holiday } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { getActiveScheduleDocId, recalculateScopeTracking } from "@/utils/activeScheduleUtils";
@@ -131,6 +131,7 @@ function ShortTermScheduleContent() {
   const [foremen, setForemen] = useState<Employee[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [paidHolidayByDate, setPaidHolidayByDate] = useState<Record<string, Holiday>>({});
   const [companyCapacity, setCompanyCapacity] = useState<number>(210); // Standard 210, will be dynamic
   const [dailyCapacity, setDailyCapacity] = useState<Record<string, number>>({});
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -779,9 +780,21 @@ function ShortTermScheduleContent() {
   async function loadSchedules() {
     try {
       // Fetch all data from API
-      const res = await fetch('/api/short-term-schedule', { cache: 'no-store' });
+      const [res, holidayRes] = await Promise.all([
+        fetch('/api/short-term-schedule', { cache: 'no-store' }),
+        fetch('/api/holidays?page=1&pageSize=500', { cache: 'no-store' }),
+      ]);
       if (!res.ok) throw new Error('Failed to fetch data');
       const { data } = await res.json();
+
+      const holidayJson = holidayRes.ok ? await holidayRes.json() : { data: [] };
+      const paidHolidayMap: Record<string, Holiday> = {};
+      (holidayJson.data || []).forEach((h: Holiday) => {
+        if (h?.date && h?.isPaid) {
+          paidHolidayMap[h.date] = h;
+        }
+      });
+      setPaidHolidayByDate(paidHolidayMap);
 
       const { employees, timeOffs, scopes, projects } = data;
 
@@ -1035,6 +1048,11 @@ function ShortTermScheduleContent() {
       const dayKeys = Array.from(dayMap.keys());
 
       dayKeys.forEach((dateKey) => {
+        if (paidHolidayMap[dateKey]) {
+          dailyDispatchCapacity[dateKey] = 0;
+          return;
+        }
+
         let totalHoursOff = 0;
 
         dispatchCapacityStaff.forEach((employee: any) => {
@@ -1392,6 +1410,8 @@ function ShortTermScheduleContent() {
                   return sum + (fMap[dateKey] || []).reduce((pSum, proj) => pSum + proj.hours, 0);
                 }, 0);
                 const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
+                const holiday = paidHolidayByDate[dateKey];
+                const isDayOff = Boolean(holiday);
 
                 return (
                   <div key={dateKey} className={`${isWeekend ? 'opacity-60' : ''}`}>
@@ -1401,6 +1421,11 @@ function ShortTermScheduleContent() {
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                           {day.date.toLocaleDateString("en-US", { weekday: "long" })}
                         </div>
+                        {isDayOff && (
+                          <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md bg-rose-100 border border-rose-200 text-[9px] font-black uppercase tracking-widest text-rose-700">
+                            Day Off - {holiday.name}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-black text-orange-600">{dayTotal.toFixed(0)}h</div>
@@ -1465,6 +1490,8 @@ function ShortTermScheduleContent() {
                       </th>
                       {dayColumns.map((day) => {
                         const dateKey = formatDateKey(day.date);
+                        const holiday = paidHolidayByDate[dateKey];
+                        const isDayOff = Boolean(holiday);
                         let totalHours = 0;
                         Object.values(foremanDateProjects).forEach(dateMap => {
                           if (dateMap[dateKey]) {
@@ -1477,15 +1504,21 @@ function ShortTermScheduleContent() {
                         let capacityColor = "bg-white/5";
                         if (availabilityPercent > 105) capacityColor = "bg-red-500/20 text-red-400";
                         else if (availabilityPercent > 90) capacityColor = "bg-yellow-500/10 text-yellow-500";
+                        if (isDayOff) capacityColor = "bg-rose-500/20 text-rose-300";
 
                         return (
-                          <th key={dateKey} className="text-center py-5 px-4 text-xs font-black text-white border-r border-stone-700 min-w-[300px]">
+                          <th key={dateKey} className={`text-center py-5 px-4 text-xs font-black text-white border-r border-stone-700 min-w-[300px] ${isDayOff ? 'bg-rose-900/40' : ''}`}>
                             <div className="flex flex-col items-center">
                               <span className="text-xl italic leading-none mb-1 tracking-tighter">{day.dayLabel}</span>
                               <div className="flex gap-2 items-center mb-2">
                                 <span className="text-[9px] uppercase tracking-widest text-stone-500">{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                                {isDayOff && (
+                                  <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-black border border-rose-300/40 bg-rose-500/15 text-rose-200 uppercase tracking-widest">
+                                    Day Off
+                                  </span>
+                                )}
                                 <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black border border-white/5 ${capacityColor}`}>
-                                  {totalHours.toFixed(0)}<span className="opacity-30">/</span>{dayCapacity}H
+                                  {totalHours.toFixed(0)}<span className="opacity-30">/</span>{isDayOff ? 0 : dayCapacity}H
                                 </span>
                               </div>
                               <div className="w-32 h-1 bg-stone-700 rounded-full overflow-hidden border border-white/5">
@@ -1513,6 +1546,8 @@ function ShortTermScheduleContent() {
                           </td>
                           {dayColumns.map((day) => {
                             const dateKey = formatDateKey(day.date);
+                            const holiday = paidHolidayByDate[dateKey];
+                            const isDayOff = Boolean(holiday);
                             const projects = (foremanProjects[dateKey] || []).filter(p => p.hours > 0);
                             const dayTotal = projects.reduce((sum, p) => sum + p.hours, 0);
                             const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
@@ -1520,12 +1555,28 @@ function ShortTermScheduleContent() {
                             return (
                               <td
                                 key={dateKey}
-                                className={`py-4 px-3 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
-                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('bg-orange-50/50'); }}
+                                className={`py-4 px-3 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${isDayOff ? 'bg-rose-50/70' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
+                                onDragOver={(e) => {
+                                  if (isDayOff) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.currentTarget.classList.add('bg-orange-50/50');
+                                }}
                                 onDragLeave={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); }}
-                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('bg-orange-50/50'); handleDrop(e, day.date, foreman.id); }}
+                                onDrop={(e) => {
+                                  if (isDayOff) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.currentTarget.classList.remove('bg-orange-50/50');
+                                  handleDrop(e, day.date, foreman.id);
+                                }}
                               >
                                 <div className="flex flex-col h-full min-h-[100px]">
+                                  {isDayOff && (
+                                    <div className="mb-3 px-2 py-1 rounded-xl bg-rose-100 border border-rose-200 text-[9px] font-black uppercase tracking-widest text-rose-700 text-center">
+                                      Day Off: {holiday?.name || 'Paid Holiday'}
+                                    </div>
+                                  )}
                                   {projects.length > 0 ? (
                                     <div className="space-y-3 mb-3">
                                       {projects.map((project) => {
@@ -1604,8 +1655,17 @@ function ShortTermScheduleContent() {
                                   )}
                                   
                                   <button
-                                    onClick={() => { setTargetingCell({ date: day.date, foremanId: foreman.id }); setIsAddingProject(true); setProjectSearch(""); }}
+                                    onClick={() => {
+                                      if (isDayOff) return;
+                                      setTargetingCell({ date: day.date, foremanId: foreman.id });
+                                      setIsAddingProject(true);
+                                      setProjectSearch("");
+                                    }}
+                                    disabled={isDayOff}
                                     className={`mt-auto py-2 border-2 border-dashed rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                                      isDayOff
+                                      ? 'border-rose-200 text-rose-300 bg-rose-50 cursor-not-allowed opacity-100'
+                                      :
                                       targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
                                       ? 'border-green-500 text-green-600 bg-green-50 ring-4 ring-green-100'
                                       : 'border-transparent text-gray-300 hover:border-orange-200 hover:text-orange-500 opacity-0 group-hover:opacity-100'

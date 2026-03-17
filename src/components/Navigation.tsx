@@ -25,6 +25,7 @@ const navLinks: NavLink[] = [
   { href: "/equipment", label: "Equipment", page: "equipment" },
   { href: "/holidays", label: "Holidays", page: "holidays" },
   { href: "/procore", label: "Procore", page: "procore" },
+  { href: "/procore/projects-feed-tools", label: "Procore Feed", page: "procore" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "employees" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
@@ -34,6 +35,7 @@ const scheduleLinks: NavLink[] = [
   { href: "/scheduling", label: "Wip Schedule", page: "scheduling" },
   { href: "/project-schedule", label: "Project Gantt", page: "project-schedule" },
   { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },
+  { href: "/concrete-orders-schedule", label: "Concrete Orders", page: "concrete-orders-schedule" },
   { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule" },
   { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
 ];

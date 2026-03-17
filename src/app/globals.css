@@ -60,3 +60,25 @@ body {
 .app-content-with-nav {
   padding-top: 0.5rem;
 }
+
+/* Concrete orders schedule scrollbar */
+.lt-visible-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #f97316 #e7e5e4;
+}
+
+.lt-visible-scrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.lt-visible-scrollbar::-webkit-scrollbar-track {
+  background: #e7e5e4;
+  border-radius: 9999px;
+}
+
+.lt-visible-scrollbar::-webkit-scrollbar-thumb {
+  background: #f97316;
+  border-radius: 9999px;
+  border: 2px solid #e7e5e4;
+}

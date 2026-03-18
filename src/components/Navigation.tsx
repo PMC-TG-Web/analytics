@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPageAccess } from "@/lib/permissions";
+
+const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
+const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 
 interface NavLink {
   href: string;
@@ -57,6 +60,37 @@ export default function Navigation({
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const isGlobalNavigationManaged = useContext(GlobalNavigationContext);
+
+  useEffect(() => {
+    const redirectToLogin = () => {
+      const currentPath = `${window.location.pathname}${window.location.search}`;
+      const loginUrl = `/login?returnTo=${encodeURIComponent(currentPath || "/")}`;
+      window.location.replace(loginUrl);
+    };
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      channel = new BroadcastChannel(AUTH_LOGOUT_SIGNAL_CHANNEL);
+      channel.onmessage = (event) => {
+        if (event.data === AUTH_LOGOUT_SIGNAL_KEY) {
+          redirectToLogin();
+        }
+      };
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === AUTH_LOGOUT_SIGNAL_KEY && event.newValue) {
+        redirectToLogin();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      channel?.close();
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   if (isGlobalNavigationManaged && !forceRender) {
     return null;
@@ -113,9 +147,21 @@ export default function Navigation({
         type="button"
         onClick={() => {
           if (window.confirm('Are you sure you want to sign out?')) {
-            const logoutUrl = '/api/auth/logout';
-            // In Procore iframe embeds, force logout in the top window.
-            window.open(logoutUrl, '_top');
+            const currentPath = `${window.location.pathname}${window.location.search}`;
+            const logoutReturnTo = `/auth/logout-complete?returnTo=${encodeURIComponent(currentPath || "/")}`;
+            const logoutUrl = `/api/auth/logout?returnTo=${encodeURIComponent(logoutReturnTo)}`;
+
+            try {
+              if (window.self !== window.top) {
+                window.open(logoutUrl, "analytics_logout_tab");
+                return;
+              }
+            } catch {
+              window.open(logoutUrl, "analytics_logout_tab");
+              return;
+            }
+
+            window.location.assign(logoutUrl);
           }
         }}
         className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-red-700 border border-red-800 hover:bg-red-800 transition-colors cursor-pointer"

@@ -148,7 +148,7 @@ export default function Navigation({
         onClick={() => {
           if (window.confirm('Are you sure you want to sign out?')) {
             const currentPath = `${window.location.pathname}${window.location.search}`;
-            const logoutReturnTo = `/auth/logout-complete?returnTo=${encodeURIComponent(currentPath || "/")}`;
+            const logoutReturnTo = `${window.location.origin}/auth/logout-complete?returnTo=${encodeURIComponent(currentPath || "/")}`;
             const logoutUrl = `/api/auth/logout?returnTo=${encodeURIComponent(logoutReturnTo)}`;
 
             try {

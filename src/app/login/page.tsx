@@ -11,6 +11,14 @@ function LoginContent() {
 
   const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
+  const navigateTop = (url: string) => {
+    try {
+      window.open(url, "_top");
+    } catch {
+      window.location.assign(url);
+    }
+  };
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const errorParam = searchParams.get("error");
@@ -56,11 +64,7 @@ function LoginContent() {
   }, []);
 
   const redirectToProcoreApp = () => {
-    try {
-      window.location.assign(procoreAppUrl);
-    } catch {
-      window.location.href = procoreAppUrl;
-    }
+    navigateTop(procoreAppUrl);
   };
 
   const startAuthPolling = (popup: Window | null) => {
@@ -103,6 +107,13 @@ function LoginContent() {
     setStatus("Waiting for login...");
 
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+
+    if (framed) {
+      setStatus("Redirecting to sign-in...");
+      navigateTop(loginUrl);
+      return;
+    }
+
     const popup = window.open(
       loginUrl,
       "analytics_auth",
@@ -133,7 +144,7 @@ function LoginContent() {
             <p className="text-blue-700 text-sm">{status}</p>
             {framed && (
               <p className="text-blue-600 text-xs mt-2">
-                You are in an embedded Procore frame, so login opens in a popup.
+                You are in an embedded Procore frame, so login opens in the top window.
               </p>
             )}
           </div>

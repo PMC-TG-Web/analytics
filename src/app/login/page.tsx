@@ -123,14 +123,13 @@ function LoginContent() {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (framed) {
-      const authTab = window.open(loginUrl, "_blank", "noopener,noreferrer");
-      if (!authTab) {
-        setError("Unable to open sign-in tab. Please allow popups and try again.");
-        setStatus("Could not open sign-in tab.");
-        return;
-      }
+      const framedReturnTo = "/auth/complete?source=procore";
+      const framedLoginUrl = `/api/auth/login?returnTo=${encodeURIComponent(framedReturnTo)}`;
+      const authTab = window.open(framedLoginUrl, "analytics_auth_tab");
       setStatus("Sign-in opened in a new tab. Complete login there and this app will continue automatically.");
-      startAuthPolling(null);
+      // Some browsers return a null handle for newly opened tabs even when the tab opens.
+      // Start polling regardless so the embedded app can resume after authentication.
+      startAuthPolling(authTab || null);
       return;
     }
 

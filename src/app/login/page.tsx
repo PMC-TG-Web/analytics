@@ -25,10 +25,21 @@ function LoginContent() {
 
   const navigateTop = (url: string) => {
     try {
-      window.open(url, "_top");
+      if (window.top) {
+        window.top.location.href = url;
+        return;
+      }
     } catch {
-      window.location.assign(url);
+      // Ignore and try fallback methods below.
     }
+
+    const topNav = window.open(url, "_top");
+    if (topNav) return;
+
+    const newTab = window.open(url, "_blank", "noopener,noreferrer");
+    if (newTab) return;
+
+    window.location.assign(url);
   };
 
   useEffect(() => {
@@ -82,8 +93,13 @@ function LoginContent() {
             window.clearInterval(pollRef.current);
             pollRef.current = null;
           }
-          setStatus("Login successful. Opening Procore app...");
-          redirectToProcoreApp();
+          if (framed) {
+            setStatus("Login successful. Reloading embedded app...");
+            window.location.reload();
+          } else {
+            setStatus("Login successful. Opening Procore app...");
+            redirectToProcoreApp();
+          }
           return;
         }
 
@@ -107,8 +123,14 @@ function LoginContent() {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (framed) {
-      setStatus("Redirecting to sign-in...");
-      navigateTop(loginUrl);
+      const authTab = window.open(loginUrl, "_blank", "noopener,noreferrer");
+      if (!authTab) {
+        setError("Unable to open sign-in tab. Please allow popups and try again.");
+        setStatus("Could not open sign-in tab.");
+        return;
+      }
+      setStatus("Sign-in opened in a new tab. Complete login there and this app will continue automatically.");
+      startAuthPolling(null);
       return;
     }
 

@@ -77,8 +77,8 @@ function ProcoreContent() {
   }, []);
 
   const handleLogin = () => {
-    // Standard OAuth flow: redirect to Auth0 login route
-    const loginUrl = "/api/auth/login?returnTo=/procore";
+    // Procore API access requires the dedicated Procore OAuth flow.
+    const loginUrl = "/api/auth/procore/login";
     if (typeof window !== 'undefined' && window.self !== window.top) {
       window.top!.location.href = loginUrl;
       return;

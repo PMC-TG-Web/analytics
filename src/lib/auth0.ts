@@ -14,6 +14,7 @@ export function createAuth0Client(appBaseUrl?: string) {
     appBaseUrl: resolveAppBaseUrl(appBaseUrl),
     // Auth0 v4 uses environment variables for most settings.
     // We explicitly configure the session cookie for Iframe compatibility (Procore).
+    logoutStrategy: 'v2',
     routes: {
       login: '/api/auth/login',
       callback: '/api/auth/callback',

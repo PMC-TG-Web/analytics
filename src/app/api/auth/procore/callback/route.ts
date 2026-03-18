@@ -37,7 +37,8 @@ export async function GET(request: Request) {
     cookieStore.set("procore_access_token", tokenResponse.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "none",
+      path: "/",
       maxAge: tokenResponse.expires_in || 7200, // 2 hours default
     });
 
@@ -46,16 +47,17 @@ export async function GET(request: Request) {
       cookieStore.set("procore_refresh_token", tokenResponse.refresh_token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        sameSite: "none",
+        path: "/",
         maxAge: 30 * 24 * 60 * 60, // 30 days
       });
     }
 
     console.log("OK Successfully authenticated with Procore");
 
-    // Redirect back to test page with success
+    // Redirect back to the main Procore page with success.
     return NextResponse.redirect(
-      new URL("/procore/test?status=authenticated", request.url)
+      new URL("/procore?status=authenticated", request.url)
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -63,7 +65,7 @@ export async function GET(request: Request) {
     
     return NextResponse.redirect(
       new URL(
-        `/procore/test?error=${encodeURIComponent(message)}`,
+        `/procore?error=${encodeURIComponent(message)}`,
         request.url
       )
     );

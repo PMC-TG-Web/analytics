@@ -7,6 +7,7 @@ import { hasPageAccess } from "@/lib/permissions";
 
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
+const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
 
 interface NavLink {
   href: string;
@@ -148,11 +149,32 @@ export default function Navigation({
         onClick={() => {
           if (window.confirm('Are you sure you want to sign out?')) {
             const currentPath = `${window.location.pathname}${window.location.search}`;
-            const logoutReturnTo = `${window.location.origin}/auth/logout-complete?returnTo=${encodeURIComponent(currentPath || "/")}`;
+            const isEmbedded = (() => {
+              try {
+                return window.self !== window.top;
+              } catch {
+                return true;
+              }
+            })();
+
+            try {
+              localStorage.setItem(
+                AUTH_LOGOUT_CONTEXT_KEY,
+                JSON.stringify({
+                  source: isEmbedded ? "embedded" : "app",
+                  returnTo: currentPath || "/",
+                  at: Date.now(),
+                })
+              );
+            } catch {
+              // Ignore storage failures and continue with logout.
+            }
+
+            const logoutReturnTo = `${window.location.origin}/auth/logout-complete`;
             const logoutUrl = `/api/auth/logout?returnTo=${encodeURIComponent(logoutReturnTo)}`;
 
             try {
-              if (window.self !== window.top) {
+              if (isEmbedded) {
                 window.open(logoutUrl, "analytics_logout_tab");
                 return;
               }

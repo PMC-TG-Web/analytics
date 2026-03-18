@@ -73,8 +73,17 @@ async function validateSpecificDays(entries: SelectedDayEntry[] | null, scheduli
   return { valid: true as const };
 }
 
+async function ensureProjectScopeColumns() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "ProjectScope"
+      ADD COLUMN IF NOT EXISTS "schedulingMode" TEXT NOT NULL DEFAULT 'contiguous',
+      ADD COLUMN IF NOT EXISTS "selectedDays" JSONB
+  `);
+}
+
 export async function GET(request: NextRequest) {
   try {
+    await ensureProjectScopeColumns();
     const searchParams = request.nextUrl.searchParams;
     const jobKey = searchParams.get('jobKey');
 

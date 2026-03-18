@@ -81,8 +81,17 @@ function normalizeTimeOffRecord(row: {
   };
 }
 
+async function ensureProjectScopeColumns() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "ProjectScope"
+      ADD COLUMN IF NOT EXISTS "schedulingMode" TEXT NOT NULL DEFAULT 'contiguous',
+      ADD COLUMN IF NOT EXISTS "selectedDays" JSONB
+  `);
+}
+
 export async function GET(request: NextRequest) {
   try {
+    await ensureProjectScopeColumns();
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get('action');
 

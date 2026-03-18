@@ -113,7 +113,9 @@ export default function Navigation({
         type="button"
         onClick={() => {
           if (window.confirm('Are you sure you want to sign out?')) {
-            window.location.href = '/api/auth/logout';
+            const logoutUrl = '/api/auth/logout';
+            // In Procore iframe embeds, force logout in the top window.
+            window.open(logoutUrl, '_top');
           }
         }}
         className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-red-700 border border-red-800 hover:bg-red-800 transition-colors cursor-pointer"

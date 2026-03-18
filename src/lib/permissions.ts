@@ -38,7 +38,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
 export const USER_PERMISSIONS: Record<string, string[]> = {
   // OWNER access + Personnel Management (employees + onboarding pages)
   "todd@pmcdecor.com": ["OWNER", "employees", "onboarding"],
-  "todd.gilmore@hotmail.com": ["ADMIN"],
+  "todd.gilmore@hotmail.com": ["OWNER", "employees", "onboarding"],
 
   "levi@paradise-concrete.com": ["ADMIN"],
   "rick@pmcdecor.com": ["ADMIN"],

@@ -881,9 +881,6 @@ function ShortTermScheduleContent() {
       const projs = projects;
 
       // Use the active-schedule response already fetched in parallel above
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
       const currentWeekStart = new Date(today);
       const dayOfWeek = currentWeekStart.getDay();
       const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;

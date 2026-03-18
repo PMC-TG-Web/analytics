@@ -109,13 +109,17 @@ export default function Navigation({
         </div>
       )}
       
-      <a
-      href="/api/auth/logout"
-      target="_top"
-      className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-red-700 border border-red-800 hover:bg-red-800 no-underline transition-colors"
-    >
-      Sign Out
-    </a>
+      <button
+        type="button"
+        onClick={() => {
+          if (window.confirm('Are you sure you want to sign out?')) {
+            window.location.href = '/api/auth/logout';
+          }
+        }}
+        className="ml-2 px-2.5 py-1.5 rounded text-[11px] font-black text-white bg-red-700 border border-red-800 hover:bg-red-800 transition-colors cursor-pointer"
+      >
+        Sign Out
+      </button>
     </nav>
   );
 }

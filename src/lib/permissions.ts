@@ -57,7 +57,12 @@ export const USER_PERMISSIONS: Record<string, string[]> = {
 "john@pmcdecor.com": ["OPERATIONS"],
 
   //Estimator access
-  "isaac@pmcdecor.com": ["ESTIMATOR"] 
+  "isaac@pmcdecor.com": ["ESTIMATOR"],
+
+  // Field access
+  "matt@pmcdecor.com": ["FIELD"],
+  "matthew@pmcdecor.com": ["FIELD"],
+  "jason@pmcdecor.com": ["FIELD"]
 };
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
@@ -85,6 +90,11 @@ export function getUserPermissions(userEmail: string | null): string[] {
   });
 
   return Array.from(allPages);
+}
+
+export function getUserAssignedPermissions(userEmail: string | null): string[] {
+  if (!userEmail) return [];
+  return USER_PERMISSIONS[userEmail.toLowerCase()] || [];
 }
 
 const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [

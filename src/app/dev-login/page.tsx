@@ -13,6 +13,12 @@ export default function DevLoginPage() {
   const testUsers = [
     { email: 'todd@pmcdecor.com', name: 'Todd (Admin - Full Access)' },
     { email: 'isaac@pmcdecor.com', name: 'Isaac (Full Access)' },
+    { email: 'mervin@pmcdecor.com', name: 'Mervin (PM)' },
+    { email: 'abner@pmcdecor.com', name: 'Abner (PM)' },
+    { email: 'john@pmcdecor.com', name: 'John (Operations)' },
+    { email: 'matt@pmcdecor.com', name: 'Matt (Field)' },
+    { email: 'matthew@pmcdecor.com', name: 'Matthew (Field)' },
+    { email: 'jason@pmcdecor.com', name: 'Jason (Field)' },
     { email: 'levi@paradise-concrete.com', name: 'Levi PC (Full Access)' },
     { email: 'rick@pmcdecor.com', name: 'Rick (Full Access)' },
     { email: 'dave@pmcdecor.com', name: 'Dave (Admin - Full Access)' },
@@ -53,7 +59,7 @@ export default function DevLoginPage() {
               {testUsers.map((user) => (
                 <a
                   key={user.email}
-                  href={`/api/auth/dev-login?email=${encodeURIComponent(user.email)}&returnTo=/wip`}
+                  href={`/api/auth/dev-login?email=${encodeURIComponent(user.email)}&returnTo=/`}
                   style={{
                     display: 'block',
                     padding: '16px 20px',
@@ -109,7 +115,7 @@ export default function DevLoginPage() {
                   onFocus={(e) => e.currentTarget.style.borderColor = '#667eea'}
                   onBlur={(e) => e.currentTarget.style.borderColor = '#dee2e6'}
                 />
-                <input type="hidden" name="returnTo" value="/wip" />
+                <input type="hidden" name="returnTo" value="/" />
                 <button
                   type="submit"
                   style={{

@@ -727,7 +727,7 @@ function DailyCrewDispatchBoardContent() {
         // Fetch existing schedule data from API
         let existingData = null;
         try {
-          const existingResponse = await fetch(`/api/short-term-schedule?jobKey=${encodeURIComponent(jobKey)}`);
+          const existingResponse = await fetch(`/api/short-term-schedule?jobKey=${encodeURIComponent(jobKey)}&month=${encodeURIComponent(month)}`);
           if (existingResponse.ok) {
             existingData = await existingResponse.json();
           } else {

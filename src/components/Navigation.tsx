@@ -68,7 +68,8 @@ export default function Navigation({
   }
 
   const canAccessLink = (link: NavLink) => {
-    return !(user && !hasPageAccess(user.email, link.page));
+    if (!user?.email) return false;
+    return hasPageAccess(user.email, link.page);
   };
 
   const visibleNavLinks = navLinks.filter(canAccessLink);

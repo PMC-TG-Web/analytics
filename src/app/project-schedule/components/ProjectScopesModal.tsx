@@ -615,12 +615,19 @@ export function ProjectScopesModal({
   const handleSaveScope = async () => {
     setIsSaving(true);
     try {
-      if (scopeDetail.schedulingMode === 'specific-days' && selectedDays.length === 0) {
-        throw new Error('Specific Days mode requires at least one selected work day.');
+      const effectiveSchedulingMode: 'contiguous' | 'specific-days' =
+        scopeDetail.schedulingMode === 'specific-days' && selectedDays.length > 0
+          ? 'specific-days'
+          : 'contiguous';
+      const usedSpecificDaysFallback =
+        scopeDetail.schedulingMode === 'specific-days' && effectiveSchedulingMode === 'contiguous';
+
+      if (usedSpecificDaysFallback) {
+        console.warn('Specific Days mode selected with no days; falling back to Continuous Range for save.');
       }
 
       const invalidSpecificDay = selectedDays.find((entry) => isWeekendDate(entry.date) || paidHolidaySet.has(entry.date));
-      if (scopeDetail.schedulingMode === 'specific-days' && invalidSpecificDay) {
+      if (effectiveSchedulingMode === 'specific-days' && invalidSpecificDay) {
         throw new Error(`Specific day is invalid: ${invalidSpecificDay.date}. Weekends and paid holidays are blocked.`);
       }
 
@@ -660,8 +667,8 @@ export function ProjectScopesModal({
           endDate: scopeDetail.endDate || selectedScheduleDate,
           description: scopeDetail.description || '',
           tasks: (scopeDetail.tasks || []).filter((task) => task.trim()),
-          schedulingMode: scopeDetail.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
-          selectedDays: Array.isArray(scopeDetail.selectedDays) ? scopeDetail.selectedDays : [],
+          schedulingMode: effectiveSchedulingMode,
+          selectedDays: effectiveSchedulingMode === 'specific-days' ? selectedDays : [],
         };
         await upsertProjectScopeMetadata(metadataPayload);
 
@@ -684,16 +691,16 @@ export function ProjectScopesModal({
       const payload: Record<string, any> = {
         jobKey: resolvedJobKey,
         title: (scopeDetail.title || "Scope").trim() || "Scope",
-        startDate: scopeDetail.schedulingMode === 'specific-days'
+        startDate: effectiveSchedulingMode === 'specific-days'
           ? (selectedDays[0]?.date || scopeDetail.startDate || "")
           : (scopeDetail.startDate || ""),
-        endDate: scopeDetail.schedulingMode === 'specific-days'
+        endDate: effectiveSchedulingMode === 'specific-days'
           ? (selectedDays[selectedDays.length - 1]?.date || scopeDetail.endDate || "")
           : (scopeDetail.endDate || ""),
         description: scopeDetail.description || "",
         tasks: (scopeDetail.tasks || []).filter((task) => task.trim()),
-        schedulingMode: scopeDetail.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
-        selectedDays: selectedDays,
+        schedulingMode: effectiveSchedulingMode,
+        selectedDays: effectiveSchedulingMode === 'specific-days' ? selectedDays : [],
       };
 
       // Only include manpower and hours if they have valid values
@@ -786,6 +793,9 @@ export function ProjectScopesModal({
           onScopesUpdated(resolvedJobKey || project.jobKey || '', [...filteredScopes, newScope]);
           setActiveScopeId(savedScope.id);
         }
+      }
+      if (usedSpecificDaysFallback) {
+        alert('No specific days were selected. Scope was saved as Continuous Range.');
       }
       onClose();
     } catch (error) {

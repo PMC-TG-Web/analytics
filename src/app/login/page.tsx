@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 function LoginContent() {
   const [error, setError] = useState<string | null>(null);
-  const [returnTo, setReturnTo] = useState<string>("/wip");
+  const [returnTo, setReturnTo] = useState<string>("/");
   const [framed, setFramed] = useState(false);
   const [status, setStatus] = useState<string>("Choose a login method.");
   const pollRef = useRef<number | null>(null);
@@ -31,7 +31,7 @@ function LoginContent() {
     } else if (isFramed) {
       // When embedded in Procore, automatically open the login popup
       // so the user doesn't have to click a button on session expiry.
-      const rt = returnToParam || "/wip";
+      const rt = returnToParam || "/";
       const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(rt)}`;
       setStatus("Opening sign-in window...");
       const popup = window.open(

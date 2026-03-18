@@ -11,6 +11,28 @@ type StoredTimeOffPayload = {
   dates?: string[];
 };
 
+type StoredDayData = {
+  dayNumber: number;
+  hours: number;
+  foreman?: string;
+  employees?: string[];
+};
+
+type StoredWeekData = {
+  weekNumber: number;
+  days: StoredDayData[];
+};
+
+type StoredScheduleDoc = {
+  jobKey: string;
+  customer: string;
+  projectNumber: string;
+  projectName: string;
+  month: string;
+  weeks: StoredWeekData[];
+  updatedAt?: string;
+};
+
 const DEFAULT_TIME_OFF_TYPE = 'Vacation';
 const DEFAULT_TIME_OFF_HOURS = 10;
 
@@ -89,11 +111,109 @@ async function ensureProjectScopeColumns() {
   `);
 }
 
+async function ensureScheduleDataColumn() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Schedule"
+      ADD COLUMN IF NOT EXISTS "scheduleData" JSONB
+  `);
+}
+
+function isValidDayData(value: any): value is StoredDayData {
+  return value && Number.isFinite(Number(value.dayNumber)) && Number.isFinite(Number(value.hours));
+}
+
+function normalizeScheduleDoc(value: any): StoredScheduleDoc | null {
+  if (!value || typeof value !== 'object') return null;
+  const month = typeof value.month === 'string' ? value.month : '';
+  if (!month) return null;
+
+  const weeks = Array.isArray(value.weeks)
+    ? value.weeks
+        .filter((week: any) => week && Number.isFinite(Number(week.weekNumber)))
+        .map((week: any) => ({
+          weekNumber: Number(week.weekNumber),
+          days: Array.isArray(week.days)
+            ? week.days
+                .filter(isValidDayData)
+                .map((day: any) => ({
+                  dayNumber: Number(day.dayNumber),
+                  hours: Number(day.hours),
+                  foreman: typeof day.foreman === 'string' ? day.foreman : '',
+                  employees: Array.isArray(day.employees)
+                    ? day.employees.filter((employeeId: unknown): employeeId is string => typeof employeeId === 'string' && employeeId.length > 0)
+                    : [],
+                }))
+            : [],
+        }))
+    : [];
+
+  return {
+    jobKey: typeof value.jobKey === 'string' ? value.jobKey : '',
+    customer: typeof value.customer === 'string' ? value.customer : '',
+    projectNumber: typeof value.projectNumber === 'string' ? value.projectNumber : '',
+    projectName: typeof value.projectName === 'string' ? value.projectName : '',
+    month,
+    weeks,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : undefined,
+  };
+}
+
+async function getStoredScheduleData(jobKey: string): Promise<Record<string, StoredScheduleDoc>> {
+  const rows = await prisma.$queryRaw<Array<{ scheduleData: unknown }>>`
+    SELECT "scheduleData"
+    FROM "Schedule"
+    WHERE "jobKey" = ${jobKey}
+    LIMIT 1
+  `;
+
+  const raw = rows[0]?.scheduleData;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+  const result: Record<string, StoredScheduleDoc> = {};
+  for (const [month, doc] of Object.entries(raw as Record<string, unknown>)) {
+    const normalized = normalizeScheduleDoc(doc);
+    if (normalized) result[month] = normalized;
+  }
+  return result;
+}
+
+async function setStoredScheduleMonth(jobKey: string, doc: StoredScheduleDoc) {
+  const existing = await getStoredScheduleData(jobKey);
+  existing[doc.month] = { ...doc, updatedAt: new Date().toISOString() };
+  await prisma.$executeRaw`
+    UPDATE "Schedule"
+    SET "scheduleData" = ${JSON.stringify(existing)}::jsonb
+    WHERE "jobKey" = ${jobKey}
+  `;
+}
+
 export async function GET(request: NextRequest) {
   try {
     await ensureProjectScopeColumns();
+    await ensureScheduleDataColumn();
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get('action');
+    const jobKey = searchParams.get('jobKey');
+    const month = searchParams.get('month');
+
+    if (!action && jobKey) {
+      const stored = await getStoredScheduleData(jobKey);
+      if (month) {
+        const monthDoc = stored[month];
+        if (!monthDoc) {
+          return NextResponse.json({ success: false, error: 'Schedule not found' }, { status: 404 });
+        }
+        return NextResponse.json(monthDoc);
+      }
+
+      const currentMonth = toDateKey(new Date()).slice(0, 7);
+      const fallbackDoc = stored[currentMonth] || Object.values(stored).sort((a, b) => b.month.localeCompare(a.month))[0];
+      if (!fallbackDoc) {
+        return NextResponse.json({ success: false, error: 'Schedule not found' }, { status: 404 });
+      }
+
+      return NextResponse.json(fallbackDoc);
+    }
 
     if (action === 'employees') {
       // GET employees
@@ -289,7 +409,43 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureScheduleDataColumn();
     const body = await request.json();
+
+    if (body?.scheduleData && body?.jobKey) {
+      const scheduleData = normalizeScheduleDoc(body.scheduleData);
+      if (!scheduleData) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid scheduleData payload' },
+          { status: 400 }
+        );
+      }
+
+      const schedule = await prisma.schedule.upsert({
+        where: { jobKey: body.jobKey },
+        create: {
+          jobKey: body.jobKey,
+          customer: scheduleData.customer || null,
+          projectNumber: scheduleData.projectNumber || null,
+          projectName: scheduleData.projectName || null,
+          status: 'In Progress',
+        },
+        update: {
+          customer: scheduleData.customer || undefined,
+          projectNumber: scheduleData.projectNumber || undefined,
+          projectName: scheduleData.projectName || undefined,
+        },
+      });
+
+      await setStoredScheduleMonth(schedule.jobKey, scheduleData);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Short-term schedule document saved successfully',
+        data: scheduleData,
+      });
+    }
+
     const {
       jobKey,
       customer,

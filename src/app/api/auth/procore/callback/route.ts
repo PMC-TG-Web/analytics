@@ -6,7 +6,6 @@ import { cookies } from "next/headers";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const state = searchParams.get("state");
   const error = searchParams.get("error");
 
   // Check for errors from Procore

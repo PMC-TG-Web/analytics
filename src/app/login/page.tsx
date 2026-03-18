@@ -123,13 +123,8 @@ function LoginContent() {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (framed) {
-      const framedReturnTo = "/auth/complete?source=procore";
-      const framedLoginUrl = `/api/auth/login?returnTo=${encodeURIComponent(framedReturnTo)}`;
-      const authTab = window.open(framedLoginUrl, "analytics_auth_tab");
-      setStatus("Sign-in opened in a new tab. Complete login there and this app will continue automatically.");
-      // Some browsers return a null handle for newly opened tabs even when the tab opens.
-      // Start polling regardless so the embedded app can resume after authentication.
-      startAuthPolling(authTab || null);
+      setStatus("Redirecting to sign-in inside the embedded app...");
+      window.location.assign(loginUrl);
       return;
     }
 
@@ -163,7 +158,7 @@ function LoginContent() {
             <p className="text-blue-700 text-sm">{status}</p>
             {framed && (
               <p className="text-blue-600 text-xs mt-2">
-                You are in an embedded Procore frame, so login opens in the top window.
+                You are in an embedded Procore frame, so sign-in continues inside this embedded window.
               </p>
             )}
           </div>

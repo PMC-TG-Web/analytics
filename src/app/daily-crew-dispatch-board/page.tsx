@@ -658,6 +658,45 @@ function DailyCrewDispatchBoardContent() {
     });
   }
 
+  async function persistForemanCrewTemplate(foremanId: string, crewMemberIds: string[]) {
+    const foreman = foremen.find((f) => f.id === foremanId);
+    if (!foreman) return;
+
+    const templateName = `Crew - ${foreman.firstName} ${foreman.lastName}`;
+
+    // Keep existing right-hand-man assignment if one exists.
+    let existingRightHandManId: string | null = null;
+    try {
+      const templatesRes = await fetch('/api/crew-templates');
+      if (templatesRes.ok) {
+        const templatesJson = await templatesRes.json();
+        const templates = Array.isArray(templatesJson?.data) ? templatesJson.data : [];
+        const existing = templates.find((t: any) => t?.name === templateName);
+        existingRightHandManId = existing?.rightHandManId || null;
+      }
+    } catch (error) {
+      console.warn('[DispatchBoard] Unable to load existing crew templates before save:', error);
+    }
+
+    const payload = {
+      name: templateName,
+      foremanId,
+      crewMemberIds,
+      rightHandManId: existingRightHandManId,
+    };
+
+    const response = await fetch('/api/crew-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData?.error || 'Failed to persist crew template');
+    }
+  }
+
   async function updateCrewAssignment(dateKey: string, foremanId: string, selectedEmployeeIds: string[]) {
     const assignedToOthers: string[] = [];
     if (crewAssignments[dateKey]) {
@@ -677,6 +716,9 @@ function DailyCrewDispatchBoardContent() {
 
     setSaving(true);
     try {
+      // Persist default crew for this foreman so selections survive refresh.
+      await persistForemanCrewTemplate(foremanId, validEmployeeIds);
+
       const projects = foremanDateProjects[foremanId]?.[dateKey] || [];
       for (const project of projects) {
         const { jobKey, customer, projectNumber, projectName, month, weekNumber, dayNumber, hours, foreman } = project;
@@ -704,19 +746,19 @@ function DailyCrewDispatchBoardContent() {
             if (week.weekNumber === weekNumber) {
               weekFound = true;
               const updatedDays = (week.days || []).map((day: DayData) => {
-                if (day.dayNumber === dayNumber) return { ...day, hours, foreman: foreman || "", employees: selectedEmployeeIds };
+                if (day.dayNumber === dayNumber) return { ...day, hours, foreman: foreman || "", employees: validEmployeeIds };
                 return day;
               });
               if (!updatedDays.some((d: DayData) => d.dayNumber === dayNumber)) {
-                updatedDays.push({ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds });
+                updatedDays.push({ dayNumber, hours, foreman: foreman || "", employees: validEmployeeIds });
               }
               return { ...week, days: updatedDays };
             }
             return week;
           });
-          if (!weekFound) docData.weeks.push({ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds }] });
+          if (!weekFound) docData.weeks.push({ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: validEmployeeIds }] });
         } else {
-          docData = { jobKey, customer, projectNumber, projectName, month, weeks: [{ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: selectedEmployeeIds }] }] };
+          docData = { jobKey, customer, projectNumber, projectName, month, weeks: [{ weekNumber, days: [{ dayNumber, hours, foreman: foreman || "", employees: validEmployeeIds }] }] };
         }
         docData.updatedAt = new Date().toISOString();
         

@@ -65,6 +65,8 @@ model ProjectScope {
   hours       Float? // Total hours
   description String? @db.Text
   tasks       Json? // Array of task strings
+  schedulingMode String @default("contiguous") // contiguous | specific-days
+  selectedDays Json? // Array<{ date: string, hours: number, foreman?: string | null }>
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

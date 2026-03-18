@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
+import { ProjectInfo, Scope } from "@/types";
 
 type ProjectRow = {
   id: string;
@@ -25,6 +27,7 @@ type ScopeRow = {
   totalHours: number;
   crewSize: number | null;
   notes: string | null;
+  tasks?: string[];
   scheduledHours: number;
   remainingHours: number;
 };
@@ -53,311 +56,6 @@ const asDate = (value: string | null) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
-
-function ScopeModal({
-  project,
-  selectedScopeId,
-  onClose,
-  onSaved,
-}: {
-  project: ProjectRow;
-  selectedScopeId?: string | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [scopes, setScopes] = useState<ScopeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [diagnostics, setDiagnostics] = useState<SchedulingDiagnostics | null>(null);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    id: "",
-    title: "",
-    startDate: "",
-    endDate: "",
-    totalHours: "",
-    crewSize: "",
-    notes: "",
-  });
-
-  const loadScopes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/gantt-v2/projects/${project.id}/scopes`);
-      const json = await res.json();
-      setScopes(json?.data || []);
-      console.log(`[SCOPE] Loaded ${json?.data?.length || 0} scopes for project ${project.projectName}`);
-
-      // Automatically sync active schedule hours to scopes.
-      // Project-level sync can resolve matches by project metadata even when projectNumber is blank.
-      console.log(`[SCOPE] Starting sync with projectId=${project.id}, projectNumber=${project.projectNumber || '<blank>'}`);
-      try {
-        const syncRes = await fetch("/api/gantt-v2/sync-schedule", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            projectNumber: project.projectNumber,
-          }),
-        });
-
-        const syncData = await syncRes.json();
-        console.log(`[SCOPE] Sync response:`, syncData);
-        
-        // Reload scopes to show updated scheduled hours
-        const reloadRes = await fetch(`/api/gantt-v2/projects/${project.id}/scopes`);
-        const reloadJson = await reloadRes.json();
-        setScopes(reloadJson?.data || []);
-        console.log(`[SCOPE] Reloaded scopes after sync:`, reloadJson?.data);
-      } catch (syncError) {
-        console.warn("[SCOPE] Failed to sync active schedule:", syncError);
-        // Continue with unsynced data
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [project.id]);
-
-  const jobKey = useMemo(
-    () => `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`,
-    [project.customer, project.projectName, project.projectNumber]
-  );
-
-  const loadDiagnostics = useCallback(async () => {
-    if (!jobKey.trim()) {
-      setDiagnostics(null);
-      setDiagnosticsError("Missing job key context for diagnostics.");
-      return;
-    }
-
-    setDiagnosticsLoading(true);
-    setDiagnosticsError(null);
-
-    try {
-      const params = new URLSearchParams({ jobKey });
-      const res = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
-      const json = await res.json();
-
-      if (!res.ok || !json?.success) {
-        setDiagnostics(null);
-        setDiagnosticsError(json?.error || "Failed to load diagnostics.");
-        return;
-      }
-
-      setDiagnostics((json?.data || null) as SchedulingDiagnostics | null);
-    } catch (error) {
-      setDiagnostics(null);
-      setDiagnosticsError(error instanceof Error ? error.message : "Failed to load diagnostics.");
-    } finally {
-      setDiagnosticsLoading(false);
-    }
-  }, [jobKey]);
-
-  useEffect(() => {
-    loadScopes();
-  }, [loadScopes]);
-
-  useEffect(() => {
-    loadDiagnostics();
-  }, [loadDiagnostics]);
-
-  const resetForm = () => {
-    setForm({ id: "", title: "", startDate: "", endDate: "", totalHours: "", crewSize: "", notes: "" });
-  };
-
-  const editScope = (scope: ScopeRow) => {
-    setForm({
-      id: scope.id,
-      title: scope.title,
-      startDate: scope.startDate || "",
-      endDate: scope.endDate || "",
-      totalHours: String(scope.totalHours || ""),
-      crewSize: scope.crewSize === null ? "" : String(scope.crewSize),
-      notes: scope.notes || "",
-    });
-  };
-
-  useEffect(() => {
-    if (!selectedScopeId || scopes.length === 0) return;
-    const selectedScope = scopes.find((scope) => scope.id === selectedScopeId);
-    if (selectedScope) {
-      editScope(selectedScope);
-    }
-  }, [selectedScopeId, scopes]);
-
-  const saveScope = async () => {
-    if (!form.title.trim()) return;
-    setSaving(true);
-    try {
-      const payload = {
-        title: form.title.trim(),
-        startDate: form.startDate || null,
-        endDate: form.endDate || null,
-        totalHours: Number(form.totalHours || 0),
-        crewSize: form.crewSize === "" ? null : Number(form.crewSize),
-        notes: form.notes || null,
-      };
-
-      if (form.id) {
-        await fetch(`/api/gantt-v2/scopes/${form.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        await fetch(`/api/gantt-v2/projects/${project.id}/scopes`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      await loadScopes();
-      await loadDiagnostics();
-      onSaved();
-      resetForm();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteScope = async (scopeId: string) => {
-    await fetch(`/api/gantt-v2/scopes/${scopeId}`, { method: "DELETE" });
-    await loadScopes();
-    await loadDiagnostics();
-    onSaved();
-    if (form.id === scopeId) resetForm();
-  };
-
-  const selectedScopeDiagnostics = useMemo(() => {
-    if (!diagnostics?.active?.byScope) return null;
-    const key = (form.title || "").trim();
-    if (!key) return null;
-    return diagnostics.active.byScope[key] || null;
-  }, [diagnostics, form.title]);
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
-      <div className="w-full max-w-4xl bg-white rounded-xl shadow-xl border border-gray-200 p-5 max-h-[90vh] overflow-auto">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{project.projectName}</h2>
-            <p className="text-sm text-gray-500">Scopes</p>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">Close</button>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-3 mb-4 bg-gray-50">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-gray-800">Scheduling Diagnostics</h3>
-            {diagnosticsLoading && <span className="text-xs text-gray-500">Refreshing...</span>}
-          </div>
-          {diagnosticsError ? (
-            <div className="text-xs text-red-600">{diagnosticsError}</div>
-          ) : diagnostics ? (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-gray-700">
-                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
-                  <div className="text-gray-500">Scope Planned</div>
-                  <div className="font-semibold">{diagnostics.totals.scopePlannedHours.toFixed(1)}h</div>
-                </div>
-                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
-                  <div className="text-gray-500">Scheduled</div>
-                  <div className="font-semibold">{diagnostics.totals.scheduledHours.toFixed(1)}h</div>
-                </div>
-                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
-                  <div className="text-gray-500">Remaining</div>
-                  <div className="font-semibold">{diagnostics.totals.remainingScopeHours.toFixed(1)}h</div>
-                </div>
-                <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
-                  <div className="text-gray-500">Drift vs Scope Plan</div>
-                  <div className={`font-semibold ${diagnostics.totals.driftVsScopePlanHours > 0 ? "text-red-600" : "text-gray-900"}`}>
-                    {diagnostics.totals.driftVsScopePlanHours.toFixed(1)}h
-                  </div>
-                </div>
-              </div>
-
-              {selectedScopeDiagnostics && (
-                <div className="mt-2 text-[11px] text-gray-700">
-                  Scope "{form.title}": planned {selectedScopeDiagnostics.plannedHours.toFixed(1)}h, scheduled {selectedScopeDiagnostics.scheduledHours.toFixed(1)}h, drift {selectedScopeDiagnostics.driftHours.toFixed(1)}h
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="text-xs text-gray-500">No diagnostics data available.</div>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="border border-gray-200 rounded-lg p-3">
-            <h3 className="text-sm font-semibold mb-3 text-gray-800">Scope List</h3>
-            {loading ? (
-              <div className="text-sm text-gray-500">Loading...</div>
-            ) : scopes.length === 0 ? (
-              <div className="text-sm text-gray-500">No scopes yet.</div>
-            ) : (
-              <div className="space-y-2">
-                {scopes.map((scope) => {
-                  const pct = scope.totalHours > 0 ? Math.round((scope.scheduledHours / scope.totalHours) * 100) : 0;
-                  return (
-                    <div key={scope.id} className="border border-gray-200 rounded-md p-2">
-                      <div className="flex justify-between items-center gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">{scope.title}</div>
-                          <div className="text-xs text-gray-500">
-                            {scope.startDate || "No start"} - {scope.endDate || "No end"}
-                          </div>
-                        </div>
-                        <div className="text-xs font-bold text-orange-700">{pct}%</div>
-                      </div>
-                      <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-orange-500" style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }} />
-                      </div>
-                      <div className="mt-1 grid grid-cols-3 text-[11px] text-gray-600">
-                        <span>Total {scope.totalHours.toFixed(1)}</span>
-                        <span>Sch {scope.scheduledHours.toFixed(1)}</span>
-                        <span>Rem {scope.remainingHours.toFixed(1)}</span>
-                      </div>
-                      <div className="mt-2 flex gap-2">
-                        <button onClick={() => editScope(scope)} className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50">Edit</button>
-                        <button onClick={() => deleteScope(scope.id)} className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50">Delete</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="border border-gray-200 rounded-lg p-3">
-            <h3 className="text-sm font-semibold mb-3 text-gray-800">{form.id ? "Edit Scope" : "New Scope"}</h3>
-            <div className="space-y-2">
-              <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Scope title" className="w-full border rounded px-3 py-2 text-sm" />
-              <div className="grid grid-cols-2 gap-2">
-                <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
-                <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input type="number" value={form.totalHours} onChange={(e) => setForm((p) => ({ ...p, totalHours: e.target.value }))} placeholder="Total hours" className="w-full border rounded px-3 py-2 text-sm" />
-                <input type="number" value={form.crewSize} onChange={(e) => setForm((p) => ({ ...p, crewSize: e.target.value }))} placeholder="Crew size" className="w-full border rounded px-3 py-2 text-sm" />
-              </div>
-              <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Notes" className="w-full border rounded px-3 py-2 text-sm" rows={4} />
-              <div className="flex gap-2">
-                <button disabled={saving} onClick={saveScope} className="px-3 py-2 text-sm rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60">
-                  {saving ? "Saving..." : form.id ? "Update Scope" : "Create Scope"}
-                </button>
-                {form.id && (
-                  <button onClick={resetForm} className="px-3 py-2 text-sm rounded border border-gray-300 hover:bg-gray-50">Cancel Edit</button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function ProjectSchedulePage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -569,6 +267,34 @@ export default function ProjectSchedulePage() {
 
   const timelineStart = timeline[0];
   const timelineEnd = timeline[timeline.length - 1];
+
+  const selectedProjectInfo = useMemo<ProjectInfo | null>(() => {
+    if (!selectedProject) return null;
+    return {
+      jobKey: `${selectedProject.customer || ""}~${selectedProject.projectNumber || ""}~${selectedProject.projectName || ""}`,
+      customer: selectedProject.customer || "",
+      projectNumber: selectedProject.projectNumber || "",
+      projectName: selectedProject.projectName || "",
+      projectDocId: selectedProject.id,
+    };
+  }, [selectedProject]);
+
+  const selectedProjectScopes = useMemo<Scope[]>(() => {
+    if (!selectedProject?.scopes) return [];
+    return selectedProject.scopes.map((scope) => ({
+      id: scope.id,
+      jobKey: `${selectedProject.customer || ""}~${selectedProject.projectNumber || ""}~${selectedProject.projectName || ""}`,
+      title: scope.title,
+      startDate: scope.startDate || "",
+      endDate: scope.endDate || "",
+      manpower: scope.crewSize ?? undefined,
+      description: scope.notes || "",
+      tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
+      hours: Number(scope.totalHours || 0),
+      schedulingMode: "contiguous",
+      selectedDays: [],
+    }));
+  }, [selectedProject]);
 
   return (
     <main className="min-h-screen bg-neutral-100 p-3 md:p-4 font-sans text-slate-900">
@@ -903,15 +629,18 @@ export default function ProjectSchedulePage() {
         </div>
       </div>
 
-      {selectedProject && (
-        <ScopeModal
-          project={selectedProject}
+      {selectedProject && selectedProjectInfo && (
+        <ProjectScopesModal
+          project={selectedProjectInfo}
+          scopes={selectedProjectScopes}
           selectedScopeId={selectedScopeId}
           onClose={() => {
             setSelectedProject(null);
             setSelectedScopeId(null);
           }}
-          onSaved={loadProjects}
+          onScopesUpdated={() => {
+            loadProjects();
+          }}
         />
       )}
     </main>

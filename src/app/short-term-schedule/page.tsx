@@ -840,10 +840,21 @@ function ShortTermScheduleContent() {
         jobKey: s.jobKey,
         title: s.title || s.scopeOfWork || 'Scope',
         hours: s.hours,
-        manpower: 0,
+        manpower: Number.isFinite(Number(s.manpower)) ? Number(s.manpower) : 0,
         startDate: s.startDate || '',
         endDate: s.endDate || '',
-        description: ''
+        description: s.description || '',
+        tasks: Array.isArray(s.tasks) ? s.tasks : [],
+        schedulingMode: s.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
+        selectedDays: Array.isArray(s.selectedDays)
+          ? s.selectedDays
+              .map((entry: any) => ({
+                date: String(entry?.date || '').trim(),
+                hours: Number(entry?.hours || 0),
+                foreman: entry?.foreman ? String(entry.foreman) : null,
+              }))
+              .filter((entry: any) => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0)
+          : []
       }));
 
       // Normalize time off requests for date range calculations

@@ -127,7 +127,12 @@ export async function GET(request: NextRequest) {
           title: true,
           startDate: true,
           endDate: true,
+          manpower: true,
           hours: true,
+          description: true,
+          tasks: true,
+          schedulingMode: true,
+          selectedDays: true,
         },
       });
 
@@ -230,7 +235,12 @@ export async function GET(request: NextRequest) {
           title: true,
           startDate: true,
           endDate: true,
+          manpower: true,
           hours: true,
+          description: true,
+          tasks: true,
+          schedulingMode: true,
+          selectedDays: true,
         },
       }),
       prisma.project.findMany({

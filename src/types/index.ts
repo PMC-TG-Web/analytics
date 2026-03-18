@@ -29,6 +29,12 @@ export interface Scope {
   manpower?: number;
   description?: string;
   tasks?: string[];
+  schedulingMode?: "contiguous" | "specific-days";
+  selectedDays?: Array<{
+    date: string;
+    hours: number;
+    foreman?: string | null;
+  }>;
   sales?: number;
   cost?: number;
   hours?: number;

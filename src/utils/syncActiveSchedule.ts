@@ -259,16 +259,109 @@ export async function syncProjectScopeToActiveSchedule(
       return result;
     }
 
-    if (!scope.startDate || !scope.endDate) {
-      // No dates set, remove any existing activeSchedule entries for this scope
-      await prisma.activeSchedule.deleteMany({
+    const schedulingMode = ((scope as any).schedulingMode || 'contiguous') === 'specific-days'
+      ? 'specific-days'
+      : 'contiguous';
+    const rawSelectedDays = Array.isArray((scope as any).selectedDays)
+      ? ((scope as any).selectedDays as Array<any>)
+      : [];
+
+    const selectedDays = rawSelectedDays
+      .map((entry) => ({
+        date: String(entry?.date || '').trim(),
+        hours: Number(entry?.hours || 0),
+        foreman: entry?.foreman ? String(entry.foreman) : null,
+      }))
+      .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0);
+
+    if (schedulingMode === 'specific-days') {
+      const paidHolidays = await prisma.holiday.findMany({
+        where: {
+          isPaid: true,
+          date: { in: selectedDays.map((entry) => entry.date) },
+        },
+        select: { date: true },
+      });
+      const paidHolidaySet = new Set(paidHolidays.map((h) => h.date));
+
+      const existingAssignments = await prisma.activeSchedule.findMany({
         where: {
           jobKey: scope.jobKey,
           scopeOfWork: scope.title,
-          source: 'gantt',
+        },
+        select: {
+          date: true,
+          foreman: true,
         },
       });
-      result.deleted++;
+
+      const foremanByDate = new Map(
+        existingAssignments
+          .filter((entry) => Boolean(entry.foreman))
+          .map((entry) => [entry.date, entry.foreman as string])
+      );
+      const defaultForeman =
+        existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
+
+      const deleteResult = await prisma.activeSchedule.deleteMany({
+        where: {
+          jobKey: scope.jobKey,
+          scopeOfWork: scope.title,
+        },
+      });
+      result.deleted += deleteResult.count;
+
+      for (const entry of selectedDays) {
+        const [year, month, day] = entry.date.split('-').map(Number);
+        const weekday = new Date(year, month - 1, day).getDay();
+        if (weekday === 0 || weekday === 6) {
+          result.errors.push(`Skipped weekend selected day: ${entry.date}`);
+          continue;
+        }
+        if (paidHolidaySet.has(entry.date)) {
+          result.errors.push(`Skipped paid holiday selected day: ${entry.date}`);
+          continue;
+        }
+
+        await prisma.activeSchedule.upsert({
+          where: {
+            jobKey_scopeOfWork_date: {
+              jobKey: scope.jobKey,
+              scopeOfWork: scope.title,
+              date: entry.date,
+            },
+          },
+          create: {
+            jobKey: scope.jobKey,
+            scopeOfWork: scope.title,
+            date: entry.date,
+            hours: entry.hours,
+            manpower: scope.manpower && scope.manpower > 0 ? Math.round(scope.manpower) : null,
+            foreman: entry.foreman ?? foremanByDate.get(entry.date) ?? defaultForeman,
+            source: 'gantt',
+          },
+          update: {
+            hours: entry.hours,
+            manpower: scope.manpower && scope.manpower > 0 ? Math.round(scope.manpower) : null,
+            foreman: entry.foreman ?? foremanByDate.get(entry.date) ?? defaultForeman,
+            source: 'gantt',
+          },
+        });
+        result.created++;
+      }
+
+      return result;
+    }
+
+    if (!scope.startDate || !scope.endDate) {
+      // No dates set, remove any existing activeSchedule entries for this scope
+      const deleteResult = await prisma.activeSchedule.deleteMany({
+        where: {
+          jobKey: scope.jobKey,
+          scopeOfWork: scope.title,
+        },
+      });
+      result.deleted += deleteResult.count;
       return result;
     }
 
@@ -307,7 +400,6 @@ export async function syncProjectScopeToActiveSchedule(
       where: {
         jobKey: scope.jobKey,
         scopeOfWork: scope.title,
-        source: 'gantt',
       },
       select: {
         date: true,
@@ -328,7 +420,6 @@ export async function syncProjectScopeToActiveSchedule(
       where: {
         jobKey: scope.jobKey,
         scopeOfWork: scope.title,
-        source: 'gantt',
       },
     });
 

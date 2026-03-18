@@ -4,6 +4,75 @@ import { syncProjectScopeToActiveSchedule, deleteProjectScopeFromActiveSchedule 
 
 export const dynamic = 'force-dynamic';
 
+type SelectedDayEntry = {
+  date: string;
+  hours: number;
+  foreman: string | null;
+};
+
+const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function toSelectedDayEntries(value: unknown): SelectedDayEntry[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value)) return null;
+
+  return value
+    .map((row: any) => ({
+      date: String(row?.date || '').trim(),
+      hours: Number(row?.hours || 0),
+      foreman: row?.foreman ? String(row.foreman) : null,
+    }))
+    .filter((row) => DATE_KEY_REGEX.test(row.date) && Number.isFinite(row.hours) && row.hours > 0);
+}
+
+function getDateKeyWeekday(dateKey: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+async function validateSpecificDays(entries: SelectedDayEntry[] | null, schedulingMode: 'contiguous' | 'specific-days') {
+  if (schedulingMode !== 'specific-days') return { valid: true as const };
+
+  const selected = Array.isArray(entries) ? entries : [];
+  if (selected.length === 0) {
+    return { valid: false as const, error: 'specific-days mode requires at least one selected day' };
+  }
+
+  const seen = new Set<string>();
+  for (const entry of selected) {
+    if (!DATE_KEY_REGEX.test(entry.date)) {
+      return { valid: false as const, error: `Invalid selected day format: ${entry.date}` };
+    }
+    if (seen.has(entry.date)) {
+      return { valid: false as const, error: `Duplicate selected day: ${entry.date}` };
+    }
+    seen.add(entry.date);
+
+    const day = getDateKeyWeekday(entry.date);
+    if (day === 0 || day === 6) {
+      return { valid: false as const, error: `Selected day is on a weekend: ${entry.date}` };
+    }
+  }
+
+  const paidHolidays = await prisma.holiday.findMany({
+    where: {
+      isPaid: true,
+      date: { in: selected.map((entry) => entry.date) },
+    },
+    select: { date: true },
+  });
+
+  if (paidHolidays.length > 0) {
+    return {
+      valid: false as const,
+      error: `Selected day is a paid holiday: ${paidHolidays[0].date}`,
+    };
+  }
+
+  return { valid: true as const };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -50,6 +119,8 @@ export async function GET(request: NextRequest) {
           hours: true,
           description: true,
           tasks: true,
+          schedulingMode: true,
+          selectedDays: true,
         },
       }),
     ]);
@@ -78,11 +149,36 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobKey, title, startDate, endDate, manpower, hours, description, tasks, syncToActiveSchedule } = body;
+    const {
+      jobKey,
+      title,
+      startDate,
+      endDate,
+      manpower,
+      hours,
+      description,
+      tasks,
+      schedulingMode,
+      selectedDays,
+      syncToActiveSchedule,
+    } = body;
+
+    const normalizedSchedulingMode =
+      schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous';
+
+    const normalizedSelectedDays = toSelectedDayEntries(selectedDays) ?? null;
 
     if (!jobKey || !title) {
       return NextResponse.json(
         { success: false, error: 'jobKey and title are required' },
+        { status: 400 }
+      );
+    }
+
+    const specificDaysValidation = await validateSpecificDays(normalizedSelectedDays, normalizedSchedulingMode);
+    if (!specificDaysValidation.valid) {
+      return NextResponse.json(
+        { success: false, error: specificDaysValidation.error },
         { status: 400 }
       );
     }
@@ -97,6 +193,8 @@ export async function POST(request: NextRequest) {
         hours: hours && hours > 0 ? hours : null,
         description: description || null,
         tasks: tasks || null,
+        schedulingMode: normalizedSchedulingMode,
+        selectedDays: normalizedSelectedDays,
       },
     });
 
@@ -127,11 +225,54 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, title, startDate, endDate, manpower, hours, description, tasks, syncToActiveSchedule } = body;
+    const {
+      id,
+      title,
+      startDate,
+      endDate,
+      manpower,
+      hours,
+      description,
+      tasks,
+      schedulingMode,
+      selectedDays,
+      syncToActiveSchedule,
+    } = body;
+
+    const normalizedSchedulingMode =
+      schedulingMode === undefined
+        ? undefined
+        : (schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous');
+
+    const normalizedSelectedDays =
+      selectedDays === undefined
+        ? undefined
+        : (toSelectedDayEntries(selectedDays) ?? null);
 
     if (!id) {
       return NextResponse.json(
         { success: false, error: 'id is required' },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.projectScope.findUnique({
+      where: { id },
+      select: {
+        schedulingMode: true,
+        selectedDays: true,
+      },
+    });
+
+    const effectiveSchedulingMode = normalizedSchedulingMode ?? (existing?.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous');
+    const effectiveSelectedDays = normalizedSelectedDays === undefined
+      ? (Array.isArray(existing?.selectedDays) ? (existing?.selectedDays as SelectedDayEntry[]) : null)
+      : normalizedSelectedDays;
+
+    const specificDaysValidation = await validateSpecificDays(effectiveSelectedDays, effectiveSchedulingMode);
+    if (!specificDaysValidation.valid) {
+      return NextResponse.json(
+        { success: false, error: specificDaysValidation.error },
         { status: 400 }
       );
     }
@@ -146,6 +287,8 @@ export async function PUT(request: NextRequest) {
         ...(hours !== undefined && { hours: hours && hours > 0 ? hours : null }),
         ...(description !== undefined && { description: description || null }),
         ...(tasks !== undefined && { tasks: tasks || null }),
+        ...(normalizedSchedulingMode !== undefined && { schedulingMode: normalizedSchedulingMode }),
+        ...(normalizedSelectedDays !== undefined && { selectedDays: normalizedSelectedDays }),
       },
     });
 

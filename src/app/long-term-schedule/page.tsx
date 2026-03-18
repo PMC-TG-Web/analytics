@@ -1,6 +1,8 @@
-﻿"use client";
+"use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
+import { type ProjectInfo, type Scope } from "@/types";
 
 interface WeekColumn {
   weekStartDate: Date;
@@ -151,7 +153,13 @@ export default function LongTermSchedulePage() {
   const [weekColumns, setWeekColumns] = useState<WeekColumn[]>([]);
   const [foremanRows, setForemanRows] = useState<ForemanRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [draggedProject, setDraggedProject] = useState<{ jobKey: string; scopeOfWork: string } | null>(null);
+  const [draggedProject, setDraggedProject] = useState<{
+    jobKey: string;
+    scopeOfWork: string;
+    sourceDateKey?: string;
+    sourceForemanId?: string;
+    hours?: number;
+  } | null>(null);
 
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [paidHolidayByDate, setPaidHolidayByDate] = useState<Record<string, Holiday>>({});
@@ -164,6 +172,12 @@ export default function LongTermSchedulePage() {
   const [collapsedPMGroups, setCollapsedPMGroups] = useState<Set<string>>(new Set());
   const [dispatchCapacityStaff, setDispatchCapacityStaff] = useState<Employee[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+
+  // Scope modal state
+  const [selectedModalProject, setSelectedModalProject] = useState<ProjectInfo | null>(null);
+  const [selectedModalScopeTitle, setSelectedModalScopeTitle] = useState<string | null>(null);
+  const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
+  const [jobKeyToProjectDocId, setJobKeyToProjectDocId] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadSchedules();
@@ -208,7 +222,7 @@ export default function LongTermSchedulePage() {
 
       const employees: Employee[] = employeesJson?.data || [];
       const activeSchedules: ActiveScheduleEntry[] = scheduleJson?.data || [];
-      const projects: Array<{ customer?: string; projectNumber?: string; projectName?: string; projectManager?: string }> =
+      const projects: Array<{ id?: string; customer?: string; projectNumber?: string; projectName?: string; projectManager?: string }> =
         projectsJson?.data || [];
       const pmAssignments: PMAssignment[] = pmAssignmentsJson?.data || [];
 
@@ -237,6 +251,13 @@ export default function LongTermSchedulePage() {
         }
       });
       setJobKeyToProjectPM(projectPMMap);
+
+      const docIdMap: Record<string, string> = {};
+      projects.forEach((project) => {
+        const jobKey = `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`;
+        if (project.id) docIdMap[jobKey] = project.id;
+      });
+      setJobKeyToProjectDocId(docIdMap);
 
       const pmEmployeeList = employees.filter((emp) => emp.isActive && PM_TITLES.includes(emp.jobTitle));
       setPmEmployees(pmEmployeeList);
@@ -442,18 +463,70 @@ export default function LongTermSchedulePage() {
     return pm ? `${pm.firstName} ${pm.lastName}`.trim() : "Unknown PM";
   }, [pmEmployees]);
 
-  function handleDragStart(jobKey: string, scopeOfWork: string) {
-    setDraggedProject({ jobKey, scopeOfWork });
+  function handleDragStart(
+    e: React.DragEvent,
+    jobKey: string,
+    scopeOfWork: string,
+    sourceDateKey?: string,
+    sourceForemanId?: string,
+    hours?: number
+  ) {
+    // Ensure drag/drop consistently works across browsers.
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `${jobKey}|${scopeOfWork}`);
+
+    setDraggedProject({ jobKey, scopeOfWork, sourceDateKey, sourceForemanId, hours });
   }
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
   }
 
-  function handleDrop(e: React.DragEvent, targetForemanId: string) {
+  async function handleDrop(e: React.DragEvent, targetForemanId: string, targetDateKey?: string) {
     e.preventDefault();
-    if (draggedProject) {
-      assignProjectToForeman(draggedProject.jobKey, draggedProject.scopeOfWork, targetForemanId);
+    if (!draggedProject) return;
+
+    const sourceDateKey = draggedProject.sourceDateKey || null;
+    const resolvedTargetDateKey = targetDateKey || sourceDateKey;
+    const normalizedSourceForemanId = draggedProject.sourceForemanId === "__unassigned__" ? null : (draggedProject.sourceForemanId || null);
+    const normalizedTargetForemanId = targetForemanId === "__unassigned__" ? null : targetForemanId;
+
+    try {
+      if (sourceDateKey && resolvedTargetDateKey) {
+        if (sourceDateKey === resolvedTargetDateKey && normalizedSourceForemanId === normalizedTargetForemanId) {
+          return;
+        }
+
+        const response = await fetch('/api/short-term-schedule/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobKey: draggedProject.jobKey,
+            scopeOfWork: draggedProject.scopeOfWork,
+            sourceDateKey,
+            sourceForemanId: normalizedSourceForemanId,
+            targetDateKey: resolvedTargetDateKey,
+            targetForemanId: normalizedTargetForemanId,
+            hours: Number.isFinite(Number(draggedProject.hours)) ? Number(draggedProject.hours) : 10,
+          }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.error || 'Failed to move project assignment');
+        }
+
+        await loadSchedules();
+        return;
+      }
+
+      // Week-level cards are summary rows without a concrete date.
+      // Fall back to foreman reassignment behavior for those drops.
+      await assignProjectToForeman(draggedProject.jobKey, draggedProject.scopeOfWork, targetForemanId);
+    } catch (error) {
+      console.error('Error moving long-term schedule project:', error);
+      alert(error instanceof Error ? error.message : 'Failed to move project');
+    } finally {
       setDraggedProject(null);
     }
   }
@@ -606,25 +679,59 @@ export default function LongTermSchedulePage() {
     [foremanRows]
   );
 
+  function openScopeModal(jobKey: string, scopeTitle?: string) {
+    const parts = jobKey.split("~");
+    setSelectedModalScopeTitle((scopeTitle || "").trim() || null);
+    setSelectedModalProject({
+      jobKey,
+      customer: parts[0] || "",
+      projectNumber: parts[1] || "",
+      projectName: parts[2] || "",
+      projectDocId: jobKeyToProjectDocId[jobKey] || "",
+    });
+  }
+
   function renderProjects(
     projects: Array<{ jobKey: string; scopeOfWork: string; hours: number }>,
-    isCompact = false
+    isCompact = false,
+    dragContext?: { sourceDateKey?: string; sourceForemanId?: string }
   ) {
     return projects.map((proj, idx) => {
       const assignmentKey = getAssignmentKey(proj.jobKey, proj.scopeOfWork);
       const resolvedPmId = getResolvedPMId(assignmentKey, proj.jobKey);
       const defaultPMName = jobKeyToProjectPM[proj.jobKey] || "Project Default";
+      const canDrag = Boolean(dragContext?.sourceDateKey);
 
       return (
         <div
           key={`${proj.jobKey}-${proj.scopeOfWork}-${idx}`}
-          className={`text-[10px] text-left text-gray-700 mt-1.5 ${isCompact ? "p-1.5" : "px-2 py-1.5"} cursor-move bg-white rounded border border-gray-300 hover:border-orange-500 hover:bg-orange-50 transition-colors`}
-          draggable
-          onDragStart={() => handleDragStart(proj.jobKey, proj.scopeOfWork)}
+          className={`text-[10px] text-left text-gray-700 mt-1.5 ${isCompact ? "p-1.5" : "px-2 py-1.5"} ${canDrag ? "cursor-move" : "cursor-default"} bg-white rounded border border-gray-300 hover:border-orange-500 hover:bg-orange-50 transition-colors`}
+          draggable={canDrag}
+          onDragStart={(e) =>
+            handleDragStart(
+              e,
+              proj.jobKey,
+              proj.scopeOfWork,
+              dragContext?.sourceDateKey,
+              dragContext?.sourceForemanId,
+              proj.hours
+            )
+          }
         >
           <div className="font-black text-gray-900 truncate">{proj.scopeOfWork}</div>
           <div className="text-gray-500 truncate">{proj.jobKey.split("~")[2] || proj.jobKey}</div>
           <div className="mt-1.5 flex items-center gap-1">
+            <button
+              type="button"
+              className="text-[10px] text-blue-600 font-black hover:text-blue-800 mr-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                openScopeModal(proj.jobKey, proj.scopeOfWork);
+              }}
+              title="Edit scope details"
+            >
+              Edit
+            </button>
             <button
               type="button"
               className="text-[10px] text-orange-700 font-black hover:text-orange-800"
@@ -750,7 +857,10 @@ export default function LongTermSchedulePage() {
                             >
                               <div className="text-xs text-orange-400 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
                                 Week Of
-                                <span className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}>▼</span>
+                                <span
+                                  aria-hidden="true"
+                                  className={`inline-block h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-current text-orange-300 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                                />
                               </div>
                               <div className="text-2xl italic tracking-tight text-white">{col.weekLabel}</div>
                               <div className="mt-2 w-full rounded-md border border-white/10 bg-white/5 px-2 py-1">
@@ -829,7 +939,10 @@ export default function LongTermSchedulePage() {
                               title={isCollapsed ? "Expand PM rows" : "Collapse PM rows"}
                             >
                               <span>PM: {group.pmName}</span>
-                              <span className={`text-xs text-orange-300 transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
+                              <span
+                                aria-hidden="true"
+                                className={`inline-block h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-current text-orange-300 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                              />
                             </button>
                           </td>
                           {columnDefs.map((col) => {
@@ -921,7 +1034,7 @@ export default function LongTermSchedulePage() {
                                     dayHours > 0 ? "bg-orange-50/30" : ""
                                   } ${isDayOff ? "bg-rose-50/50" : ""}`}
                                   onDragOver={isDayOff ? undefined : handleDragOver}
-                                  onDrop={isDayOff ? undefined : (e) => handleDrop(e, row.id)}
+                                  onDrop={isDayOff ? undefined : (e) => handleDrop(e, row.id, col.dateKey)}
                                 >
                                   {isDayOff && (
                                     <div className="mb-1 text-[9px] font-black uppercase tracking-widest text-rose-600">
@@ -934,7 +1047,7 @@ export default function LongTermSchedulePage() {
                                         {dayHours.toFixed(1)}
                                         <span className="text-[10px] opacity-40 ml-0.5">H</span>
                                       </div>
-                                      {renderProjects(dayAllocation.projects, true)}
+                                      {renderProjects(dayAllocation.projects, true, { sourceDateKey: col.dateKey, sourceForemanId: row.id })}
                                     </div>
                                   )}
                                 </td>
@@ -982,7 +1095,10 @@ export default function LongTermSchedulePage() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-[9px] font-black uppercase tracking-widest text-orange-300">Project Manager</div>
-                        <span className={`text-xs text-orange-300 transition-transform ${collapsedPMGroups.has(group.pmId) ? "" : "rotate-90"}`}>▶</span>
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-current text-orange-300 transition-transform ${collapsedPMGroups.has(group.pmId) ? "" : "rotate-90"}`}
+                        />
                       </div>
                       <div className="text-sm font-black uppercase italic">{group.pmName}</div>
                       <div className="text-[9px] font-bold text-orange-200 mt-1">{group.totalHours.toFixed(0)}h <span className="text-orange-400">|</span> {(group.totalHours / 50).toFixed(1)} FTE</div>
@@ -1021,7 +1137,10 @@ export default function LongTermSchedulePage() {
                                   onClick={() => toggleWeek(weekKey)}
                                 >
                                   <p className="text-[8px] font-black uppercase text-gray-400 mb-1">{week.weekLabel}</p>
-                                  <span className={`text-[8px] text-gray-400 ${expanded ? "rotate-180" : ""}`}>▼</span>
+                                  <span
+                                    aria-hidden="true"
+                                    className={`inline-block h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-current text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+                                  />
                                 </button>
 
                                 <div className="mb-2">
@@ -1044,6 +1163,8 @@ export default function LongTermSchedulePage() {
                                         <div
                                           key={dayKey}
                                           className={`rounded-lg border px-2 py-1 ${holiday ? "border-rose-200 bg-rose-50" : "border-gray-200 bg-gray-50"}`}
+                                          onDragOver={holiday ? undefined : handleDragOver}
+                                          onDrop={holiday ? undefined : (e) => handleDrop(e, row.id, dayKey)}
                                         >
                                           <div className="text-[8px] font-black text-gray-500 uppercase tracking-wider">
                                             {day.toLocaleDateString("en-US", { weekday: "short", month: "numeric", day: "numeric" })}
@@ -1054,7 +1175,10 @@ export default function LongTermSchedulePage() {
                                             </div>
                                           )}
                                           {dayHours > 0 && (
-                                            <div className="text-[10px] font-black text-gray-800 mt-1">{dayHours.toFixed(1)}h</div>
+                                            <div className="space-y-1">
+                                              <div className="text-[10px] font-black text-gray-800 mt-1">{dayHours.toFixed(1)}h</div>
+                                              {renderProjects(dayAllocation?.projects || [], true, { sourceDateKey: dayKey, sourceForemanId: row.id })}
+                                            </div>
                                           )}
                                         </div>
                                       );
@@ -1073,7 +1197,25 @@ export default function LongTermSchedulePage() {
           </div>
         )}
       </div>
-      <style jsx global>{`
+      {selectedModalProject && (
+        <ProjectScopesModal
+          project={selectedModalProject}
+          scopes={scopesByJobKey[selectedModalProject.jobKey] || []}
+          allScopes={scopesByJobKey}
+          selectedScopeId={null}
+          selectedScopeTitle={selectedModalScopeTitle}
+          onClose={() => {
+            setSelectedModalProject(null);
+            setSelectedModalScopeTitle(null);
+          }}
+          onScopesUpdated={(jobKey, updatedScopes) => {
+            setScopesByJobKey((prev) => ({ ...prev, [jobKey]: updatedScopes }));
+            // Scope date changes can resync active schedule rows; refresh the board immediately.
+            void loadSchedules();
+          }}
+        />
+      )}
+      <style>{`
         .lt-visible-scrollbar {
           scrollbar-width: auto;
           scrollbar-color: #f97316 #e7e5e4;

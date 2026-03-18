@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 
@@ -11,39 +12,80 @@ type PMAssignment = {
   updatedAt: string;
 };
 
-function getStorePath() {
-  return path.join(process.cwd(), 'data', 'long-term-pm-assignments.json');
-}
+async function ensureAssignmentsTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS long_term_pm_assignments (
+      assignment_key TEXT PRIMARY KEY,
+      job_key TEXT NOT NULL,
+      pm_id TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 
-function readAssignments(): PMAssignment[] {
-  const storePath = getStorePath();
-  if (!fs.existsSync(storePath)) {
-    return [];
-  }
+  // One-time migration from legacy local JSON file if table is empty.
+  const existingCountRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count FROM long_term_pm_assignments
+  `;
+  const existingCount = Number(existingCountRows[0]?.count || 0);
+  if (existingCount > 0) return;
+
+  const legacyPath = path.join(process.cwd(), 'data', 'long-term-pm-assignments.json');
+  if (!fs.existsSync(legacyPath)) return;
 
   try {
-    const raw = fs.readFileSync(storePath, 'utf-8');
+    const raw = fs.readFileSync(legacyPath, 'utf-8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return;
+
+    for (const row of parsed) {
+      const assignmentKey = typeof row?.assignmentKey === 'string' && row.assignmentKey.trim()
+        ? row.assignmentKey.trim()
+        : (typeof row?.jobKey === 'string' ? row.jobKey.trim() : '');
+      const jobKey = typeof row?.jobKey === 'string' ? row.jobKey.trim() : assignmentKey;
+      const pmId = typeof row?.pmId === 'string' ? row.pmId.trim() : '';
+      const updatedAt = typeof row?.updatedAt === 'string' && row.updatedAt
+        ? new Date(row.updatedAt)
+        : new Date();
+
+      if (!assignmentKey || !jobKey || !pmId) continue;
+
+      await prisma.$executeRaw`
+        INSERT INTO long_term_pm_assignments (assignment_key, job_key, pm_id, updated_at)
+        VALUES (${assignmentKey}, ${jobKey}, ${pmId}, ${updatedAt})
+        ON CONFLICT (assignment_key)
+        DO UPDATE SET
+          job_key = EXCLUDED.job_key,
+          pm_id = EXCLUDED.pm_id,
+          updated_at = EXCLUDED.updated_at
+      `;
+    }
   } catch (error) {
-    console.warn('[pm-assignments] Failed reading assignments file:', error);
-    return [];
+    console.warn('[pm-assignments] Failed to migrate legacy JSON assignments:', error);
   }
-}
-
-function writeAssignments(assignments: PMAssignment[]) {
-  const storePath = getStorePath();
-  const dir = path.dirname(storePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  fs.writeFileSync(storePath, JSON.stringify(assignments, null, 2), 'utf-8');
 }
 
 export async function GET() {
   try {
-    const data = readAssignments();
+    await ensureAssignmentsTable();
+
+    const rows = await prisma.$queryRaw<Array<{
+      assignment_key: string;
+      job_key: string;
+      pm_id: string;
+      updated_at: Date;
+    }>>`
+      SELECT assignment_key, job_key, pm_id, updated_at
+      FROM long_term_pm_assignments
+      ORDER BY updated_at DESC
+    `;
+
+    const data: PMAssignment[] = rows.map((row) => ({
+      assignmentKey: row.assignment_key,
+      jobKey: row.job_key,
+      pmId: row.pm_id,
+      updatedAt: row.updated_at.toISOString(),
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Failed to fetch PM assignments:', error);
@@ -56,6 +98,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureAssignmentsTable();
+
     const body = await request.json();
     const assignmentKey = (body?.assignmentKey || '').trim();
     const jobKey = (body?.jobKey || '').trim();
@@ -69,29 +113,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const assignments = readAssignments();
     const now = new Date().toISOString();
-    const existingIndex = assignments.findIndex(
-      (a) => (a.assignmentKey || a.jobKey) === resolvedKey
-    );
-
-    if (existingIndex >= 0) {
-      assignments[existingIndex] = {
-        assignmentKey: resolvedKey,
-        jobKey: jobKey || assignments[existingIndex].jobKey || resolvedKey,
-        pmId,
-        updatedAt: now,
-      };
-    } else {
-      assignments.push({
-        assignmentKey: resolvedKey,
-        jobKey: jobKey || resolvedKey,
-        pmId,
-        updatedAt: now,
-      });
-    }
-
-    writeAssignments(assignments);
+    await prisma.$executeRaw`
+      INSERT INTO long_term_pm_assignments (assignment_key, job_key, pm_id, updated_at)
+      VALUES (${resolvedKey}, ${jobKey || resolvedKey}, ${pmId}, ${new Date(now)})
+      ON CONFLICT (assignment_key)
+      DO UPDATE SET
+        job_key = EXCLUDED.job_key,
+        pm_id = EXCLUDED.pm_id,
+        updated_at = EXCLUDED.updated_at
+    `;
 
     return NextResponse.json({
       success: true,
@@ -108,6 +139,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await ensureAssignmentsTable();
+
     const body = await request.json();
     const assignmentKey = (body?.assignmentKey || '').trim();
     const jobKey = (body?.jobKey || '').trim();
@@ -120,9 +153,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const assignments = readAssignments();
-    const filtered = assignments.filter((a) => (a.assignmentKey || a.jobKey) !== resolvedKey);
-    writeAssignments(filtered);
+    await prisma.$executeRaw`
+      DELETE FROM long_term_pm_assignments
+      WHERE assignment_key = ${resolvedKey}
+    `;
 
     return NextResponse.json({ success: true });
   } catch (error) {

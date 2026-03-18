@@ -54,6 +54,132 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
   const { customer, project_number, project_name } = project[0];
   const jobKey = `${customer || ""}~${project_number || ""}~${project_name || ""}`;
 
+  let schedulingMode: "contiguous" | "specific-days" = "contiguous";
+  let selectedDays: Array<{ date: string; hours: number; foreman: string | null }> = [];
+
+  if (scopeId) {
+    const scopeRows = await prisma.$queryRawUnsafe<Array<{
+      schedulingMode: string | null;
+      selectedDays: unknown;
+    }>>(
+      `
+        SELECT "schedulingMode", "selectedDays"
+        FROM "ProjectScope"
+        WHERE "jobKey" = $1 AND "title" = $2
+        ORDER BY "updatedAt" DESC
+        LIMIT 1
+      `,
+      jobKey,
+      title
+    );
+
+    const scopeMeta = scopeRows[0];
+    if (scopeMeta?.schedulingMode === "specific-days") {
+      schedulingMode = "specific-days";
+      const raw = Array.isArray(scopeMeta.selectedDays)
+        ? (scopeMeta.selectedDays as Array<{ date?: unknown; hours?: unknown; foreman?: unknown }>)
+        : [];
+      selectedDays = raw
+        .map((entry) => ({
+          date: String(entry?.date || "").trim(),
+          hours: Number(entry?.hours || 0),
+          foreman: entry?.foreman ? String(entry.foreman) : null,
+        }))
+        .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0);
+    }
+  }
+
+  if (schedulingMode === "specific-days") {
+    const paidHolidays = await prisma.holiday.findMany({
+      where: {
+        isPaid: true,
+        date: { in: selectedDays.map((entry) => entry.date) },
+      },
+      select: { date: true },
+    });
+    const paidHolidaySet = new Set(paidHolidays.map((h) => h.date));
+
+    const existingAssignments = await prisma.activeSchedule.findMany({
+      where: {
+        jobKey,
+        scopeOfWork: title,
+      },
+      select: {
+        date: true,
+        foreman: true,
+      },
+    });
+
+    const foremanByDate = new Map(
+      existingAssignments
+        .filter((entry) => Boolean(entry.foreman))
+        .map((entry) => [entry.date, entry.foreman as string])
+    );
+    const defaultForeman = existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
+
+    await prisma.activeSchedule.deleteMany({
+      where: {
+        jobKey,
+        scopeOfWork: title,
+      },
+    });
+
+    if (scopeId) {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM gantt_v2_schedule_entries WHERE scope_id = $1`,
+        scopeId
+      );
+    }
+
+    for (const entry of selectedDays) {
+      const [year, month, day] = entry.date.split('-').map(Number);
+      const weekday = new Date(year, month - 1, day).getDay();
+      if (weekday === 0 || weekday === 6) {
+        continue;
+      }
+      if (paidHolidaySet.has(entry.date)) {
+        continue;
+      }
+
+      await reconcileDailyAssignment({
+        jobKey,
+        scopeOfWork: title,
+        targetDateKey: entry.date,
+        targetForemanId: entry.foreman ?? foremanByDate.get(entry.date) ?? defaultForeman,
+        hours: entry.hours,
+        fallbackSource: "gantt",
+        enforceScopeHourCap: true,
+      });
+
+      await prisma.activeSchedule.updateMany({
+        where: {
+          jobKey,
+          scopeOfWork: title,
+          date: entry.date,
+          source: "gantt",
+        },
+        data: {
+          manpower: crewSize && crewSize > 0 ? Math.round(crewSize) : null,
+        },
+      });
+
+      if (scopeId) {
+        await prisma.$executeRawUnsafe(
+          `
+            INSERT INTO gantt_v2_schedule_entries (id, scope_id, work_date, scheduled_hours)
+            VALUES ($1, $2, $3::date, $4)
+          `,
+          crypto.randomUUID(),
+          scopeId,
+          entry.date,
+          entry.hours
+        );
+      }
+    }
+
+    return;
+  }
+
   if (!startDate || !endDate || totalHours <= 0) {
     console.warn('[GANTT-SCOPE-SYNC] Clearing active schedule for unscheduled scope', {
       projectId,
@@ -67,7 +193,6 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       where: {
         jobKey,
         scopeOfWork: title,
-        source: "gantt",
       },
     });
 
@@ -106,7 +231,6 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       where: {
         jobKey,
         scopeOfWork: title,
-        source: "gantt",
       },
     });
 
@@ -126,7 +250,6 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     where: {
       jobKey,
       scopeOfWork: title,
-      source: "gantt",
     },
     select: {
       date: true,
@@ -152,7 +275,6 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     where: {
       jobKey,
       scopeOfWork: title,
-      source: "gantt",
     },
   });
 

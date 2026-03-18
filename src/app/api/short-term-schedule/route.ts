@@ -223,11 +223,29 @@ export async function GET(request: NextRequest) {
           status: true,
         },
       }),
-      prisma.projectScope.findMany(),
+      prisma.projectScope.findMany({
+        select: {
+          id: true,
+          jobKey: true,
+          title: true,
+          startDate: true,
+          endDate: true,
+          hours: true,
+        },
+      }),
       prisma.project.findMany({
         where: {
           status: { notIn: ['Bid Submitted', 'Lost'] },
           projectArchived: false,
+        },
+        select: {
+          id: true,
+          projectNumber: true,
+          projectName: true,
+          customer: true,
+          status: true,
+          hours: true,
+          projectManager: true,
         },
       }),
     ]);

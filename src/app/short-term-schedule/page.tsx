@@ -779,10 +779,24 @@ function ShortTermScheduleContent() {
 
   async function loadSchedules() {
     try {
-      // Fetch all data from API
-      const [res, holidayRes] = await Promise.all([
+      // Compute the active-schedule date range up front so all three fetches can run in parallel
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const currentWeekStartEarly = new Date(today);
+      const dowEarly = currentWeekStartEarly.getDay();
+      const daysToMondayEarly = dowEarly === 0 ? -6 : 1 - dowEarly;
+      currentWeekStartEarly.setDate(currentWeekStartEarly.getDate() + daysToMondayEarly);
+      currentWeekStartEarly.setHours(0, 0, 0, 0);
+      const fiveWeeksEnd = new Date(currentWeekStartEarly);
+      fiveWeeksEnd.setDate(fiveWeeksEnd.getDate() + 5 * 7);
+      const earlyStartStr = formatDateKey(currentWeekStartEarly);
+      const earlyEndStr = formatDateKey(new Date(fiveWeeksEnd.getTime() - 1));
+
+      // Fetch all data in parallel (was: 2-step serial waterfall)
+      const [res, holidayRes, schedRes] = await Promise.all([
         fetch('/api/short-term-schedule', { cache: 'no-store' }),
         fetch('/api/holidays?page=1&pageSize=500', { cache: 'no-store' }),
+        fetch(`/api/short-term-schedule?action=active-schedule&startDate=${earlyStartStr}&endDate=${earlyEndStr}`, { cache: 'no-store' }),
       ]);
       if (!res.ok) throw new Error('Failed to fetch data');
       const { data } = await res.json();
@@ -866,27 +880,22 @@ function ShortTermScheduleContent() {
       // Set projects (only those initiated from Gantt actual schedule)
       const projs = projects;
 
-      // Fetch active schedule for next 5 weeks
+      // Use the active-schedule response already fetched in parallel above
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const currentWeekStart = new Date(today);
       const dayOfWeek = currentWeekStart.getDay();
       const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       currentWeekStart.setDate(currentWeekStart.getDate() + daysToMonday);
       currentWeekStart.setHours(0, 0, 0, 0);
-      
+
       const fiveWeeksFromStart = new Date(currentWeekStart);
       fiveWeeksFromStart.setDate(fiveWeeksFromStart.getDate() + (5 * 7));
-      
+
       const startDateStr = formatDateKey(currentWeekStart);
       const endDateStr = formatDateKey(new Date(fiveWeeksFromStart.getTime() - 1));
-      
-      // Fetch active schedules from API
-      const schedRes = await fetch(
-        `/api/short-term-schedule?action=active-schedule&startDate=${startDateStr}&endDate=${endDateStr}`,
-        { cache: 'no-store' }
-      );
+
       const schedData = schedRes.ok ? await schedRes.json() : { data: [] };
       const activeSchedules = schedData.data || [];
       const ganttInitiatedSchedules = activeSchedules.filter((entry: any) => {

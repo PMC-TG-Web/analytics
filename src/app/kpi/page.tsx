@@ -424,73 +424,54 @@ export default function KPIPage() {
       setLoading(true);
       setProcoreAuthError(false);
       try {
-        let projectsData = [];
-        let schedulesData = [];
-        
+        let projectsData: Project[] = [];
+        let schedulesData: any[] = [];
+
+        // Helper: fetch first page to get total, then all remaining pages in parallel
+        async function fetchAllParallel<T>(baseUrl: string, rowKey = 'data'): Promise<T[]> {
+          const sep = baseUrl.includes('?') ? '&' : '?';
+          const firstRes = await fetch(`${baseUrl}${sep}page=1&pageSize=500&includeTotal=true`);
+          if (!firstRes.ok) return [];
+          const firstJson = await firstRes.json();
+          const firstRows: T[] = firstJson[rowKey] || firstJson.schedules || [];
+          const totalPages: number = firstJson.totalPages ?? (firstJson.hasNextPage ? 2 : 1);
+          if (totalPages <= 1) return firstRows;
+          const rest = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              fetch(`${baseUrl}${sep}page=${i + 2}&pageSize=500`)
+                .then(r => r.ok ? r.json() : { [rowKey]: [] })
+                .then(j => (j[rowKey] || j.schedules || []) as T[])
+            )
+          );
+          return [...firstRows, ...rest.flat()];
+        }
+
         try {
-          // Fetch ALL projects from paginated API (dashboard mode includes Bid Submitted/Lost projects)
-          console.log("[KPI] Fetching projects from API...");
-          let page = 1;
-          let hasNextPage = true;
-          const allProjects: Project[] = [];
-
-          while (hasNextPage) {
-            const projectsRes = await fetch(`/api/projects?mode=dashboard&page=${page}&pageSize=500`);
-            if (!projectsRes.ok) {
-              console.warn("[KPI] Projects API endpoint not available");
-              break;
-            }
-
-            const projectsJson = await projectsRes.json();
-            const rows = projectsJson.data || [];
-            allProjects.push(...rows);
-            hasNextPage = Boolean(projectsJson.hasNextPage);
-            page += 1;
-          }
-
-          projectsData = allProjects;
+          console.log("[KPI] Fetching projects and schedules in parallel...");
+          [projectsData, schedulesData] = await Promise.all([
+            fetchAllParallel<Project>('/api/projects?mode=dashboard'),
+            fetchAllParallel<any>('/api/scheduling', 'data'),
+          ]);
           setProjects(projectsData);
-          console.log("[KPI] Loaded projects:", projectsData.length);
+          console.log("[KPI] Loaded projects:", projectsData.length, "schedules:", schedulesData.length);
         } catch (err) {
-          console.warn("[KPI] Error fetching projects (using empty defaults):", err);
+          console.warn("[KPI] Error fetching data:", err);
           setProjects([]);
         }
 
-        try {
-          // Fetch ALL schedules from paginated API
-          let page = 1;
-          let hasNextPage = true;
-          const allSchedules: any[] = [];
-
-          while (hasNextPage) {
-            const schedulesRes = await fetch(`/api/scheduling?page=${page}&pageSize=500`);
-            if (!schedulesRes.ok) {
-              console.warn("[KPI] Schedules API endpoint not available");
-              break;
-            }
-
-            const schedulesJson = await schedulesRes.json();
-            const rows = schedulesJson.data || schedulesJson.schedules || [];
-            allSchedules.push(...rows);
-            hasNextPage = Boolean(schedulesJson.hasNextPage);
-            page += 1;
-          }
-
-          schedulesData = allSchedules;
-          console.log("[KPI] Loaded schedules:", schedulesData.length);
-        } catch (err) {
-          console.warn("[KPI] Error fetching schedules (using empty defaults):", err);
+        // Build O(1) lookup map instead of O(n×m) scan
+        const projectByKey = new Map<string, Project>();
+        for (const p of projectsData) {
+          const key = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
+          projectByKey.set(key, p);
         }
 
         const schedulesWithStatus = schedulesData.map((schedule: any) => {
-          const matchingProject = projectsData.find((p: any) => {
-            const scheduleKey = `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
-            const projectKey = `${p.customer || ""}~${p.projectNumber || ""}~${p.projectName || ""}`;
-            return scheduleKey === projectKey;
-          });
+          const key = `${schedule.customer || ""}~${schedule.projectNumber || ""}~${schedule.projectName || ""}`;
+          const matchingProject = projectByKey.get(key);
           return {
             ...schedule,
-            status: (matchingProject as any)?.status || "Unknown",
+            status: (matchingProject as any)?.status || schedule.status || "Unknown",
           };
         });
 

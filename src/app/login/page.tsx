@@ -11,6 +11,18 @@ function LoginContent() {
 
   const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
+  const normalizeReturnTo = (value: string | null) => {
+    const candidate = (value || "/").trim();
+    if (!candidate.startsWith("/")) return "/";
+
+    const lower = candidate.toLowerCase();
+    if (lower.startsWith("/login") || lower.startsWith("/auth/start") || lower.startsWith("/api/auth/")) {
+      return "/";
+    }
+
+    return candidate;
+  };
+
   const navigateTop = (url: string) => {
     try {
       window.open(url, "_top");
@@ -22,9 +34,9 @@ function LoginContent() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const errorParam = searchParams.get("error");
-    const returnToParam = searchParams.get("returnTo");
+    const safeReturnTo = normalizeReturnTo(searchParams.get("returnTo"));
 
-    if (returnToParam) setReturnTo(returnToParam);
+    setReturnTo(safeReturnTo);
 
     let isFramed = false;
     try {
@@ -37,22 +49,8 @@ function LoginContent() {
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
     } else if (isFramed) {
-      // When embedded in Procore, automatically open the login popup
-      // so the user doesn't have to click a button on session expiry.
-      const rt = returnToParam || "/";
-      const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(rt)}`;
-      setStatus("Opening sign-in window...");
-      const popup = window.open(
-        loginUrl,
-        "analytics_auth",
-        "popup=yes,width=520,height=760,left=200,top=80"
-      );
-      if (popup) {
-        startAuthPolling(popup);
-      } else {
-        // Popup blocked — fall back to showing the button.
-        setStatus("Click below to sign in.");
-      }
+      // In Procore embed mode, wait for explicit user click to avoid redirect loops.
+      setStatus("Click below to sign in.");
     }
 
     return () => {

@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const AUTH_SIGNAL_KEY = "analytics-auth-complete";
+const AUTH_SIGNAL_CHANNEL = "analytics-auth";
+
 function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState<string>("/");
   const [framed, setFramed] = useState(false);
   const [status, setStatus] = useState<string>("Choose a login method.");
   const pollRef = useRef<number | null>(null);
-
-  const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
   const normalizeReturnTo = (value: string | null) => {
     const candidate = (value || "/").trim();
@@ -21,25 +22,6 @@ function LoginContent() {
     }
 
     return candidate;
-  };
-
-  const navigateTop = (url: string) => {
-    try {
-      if (window.top) {
-        window.top.location.href = url;
-        return;
-      }
-    } catch {
-      // Ignore and try fallback methods below.
-    }
-
-    const topNav = window.open(url, "_top");
-    if (topNav) return;
-
-    const newTab = window.open(url, "_blank", "noopener,noreferrer");
-    if (newTab) return;
-
-    window.location.assign(url);
   };
 
   useEffect(() => {
@@ -64,17 +46,43 @@ function LoginContent() {
       setStatus("Click below to sign in.");
     }
 
+    const handleAuthComplete = () => {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      setError(null);
+      setStatus("Login complete. Reloading embedded app...");
+      window.location.replace(returnTo || "/");
+    };
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      channel = new BroadcastChannel(AUTH_SIGNAL_CHANNEL);
+      channel.onmessage = (event) => {
+        if (event.data === AUTH_SIGNAL_KEY) {
+          handleAuthComplete();
+        }
+      };
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === AUTH_SIGNAL_KEY && event.newValue) {
+        handleAuthComplete();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+
     return () => {
       if (pollRef.current) {
         window.clearInterval(pollRef.current);
       }
+      window.removeEventListener("storage", onStorage);
+      channel?.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const redirectToProcoreApp = () => {
-    navigateTop(procoreAppUrl);
-  };
+  }, [returnTo]);
 
   const startAuthPolling = (popup: Window | null) => {
     if (pollRef.current) {
@@ -95,10 +103,10 @@ function LoginContent() {
           }
           if (framed) {
             setStatus("Login successful. Reloading embedded app...");
-            window.location.reload();
+            window.location.replace(returnTo || "/");
           } else {
-            setStatus("Login successful. Opening Procore app...");
-            redirectToProcoreApp();
+            setStatus("Login successful. Returning to app...");
+            window.location.replace(returnTo || "/");
           }
           return;
         }
@@ -123,8 +131,11 @@ function LoginContent() {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (framed) {
-      setStatus("Redirecting to sign-in inside the embedded app...");
-      window.location.assign(loginUrl);
+      const framedReturnTo = `/auth/complete?returnTo=${encodeURIComponent(returnTo)}`;
+      const framedLoginUrl = `/api/auth/login?returnTo=${encodeURIComponent(framedReturnTo)}`;
+      window.open(framedLoginUrl, "analytics_auth_tab");
+      setStatus("Sign-in opened in a new tab. Complete login there and this page will resume automatically.");
+      startAuthPolling(null);
       return;
     }
 
@@ -158,7 +169,7 @@ function LoginContent() {
             <p className="text-blue-700 text-sm">{status}</p>
             {framed && (
               <p className="text-blue-600 text-xs mt-2">
-                You are in an embedded Procore frame, so sign-in continues inside this embedded window.
+                You are in an embedded Procore frame, so sign-in opens in a separate tab and returns here automatically.
               </p>
             )}
           </div>

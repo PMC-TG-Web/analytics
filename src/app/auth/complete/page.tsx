@@ -2,10 +2,27 @@
 
 import { useEffect } from "react";
 
+const AUTH_SIGNAL_KEY = "analytics-auth-complete";
+const AUTH_SIGNAL_CHANNEL = "analytics-auth";
+
 export default function AuthCompletePage() {
   const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
 
   useEffect(() => {
+    try {
+      localStorage.setItem(AUTH_SIGNAL_KEY, String(Date.now()));
+    } catch {
+      // Ignore localStorage failures.
+    }
+
+    try {
+      const channel = new BroadcastChannel(AUTH_SIGNAL_CHANNEL);
+      channel.postMessage(AUTH_SIGNAL_KEY);
+      channel.close();
+    } catch {
+      // Ignore BroadcastChannel failures.
+    }
+
     // If this tab was script-opened for auth, try to close it first.
     try {
       window.close();

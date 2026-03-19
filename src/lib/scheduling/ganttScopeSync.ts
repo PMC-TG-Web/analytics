@@ -148,7 +148,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
         targetForemanId: entry.foreman ?? foremanByDate.get(entry.date) ?? defaultForeman,
         hours: entry.hours,
         fallbackSource: "gantt",
-        enforceScopeHourCap: true,
+        enforceScopeHourCap: false,
       });
 
       await prisma.activeSchedule.updateMany({
@@ -244,7 +244,9 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     return;
   }
 
-  const hoursPerDay = crewSize && crewSize > 0 ? crewSize * 10 : totalHours / workingDays.length;
+  // Always distribute from the scope's totalHours. Crew size is stored as
+  // manpower metadata and should not inflate scheduled hours.
+  const hoursPerDay = totalHours / workingDays.length;
 
   const existingAssignments = await prisma.activeSchedule.findMany({
     where: {
@@ -295,7 +297,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       targetForemanId: foremanByDate.get(dateStr) ?? defaultForeman,
       hours: hoursPerDay,
       fallbackSource: "gantt",
-      enforceScopeHourCap: true,
+      enforceScopeHourCap: false,
     });
 
     await prisma.activeSchedule.updateMany({

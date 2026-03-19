@@ -8,8 +8,17 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
 
+    const where = category
+      ? { category }
+      : {
+          NOT: [
+            { category: 'KPI_CARDS' },
+            { name: { startsWith: 'kpi-card:' } },
+          ],
+        };
+
     const constants = await prisma.estimatingConstant.findMany({
-      where: category ? { category } : undefined,
+      where,
       orderBy: { name: 'asc' },
     });
 

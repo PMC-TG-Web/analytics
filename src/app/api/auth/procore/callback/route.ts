@@ -7,19 +7,22 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const cookieStore = await cookies();
+  const returnToCookie = cookieStore.get("procore_oauth_return_to")?.value;
+  const returnToPath = returnToCookie && returnToCookie.startsWith("/") ? returnToCookie : "/procore";
 
   // Check for errors from Procore
   if (error) {
     console.error("Procore OAuth error:", error);
     return NextResponse.redirect(
-      new URL(`/procore/test?error=${encodeURIComponent(error)}`, request.url)
+      new URL(`${returnToPath}?error=${encodeURIComponent(error)}`, request.url)
     );
   }
 
   // Verify we have an authorization code
   if (!code) {
     return NextResponse.redirect(
-      new URL("/procore/test?error=missing_code", request.url)
+      new URL(`${returnToPath}?error=missing_code`, request.url)
     );
   }
 
@@ -30,13 +33,11 @@ export async function GET(request: Request) {
     const tokenResponse = await getAccessToken(code);
 
     // Store the tokens in cookies (session storage)
-    const cookieStore = await cookies();
-    
     // Store access token (expires in 2 hours by default)
     cookieStore.set("procore_access_token", tokenResponse.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
       maxAge: tokenResponse.expires_in || 7200, // 2 hours default
     });
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
       cookieStore.set("procore_refresh_token", tokenResponse.refresh_token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "none",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         path: "/",
         maxAge: 30 * 24 * 60 * 60, // 30 days
       });
@@ -54,19 +55,19 @@ export async function GET(request: Request) {
 
     console.log("OK Successfully authenticated with Procore");
 
-    // Redirect back to the main Procore page with success.
-    return NextResponse.redirect(
-      new URL("/procore?status=authenticated", request.url)
-    );
+    cookieStore.delete("procore_oauth_return_to");
+
+    const redirectUrl = new URL(returnToPath, request.url);
+    redirectUrl.searchParams.set("status", "authenticated");
+
+    // Redirect back to the originating Procore page with success.
+    return NextResponse.redirect(redirectUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("OAuth callback error:", message);
     
     return NextResponse.redirect(
-      new URL(
-        `/procore?error=${encodeURIComponent(message)}`,
-        request.url
-      )
+      new URL(`${returnToPath}?error=${encodeURIComponent(message)}`, request.url)
     );
   }
 }

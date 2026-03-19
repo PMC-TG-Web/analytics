@@ -176,10 +176,12 @@ export default function Navigation({
             try {
               if (isEmbedded) {
                 window.open(logoutUrl, "analytics_logout_tab");
+                window.location.replace("/login?loggedOut=1");
                 return;
               }
             } catch {
               window.open(logoutUrl, "analytics_logout_tab");
+              window.location.replace("/login?loggedOut=1");
               return;
             }
 

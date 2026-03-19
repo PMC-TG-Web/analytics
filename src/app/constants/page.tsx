@@ -13,13 +13,21 @@ function ConstantsContent() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"general" | "rebar">("general");
 
+  function isEndpointLikeConstant(row: { name?: string; category?: string }) {
+    const name = String(row?.name || "").toLowerCase();
+    const category = String(row?.category || "").toLowerCase();
+    const combined = `${name} ${category}`;
+    return /endpoint|api|url|http|token|auth|base[_ -]?url/.test(combined);
+  }
+
   async function fetchAllData() {
     setLoading(true);
     try {
       const response = await fetch('/api/estimating-constants');
       const result = await response.json();
       if (result.success) {
-        setConstants(result.data || []);
+        const visibleConstants = (result.data || []).filter((row: any) => !isEndpointLikeConstant(row));
+        setConstants(visibleConstants);
         setRebarConstants(result.rebarData || []);
       }
       setLoading(false);

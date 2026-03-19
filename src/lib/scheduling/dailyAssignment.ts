@@ -150,7 +150,12 @@ export async function reconcileDailyAssignment(command: DailyAssignmentCommand):
         const existingTargetHours = existingTargetEntry?.hours ?? 0;
         const projectedTotal = existingTotal - existingTargetHours + hours;
 
-        if (projectedTotal > scopeHourCap + 1e-9) {
+        // If historical data is already above cap, allow operations that do not
+        // increase the over-allocation (for example deleting/reducing a day).
+        const isAboveCap = existingTotal > scopeHourCap + 1e-9;
+        const increasesOverage = projectedTotal > existingTotal + 1e-9;
+
+        if (projectedTotal > scopeHourCap + 1e-9 && (!isAboveCap || increasesOverage)) {
           throw new SchedulingConflictError(
             `Scope hours exceeded for '${scopeOfWork}'.`,
             "SCOPE_HOURS_EXCEEDED",

@@ -637,7 +637,11 @@ export function ProjectScopesModal({
 
       if (selectedScheduleDate && (selectedScopeTitle || scopeDetail.title)) {
         const scopeName = (scopeDetail.title || selectedScopeTitle || '').trim();
-        const dayHoursRaw = scopeDetail.hours;
+        const selectedDayEntry = selectedDays.find((entry) => entry.date === selectedScheduleDate);
+        const dayHoursRaw =
+          scopeDetail.schedulingMode === 'specific-days'
+            ? (selectedDayEntry ? selectedDayEntry.hours : 0)
+            : scopeDetail.hours;
         const dayHours = typeof dayHoursRaw === 'number' ? dayHoursRaw : parseFloat(String(dayHoursRaw || '0'));
 
         const response = await fetch('/api/short-term-schedule/move', {

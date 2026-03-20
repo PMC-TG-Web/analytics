@@ -1,8 +1,20 @@
 import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/auditLog';
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeForPmc(value: unknown) {
+  return (value ?? '').toString().trim().replace(/^"+|"+$/g, '').trim().toLowerCase();
+}
+
+function choosePrimaryGroup(groupTotals: Record<string, number>) {
+  const entries = Object.entries(groupTotals);
+  if (!entries.length) return null;
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0][0];
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +34,7 @@ export async function GET(request: NextRequest) {
       ? statusesParam.split(',').map((value) => value.trim()).filter((value) => value.length > 0)
       : [];
 
-    const where: any = {};
+    const where: Prisma.ProjectWhereInput = {};
 
     if (!includeArchived) {
       where.projectArchived = {
@@ -100,16 +112,111 @@ export async function GET(request: NextRequest) {
       projects = hasNextPage ? pagePlusOne.slice(0, pageSize) : pagePlusOne;
     }
 
+    const projectsMissingPmc = projects.filter((project) => {
+      const customFields =
+        project.customFields && typeof project.customFields === 'object' && !Array.isArray(project.customFields)
+          ? (project.customFields as Record<string, unknown>)
+          : {};
+      return !customFields.pmcGroup;
+    });
+
+    const pmcFromDetailsByProjectId = new Map<
+      string,
+      { pmcGroup: string; pmcBreakdown: Record<string, number>; pmcMappingSource: string }
+    >();
+
+    if (projectsMissingPmc.length > 0) {
+      const missingProjectIds = projectsMissingPmc.map((p) => p.id);
+      const [mappings, details] = await Promise.all([
+        prisma.pmcGroupMapping.findMany({
+          select: {
+            costItemNorm: true,
+            costTypeNorm: true,
+            pmcGroup: true,
+          },
+        }),
+        prisma.purchaseOrderLineItemContractDetail.findMany({
+          where: {
+            projectId: { in: missingProjectIds },
+            description: { not: null },
+          },
+          select: {
+            projectId: true,
+            description: true,
+            costType: true,
+            quantity: true,
+          },
+        }),
+      ]);
+
+      const detailsByProjectId = new Map<string, Array<{ descriptionNorm: string; costTypeNorm: string; quantity: number }>>();
+      for (const d of details) {
+        const projectId = (d.projectId || '').toString().trim();
+        const descriptionNorm = normalizeForPmc(d.description);
+        if (!projectId || !descriptionNorm) continue;
+        const row = {
+          descriptionNorm,
+          costTypeNorm: normalizeForPmc(d.costType),
+          quantity: Number(d.quantity) || 1,
+        };
+        if (!detailsByProjectId.has(projectId)) detailsByProjectId.set(projectId, []);
+        detailsByProjectId.get(projectId)!.push(row);
+      }
+
+      for (const projectId of missingProjectIds) {
+        const groupTotals: Record<string, number> = {};
+        const projectDetails = detailsByProjectId.get(projectId) || [];
+
+        for (const detail of projectDetails) {
+          const exact = mappings.filter((m) => m.costItemNorm === detail.descriptionNorm);
+          const fuzzy = exact.length
+            ? []
+            : mappings.filter(
+                (m) =>
+                  m.costItemNorm.split(/\s+/).length >= 2 &&
+                  (detail.descriptionNorm.includes(m.costItemNorm) || m.costItemNorm.includes(detail.descriptionNorm))
+              );
+          const candidates = exact.length ? exact : fuzzy;
+          if (!candidates.length) continue;
+
+          const withType = candidates.filter((c) => c.costTypeNorm && c.costTypeNorm === detail.costTypeNorm);
+          const withoutType = candidates.filter((c) => !c.costTypeNorm);
+          const chosenPool = withType.length ? withType : withoutType.length ? withoutType : candidates;
+          const chosen = chosenPool.sort((a, b) => b.costItemNorm.length - a.costItemNorm.length)[0];
+
+          const weight = detail.quantity > 0 ? detail.quantity : 1;
+          groupTotals[chosen.pmcGroup] = (groupTotals[chosen.pmcGroup] || 0) + weight;
+        }
+
+        if (Object.keys(groupTotals).length > 0) {
+          pmcFromDetailsByProjectId.set(projectId, {
+            pmcGroup: choosePrimaryGroup(groupTotals) || 'No Match',
+            pmcBreakdown: groupTotals,
+            pmcMappingSource: 'api:projects:costitem:description',
+          });
+        } else {
+          pmcFromDetailsByProjectId.set(projectId, {
+            pmcGroup: 'No Match',
+            pmcBreakdown: {},
+            pmcMappingSource: 'api:projects:costitem:no-match',
+          });
+        }
+      }
+    }
+
     const projectsWithPMC = projects.map((project) => {
       const customFields =
         project.customFields && typeof project.customFields === 'object' && !Array.isArray(project.customFields)
-          ? (project.customFields as Record<string, any>)
+          ? (project.customFields as Record<string, unknown>)
           : {};
+
+      const fallback = pmcFromDetailsByProjectId.get(project.id);
 
       return {
         ...project,
-        pmcGroup: customFields.pmcGroup ?? null,
-        pmcBreakdown: customFields.pmcBreakdown ?? null,
+        pmcGroup: customFields.pmcGroup ?? fallback?.pmcGroup ?? null,
+        pmcBreakdown: customFields.pmcBreakdown ?? fallback?.pmcBreakdown ?? null,
+        pmcMappingSource: customFields.pmcMappingSource ?? fallback?.pmcMappingSource ?? null,
       };
     });
 
@@ -158,7 +265,7 @@ export async function PUT(request: NextRequest) {
       });
       updatedCount = updated ? 1 : 0;
     } else {
-      const where: any = {};
+      const where: Prisma.ProjectWhereInput = {};
       if (customer) where.customer = customer;
 
       // Project name is the most reliable business identifier in this dataset.

@@ -48,6 +48,15 @@ export async function GET(request: Request) {
       const custom = (log.customFields ?? {}) as Record<string, unknown>;
       const original = (custom.originalData ?? {}) as Record<string, unknown>;
       const createdBy = (original.created_by ?? {}) as Record<string, unknown>;
+      const unpackedPaths = Array.isArray(custom.unpackedPaths) ? custom.unpackedPaths : [];
+      const unpackedScalarFields =
+        custom.unpackedScalarFields && typeof custom.unpackedScalarFields === "object"
+          ? custom.unpackedScalarFields
+          : {};
+      const unpackedJsonFields =
+        custom.unpackedJsonFields && typeof custom.unpackedJsonFields === "object"
+          ? custom.unpackedJsonFields
+          : {};
 
       return {
         id: log.id,
@@ -64,6 +73,11 @@ export async function GET(request: Request) {
         notes: (original.notes as string | null) ?? log.notes ?? null,
         createdByName: createdBy.name ?? null,
         createdByLogin: createdBy.login ?? null,
+        unpackedFieldCount:
+          typeof custom.unpackedFieldCount === "number" ? custom.unpackedFieldCount : unpackedPaths.length,
+        unpackedPaths,
+        unpackedScalarFields,
+        unpackedJsonFields,
         raw: original,
       };
     });

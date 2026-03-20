@@ -1,39 +1,16 @@
 import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/auditLog';
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { parse } from 'csv-parse/sync';
 
 export const dynamic = 'force-dynamic';
 
-type CsvRow = {
-  customer?: string;
-  projectNumber?: string;
-  projectName?: string;
-  PMCGroup?: string;
-  hours?: string;
-  sales?: string;
-};
-
 function normalize(value: unknown) {
-  return (value ?? '').toString().trim().toLowerCase();
+  return (value ?? '').toString().trim().replace(/^"+|"+$/g, '').trim().toLowerCase();
 }
 
 function cleanText(value: unknown) {
   const text = (value ?? '').toString().trim();
   return text.length ? text : null;
-}
-
-function parseNumber(value: unknown) {
-  if (value === undefined || value === null) return 0;
-  const cleaned = value.toString().replace(/[$,\s]/g, '');
-  const parsed = Number.parseFloat(cleaned);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function makeKey(customer: unknown, projectNumber: unknown, projectName: unknown) {
-  return `${normalize(customer)}|${normalize(projectNumber)}|${normalize(projectName)}`;
 }
 
 function choosePrimaryGroup(groupTotals: Record<string, number>) {
@@ -45,103 +22,124 @@ function choosePrimaryGroup(groupTotals: Record<string, number>) {
 
 export async function POST(request: NextRequest) {
   try {
-    const csvPath = path.join(process.cwd(), 'Bid_Distro-Preconstruction-Enriched.csv');
-    if (!fs.existsSync(csvPath)) {
+    const mappings = await prisma.pmcGroupMapping.findMany({
+      select: {
+        costItemNorm: true,
+        costTypeNorm: true,
+        pmcGroup: true,
+      },
+    });
+
+    if (!mappings.length) {
       return NextResponse.json(
-        { success: false, error: 'Bid_Distro-Preconstruction-Enriched.csv not found' },
+        { success: false, error: 'No PMC mappings found in database. Add mappings first.' },
         { status: 400 }
       );
     }
 
-    const csvContent = fs.readFileSync(csvPath, 'utf-8');
-    const rows = parse(csvContent, {
-      columns: true,
-      skip_empty_lines: true,
-      bom: true,
-      relax_quotes: true,
-    }) as CsvRow[];
+    const details = await prisma.purchaseOrderLineItemContractDetail.findMany({
+      where: {
+        projectId: { not: null },
+        description: { not: null },
+      },
+      select: {
+        projectId: true,
+        description: true,
+        costType: true,
+        quantity: true,
+      },
+      take: 200000,
+    });
 
-    const mapByTriple = new Map<string, Record<string, number>>();
-    const mapByCustomerName = new Map<string, Record<string, number>>();
-
-    for (const row of rows) {
-      const customer = cleanText(row.customer);
-      const projectNumber = cleanText(row.projectNumber);
-      const projectName = cleanText(row.projectName);
-      const pmcGroup = cleanText(row.PMCGroup);
-
-      if (!customer || !projectName || !pmcGroup) continue;
-
-      const hours = parseNumber(row.hours);
-      const weight = hours;
-
-      if (weight <= 0) continue;
-
-      const keyTriple = makeKey(customer, projectNumber, projectName);
-      const keyCustomerName = makeKey(customer, '', projectName);
-
-      if (!mapByTriple.has(keyTriple)) mapByTriple.set(keyTriple, {});
-      if (!mapByCustomerName.has(keyCustomerName)) mapByCustomerName.set(keyCustomerName, {});
-
-      const tripleGroups = mapByTriple.get(keyTriple)!;
-      tripleGroups[pmcGroup] = (tripleGroups[pmcGroup] || 0) + weight;
-
-      const customerNameGroups = mapByCustomerName.get(keyCustomerName)!;
-      customerNameGroups[pmcGroup] = (customerNameGroups[pmcGroup] || 0) + weight;
+    const detailsByProject = new Map<string, Array<{ description: string; costType: string; quantity: number }>>();
+    for (const d of details) {
+      const projectId = String(d.projectId || '').trim();
+      const description = cleanText(d.description) || '';
+      if (!projectId || !description) continue;
+      const row = {
+        description,
+        costType: normalize(d.costType),
+        quantity: Number(d.quantity) || 1,
+      };
+      if (!detailsByProject.has(projectId)) detailsByProject.set(projectId, []);
+      detailsByProject.get(projectId)!.push(row);
     }
 
     const projects = await prisma.project.findMany({
       select: {
         id: true,
-        customer: true,
-        projectNumber: true,
-        projectName: true,
         customFields: true,
       },
     });
 
     let updated = 0;
-    let mappedByTriple = 0;
-    let mappedByCustomerName = 0;
+    let mappedByDescription = 0;
     let unmapped = 0;
+    let noMatchSet = 0;
 
     for (const project of projects) {
-      const keyTriple = makeKey(project.customer, project.projectNumber, project.projectName);
-      const keyCustomerName = makeKey(project.customer, '', project.projectName);
+      const projectDetails = detailsByProject.get(project.id) || [];
+      const groupTotals: Record<string, number> = {};
 
-      let breakdown = mapByTriple.get(keyTriple);
-      let source = 'triple';
+      for (const detail of projectDetails) {
+        const descriptionNorm = normalize(detail.description);
+        const exact = mappings.filter((m) => m.costItemNorm === descriptionNorm);
+        const fuzzy = exact.length
+          ? []
+          : mappings.filter(
+              (m) =>
+                m.costItemNorm.split(/\s+/).length >= 2 &&
+                (descriptionNorm.includes(m.costItemNorm) || m.costItemNorm.includes(descriptionNorm))
+            );
+        const candidates = exact.length ? exact : fuzzy;
 
-      if (!breakdown || Object.keys(breakdown).length === 0) {
-        breakdown = mapByCustomerName.get(keyCustomerName);
-        source = 'customer+name';
+        if (!candidates.length) continue;
+
+        const withType = candidates.filter((c) => c.costTypeNorm && c.costTypeNorm === detail.costType);
+        const withoutType = candidates.filter((c) => !c.costTypeNorm);
+        const chosenPool = withType.length ? withType : withoutType.length ? withoutType : candidates;
+        const chosen = chosenPool.sort((a, b) => b.costItemNorm.length - a.costItemNorm.length)[0];
+
+        const weight = Number(detail.quantity) > 0 ? Number(detail.quantity) : 1;
+        groupTotals[chosen.pmcGroup] = (groupTotals[chosen.pmcGroup] || 0) + weight;
       }
 
-      if (!breakdown || Object.keys(breakdown).length === 0) {
-        unmapped += 1;
-        continue;
-      }
-
-      const pmcGroup = choosePrimaryGroup(breakdown);
       const existingCustomFields =
         project.customFields && typeof project.customFields === 'object' && !Array.isArray(project.customFields)
           ? (project.customFields as Record<string, unknown>)
           : {};
 
+      if (!Object.keys(groupTotals).length) {
+        unmapped += 1;
+        await prisma.project.update({
+          where: { id: project.id },
+          data: {
+            customFields: {
+              ...existingCustomFields,
+              pmcGroup: 'No Match',
+              pmcBreakdown: {},
+              pmcMappingSource: 'db:costitem:no-match',
+            },
+          },
+        });
+        noMatchSet += 1;
+        continue;
+      }
+
+      const pmcGroup = choosePrimaryGroup(groupTotals);
       await prisma.project.update({
         where: { id: project.id },
         data: {
           customFields: {
             ...existingCustomFields,
             pmcGroup,
-            pmcBreakdown: breakdown,
-            pmcMappingSource: source,
+            pmcBreakdown: groupTotals,
+            pmcMappingSource: 'db:costitem:description',
           },
         },
       });
 
-      if (source === 'triple') mappedByTriple += 1;
-      if (source === 'customer+name') mappedByCustomerName += 1;
+      mappedByDescription += 1;
       updated += 1;
     }
 
@@ -149,24 +147,26 @@ export async function POST(request: NextRequest) {
       action: 'admin',
       resource: 'pmc-group-mapping',
       details: {
-        csvRows: rows.length,
+        mappingRows: mappings.length,
+        poDetailRows: details.length,
         projectsScanned: projects.length,
         projectsUpdated: updated,
-        mappedByTriple,
-        mappedByCustomerName,
+        mappedByDescription,
         unmapped,
+        noMatchSet,
       },
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        csvRows: rows.length,
+        mappingRows: mappings.length,
+        poDetailRows: details.length,
         projectsScanned: projects.length,
         projectsUpdated: updated,
-        mappedByTriple,
-        mappedByCustomerName,
+        mappedByDescription,
         unmapped,
+        noMatchSet,
       },
     });
   } catch (error) {

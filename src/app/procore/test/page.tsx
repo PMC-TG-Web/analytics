@@ -1,15 +1,33 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import Navigation from "@/components/Navigation";
+
+type ProcoreConfigResponse = {
+  status?: string;
+  message?: string;
+  config?: {
+    clientId?: string;
+    clientSecret?: string;
+    companyId?: string;
+    apiUrl?: string;
+  };
+};
+
+type ProcoreUser = {
+  id?: string | number;
+  name?: string;
+  login?: string;
+};
 
 export default function ProcoreTestPage() {
   const [accessToken, setAccessToken] = useState("");
-  const [config, setConfig] = useState<any>(null);
+  const [config, setConfig] = useState<ProcoreConfigResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<ProcoreUser | null>(null);
   const [bidBoardProjectId, setBidBoardProjectId] = useState("598134326278124");
   const [lookupEmail, setLookupEmail] = useState("levi@pmc-tg-web.com"); // Adjust based on common domain
   const [costCodeProjectId, setCostCodeProjectId] = useState("598134326278124");
@@ -299,52 +317,19 @@ export default function ProcoreTestPage() {
     }
   };
 
-  const syncProductivityLogs = async () => {
+  const syncProductivityProjects = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const response = await fetch("/api/procore/sync/productivity-logs", {
+      const response = await fetch("/api/procore/sync/productivity-projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          projectId: "598134326278124", 
+          companyId: config?.config?.companyId,
           startDate: "2025-08-01",
           endDate: new Date().toISOString().split('T')[0],
-          page: 1, 
-          perPage: 100 
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setResult(data);
-      } else {
-        setError(data.error || "Request failed");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchProductivityLogs = async () => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const response = await fetch("/api/procore/productivity-logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          projectId: "598134326278124", 
-          startDate: "2025-08-01",
-          endDate: new Date().toISOString().split('T')[0],
-          page: 1, 
           perPage: 100 
         }),
       });
@@ -720,7 +705,7 @@ export default function ProcoreTestPage() {
               Click the button below to authenticate with Procore using OAuth. This will handle
               all token management automatically.
             </p>
-            <a
+            <Link
               href="/api/auth/procore/login"
               style={{
                 display: "inline-block",
@@ -733,7 +718,7 @@ export default function ProcoreTestPage() {
               }}
             >
               🔐 Login with Procore OAuth
-            </a>
+            </Link>
           </div>
         )}
 
@@ -1441,7 +1426,7 @@ export default function ProcoreTestPage() {
           </button>
 
           <button
-            onClick={fetchProductivityLogs}
+            onClick={syncProductivityProjects}
             disabled={loading || (!accessToken && !isAuthenticated)}
             style={{
               padding: "0.75rem 1.5rem",
@@ -1453,7 +1438,7 @@ export default function ProcoreTestPage() {
               cursor: loading || (!accessToken && !isAuthenticated) ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Loading..." : "Fetch Productivity Logs"}
+            {loading ? "Loading..." : "Sync Productivity Projects"}
           </button>
 
           <button
@@ -1471,22 +1456,6 @@ export default function ProcoreTestPage() {
             }}
           >
             {loading ? "Syncing..." : "🔄 SYNC ALL LIVE PROJECTS & BIDS"}
-          </button>
-
-          <button
-            onClick={syncProductivityLogs}
-            disabled={loading || (!accessToken && !isAuthenticated)}
-            style={{
-              padding: "0.75rem 1.5rem",
-              backgroundColor: loading || (!accessToken && !isAuthenticated) ? "#9ca3af" : "#6366f1",
-              color: "#fff",
-              border: "none",
-              borderRadius: "0.375rem",
-              fontWeight: "600",
-              cursor: loading || (!accessToken && !isAuthenticated) ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Syncing..." : "💾 Sync to Database"}
           </button>
 
           <a

@@ -38,6 +38,13 @@ model Project {
   scopeTrackings        ScopeTracking[]
   productivityLogs      ProductivityLog[]
   productivitySummaries ProductivitySummary[]
+  timecardEntries       TimecardEntry[]
+  timecardTimeTypes     TimecardTimeType[]
+  commitmentContracts   CommitmentContract[]
+  commitmentChangeOrders CommitmentChangeOrder[]
+  commitmentChangeOrderLineItems CommitmentChangeOrderLineItem[]
+  purchaseOrderContracts PurchaseOrderContract[]
+  purchaseOrderLineItemContractDetails PurchaseOrderLineItemContractDetail[]
   pmcBreakdownCache     PMCBreakdownCache?
 
   createdAt DateTime @default(now())
@@ -176,6 +183,32 @@ model ProductivityLog {
   scopeOfWork String?
   notes       String?
 
+  // Procore payload columns – promoted from customFields for direct queryability
+  procoreId             String?
+  procoreCompanyId      String?
+  procoreProjectId      String?
+  status                String?
+  company               String?
+  contract              String?
+  lineItemId            String?
+  lineItemDescription   String?
+  lineItemHolderId      String?
+  lineItemHolderType    String?
+  lineItemHolderTitle   String?
+  lineItemHolderNumber  String?
+  quantityUsed          Float?
+  quantityDelivered     Float?
+  previouslyUsed        Float?
+  previouslyDelivered   Float?
+  position              Int?
+  createdById           String?
+  createdByName         String?
+  createdByLogin        String?
+  createdByCollaborator Boolean?
+  procoreCreatedAt      DateTime?
+  procoreUpdatedAt      DateTime?
+  procoreDeletedAt      DateTime?
+
   // Flexible data
   customFields Json?
 
@@ -185,6 +218,366 @@ model ProductivityLog {
   @@index([jobKey])
   @@index([projectId])
   @@index([date])
+  @@index([procoreId])
+  @@index([company])
+  @@index([status])
+  @@index([contract])
+}
+
+// ==================== TIMECARD ENTRIES ====================
+model TimecardEntry {
+  id        String   @id @default(cuid())
+  jobKey    String?
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  date  DateTime
+  hours Float?
+  party String? // party.name (who worked)
+
+  // Procore payload columns – promoted from customFields for direct queryability
+  procoreId            String?
+  procoreCompanyId     String?
+  procoreProjectId     String?
+  status               String?
+  description          String?
+  billable             Boolean?
+  costCodeId           String?
+  costCodeName         String?
+  costCodeFullCode     String?
+  subJobId             String?
+  subJobName           String?
+  timecardTimeTypeId   String?
+  timecardTimeTypeName String?
+  partyId              String?
+  partyName            String?
+  partyLogin           String?
+  createdById          String?
+  createdByName        String?
+  createdByLogin       String?
+  timeIn               String?
+  timeOut              String?
+  lunchTime            Float?
+  totalHoursWorked     Float?
+  procoreCreatedAt     DateTime?
+  procoreUpdatedAt     DateTime?
+  procoreDeletedAt     DateTime?
+
+  // Flexible data
+  customFields Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([date])
+  @@index([procoreId])
+  @@index([party])
+  @@index([status])
+  @@index([costCodeId])
+}
+
+model TimecardTimeType {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  procoreId        String?
+  procoreCompanyId String?
+  procoreProjectId String?
+  name             String?
+  active           Boolean?
+  global           Boolean?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+  procoreDeletedAt DateTime?
+
+  customFields Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([procoreId])
+  @@index([name])
+}
+
+model CommitmentContract {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  procoreId           String?
+  procoreCompanyId    String?
+  procoreProjectId    String?
+  title               String?
+  number              String?
+  status              String?
+  vendorId            String?
+  vendorName          String?
+  value               Float?
+  originalValue       Float?
+  startDate           DateTime?
+  completionDate      DateTime?
+  approvalLetterDate  DateTime?
+  signedContractDate  DateTime?
+  notes               String?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+  procoreDeletedAt DateTime?
+
+  customFields Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([procoreId])
+  @@index([number])
+  @@index([status])
+  @@index([vendorId])
+}
+
+model CommitmentChangeOrder {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  procoreId            String?
+  procoreCompanyId     String?
+  procoreProjectId     String?
+  procoreContractId    String?
+
+  title            String?
+  number           String?
+  status           String?
+  dueDate          DateTime?
+  invoicedDate     DateTime?
+  approvedDate     DateTime?
+  value            Float?
+
+  customFields     Json?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+  procoreDeletedAt DateTime?
+
+  lineItems        CommitmentChangeOrderLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([procoreId])
+  @@index([procoreContractId])
+  @@index([number])
+  @@index([status])
+}
+
+model CommitmentChangeOrderLineItem {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  changeOrderId    String?
+  changeOrder      CommitmentChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  procoreId            String?
+  procoreCompanyId     String?
+  procoreProjectId     String?
+  procoreChangeOrderId String?
+
+  description      String?
+  quantity         Float?
+  unitCost         Float?
+  totalAmount      Float?
+  uom              String?
+  position         Int?
+  wbsCode          String?
+  costCode         String?
+  costType         String?
+
+  customFields     Json?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([changeOrderId])
+  @@index([procoreId])
+  @@index([procoreChangeOrderId])
+  @@index([costCode])
+}
+
+model PurchaseOrderContract {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  procoreId            String?
+  procoreCompanyId     String?
+  procoreProjectId     String?
+
+  title            String?
+  number           String?
+  status           String?
+  vendorId         String?
+  vendorName       String?
+  value            Float?
+  originalValue    Float?
+  startDate        DateTime?
+  completionDate   DateTime?
+
+  customFields     Json?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+  procoreDeletedAt DateTime?
+
+  lineItemContractDetails PurchaseOrderLineItemContractDetail[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([procoreId])
+  @@index([number])
+  @@index([status])
+  @@index([vendorId])
+}
+
+model PurchaseOrderLineItemContractDetail {
+  id               String   @id @default(cuid())
+  jobKey           String?
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  purchaseOrderContractId String?
+  purchaseOrderContract   PurchaseOrderContract? @relation(fields: [purchaseOrderContractId], references: [id], onDelete: SetNull)
+
+  procoreId               String?
+  procoreCompanyId        String?
+  procoreProjectId        String?
+  procorePurchaseOrderContractId String?
+
+  description      String?
+  quantity         Float?
+  unitCost         Float?
+  totalAmount      Float?
+  uom              String?
+  position         Int?
+  wbsCode          String?
+  costCode         String?
+  costType         String?
+
+  customFields     Json?
+
+  procoreCreatedAt DateTime?
+  procoreUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobKey])
+  @@index([projectId])
+  @@index([purchaseOrderContractId])
+  @@index([procoreId])
+  @@index([procorePurchaseOrderContractId])
+  @@index([costCode])
+}
+
+model commitment_change_order_line_item_unpacked_fields {
+  id              BigInt   @id @default(autoincrement())
+  line_item_id    String
+  field_path      String
+  value_type      String
+  value_text      String?
+  value_number    Float?
+  value_boolean   Boolean?
+  value_json      Json
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([line_item_id, field_path])
+  @@index([field_path], map: "idx_ccoli_uf_field_path")
+  @@index([value_text], map: "idx_ccoli_uf_value_text")
+  @@index([value_number], map: "idx_ccoli_uf_value_number")
+  @@index([value_boolean], map: "idx_ccoli_uf_value_boolean")
+  @@index([field_path, value_text], map: "idx_ccoli_uf_path_text")
+}
+
+model commitment_contract_unpacked_fields {
+  id           BigInt    @id @default(autoincrement())
+  contract_id  String
+  field_path   String
+  value_type   String
+  value_text   String?
+  value_number Float?
+  value_boolean Boolean?
+  value_json   Json
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([contract_id, field_path])
+  @@index([field_path])
+  @@index([value_text])
+  @@index([value_number])
+  @@index([value_boolean])
+  @@index([field_path, value_text])
+}
+
+model purchase_order_line_item_contract_detail_unpacked_fields {
+  id              BigInt   @id @default(autoincrement())
+  detail_id       String
+  field_path      String
+  value_type      String
+  value_text      String?
+  value_number    Float?
+  value_boolean   Boolean?
+  value_json      Json
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([detail_id, field_path])
+  @@index([field_path], map: "idx_pold_uf_field_path")
+  @@index([value_text], map: "idx_pold_uf_value_text")
+  @@index([value_number], map: "idx_pold_uf_value_number")
+  @@index([value_boolean], map: "idx_pold_uf_value_boolean")
+  @@index([field_path, value_text], map: "idx_pold_uf_path_text")
+}
+
+model PmcGroupMapping {
+  id           String   @id @default(cuid())
+  costItem     String
+  costType     String?
+  pmcGroup     String
+  costItemNorm String
+  costTypeNorm String
+  source       String?  @default("manual")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([costItem, costTypeNorm, pmcGroup])
+  @@index([costItemNorm])
+  @@index([costTypeNorm])
+  @@index([pmcGroup])
 }
 
 model ProductivitySummary {

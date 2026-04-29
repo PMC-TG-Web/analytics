@@ -22,7 +22,10 @@ PROCORE_API_URL=https://api.sandbox.procore.com
 PROCORE_AUTH_URL=https://sandbox.procore.com/oauth/authorize
 PROCORE_TOKEN_URL=https://api.sandbox.procore.com/oauth/token
 NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/api/auth/procore/callback
+PROCORE_LIVE_API_ENABLED=false
 ```
+
+`PROCORE_LIVE_API_ENABLED` is an emergency safety switch. Keep it `false` or unset in production so page traffic and admin clicks cannot make outbound Procore sync calls. Set it to `true` only during a controlled maintenance window.
 
 ### 2. Start the Development Server
 

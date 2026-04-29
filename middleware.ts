@@ -28,6 +28,28 @@ const HEAVY_API_ROUTE_PREFIXES = [
   '/api/procore/sync/project-commercial-data',
 ];
 
+const PROCORE_LIVE_API_ROUTE_PREFIXES = [
+  '/api/procore/sync',
+  '/api/procore/projects',
+  '/api/procore/vendors',
+  '/api/procore/prime-contracts',
+  '/api/procore/change-order-packages',
+  '/api/procore/company-users',
+  '/api/procore/configurable-field-sets',
+  '/api/procore/custom-fields',
+  '/api/procore/project-stages',
+  '/api/procore/estimating/bid-board-projects',
+  '/api/procore/estimating/bid-board-project-by-id',
+  '/api/procore/estimating/catalogs',
+  '/api/procore/estimating/catalog-items',
+  '/api/procore/estimating/estimating-project',
+  '/api/procore/estimating/proposals',
+  '/api/procore/estimating/proposals-bulk',
+  '/api/procore/estimating/proposal-line-items',
+  '/api/procore/estimating/proposal-line-items-bulk',
+  '/api/procore/estimating/proposal-line-item-groups',
+];
+
 type PermissionCheckResult = {
   allowed: boolean;
   permissionsCookie?: string | null;
@@ -66,6 +88,10 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
     }
   }
 
+  if (pathname === '/api/concrete-orders' || pathname.startsWith('/api/concrete-orders/')) {
+    permissions.add('concrete-orders-schedule');
+  }
+
   return Array.from(permissions);
 }
 
@@ -81,6 +107,17 @@ function isHeavyApiRoutePath(pathname: string) {
   return HEAVY_API_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+}
+
+function isProcoreLiveApiRoutePath(pathname: string) {
+  return PROCORE_LIVE_API_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+function isProcoreLiveApiEnabled(): boolean {
+  const value = String(process.env.PROCORE_LIVE_API_ENABLED || '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
 }
 
 function getApiRatePolicy(pathname: string) {
@@ -208,6 +245,17 @@ export async function middleware(request: NextRequest) {
     | null = null;
 
   if (isApiRoute) {
+    if (isProcoreLiveApiRoutePath(pathname) && !isProcoreLiveApiEnabled()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Procore live API access is disabled',
+          details: 'Set PROCORE_LIVE_API_ENABLED=true only for controlled maintenance windows.',
+        },
+        { status: 503 }
+      );
+    }
+
     const clientId = getClientIdentifier(request.headers);
     const ratePolicy = getApiRatePolicy(pathname);
     apiRateLimit = checkRateLimit({

@@ -111,7 +111,10 @@ export function ConcreteOrderModal({
 
   async function saveEdit(id: string) {
     const parsedYards = Number(editingFields.totalYards);
-    if (!editingFields.concreteCompany || !editingFields.date || !editingFields.time || !Number.isFinite(parsedYards) || parsedYards <= 0) return;
+    if (!editingFields.concreteCompany || !editingFields.date || !editingFields.time || !Number.isFinite(parsedYards) || parsedYards <= 0) {
+      alert("Concrete company, date, time, and total yards are required.");
+      return;
+    }
 
     try {
       setSavingEdit(true);
@@ -127,7 +130,10 @@ export function ConcreteOrderModal({
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to update concrete order");
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}));
+        throw new Error(json?.error || `Failed to update concrete order (${response.status})`);
+      }
 
       const json = await response.json().catch(() => ({}));
       const updated = json?.data as ConcreteOrder | undefined;
@@ -165,10 +171,16 @@ export function ConcreteOrderModal({
 
   async function submitOrder() {
     if (!project) return;
-    if (!orderDate || !orderTime || !orderYards || !orderCompany) return;
+    if (!orderDate || !orderTime || !orderYards || !orderCompany) {
+      alert("Concrete company, date, time, and total yards are required.");
+      return;
+    }
 
     const parsedYards = Number(orderYards);
-    if (!Number.isFinite(parsedYards) || parsedYards <= 0) return;
+    if (!Number.isFinite(parsedYards) || parsedYards <= 0) {
+      alert("Total yards must be greater than zero.");
+      return;
+    }
 
     try {
       setSavingOrder(true);
@@ -186,7 +198,8 @@ export function ConcreteOrderModal({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to save concrete order");
+        const json = await response.json().catch(() => ({}));
+        throw new Error(json?.error || `Failed to save concrete order (${response.status})`);
       }
 
       const json = await response.json().catch(() => ({}));

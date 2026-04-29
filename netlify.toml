@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# PROCORE_API_URL and PROCORE_AUTH_URL are public Procore API endpoint URLs,
+# not secrets. They appear in source files by design.
+[secrets_scanning]
+  enabled = true
+  omit_keys = ["PROCORE_API_URL", "PROCORE_AUTH_URL"]

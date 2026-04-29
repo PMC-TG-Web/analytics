@@ -4,9 +4,6 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Public Procore endpoint URL variables are not secrets; omit these keys from scanner checks.
+  SECRETS_SCAN_OMIT_KEYS = "PROCORE_API_URL,PROCORE_AUTH_URL"
 
-# PROCORE_API_URL and PROCORE_AUTH_URL are public Procore API endpoint URLs,
-# not secrets. They appear in source files by design.
-[secrets_scanning]
-  enabled = true
-  omit_keys = ["PROCORE_API_URL", "PROCORE_AUTH_URL"]

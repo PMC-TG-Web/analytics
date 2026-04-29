@@ -240,10 +240,10 @@ function ProcoreContent() {
     setError(null);
     setDebugResult(null);
     try {
-      const response = await fetch("/api/procore/check-firebase");
+      const response = await fetch("/api/status");
 
       if (!response.ok) {
-        console.warn("Procore check-database endpoint not available");
+        console.warn("Status endpoint not available");
         return;
       }
 

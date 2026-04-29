@@ -65,7 +65,7 @@ Once you explore and see what data is available, we can:
 1. **Create more specific endpoints** to fetch particular data
 2. **Build dashboard widgets** to display Procore data
 3. **Integrate with your existing KPI dashboard**
-4. **Sync Procore data with Firebase** if needed
+4. **Sync Procore data into Postgres/Prisma** if needed
 5. **Create custom reports** based on Procore data
 
 Let me know what data looks interesting to you, and I'll integrate it into the main dashboard!

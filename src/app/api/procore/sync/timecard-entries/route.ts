@@ -49,6 +49,7 @@ async function fetchAllProjects(accessToken: string, companyId: string, maxProje
     if (pageItems.length < perPage) break;
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return projects;
@@ -91,6 +92,7 @@ async function fetchAllTimecardEntriesForProject(params: {
     if (pageEntries.length < params.perPage) break;
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return entries;

@@ -147,6 +147,7 @@ export async function POST(request: Request) {
         if (!fetchAll || items.length < perPage) break;
         currentPage += 1;
         if (currentPage - page > 50) break;
+        await new Promise((r) => setTimeout(r, 150));
       }
     }
 

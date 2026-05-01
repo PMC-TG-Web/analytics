@@ -57,6 +57,7 @@ async function fetchAllProjects(accessToken: string, companyId: string, maxProje
 
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return projects;
@@ -106,6 +107,7 @@ async function fetchAllProductivityLogsForProject(params: {
 
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return logs;

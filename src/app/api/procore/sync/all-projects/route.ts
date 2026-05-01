@@ -558,6 +558,7 @@ export async function POST(request: Request) {
         if (data.length < 100 || !fetchAll) break;
         page++;
         if (page > maxPages) break;
+        await new Promise((r) => setTimeout(r, 150));
       }
       return projects;
     }

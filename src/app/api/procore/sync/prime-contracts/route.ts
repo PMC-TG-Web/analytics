@@ -210,6 +210,7 @@ async function fetchAllProjects(
     if (pageItems.length < perPage) break;
     page += 1;
     if (page > 200) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
   return projects;
 }
@@ -253,6 +254,7 @@ async function fetchAllPrimeContractsForProject(params: {
     if (pageRecords.length < params.perPage) break;
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
   return { records, notEnabled: false };
 }

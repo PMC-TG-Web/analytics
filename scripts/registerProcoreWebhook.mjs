@@ -7,6 +7,7 @@
  *   node scripts/registerProcoreWebhook.mjs                  # list existing hooks
  *   node scripts/registerProcoreWebhook.mjs --register       # register hook + triggers
  *   node scripts/registerProcoreWebhook.mjs --delete <hookId> # delete a hook
+ *   node scripts/registerProcoreWebhook.mjs --cleanup [keepHookId] # delete old hooks in namespace
  *
  * Required env vars (loads .env then .env.local):
  *   PROCORE_CLIENT_ID
@@ -57,6 +58,7 @@ const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').repla
 const TOKEN_URL = process.env.PROCORE_TOKEN_URL || `${API_URL}/oauth/token`;
 const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analyticspmc.netlify.app/api/webhooks/procore';
 const WEBHOOK_NAMESPACE = process.env.PROCORE_WEBHOOK_NAMESPACE || 'pmc-analytics';
+const ACTIVE_HOOK_ID = (process.env.PROCORE_WEBHOOK_HOOK_ID || '').trim();
 
 // Desired resources; final trigger set is filtered to supported resources/actions.
 const DESIRED_TRIGGERS = [
@@ -318,8 +320,8 @@ async function cmdRegister() {
 
   console.log(`\nDone. Hook id=${hookId}, ${successCount} triggers registered.`);
   console.log('\nNext steps:');
-  console.log('  1. Add PROCORE_WEBHOOK_SHARED_SECRET to Vercel environment variables.');
-  console.log('  2. Add PROCORE_SYNC_SECRET to Vercel environment variables.');
+  console.log('  1. Add PROCORE_WEBHOOK_SHARED_SECRET to Netlify environment variables.');
+  console.log('  2. Add PROCORE_SYNC_SECRET to Netlify environment variables.');
   console.log('  3. Deploy (git push) so the webhook receiver goes live.');
 }
 
@@ -335,6 +337,46 @@ async function cmdDelete(hookId) {
   console.log('Deleted.');
 }
 
+async function cmdCleanup(optionalKeepHookId) {
+  const keepHookId = String(optionalKeepHookId || ACTIVE_HOOK_ID || '').trim();
+  if (!keepHookId) {
+    console.error('Usage: node scripts/registerProcoreWebhook.mjs --cleanup [keepHookId]');
+    console.error('No keep hook id provided, and PROCORE_WEBHOOK_HOOK_ID is not set. Aborting for safety.');
+    process.exit(1);
+  }
+
+  console.log('Fetching access token...');
+  const token = await getToken();
+  const hooks = await listHooks(token);
+
+  if (!hooks.length) {
+    console.log('No hooks found for namespace', WEBHOOK_NAMESPACE);
+    return;
+  }
+
+  const toDelete = hooks.filter((hook) => String(hook?.id || '') !== keepHookId);
+  if (!toDelete.length) {
+    console.log(`Nothing to clean up. Only keep hook remains: ${keepHookId}`);
+    return;
+  }
+
+  console.log(`Keeping hook ${keepHookId}; deleting ${toDelete.length} old hook(s)...`);
+  let deletedCount = 0;
+  for (const hook of toDelete) {
+    const hookId = String(hook?.id || '').trim();
+    if (!hookId) continue;
+    try {
+      await deleteHook(token, hookId);
+      deletedCount++;
+      console.log(`  ✓ deleted hook ${hookId}`);
+    } catch (err) {
+      console.warn(`  ✗ failed to delete hook ${hookId}: ${err.message}`);
+    }
+  }
+
+  console.log(`Cleanup done. Deleted ${deletedCount}/${toDelete.length} old hook(s).`);
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 
@@ -347,6 +389,8 @@ if (args[0] === '--register') {
   cmdRegister().catch((e) => { console.error(e); process.exit(1); });
 } else if (args[0] === '--delete') {
   cmdDelete(args[1]).catch((e) => { console.error(e); process.exit(1); });
+} else if (args[0] === '--cleanup') {
+  cmdCleanup(args[1]).catch((e) => { console.error(e); process.exit(1); });
 } else {
   cmdList().catch((e) => { console.error(e); process.exit(1); });
 }

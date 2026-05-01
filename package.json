@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test test/*.test.mjs",
+    "procore:webhook:list": "node scripts/registerProcoreWebhook.mjs",
+    "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
+    "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",
     "verify:headers": "node scripts/verifyIframeHeaders.mjs",
     "postinstall": "prisma generate"
   },

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { procoreConfig } from '@/lib/procore';
 
 const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').replace(/\/$/, '');
+const WEBHOOK_NAMESPACE = 'pmc-analytics';
 
 // Resources and event types to register triggers for.
 const TRIGGER_PLAN = [
@@ -53,7 +54,45 @@ export async function GET(request: NextRequest) {
   }
 
   const companyId = procoreConfig.companyId;
-  const { ok, status, body } = await procoreFetch(token, 'GET', `/rest/v2.0/companies/${companyId}/webhooks/hooks`);
+  const { searchParams } = new URL(request.url);
+  const mode = (searchParams.get('mode') || '').trim().toLowerCase();
+
+  // Server-side proxy for resources list to avoid browser CORS issues.
+  if (mode === 'resources') {
+    const resourcesRes = await procoreFetch(
+      token,
+      'GET',
+      `/rest/v2.0/companies/${companyId}/webhooks/resources?payload_version=v2.0`
+    );
+    if (!resourcesRes.ok) {
+      return NextResponse.json(
+        { error: 'Failed to list resources', status: resourcesRes.status, detail: resourcesRes.body },
+        { status: 502 }
+      );
+    }
+
+    const resources = Array.isArray((resourcesRes.body as Record<string, unknown>)?.data)
+      ? ((resourcesRes.body as Record<string, unknown>).data as unknown[])
+      : [];
+    const simplified = resources.map((r) => {
+      const item = r as Record<string, unknown>;
+      return {
+        name: item.name,
+        actions: item.actions,
+        category: item.category,
+        tool: item.tool,
+        payload_version: item.payload_version,
+      };
+    });
+
+    return NextResponse.json({ resources: simplified });
+  }
+
+  const { ok, status, body } = await procoreFetch(
+    token,
+    'GET',
+    `/rest/v2.0/companies/${companyId}/webhooks/hooks?namespace=${encodeURIComponent(WEBHOOK_NAMESPACE)}`
+  );
   if (!ok) {
     return NextResponse.json({ error: 'Failed to list hooks', status, detail: body }, { status: 502 });
   }
@@ -93,7 +132,7 @@ export async function POST(request: NextRequest) {
   // Create the hook
   const hookRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks`, {
     payload_version: 'v2.0',
-    namespace: 'pmc-analytics',
+    namespace: WEBHOOK_NAMESPACE,
     destination_url: destinationUrl,
     destination_headers: {
       Authorization: `Bearer ${sharedSecret}`,
@@ -120,7 +159,7 @@ export async function POST(request: NextRequest) {
       const tRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks/${hookId}/triggers`, {
         resource_name: resourceName,
         event_type: eventType,
-        api_version: 'v2',
+        api_version: 'v2.0',
       });
       triggerResults.push({
         resourceName,

@@ -56,6 +56,7 @@ const SHARED_SECRET = process.env.PROCORE_WEBHOOK_SHARED_SECRET;
 const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').replace(/\/$/, '');
 const TOKEN_URL = process.env.PROCORE_TOKEN_URL || `${API_URL}/oauth/token`;
 const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analyticspmc.netlify.app/api/webhooks/procore';
+const WEBHOOK_NAMESPACE = process.env.PROCORE_WEBHOOK_NAMESPACE || 'pmc-analytics';
 
 // Resources and event types to register triggers for.
 const TRIGGERS = [
@@ -140,7 +141,10 @@ async function apiDelete(token, path) {
 // ─── Webhook hook & trigger operations ───────────────────────────────────────
 
 async function listHooks(token) {
-  const data = await apiGet(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`);
+  const data = await apiGet(
+    token,
+    `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks?namespace=${encodeURIComponent(WEBHOOK_NAMESPACE)}`
+  );
   return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
@@ -152,7 +156,7 @@ async function listTriggers(token, hookId) {
 async function createHook(token) {
   return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`, {
     payload_version: 'v2.0',
-    namespace: 'pmc-analytics',
+    namespace: WEBHOOK_NAMESPACE,
     destination_url: DESTINATION_URL,
     destination_headers: {
       Authorization: `Bearer ${SHARED_SECRET}`,
@@ -164,7 +168,7 @@ async function createTrigger(token, hookId, resourceName, eventType) {
   return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}/triggers`, {
     resource_name: resourceName,
     event_type: eventType,
-    api_version: 'v2',
+    api_version: 'v2.0',
   });
 }
 

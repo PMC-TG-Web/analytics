@@ -20,6 +20,7 @@
 
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 // ─── Minimal .env loader ────────────────────────────────────────────────────
 function loadEnvFile(filePath) {
@@ -42,7 +43,8 @@ function loadEnvFile(filePath) {
   }
 }
 
-const root = resolve(new URL('.', import.meta.url).pathname, '..');
+const __dirname = resolve(fileURLToPath(import.meta.url), '..');
+const root = resolve(__dirname, '..');
 loadEnvFile(resolve(root, '.env'));
 loadEnvFile(resolve(root, '.env.local'));
 
@@ -138,40 +140,36 @@ async function apiDelete(token, path) {
 // ─── Webhook hook & trigger operations ───────────────────────────────────────
 
 async function listHooks(token) {
-  return apiGet(token, `/rest/v1.0/webhooks/hooks?company_id=${COMPANY_ID}`);
+  const data = await apiGet(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`);
+  return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
 async function listTriggers(token, hookId) {
-  return apiGet(token, `/rest/v1.0/webhooks/hooks/${hookId}/triggers?company_id=${COMPANY_ID}`);
+  const data = await apiGet(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}/triggers`);
+  return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
 async function createHook(token) {
-  return apiPost(token, '/rest/v1.0/webhooks/hooks', {
-    hook: {
-      company_id: parseInt(COMPANY_ID, 10),
-      destination_url: DESTINATION_URL,
-      payload_version: '2.0',
-      namespace: 'procore',
-      api_version: 'v1.0',
-      // Procore will include this value in X-Procore-Webhook-Secret header
-      shared_secret: SHARED_SECRET,
+  return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`, {
+    payload_version: 'v2',
+    namespace: 'pmc-analytics',
+    destination_url: DESTINATION_URL,
+    destination_headers: {
+      Authorization: `Bearer ${SHARED_SECRET}`,
     },
   });
 }
 
 async function createTrigger(token, hookId, resourceName, eventType) {
-  return apiPost(token, `/rest/v1.0/webhooks/hooks/${hookId}/triggers`, {
-    trigger: {
-      company_id: parseInt(COMPANY_ID, 10),
-      resource_name: resourceName,
-      event_type: eventType,
-      api_version: 'v1.0',
-    },
+  return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}/triggers`, {
+    resource_name: resourceName,
+    event_type: eventType,
+    api_version: 'v2',
   });
 }
 
 async function deleteHook(token, hookId) {
-  return apiDelete(token, `/rest/v1.0/webhooks/hooks/${hookId}?company_id=${COMPANY_ID}`);
+  return apiDelete(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}`);
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -180,8 +178,7 @@ async function cmdList() {
   console.log('Fetching access token...');
   const token = await getToken();
   console.log('Listing webhook hooks for company', COMPANY_ID);
-  const hooks = await listHooks(token);
-  const list = Array.isArray(hooks) ? hooks : (hooks?.hooks ?? [hooks]);
+  const list = await listHooks(token);
   if (!list.length) {
     console.log('No hooks found.');
     return;
@@ -189,11 +186,11 @@ async function cmdList() {
   for (const hook of list) {
     console.log(`\nHook id=${hook.id}`);
     console.log(`  destination: ${hook.destination_url}`);
-    console.log(`  status:      ${hook.status ?? hook.active}`);
+    console.log(`  status:      ${hook.status}`);
+    console.log(`  namespace:   ${hook.namespace}`);
     console.log(`  created:     ${hook.created_at}`);
     try {
-      const triggers = await listTriggers(token, hook.id);
-      const trigList = Array.isArray(triggers) ? triggers : (triggers?.triggers ?? []);
+      const trigList = await listTriggers(token, hook.id);
       if (trigList.length) {
         console.log('  triggers:');
         for (const t of trigList) {
@@ -226,15 +223,20 @@ async function cmdRegister() {
     process.exit(1);
   }
 
-  const hookId = hook.id ?? hook.hook?.id;
+  const hookId = hook?.data?.id ?? hook?.id;
+  if (!hookId) {
+    console.error('Hook created but could not parse hook id from response:', JSON.stringify(hook));
+    process.exit(1);
+  }
   console.log(`Hook created: id=${hookId}`);
 
   let successCount = 0;
   for (const { resourceName, eventTypes } of TRIGGERS) {
     for (const eventType of eventTypes) {
       try {
-        await createTrigger(token, hookId, resourceName, eventType);
-        console.log(`  ✓ trigger: ${resourceName} / ${eventType}`);
+        const trigResult = await createTrigger(token, hookId, resourceName, eventType);
+        const triggerId = trigResult?.data?.id ?? trigResult?.id ?? '?';
+        console.log(`  ✓ trigger: ${resourceName} / ${eventType} (id=${triggerId})`);
         successCount++;
       } catch (err) {
         console.warn(`  ✗ trigger failed (${resourceName} / ${eventType}): ${err.message}`);

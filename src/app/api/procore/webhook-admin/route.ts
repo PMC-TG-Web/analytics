@@ -59,10 +59,12 @@ export async function GET(request: NextRequest) {
 
   // Server-side proxy for resources list to avoid browser CORS issues.
   if (mode === 'resources') {
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const perPage = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('per_page') || '100', 10) || 100));
     const resourcesRes = await procoreFetch(
       token,
       'GET',
-      `/rest/v2.0/companies/${companyId}/webhooks/resources?payload_version=v2.0`
+      `/rest/v2.0/companies/${companyId}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
     );
     if (!resourcesRes.ok) {
       return NextResponse.json(
@@ -85,7 +87,58 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ resources: simplified });
+    return NextResponse.json({ page, per_page: perPage, resources: simplified });
+  }
+
+  // Fetch all resources across pages (up to a safe cap) to inspect full catalog.
+  if (mode === 'resources-all') {
+    const perPage = 100;
+    const maxPages = 20;
+    const all: Array<Record<string, unknown>> = [];
+
+    for (let page = 1; page <= maxPages; page++) {
+      const resourcesRes = await procoreFetch(
+        token,
+        'GET',
+        `/rest/v2.0/companies/${companyId}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
+      );
+
+      if (!resourcesRes.ok) {
+        return NextResponse.json(
+          {
+            error: 'Failed to list resources',
+            page,
+            status: resourcesRes.status,
+            detail: resourcesRes.body,
+          },
+          { status: 502 }
+        );
+      }
+
+      const items = Array.isArray((resourcesRes.body as Record<string, unknown>)?.data)
+        ? ((resourcesRes.body as Record<string, unknown>).data as Record<string, unknown>[])
+        : [];
+
+      if (!items.length) {
+        break;
+      }
+
+      all.push(
+        ...items.map((item) => ({
+          name: item.name,
+          actions: item.actions,
+          category: item.category,
+          tool: item.tool,
+          payload_version: item.payload_version,
+        }))
+      );
+
+      if (items.length < perPage) {
+        break;
+      }
+    }
+
+    return NextResponse.json({ count: all.length, resources: all });
   }
 
   const { ok, status, body } = await procoreFetch(

@@ -28,6 +28,13 @@ function readText(value: unknown): string {
   return String(value ?? '').trim();
 }
 
+function parseCsvIds(value: unknown): string[] {
+  return String(value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 function isAccessSkippedError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -176,7 +183,13 @@ export async function POST(request: Request) {
 
     await ensureChangeOrderPackagesTable();
 
-    const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+    const explicitProjectIds = Array.isArray(body.projectIds)
+      ? body.projectIds.map((v) => readText(v)).filter((v) => v.length > 0)
+      : parseCsvIds(body.projectIds);
+
+    const projectIds = explicitProjectIds.length > 0
+      ? explicitProjectIds
+      : await getProjectIdsFromFeed(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {

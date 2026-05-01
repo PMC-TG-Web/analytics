@@ -43,6 +43,15 @@ function normalizeToolError(error: unknown, actionLabel: string): string {
   return `${message}. This usually means the platform timed out the request before JSON returned. Try running smaller sync actions or re-running Sync All (which now executes step-by-step client-side).`;
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export default function ProcoreProjectsFeedToolsPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [output, setOutput] = useState<string>("Run an action to see results here.");
@@ -628,24 +637,106 @@ export default function ProcoreProjectsFeedToolsPage() {
     const steps: SyncAllStep[] = [
       { step: "all-projects", path: "/api/procore/sync/all-projects", payload: { fetchAll: true } },
       { step: "prime-contracts", path: "/api/procore/sync/prime-contracts", payload: { concurrency: 2 } },
-      { step: "change-order-packages", path: "/api/procore/sync/change-order-packages", payload: { limitProjects: 10000, concurrency: 2 } },
+      { step: "change-order-packages", path: "/api/procore/sync/change-order-packages", payload: { perPage: 100 } },
       { step: "commitment-contracts", path: "/api/procore/sync/commitment-contracts", payload: { concurrency: 2 } },
       { step: "commitment-change-order-line-items", path: "/api/procore/sync/commitment-change-order-line-items", payload: { concurrency: 2 } },
       { step: "bids", path: "/api/procore/sync/bids", payload: { companyWide: true, fetchAll: true } },
       { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
       { step: "productivity-projects", path: "/api/procore/sync/productivity-projects", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
-      { step: "budget-line-items", path: "/api/procore/sync/budget-line-items", payload: { limitProjects: 10000, fetchAll: true } },
+      { step: "budget-line-items", path: "/api/procore/sync/budget-line-items", payload: { fetchAll: true, perPage: 100 } },
       { step: "company-users", path: "/api/procore/sync/company-users", payload: {} },
       { step: "vendors", path: "/api/procore/sync/vendors", payload: {} },
       { step: "estimating-catalogs", path: "/api/procore/sync/estimating-catalogs", payload: {} },
     ];
 
+    const heavyStepNames = new Set([
+      "change-order-packages",
+      "commitment-contracts",
+      "timecard-entries",
+      "productivity-projects",
+      "budget-line-items",
+    ]);
+
     const started = Date.now();
     const results: Array<Record<string, unknown>> = [];
 
     try {
+      let cachedProjectIds: string[] | null = null;
+
+      const loadProjectIds = async (): Promise<string[]> => {
+        if (cachedProjectIds) return cachedProjectIds;
+
+        const ids = new Set<string>();
+        let page = 1;
+        const pageSize = 1000;
+
+        while (true) {
+          const res = await fetch(`/api/procore/projects-feed?page=${page}&pageSize=${pageSize}`, {
+            method: "GET",
+            credentials: "include",
+          });
+
+          const body = await readJsonResponse<Record<string, unknown>>(res, {
+            label: "projects-feed response",
+            fallback: {},
+          });
+
+          const rows = Array.isArray(body.data) ? body.data : [];
+          for (const row of rows) {
+            const record = row as Record<string, unknown>;
+            const id = String(record.procoreId || record.externalId || "").trim();
+            if (id) ids.add(id);
+          }
+
+          const totalPages = Number(body.totalPages || 1);
+          if (!res.ok || page >= totalPages || rows.length === 0) break;
+          page += 1;
+        }
+
+        cachedProjectIds = Array.from(ids);
+        return cachedProjectIds;
+      };
+
       for (const step of steps) {
         try {
+          if (heavyStepNames.has(step.step)) {
+            const projectIds = await loadProjectIds();
+            const chunks = chunkArray(projectIds, 12);
+            const chunkResults: Array<Record<string, unknown>> = [];
+
+            for (const chunk of chunks) {
+              const payload = { ...step.payload, projectIds: chunk };
+              const res = await fetch(step.path, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+
+              const body = await readJsonResponse<ToolResponse>(res, {
+                label: `${step.step} response`,
+                fallback: {},
+              });
+
+              chunkResults.push({
+                ok: res.ok,
+                status: res.status,
+                projectIds: chunk,
+                summary: body,
+              });
+            }
+
+            const stepOk = chunkResults.every((row) => row.ok === true);
+            results.push({
+              step: step.step,
+              ok: stepOk,
+              chunks: chunkResults.length,
+              failedChunks: chunkResults.filter((row) => row.ok !== true).length,
+              summary: { chunkResults },
+            });
+            continue;
+          }
+
           const res = await fetch(step.path, {
             method: "POST",
             credentials: "include",

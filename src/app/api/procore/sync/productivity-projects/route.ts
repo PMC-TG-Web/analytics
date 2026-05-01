@@ -16,6 +16,13 @@ function parseCsv(value: unknown): string[] {
     .filter(Boolean);
 }
 
+  function parseCsvIds(value: unknown): string[] {
+    return String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -177,7 +184,13 @@ export async function POST(request: Request) {
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
-    const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+      const explicitProjectIds = Array.isArray(body.projectIds)
+        ? body.projectIds.map((v) => String(v || "").trim()).filter(Boolean)
+        : parseCsvIds(body.projectIds);
+
+      const projects = explicitProjectIds.length > 0
+        ? explicitProjectIds.map((id) => ({ id }))
+        : await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
 
     const summary = {
       success: true,

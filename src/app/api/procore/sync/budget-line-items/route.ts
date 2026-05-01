@@ -38,6 +38,13 @@ function firstText(...values: unknown[]): string | null {
   return null;
 }
 
+function parseCsvIds(value: unknown): string[] {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function unwrapArray(response: unknown): JsonObject[] {
   if (Array.isArray(response)) {
     return response.map(asObject).filter((v): v is JsonObject => Boolean(v));
@@ -146,7 +153,13 @@ export async function POST(request: Request) {
 
     await ensureBudgetLineItemsTable();
 
-    const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+    const explicitProjectIds = Array.isArray(body?.projectIds)
+      ? body.projectIds.map((v: unknown) => String(v || '').trim()).filter(Boolean)
+      : parseCsvIds(body?.projectIds);
+
+    const projectIds = explicitProjectIds.length > 0
+      ? explicitProjectIds
+      : await getProjectIdsFromFeed(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {

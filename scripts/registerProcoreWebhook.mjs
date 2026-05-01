@@ -15,7 +15,7 @@
  *   PROCORE_WEBHOOK_SHARED_SECRET
  *   PROCORE_API_URL          (default: https://api.procore.com)
  *   PROCORE_TOKEN_URL        (default: https://api.procore.com/oauth/token)
- *   WEBHOOK_DESTINATION_URL  (override, default: https://analytics-nine-phi.vercel.app/api/webhooks/procore)
+ *   WEBHOOK_DESTINATION_URL  (override, default: https://analyticspmc.netlify.app/api/webhooks/procore)
  */
 
 import { readFileSync } from 'fs';
@@ -55,7 +55,7 @@ const COMPANY_ID = process.env.PROCORE_COMPANY_ID;
 const SHARED_SECRET = process.env.PROCORE_WEBHOOK_SHARED_SECRET;
 const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').replace(/\/$/, '');
 const TOKEN_URL = process.env.PROCORE_TOKEN_URL || `${API_URL}/oauth/token`;
-const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analytics-nine-phi.vercel.app/api/webhooks/procore';
+const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analyticspmc.netlify.app/api/webhooks/procore';
 
 // Resources and event types to register triggers for.
 const TRIGGERS = [

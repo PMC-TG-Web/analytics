@@ -17,7 +17,7 @@ function getDestinationUrl(): string {
   if (appBase && !appBase.includes('localhost')) {
     return `${appBase}/api/webhooks/procore`;
   }
-  return 'https://analytics-nine-phi.vercel.app/api/webhooks/procore';
+  return 'https://analyticspmc.netlify.app/api/webhooks/procore';
 }
 
 async function procoreFetch(

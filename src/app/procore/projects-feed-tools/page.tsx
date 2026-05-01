@@ -13,12 +13,34 @@ type ToolResponse = {
   [key: string]: unknown;
 };
 
+type SyncAllStep = {
+  step: string;
+  path: string;
+  payload: Record<string, unknown>;
+};
+
 function toPrettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
   }
+}
+
+function normalizeToolError(error: unknown, actionLabel: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  const looksLikeTimeoutHtml =
+    normalized.includes("inactivity timeout") ||
+    normalized.includes("gateway timeout") ||
+    normalized.includes("non-json content: <html");
+
+  if (!looksLikeTimeoutHtml) {
+    return message;
+  }
+
+  return `${message}. This usually means the platform timed out the request before JSON returned. Try running smaller sync actions or re-running Sync All (which now executes step-by-step client-side).`;
 }
 
 export default function ProcoreProjectsFeedToolsPage() {
@@ -587,10 +609,82 @@ export default function ProcoreProjectsFeedToolsPage() {
         toPrettyJson({
           action: actionLabel,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: normalizeToolError(error, actionLabel),
         })
       );
       setLastStatus("error");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function runSyncAllClient() {
+    setBusyAction("Sync All");
+    setLastStatus("running");
+
+    const today = new Date().toISOString().split("T")[0];
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    const steps: SyncAllStep[] = [
+      { step: "all-projects", path: "/api/procore/sync/all-projects", payload: { fetchAll: true } },
+      { step: "prime-contracts", path: "/api/procore/sync/prime-contracts", payload: { concurrency: 2 } },
+      { step: "change-order-packages", path: "/api/procore/sync/change-order-packages", payload: { limitProjects: 10000, concurrency: 2 } },
+      { step: "commitment-contracts", path: "/api/procore/sync/commitment-contracts", payload: { concurrency: 2 } },
+      { step: "commitment-change-order-line-items", path: "/api/procore/sync/commitment-change-order-line-items", payload: { concurrency: 2 } },
+      { step: "bids", path: "/api/procore/sync/bids", payload: { companyWide: true, fetchAll: true } },
+      { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
+      { step: "productivity-projects", path: "/api/procore/sync/productivity-projects", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
+      { step: "budget-line-items", path: "/api/procore/sync/budget-line-items", payload: { limitProjects: 10000, fetchAll: true } },
+      { step: "company-users", path: "/api/procore/sync/company-users", payload: {} },
+      { step: "vendors", path: "/api/procore/sync/vendors", payload: {} },
+      { step: "estimating-catalogs", path: "/api/procore/sync/estimating-catalogs", payload: {} },
+    ];
+
+    const started = Date.now();
+    const results: Array<Record<string, unknown>> = [];
+
+    try {
+      for (const step of steps) {
+        try {
+          const res = await fetch(step.path, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(step.payload),
+          });
+
+          const body = await readJsonResponse<ToolResponse>(res, {
+            label: `${step.step} response`,
+            fallback: {},
+          });
+
+          results.push({
+            step: step.step,
+            ok: res.ok,
+            status: res.status,
+            summary: body,
+          });
+        } catch (error) {
+          results.push({
+            step: step.step,
+            ok: false,
+            error: normalizeToolError(error, step.step),
+          });
+        }
+      }
+
+      const elapsedMs = Date.now() - started;
+      const allOk = results.every((row) => row.ok === true);
+
+      setOutput(
+        toPrettyJson({
+          action: "Sync All",
+          ok: allOk,
+          elapsedMs,
+          steps: results,
+        })
+      );
+      setLastStatus(allOk ? "ok" : "error");
     } finally {
       setBusyAction(null);
     }
@@ -644,7 +738,7 @@ export default function ProcoreProjectsFeedToolsPage() {
               {/* ── SYNC ALL ─────────────────────────────────────── */}
               <button
                 disabled={disableSyncActions}
-                onClick={() => runPost('/api/procore/sync/run-all', "Sync All")}
+                onClick={runSyncAllClient}
                 className="sm:col-span-2 px-4 py-4 rounded-xl bg-violet-700 text-white font-black text-sm uppercase tracking-widest hover:bg-violet-800 disabled:opacity-50 border-2 border-violet-500"
               >
                 {busyAction === "Sync All" ? "⏳ Syncing All — Please Wait..." : "⚡ Sync All (Projects → Contracts → Change Orders → Commitments → Bids)"}

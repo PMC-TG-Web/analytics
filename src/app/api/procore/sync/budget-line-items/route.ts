@@ -184,8 +184,28 @@ export async function POST(request: Request) {
     let projectsSkippedAccess = 0;
     let fetched = 0;
     let upserted = 0;
+    const maxWarningMessages = 100;
+    const maxErrorMessages = 200;
+    let warningsTruncated = 0;
+    let errorsTruncated = 0;
     const warnings: string[] = [];
     const errors: string[] = [];
+
+    function pushWarning(message: string) {
+      if (warnings.length < maxWarningMessages) {
+        warnings.push(message);
+      } else {
+        warningsTruncated += 1;
+      }
+    }
+
+    function pushError(message: string) {
+      if (errors.length < maxErrorMessages) {
+        errors.push(message);
+      } else {
+        errorsTruncated += 1;
+      }
+    }
 
     for (const projectId of projectIds) {
       projectsScanned += 1;
@@ -205,11 +225,9 @@ export async function POST(request: Request) {
           const message = error instanceof Error ? error.message : String(error);
           if (isAccessSkippedError(message)) {
             projectsSkippedAccess += 1;
-            if (warnings.length < 25) {
-              warnings.push(`project:${projectId} budget_line_items skipped (access): ${message}`);
-            }
+            pushWarning(`project:${projectId} budget_line_items skipped (access): ${message}`);
           } else {
-            errors.push(`project:${projectId} budget_line_items => ${message}`);
+            pushError(`project:${projectId} budget_line_items => ${message}`);
           }
         }
 
@@ -267,7 +285,7 @@ export async function POST(request: Request) {
           } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             const id = firstText(item.id, item.budget_line_item_id) || 'unknown';
-            errors.push(`project:${projectId} budget_line_item:${id} => ${message}`);
+            pushError(`project:${projectId} budget_line_item:${id} => ${message}`);
           }
         }
 
@@ -287,6 +305,8 @@ export async function POST(request: Request) {
         projectsSkippedAccess,
         fetched,
         upserted,
+        warningsTruncated,
+        errorsTruncated,
         warnings,
         errors,
       },

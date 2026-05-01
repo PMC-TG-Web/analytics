@@ -655,10 +655,10 @@ export default function ProcoreProjectsFeedToolsPage() {
       { step: "all-projects", path: "/api/procore/sync/all-projects", payload: { fetchAll: true } },
       { step: "prime-contracts", path: "/api/procore/sync/prime-contracts", payload: { concurrency: 2 } },
       { step: "change-order-packages", path: "/api/procore/sync/change-order-packages", payload: { perPage: 100 } },
-      { step: "commitment-contracts", path: "/api/procore/sync/commitment-contracts", payload: { concurrency: 2 } },
+      { step: "commitment-contracts", path: "/api/procore/sync/commitment-contracts", payload: { concurrency: 1, perPage: 100 } },
       { step: "commitment-change-order-line-items", path: "/api/procore/sync/commitment-change-order-line-items", payload: { concurrency: 2 } },
       { step: "bids", path: "/api/procore/sync/bids", payload: { companyWide: true, fetchAll: true } },
-      { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
+      { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 1, perPage: 100 } },
       { step: "productivity-projects", path: "/api/procore/sync/productivity-projects", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
       { step: "budget-line-items", path: "/api/procore/sync/budget-line-items", payload: { fetchAll: true, perPage: 100 } },
       { step: "company-users", path: "/api/procore/sync/company-users", payload: {} },
@@ -675,11 +675,11 @@ export default function ProcoreProjectsFeedToolsPage() {
     ]);
 
     const heavyStepConfig: Record<string, { chunkSize: number; maxAttempts: number; pauseMs: number }> = {
-      "change-order-packages": { chunkSize: 30, maxAttempts: 2, pauseMs: 250 },
-      "commitment-contracts": { chunkSize: 16, maxAttempts: 2, pauseMs: 300 },
-      "timecard-entries": { chunkSize: 12, maxAttempts: 2, pauseMs: 350 },
-      "productivity-projects": { chunkSize: 30, maxAttempts: 2, pauseMs: 250 },
-      "budget-line-items": { chunkSize: 12, maxAttempts: 2, pauseMs: 350 },
+      "change-order-packages": { chunkSize: 24, maxAttempts: 2, pauseMs: 350 },
+      "commitment-contracts": { chunkSize: 8, maxAttempts: 3, pauseMs: 800 },
+      "timecard-entries": { chunkSize: 6, maxAttempts: 3, pauseMs: 1000 },
+      "productivity-projects": { chunkSize: 24, maxAttempts: 2, pauseMs: 350 },
+      "budget-line-items": { chunkSize: 4, maxAttempts: 3, pauseMs: 1200 },
     };
 
     const started = Date.now();
@@ -735,12 +735,34 @@ export default function ProcoreProjectsFeedToolsPage() {
               let chunkResolved = false;
 
               for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
-                const res = await fetch(step.path, {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                });
+                let res: Response;
+                try {
+                  res = await fetch(step.path, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  });
+                } catch (error) {
+                  const retryMessage = normalizeToolError(error, step.step);
+                  const canRetry = attempt < config.maxAttempts && shouldRetryChunk(retryMessage, 0);
+
+                  if (!canRetry) {
+                    chunkResults.push({
+                      ok: false,
+                      status: 0,
+                      attempt,
+                      projectIds: chunk,
+                      error: retryMessage,
+                    });
+                    chunkResolved = true;
+                    break;
+                  }
+
+                  const backoffMs = Math.max(1500, config.pauseMs * (attempt + 2));
+                  await wait(backoffMs);
+                  continue;
+                }
 
                 let body: ToolResponse | Record<string, unknown> = {};
                 let parseErrorMessage: string | null = null;

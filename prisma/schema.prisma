@@ -863,11 +863,13 @@ model ProcoreEstimatingCatalogItemStaging {
   name           String?
   code           String?
   costCodeId     String?  @map("cost_code_id")
+  catalogId      String?  @map("catalog_id")
   payload        Json
   syncedAt       DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
   dynamic_fields Json?
 
   @@unique([companyId, itemId, baseUrl], map: "procore_estimating_catalog_item_company_id_item_id_base_url_key")
+  @@index([companyId, catalogId], map: "idx_catalog_item_staging_company_catalog")
   @@map("procore_estimating_catalog_item_staging")
 }
 
@@ -1785,4 +1787,42 @@ model timecard_time_type_unpacked_fields {
   @@index([field_path], map: "idx_tc_tt_unpacked_field_path")
   @@index([field_path, value_text], map: "idx_tc_tt_unpacked_path_text")
   @@index([value_text], map: "idx_tc_tt_unpacked_value_text")
+}
+
+model procore_company_users_live {
+  user_id      String   @id
+  company_id   String
+  login        String?
+  name         String?
+  company_name String?
+  payload      Json
+  synced_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
+}
+
+model procore_company_vendors_live {
+  vendor_id  String   @id
+  company_id String
+  name       String?
+  trade      String?
+  is_active  Boolean?
+  payload    Json
+  synced_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
+}
+
+model procore_estimating_catalogs_live {
+  catalog_id String   @id
+  company_id String
+  base_url   String   @default("")
+  name       String?
+  payload    Json
+  synced_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
 }

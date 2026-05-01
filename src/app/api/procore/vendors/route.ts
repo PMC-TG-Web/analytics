@@ -1,55 +1,62 @@
-// API endpoint to fetch Procore vendors
+﻿// DB-first: reads from procore_company_vendors_live (populated by /api/procore/sync/vendors)
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { prisma } from "@/lib/prisma";
+import { procoreConfig } from "@/lib/procore";
+
+export const dynamic = "force-dynamic";
+
+function readText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function toPositiveInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { accessToken: bodyToken, page = 1, perPage = 100 } = body;
-
-    // Try to get token from cookies (OAuth flow) first, then request body
+    const body = await request.json().catch(() => ({}));
     const cookieStore = await cookies();
-    const cookieToken = cookieStore.get("procore_access_token")?.value;
-    const accessToken = cookieToken || bodyToken;
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "Missing access token. Please authenticate via OAuth first or provide accessToken in request body." },
-        { status: 401 }
-      );
+    const companyId = readText(
+      body?.companyId ||
+        cookieStore.get("procore_company_id")?.value ||
+        procoreConfig.companyId ||
+        ""
+    );
+
+    if (!companyId) {
+      return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
     }
 
-    const companyId = procoreConfig.companyId || '';
-    console.log(`Fetching Procore vendors for company ${companyId}`);
+    const page = toPositiveInt(body?.page, 1, 1, 1000);
+    const perPage = toPositiveInt(body?.perPage, 100, 1, 1000);
+    const offset = (page - 1) * perPage;
 
-    // Try multiple endpoints if one fails - some companies use /vendors without the /companies prefix
-    let vendors;
-    try {
-      const endpoint = `/rest/v1.0/vendors?company_id=${companyId}&page=${page}&per_page=${perPage}`;
-      vendors = await makeRequest(endpoint, accessToken);
-    } catch (e) {
-      console.log("Failed first vendor attempt, trying company-prefixed endpoint...");
-      const endpoint = `/rest/v1.0/companies/${companyId}/vendors?page=${page}&per_page=${perPage}`;
-      vendors = await makeRequest(endpoint, accessToken);
-    }
+    const rows = await prisma.procore_company_vendors_live.findMany({
+      where: { company_id: companyId },
+      orderBy: { name: "asc" },
+      skip: offset,
+      take: perPage,
+    });
 
     return NextResponse.json({
       success: true,
-      count: Array.isArray(vendors) ? vendors.length : 0,
-      vendors,
+      source: "db",
+      companyId,
       page,
       perPage,
+      syncedAt: rows[0]?.synced_at ?? null,
+      count: rows.length,
+      vendors: rows.map((r) => r.payload),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Procore vendors API error:", message);
-    
     return NextResponse.json(
-      { 
-        error: "Failed to fetch Procore vendors", 
-        details: message 
-      },
+      { success: false, error: "Failed to fetch vendors", details: message },
       { status: 500 }
     );
   }

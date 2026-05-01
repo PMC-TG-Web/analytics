@@ -87,6 +87,15 @@ export async function POST(request: Request) {
   // 9. Budget line items (company-wide, all projects)
   results.push(await callSync(origin, '/api/procore/sync/budget-line-items', { limitProjects: 10000, fetchAll: true }, accessToken, companyId));
 
+  // 10. Company users (cached for DB-first /api/procore/company-users)
+  results.push(await callSync(origin, '/api/procore/sync/company-users', {}, accessToken, companyId));
+
+  // 11. Company vendors (cached for DB-first /api/procore/vendors)
+  results.push(await callSync(origin, '/api/procore/sync/vendors', {}, accessToken, companyId));
+
+  // 12. Estimating catalogs (cached for DB-first /api/procore/estimating/catalogs)
+  results.push(await callSync(origin, '/api/procore/sync/estimating-catalogs', {}, accessToken, companyId));
+
   const elapsedMs = Date.now() - started;
   const allOk = results.every((r) => r.ok);
 

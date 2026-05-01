@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { procoreConfig } from "@/lib/procore";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -31,62 +32,87 @@ function resolveCompanyId(input: unknown, cookieCompanyId: unknown): string {
   );
 }
 
-async function checkIds(params: { accessToken: string; companyId: string; ids: string[] }) {
-  const { accessToken, companyId, ids } = params;
+async function checkIdsFromDb(params: { companyId: string; ids: string[] }) {
+  const { companyId, ids } = params;
 
-  const results: Array<{
-    id: string;
-    exists: boolean;
-    httpStatus: number;
-    projectName?: string | null;
-    displayName?: string | null;
-    projectNumber?: string | null;
-    stage?: string | null;
-    active?: boolean | null;
-    updatedAt?: string | null;
-    error?: unknown;
-  }> = [];
+  // Query project feed by procore_id matching the requested IDs
+  const feedRows = await prisma.procoreProjectFeed.findMany({
+    where: {
+      companyId,
+      procoreId: { in: ids },
+      softDeleted: false,
+    },
+    select: {
+      procoreId: true,
+      projectName: true,
+      status: true,
+      updatedAt: true,
+    },
+  });
 
-  for (const id of ids) {
-    const endpoint = `/rest/v1.0/projects/${encodeURIComponent(id)}?company_id=${encodeURIComponent(companyId)}`;
-    try {
-      const data = await makeRequest(endpoint, accessToken, undefined, companyId);
-      const row = data as {
-        name?: string;
-        display_name?: string;
-        project_number?: string;
-        stage?: string;
-        project_stage?: { name?: string };
-        active?: boolean;
-        updated_at?: string;
-      };
+  // Also check project staging for any not found in feed
+  const foundIds = new Set(feedRows.map((r) => r.procoreId).filter(Boolean) as string[]);
+  const missingIds = ids.filter((id) => !foundIds.has(id));
 
-      results.push({
+  const stagingRows = missingIds.length > 0
+    ? await prisma.procoreProjectStaging.findMany({
+        where: {
+          companyId,
+          procoreProjectId: { in: missingIds },
+        },
+        select: {
+          procoreProjectId: true,
+          displayName: true,
+          name: true,
+          projectNumber: true,
+          status: true,
+          updatedAt: true,
+        },
+      })
+    : [];
+
+  const stagingById = new Map(stagingRows.map((r) => [r.procoreProjectId, r]));
+
+  return ids.map((id) => {
+    const feed = feedRows.find((r) => r.procoreId === id);
+    if (feed) {
+      return {
         id,
         exists: true,
+        source: "db",
         httpStatus: 200,
-        projectName: row.name || row.display_name || null,
-        displayName: row.display_name || null,
-        projectNumber: row.project_number || null,
-        stage: row.stage || row.project_stage?.name || null,
-        active: typeof row.active === "boolean" ? row.active : null,
-        updatedAt: row.updated_at || null,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      const statusMatch = message.match(/\b(4\d\d|5\d\d)\b/);
-      const httpStatus = statusMatch ? Number.parseInt(statusMatch[1], 10) : 500;
-
-      results.push({
-        id,
-        exists: false,
-        httpStatus,
-        error: message,
-      });
+        projectName: feed.projectName || null,
+        displayName: feed.projectName || null,
+        projectNumber: null,
+        stage: feed.status || null,
+        active: true,
+        updatedAt: feed.updatedAt?.toISOString() || null,
+      };
     }
-  }
 
-  return results;
+    const staging = stagingById.get(id);
+    if (staging) {
+      return {
+        id,
+        exists: true,
+        source: "db",
+        httpStatus: 200,
+        projectName: staging.name || staging.displayName || null,
+        displayName: staging.displayName || null,
+        projectNumber: staging.projectNumber || null,
+        stage: staging.status || null,
+        active: true,
+        updatedAt: staging.updatedAt?.toISOString() || null,
+      };
+    }
+
+    return {
+      id,
+      exists: false,
+      source: "db",
+      httpStatus: 404,
+    };
+  });
 }
 
 export async function GET(request: Request) {
@@ -94,16 +120,8 @@ export async function GET(request: Request) {
     const cookieStore = await cookies();
     const { searchParams } = new URL(request.url);
 
-    const accessToken = readText(cookieStore.get("procore_access_token")?.value);
     const companyId = resolveCompanyId(searchParams.get("companyId"), cookieStore.get("procore_company_id")?.value);
     const ids = parseIds(searchParams.get("ids"));
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: "Missing access token. Please login via OAuth." },
-        { status: 401 }
-      );
-    }
 
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
@@ -116,8 +134,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const results = await checkIds({ accessToken, companyId, ids });
-    return NextResponse.json({ success: true, companyId, count: results.length, results });
+    const results = await checkIdsFromDb({ companyId, ids });
+    return NextResponse.json({ success: true, source: "db", companyId, count: results.length, results });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
@@ -132,16 +150,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const cookieStore = await cookies();
 
-    const accessToken = readText(cookieStore.get("procore_access_token")?.value || body?.accessToken);
     const companyId = resolveCompanyId(body?.companyId, cookieStore.get("procore_company_id")?.value);
     const ids = parseIds(body?.ids);
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: "Missing access token. Please login via OAuth." },
-        { status: 401 }
-      );
-    }
 
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
@@ -154,8 +164,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const results = await checkIds({ accessToken, companyId, ids });
-    return NextResponse.json({ success: true, companyId, count: results.length, results });
+    const results = await checkIdsFromDb({ companyId, ids });
+    return NextResponse.json({ success: true, source: "db", companyId, count: results.length, results });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(

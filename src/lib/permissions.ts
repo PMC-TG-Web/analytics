@@ -99,7 +99,7 @@ export async function loadUserPermissionsFromDatabase(prisma: any): Promise<Reco
   try {
     const users = await prisma.$queryRaw<UserPermissionRow[]>`
       SELECT "email", "permissions"
-      FROM "user"
+      FROM "User"
       WHERE "isActive" = true
       ORDER BY "email" ASC
     `;
@@ -128,7 +128,7 @@ export async function loadUserAssignedPermissionsFromDatabase(
   try {
     const users = await prisma.$queryRaw<UserPermissionRow[]>`
       SELECT "email", "permissions"
-      FROM "user"
+      FROM "User"
       WHERE lower("email") = ${userEmail.toLowerCase()}
         AND "isActive" = true
       LIMIT 1

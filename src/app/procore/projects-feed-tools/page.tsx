@@ -641,6 +641,15 @@ export default function ProcoreProjectsFeedToolsPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* ── SYNC ALL ─────────────────────────────────────── */}
+              <button
+                disabled={disableSyncActions}
+                onClick={() => runPost('/api/procore/sync/run-all', "Sync All")}
+                className="sm:col-span-2 px-4 py-4 rounded-xl bg-violet-700 text-white font-black text-sm uppercase tracking-widest hover:bg-violet-800 disabled:opacity-50 border-2 border-violet-500"
+              >
+                {busyAction === "Sync All" ? "⏳ Syncing All — Please Wait..." : "⚡ Sync All (Projects → Contracts → Change Orders → Commitments → Bids)"}
+              </button>
+
               <button
                 disabled={disableSyncActions}
                 onClick={() => runPost(endpointExamples.statusRefreshQuick, "Status Refresh Quick", {

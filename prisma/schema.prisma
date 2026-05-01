@@ -1164,6 +1164,7 @@ model ConcreteOrder {
   time            String
   totalYards      Float    @map("total_yards")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([jobKey])
   @@index([date, time])
@@ -1282,7 +1283,7 @@ model bidforms {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_package_id, bid_form_id])
   @@index([bid_form_id], map: "idx_bidforms_bid_form_id")
@@ -1304,7 +1305,7 @@ model bidpackages {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_package_id])
   @@index([bid_package_id], map: "idx_bidpackages_bid_package_id")
@@ -1325,7 +1326,7 @@ model bids {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_id])
   @@index([bid_id], map: "idx_bids_bid_id")
@@ -1456,7 +1457,7 @@ model procore_trades {
   payload            Json
   synced_at          DateTime  @default(now()) @db.Timestamptz(6)
   created_at         DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, procore_trade_id])
   @@index([active], map: "idx_procore_trades_active")
@@ -1476,7 +1477,7 @@ model productivity_log_unpacked_fields {
   value_boolean   Boolean?
   value_json      Json
   created_at      DateTime        @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
   ProductivityLog ProductivityLog @relation(fields: [log_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_productivity_unpacked_log")
 
   @@unique([log_id, field_path])

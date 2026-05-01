@@ -58,13 +58,20 @@ const TOKEN_URL = process.env.PROCORE_TOKEN_URL || `${API_URL}/oauth/token`;
 const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analyticspmc.netlify.app/api/webhooks/procore';
 const WEBHOOK_NAMESPACE = process.env.PROCORE_WEBHOOK_NAMESPACE || 'pmc-analytics';
 
-// Resources and event types to register triggers for.
-const TRIGGERS = [
+// Desired resources; final trigger set is filtered to supported resources/actions.
+const DESIRED_TRIGGERS = [
   { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
 ];
+
+const RESOURCE_ALIASES = {
+  'Projects': ['Projects'],
+  'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
+  'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
+  'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
+};
 
 // ─── OAuth token ─────────────────────────────────────────────────────────────
 async function getToken() {
@@ -153,6 +160,34 @@ async function listTriggers(token, hookId) {
   return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
+async function listResourcesAll(token) {
+  const perPage = 100;
+  const maxPages = 20;
+  const all = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await apiGet(
+      token,
+      `/rest/v2.0/companies/${COMPANY_ID}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
+    );
+    const items = Array.isArray(data?.data) ? data.data : [];
+    if (!items.length) break;
+
+    for (const item of items) {
+      all.push({
+        name: String(item?.name || '').trim(),
+        actions: Array.isArray(item?.actions)
+          ? item.actions.map((a) => String(a).trim().toLowerCase()).filter(Boolean)
+          : [],
+      });
+    }
+
+    if (items.length < perPage) break;
+  }
+
+  return all;
+}
+
 async function createHook(token) {
   return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`, {
     payload_version: 'v2.0',
@@ -234,17 +269,50 @@ async function cmdRegister() {
   }
   console.log(`Hook created: id=${hookId}`);
 
+  console.log('Fetching supported webhook resources...');
+  const resourceCatalog = await listResourcesAll(token);
+  const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
+
+  const triggerPlan = [];
+  for (const desired of DESIRED_TRIGGERS) {
+    const aliases = RESOURCE_ALIASES[desired.resourceName] || [desired.resourceName];
+    const matched = aliases
+      .map((alias) => catalogByName.get(alias.toLowerCase()))
+      .find((item) => Boolean(item));
+
+    if (!matched) {
+      console.log(`  - skipping ${desired.resourceName}: not available for this company`);
+      continue;
+    }
+
+    const allowed = new Set(matched.actions);
+    const validEvents = desired.eventTypes
+      .map((e) => e.toLowerCase())
+      .filter((e) => allowed.has(e));
+
+    if (!validEvents.length) {
+      console.log(`  - skipping ${desired.resourceName}: no overlapping actions (available: ${matched.actions.join(',')})`);
+      continue;
+    }
+
+    for (const eventType of validEvents) {
+      triggerPlan.push({ resourceName: matched.name, eventType });
+    }
+  }
+
+  if (!triggerPlan.length) {
+    console.warn('No valid triggers matched your desired resources. Hook was created without triggers.');
+  }
+
   let successCount = 0;
-  for (const { resourceName, eventTypes } of TRIGGERS) {
-    for (const eventType of eventTypes) {
-      try {
-        const trigResult = await createTrigger(token, hookId, resourceName, eventType);
-        const triggerId = trigResult?.data?.id ?? trigResult?.id ?? '?';
-        console.log(`  ✓ trigger: ${resourceName} / ${eventType} (id=${triggerId})`);
-        successCount++;
-      } catch (err) {
-        console.warn(`  ✗ trigger failed (${resourceName} / ${eventType}): ${err.message}`);
-      }
+  for (const { resourceName, eventType } of triggerPlan) {
+    try {
+      const trigResult = await createTrigger(token, hookId, resourceName, eventType);
+      const triggerId = trigResult?.data?.id ?? trigResult?.id ?? '?';
+      console.log(`  ✓ trigger: ${resourceName} / ${eventType} (id=${triggerId})`);
+      successCount++;
+    } catch (err) {
+      console.warn(`  ✗ trigger failed (${resourceName} / ${eventType}): ${err.message}`);
     }
   }
 

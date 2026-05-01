@@ -5,13 +5,25 @@ import { procoreConfig } from '@/lib/procore';
 const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').replace(/\/$/, '');
 const WEBHOOK_NAMESPACE = 'pmc-analytics';
 
-// Resources and event types to register triggers for.
-const TRIGGER_PLAN = [
+// Desired resources; final trigger set is filtered to what the company supports.
+const DESIRED_TRIGGER_PLAN = [
   { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
 ];
+
+type ResourceCatalogItem = {
+  name: string;
+  actions: string[];
+};
+
+const RESOURCE_ALIASES: Record<string, string[]> = {
+  Projects: ['Projects'],
+  'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
+  'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
+  'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
+};
 
 function getDestinationUrl(): string {
   const appBase = (process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL || '').replace(/\/$/, '');
@@ -44,6 +56,47 @@ async function procoreFetch(
   try { json = JSON.parse(text); } catch { json = text; }
 
   return { ok: res.ok, status: res.status, body: json };
+}
+
+async function listResourcesAll(token: string, companyId: string): Promise<ResourceCatalogItem[]> {
+  const perPage = 100;
+  const maxPages = 20;
+  const all: ResourceCatalogItem[] = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    const resourcesRes = await procoreFetch(
+      token,
+      'GET',
+      `/rest/v2.0/companies/${companyId}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
+    );
+
+    if (!resourcesRes.ok) {
+      throw new Error(`Resources lookup failed on page ${page}: ${JSON.stringify(resourcesRes.body)}`);
+    }
+
+    const items = Array.isArray((resourcesRes.body as Record<string, unknown>)?.data)
+      ? ((resourcesRes.body as Record<string, unknown>).data as Array<Record<string, unknown>>)
+      : [];
+
+    if (!items.length) {
+      break;
+    }
+
+    for (const item of items) {
+      all.push({
+        name: String(item.name || '').trim(),
+        actions: Array.isArray(item.actions)
+          ? item.actions.map((a) => String(a).trim().toLowerCase()).filter(Boolean)
+          : [],
+      });
+    }
+
+    if (items.length < perPage) {
+      break;
+    }
+  }
+
+  return all;
 }
 
 export async function GET(request: NextRequest) {
@@ -182,6 +235,54 @@ export async function POST(request: NextRequest) {
   const companyId = procoreConfig.companyId;
   const destinationUrl = getDestinationUrl();
 
+  let resourceCatalog: ResourceCatalogItem[] = [];
+  try {
+    resourceCatalog = await listResourcesAll(token, companyId);
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Failed to fetch webhook resources catalog', detail: String(err) },
+      { status: 502 }
+    );
+  }
+
+  const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
+  const resolvedResources: Array<{ requested: string; matched?: string; reason?: string }> = [];
+  const triggerPlan: Array<{ resourceName: string; eventType: string }> = [];
+
+  for (const desired of DESIRED_TRIGGER_PLAN) {
+    const aliases = RESOURCE_ALIASES[desired.resourceName] || [desired.resourceName];
+    const matched = aliases
+      .map((alias) => catalogByName.get(alias.toLowerCase()))
+      .find((item) => Boolean(item));
+
+    if (!matched) {
+      resolvedResources.push({
+        requested: desired.resourceName,
+        reason: 'resource not available for this company/payload_version',
+      });
+      continue;
+    }
+
+    const allowed = new Set(matched.actions);
+    const validEvents = desired.eventTypes
+      .map((e) => e.toLowerCase())
+      .filter((e) => allowed.has(e));
+
+    if (!validEvents.length) {
+      resolvedResources.push({
+        requested: desired.resourceName,
+        matched: matched.name,
+        reason: `no overlapping actions; available=${matched.actions.join(',')}`,
+      });
+      continue;
+    }
+
+    resolvedResources.push({ requested: desired.resourceName, matched: matched.name });
+    for (const eventType of validEvents) {
+      triggerPlan.push({ resourceName: matched.name, eventType });
+    }
+  }
+
   // Create the hook
   const hookRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks`, {
     payload_version: 'v2.0',
@@ -205,22 +306,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Hook created but no id in response', raw: hookRes.body }, { status: 502 });
   }
 
-  // Register all triggers
+  // Register valid triggers only (filtered against resources catalog)
   const triggerResults: { resourceName: string; eventType: string; ok: boolean; detail?: unknown }[] = [];
-  for (const { resourceName, eventTypes } of TRIGGER_PLAN) {
-    for (const eventType of eventTypes) {
-      const tRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks/${hookId}/triggers`, {
-        resource_name: resourceName,
-        event_type: eventType,
-        api_version: 'v2.0',
-      });
-      triggerResults.push({
-        resourceName,
-        eventType,
-        ok: tRes.ok,
-        detail: tRes.ok ? undefined : tRes.body,
-      });
-    }
+  for (const { resourceName, eventType } of triggerPlan) {
+    const tRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks/${hookId}/triggers`, {
+      resource_name: resourceName,
+      event_type: eventType,
+      api_version: 'v2.0',
+    });
+    triggerResults.push({
+      resourceName,
+      eventType,
+      ok: tRes.ok,
+      detail: tRes.ok ? undefined : tRes.body,
+    });
   }
 
   const failed = triggerResults.filter((t) => !t.ok);
@@ -228,6 +327,8 @@ export async function POST(request: NextRequest) {
     success: true,
     hookId,
     destinationUrl,
+    resourceResolution: resolvedResources,
+    plannedTriggers: triggerPlan,
     triggers: triggerResults,
     failedTriggers: failed.length,
   });

@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
   // Create the hook
   const hookRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks`, {
-    payload_version: 'v2',
+    payload_version: 'v2.0',
     namespace: 'pmc-analytics',
     destination_url: destinationUrl,
     destination_headers: {

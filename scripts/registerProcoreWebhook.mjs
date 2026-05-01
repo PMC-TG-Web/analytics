@@ -151,7 +151,7 @@ async function listTriggers(token, hookId) {
 
 async function createHook(token) {
   return apiPost(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks`, {
-    payload_version: 'v2',
+    payload_version: 'v2.0',
     namespace: 'pmc-analytics',
     destination_url: DESTINATION_URL,
     destination_headers: {

@@ -671,7 +671,7 @@ export default function ProcoreProjectsFeedToolsPage() {
         const pageSize = 1000;
 
         while (true) {
-          const res = await fetch(`/api/procore/projects-feed?page=${page}&pageSize=${pageSize}`, {
+          const res = await fetch(`/api/procore/projects-feed?syncSource=procore_v1_projects&page=${page}&pageSize=${pageSize}`, {
             method: "GET",
             credentials: "include",
           });
@@ -701,7 +701,8 @@ export default function ProcoreProjectsFeedToolsPage() {
         try {
           if (heavyStepNames.has(step.step)) {
             const projectIds = await loadProjectIds();
-            const chunks = chunkArray(projectIds, 12);
+            // Keep chunk count under heavy-route middleware rate limits.
+            const chunks = chunkArray(projectIds, 30);
             const chunkResults: Array<Record<string, unknown>> = [];
 
             for (const chunk of chunks) {

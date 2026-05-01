@@ -2,7 +2,7 @@
 // Fetches all company users from Procore and caches them in procore_company_users_live.
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const cookieStore = await cookies();
 
-    const accessToken = readText(
+    const userAccessToken = readText(
       cookieStore.get("procore_access_token")?.value || body?.accessToken
     );
     const companyId = readText(
@@ -44,12 +44,20 @@ export async function POST(request: Request) {
         ""
     );
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: "Missing access token. Please authenticate via OAuth first." },
-        { status: 401 }
-      );
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "Missing access token. Please authenticate via OAuth first." },
+          { status: 401 }
+        );
+      }
     }
+
 
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });

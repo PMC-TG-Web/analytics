@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig } from '@/lib/procore';
+import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
 import {
   ensureChangeOrderPackagesTable,
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
 
-    const accessToken = readText(
+    const userAccessToken = readText(
       body.accessToken || cookieStore.get('procore_access_token')?.value
     );
     const companyId = readText(
@@ -167,12 +167,20 @@ export async function POST(request: Request) {
     );
     const perPage = Math.min(200, Math.max(1, Number.parseInt(String(body.perPage || '100'), 10) || 100));
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: 'Missing access token. Please authenticate via OAuth first.' },
-        { status: 401 }
-      );
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Missing access token. Please authenticate via OAuth first.' },
+          { status: 401 }
+        );
+      }
     }
+
 
     if (!companyId) {
       return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
 import {
   persistCommitmentContracts,
   type ProcoreCommitmentContract,
@@ -116,17 +116,22 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
-    const accessToken =
-      cookieStore.get("procore_access_token")?.value ||
-      String(body.accessToken || "").trim() ||
-      undefined;
+    const userAccessToken = cookieStore.get("procore_access_token")?.value || String(body.accessToken || "").trim() || "";
     const companyId = String(
       body?.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || ''
     ).trim();
 
-    if (!accessToken) {
-      return NextResponse.json({ error: "Missing access token.", connectUrl: "/api/auth/procore/login" }, { status: 401 });
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json({ error: "Missing access token.", connectUrl: "/api/auth/procore/login" }, { status: 401 });
+      }
     }
+
     if (!companyId) {
       return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
     }

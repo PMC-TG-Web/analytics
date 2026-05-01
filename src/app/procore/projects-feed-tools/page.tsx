@@ -52,6 +52,23 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+function shouldRetryChunk(errorMessage: string, statusCode: number): boolean {
+  if (statusCode === 429 || statusCode >= 500) return true;
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes("inactivity timeout") ||
+    normalized.includes("internal error while processing your request") ||
+    normalized.includes("non-json content") ||
+    normalized.includes("gateway timeout")
+  );
+}
+
 export default function ProcoreProjectsFeedToolsPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [output, setOutput] = useState<string>("Run an action to see results here.");
@@ -657,6 +674,14 @@ export default function ProcoreProjectsFeedToolsPage() {
       "budget-line-items",
     ]);
 
+    const heavyStepConfig: Record<string, { chunkSize: number; maxAttempts: number; pauseMs: number }> = {
+      "change-order-packages": { chunkSize: 30, maxAttempts: 2, pauseMs: 250 },
+      "commitment-contracts": { chunkSize: 16, maxAttempts: 2, pauseMs: 300 },
+      "timecard-entries": { chunkSize: 12, maxAttempts: 2, pauseMs: 350 },
+      "productivity-projects": { chunkSize: 30, maxAttempts: 2, pauseMs: 250 },
+      "budget-line-items": { chunkSize: 12, maxAttempts: 2, pauseMs: 350 },
+    };
+
     const started = Date.now();
     const results: Array<Record<string, unknown>> = [];
 
@@ -701,30 +726,79 @@ export default function ProcoreProjectsFeedToolsPage() {
         try {
           if (heavyStepNames.has(step.step)) {
             const projectIds = await loadProjectIds();
-            // Keep chunk count under heavy-route middleware rate limits.
-            const chunks = chunkArray(projectIds, 30);
+            const config = heavyStepConfig[step.step] || { chunkSize: 20, maxAttempts: 1, pauseMs: 250 };
+            const chunks = chunkArray(projectIds, config.chunkSize);
             const chunkResults: Array<Record<string, unknown>> = [];
 
             for (const chunk of chunks) {
               const payload = { ...step.payload, projectIds: chunk };
-              const res = await fetch(step.path, {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
+              let chunkResolved = false;
 
-              const body = await readJsonResponse<ToolResponse>(res, {
-                label: `${step.step} response`,
-                fallback: {},
-              });
+              for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
+                const res = await fetch(step.path, {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
 
-              chunkResults.push({
-                ok: res.ok,
-                status: res.status,
-                projectIds: chunk,
-                summary: body,
-              });
+                let body: ToolResponse | Record<string, unknown> = {};
+                let parseErrorMessage: string | null = null;
+
+                try {
+                  body = await readJsonResponse<ToolResponse>(res, {
+                    label: `${step.step} response`,
+                    fallback: {},
+                  });
+                } catch (error) {
+                  parseErrorMessage = normalizeToolError(error, step.step);
+                }
+
+                const chunkOk = res.ok && !parseErrorMessage;
+
+                if (chunkOk) {
+                  chunkResults.push({
+                    ok: true,
+                    status: res.status,
+                    attempt,
+                    projectIds: chunk,
+                    summary: body,
+                  });
+                  chunkResolved = true;
+                  break;
+                }
+
+                const retryAfterSeconds = Number.parseInt(res.headers.get("Retry-After") || "0", 10) || 0;
+                const retryMessage = parseErrorMessage || String((body as Record<string, unknown>)?.error || "Request failed");
+                const canRetry = attempt < config.maxAttempts && shouldRetryChunk(retryMessage, res.status);
+
+                if (!canRetry) {
+                  chunkResults.push({
+                    ok: false,
+                    status: res.status,
+                    attempt,
+                    projectIds: chunk,
+                    summary: body,
+                    error: retryMessage,
+                  });
+                  chunkResolved = true;
+                  break;
+                }
+
+                const backoffMs = Math.max(1500, retryAfterSeconds * 1000, config.pauseMs * (attempt + 2));
+                await wait(backoffMs);
+              }
+
+              if (!chunkResolved) {
+                chunkResults.push({
+                  ok: false,
+                  status: 0,
+                  projectIds: chunk,
+                  error: `${step.step} chunk failed without a resolved response`,
+                });
+              }
+
+              await wait(config.pauseMs);
             }
 
             const stepOk = chunkResults.every((row) => row.ok === true);

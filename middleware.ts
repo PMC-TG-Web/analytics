@@ -200,6 +200,8 @@ export async function middleware(request: NextRequest) {
   const isAuthApiRoute = pathname.startsWith('/api/auth/');
   const isInternalPermissionCheckRoute = pathname === INTERNAL_PERMISSION_CHECK_ROUTE;
   const isPublicVersionRoute = pathname === '/api/public/version';
+  const isProcoreWebhookReceiverRoute = pathname === '/api/webhooks/procore';
+  const isProcoreWebhookProcessRoute = pathname === '/api/webhooks/procore/process';
   const isDiagnosticsOrTestApiRoute = matchesDiagnosticsOrTestRoute(
     pathname,
     DIAGNOSTICS_OR_TEST_API_ROUTES
@@ -310,6 +312,16 @@ export async function middleware(request: NextRequest) {
 
   // Allow login handoff page (used to break out of iframe before Auth0 redirect)
   if (pathname === '/auth/start') {
+    return NextResponse.next();
+  }
+
+  // Allow external Procore webhook deliveries without Auth0 session checks.
+  if (isProcoreWebhookReceiverRoute) {
+    return NextResponse.next();
+  }
+
+  // Allow worker trigger calls from server-to-server callers with sync secret.
+  if (isProcoreWebhookProcessRoute && hasValidSyncSecret(request)) {
     return NextResponse.next();
   }
 

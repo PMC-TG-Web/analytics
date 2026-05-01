@@ -22,6 +22,8 @@ PROCORE_API_URL=https://api.sandbox.procore.com
 PROCORE_AUTH_URL=https://sandbox.procore.com/oauth/authorize
 PROCORE_TOKEN_URL=https://api.sandbox.procore.com/oauth/token
 NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/api/auth/procore/callback
+PROCORE_WEBHOOK_SHARED_SECRET=replace-with-random-secret
+PROCORE_SYNC_SECRET=replace-with-random-secret
 PROCORE_LIVE_API_ENABLED=false
 ```
 

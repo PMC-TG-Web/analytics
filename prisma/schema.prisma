@@ -979,6 +979,73 @@ model ProcoreProjectFeed {
   @@map("procore_project_feed")
 }
 
+model ProcoreWebhookHook {
+  id               String   @id @default(cuid())
+  procoreHookId    String   @unique @map("procore_hook_id")
+  scope            String
+  companyId        String   @map("company_id")
+  projectId        String?  @map("project_id")
+  namespace        String?
+  payloadVersion   String?  @map("payload_version")
+  destinationUrl   String   @map("destination_url")
+  status           String   @default("active")
+  triggerCount     Int?     @map("trigger_count")
+  lastVerifiedAt   DateTime? @map("last_verified_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([companyId], map: "idx_pwh_company_id")
+  @@index([projectId], map: "idx_pwh_project_id")
+  @@index([scope], map: "idx_pwh_scope")
+  @@index([status], map: "idx_pwh_status")
+  @@map("procore_webhook_hooks")
+}
+
+model ProcoreWebhookEvent {
+  id             String               @id @default(cuid())
+  eventKey       String               @unique @map("event_key")
+  procoreEventId String?              @map("procore_event_id")
+  eventUlid      String?              @map("event_ulid")
+  companyId      String?              @map("company_id")
+  projectId      String?              @map("project_id")
+  resourceName   String?              @map("resource_name")
+  eventType      String?              @map("event_type")
+  resourceId     String?              @map("resource_id")
+  payload        Json
+  receivedAt     DateTime             @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt    DateTime?            @map("processed_at") @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  queueJobs      ProcoreWebhookQueue[]
+
+  @@index([companyId], map: "idx_pwe_company_id")
+  @@index([projectId], map: "idx_pwe_project_id")
+  @@index([resourceName], map: "idx_pwe_resource_name")
+  @@index([eventType], map: "idx_pwe_event_type")
+  @@index([receivedAt(sort: Desc)], map: "idx_pwe_received_at")
+  @@map("procore_webhook_events")
+}
+
+model ProcoreWebhookQueue {
+  id           String              @id @default(cuid())
+  eventId      String              @map("event_id")
+  status       String              @default("pending")
+  attempts     Int                 @default(0)
+  maxAttempts  Int                 @default(5) @map("max_attempts")
+  availableAt  DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
+  lockedAt     DateTime?           @map("locked_at") @db.Timestamptz(6)
+  lockedBy     String?             @map("locked_by")
+  processedAt  DateTime?           @map("processed_at") @db.Timestamptz(6)
+  lastError    String?             @map("last_error")
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event        ProcoreWebhookEvent @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, availableAt], map: "idx_pwq_status_available")
+  @@index([eventId], map: "idx_pwq_event_id")
+  @@index([lockedAt], map: "idx_pwq_locked_at")
+  @@map("procore_webhook_queue")
+}
+
 model GanttV2Project {
   id             String         @id
   projectName    String         @map("project_name")

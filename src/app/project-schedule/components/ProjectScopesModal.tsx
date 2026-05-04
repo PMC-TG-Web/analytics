@@ -1268,6 +1268,8 @@ export function ProjectScopesModal({
       if (!updateRes.ok || !updateResult?.success) {
         throw new Error(updateResult?.error || 'Failed to update scope metadata');
       }
+      // Bust the cache so the next mergePersistedScopeMetadata re-fetches with the latest tasks.
+      persistedScopesByJobKeyRef.current.delete(resolvedJobKey);
       return;
     }
 
@@ -1284,6 +1286,8 @@ export function ProjectScopesModal({
     if (!createRes.ok || !createResult?.success) {
       throw new Error(createResult?.error || 'Failed to create scope metadata');
     }
+    // Bust the cache so the next mergePersistedScopeMetadata re-fetches with the latest tasks.
+    persistedScopesByJobKeyRef.current.delete(resolvedJobKey);
   };
 
   const loadProjectBudgetHours = useCallback(async () => {

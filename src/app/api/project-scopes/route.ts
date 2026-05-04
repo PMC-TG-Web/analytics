@@ -323,12 +323,15 @@ export async function GET(request: NextRequest) {
       jobKey: `${String(p.customer || '')}~${String(p.projectNumber || '')}~${String(p.projectName || '')}`,
     }));
 
-    return NextResponse.json({
-      success: true,
-      data: normalizedScopes,
-      projects: projectsWithJobKey,
-      scopes: normalizedScopes, // Keep for backwards compatibility
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: normalizedScopes,
+        projects: projectsWithJobKey,
+        scopes: normalizedScopes,
+      },
+      { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } }
+    );
   } catch (error) {
     console.error('Failed to fetch project scopes:', error);
     return NextResponse.json(

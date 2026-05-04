@@ -178,17 +178,20 @@ export async function GET(request: NextRequest) {
         ? Math.max(1, Math.ceil(total / pageSize))
         : (hasNextPage ? page + 1 : page);
 
-      return NextResponse.json({
-        success: true,
-        count: projects.length,
-        ...(typeof total === 'number' ? { total } : {}),
-        page,
-        pageSize,
-        totalPages,
-        hasNextPage,
-        hasPreviousPage: page > 1,
-        data: projects,
-      });
+      return NextResponse.json(
+        {
+          success: true,
+          count: projects.length,
+          ...(typeof total === 'number' ? { total } : {}),
+          page,
+          pageSize,
+          totalPages,
+          hasNextPage,
+          hasPreviousPage: page > 1,
+          data: projects,
+        },
+        { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } }
+      );
     }
 
     const fetchProjectsPage = async (whereArg: Prisma.ProjectWhereInput | undefined) => {
@@ -502,17 +505,20 @@ export async function GET(request: NextRequest) {
       ? Math.max(1, Math.ceil(total / pageSize))
       : (hasNextPage ? page + 1 : page);
 
-    return NextResponse.json({
-      success: true,
-      count: projectsWithPMC.length,
-      ...(typeof total === 'number' ? { total } : {}),
-      page,
-      pageSize,
-      totalPages,
-      hasNextPage,
-      hasPreviousPage: page > 1,
-      data: projectsWithPMC,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        count: projectsWithPMC.length,
+        ...(typeof total === 'number' ? { total } : {}),
+        page,
+        pageSize,
+        totalPages,
+        hasNextPage,
+        hasPreviousPage: page > 1,
+        data: projectsWithPMC,
+      },
+      { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } }
+    );
   } catch (error) {
     console.error('Failed to fetch projects:', error);
     if (shouldFallbackToEmptyRead(error)) {

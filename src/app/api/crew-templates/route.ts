@@ -21,10 +21,13 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: transformedTemplates,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: transformedTemplates,
+      },
+      { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } }
+    );
   } catch (error) {
     console.error('Failed to fetch crew templates:', error);
     return NextResponse.json(

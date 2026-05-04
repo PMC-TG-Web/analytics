@@ -644,8 +644,6 @@ export default function AnalyticsPage() {
       "uom",
       "budgetQty",
       "effectiveUnitCost",
-      "timecardHours",
-      "productivityQty",
       "actualUnits",
       "runningCost",
       "originalBudgetAmount",
@@ -665,8 +663,6 @@ export default function AnalyticsPage() {
           row.uom || "",
           Number(row.quantity || 0).toFixed(2),
           getEffectiveUnitCost(row).toFixed(2),
-          Number(row.actualTimecardHours || 0).toFixed(1),
-          Number(row.actualProductivityQty || 0).toFixed(1),
           getActualUnits(row).toFixed(1),
           getRunningCost(row).toFixed(2),
           Number(row.originalBudgetAmount || 0).toFixed(2),
@@ -692,8 +688,6 @@ export default function AnalyticsPage() {
 
   const tableTotals = useMemo(() => {
     let unitCostTotal = 0;
-    let tcHoursTotal = 0;
-    let prodQtyTotal = 0;
     let budgetQtyTotal = 0;
     let actualUnitsTotal = 0;
     let runningCostTotal = 0;
@@ -702,8 +696,6 @@ export default function AnalyticsPage() {
 
     for (const row of filteredRows) {
       unitCostTotal += getEffectiveUnitCost(row);
-      tcHoursTotal += Number(row.actualTimecardHours || 0);
-      prodQtyTotal += Number(row.actualProductivityQty || 0);
       budgetQtyTotal += Number(row.quantity || 0);
       actualUnitsTotal += getActualUnits(row);
       runningCostTotal += getRunningCost(row);
@@ -713,8 +705,6 @@ export default function AnalyticsPage() {
 
     return {
       unitCostTotal,
-      tcHoursTotal,
-      prodQtyTotal,
       budgetQtyTotal,
       actualUnitsTotal,
       runningCostTotal,
@@ -939,8 +929,6 @@ export default function AnalyticsPage() {
                   <th className="py-2 pr-3">UOM</th>
                   <th className="py-2 pr-3 text-right">Budget Qty</th>
                   <th className="py-2 pr-3 text-right">Unit Cost (Eff)</th>
-                  <th className="py-2 pr-3 text-right">TC Hours</th>
-                  <th className="py-2 pr-3 text-right">Prod Qty</th>
                   <th className="py-2 pr-3 text-right">Actual Units</th>
                   <th className="py-2 pr-3 text-right">Running Cost</th>
                   <th className="py-2 pr-3 text-right">Original Budget</th>
@@ -950,7 +938,7 @@ export default function AnalyticsPage() {
               <tbody>
                 {!loading && previewRows.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan={12} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
                       No rows match these filters.
                     </td>
                   </tr>
@@ -965,8 +953,6 @@ export default function AnalyticsPage() {
                     <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualTimecardHours || 0))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualProductivityQty || 0))}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(Number(row.originalBudgetAmount || 0))}</td>
@@ -985,12 +971,6 @@ export default function AnalyticsPage() {
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
                       {formatCurrency(tableTotals.unitCostTotal)}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.tcHoursTotal)}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.prodQtyTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
                       {formatNumber(tableTotals.actualUnitsTotal)}

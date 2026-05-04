@@ -5,6 +5,7 @@ import {
   persistCommitmentContracts,
   type ProcoreCommitmentContract,
 } from "@/lib/procoreCommitmentContracts";
+import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
 
 type ProcoreProject = Record<string, unknown>;
 
@@ -208,6 +209,10 @@ export async function POST(request: Request) {
         summary.errors.push(`Project ${projectId} (${projectName}): ${err instanceof Error ? err.message : String(err)}`);
       }
     });
+
+    if (persist && summary.totalContractsSaved > 0) {
+      await refreshCommitmentsAggMaterializedView();
+    }
 
     return NextResponse.json(summary);
   } catch (err) {

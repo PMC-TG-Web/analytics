@@ -9,6 +9,7 @@ import {
 import { persistTimecardEntries, type ProcoreTimecardEntry } from '@/lib/procoreTimecardEntries';
 import { persistProductivityLogs, type ProcoreLog } from '@/lib/procoreProductivity';
 import { persistCommitmentContracts, type ProcoreCommitmentContract } from '@/lib/procoreCommitmentContracts';
+import { refreshCommitmentsAggMaterializedView } from '@/lib/commitmentsAggMv';
 
 const MAX_BATCH_SIZE = 100;
 
@@ -313,6 +314,7 @@ async function handleCommitmentsEvent(event: {
       resourceId,
       projectId
     );
+    await refreshCommitmentsAggMaterializedView();
     return;
   }
 
@@ -345,6 +347,8 @@ async function handleCommitmentsEvent(event: {
     companyId: companyId || undefined,
     projectId,
   });
+
+  await refreshCommitmentsAggMaterializedView();
 }
 
 // ─── Event dispatch ──────────────────────────────────────────────────────────

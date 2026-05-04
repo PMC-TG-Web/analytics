@@ -6,6 +6,7 @@ import {
   type ProcoreLineItemContractDetail,
   type ProcorePurchaseOrderContract,
 } from "@/lib/procorePurchaseOrderLineItemDetails";
+import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
 
 type ProcoreProject = Record<string, unknown>;
 
@@ -381,6 +382,10 @@ export async function POST(request: Request) {
         summary.errors.push(`Project ${projectId} (${projectName}): ${err instanceof Error ? err.message : String(err)}`);
       }
     });
+
+    if (persist && summary.totalLineItemContractDetailsSaved > 0) {
+      await refreshCommitmentsAggMaterializedView();
+    }
 
     return NextResponse.json(summary);
   } catch (err) {

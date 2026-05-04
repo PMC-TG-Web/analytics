@@ -13,6 +13,7 @@ type RelationRow = {
   packagesrelation: string | null;
   commitmentrelation: string | null;
   proposalrelation: string | null;
+  commitmentsaggmvrelation: string | null;
 };
 
 type MasterProjectRow = {
@@ -83,7 +84,8 @@ export async function GET(request: NextRequest) {
         to_regclass('public."PurchaseOrderContract"')::text AS purchaseOrderContractRelation,
         to_regclass('public.procore_change_order_packages')::text AS packagesRelation,
         to_regclass('public."CommitmentChangeOrder"')::text AS commitmentRelation,
-        to_regclass('public.procore_proposal_line_items_live')::text AS proposalRelation
+        to_regclass('public.procore_proposal_line_items_live')::text AS proposalRelation,
+        to_regclass('public.commitments_agg_mv')::text AS commitmentsAggMvRelation
     `);
 
     const relations = relationRows[0] || {
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
       packagesrelation: null,
       commitmentrelation: null,
       proposalrelation: null,
+      commitmentsaggmvrelation: null,
     };
 
     const hasBidBoardLive = Boolean(relations.bidboardrelation);
@@ -107,6 +110,7 @@ export async function GET(request: NextRequest) {
     const hasChangeOrderPackages = Boolean(relations.packagesrelation);
     const hasCommitmentChangeOrders = Boolean(relations.commitmentrelation);
     const hasProposalLineItems = Boolean(relations.proposalrelation);
+    const hasCommitmentsAggMv = Boolean(relations.commitmentsaggmvrelation);
 
     const bidBoardCte = hasBidBoardLive
       ? `
@@ -164,122 +168,137 @@ export async function GET(request: NextRequest) {
         `;
 
     const commitmentsCte =
-      hasCommitmentContracts || hasPurchaseOrderContracts
+      hasCommitmentsAggMv
         ? `
-            commitment_contract_agg AS (
-              ${
-                hasCommitmentContracts
-                  ? `
-              SELECT
-                "procoreProjectId" AS canonical_project_id,
-                COUNT(DISTINCT id)::int AS commitment_contract_count,
-                0::int AS purchase_order_contract_count,
-                COUNT(DISTINCT id)::int AS commitment_total_count,
-                SUM(COALESCE(value, 0))::float AS commitment_total_value,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE("vendorName", '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE("vendorName", '')), '')
-                ) AS commitment_vendors,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE(status, '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
-                ) AS commitment_statuses
-              FROM "CommitmentContract"
-              WHERE "procoreCompanyId" = $1
-                AND "procoreProjectId" IS NOT NULL
-              GROUP BY "procoreProjectId"
-                  `
-                  : `
-              SELECT
-                NULL::text AS canonical_project_id,
-                NULL::int AS commitment_contract_count,
-                NULL::int AS purchase_order_contract_count,
-                NULL::int AS commitment_total_count,
-                NULL::float AS commitment_total_value,
-                NULL::text AS commitment_vendors,
-                NULL::text AS commitment_statuses
-              WHERE FALSE
-                  `
-              }
-            ),
-            purchase_order_contract_agg AS (
-              ${
-                hasPurchaseOrderContracts
-                  ? `
-              SELECT
-                "procoreProjectId" AS canonical_project_id,
-                0::int AS commitment_contract_count,
-                COUNT(DISTINCT id)::int AS purchase_order_contract_count,
-                COUNT(DISTINCT id)::int AS commitment_total_count,
-                SUM(COALESCE(value, 0))::float AS commitment_total_value,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE("vendorName", '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE("vendorName", '')), '')
-                ) AS commitment_vendors,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE(status, '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
-                ) AS commitment_statuses
-              FROM "PurchaseOrderContract"
-              WHERE "procoreCompanyId" = $1
-                AND "procoreProjectId" IS NOT NULL
-              GROUP BY "procoreProjectId"
-                  `
-                  : `
-              SELECT
-                NULL::text AS canonical_project_id,
-                NULL::int AS commitment_contract_count,
-                NULL::int AS purchase_order_contract_count,
-                NULL::int AS commitment_total_count,
-                NULL::float AS commitment_total_value,
-                NULL::text AS commitment_vendors,
-                NULL::text AS commitment_statuses
-              WHERE FALSE
-                  `
-              }
-            ),
             commitments_agg AS (
               SELECT
                 canonical_project_id,
-                SUM(commitment_contract_count)::int AS commitment_contract_count,
-                SUM(purchase_order_contract_count)::int AS purchase_order_contract_count,
-                SUM(commitment_total_count)::int AS commitment_total_count,
-                SUM(COALESCE(commitment_total_value, 0))::float AS commitment_total_value,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE(commitment_vendors, '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE(commitment_vendors, '')), '')
-                ) AS commitment_vendors,
-                STRING_AGG(
-                  DISTINCT NULLIF(TRIM(COALESCE(commitment_statuses, '')), ''),
-                  ', '
-                  ORDER BY NULLIF(TRIM(COALESCE(commitment_statuses, '')), '')
-                ) AS commitment_statuses
-              FROM (
-                SELECT * FROM commitment_contract_agg
-                UNION ALL
-                SELECT * FROM purchase_order_contract_agg
-              ) combined_commitments
-              GROUP BY canonical_project_id
+                commitment_contract_count,
+                purchase_order_contract_count,
+                commitment_total_count,
+                commitment_total_value,
+                commitment_vendors,
+                commitment_statuses
+              FROM commitments_agg_mv
+              WHERE company_id = $1
             ),
           `
-        : `
-            commitments_agg AS (
-              SELECT
-                NULL::text AS canonical_project_id,
-                NULL::int AS commitment_contract_count,
-                NULL::int AS purchase_order_contract_count,
-                NULL::int AS commitment_total_count,
-                NULL::float AS commitment_total_value,
-                NULL::text AS commitment_vendors,
-                NULL::text AS commitment_statuses
-              WHERE FALSE
-            ),
-          `;
+        : hasCommitmentContracts || hasPurchaseOrderContracts
+          ? `
+              commitment_contract_agg AS (
+                ${
+                  hasCommitmentContracts
+                    ? `
+                SELECT
+                  "procoreProjectId" AS canonical_project_id,
+                  COUNT(DISTINCT id)::int AS commitment_contract_count,
+                  0::int AS purchase_order_contract_count,
+                  COUNT(DISTINCT id)::int AS commitment_total_count,
+                  SUM(COALESCE(value, 0))::float AS commitment_total_value,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE("vendorName", '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE("vendorName", '')), '')
+                  ) AS commitment_vendors,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE(status, '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
+                  ) AS commitment_statuses
+                FROM "CommitmentContract"
+                WHERE "procoreCompanyId" = $1
+                  AND "procoreProjectId" IS NOT NULL
+                GROUP BY "procoreProjectId"
+                    `
+                    : `
+                SELECT
+                  NULL::text AS canonical_project_id,
+                  NULL::int AS commitment_contract_count,
+                  NULL::int AS purchase_order_contract_count,
+                  NULL::int AS commitment_total_count,
+                  NULL::float AS commitment_total_value,
+                  NULL::text AS commitment_vendors,
+                  NULL::text AS commitment_statuses
+                WHERE FALSE
+                    `
+                }
+              ),
+              purchase_order_contract_agg AS (
+                ${
+                  hasPurchaseOrderContracts
+                    ? `
+                SELECT
+                  "procoreProjectId" AS canonical_project_id,
+                  0::int AS commitment_contract_count,
+                  COUNT(DISTINCT id)::int AS purchase_order_contract_count,
+                  COUNT(DISTINCT id)::int AS commitment_total_count,
+                  SUM(COALESCE(value, 0))::float AS commitment_total_value,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE("vendorName", '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE("vendorName", '')), '')
+                  ) AS commitment_vendors,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE(status, '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
+                  ) AS commitment_statuses
+                FROM "PurchaseOrderContract"
+                WHERE "procoreCompanyId" = $1
+                  AND "procoreProjectId" IS NOT NULL
+                GROUP BY "procoreProjectId"
+                    `
+                    : `
+                SELECT
+                  NULL::text AS canonical_project_id,
+                  NULL::int AS commitment_contract_count,
+                  NULL::int AS purchase_order_contract_count,
+                  NULL::int AS commitment_total_count,
+                  NULL::float AS commitment_total_value,
+                  NULL::text AS commitment_vendors,
+                  NULL::text AS commitment_statuses
+                WHERE FALSE
+                    `
+                }
+              ),
+              commitments_agg AS (
+                SELECT
+                  canonical_project_id,
+                  SUM(commitment_contract_count)::int AS commitment_contract_count,
+                  SUM(purchase_order_contract_count)::int AS purchase_order_contract_count,
+                  SUM(commitment_total_count)::int AS commitment_total_count,
+                  SUM(COALESCE(commitment_total_value, 0))::float AS commitment_total_value,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE(commitment_vendors, '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE(commitment_vendors, '')), '')
+                  ) AS commitment_vendors,
+                  STRING_AGG(
+                    DISTINCT NULLIF(TRIM(COALESCE(commitment_statuses, '')), ''),
+                    ', '
+                    ORDER BY NULLIF(TRIM(COALESCE(commitment_statuses, '')), '')
+                  ) AS commitment_statuses
+                FROM (
+                  SELECT * FROM commitment_contract_agg
+                  UNION ALL
+                  SELECT * FROM purchase_order_contract_agg
+                ) combined_commitments
+                GROUP BY canonical_project_id
+              ),
+            `
+          : `
+              commitments_agg AS (
+                SELECT
+                  NULL::text AS canonical_project_id,
+                  NULL::int AS commitment_contract_count,
+                  NULL::int AS purchase_order_contract_count,
+                  NULL::int AS commitment_total_count,
+                  NULL::float AS commitment_total_value,
+                  NULL::text AS commitment_vendors,
+                  NULL::text AS commitment_statuses
+                WHERE FALSE
+              ),
+            `;
 
     const changeOrderCte = hasChangeOrderPackages
       ? `

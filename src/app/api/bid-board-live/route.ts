@@ -97,20 +97,17 @@ export async function GET(request: NextRequest) {
       syncedAt: row.synced_at,
     }));
 
-    return NextResponse.json(
-      {
-        success: true,
-        count: data.length,
-        total,
-        page,
-        pageSize,
-        totalPages,
-        hasNextPage,
-        hasPreviousPage: page > 1,
-        data,
-      },
-      { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } }
-    );
+    return NextResponse.json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage: page > 1,
+      data,
+    });
   } catch (error) {
     console.error('Failed to fetch bid-board-live:', error);
     if (isTransientDbError(error)) {

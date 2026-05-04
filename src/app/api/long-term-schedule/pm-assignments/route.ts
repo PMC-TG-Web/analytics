@@ -139,7 +139,10 @@ export async function GET() {
       updatedAt: row.updated_at.toISOString(),
     }));
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } }
+    );
   } catch (error) {
     console.error('Failed to fetch PM assignments:', error);
     return NextResponse.json(

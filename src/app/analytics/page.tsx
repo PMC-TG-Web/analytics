@@ -100,7 +100,6 @@ type TrendPoint = {
 };
 
 const DEFAULT_COMPANY_ID = "598134325658789";
-const PAGE_SIZE = 1000;
 const MAX_PAGES = 100;
 const PRESET_STORAGE_KEY = "analytics:advanced-presets";
 
@@ -223,13 +222,6 @@ function csvCell(value: unknown): string {
   return `"${raw.replace(/"/g, '""')}"`;
 }
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
 
 export default function AnalyticsPage() {
   const [rows, setRows] = useState<PersistedLineItem[]>([]);
@@ -302,57 +294,45 @@ export default function AnalyticsPage() {
         });
       }
 
-      const allRows: PersistedLineItem[] = [];
-      const chunks = chunkArray(budgetProjects, 12);
+      const budgetProjectIds = budgetProjects
+        .map((p) => String(p.procoreProjectId || "").trim())
+        .filter(Boolean);
 
-      for (const projectChunk of chunks) {
-        const chunkRows = await Promise.all(
-          projectChunk.map(async (project) => {
-            const projectId = String(project.procoreProjectId || "").trim();
-            if (!projectId) return [] as PersistedLineItem[];
+      const bulkUrl = new URL("/api/procore/budget-line-items-bulk", window.location.origin);
+      bulkUrl.searchParams.set("companyId", DEFAULT_COMPANY_ID);
+      bulkUrl.searchParams.set("projectIds", budgetProjectIds.join(","));
+      bulkUrl.searchParams.set("actualsMode", "cost-code");
 
-            const url = new URL("/api/procore/budget-line-items-live", window.location.origin);
-            url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
-            url.searchParams.set("projectId", projectId);
-            url.searchParams.set("pageSize", String(PAGE_SIZE));
-            url.searchParams.set("actualsMode", "cost-code");
-            url.searchParams.set("_ts", String(Date.now()));
+      const bulkResponse = await fetch(bulkUrl.toString(), { cache: "no-store" });
+      const bulkBody: BudgetLineApiResponse = await bulkResponse.json();
 
-            const response = await fetch(url.toString(), { cache: "no-store" });
-            const body: BudgetLineApiResponse = await response.json();
-            if (!response.ok || body.success === false) {
-              return [] as PersistedLineItem[];
-            }
-
-            const rows = Array.isArray(body.data) ? body.data : [];
-            const meta = projectMeta.get(projectId);
-
-            return rows.map((row) => ({
-              id: `${projectId}:${row.id}`,
-              projectName: meta?.projectName || null,
-              customerName: meta?.customerName || null,
-              projectId,
-              costCode: row.costCode,
-              costCodeName: row.costCodeDescription || null,
-              lineItemType: row.lineItemType || null,
-              uom: row.uom,
-              quantity: row.quantity,
-              unitCost: row.unitCost,
-              originalBudgetAmount: row.originalBudgetAmount,
-              amount: row.amount,
-              totalCost: Number(row.originalBudgetAmount || 0),
-              totalSales: Number(row.amount || 0),
-              actualTimecardHours: Number(row.actualTimecardHours || 0),
-              actualProductivityQty: Number(row.actualProductivityQty || 0),
-              syncedAt: row.syncedAt,
-            }));
-          })
-        );
-
-        for (const rowsForProject of chunkRows) {
-          allRows.push(...rowsForProject);
-        }
+      if (!bulkResponse.ok || bulkBody.success === false) {
+        throw new Error(bulkBody.error || `Failed to load budget data (${bulkResponse.status})`);
       }
+
+      const allRows: PersistedLineItem[] = (Array.isArray(bulkBody.data) ? bulkBody.data : []).map((row) => {
+        const projectId = String(row.projectId || "").trim();
+        const meta = projectMeta.get(projectId);
+        return {
+          id: `${projectId}:${row.id}`,
+          projectName: meta?.projectName || null,
+          customerName: meta?.customerName || null,
+          projectId,
+          costCode: row.costCode,
+          costCodeName: row.costCodeDescription || null,
+          lineItemType: row.lineItemType || null,
+          uom: row.uom,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+          originalBudgetAmount: row.originalBudgetAmount,
+          amount: row.amount,
+          totalCost: Number(row.originalBudgetAmount || 0),
+          totalSales: Number(row.amount || 0),
+          actualTimecardHours: Number(row.actualTimecardHours || 0),
+          actualProductivityQty: Number(row.actualProductivityQty || 0),
+          syncedAt: row.syncedAt,
+        };
+      });
 
       setRows(allRows);
       setNote(

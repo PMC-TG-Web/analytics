@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 type RelationRow = {
   bidboardrelation: string | null;
+  bidboardlatestmvrelation: string | null;
   bidsrelation: string | null;
   bidformsrelation: string | null;
   budgetrelation: string | null;
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest) {
     const relationRows = await prisma.$queryRawUnsafe<RelationRow[]>(`
       SELECT
         to_regclass('public.procore_bid_board_live')::text AS bidBoardRelation,
+        to_regclass('public.bid_board_latest_mv')::text AS bidBoardLatestMvRelation,
         to_regclass('public.bids')::text AS bidsRelation,
         to_regclass('public.bidforms')::text AS bidformsRelation,
         to_regclass('public.budgetlineitems')::text AS budgetRelation,
@@ -90,6 +92,7 @@ export async function GET(request: NextRequest) {
 
     const relations = relationRows[0] || {
       bidboardrelation: null,
+      bidboardlatestmvrelation: null,
       bidsrelation: null,
       bidformsrelation: null,
       budgetrelation: null,
@@ -102,6 +105,7 @@ export async function GET(request: NextRequest) {
     };
 
     const hasBidBoardLive = Boolean(relations.bidboardrelation);
+    const hasBidBoardLatestMv = Boolean(relations.bidboardlatestmvrelation);
     const hasBids = Boolean(relations.bidsrelation);
     const hasBidForms = Boolean(relations.bidformsrelation);
     const hasBudget = Boolean(relations.budgetrelation);
@@ -113,20 +117,33 @@ export async function GET(request: NextRequest) {
     const hasCommitmentsAggMv = Boolean(relations.commitmentsaggmvrelation);
 
     const bidBoardCte = hasBidBoardLive
-      ? `
-          bid_board_latest AS (
-            SELECT DISTINCT ON (b.procore_project_id)
-              b.procore_project_id,
-              b.bid_board_id,
-              b.status,
-              b.customer,
-              b.synced_at
-            FROM procore_bid_board_live b
-            WHERE b.company_id = $1
-              AND b.procore_project_id IS NOT NULL
-            ORDER BY b.procore_project_id, b.synced_at DESC
-          ),
-        `
+      ? hasBidBoardLatestMv
+        ? `
+            bid_board_latest AS (
+              SELECT
+                procore_project_id,
+                bid_board_id,
+                status,
+                customer,
+                synced_at
+              FROM bid_board_latest_mv
+              WHERE company_id = $1
+            ),
+          `
+        : `
+            bid_board_latest AS (
+              SELECT DISTINCT ON (b.procore_project_id)
+                b.procore_project_id,
+                b.bid_board_id,
+                b.status,
+                b.customer,
+                b.synced_at
+              FROM procore_bid_board_live b
+              WHERE b.company_id = $1
+                AND b.procore_project_id IS NOT NULL
+              ORDER BY b.procore_project_id, b.synced_at DESC
+            ),
+          `
       : `
           bid_board_latest AS (
             SELECT

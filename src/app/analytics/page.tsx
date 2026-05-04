@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Navigation from "@/components/Navigation";
 
 type PersistedLineItem = {
@@ -1159,9 +1159,8 @@ export default function AnalyticsPage() {
                 {groupedRows.map((g) => {
                   const isExpanded = expandedGroups.has(g.group);
                   return (
-                    <>
+                    <React.Fragment key={g.group}>
                       <tr
-                        key={g.group}
                         onClick={() => toggleGroup(g.group)}
                         className={`cursor-pointer border-b border-slate-100 text-slate-800 hover:bg-slate-50 ${g.qtyVariance < 0 ? "bg-red-50 hover:bg-red-100" : ""}`}
                       >
@@ -1190,7 +1189,7 @@ export default function AnalyticsPage() {
                           </tr>
                         );
                       })}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>

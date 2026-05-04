@@ -307,6 +307,10 @@ model CommitmentContract {
   @@index([number])
   @@index([status])
   @@index([vendorId])
+  // idx_commitment_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model CommitmentChangeOrder {
@@ -403,6 +407,10 @@ model PurchaseOrderContract {
   @@index([projectId], map: "idx_poc_project_id")
   @@index([status], map: "idx_poc_status")
   @@index([vendorId], map: "idx_poc_vendor_id")
+  // idx_purchase_order_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model PurchaseOrderLineItemContractDetail {
@@ -1374,6 +1382,10 @@ model procore_bid_board_live {
   @@index([procore_project_id])
   @@index([status])
   @@index([synced_at(sort: Desc)])
+  // idx_bid_board_company_project_synced_covering: (company_id, procore_project_id, synced_at DESC)
+  // INCLUDE (bid_board_id, status, customer)
+  // WHERE procore_project_id IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model procore_prime_contracts_live {

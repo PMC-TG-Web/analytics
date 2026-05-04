@@ -187,7 +187,8 @@ export async function GET(request: NextRequest) {
                   ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
                 ) AS commitment_statuses
               FROM "CommitmentContract"
-              WHERE "procoreProjectId" IS NOT NULL
+              WHERE "procoreCompanyId" = $1
+                AND "procoreProjectId" IS NOT NULL
               GROUP BY "procoreProjectId"
                   `
                   : `
@@ -224,7 +225,8 @@ export async function GET(request: NextRequest) {
                   ORDER BY NULLIF(TRIM(COALESCE(status, '')), '')
                 ) AS commitment_statuses
               FROM "PurchaseOrderContract"
-              WHERE "procoreProjectId" IS NOT NULL
+              WHERE "procoreCompanyId" = $1
+                AND "procoreProjectId" IS NOT NULL
               GROUP BY "procoreProjectId"
                   `
                   : `

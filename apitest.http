@@ -1,0 +1,77 @@
+# =============================================================
+# Procore API Training File
+# Real requests against PMC's Procore account (read-only)
+# Expires: ~90 min from token generation. Re-run the script to refresh.
+# =============================================================
+
+@baseUrl = https://api.procore.com
+@companyId = 598134325658789
+@token = eyJhbGciOiJFUzUxMiJ9.eyJhbXIiOltdLCJhaWQiOiJFRHM4YzV3NHBRdnhhVGt1TGxobnlaNlZucXNWS29Nc0RiM0daZ3oyQllRIiwiYW91aWQiOjE1MjU3NDkwLCJhb3V1aWQiOiJkZTRhZTQ1NS0yMDI4LTQ4ZWItYWU3Yy1mMmUyNzlhMDIwODkiLCJleHAiOjE3Nzc5MTM1NjksInNpYXQiOm51bGwsInVpZCI6bnVsbCwidXVpZCI6bnVsbCwibGFzdF9tZmFfY2hlY2siOjE3Nzc5MDgxNjl9.AIkYnbU4t_Fmf0gINEhmxLe-tbM__QqJDESZ63No2V3Kd9aY-dNsXgWrb1gf5UKvgWl2cVR8QH5ZLSeDF3OZSqmLAP15lX6tkRAaqdM33N0Zo-wdMGCRfm_uKkQbmuRCmSL2e2fiwcTXiSvLAzi8Tjbq6Q4p2gPzJ0BFUi66XQH1r7ub
+
+# =============================================================
+# 1. WHO AM I?
+#    Endpoint: GET /rest/v1.0/me
+#    Lesson: Every API has an identity endpoint. Check your token works
+#            and see what user/service account the token belongs to.
+# =============================================================
+
+GET {{baseUrl}}/rest/v1.0/me
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+# =============================================================
+# 2. LIST ACTIVE PROJECTS (first 5, compact view)
+#    Endpoint: GET /rest/v1.1/projects
+#    Lesson: Query parameters filter/page results. "compact" view returns
+#            fewer fields — faster and cheaper for large data sets.
+# =============================================================
+
+GET {{baseUrl}}/rest/v1.1/projects?company_id={{companyId}}&per_page=5&view=compact
+Authorization: Bearer {{token}}
+Procore-Company-Id: {{companyId}}
+Accept: application/json
+
+###
+
+# =============================================================
+# 3. LIST INACTIVE PROJECTS
+#    Endpoint: GET /rest/v1.1/projects?filters[active]=false
+#    Lesson: filters[] syntax is common in REST APIs for optional
+#            server-side filtering — avoids fetching and filtering client-side.
+# =============================================================
+
+GET {{baseUrl}}/rest/v1.1/projects?company_id={{companyId}}&filters[active]=false&per_page=10&view=compact
+Authorization: Bearer {{token}}
+Procore-Company-Id: {{companyId}}
+Accept: application/json
+
+###
+
+# =============================================================
+# 4. GET COMPANY INFO
+#    Endpoint: GET /rest/v1.0/companies/:id
+#    Lesson: REST uses path parameters (:id) for specific resources.
+#            Compare to query params above — path params identify WHICH
+#            resource; query params modify HOW you get it.
+# =============================================================
+
+GET {{baseUrl}}/rest/v1.0/companies/{{companyId}}
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+# =============================================================
+# 5. INTENTIONAL 404 — RESOURCE NOT FOUND
+#    Lesson: Always test error cases. 404 means the resource doesn't
+#            exist. The response body usually has an error message.
+#            Compare this to a 401 (bad token) or 403 (no permission).
+# =============================================================
+
+GET {{baseUrl}}/rest/v1.1/projects/999999999999?company_id={{companyId}}
+Authorization: Bearer {{token}}
+Procore-Company-Id: {{companyId}}
+Accept: application/json
+

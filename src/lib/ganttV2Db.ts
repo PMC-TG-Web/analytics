@@ -1841,10 +1841,14 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
     }
   }
   
-  // For each project, fetch its scopes and schedule allocations
+  // Fetch all scopes in a single query instead of N individual queries (N+1 optimization)
+  const projectIds = projects.map((p) => p.id);
+  const scopesByProjectId = await getGanttV2ScopesForProjects(projectIds);
+  
+  // For each project, process its scopes and schedule allocations
   const projectsWithScopes: GanttV2ProjectWithScopes[] = await Promise.all(
     projects.map(async (project) => {
-      let scopes = await getGanttV2Scopes(project.id);
+      let scopes = scopesByProjectId.get(project.id) || [];
 
       const projectIdentityKey = `${normalizeIdentity(project.customer)}||${normalizeIdentity(project.projectName)}`;
       const legacyForProject = legacyScopesByIdentity.get(projectIdentityKey) || [];
@@ -1885,6 +1889,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         }
 
         if (insertedLegacyScope) {
+          // Refetch this project's scopes after inserting legacy scope
           scopes = await getGanttV2Scopes(project.id);
         }
       }
@@ -2238,6 +2243,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   return projectsWithScopes;
 }
 
+/**
+ * Fetch scopes for a single project (used for individual project scope loads)
+ */
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
@@ -2293,6 +2301,79 @@ export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeR
       remainingHours: Math.max(totalHours - scheduledHours, 0),
     };
   });
+}
+
+/**
+ * Fetch scopes for multiple projects in a single query (replaces N+1 loop pattern)
+ */
+export async function getGanttV2ScopesForProjects(
+  projectIds: string[]
+): Promise<Map<string, GanttV2ScopeRow[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    id: string;
+    project_id: string;
+    predecessor_scope_id: string | null;
+    title: string;
+    start_date: Date | null;
+    end_date: Date | null;
+    total_hours: number;
+    crew_size: number | null;
+    notes: string | null;
+    scheduled_hours: number;
+  }>>(
+    `
+      SELECT
+        s.id,
+        s.project_id,
+        s.predecessor_scope_id,
+        s.title,
+        s.start_date,
+        s.end_date,
+        s.total_hours,
+        s.crew_size,
+        s.notes,
+        CASE
+          WHEN s.start_date IS NULL OR s.end_date IS NULL OR COALESCE(s.total_hours, 0) <= 0
+            THEN 0
+          ELSE COALESCE(SUM(e.scheduled_hours), 0)
+        END::float8 AS scheduled_hours
+      FROM gantt_v2_scopes s
+      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
+      WHERE s.project_id = ANY($1::text[])
+      GROUP BY s.id
+      ORDER BY s.created_at ASC;
+    `,
+    projectIds
+  );
+
+  const scopesByProjectId = new Map<string, GanttV2ScopeRow[]>();
+  for (const row of rows) {
+    const totalHours = Number(row.total_hours || 0);
+    const scheduledHours = Number(row.scheduled_hours || 0);
+    const scope: GanttV2ScopeRow = {
+      id: row.id,
+      projectId: row.project_id,
+      predecessorScopeId: row.predecessor_scope_id,
+      title: row.title,
+      startDate: row.start_date ? row.start_date.toISOString().split('T')[0] : null,
+      endDate: row.end_date ? row.end_date.toISOString().split('T')[0] : null,
+      totalHours,
+      crewSize: row.crew_size === null ? null : Number(row.crew_size),
+      notes: row.notes,
+      scheduledHours,
+      remainingHours: Math.max(totalHours - scheduledHours, 0),
+    };
+    if (!scopesByProjectId.has(row.project_id)) {
+      scopesByProjectId.set(row.project_id, []);
+    }
+    scopesByProjectId.get(row.project_id)!.push(scope);
+  }
+
+  return scopesByProjectId;
 }
 
 export async function getGanttV2LongTermSummary(startMonth?: string, months = 15): Promise<GanttV2LongTermSummary> {

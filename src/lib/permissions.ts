@@ -5,13 +5,13 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "employees", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting"
+    "certifications", "employees", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
-    "certifications", "employees", "kpi-cards-management", "holidays", "handbook", "reporting"
+    "certifications", "employees", "kpi-cards-management", "holidays", "handbook", "reporting", "analytics"
   ],
   "HR": [
     "home", "certifications", "crew-dispatch", "holidays", "handbook"
@@ -26,7 +26,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
   ],
   "PMs": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
-    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "project", "wip", "projects", "procore", "equipment", "handbook"
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "project", "wip", "projects", "procore", "equipment", "handbook", "analytics"
   ],
   "FIELD": [
     "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "project-schedule", "handbook"
@@ -230,7 +230,8 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/concrete-orders-schedule', permission: 'concrete-orders-schedule' },
   { prefix: '/project-schedule', permission: 'project-schedule' },
   { prefix: '/kpi-cards-management', permission: 'kpi-cards-management' },
-    { prefix: '/reporting', permission: 'reporting' },
+    { prefix: '/analytics', permission: 'analytics' },
+  { prefix: '/reporting', permission: 'reporting' },
   { prefix: '/estimating-tools', permission: 'estimating-tools' },
   { prefix: '/crew-management', permission: 'crew-management' },
   { prefix: '/dashboard', permission: 'dashboard' },

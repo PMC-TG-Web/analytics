@@ -243,6 +243,9 @@ model TimecardEntry {
   @@index([procoreId], map: "idx_timecard_entry_procore_id")
   @@index([projectId], map: "idx_timecard_entry_project_id")
   @@index([status], map: "idx_timecard_entry_status")
+  // idx_timecard_entry_project_costcode_covering: (procoreProjectId, costCodeFullCode) INCLUDE (hours)
+  // WHERE costCodeFullCode IS NOT NULL AND costCodeFullCode <> ''
+  // — partial covering index; INCLUDE syntax not supported in Prisma @@index; applied via migration SQL
 }
 
 model TimecardTimeType {

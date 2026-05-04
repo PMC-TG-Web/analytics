@@ -354,7 +354,7 @@ export async function GET(request: NextRequest) {
               FROM "TimecardEntry" t
               WHERE t."procoreProjectId" = ANY($1)
                 AND t."costCodeFullCode" IS NOT NULL
-                AND BTRIM(t."costCodeFullCode") <> ''
+                AND t."costCodeFullCode" <> ''
               GROUP BY t."procoreProjectId", t."costCodeFullCode"
             `,
             projectIds

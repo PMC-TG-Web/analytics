@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
-import { ensureBudgetLineItemsTable, upsertBudgetLineItem } from '@/lib/procoreBudgetLineItems';
+import { ensureBudgetLineItemsTable, batchUpsertBudgetLineItems, type BatchBudgetLineItem } from '@/lib/procoreBudgetLineItems';
 
 type JsonObject = Record<string, unknown>;
 
@@ -210,6 +210,7 @@ export async function POST(request: Request) {
     for (const projectId of projectIds) {
       projectsScanned += 1;
       let page = 1;
+      const projectItems: BatchBudgetLineItem[] = [];
 
       while (true) {
         let result: { data: unknown; endpoint: string; failures: string[] } | null = null;
@@ -238,60 +239,62 @@ export async function POST(request: Request) {
         fetched += items.length;
 
         for (const item of items) {
-          try {
-            const budgetLineItemId = firstText(item.id, item.budget_line_item_id);
-            if (!budgetLineItemId) continue;
+          const budgetLineItemId = firstText(item.id, item.budget_line_item_id);
+          if (!budgetLineItemId) continue;
 
-            const costCodeObject = asObject(item.cost_code);
-            const lineItemTypeObject = asObject(item.line_item_type);
-            const wbsCodeObject = asObject(item.wbs_code);
-            const currencyObject = asObject(item.currency_configuration);
+          const costCodeObject = asObject(item.cost_code);
+          const lineItemTypeObject = asObject(item.line_item_type);
+          const wbsCodeObject = asObject(item.wbs_code);
+          const currencyObject = asObject(item.currency_configuration);
 
-            await upsertBudgetLineItem({
-              companyId,
-              projectId,
-              budgetLineItemId,
-              name: firstText(item.name, item.title),
-              costCode: firstText(
-                item.cost_code_string,
-                wbsCodeObject?.flat_code,
-                costCodeObject?.code,
-                costCodeObject?.name,
-                item.cost_code
-              ),
-              costCodeDescription: firstText(
-                wbsCodeObject?.description,
-                costCodeObject?.description
-              ),
-              wbsCodeId: firstText(wbsCodeObject?.id, item.wbs_code_id),
-              lineItemType: firstText(
-                lineItemTypeObject?.name,
-                lineItemTypeObject?.id,
-                item.line_item_type
-              ),
-              uom: firstText(item.uom),
-              quantity: readNumber(item.quantity),
-              unitCost: readNumber(item.unit_cost),
-              originalBudgetAmount: readNumber(item.original_budget_amount),
-              amount: readNumber(item.amount) ?? readNumber(item.budget_amount) ?? readNumber(item.original_budget_amount),
-              calculationStrategy: firstText(item.calculation_strategy),
-              currencyIsoCode: firstText(currencyObject?.currency_iso_code, item.currency_iso_code),
-              sourceCreatedAt: firstText(item.created_at),
-              sourceUpdatedAt: firstText(item.updated_at),
-              payload: item,
-            });
-
-            upserted += 1;
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            const id = firstText(item.id, item.budget_line_item_id) || 'unknown';
-            pushError(`project:${projectId} budget_line_item:${id} => ${message}`);
-          }
+          projectItems.push({
+            projectId,
+            budgetLineItemId,
+            name: firstText(item.name, item.title),
+            costCode: firstText(
+              item.cost_code_string,
+              wbsCodeObject?.flat_code,
+              costCodeObject?.code,
+              costCodeObject?.name,
+              item.cost_code
+            ),
+            costCodeDescription: firstText(
+              wbsCodeObject?.description,
+              costCodeObject?.description
+            ),
+            wbsCodeId: firstText(wbsCodeObject?.id, item.wbs_code_id),
+            lineItemType: firstText(
+              lineItemTypeObject?.name,
+              lineItemTypeObject?.id,
+              item.line_item_type
+            ),
+            uom: firstText(item.uom),
+            quantity: readNumber(item.quantity),
+            unitCost: readNumber(item.unit_cost),
+            originalBudgetAmount: readNumber(item.original_budget_amount),
+            amount: readNumber(item.amount) ?? readNumber(item.budget_amount) ?? readNumber(item.original_budget_amount),
+            calculationStrategy: firstText(item.calculation_strategy),
+            currencyIsoCode: firstText(currencyObject?.currency_iso_code, item.currency_iso_code),
+            sourceCreatedAt: firstText(item.created_at),
+            sourceUpdatedAt: firstText(item.updated_at),
+            payload: item,
+          });
         }
 
         if (!fetchAll || items.length < perPage) break;
         page += 1;
         if (page > 100) break;
+      }
+
+      // Bulk-upsert all collected items for this project in one statement
+      if (projectItems.length > 0) {
+        try {
+          await batchUpsertBudgetLineItems(companyId, projectItems);
+          upserted += projectItems.length;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          pushError(`project:${projectId} batch upsert => ${message}`);
+        }
       }
     }
 

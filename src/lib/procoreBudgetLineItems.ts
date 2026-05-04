@@ -292,3 +292,145 @@ export async function upsertBudgetLineItem(params: {
 
   await syncUnpackedFieldsForBudgetLineItem(companyId, projectId, budgetLineItemId, payload);
 }
+
+export type BatchBudgetLineItem = {
+  projectId: string;
+  budgetLineItemId: string;
+  name?: string | null;
+  costCode?: string | null;
+  costCodeDescription?: string | null;
+  wbsCodeId?: string | null;
+  lineItemType?: string | null;
+  uom?: string | null;
+  quantity?: number | null;
+  unitCost?: number | null;
+  originalBudgetAmount?: number | null;
+  amount?: number | null;
+  calculationStrategy?: string | null;
+  currencyIsoCode?: string | null;
+  sourceCreatedAt?: string | Date | null;
+  sourceUpdatedAt?: string | Date | null;
+  payload: JsonObject;
+};
+
+/**
+ * Bulk-upsert many budget line items in a single SQL statement.
+ * Skips the unpacked-fields table to stay well within Netlify's wall-clock limit.
+ */
+export async function batchUpsertBudgetLineItems(
+  companyId: string,
+  items: BatchBudgetLineItem[]
+): Promise<number> {
+  if (items.length === 0) return 0;
+
+  const records = items.map((item) => ({
+    company_id: companyId,
+    project_id: item.projectId,
+    budget_line_item_id: item.budgetLineItemId,
+    name: item.name ?? null,
+    cost_code: item.costCode ?? null,
+    cost_code_description: item.costCodeDescription ?? null,
+    wbs_code_id: item.wbsCodeId ?? null,
+    line_item_type: item.lineItemType ?? null,
+    uom: item.uom ?? null,
+    quantity: (typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : readNum(item.quantity)) ?? null,
+    unit_cost: (typeof item.unitCost === 'number' && Number.isFinite(item.unitCost) ? item.unitCost : readNum(item.unitCost)) ?? null,
+    original_budget_amount: (typeof item.originalBudgetAmount === 'number' && Number.isFinite(item.originalBudgetAmount) ? item.originalBudgetAmount : readNum(item.originalBudgetAmount)) ?? null,
+    amount: (typeof item.amount === 'number' && Number.isFinite(item.amount) ? item.amount : readNum(item.amount)) ?? null,
+    calculation_strategy: item.calculationStrategy ?? null,
+    currency_iso_code: item.currencyIsoCode ?? null,
+    source_created_at: normalizeTimestamp(item.sourceCreatedAt),
+    source_updated_at: normalizeTimestamp(item.sourceUpdatedAt),
+    payload: JSON.stringify(item.payload),
+  }));
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO budgetlineitems (
+        company_id,
+        project_id,
+        budget_line_item_id,
+        name,
+        cost_code,
+        cost_code_description,
+        wbs_code_id,
+        line_item_type,
+        uom,
+        quantity,
+        unit_cost,
+        original_budget_amount,
+        amount,
+        calculation_strategy,
+        currency_iso_code,
+        source_created_at,
+        source_updated_at,
+        payload,
+        synced_at,
+        updated_at
+      )
+      SELECT
+        t.company_id,
+        t.project_id,
+        t.budget_line_item_id,
+        t.name,
+        t.cost_code,
+        t.cost_code_description,
+        t.wbs_code_id,
+        t.line_item_type,
+        t.uom,
+        t.quantity::numeric,
+        t.unit_cost::numeric,
+        t.original_budget_amount::numeric,
+        t.amount::numeric,
+        t.calculation_strategy,
+        t.currency_iso_code,
+        t.source_created_at::timestamptz,
+        t.source_updated_at::timestamptz,
+        t.payload::jsonb,
+        NOW(),
+        NOW()
+      FROM jsonb_to_recordset($1::jsonb) AS t(
+        company_id TEXT,
+        project_id TEXT,
+        budget_line_item_id TEXT,
+        name TEXT,
+        cost_code TEXT,
+        cost_code_description TEXT,
+        wbs_code_id TEXT,
+        line_item_type TEXT,
+        uom TEXT,
+        quantity TEXT,
+        unit_cost TEXT,
+        original_budget_amount TEXT,
+        amount TEXT,
+        calculation_strategy TEXT,
+        currency_iso_code TEXT,
+        source_created_at TEXT,
+        source_updated_at TEXT,
+        payload TEXT
+      )
+      ON CONFLICT (company_id, project_id, budget_line_item_id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        cost_code = EXCLUDED.cost_code,
+        cost_code_description = EXCLUDED.cost_code_description,
+        wbs_code_id = EXCLUDED.wbs_code_id,
+        line_item_type = EXCLUDED.line_item_type,
+        uom = EXCLUDED.uom,
+        quantity = EXCLUDED.quantity,
+        unit_cost = EXCLUDED.unit_cost,
+        original_budget_amount = EXCLUDED.original_budget_amount,
+        amount = EXCLUDED.amount,
+        calculation_strategy = EXCLUDED.calculation_strategy,
+        currency_iso_code = EXCLUDED.currency_iso_code,
+        source_created_at = EXCLUDED.source_created_at,
+        source_updated_at = EXCLUDED.source_updated_at,
+        payload = EXCLUDED.payload,
+        synced_at = NOW(),
+        updated_at = NOW()
+    `,
+    JSON.stringify(records)
+  );
+
+  return items.length;
+}

@@ -642,6 +642,7 @@ export default function AnalyticsPage() {
       "costCode",
       "costCodeName",
       "uom",
+      "budgetQty",
       "effectiveUnitCost",
       "timecardHours",
       "productivityQty",
@@ -662,6 +663,7 @@ export default function AnalyticsPage() {
           row.costCode || "",
           row.costCodeName || "",
           row.uom || "",
+          Number(row.quantity || 0).toFixed(2),
           getEffectiveUnitCost(row).toFixed(2),
           Number(row.actualTimecardHours || 0).toFixed(1),
           Number(row.actualProductivityQty || 0).toFixed(1),
@@ -692,6 +694,7 @@ export default function AnalyticsPage() {
     let unitCostTotal = 0;
     let tcHoursTotal = 0;
     let prodQtyTotal = 0;
+    let budgetQtyTotal = 0;
     let actualUnitsTotal = 0;
     let runningCostTotal = 0;
     let originalBudgetTotal = 0;
@@ -701,6 +704,7 @@ export default function AnalyticsPage() {
       unitCostTotal += getEffectiveUnitCost(row);
       tcHoursTotal += Number(row.actualTimecardHours || 0);
       prodQtyTotal += Number(row.actualProductivityQty || 0);
+      budgetQtyTotal += Number(row.quantity || 0);
       actualUnitsTotal += getActualUnits(row);
       runningCostTotal += getRunningCost(row);
       originalBudgetTotal += Number(row.originalBudgetAmount || 0);
@@ -711,6 +715,7 @@ export default function AnalyticsPage() {
       unitCostTotal,
       tcHoursTotal,
       prodQtyTotal,
+      budgetQtyTotal,
       actualUnitsTotal,
       runningCostTotal,
       originalBudgetTotal,
@@ -932,6 +937,7 @@ export default function AnalyticsPage() {
                   <th className="py-2 pr-3">Cost Code</th>
                   <th className="py-2 pr-3">Cost Code Name</th>
                   <th className="py-2 pr-3">UOM</th>
+                  <th className="py-2 pr-3 text-right">Budget Qty</th>
                   <th className="py-2 pr-3 text-right">Unit Cost (Eff)</th>
                   <th className="py-2 pr-3 text-right">TC Hours</th>
                   <th className="py-2 pr-3 text-right">Prod Qty</th>
@@ -944,7 +950,7 @@ export default function AnalyticsPage() {
               <tbody>
                 {!loading && previewRows.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan={14} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
                       No rows match these filters.
                     </td>
                   </tr>
@@ -957,6 +963,7 @@ export default function AnalyticsPage() {
                     <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
                     <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualTimecardHours || 0))}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualProductivityQty || 0))}</td>
@@ -972,6 +979,9 @@ export default function AnalyticsPage() {
                   <tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
                     <td colSpan={6} className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">
                       Totals (Filtered)
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
+                      {formatNumber(tableTotals.budgetQtyTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
                       {formatCurrency(tableTotals.unitCostTotal)}

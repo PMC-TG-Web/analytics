@@ -247,6 +247,16 @@ export default function AnalyticsPage() {
   const [presetName, setPresetName] = useState<string>("");
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [sortCol, setSortCol] = useState<string>("projectName");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = useCallback((col: string) => {
+    setSortCol((prev) => {
+      if (prev === col) return col;
+      return col;
+    });
+    setSortDir((prev) => (sortCol === col ? (prev === "asc" ? "desc" : "asc") : "asc"));
+  }, [sortCol]);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -713,7 +723,31 @@ export default function AnalyticsPage() {
     };
   }, [filteredRows]);
 
-  const previewRows = useMemo(() => filteredRows.slice(0, 250), [filteredRows]);
+  const previewRows = useMemo(() => {
+    const sorted = [...filteredRows].sort((a, b) => {
+      let av: string | number = 0;
+      let bv: string | number = 0;
+      switch (sortCol) {
+        case "syncedAt":      av = a.syncedAt || ""; bv = b.syncedAt || ""; break;
+        case "projectName":   av = (a.projectName || "").toLowerCase(); bv = (b.projectName || "").toLowerCase(); break;
+        case "customerName":  av = (a.customerName || "").toLowerCase(); bv = (b.customerName || "").toLowerCase(); break;
+        case "costCode":      av = (a.costCode || "").toLowerCase(); bv = (b.costCode || "").toLowerCase(); break;
+        case "costCodeName":  av = (a.costCodeName || "").toLowerCase(); bv = (b.costCodeName || "").toLowerCase(); break;
+        case "uom":           av = (a.uom || "").toLowerCase(); bv = (b.uom || "").toLowerCase(); break;
+        case "quantity":      av = Number(a.quantity || 0); bv = Number(b.quantity || 0); break;
+        case "unitCost":      av = getEffectiveUnitCost(a); bv = getEffectiveUnitCost(b); break;
+        case "actualUnits":   av = getActualUnits(a); bv = getActualUnits(b); break;
+        case "runningCost":   av = getRunningCost(a); bv = getRunningCost(b); break;
+        case "originalBudget": av = Number(a.originalBudgetAmount || 0); bv = Number(b.originalBudgetAmount || 0); break;
+        case "amount":        av = Number(a.amount || 0); bv = Number(b.amount || 0); break;
+        default: av = ""; bv = "";
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted.slice(0, 250);
+  }, [filteredRows, sortCol, sortDir]);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -921,18 +955,34 @@ export default function AnalyticsPage() {
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-left uppercase tracking-wider text-slate-500">
-                  <th className="py-2 pr-3 pl-4">Synced Date</th>
-                  <th className="py-2 pr-3">Project</th>
-                  <th className="py-2 pr-3">Customer</th>
-                  <th className="py-2 pr-3">Cost Code</th>
-                  <th className="py-2 pr-3">Cost Code Name</th>
-                  <th className="py-2 pr-3">UOM</th>
-                  <th className="py-2 pr-3 text-right">Budget Qty</th>
-                  <th className="py-2 pr-3 text-right">Unit Cost (Eff)</th>
-                  <th className="py-2 pr-3 text-right">Actual Units</th>
-                  <th className="py-2 pr-3 text-right">Running Cost</th>
-                  <th className="py-2 pr-3 text-right">Original Budget</th>
-                  <th className="py-2 pr-4 text-right">Budget Amount</th>
+                  {(
+                    [
+                      ["syncedAt", "Synced Date"],
+                      ["projectName", "Project"],
+                      ["customerName", "Customer"],
+                      ["costCode", "Cost Code"],
+                      ["costCodeName", "Cost Code Name"],
+                      ["uom", "UOM"],
+                      ["quantity", "Budget Qty"],
+                      ["unitCost", "Unit Cost (Eff)"],
+                      ["actualUnits", "Actual Units"],
+                      ["runningCost", "Running Cost"],
+                      ["originalBudget", "Original Budget"],
+                      ["amount", "Budget Amount"],
+                    ] as [string, string][]
+                  ).map(([col, label]) => {
+                    const isActive = sortCol === col;
+                    const numeric = ["quantity","unitCost","actualUnits","runningCost","originalBudget","amount"].includes(col);
+                    return (
+                      <th
+                        key={col}
+                        onClick={() => handleSort(col)}
+                        className={`cursor-pointer select-none py-2 pr-3 ${col === "syncedAt" ? "pl-4" : ""} ${numeric ? "text-right" : ""} hover:text-slate-800 ${isActive ? "text-teal-700" : ""}`}
+                      >
+                        {label}{isActive ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

@@ -1377,18 +1377,26 @@ export async function POST(request: Request) {
               ? (existing.customFields as Record<string, unknown>)
               : {};
 
+          // Only update status from Bid Board if no V1 project status is already set
+          // V1 project status is canonical; Bid Board status is for bid workflow only
+          const shouldUpdateStatus = existing.statusSource !== 'procore_v1';
+          const updatedStatus = shouldUpdateStatus ? bidStatus : existing.status;
+          const updatedStatusSource = shouldUpdateStatus ? 'procore_bid_board' : existing.statusSource;
+
           await prisma.project.update({
             where: { id: existing.id },
             data: {
               bidBoardId: bidId,
               procoreId: procoreProjectId || existing.procoreId,
               customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
-              // Authoritative: refresh status from Bid Board endpoint when linked.
-              status: bidStatus,
+              // IMPORTANT: Only update status from Bid Board if not already synced from V1
+              // V1 project status (e.g., "In Progress") is canonical
+              // Bid Board status (e.g., "Estimating", "Bidding") is bid workflow state
+              status: updatedStatus,
               customerSource: isMeaningfulCustomer(customer)
                 ? 'procore_bid_board'
                 : (existing.customerSource || null),
-              statusSource: 'procore_bid_board',
+              statusSource: updatedStatusSource,
               customFields: {
                 ...existingCustomFields,
                 bidBoardId: bidId,
@@ -1396,7 +1404,7 @@ export async function POST(request: Request) {
                 customerLabel: isMeaningfulCustomer(customer)
                   ? customer
                   : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-                statusRaw: bidStatusRaw,
+                statusRaw: shouldUpdateStatus ? bidStatusRaw : (existingCustomFields.statusRaw as string | null | undefined),
                 statusSyncedAt: new Date().toISOString(),
                 syncedAt: new Date().toISOString()
               }

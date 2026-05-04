@@ -6,34 +6,21 @@
 -- dramatically reduce the per-query execution cost and shift the computation
 -- overhead to refresh cycles (which can happen during low-traffic periods).
 --
--- Solution: Create a materialized view indexed on (company_id, procore_project_id)
--- for O(1) lookup by company. Add a refresh tracking table to schedule refreshes.
+-- Solution: Create a materialized view using DISTINCT ON for the latest entry per project.
+-- Use PostgreSQL's DISTINCT ON operator which automatically picks the first row in the
+-- ORDER BY sequence, making this much simpler than a window function approach.
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS bid_board_latest_mv AS
-SELECT
-    b.company_id,
-    b.procore_project_id,
-    b.bid_board_id,
-    b.status,
-    b.customer,
-    b.synced_at
-FROM procore_bid_board_live b
-WHERE
-    b.procore_project_id IS NOT NULL
-    AND (
-        b.company_id,
-        b.procore_project_id,
-        b.synced_at
-    ) IN (
-        SELECT
-            company_id,
-            procore_project_id,
-            MAX(synced_at) AS latest_synced_at
-        FROM procore_bid_board_live
-        WHERE procore_project_id IS NOT NULL
-        GROUP BY company_id, procore_project_id
-    )
-WITH DATA;
+SELECT DISTINCT ON (company_id, procore_project_id)
+    company_id,
+    procore_project_id,
+    bid_board_id,
+    status,
+    customer,
+    synced_at
+FROM procore_bid_board_live
+WHERE procore_project_id IS NOT NULL
+ORDER BY company_id, procore_project_id, synced_at DESC;
 
 -- Create indexes to optimize lookups in the materialized view.
 -- Unique index on (company_id, procore_project_id) ensures O(1) access 
@@ -48,7 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_bid_board_latest_mv_company
 -- Create a refresh tracking table to schedule and monitor materialized view refreshes.
 CREATE TABLE IF NOT EXISTS mv_refresh_log (
     id SERIAL PRIMARY KEY,
-    mv_name VARCHAR(255) NOT NULL,
+    mv_name VARCHAR(255) NOT NULL UNIQUE,
     last_refresh_time TIMESTAMP DEFAULT NULL,
     next_refresh_time TIMESTAMP DEFAULT NOW(),
     refresh_interval_minutes INT DEFAULT 30,
@@ -59,29 +46,7 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Ensure we don't duplicate refresh tracking for the same materialized view.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_refresh_log_mv_name
-    ON mv_refresh_log (mv_name);
-
 -- Insert initial refresh tracking for bid_board_latest_mv.
 INSERT INTO mv_refresh_log (mv_name, refresh_interval_minutes, is_active)
 VALUES ('bid_board_latest_mv', 30, true)
 ON CONFLICT (mv_name) DO NOTHING;
-
--- Alternative query format using explicit DISTINCT ON instead of subquery window functions
--- (in case the above materialization approach needs revision). This preserves the original
--- PostgreSQL-specific DISTINCT ON pattern while ensuring it's indexed properly.
--- 
--- DROP VIEW IF EXISTS bid_board_latest_mv;
--- CREATE MATERIALIZED VIEW bid_board_latest_mv AS
--- SELECT DISTINCT ON (b.company_id, b.procore_project_id)
---     b.company_id,
---     b.procore_project_id,
---     b.bid_board_id,
---     b.status,
---     b.customer,
---     b.synced_at
--- FROM procore_bid_board_live b
--- WHERE b.procore_project_id IS NOT NULL
--- ORDER BY b.company_id, b.procore_project_id, b.synced_at DESC
--- WITH DATA;

@@ -697,24 +697,34 @@ export default function AnalyticsPage() {
   }, [filteredRows]);
 
   const groupedRows = useMemo(() => {
-    const map = new Map<string, { budgetQty: number; actualUnits: number; runningCost: number; budgetAmount: number; rowCount: number }>();
+    const map = new Map<string, { budgetQty: number; actualUnits: number; runningCost: number; budgetAmount: number; rowCount: number; lines: PersistedLineItem[] }>();
     for (const row of filteredRows) {
       const name = row.costCodeName || "(no name)";
       const prefix = name.includes(".") ? name.slice(0, name.lastIndexOf(".")).trim() : name.trim();
       const words = prefix.split(/\s+/);
       const group = words.length >= 2 ? words.slice(-2).join(" ") : prefix;
-      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 };
+      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, runningCost: 0, budgetAmount: 0, rowCount: 0, lines: [] };
       existing.budgetQty += Number(row.quantity || 0);
       existing.actualUnits += getActualUnits(row);
       existing.runningCost += getRunningCost(row);
       existing.budgetAmount += Number(row.amount || 0);
       existing.rowCount += 1;
+      existing.lines.push(row);
       map.set(group, existing);
     }
     return Array.from(map.entries())
       .map(([group, totals]) => ({ group, ...totals, qtyVariance: totals.budgetQty - totals.actualUnits }))
       .sort((a, b) => a.group.localeCompare(b.group));
   }, [filteredRows]);
+
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = useCallback((group: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  }, []);
 
   const exportGroupedCsv = useCallback(() => {
     const headers = ["category", "lines", "budgetQty", "actualUnits", "qtyVariance", "runningCost", "budgetAmount"];
@@ -1121,17 +1131,43 @@ export default function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {groupedRows.map((g) => (
-                  <tr key={g.group} className={`border-b border-slate-100 text-slate-800 ${g.qtyVariance < 0 ? "bg-red-50" : ""}`}>
-                    <td className="py-2 pr-3 pl-4 font-semibold">{g.group}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right text-slate-500">{g.rowCount}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.budgetQty)}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.actualUnits)}</td>
-                    <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${g.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(g.qtyVariance)}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(g.runningCost)}</td>
-                    <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(g.budgetAmount)}</td>
-                  </tr>
-                ))}
+                {groupedRows.map((g) => {
+                  const isExpanded = expandedGroups.has(g.group);
+                  return (
+                    <>
+                      <tr
+                        key={g.group}
+                        onClick={() => toggleGroup(g.group)}
+                        className={`cursor-pointer border-b border-slate-100 text-slate-800 hover:bg-slate-50 ${g.qtyVariance < 0 ? "bg-red-50 hover:bg-red-100" : ""}`}
+                      >
+                        <td className="py-2 pr-3 pl-4 font-semibold">
+                          <span className="mr-2 text-slate-400">{isExpanded ? "▾" : "▸"}</span>
+                          {g.group}
+                        </td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right text-slate-500">{g.rowCount}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.budgetQty)}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.actualUnits)}</td>
+                        <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${g.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(g.qtyVariance)}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(g.runningCost)}</td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(g.budgetAmount)}</td>
+                      </tr>
+                      {isExpanded && g.lines.map((row) => {
+                        const qv = Number(row.quantity || 0) - getActualUnits(row);
+                        return (
+                          <tr key={row.id} className={`border-b border-slate-100 text-slate-600 ${qv < 0 ? "bg-red-50" : "bg-slate-50"}`}>
+                            <td className="py-1.5 pr-3 pl-10 text-[11px]">{row.costCodeName || "-"} <span className="ml-1 text-slate-400">{row.projectName}</span></td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px] text-slate-400">{row.costCode || "-"}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(Number(row.quantity || 0))}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(getActualUnits(row))}</td>
+                            <td className={`whitespace-nowrap py-1.5 pr-3 text-right text-[11px] font-semibold ${qv < 0 ? "text-red-600" : ""}`}>{formatNumber(qv)}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatCurrency(getRunningCost(row))}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-4 text-right text-[11px]">{formatCurrency(Number(row.amount || 0))}</td>
+                          </tr>
+                        );
+                      })}
+                    </>
+                  );
+                })}
               </tbody>
               {groupedRows.length > 0 && (() => {
                 const gt = groupedRows.reduce((acc, g) => ({

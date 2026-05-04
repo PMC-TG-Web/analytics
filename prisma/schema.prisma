@@ -433,7 +433,8 @@ model PurchaseOrderLineItemContractDetail {
   @@index([procorePurchaseOrderContractId], map: "idx_pold_contract_procore_id")
   @@index([costCode], map: "idx_pold_cost_code")
   @@index([jobKey], map: "idx_pold_job_key")
-  @@index([procoreId], map: "idx_pold_procore_id")
+  // idx_pold_procore_id replaced by covering index idx_pold_procore_id_covering (procoreId) INCLUDE (costCode)
+  // — applied via migration SQL; INCLUDE syntax is not supported in Prisma @@index
   @@index([projectId], map: "idx_pold_project_id")
 }
 

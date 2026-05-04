@@ -59,13 +59,20 @@ function wait(ms: number): Promise<void> {
 }
 
 function shouldRetryChunk(errorMessage: string, statusCode: number): boolean {
-  if (statusCode === 429 || statusCode >= 500) return true;
+  if (statusCode === 429) return true;
+  // Do NOT retry timeouts or aborts — they will just time out again
   const normalized = errorMessage.toLowerCase();
-  return (
+  if (
     normalized.includes("inactivity timeout") ||
+    normalized.includes("gateway timeout") ||
+    normalized.includes("aborted") ||
+    normalized.includes("abort") ||
+    normalized.includes("the user aborted")
+  ) return false;
+  if (statusCode >= 500) return true;
+  return (
     normalized.includes("internal error while processing your request") ||
-    normalized.includes("non-json content") ||
-    normalized.includes("gateway timeout")
+    normalized.includes("non-json content")
   );
 }
 
@@ -675,11 +682,11 @@ export default function ProcoreProjectsFeedToolsPage() {
     ]);
 
     const heavyStepConfig: Record<string, { chunkSize: number; maxAttempts: number; pauseMs: number }> = {
-      "change-order-packages": { chunkSize: 24, maxAttempts: 2, pauseMs: 350 },
-      "commitment-contracts": { chunkSize: 8, maxAttempts: 3, pauseMs: 800 },
-      "timecard-entries": { chunkSize: 6, maxAttempts: 3, pauseMs: 1000 },
-      "productivity-projects": { chunkSize: 24, maxAttempts: 2, pauseMs: 350 },
-      "budget-line-items": { chunkSize: 4, maxAttempts: 3, pauseMs: 1200 },
+      "change-order-packages": { chunkSize: 24, maxAttempts: 1, pauseMs: 350 },
+      "commitment-contracts": { chunkSize: 8, maxAttempts: 1, pauseMs: 500 },
+      "timecard-entries": { chunkSize: 6, maxAttempts: 1, pauseMs: 500 },
+      "productivity-projects": { chunkSize: 24, maxAttempts: 1, pauseMs: 350 },
+      "budget-line-items": { chunkSize: 4, maxAttempts: 1, pauseMs: 500 },
     };
 
     const started = Date.now();

@@ -61,13 +61,12 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
 
 -- Ensure we don't duplicate refresh tracking for the same materialized view.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_refresh_log_mv_name
-    ON mv_refresh_log (mv_name)
-    WHERE is_active = true;
+    ON mv_refresh_log (mv_name);
 
 -- Insert initial refresh tracking for bid_board_latest_mv.
 INSERT INTO mv_refresh_log (mv_name, refresh_interval_minutes, is_active)
 VALUES ('bid_board_latest_mv', 30, true)
-ON CONFLICT (idx_mv_refresh_log_mv_name) DO NOTHING;
+ON CONFLICT (mv_name) DO NOTHING;
 
 -- Alternative query format using explicit DISTINCT ON instead of subquery window functions
 -- (in case the above materialization approach needs revision). This preserves the original

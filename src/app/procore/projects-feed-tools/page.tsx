@@ -736,14 +736,18 @@ export default function ProcoreProjectsFeedToolsPage() {
 
               for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
                 let res: Response;
+                const fetchController = new AbortController();
+                const fetchTimeoutId = window.setTimeout(() => fetchController.abort(), 35_000);
                 try {
                   res = await fetch(step.path, {
                     method: "POST",
                     credentials: "include",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
+                    signal: fetchController.signal,
                   });
                 } catch (error) {
+                  window.clearTimeout(fetchTimeoutId);
                   const retryMessage = normalizeToolError(error, step.step);
                   const canRetry = attempt < config.maxAttempts && shouldRetryChunk(retryMessage, 0);
 
@@ -764,6 +768,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   continue;
                 }
 
+                window.clearTimeout(fetchTimeoutId);
                 let body: ToolResponse | Record<string, unknown> = {};
                 let parseErrorMessage: string | null = null;
 

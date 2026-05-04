@@ -652,11 +652,11 @@ export default function AnalyticsPage() {
       "costCode",
       "costCodeName",
       "uom",
-      "budgetQty",
       "effectiveUnitCost",
+      "budgetQty",
       "actualUnits",
+      "qtyVariance",
       "runningCost",
-      "originalBudgetAmount",
       "budgetAmount",
     ];
 
@@ -671,11 +671,11 @@ export default function AnalyticsPage() {
           row.costCode || "",
           row.costCodeName || "",
           row.uom || "",
-          Number(row.quantity || 0).toFixed(2),
           getEffectiveUnitCost(row).toFixed(2),
+          Number(row.quantity || 0).toFixed(2),
           getActualUnits(row).toFixed(1),
+          (Number(row.quantity || 0) - getActualUnits(row)).toFixed(2),
           getRunningCost(row).toFixed(2),
-          Number(row.originalBudgetAmount || 0).toFixed(2),
           Number(row.amount || 0).toFixed(2),
         ]
           .map(csvCell)
@@ -696,12 +696,62 @@ export default function AnalyticsPage() {
     URL.revokeObjectURL(url);
   }, [filteredRows]);
 
+  const groupedRows = useMemo(() => {
+    const map = new Map<string, { budgetQty: number; actualUnits: number; runningCost: number; budgetAmount: number; rowCount: number }>();
+    for (const row of filteredRows) {
+      const name = row.costCodeName || "(no name)";
+      const prefix = name.includes(".") ? name.slice(0, name.lastIndexOf(".")).trim() : name.trim();
+      const words = prefix.split(/\s+/);
+      const group = words.length >= 2 ? words.slice(-2).join(" ") : prefix;
+      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 };
+      existing.budgetQty += Number(row.quantity || 0);
+      existing.actualUnits += getActualUnits(row);
+      existing.runningCost += getRunningCost(row);
+      existing.budgetAmount += Number(row.amount || 0);
+      existing.rowCount += 1;
+      map.set(group, existing);
+    }
+    return Array.from(map.entries())
+      .map(([group, totals]) => ({ group, ...totals, qtyVariance: totals.budgetQty - totals.actualUnits }))
+      .sort((a, b) => a.group.localeCompare(b.group));
+  }, [filteredRows]);
+
+  const exportGroupedCsv = useCallback(() => {
+    const headers = ["category", "lines", "budgetQty", "actualUnits", "qtyVariance", "runningCost", "budgetAmount"];
+    const lines = [headers.map(csvCell).join(",")];
+    for (const g of groupedRows) {
+      lines.push(
+        [
+          g.group,
+          g.rowCount,
+          g.budgetQty.toFixed(2),
+          g.actualUnits.toFixed(2),
+          g.qtyVariance.toFixed(2),
+          g.runningCost.toFixed(2),
+          g.budgetAmount.toFixed(2),
+        ]
+          .map(csvCell)
+          .join(",")
+      );
+    }
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    link.href = url;
+    link.download = `analytics-grouped-${timestamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [groupedRows]);
+
   const tableTotals = useMemo(() => {
     let unitCostTotal = 0;
     let budgetQtyTotal = 0;
     let actualUnitsTotal = 0;
     let runningCostTotal = 0;
-    let originalBudgetTotal = 0;
     let budgetAmountTotal = 0;
 
     for (const row of filteredRows) {
@@ -709,7 +759,6 @@ export default function AnalyticsPage() {
       budgetQtyTotal += Number(row.quantity || 0);
       actualUnitsTotal += getActualUnits(row);
       runningCostTotal += getRunningCost(row);
-      originalBudgetTotal += Number(row.originalBudgetAmount || 0);
       budgetAmountTotal += Number(row.amount || 0);
     }
 
@@ -717,8 +766,8 @@ export default function AnalyticsPage() {
       unitCostTotal,
       budgetQtyTotal,
       actualUnitsTotal,
+      qtyVarianceTotal: budgetQtyTotal - actualUnitsTotal,
       runningCostTotal,
-      originalBudgetTotal,
       budgetAmountTotal,
     };
   }, [filteredRows]);
@@ -738,7 +787,7 @@ export default function AnalyticsPage() {
         case "unitCost":      av = getEffectiveUnitCost(a); bv = getEffectiveUnitCost(b); break;
         case "actualUnits":   av = getActualUnits(a); bv = getActualUnits(b); break;
         case "runningCost":   av = getRunningCost(a); bv = getRunningCost(b); break;
-        case "originalBudget": av = Number(a.originalBudgetAmount || 0); bv = Number(b.originalBudgetAmount || 0); break;
+        case "qtyVariance":   av = Number(a.quantity || 0) - getActualUnits(a); bv = Number(b.quantity || 0) - getActualUnits(b); break;
         case "amount":        av = Number(a.amount || 0); bv = Number(b.amount || 0); break;
         default: av = ""; bv = "";
       }
@@ -963,16 +1012,16 @@ export default function AnalyticsPage() {
                       ["costCode", "Cost Code"],
                       ["costCodeName", "Cost Code Name"],
                       ["uom", "UOM"],
-                      ["quantity", "Budget Qty"],
                       ["unitCost", "Unit Cost (Eff)"],
+                      ["quantity", "Budget Qty"],
                       ["actualUnits", "Actual Units"],
+                      ["qtyVariance", "Qty Variance"],
                       ["runningCost", "Running Cost"],
-                      ["originalBudget", "Original Budget"],
                       ["amount", "Budget Amount"],
                     ] as [string, string][]
                   ).map(([col, label]) => {
                     const isActive = sortCol === col;
-                    const numeric = ["quantity","unitCost","actualUnits","runningCost","originalBudget","amount"].includes(col);
+                    const numeric = ["quantity","unitCost","actualUnits","qtyVariance","runningCost","amount"].includes(col);
                     return (
                       <th
                         key={col}
@@ -993,22 +1042,26 @@ export default function AnalyticsPage() {
                     </td>
                   </tr>
                 )}
-                {previewRows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 text-slate-800">
-                    <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(row.syncedAt) || "-"}</td>
-                    <td className="py-2 pr-3">{row.projectName || "-"}</td>
-                    <td className="py-2 pr-3">{row.customerName || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
-                    <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(Number(row.originalBudgetAmount || 0))}</td>
-                    <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(Number(row.amount || 0))}</td>
-                  </tr>
-                ))}
+                {previewRows.map((row) => {
+                  const qtyVariance = Number(row.quantity || 0) - getActualUnits(row);
+                  const isOver = qtyVariance < 0;
+                  return (
+                    <tr key={row.id} className={`border-b border-slate-100 text-slate-800 ${isOver ? "bg-red-50" : ""}`}>
+                      <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(row.syncedAt) || "-"}</td>
+                      <td className="py-2 pr-3">{row.projectName || "-"}</td>
+                      <td className="py-2 pr-3">{row.customerName || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
+                      <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
+                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${isOver ? "text-red-600" : ""}`}>{formatNumber(qtyVariance)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
+                      <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(Number(row.amount || 0))}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               {!loading && filteredRows.length > 0 && (
                 <tfoot>
@@ -1017,19 +1070,19 @@ export default function AnalyticsPage() {
                       Totals (Filtered)
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.budgetQtyTotal)}
+                      {formatCurrency(tableTotals.unitCostTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatCurrency(tableTotals.unitCostTotal)}
+                      {formatNumber(tableTotals.budgetQtyTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
                       {formatNumber(tableTotals.actualUnitsTotal)}
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatCurrency(tableTotals.runningCostTotal)}
+                    <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${tableTotals.qtyVarianceTotal < 0 ? "text-red-600" : ""}`}>
+                      {formatNumber(tableTotals.qtyVarianceTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatCurrency(tableTotals.originalBudgetTotal)}
+                      {formatCurrency(tableTotals.runningCostTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-4 text-right font-black">
                       {formatCurrency(tableTotals.budgetAmountTotal)}
@@ -1037,6 +1090,72 @@ export default function AnalyticsPage() {
                   </tr>
                 </tfoot>
               )}
+            </table>
+          </div>
+        </section>
+
+        <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">
+              Grouped by Category ({groupedRows.length} groups)
+            </h2>
+            <button
+              type="button"
+              onClick={exportGroupedCsv}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="overflow-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-left uppercase tracking-wider text-slate-500">
+                  <th className="py-2 pr-3 pl-4">Category</th>
+                  <th className="py-2 pr-3 text-right">Lines</th>
+                  <th className="py-2 pr-3 text-right">Budget Qty</th>
+                  <th className="py-2 pr-3 text-right">Actual Units</th>
+                  <th className="py-2 pr-3 text-right">Qty Variance</th>
+                  <th className="py-2 pr-3 text-right">Running Cost</th>
+                  <th className="py-2 pr-4 text-right">Budget Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedRows.map((g) => (
+                  <tr key={g.group} className={`border-b border-slate-100 text-slate-800 ${g.qtyVariance < 0 ? "bg-red-50" : ""}`}>
+                    <td className="py-2 pr-3 pl-4 font-semibold">{g.group}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right text-slate-500">{g.rowCount}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.budgetQty)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.actualUnits)}</td>
+                    <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${g.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(g.qtyVariance)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(g.runningCost)}</td>
+                    <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(g.budgetAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {groupedRows.length > 0 && (() => {
+                const gt = groupedRows.reduce((acc, g) => ({
+                  budgetQty: acc.budgetQty + g.budgetQty,
+                  actualUnits: acc.actualUnits + g.actualUnits,
+                  qtyVariance: acc.qtyVariance + g.qtyVariance,
+                  runningCost: acc.runningCost + g.runningCost,
+                  budgetAmount: acc.budgetAmount + g.budgetAmount,
+                  rowCount: acc.rowCount + g.rowCount,
+                }), { budgetQty: 0, actualUnits: 0, qtyVariance: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 });
+                return (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
+                      <td className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">Totals</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black text-slate-500">{gt.rowCount}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.budgetQty)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.actualUnits)}</td>
+                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${gt.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(gt.qtyVariance)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatCurrency(gt.runningCost)}</td>
+                      <td className="whitespace-nowrap py-2 pr-4 text-right font-black">{formatCurrency(gt.budgetAmount)}</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
         </section>

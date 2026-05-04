@@ -14,12 +14,6 @@ CREATE INDEX IF NOT EXISTS idx_budgetlineitems_company_project_amount_covering
     INCLUDE (id, amount, uom)
     WHERE company_id IS NOT NULL AND project_id IS NOT NULL;
 
--- Ensure projectmaster table has proper indexes if used in downstream joins.
--- Projects-master queries often join on (company_id, project_id) tuples.
-CREATE INDEX IF NOT EXISTS idx_projectmaster_company_project
-    ON projectmaster (company_id, project_id)
-    WHERE company_id IS NOT NULL AND project_id IS NOT NULL;
-
 -- Verify commitments_agg_mv index effectiveness. The materialized view already
 -- has (company_id, canonical_project_id) unique index, but verify it's not stale.
 -- This index is critical for the commitments_agg CTE filter: WHERE company_id = $1.

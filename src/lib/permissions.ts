@@ -26,7 +26,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
   ],
   "PMs": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
-    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "project", "wip", "projects", "equipment", "handbook"
+    "long-term-schedule", "concrete-orders-schedule", "project-schedule", "project", "wip", "projects", "procore", "equipment", "handbook"
   ],
   "FIELD": [
     "home", "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "project-schedule", "handbook"

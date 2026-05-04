@@ -727,12 +727,34 @@ export default function AnalyticsPage() {
   }, []);
 
   const exportGroupedCsv = useCallback(() => {
-    const headers = ["category", "lines", "budgetQty", "actualUnits", "qtyVariance", "runningCost", "budgetAmount"];
+    const headers = [
+      "rowType",
+      "category",
+      "project",
+      "customer",
+      "costCode",
+      "costCodeName",
+      "uom",
+      "effectiveUnitCost",
+      "lines",
+      "budgetQty",
+      "actualUnits",
+      "qtyVariance",
+      "runningCost",
+      "budgetAmount",
+    ];
     const lines = [headers.map(csvCell).join(",")];
     for (const g of groupedRows) {
       lines.push(
         [
+          "group",
           g.group,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
           g.rowCount,
           g.budgetQty.toFixed(2),
           g.actualUnits.toFixed(2),
@@ -743,6 +765,29 @@ export default function AnalyticsPage() {
           .map(csvCell)
           .join(",")
       );
+
+      for (const row of g.lines) {
+        lines.push(
+          [
+            "line-item",
+            g.group,
+            row.projectName || "",
+            row.customerName || "",
+            row.costCode || "",
+            row.costCodeName || "",
+            row.uom || "",
+            getEffectiveUnitCost(row).toFixed(2),
+            "",
+            Number(row.quantity || 0).toFixed(2),
+            getActualUnits(row).toFixed(2),
+            (Number(row.quantity || 0) - getActualUnits(row)).toFixed(2),
+            getRunningCost(row).toFixed(2),
+            Number(row.amount || 0).toFixed(2),
+          ]
+            .map(csvCell)
+            .join(",")
+        );
+      }
     }
     const csv = lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

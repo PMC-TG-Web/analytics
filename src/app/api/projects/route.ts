@@ -112,21 +112,6 @@ export async function GET(request: NextRequest) {
       legacyWhere.id = { gt: cursor };
     }
     const legacyQueryWhere = Object.keys(legacyWhere).length > 0 ? legacyWhere : undefined;
-    
-    // For cursor pagination, order by id (indexed, efficient keyset filter)
-    // For OFFSET pagination, order by projectName (user-friendly)
-    const baseFindManyArgs = useCursorPagination
-      ? {
-          orderBy: {
-            id: 'asc' as const,
-          },
-        }
-      : {
-          orderBy: {
-            projectName: 'asc' as const,
-          },
-          skip,
-        };
 
     let total: number | undefined;
     let hasNextPage = false;
@@ -144,15 +129,30 @@ export async function GET(request: NextRequest) {
       if (includeTotal) {
         const [countValue, rows] = await Promise.all([
           whereArg ? prisma.project.count({ where: whereArg }) : prisma.project.count(),
-          whereArg
+          useCursorPagination
+            ? whereArg
+              ? prisma.project.findMany({
+                  where: whereArg,
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                  select: summarySelect,
+                })
+              : prisma.project.findMany({
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                  select: summarySelect,
+                })
+            : whereArg
             ? prisma.project.findMany({
                 where: whereArg,
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
                 select: summarySelect,
               })
             : prisma.project.findMany({
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
                 select: summarySelect,
               }),
@@ -169,15 +169,30 @@ export async function GET(request: NextRequest) {
         };
       }
 
-      const pagePlusOne = whereArg
+      const pagePlusOne = useCursorPagination
+        ? whereArg
+          ? await prisma.project.findMany({
+              where: whereArg,
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+              select: summarySelect,
+            })
+          : await prisma.project.findMany({
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+              select: summarySelect,
+            })
+        : whereArg
         ? await prisma.project.findMany({
             where: whereArg,
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
             select: summarySelect,
           })
         : await prisma.project.findMany({
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
             select: summarySelect,
           });
@@ -230,14 +245,27 @@ export async function GET(request: NextRequest) {
       if (includeTotal) {
         const [countValue, rows] = await Promise.all([
           whereArg ? prisma.project.count({ where: whereArg }) : prisma.project.count(),
-          whereArg
+          useCursorPagination
+            ? whereArg
+              ? prisma.project.findMany({
+                  where: whereArg,
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                })
+              : prisma.project.findMany({
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                })
+            : whereArg
             ? prisma.project.findMany({
                 where: whereArg,
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
               })
             : prisma.project.findMany({
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
               }),
         ]);
@@ -253,14 +281,27 @@ export async function GET(request: NextRequest) {
         };
       }
 
-      const pagePlusOne = whereArg
+      const pagePlusOne = useCursorPagination
+        ? whereArg
+          ? await prisma.project.findMany({
+              where: whereArg,
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+            })
+          : await prisma.project.findMany({
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+            })
+        : whereArg
         ? await prisma.project.findMany({
             where: whereArg,
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
           })
         : await prisma.project.findMany({
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
           });
 

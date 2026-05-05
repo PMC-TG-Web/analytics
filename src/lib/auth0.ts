@@ -20,11 +20,11 @@ export function createAuth0Client(appBaseUrl?: string) {
       logout: '/api/auth/logout',
     },
     session: {
-      // Keep users logged in for 30 days (absolute max).
-      // Rolling: extend by 7 days each time they visit, up to the absolute limit.
+      // Match Auth0 tenant session settings:
+      // Idle: 3 days (4320 min), Absolute: 30 days (43200 min)
       rolling: true,
-      inactivityDuration: 60 * 60 * 24 * 7,   // 7 days
-      absoluteDuration: 60 * 60 * 24 * 30,   // 30 days
+      inactivityDuration: 60 * 60 * 24 * 3,   // 3 days
+      absoluteDuration: 60 * 60 * 24 * 30,    // 30 days
       cookie: {
         sameSite: 'none',
         secure: true,

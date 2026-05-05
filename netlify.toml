@@ -9,3 +9,6 @@
   # Public Procore endpoint URL variables are not secrets; omit these keys from scanner checks.
   SECRETS_SCAN_OMIT_KEYS = "PROCORE_API_URL,PROCORE_AUTH_URL"
 
+[functions]
+  directory = "netlify/functions"
+

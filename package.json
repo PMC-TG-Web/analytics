@@ -33,6 +33,7 @@
     "twilio": "^5.12.2"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.2.0",
     "@opentelemetry/api": "^1.9.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.35",

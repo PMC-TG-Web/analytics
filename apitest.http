@@ -75,3 +75,11 @@ Authorization: Bearer {{token}}
 Procore-Company-Id: {{companyId}}
 Accept: application/json
 
+### 1) First call (expect MISS)
+GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25
+
+### 2) Second call within 15s (expect HIT)
+GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25
+
+### 3) Bypass cache (expect MISS)
+GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25&noCache=true

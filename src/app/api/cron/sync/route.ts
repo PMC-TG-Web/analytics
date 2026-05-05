@@ -67,6 +67,14 @@ const SYNC_STEPS = [
       fetchAll: true,
     },
   },
+  {
+    name: "productivity-logs",
+    path: "/api/procore/sync/productivity-projects",
+    body: {
+      forceUserOAuth: false,
+      persist: true,
+    },
+  },
 ];
 
 const MATERIALIZED_VIEWS = [

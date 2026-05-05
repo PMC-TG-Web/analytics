@@ -103,9 +103,9 @@ export async function getAccessToken(code: string): Promise<ProcoreTokenResponse
 // This token has company-level access to all projects (vs. user OAuth which is scoped to the user's memberships).
 let _cachedServiceToken: { token: string; expiresAt: number } | null = null;
 export async function getClientCredentialsToken(): Promise<string> {
-  if (!isProcoreLiveApiEnabled()) {
-    throw new Error('PROCORE_LIVE_API_DISABLED: Set PROCORE_LIVE_API_ENABLED=true to allow Procore client credential requests.');
-  }
+  // NOTE: No PROCORE_LIVE_API_ENABLED check here — client credentials are a
+  // pure server-to-server call (cron, webhooks). The live API gate in
+  // middleware already protects browser/user-initiated routes.
 
   if (_cachedServiceToken && Date.now() < _cachedServiceToken.expiresAt - 30_000) {
     return _cachedServiceToken.token;

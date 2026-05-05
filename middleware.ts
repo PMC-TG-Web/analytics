@@ -250,7 +250,9 @@ export async function middleware(request: NextRequest) {
     | null = null;
 
   if (isApiRoute) {
-    if (isProcoreLiveApiRoutePath(pathname) && !isProcoreLiveApiEnabled()) {
+    // Allow cron/sync-secret callers to bypass the live API gate so the scheduled
+    // sync can run regardless of the PROCORE_LIVE_API_ENABLED flag value.
+    if (isProcoreLiveApiRoutePath(pathname) && !isProcoreLiveApiEnabled() && !hasValidSyncSecret(request)) {
       return NextResponse.json(
         {
           success: false,

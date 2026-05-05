@@ -325,6 +325,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow cron/sync — protected by its own CRON_SECRET header check inside the route.
+  if (pathname === '/api/cron/sync' || pathname.startsWith('/api/cron/sync/')) {
+    return NextResponse.next();
+  }
+
   const session = await auth0.getSession(request);
   if (!session) {
     if (isApiRoute) {

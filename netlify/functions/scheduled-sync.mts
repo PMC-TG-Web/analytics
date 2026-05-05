@@ -46,12 +46,9 @@ const handler = async () => {
         "x-cron-secret": secret,
       },
       body: JSON.stringify({ companyId }),
-      // Do not read the body — return as soon as headers arrive.
-      signal: AbortSignal.timeout(12_000),
     });
 
     if (res.status === 401 || res.status === 403) {
-      // Auth failures should be surfaced — they won't self-resolve.
       const text = await res.text().catch(() => "");
       console.error(`[scheduled-sync] Auth error ${res.status}: ${text}`);
       return new Response(JSON.stringify({ error: "Auth failure", status: res.status }), {
@@ -60,21 +57,13 @@ const handler = async () => {
       });
     }
 
-    console.log(`[scheduled-sync] Sync accepted — HTTP ${res.status}. Results will appear in sync_logs.`);
-    return new Response(JSON.stringify({ ok: true, accepted: res.status }), {
+    const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+    console.log(`[scheduled-sync] Sync complete — status=${res.status} totalMs=${body?.totalDurationMs ?? "?"} success=${body?.success}`);
+    return new Response(JSON.stringify({ ok: true, syncStatus: res.status, body }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    // A timeout here just means the cron route is still running — that's fine.
-    const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    if (isTimeout) {
-      console.log("[scheduled-sync] Cron route still running after 12s — this is expected for large syncs.");
-      return new Response(JSON.stringify({ ok: true, note: "cron running" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
     console.error("[scheduled-sync] Fetch error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),

@@ -1291,16 +1291,19 @@ export function ProjectScopesModal({
   };
 
   const loadProjectBudgetHours = useCallback(async () => {
-    const params = new URLSearchParams({ jobKey: project.jobKey || '' });
+    // Diagnostics endpoint is intentionally blocked in production unless explicitly enabled.
+    // Skip that call in production to avoid guaranteed 404s and rely on scheduling fallback.
+    if (process.env.NODE_ENV !== 'production') {
+      const params = new URLSearchParams({ jobKey: project.jobKey || '' });
+      const response = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
+      const result = await response.json();
 
-    const response = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
-    const result = await response.json();
-
-    if (response.ok && result?.success) {
-      const hours = Number(result?.data?.schedule?.totalHours || 0);
-      if (Number.isFinite(hours) && hours > 0) {
-        setProjectBudgetHours(hours);
-        return;
+      if (response.ok && result?.success) {
+        const hours = Number(result?.data?.schedule?.totalHours || 0);
+        if (Number.isFinite(hours) && hours > 0) {
+          setProjectBudgetHours(hours);
+          return;
+        }
       }
     }
 

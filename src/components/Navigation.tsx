@@ -8,6 +8,8 @@ import { hasPageAccess, USER_PERMISSIONS } from "@/lib/permissions";
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
+const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
+const NAV_PERMISSIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface NavLink {
   href: string;
@@ -74,6 +76,40 @@ export default function Navigation({
   useEffect(() => {
     if (!user?.email) return;
 
+    const normalizedEmail = user.email.toLowerCase();
+    const cacheKey = `${NAV_PERMISSIONS_CACHE_PREFIX}${normalizedEmail}`;
+
+    const applyPermissions = (email: string, permissions: string[]) => {
+      Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
+      USER_PERMISSIONS[email] = permissions;
+    };
+
+    // Use cached permissions immediately for responsive nav, then revalidate.
+    try {
+      const rawCached = sessionStorage.getItem(cacheKey);
+      if (rawCached) {
+        const parsed = JSON.parse(rawCached) as {
+          email?: string;
+          permissions?: unknown;
+          cachedAt?: number;
+        };
+        const isFresh =
+          typeof parsed.cachedAt === "number" &&
+          Date.now() - parsed.cachedAt < NAV_PERMISSIONS_CACHE_TTL_MS;
+        const cachedPermissions = Array.isArray(parsed.permissions)
+          ? parsed.permissions.filter((perm): perm is string => typeof perm === "string")
+          : [];
+
+        if (isFresh && parsed.email === normalizedEmail && cachedPermissions.length > 0) {
+          applyPermissions(normalizedEmail, cachedPermissions);
+          setPermissionsLoaded(true);
+          setPermissionsFailed(false);
+        }
+      }
+    } catch {
+      // Ignore cache parse/storage issues and continue with network fetch.
+    }
+
     const loadPermissions = async () => {
       try {
         console.log('Loading permissions for:', user.email);
@@ -98,10 +134,24 @@ export default function Navigation({
           : data.data?.permissions;
 
         if (data.data?.email && Array.isArray(responsePermissions)) {
-          Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
-          USER_PERMISSIONS[data.data.email.toLowerCase()] = responsePermissions;
+          const nextEmail = data.data.email.toLowerCase();
+          const nextPermissions = responsePermissions.filter((perm: unknown): perm is string => typeof perm === "string");
+          applyPermissions(nextEmail, nextPermissions);
+          try {
+            sessionStorage.setItem(
+              `${NAV_PERMISSIONS_CACHE_PREFIX}${nextEmail}`,
+              JSON.stringify({
+                email: nextEmail,
+                permissions: nextPermissions,
+                cachedAt: Date.now(),
+              })
+            );
+          } catch {
+            // Ignore storage failures; runtime permissions are still applied.
+          }
           console.log('USER_PERMISSIONS updated:', USER_PERMISSIONS);
         }
+        setPermissionsFailed(false);
         setPermissionsLoaded(true);
       } catch (error) {
         console.error('Failed to load permissions:', error);

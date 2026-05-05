@@ -58,9 +58,11 @@ const handler = async () => {
     }
 
     const body = await res.json().catch(() => null) as Record<string, unknown> | null;
-    console.log(`[scheduled-sync] Sync complete — status=${res.status} totalMs=${body?.totalDurationMs ?? "?"} success=${body?.success}`);
-    return new Response(JSON.stringify({ ok: true, syncStatus: res.status, body }), {
-      status: 200,
+    // 202 = steps dispatched (fire-and-forget), 200 = fully completed
+    const ok = res.status === 200 || res.status === 202 || res.status === 207;
+    console.log(`[scheduled-sync] Sync ${ok ? "dispatched" : "failed"} — status=${res.status} logId=${body?.logId ?? "?"}`);
+    return new Response(JSON.stringify({ ok, syncStatus: res.status, body }), {
+      status: ok ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {

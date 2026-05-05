@@ -139,7 +139,6 @@ export async function POST(request: NextRequest) {
     });
     logId = log.id;
   } catch (err) {
-    // Don't block the sync if logging fails
     console.error("[cron/sync] Failed to create log entry:", err);
   }
 
@@ -148,68 +147,53 @@ export async function POST(request: NextRequest) {
     process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || ""
   ).trim();
   const startTime = Date.now();
-  const stepResults: Array<{
-    step: string;
-    status: "ok" | "error" | "skipped";
-    durationMs: number;
-    detail?: unknown;
-  }> = [];
 
-  // ── Run each sync step ─────────────────────────────────────────────────────
-  for (const step of SYNC_STEPS) {
-    const stepStart = Date.now();
-    try {
-      const res = await fetch(`${origin}${step.path}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(syncSecret ? { "x-sync-secret": syncSecret } : {}),
-        },
-        body: JSON.stringify({ ...step.body, companyId }),
-      });
+  // ── Fire all sync steps concurrently (fire-and-forget per step) ───────────
+  // Netlify has a 30-second gateway timeout on API routes, so we cannot await
+  // all steps sequentially. Instead we fire every step without awaiting, log
+  // the dispatch to the DB, and return 202 immediately. Each step writes its
+  // own result to the DB. MV refresh is best-effort after a short delay.
+  const stepPromises = SYNC_STEPS.map((step) =>
+    fetch(`${origin}${step.path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(syncSecret ? { "x-sync-secret": syncSecret } : {}),
+      },
+      body: JSON.stringify({ ...step.body, companyId }),
+    })
+      .then(async (res) => {
+        const detail = res.ok ? undefined : await res.json().catch(() => null);
+        if (!res.ok) console.error(`[cron/sync] Step "${step.name}" failed (${res.status}):`, detail);
+        return { step: step.name, status: res.ok ? "ok" : "error", httpStatus: res.status } as const;
+      })
+      .catch((err) => {
+        console.error(`[cron/sync] Step "${step.name}" threw:`, err);
+        return { step: step.name, status: "error" as const, httpStatus: 0 };
+      })
+  );
 
-      const json = await res.json().catch(() => null);
-      stepResults.push({
-        step: step.name,
-        status: res.ok ? "ok" : "error",
-        durationMs: Date.now() - stepStart,
-        detail: res.ok ? undefined : json,
-      });
-
-      if (!res.ok) {
-        console.error(
-          `[cron/sync] Step "${step.name}" failed (${res.status}):`,
-          json
-        );
-      }
-    } catch (err) {
-      stepResults.push({
-        step: step.name,
-        status: "error",
-        durationMs: Date.now() - stepStart,
-        detail: err instanceof Error ? err.message : String(err),
-      });
-      console.error(`[cron/sync] Step "${step.name}" threw:`, err);
-    }
-  }
-
-  // ── Refresh materialized views ─────────────────────────────────────────────
-  const mvStart = Date.now();
-  let mvResults: Record<string, string> = {};
-  try {
-    mvResults = await refreshMaterializedViews();
-  } catch (err) {
-    console.error("[cron/sync] MV refresh error:", err);
-  }
-
-  const totalMs = Date.now() - startTime;
-  const hasErrors = stepResults.some((s) => s.status === "error");
-  const mvDurationMs = Date.now() - mvStart;
-
-  // ── Finalize log entry ─────────────────────────────────────────────────────
+  // Update log as dispatched — don't wait for completion
   if (logId !== null) {
-    try {
-      await prisma.syncLog.update({
+    prisma.syncLog.update({
+      where: { id: logId },
+      data: {
+        steps: SYNC_STEPS.map((s) => ({ step: s.name, status: "dispatched" })) as object[],
+      },
+    }).catch(() => {});
+  }
+
+  // Best-effort: wait for steps and MV refresh in the background, update log
+  // when done. This may be cut off by the gateway — that's acceptable.
+  Promise.allSettled(stepPromises).then(async (settled) => {
+    const stepResults = settled.map((r) =>
+      r.status === "fulfilled" ? r.value : { step: "unknown", status: "error" as const, httpStatus: 0 }
+    );
+    const mvResults = await refreshMaterializedViews().catch(() => ({}));
+    const totalMs = Date.now() - startTime;
+    const hasErrors = stepResults.some((s) => s.status === "error");
+    if (logId !== null) {
+      prisma.syncLog.update({
         where: { id: logId },
         data: {
           finishedAt: new Date(),
@@ -218,24 +202,19 @@ export async function POST(request: NextRequest) {
           steps: stepResults as object[],
           mvResults: mvResults as object,
         },
-      });
-    } catch (err) {
-      console.error("[cron/sync] Failed to update log entry:", err);
+      }).catch(() => {});
     }
-  }
+  });
 
   return NextResponse.json(
     {
-      success: !hasErrors,
-      totalDurationMs: totalMs,
+      success: true,
+      accepted: true,
       companyId,
       logId: logId?.toString() ?? null,
-      steps: stepResults,
-      materializedViews: {
-        durationMs: mvDurationMs,
-        results: mvResults,
-      },
+      stepsDispatched: SYNC_STEPS.map((s) => s.name),
+      note: "Sync steps dispatched concurrently. Check sync_logs for results.",
     },
-    { status: hasErrors ? 207 : 200 }
+    { status: 202 }
   );
 }

@@ -5,7 +5,9 @@ import { syncGanttScopeToActiveSchedule } from '@/lib/scheduling/ganttScopeSync'
 import { SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
 
 export const dynamic = 'force-dynamic';
+import { getCachedValue, setCachedValue, invalidateCacheByPrefix } from '@/lib/serverReadCache';
 
+const GANTT_SCOPES_TTL_MS = 60_000; // 60 seconds
 // Helper function to sync scope to ActiveSchedule
 async function syncScopeToActiveSchedule(
   scopeId: string,
@@ -41,6 +43,20 @@ export async function GET(_: NextRequest, { params }: RouteParams) {
     });
     const scopes = project?.scopes || [];
     return NextResponse.json({ success: true, data: scopes });
+    try {
+      await ensureGanttV2Schema();
+      const { projectId } = await params;
+      const cacheKey = `gantt-v2:scopes:${projectId}`;
+
+      const cached = getCachedValue<unknown[]>(cacheKey);
+      if (cached) {
+        return NextResponse.json({ success: true, data: cached, cached: true });
+      }
+
+      const [project] = await getGanttV2ProjectsWithScopes({ includeEstimateHours: false, projectId });
+      const scopes = project?.scopes || [];
+      setCachedValue(cacheKey, scopes, GANTT_SCOPES_TTL_MS);
+      return NextResponse.json({ success: true, data: scopes, cached: false });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: `Failed to load Gantt V2 scopes: ${String(error)}` },

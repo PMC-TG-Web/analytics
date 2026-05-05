@@ -4,6 +4,7 @@ import { ensureGanttV2Schema } from '@/lib/ganttV2Db';
 import { syncGanttScopeToActiveSchedule } from '@/lib/scheduling/ganttScopeSync';
 import { cascadeDependentScopesFromLead } from '@/lib/scheduling/ganttDependencyCascade';
 import { SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
+import { invalidateCacheByPrefix } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -213,6 +214,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     return NextResponse.json({ success: true, cascadeUpdates });
+      invalidateCacheByPrefix('gantt-v2:');
+      return NextResponse.json({ success: true, cascadeUpdates });
   } catch (error) {
     if (error instanceof SchedulingConflictError) {
       return NextResponse.json(
@@ -284,6 +287,8 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
     );
 
     return NextResponse.json({ success: true });
+      invalidateCacheByPrefix('gantt-v2:');
+      return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: `Failed to delete Gantt V2 scope: ${String(error)}` },

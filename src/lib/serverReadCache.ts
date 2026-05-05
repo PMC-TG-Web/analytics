@@ -71,3 +71,16 @@ export function buildSearchParamsCacheKey(
   const serialized = new URLSearchParams(normalizedEntries).toString();
   return `${prefix}?${serialized}`;
 }
+
+  /**
+   * Deletes all cache entries whose key starts with the given prefix.
+   * Use this after a mutation to bust related cached reads.
+   */
+  export function invalidateCacheByPrefix(prefix: string): void {
+    const store = getStore();
+    for (const key of store.keys()) {
+      if (key.startsWith(prefix)) {
+        store.delete(key);
+      }
+    }
+  }

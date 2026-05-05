@@ -151,17 +151,18 @@ export default function Navigation({
     return null;
   }
 
-  // If user is logged in but we haven't checked permissions yet, show loading
-  if (user?.email && !permissionsLoaded) {
-    return (
-      <nav className="flex items-center justify-end gap-2 px-2 py-1">
-        <span className="text-[11px] text-gray-500">Loading navigation...</span>
-      </nav>
-    );
-  }
+  const hasResolvedPermissionsForUser = Boolean(
+    user?.email && USER_PERMISSIONS[user.email.toLowerCase()]?.length
+  );
 
   const canAccessLink = (link: NavLink) => {
     if (!user?.email) return false;
+
+    // Keep navigation functional while permission hydration is in flight
+    // or temporarily unavailable; backend route guards still enforce access.
+    if (!permissionsLoaded && !hasResolvedPermissionsForUser) return true;
+    if (permissionsFailed && !hasResolvedPermissionsForUser) return true;
+
     return hasPageAccess(user.email, link.page);
   };
 

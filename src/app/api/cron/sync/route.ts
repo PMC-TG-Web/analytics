@@ -144,6 +144,9 @@ export async function POST(request: NextRequest) {
   }
 
   const origin = request.nextUrl.origin;
+  const syncSecret = (
+    process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || ""
+  ).trim();
   const startTime = Date.now();
   const stepResults: Array<{
     step: string;
@@ -158,7 +161,10 @@ export async function POST(request: NextRequest) {
     try {
       const res = await fetch(`${origin}${step.path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(syncSecret ? { "x-sync-secret": syncSecret } : {}),
+        },
         body: JSON.stringify({ ...step.body, companyId }),
       });
 

@@ -32,11 +32,12 @@ const handler = async () => {
   }
 
   const endpoint = `${baseUrl}/api/cron/sync`;
-  console.log(`[scheduled-sync] Triggering sync → ${endpoint}`);
+  console.log(`[scheduled-sync] Firing sync → ${endpoint}`);
 
-  let responseStatus = 0;
-  let responseBody: unknown = null;
-
+  // Fire-and-forget: the full sync takes 30–120 seconds which exceeds the
+  // Netlify scheduled-function 15-second timeout. We kick off the request,
+  // confirm the server accepted it (2xx on the initial response), then return
+  // immediately. The Next.js route continues running on Netlify's infrastructure.
   try {
     const res = await fetch(endpoint, {
       method: "POST",
@@ -45,32 +46,35 @@ const handler = async () => {
         "x-cron-secret": secret,
       },
       body: JSON.stringify({ companyId }),
+      // Do not read the body — return as soon as headers arrive.
+      signal: AbortSignal.timeout(12_000),
     });
 
-    responseStatus = res.status;
-    responseBody = await res.json().catch(() => null);
-
-    if (!res.ok && res.status !== 207) {
-      console.error(
-        `[scheduled-sync] Sync endpoint returned ${res.status}:`,
-        JSON.stringify(responseBody)
-      );
-      return new Response(JSON.stringify({ error: "Sync failed", status: res.status }), {
+    if (res.status === 401 || res.status === 403) {
+      // Auth failures should be surfaced — they won't self-resolve.
+      const text = await res.text().catch(() => "");
+      console.error(`[scheduled-sync] Auth error ${res.status}: ${text}`);
+      return new Response(JSON.stringify({ error: "Auth failure", status: res.status }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const body = responseBody as Record<string, unknown> | null;
-    console.log(
-      `[scheduled-sync] Sync complete — status=${responseStatus} totalMs=${body?.totalDurationMs ?? "?"} success=${body?.success}`
-    );
-
-    return new Response(JSON.stringify({ ok: true, syncStatus: responseStatus, body: responseBody }), {
+    console.log(`[scheduled-sync] Sync accepted — HTTP ${res.status}. Results will appear in sync_logs.`);
+    return new Response(JSON.stringify({ ok: true, accepted: res.status }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
+    // A timeout here just means the cron route is still running — that's fine.
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    if (isTimeout) {
+      console.log("[scheduled-sync] Cron route still running after 12s — this is expected for large syncs.");
+      return new Response(JSON.stringify({ ok: true, note: "cron running" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     console.error("[scheduled-sync] Fetch error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),

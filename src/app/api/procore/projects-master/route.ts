@@ -9,6 +9,7 @@ type RelationRow = {
   bidsrelation: string | null;
   bidformsrelation: string | null;
   budgetrelation: string | null;
+  budgetaggmvrelation: string | null;
   commitmentcontractrelation: string | null;
   purchaseordercontractrelation: string | null;
   packagesrelation: string | null;
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
         to_regclass('public.bids')::text AS bidsRelation,
         to_regclass('public.bidforms')::text AS bidformsRelation,
         to_regclass('public.budgetlineitems')::text AS budgetRelation,
+        to_regclass('public.budget_agg_mv')::text AS budgetAggMvRelation,
         to_regclass('public."CommitmentContract"')::text AS commitmentContractRelation,
         to_regclass('public."PurchaseOrderContract"')::text AS purchaseOrderContractRelation,
         to_regclass('public.procore_change_order_packages')::text AS packagesRelation,
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
       bidsrelation: null,
       bidformsrelation: null,
       budgetrelation: null,
+      budgetaggmvrelation: null,
       commitmentcontractrelation: null,
       purchaseordercontractrelation: null,
       packagesrelation: null,
@@ -109,6 +112,7 @@ export async function GET(request: NextRequest) {
     const hasBids = Boolean(relations.bidsrelation);
     const hasBidForms = Boolean(relations.bidformsrelation);
     const hasBudget = Boolean(relations.budgetrelation);
+    const hasBudgetAggMv = Boolean(relations.budgetaggmvrelation);
     const hasCommitmentContracts = Boolean(relations.commitmentcontractrelation);
     const hasPurchaseOrderContracts = Boolean(relations.purchaseordercontractrelation);
     const hasChangeOrderPackages = Boolean(relations.packagesrelation);
@@ -157,22 +161,34 @@ export async function GET(request: NextRequest) {
         `;
 
     const budgetCte = hasBudget
-      ? `
-          budget_agg AS (
-            SELECT
-              project_id AS canonical_project_id,
-              SUM(COALESCE(amount, 0))::float AS budget_total_amount,
-              COUNT(DISTINCT id)::int AS budget_line_item_count,
-              STRING_AGG(
-                DISTINCT NULLIF(LOWER(TRIM(COALESCE(uom, ''))), ''),
-                ', '
-                ORDER BY NULLIF(LOWER(TRIM(COALESCE(uom, ''))), '')
-              ) AS budget_uoms
-            FROM budgetlineitems
-            WHERE company_id = $1
-            GROUP BY project_id
-          ),
-        `
+      ? hasBudgetAggMv
+        ? `
+            budget_agg AS (
+              SELECT
+                canonical_project_id,
+                budget_total_amount,
+                budget_line_item_count,
+                budget_uoms
+              FROM budget_agg_mv
+              WHERE company_id = $1
+            ),
+          `
+        : `
+            budget_agg AS (
+              SELECT
+                project_id AS canonical_project_id,
+                SUM(COALESCE(amount, 0))::float AS budget_total_amount,
+                COUNT(DISTINCT id)::int AS budget_line_item_count,
+                STRING_AGG(
+                  DISTINCT NULLIF(LOWER(TRIM(COALESCE(uom, ''))), ''),
+                  ', '
+                  ORDER BY NULLIF(LOWER(TRIM(COALESCE(uom, ''))), '')
+                ) AS budget_uoms
+              FROM budgetlineitems
+              WHERE company_id = $1
+              GROUP BY project_id
+            ),
+          `
       : `
           budget_agg AS (
             SELECT

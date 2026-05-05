@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { buildSearchParamsCacheKey, getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,19 @@ function toBooleanParam(value: string | null): boolean {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const disableCache = toBooleanParam(searchParams.get("noCache"));
+    const cacheKey = buildSearchParamsCacheKey("procore-projects-master", searchParams, ["noCache"]);
+
+    if (!disableCache) {
+      const cachedPayload = getCachedValue<Record<string, unknown>>(cacheKey);
+      if (cachedPayload) {
+        const cachedResponse = NextResponse.json(cachedPayload);
+        cachedResponse.headers.set("Cache-Control", "private, max-age=15, must-revalidate");
+        cachedResponse.headers.set("X-Data-Cache", "HIT");
+        return cachedResponse;
+      }
+    }
+
     const page = Math.max(1, Number.parseInt(searchParams.get("page") || "1", 10) || 1);
     const requestedPageSize = Number.parseInt(searchParams.get("pageSize") || "100", 10) || 100;
     const pageSize = Math.min(10000, Math.max(1, requestedPageSize));
@@ -752,7 +766,7 @@ export async function GET(request: NextRequest) {
     const total = Number(countRows[0]?.total || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       companyId,
       page,
@@ -816,7 +830,16 @@ export async function GET(request: NextRequest) {
         estimateBidBoardProjectIds: row.estimate_bid_board_project_ids || "",
         latestEstimateAt: row.latest_estimate_at,
       })),
-    });
+    };
+
+    if (!disableCache) {
+      setCachedValue(cacheKey, payload, 15_000);
+    }
+
+    const response = NextResponse.json(payload);
+    response.headers.set("Cache-Control", "private, max-age=15, must-revalidate");
+    response.headers.set("X-Data-Cache", "MISS");
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Failed to fetch Procore projects master:", message);

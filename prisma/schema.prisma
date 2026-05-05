@@ -7,6 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SyncLog {
+  id          BigInt    @id @default(autoincrement())
+  startedAt   DateTime  @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  success     Boolean   @default(false)
+  totalMs     Int?      @map("total_ms")
+  companyId   String?   @map("company_id")
+  triggeredBy String    @default("cron") @map("triggered_by")
+  steps       Json?
+  mvResults   Json?     @map("mv_results")
+  error       String?
+
+  @@index([startedAt(sort: Desc)])
+  @@index([companyId])
+  @@map("sync_logs")
+}
+
 model Project {
   id                                   String                                @id @default(cuid())
   projectNumber                        String?

@@ -113,12 +113,26 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
       ""
   ).trim();
+  const triggeredBy: string = body?.triggeredBy === "manual" ? "manual" : "cron";
 
   if (!companyId) {
     return NextResponse.json(
       { error: "MISSING_COMPANY_ID: Set PROCORE_COMPANY_ID in environment." },
       { status: 400 }
     );
+  }
+
+  // ── Create a pending log entry ─────────────────────────────────────────────
+  let logId: bigint | null = null;
+  try {
+    const log = await prisma.syncLog.create({
+      data: { companyId, triggeredBy },
+      select: { id: true },
+    });
+    logId = log.id;
+  } catch (err) {
+    // Don't block the sync if logging fails
+    console.error("[cron/sync] Failed to create log entry:", err);
   }
 
   const origin = request.nextUrl.origin;
@@ -176,15 +190,35 @@ export async function POST(request: NextRequest) {
 
   const totalMs = Date.now() - startTime;
   const hasErrors = stepResults.some((s) => s.status === "error");
+  const mvDurationMs = Date.now() - mvStart;
+
+  // ── Finalize log entry ─────────────────────────────────────────────────────
+  if (logId !== null) {
+    try {
+      await prisma.syncLog.update({
+        where: { id: logId },
+        data: {
+          finishedAt: new Date(),
+          success: !hasErrors,
+          totalMs,
+          steps: stepResults as object[],
+          mvResults: mvResults as object,
+        },
+      });
+    } catch (err) {
+      console.error("[cron/sync] Failed to update log entry:", err);
+    }
+  }
 
   return NextResponse.json(
     {
       success: !hasErrors,
       totalDurationMs: totalMs,
       companyId,
+      logId: logId?.toString() ?? null,
       steps: stepResults,
       materializedViews: {
-        durationMs: Date.now() - mvStart,
+        durationMs: mvDurationMs,
         results: mvResults,
       },
     },

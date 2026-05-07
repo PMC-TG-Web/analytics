@@ -2,10 +2,14 @@ import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/auditLog';
 import { getCanonicalProjectCustomFields, getCanonicalProjectIdentity } from '@/lib/projectCanonical';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
+import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+const PROJECTS_CACHE_PREFIX = 'projects:';
+const PROJECTS_CACHE_TTL_MS = 30 * 1000;
 
 function normalizeForPmc(value: unknown) {
   return (value ?? '').toString().trim().replace(/^"+|"+$/g, '').trim().toLowerCase();
@@ -27,6 +31,15 @@ function keyFromProjectIdentity(projectNumber: unknown, projectName: unknown) {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const cacheKey = buildSearchParamsCacheKey(`${PROJECTS_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      const response = NextResponse.json(cached);
+      response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const summaryOnly = (searchParams.get('summary') || '').trim().toLowerCase() === 'true';
     
     // Support both OFFSET-based (for backwards compat) and cursor-based pagination
@@ -238,7 +251,11 @@ export async function GET(request: NextRequest) {
         data: projects,
       };
 
-      return NextResponse.json(response);
+      setCachedValue(cacheKey, response, PROJECTS_CACHE_TTL_MS);
+      const jsonResponse = NextResponse.json(response);
+      jsonResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      jsonResponse.headers.set('X-Cache', 'MISS');
+      return jsonResponse;
     }
 
     const fetchProjectsPage = async (whereArg: Prisma.ProjectWhereInput | undefined) => {
@@ -598,7 +615,11 @@ export async function GET(request: NextRequest) {
       data: projectsWithPMC,
     };
 
-    return NextResponse.json(response);
+    setCachedValue(cacheKey, response, PROJECTS_CACHE_TTL_MS);
+    const jsonResponse = NextResponse.json(response);
+    jsonResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+    jsonResponse.headers.set('X-Cache', 'MISS');
+    return jsonResponse;
   } catch (error) {
     console.error('Failed to fetch projects:', error);
     if (shouldFallbackToEmptyRead(error)) {
@@ -618,7 +639,10 @@ export async function GET(request: NextRequest) {
         data: [],
       };
 
-      return NextResponse.json(fallbackResponse);
+      const fallbackJson = NextResponse.json(fallbackResponse);
+      fallbackJson.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      fallbackJson.headers.set('X-Cache', 'MISS');
+      return fallbackJson;
     }
 
     return NextResponse.json(
@@ -686,6 +710,8 @@ export async function PUT(request: NextRequest) {
         updatedCount,
       },
     });
+
+    invalidateCacheByPrefix(PROJECTS_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,

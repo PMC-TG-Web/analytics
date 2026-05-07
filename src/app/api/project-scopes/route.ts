@@ -2,8 +2,12 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncProjectScopeToActiveSchedule, deleteProjectScopeFromActiveSchedule } from '@/utils/syncActiveSchedule';
 import { getErrorMessage, withDatabaseRetry } from '@/lib/dbResilience';
+import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
+
+const PROJECT_SCOPES_CACHE_PREFIX = 'project-scopes:';
+const PROJECT_SCOPES_CACHE_TTL_MS = 30 * 1000;
 
 type SelectedDayEntry = {
   date: string;
@@ -189,6 +193,15 @@ export async function GET(request: NextRequest) {
   try {
     await ensureProjectScopeColumns();
     const searchParams = request.nextUrl.searchParams;
+    const cacheKey = buildSearchParamsCacheKey(`${PROJECT_SCOPES_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      const response = NextResponse.json(cached);
+      response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const jobKey = searchParams.get('jobKey');
 
     let projects: Array<Record<string, unknown>> = [];
@@ -323,12 +336,18 @@ export async function GET(request: NextRequest) {
       jobKey: `${String(p.customer || '')}~${String(p.projectNumber || '')}~${String(p.projectName || '')}`,
     }));
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       data: normalizedScopes,
       projects: projectsWithJobKey,
       scopes: normalizedScopes, // Keep for backwards compatibility
-    });
+    };
+
+    setCachedValue(cacheKey, payload, PROJECT_SCOPES_CACHE_TTL_MS);
+    const response = NextResponse.json(payload);
+    response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+    response.headers.set('X-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch project scopes:', error);
     return NextResponse.json(
@@ -428,6 +447,8 @@ export async function POST(request: NextRequest) {
         console.error('[project-scopes POST] Failed to sync to ActiveSchedule:', syncError);
       }
     }
+
+    invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,
@@ -661,6 +682,8 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+
     return NextResponse.json({
       success: true,
       data: scope,
@@ -701,6 +724,8 @@ export async function DELETE(request: NextRequest) {
             title: String(title || ''),
           },
     });
+
+        invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
 
     return NextResponse.json({ success: true, deletedCount: deleted.count });
   } catch (error) {

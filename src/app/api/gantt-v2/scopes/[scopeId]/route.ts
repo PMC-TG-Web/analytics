@@ -213,9 +213,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       });
     }
 
+    invalidateCacheByPrefix('gantt-v2:');
     return NextResponse.json({ success: true, cascadeUpdates });
-      invalidateCacheByPrefix('gantt-v2:');
-      return NextResponse.json({ success: true, cascadeUpdates });
   } catch (error) {
     if (error instanceof SchedulingConflictError) {
       return NextResponse.json(

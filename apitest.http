@@ -82,4 +82,4 @@ GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&
 GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25
 
 ### 3) Bypass cache (expect MISS)
-GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25&noCache=true
+GET http://localhost:3000/api/procore/projects-master?companyId=598134325658789&page=1&pageSize=25&noCache=truehttps://your-app.vercel.app/?procore_context=eyJ...signed_jwt...

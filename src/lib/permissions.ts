@@ -155,6 +155,7 @@ export async function hasDatabasePageAccess(
 export let USER_PERMISSIONS: Record<string, string[]> = parseUserPermissionsFromEnv();
 
 let permissionsLoadedFromDb = false;
+let permissionsInitializationPromise: Promise<void> | null = null;
 
 // Lazy-load permissions from database on first access (if not already loaded)
 export async function ensurePermissionsLoaded(prisma: any): Promise<void> {
@@ -181,19 +182,29 @@ export async function initializePermissions(): Promise<void> {
     return; // Already initialized
   }
 
-  try {
-    const { prisma } = await import("@/lib/prisma");
-    const dbPerms = await loadUserPermissionsFromDatabase(prisma);
-    if (Object.keys(dbPerms).length > 0) {
-      Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
-      Object.assign(USER_PERMISSIONS, dbPerms);
-      permissionsLoadedFromDb = true;
-      console.log(`✓ Initialized ${Object.keys(dbPerms).length} users from database permissions`);
-    }
-  } catch (error) {
-    console.error("Failed to initialize permissions from database:", error);
-    // Will fall back to env var permissions if available
+  if (permissionsInitializationPromise) {
+    return permissionsInitializationPromise;
   }
+
+  permissionsInitializationPromise = (async () => {
+    try {
+      const { prisma } = await import("@/lib/prisma");
+      const dbPerms = await loadUserPermissionsFromDatabase(prisma);
+      if (Object.keys(dbPerms).length > 0) {
+        Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
+        Object.assign(USER_PERMISSIONS, dbPerms);
+        permissionsLoadedFromDb = true;
+        console.log(`✓ Initialized ${Object.keys(dbPerms).length} users from database permissions`);
+      }
+    } catch (error) {
+      console.error("Failed to initialize permissions from database:", error);
+      // Will fall back to env var permissions if available
+    } finally {
+      permissionsInitializationPromise = null;
+    }
+  })();
+
+  return permissionsInitializationPromise;
 }
 
 export function hasPageAccess(userEmail: string | null, page: string): boolean {

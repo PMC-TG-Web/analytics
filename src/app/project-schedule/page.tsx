@@ -207,6 +207,8 @@ export default function ProjectSchedulePage() {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [deletingProjectIds, setDeletingProjectIds] = useState<Set<string>>(new Set());
 
   const [newProject, setNewProject] = useState({
     projectName: "",
@@ -801,25 +803,59 @@ export default function ProjectSchedulePage() {
   }, [dayHoursEditor, loadProjects, projects]);
 
   const deleteProject = async (projectId: string, projectName: string) => {
+    if (deletingProjectIds.has(projectId)) return;
     if (!window.confirm(`Delete project "${projectName}" and all its scopes? This cannot be undone.`)) return;
-    const res = await fetch(`/api/gantt-v2/projects/${projectId}`, { method: 'DELETE' });
-    const result = await res.json();
-    if (!res.ok || !result?.success) {
-      alert(`Failed to delete project: ${result?.error || 'Unknown error'}`);
-      return;
+    setDeletingProjectIds((current) => new Set(current).add(projectId));
+    try {
+      const res = await fetch(`/api/gantt-v2/projects/${projectId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result?.success) {
+        alert(`Failed to delete project: ${result?.error || 'Unknown error'}`);
+        return;
+      }
+
+      // Optimistic UI update so users do not need a manual refresh.
+      setProjects((current) => current.filter((project) => project.id !== projectId));
+      setCollapsedProjects((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
+      setSelectedProject((current) => (current?.id === projectId ? null : current));
+
+      // Reconcile with server state in the background.
+      void loadProjects();
+    } finally {
+      setDeletingProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
     }
-    await loadProjects();
   };
 
   const addProject = async () => {
+    if (isCreatingProject) return;
     if (!newProject.projectName.trim()) return;
-    await fetch("/api/gantt-v2/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newProject),
-    });
-    setNewProject({ projectName: "", customer: "", projectNumber: "", status: "In Progress" });
-    await loadProjects();
+
+    setIsCreatingProject(true);
+    try {
+      const response = await fetch("/api/gantt-v2/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProject),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.success) {
+        alert(`Failed to create project: ${result?.error || 'Unknown error'}`);
+        return;
+      }
+
+      setNewProject({ projectName: "", customer: "", projectNumber: "", status: "In Progress" });
+      await loadProjects();
+    } finally {
+      setIsCreatingProject(false);
+    }
   };
 
   const filteredProjects = useMemo(() => {
@@ -974,7 +1010,13 @@ export default function ProjectSchedulePage() {
             <input className="border rounded px-3 py-2 text-sm" placeholder="Customer" value={newProject.customer} onChange={(e) => setNewProject((p) => ({ ...p, customer: e.target.value }))} />
             <input className="border rounded px-3 py-2 text-sm" placeholder="Project #" value={newProject.projectNumber} onChange={(e) => setNewProject((p) => ({ ...p, projectNumber: e.target.value }))} />
             <input className="border rounded px-3 py-2 text-sm" placeholder="Status" value={newProject.status} onChange={(e) => setNewProject((p) => ({ ...p, status: e.target.value }))} />
-            <button onClick={addProject} className="rounded bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold px-3 py-2">Create</button>
+            <button
+              onClick={addProject}
+              disabled={isCreatingProject}
+              className="rounded bg-orange-600 hover:bg-orange-700 disabled:bg-orange-300 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-2"
+            >
+              {isCreatingProject ? "Creating..." : "Create"}
+            </button>
           </div>
         </div>
 
@@ -1080,9 +1122,10 @@ export default function ProjectSchedulePage() {
                           </button>
                           <button
                             onClick={() => deleteProject(project.id, project.projectName)}
-                            className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50"
+                            disabled={deletingProjectIds.has(project.id)}
+                            className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            Delete
+                            {deletingProjectIds.has(project.id) ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                       </div>

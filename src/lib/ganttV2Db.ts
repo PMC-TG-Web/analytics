@@ -1728,7 +1728,15 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   }
 
   const legacyScopesByIdentity = new Map<string, typeof legacyScopes>();
+  const legacyScopesByJobKey = new Map<string, typeof legacyScopes>();
   for (const scope of legacyScopes) {
+    const exactJobKey = String(scope.jobKey || '').trim();
+    if (exactJobKey) {
+      const byJobKeyRows = legacyScopesByJobKey.get(exactJobKey) || [];
+      byJobKeyRows.push(scope);
+      legacyScopesByJobKey.set(exactJobKey, byJobKeyRows);
+    }
+
     const [customer = '', , projectName = ''] = String(scope.jobKey || '').split('~');
     const key = `${normalizeIdentity(customer)}||${normalizeIdentity(projectName)}`;
     if (!key || key === '||' || !giantIdentityKeys.has(key)) continue;
@@ -1862,7 +1870,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
       let scopes = scopesByProjectId.get(project.id) || [];
 
       const projectIdentityKey = `${normalizeIdentity(project.customer)}||${normalizeIdentity(project.projectName)}`;
+      const projectJobKey = String(project.jobKey || `${String(project.customer || '').trim()}~${String(project.projectNumber || '').trim()}~${String(project.projectName || '').trim()}`).trim();
       const legacyForProject = legacyScopesByIdentity.get(projectIdentityKey) || [];
+      const legacyForProjectByJobKey = legacyScopesByJobKey.get(projectJobKey) || [];
       const isProtectedLegacyProject = giantIdentityKeys.has(projectIdentityKey);
       const canonicalCommercialTitles = (() => {
         const poTitles = poTitlesByIdentity.get(projectIdentityKey) || [];
@@ -2090,7 +2100,12 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         normalizeIdentity(value || '');
 
       const scopesWithTasks = scopes.map((scope) => {
-        if (!isProtectedLegacyProject) {
+        const candidateLegacyScopes =
+          legacyForProjectByJobKey.length > 0
+            ? legacyForProjectByJobKey
+            : (isProtectedLegacyProject ? legacyForProject : []);
+
+        if (candidateLegacyScopes.length === 0) {
           return {
             ...scope,
             tasks: [],
@@ -2100,14 +2115,14 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         const scopeStart = toSqlDate(scope.startDate);
         const scopeEnd = toSqlDate(scope.endDate);
 
-        const exactMatch = legacyForProject.find((legacyScope) =>
+        const exactMatch = candidateLegacyScopes.find((legacyScope) =>
           normalizeTitle(legacyScope.title) === normalizeTitle(scope.title) &&
           toSqlDate(legacyScope.startDate) === scopeStart &&
           toSqlDate(legacyScope.endDate) === scopeEnd
         );
 
         const titleOnlyMatch = !exactMatch
-          ? legacyForProject.find(
+          ? candidateLegacyScopes.find(
               (legacyScope) => normalizeTitle(legacyScope.title) === normalizeTitle(scope.title)
             )
           : null;

@@ -5,6 +5,7 @@ import { getInternalVendorSet, isInternalCustomerName, isMeaningfulCustomer } fr
 
 export type GanttV2ProjectRow = {
   id: string;
+  jobKey?: string | null;
   projectName: string;
   customer: string | null;
   projectNumber: string | null;
@@ -62,6 +63,7 @@ export type GanttV2LongTermSummary = {
 
 export type GanttV2ProjectWithScopes = {
   id: string;
+  jobKey?: string | null;
   projectName: string;
   customer: string | null;
   projectNumber: string | null;
@@ -208,6 +210,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
         `
           CREATE TABLE IF NOT EXISTS gantt_v2_projects (
             id TEXT PRIMARY KEY,
+            job_key TEXT,
             project_name TEXT NOT NULL,
             customer TEXT,
             project_number TEXT,
@@ -253,6 +256,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
           );
         `,
         `ALTER TABLE gantt_v2_scopes ADD COLUMN IF NOT EXISTS predecessor_scope_id TEXT REFERENCES gantt_v2_scopes(id) ON DELETE SET NULL;`,
+        `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS job_key TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_company_id TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_external_id TEXT;`,
@@ -263,6 +267,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_project_owner_type_id TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_procore_created_at TIMESTAMPTZ;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_procore_updated_at TIMESTAMPTZ;`,
+        `UPDATE gantt_v2_projects SET job_key = CONCAT(COALESCE(customer, ''), '~', COALESCE(project_number, ''), '~', COALESCE(project_name, '')) WHERE COALESCE(NULLIF(TRIM(job_key), ''), NULL) IS NULL;`,
         `UPDATE gantt_v2_projects SET source = CASE WHEN COALESCE(NULLIF(TRIM(source_company_id), ''), NULL) IS NOT NULL AND COALESCE(NULLIF(TRIM(source_external_id), ''), NULL) IS NOT NULL THEN 'procore' ELSE 'app' END WHERE COALESCE(NULLIF(TRIM(source), ''), NULL) IS NULL;`,
         `
           UPDATE gantt_v2_projects p
@@ -647,6 +652,7 @@ export async function consolidateDuplicateGanttV2Projects(): Promise<void> {
     const internalVendorSet = getInternalVendorSet();
     const rows = await prisma.$queryRawUnsafe<Array<{
       id: string;
+      job_key: string | null;
       project_name: string;
       customer: string | null;
       project_number: string | null;
@@ -661,6 +667,7 @@ export async function consolidateDuplicateGanttV2Projects(): Promise<void> {
     }>>(`
       SELECT
         p.id,
+        p.job_key,
         p.project_name,
         p.customer,
         p.project_number,
@@ -1204,6 +1211,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
     const normalizedProjectId = String(projectId || '').trim();
     const rows = await prisma.$queryRawUnsafe<Array<{
       id: string;
+      job_key: string | null;
       project_name: string;
       customer: string | null;
       project_number: string | null;
@@ -1226,6 +1234,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
       `
       SELECT
         p.id,
+        p.job_key,
         p.project_name,
         p.customer,
         p.project_number,
@@ -1248,6 +1257,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
       LEFT JOIN gantt_v2_scopes s ON s.project_id = p.id
       ${normalizedProjectId ? 'WHERE p.id = $1' : ''}
       GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, p.source,
+               p.job_key,
                p.source_company_id, p.source_external_id, p.source_project_id, p.source_staging_project_id,
                p.source_display_name, p.source_project_owner_type, p.source_project_owner_type_id,
                p.source_procore_created_at, p.source_procore_updated_at
@@ -1258,6 +1268,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
 
     return rows.map((row) => ({
       id: row.id,
+      jobKey: row.job_key,
       projectName: row.project_name,
       customer: row.customer,
       projectNumber: row.project_number,
@@ -2232,6 +2243,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
       
       return {
         ...project,
+        jobKey: String(project.jobKey || '').trim() || `${String(project.customer || '').trim()}~${String(project.projectNumber || '').trim()}~${String(project.projectName || '').trim()}`,
         scopeCount: displayScopes.length,
         scopedHours: isProtectedLegacyProject ? effectiveScopedHours : displayScopes.reduce((sum, scope) => sum + Number(scope.totalHours || 0), 0),
         scopes: displayScopes,

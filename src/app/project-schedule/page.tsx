@@ -6,6 +6,7 @@ import { ProjectInfo, Scope, ScheduleTask } from "@/types";
 
 type ProjectRow = {
   id: string;
+  jobKey?: string | null;
   projectName: string;
   customer: string | null;
   projectNumber: string | null;
@@ -67,8 +68,8 @@ const formatDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const buildProjectJobKey = (project: Pick<ProjectRow, "customer" | "projectNumber" | "projectName">) =>
-  `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`;
+const buildProjectJobKey = (project: Pick<ProjectRow, "customer" | "projectNumber" | "projectName" | "jobKey">) =>
+  String(project.jobKey || "").trim() || `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`;
 
 const isDateKey = (value: string | null | undefined): value is string =>
   /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
@@ -543,7 +544,7 @@ export default function ProjectSchedulePage() {
       });
 
       const mergedProjects = projectsData.map((project) => {
-        const jobKey = `${project.customer || ""}~${project.projectNumber || ""}~${project.projectName || ""}`;
+        const jobKey = buildProjectJobKey(project);
         const metadataForProject = metadataByJobKey.get(jobKey) || [];
         const yardsByDate = concreteYardsByJobKey.get(jobKey) || {};
 

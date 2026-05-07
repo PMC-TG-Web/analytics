@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
     const customer = (body?.customer || '').toString().trim() || null;
     const projectNumber = (body?.projectNumber || '').toString().trim() || null;
     const status = (body?.status || '').toString().trim() || null;
+    const jobKey = `${customer || ''}~${projectNumber || ''}~${projectName}`;
 
     if (!projectName) {
       return NextResponse.json({ success: false, error: 'projectName is required' }, { status: 400 });
@@ -87,13 +88,13 @@ export async function POST(request: NextRequest) {
 
     const id = crypto.randomUUID();
     await prisma.$executeRawUnsafe(
-      `INSERT INTO gantt_v2_projects (id, project_name, customer, project_number, status, source)
-       VALUES ($1, $2, $3, $4, $5, $6);`,
-      id, projectName, customer, projectNumber, status, 'app'
+      `INSERT INTO gantt_v2_projects (id, job_key, project_name, customer, project_number, status, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+      id, jobKey, projectName, customer, projectNumber, status, 'app'
     );
 
     invalidateCacheByPrefix('gantt-v2:');
-    return NextResponse.json({ success: true, data: { id, projectName, customer, projectNumber, status, source: 'app' } });
+    return NextResponse.json({ success: true, data: { id, jobKey, projectName, customer, projectNumber, status, source: 'app' } });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: `Failed to create Gantt V2 project: ${String(error)}` },

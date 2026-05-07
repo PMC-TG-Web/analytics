@@ -1,12 +1,50 @@
 import { prisma } from '@/lib/prisma';
 import { getCanonicalProjectIdentity } from '@/lib/projectCanonical';
+import { buildSearchParamsCacheKey, getCachedValue, setCachedValue } from '@/lib/serverReadCache';
+import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const DASHBOARD_SUMMARY_CACHE_PREFIX = 'dashboard-summary:';
+const DASHBOARD_SUMMARY_CACHE_TTL_MS = 60 * 1000;
+
+function buildSummaryETag(payload: unknown): string {
+  const hash = createHash('sha1').update(JSON.stringify(payload)).digest('hex');
+  return `W/"${hash}"`;
+}
+
+function ifNoneMatchContainsETag(ifNoneMatchHeader: string | null, etag: string): boolean {
+  if (!ifNoneMatchHeader) return false;
+  if (ifNoneMatchHeader.trim() === '*') return true;
+  return ifNoneMatchHeader
+    .split(',')
+    .map((value) => value.trim())
+    .includes(etag);
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const cacheKey = buildSearchParamsCacheKey(`${DASHBOARD_SUMMARY_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      const etag = buildSummaryETag(cached);
+      if (ifNoneMatchContainsETag(request.headers.get('if-none-match'), etag)) {
+        const notModified = new NextResponse(null, { status: 304 });
+        notModified.headers.set('ETag', etag);
+        notModified.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+        notModified.headers.set('X-Cache', 'HIT');
+        return notModified;
+      }
+
+      const response = NextResponse.json(cached);
+      response.headers.set('ETag', etag);
+      response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const includeProjectIdentity = (searchParams.get('includeProjectIdentity') || '').trim().toLowerCase() === 'true';
 
     const summary = await prisma.dashboardSummary.findUnique({
@@ -56,13 +94,29 @@ export async function GET(request: Request) {
     }
 
     if (!summary) {
-      return NextResponse.json({
+      const payload = {
         success: true,
         data: null,
-      });
+      };
+      setCachedValue(cacheKey, payload, DASHBOARD_SUMMARY_CACHE_TTL_MS);
+
+      const etag = buildSummaryETag(payload);
+      if (ifNoneMatchContainsETag(request.headers.get('if-none-match'), etag)) {
+        const notModified = new NextResponse(null, { status: 304 });
+        notModified.headers.set('ETag', etag);
+        notModified.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+        notModified.headers.set('X-Cache', 'MISS');
+        return notModified;
+      }
+
+      const response = NextResponse.json(payload);
+      response.headers.set('ETag', etag);
+      response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      response.headers.set('X-Cache', 'MISS');
+      return response;
     }
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       data: {
         totalSales: summary.totalSales,
@@ -75,7 +129,23 @@ export async function GET(request: Request) {
         lastUpdated: summary.lastUpdated,
         ...(projectIdentityCoverage ? { projectIdentityCoverage } : {}),
       },
-    });
+    };
+    setCachedValue(cacheKey, payload, DASHBOARD_SUMMARY_CACHE_TTL_MS);
+
+    const etag = buildSummaryETag(payload);
+    if (ifNoneMatchContainsETag(request.headers.get('if-none-match'), etag)) {
+      const notModified = new NextResponse(null, { status: 304 });
+      notModified.headers.set('ETag', etag);
+      notModified.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      notModified.headers.set('X-Cache', 'MISS');
+      return notModified;
+    }
+
+    const response = NextResponse.json(payload);
+    response.headers.set('ETag', etag);
+    response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+    response.headers.set('X-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch dashboard summary:', error);
     return NextResponse.json(

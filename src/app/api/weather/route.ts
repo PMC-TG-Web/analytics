@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCachedValue, setCachedValue } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ type WeatherPayload = {
 const DEFAULT_LAT = 40.06;
 const DEFAULT_LON = -76.2;
 const DEFAULT_LOCATION = 'Quarryville, PA';
+const WEATHER_CACHE_KEY = 'weather:default';
+const WEATHER_CACHE_TTL_MS = 2 * 60 * 1000;
+const WEATHER_FALLBACK_CACHE_TTL_MS = 15 * 1000;
 
 function getIcon(code: number | null | undefined) {
   if (code === 0) return '☀';
@@ -130,6 +134,14 @@ function mapOpenMeteoWeather(weatherData: any): WeatherPayload | null {
 }
 
 export async function GET() {
+  const cached = getCachedValue<WeatherPayload>(WEATHER_CACHE_KEY);
+  if (cached) {
+    const response = NextResponse.json(cached);
+    response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=60');
+    response.headers.set('X-Cache', 'HIT');
+    return response;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5_000);
 
@@ -143,11 +155,22 @@ export async function GET() {
       throw new Error(`Open-Meteo returned ${response.status}`);
     }
 
-    const weather = mapOpenMeteoWeather(await response.json());
-    return NextResponse.json(weather || fallbackWeather());
+    const weather = mapOpenMeteoWeather(await response.json()) || fallbackWeather();
+    setCachedValue(WEATHER_CACHE_KEY, weather, WEATHER_CACHE_TTL_MS);
+
+    const successResponse = NextResponse.json(weather);
+    successResponse.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=60');
+    successResponse.headers.set('X-Cache', 'MISS');
+    return successResponse;
   } catch (error) {
     console.warn('[weather] Falling back after forecast fetch failed:', error instanceof Error ? error.message : String(error));
-    return NextResponse.json(fallbackWeather());
+    const fallback = fallbackWeather();
+    setCachedValue(WEATHER_CACHE_KEY, fallback, WEATHER_FALLBACK_CACHE_TTL_MS);
+
+    const fallbackResponse = NextResponse.json(fallback);
+    fallbackResponse.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=30');
+    fallbackResponse.headers.set('X-Cache', 'MISS');
+    return fallbackResponse;
   } finally {
     clearTimeout(timeout);
   }

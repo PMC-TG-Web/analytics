@@ -814,6 +814,33 @@ function KPIPageContent({
     return <span>{totalDisplay}</span>;
   };
 
+  const parseManualNumber = (raw: unknown): number | null => {
+    if (raw === null || raw === undefined || raw === "") return null;
+    if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+    const normalized = String(raw).replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const getManualKpiValue = (year: string, month: number, field: "bidSubmittedSales" | "estimates") => {
+    const entry = kpiData.find((k: any) => String(k.year) === String(year) && Number(k.month) === month);
+    return parseManualNumber(entry?.[field]);
+  };
+
+  const hasManualBidSubmittedForYear = (year: string) => {
+    return kpiData.some((k: any) => {
+      if (String(k.year) !== String(year)) return false;
+      return parseManualNumber(k.bidSubmittedSales) !== null;
+    });
+  };
+
+  const getBidSubmittedSalesValue = (year: string, month: number) => {
+    const manualValue = getManualKpiValue(year, month, "bidSubmittedSales");
+    if (manualValue !== null) return manualValue;
+    if (hasManualBidSubmittedForYear(year)) return 0;
+    return Number(bidSubmittedSalesYearMonthMap[year]?.[month] || 0);
+  };
+
   // Manage input focus when editing
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -1798,9 +1825,7 @@ function KPIPageContent({
         const selectedYear = yearFilter || new Date().getFullYear().toString();
         rowValues = monthNames.map((_, idx) => {
           const month = idx + 1;
-          const manualValue = kpiData.find((k: any) => k.year === selectedYear && k.month === month)?.bidSubmittedSales;
-          const calculatedValue = bidSubmittedSalesYearMonthMap[selectedYear]?.[month] || 0;
-          const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+          const value = getBidSubmittedSalesValue(selectedYear, month);
           return value > 0 ? value.toString() : "";
         });
       }
@@ -1985,40 +2010,50 @@ function KPIPageContent({
   };
 
   const currentYear = new Date().getFullYear().toString();
+  const manualBidSubmittedYears = Array.from(
+    new Set((kpiData || []).map((k: any) => String(k.year || "")).filter(Boolean))
+  );
   const combinedSalesYears = Array.from(new Set([
     ...scheduledSalesYears,
     ...bidSubmittedSalesYears,
+    ...manualBidSubmittedYears,
     currentYear,
   ]))
     .filter(year => year !== "2024")
     .sort();
 
-  const bidSubmittedYearWarning = yearFilter && bidSubmittedSalesYears.length > 0 && !bidSubmittedSalesYears.includes(yearFilter)
+  const yearsToRender = yearFilter ? [yearFilter] : combinedSalesYears;
+  const availableBidSubmittedYears = new Set([...bidSubmittedSalesYears, ...manualBidSubmittedYears]);
+
+  const bidSubmittedYearWarning = yearFilter && availableBidSubmittedYears.size > 0 && !availableBidSubmittedYears.has(yearFilter)
     ? `Bid Submitted data not available for ${yearFilter}.`
     : "";
 
+  // Build the exact same month grid shown by the sales table (12 months for each rendered year).
+  const chartMonthKeys = yearsToRender.flatMap((year) =>
+    monthNames.map((_, idx) => `${year}-${String(idx + 1).padStart(2, "0")}`)
+  );
+
+  // Keep chart and table aligned: both series now use the same chartMonthKeys grid.
   const filteredBidSubmittedSalesByMonth: Record<string, number> = {};
-  const filteredBidSubmittedSalesMonths = bidSubmittedSalesMonths.filter(month => {
-    if (yearFilter) {
-      const [year] = month.split("-");
-      if (year !== yearFilter) return false;
-    }
-    filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
-    return true;
+  const filteredScheduledSalesByMonth: Record<string, number> = {};
+
+  chartMonthKeys.forEach((monthKey) => {
+    const [year, m] = monthKey.split("-");
+    const month = Number(m);
+
+    const bidValue = getBidSubmittedSalesValue(year, month);
+    filteredBidSubmittedSalesByMonth[monthKey] = Number.isFinite(bidValue) ? bidValue : 0;
+
+    const scheduledValue = Number(scheduledSalesYearMonthMap[year]?.[month] || 0);
+    filteredScheduledSalesByMonth[monthKey] = Number.isFinite(scheduledValue) ? scheduledValue : 0;
   });
+
+  const filteredBidSubmittedSalesMonths = [...chartMonthKeys];
+  const filteredScheduledSalesMonths = [...chartMonthKeys];
 
   console.log("[KPI] Filtered bid submitted months:", filteredBidSubmittedSalesMonths);
   console.log("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
-
-  const filteredScheduledSalesByMonth: Record<string, number> = {};
-  const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {
-    if (yearFilter) {
-      const [year] = month.split("-");
-      if (year !== yearFilter) return false;
-    }
-    filteredScheduledSalesByMonth[month] = scheduledSalesByMonth[month];
-    return true;
-  });
 
   const filteredCombinedSalesYears = yearFilter 
     ? combinedSalesYears.filter(year => year === yearFilter) 
@@ -2250,12 +2285,11 @@ function KPIPageContent({
                     }, 0);
                     const bidSubmittedMonthValues = monthNames.map((_, idx) => {
                       const month = idx + 1;
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
-                      const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
-                      const isManual = manualValue !== undefined && manualValue !== null;
+                      const manualValue = getManualKpiValue(year, month, "bidSubmittedSales");
+                      const isManual = manualValue !== null;
                       return {
                         month,
-                        sales: isManual ? manualValue : calculatedValue,
+                        sales: getBidSubmittedSalesValue(year, month),
                         isManual,
                       };
                     });
@@ -2386,14 +2420,13 @@ function KPIPageContent({
                   return sum + calculatedValue;
                 }, 0);
                 const bidSubmittedValues = allYearMonths.map(({ year, month, label }) => {
-                  const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
-                  const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
-                  const isManual = manualValue !== undefined && manualValue !== null;
+                  const manualValue = getManualKpiValue(year, month, "bidSubmittedSales");
+                  const isManual = manualValue !== null;
                   return {
                     year,
                     month,
                     label,
-                    sales: isManual ? manualValue : calculatedValue,
+                    sales: getBidSubmittedSalesValue(year, month),
                     isManual,
                   };
                 });
@@ -2536,12 +2569,11 @@ function KPIPageContent({
                     const bidsColor = rowColors[rowIndex % 2];
                     const bidsMonthValues = monthNames.map((_, idx) => {
                       const month = idx + 1;
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
-                      const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
-                      const isManual = manualValue !== undefined && manualValue !== null;
+                      const manualValue = getManualKpiValue(year, month, "bidSubmittedSales");
+                      const isManual = manualValue !== null;
                       return {
                         month,
-                        value: isManual ? manualValue : calculatedValue,
+                        value: getBidSubmittedSalesValue(year, month),
                         isManual,
                       };
                     });
@@ -3149,21 +3181,33 @@ function CombinedSalesLineChart({
   const scheduledSales = sortedMonths.map(month => scheduledSalesByMonth[month] || 0);
   const bidSubmittedSales = sortedMonths.map(month => bidSubmittedSalesByMonth[month] || 0);
 
+  const uniqueYears = Array.from(new Set(sortedMonths.map((month) => month.split("-")[0])));
+  const isSingleYearView = uniqueYears.length <= 1;
+
   const labels = sortedMonths.map(month => {
     const [year, m] = month.split("-");
     const date = new Date(Number(year), Number(m) - 1, 1);
-    return isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    if (isNaN(date.getTime())) return "";
+    return isSingleYearView
+      ? date.toLocaleDateString(undefined, { month: "short" })
+      : date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
   });
 
   const maxScheduledSales = Math.max(...scheduledSales, 0);
   const maxBidSubmittedSales = Math.max(...bidSubmittedSales, 0);
+  const xAxisMin = labels.length > 1 ? -0.5 : 0;
+  const xAxisMax = labels.length > 1 ? labels.length - 0.5 : 1;
+  const stretchedX = (index: number) => {
+    if (labels.length <= 1) return index;
+    return -0.5 + (index / (labels.length - 1)) * labels.length;
+  };
 
   const chartData = {
     labels,
     datasets: [
       {
         label: "Scheduled Sales",
-        data: scheduledSales,
+        data: scheduledSales.map((sales, index) => ({ x: stretchedX(index), y: sales })),
         borderColor: "#15616D",
         backgroundColor: "rgba(21, 97, 109, 0.25)",
         tension: 0.4,
@@ -3177,7 +3221,7 @@ function CombinedSalesLineChart({
       },
       {
         label: "Bid Submitted Sales",
-        data: bidSubmittedSales,
+        data: bidSubmittedSales.map((sales, index) => ({ x: stretchedX(index), y: sales })),
         borderColor: "#E06C00",
         backgroundColor: "rgba(224, 108, 0, 0.25)",
         tension: 0.4,
@@ -3258,8 +3302,18 @@ function CombinedSalesLineChart({
         },
       },
       x: {
+        type: "linear",
+        min: xAxisMin,
+        max: xAxisMax,
+        afterBuildTicks: (scale) => {
+          scale.ticks = labels.map((_, index) => ({ value: index }));
+        },
         ticks: {
           color: "#111827",
+          callback: (value) => {
+            const index = Number(value);
+            return Number.isInteger(index) ? labels[index] ?? "" : "";
+          },
         },
         grid: {
           color: "#f0f0f0",

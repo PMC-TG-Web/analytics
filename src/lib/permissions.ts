@@ -39,6 +39,10 @@ type UserPermissionRow = {
   permissions: string[] | null;
 };
 
+type RawQueryClient = {
+  $queryRaw<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+};
+
 function normalizeAssignedPermissions(permissions: unknown): string[] {
   if (!Array.isArray(permissions)) return [];
   return permissions.filter((perm): perm is string => typeof perm === "string" && perm.trim().length > 0);
@@ -95,11 +99,11 @@ function parseUserPermissionsFromEnv(): Record<string, string[]> {
 }
 
 // Load permissions from database (called on middleware initialization)
-export async function loadUserPermissionsFromDatabase(prisma: any): Promise<Record<string, string[]>> {
+export async function loadUserPermissionsFromDatabase(prisma: RawQueryClient): Promise<Record<string, string[]>> {
   try {
     const users = await prisma.$queryRaw<UserPermissionRow[]>`
       SELECT "email", "permissions"
-      FROM "user"
+      FROM "User"
       WHERE "isActive" = true
       ORDER BY "email" ASC
     `;
@@ -120,7 +124,7 @@ export async function loadUserPermissionsFromDatabase(prisma: any): Promise<Reco
 }
 
 export async function loadUserAssignedPermissionsFromDatabase(
-  prisma: any,
+  prisma: RawQueryClient,
   userEmail: string | null
 ): Promise<string[]> {
   if (!userEmail) return [];
@@ -128,7 +132,7 @@ export async function loadUserAssignedPermissionsFromDatabase(
   try {
     const users = await prisma.$queryRaw<UserPermissionRow[]>`
       SELECT "email", "permissions"
-      FROM "user"
+      FROM "User"
       WHERE lower("email") = ${userEmail.toLowerCase()}
         AND "isActive" = true
       LIMIT 1
@@ -142,7 +146,7 @@ export async function loadUserAssignedPermissionsFromDatabase(
 }
 
 export async function hasDatabasePageAccess(
-  prisma: any,
+  prisma: RawQueryClient,
   userEmail: string | null,
   page: string
 ): Promise<boolean> {
@@ -152,12 +156,12 @@ export async function hasDatabasePageAccess(
 }
 
 // Map user emails to permission groups/pages from database or environment variables.
-export let USER_PERMISSIONS: Record<string, string[]> = parseUserPermissionsFromEnv();
+export const USER_PERMISSIONS: Record<string, string[]> = parseUserPermissionsFromEnv();
 
 let permissionsLoadedFromDb = false;
 
 // Lazy-load permissions from database on first access (if not already loaded)
-export async function ensurePermissionsLoaded(prisma: any): Promise<void> {
+export async function ensurePermissionsLoaded(prisma: RawQueryClient): Promise<void> {
   if (permissionsLoadedFromDb || Object.keys(USER_PERMISSIONS).length > 0) {
     return; // Already loaded
   }

@@ -1286,6 +1286,7 @@ export function ProjectScopesModal({
       if (!updateRes.ok || !updateResult?.success) {
         throw new Error(updateResult?.error || 'Failed to update scope metadata');
       }
+      persistedScopesByJobKeyRef.current.delete(resolvedJobKey);
       return;
     }
 
@@ -1302,6 +1303,7 @@ export function ProjectScopesModal({
     if (!createRes.ok || !createResult?.success) {
       throw new Error(createResult?.error || 'Failed to create scope metadata');
     }
+    persistedScopesByJobKeyRef.current.delete(resolvedJobKey);
   };
 
   const loadProjectBudgetHours = useCallback(async () => {
@@ -1992,6 +1994,11 @@ export function ProjectScopesModal({
       };
 
       const refreshScopesInBackground = () => {
+        ganttProjectsCacheRef.current = { expiresAt: 0, data: null };
+        if (resolvedJobKey) {
+          persistedScopesByJobKeyRef.current.delete(resolvedJobKey);
+        }
+
         void loadCanonicalScopes()
           .then((refreshedScopes) => {
             if (refreshedScopes && refreshedScopes.length > 0) {

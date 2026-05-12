@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const rows = await prisma.$queryRaw<UserPermissionRecord[]>`
-      INSERT INTO "user" ("id", "email", "permissions", "isActive", "createdAt", "updatedAt")
+      INSERT INTO "User" ("id", "email", "permissions", "isActive", "createdAt", "updatedAt")
       VALUES (${randomUUID()}, ${normalizedEmail}, ${normalizedPermissions}, true, NOW(), NOW())
       ON CONFLICT ("email")
       DO UPDATE SET
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 
     const rows = await prisma.$queryRaw<Pick<UserPermissionRecord, 'email' | 'permissions' | 'isActive'>[]>`
       SELECT "email", "permissions", "isActive"
-      FROM "user"
+      FROM "User"
       WHERE lower("email") = ${email}
       LIMIT 1
     `;
@@ -133,7 +133,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const rows = await prisma.$queryRaw<UserPermissionRecord[]>`
-      UPDATE "user"
+      UPDATE "User"
       SET "isActive" = false,
           "updatedAt" = NOW()
       WHERE lower("email") = ${email}

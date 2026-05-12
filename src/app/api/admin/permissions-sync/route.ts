@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Use raw SQL since the user table was created directly (no Prisma migration)
+    // Use raw SQL because permissions are stored as a Postgres text array.
     const users = await prisma.$queryRaw<{ email: string; permissions: string[] }[]>`
       SELECT "email", "permissions"
-      FROM "user"
+      FROM "User"
       WHERE "isActive" = true
       ORDER BY "email" ASC
     `;

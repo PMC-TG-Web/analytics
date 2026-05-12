@@ -474,6 +474,9 @@ export function ProjectScopesModal({
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const taskRowRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const previousActiveScopeIdRef = useRef<string | null>(selectedScopeId);
+  const previousSelectionSignatureRef = useRef<string>(
+    `${selectedScopeId || ''}|${selectedScopeTitle || ''}|${selectedScheduleDate || ''}`
+  );
   const onScopesUpdatedRef = useRef(onScopesUpdated);
   const lastNotifiedScopesSignatureRef = useRef<string>('');
   const suppressPopulateEffectRef = useRef(false);
@@ -1496,6 +1499,19 @@ export function ProjectScopesModal({
   // the user explicitly clicked "+ Add Scope" and is in create mode.
   useEffect(() => {
     if (isCreatingNewScope) return;
+    const selectionSignature = `${selectedScopeId || ''}|${selectedScopeTitle || ''}|${selectedScheduleDate || ''}`;
+    const selectedContextChanged = previousSelectionSignatureRef.current !== selectionSignature;
+    previousSelectionSignatureRef.current = selectionSignature;
+
+    // Preserve explicit in-modal scope clicks. Only force re-sync from incoming
+    // props when the selected scope context actually changes.
+    const activeScopeStillExists = activeScopeId
+      ? effectiveScopes.some((scope) => scope.id === activeScopeId)
+      : false;
+    if (!selectedContextChanged && activeScopeStillExists) {
+      return;
+    }
+
     const debugScopeSelection =
       /veritas academy/i.test(String(project.projectName || '')) ||
       /todd test 1/i.test(String(selectedScopeTitle || ''));
@@ -1518,37 +1534,20 @@ export function ProjectScopesModal({
       if (selectedScopeId) {
         const direct = effectiveScopes.find((scope) => scope.id === selectedScopeId);
         if (direct) {
-          const preferredTitle = normalizeText(selectedScopeTitle || direct.title || '');
-          const duplicateCandidates = effectiveScopes.filter((scope) => {
-            if (normalizeText(scope.title || '') !== preferredTitle) return false;
-            if (!selectedScheduleDate) return true;
-            return scopeMatchesSelectedDate(scope, selectedScheduleDate);
-          });
-
-          const bestDirectMatch = pickBestScope(duplicateCandidates);
           if (debugScopeSelection) {
             console.log('[LongTermModalDebug] resolve selectedScopeId direct', {
               selectedScopeId,
               selectedScopeTitle,
               selectedScheduleDate,
-              preferredTitle,
               direct: {
                 id: direct.id,
                 title: direct.title,
                 taskCount: Array.isArray(direct.tasks) ? direct.tasks.length : 0,
               },
-              duplicateCandidates: duplicateCandidates.map((scope) => ({
-                id: scope.id,
-                title: scope.title,
-                startDate: scope.startDate,
-                endDate: scope.endDate,
-                taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
-                selectedDayCount: Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0,
-              })),
-              pickedId: bestDirectMatch?.id || direct.id,
+              pickedId: direct.id,
             });
           }
-          return bestDirectMatch?.id || direct.id;
+          return direct.id;
         }
 
         const sourceScope = identityFallbackScopes.find((scope) => scope.id === selectedScopeId);

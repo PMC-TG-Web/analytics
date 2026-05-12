@@ -2155,7 +2155,30 @@ export default function LongTermSchedulePage() {
                 })),
               });
             }
-            setScopesByJobKey((prev) => ({ ...prev, [jobKey]: updatedScopes }));
+            setScopesByJobKey((prev) => {
+              const previousScopes = prev[jobKey] || [];
+              const previousById = new Map(previousScopes.map((scope) => [scope.id, scope]));
+
+              const mergedScopes = updatedScopes.map((scope) => {
+                const previous = previousById.get(scope.id);
+                if (!previous) return scope;
+
+                const nextTasks = Array.isArray(scope.tasks) ? scope.tasks : [];
+                const preservedTasks = nextTasks.length > 0 ? nextTasks : (Array.isArray(previous.tasks) ? previous.tasks : []);
+                const nextSelectedDays = Array.isArray(scope.selectedDays) ? scope.selectedDays : [];
+                const preservedSelectedDays = nextSelectedDays.length > 0 ? nextSelectedDays : (Array.isArray(previous.selectedDays) ? previous.selectedDays : []);
+
+                return {
+                  ...previous,
+                  ...scope,
+                  tasks: preservedTasks,
+                  selectedDays: preservedSelectedDays,
+                  schedulingMode: scope.schedulingMode || previous.schedulingMode,
+                };
+              });
+
+              return { ...prev, [jobKey]: mergedScopes };
+            });
             // Scope date changes can resync active schedule rows; refresh the board immediately.
             void loadSchedules();
           }}

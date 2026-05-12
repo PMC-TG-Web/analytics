@@ -1490,6 +1490,20 @@ export function ProjectScopesModal({
     if (isCreatingNewScope) return;
 
     const resolveToEffectiveScopeId = () => {
+      const pickBestScope = (candidates: Scope[]): Scope | null => {
+        if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+        const score = (scope: Scope): number => {
+          const taskCount = Array.isArray(scope.tasks) ? scope.tasks.length : 0;
+          const selectedDayCount = Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0;
+          const hasHours = Number(scope.hours || 0) > 0 ? 1 : 0;
+          // Prefer the scope variant with the most authored schedule metadata.
+          return (taskCount * 1000) + (selectedDayCount * 10) + hasHours;
+        };
+
+        return [...candidates].sort((a, b) => score(b) - score(a))[0] || null;
+      };
+
       if (selectedScopeId) {
         const direct = effectiveScopes.find((scope) => scope.id === selectedScopeId);
         if (direct) return direct.id;
@@ -1505,12 +1519,14 @@ export function ProjectScopesModal({
             (scope) => normalizeText(scope.title) === normalizeText(sourceScope.title)
           );
 
-          const datedTitleMatch = selectedScheduleDate
-            ? matchingTitles.find((scope) => scopeMatchesSelectedDate(scope, selectedScheduleDate))
-            : null;
-          if (datedTitleMatch) return datedTitleMatch.id;
+          if (selectedScheduleDate) {
+            const datedTitleCandidates = matchingTitles.filter((scope) => scopeMatchesSelectedDate(scope, selectedScheduleDate));
+            const datedTitleMatch = pickBestScope(datedTitleCandidates);
+            if (datedTitleMatch) return datedTitleMatch.id;
+          }
 
-          if (matchingTitles.length === 1) return matchingTitles[0].id;
+          const bestTitleMatch = pickBestScope(matchingTitles);
+          if (bestTitleMatch) return bestTitleMatch.id;
         }
       }
 
@@ -1519,12 +1535,14 @@ export function ProjectScopesModal({
           (scope) => normalizeText(scope.title) === normalizeText(selectedScopeTitle)
         );
 
-        const datedTitleMatch = selectedScheduleDate
-          ? matchingTitles.find((scope) => scopeMatchesSelectedDate(scope, selectedScheduleDate))
-          : null;
-        if (datedTitleMatch) return datedTitleMatch.id;
+        if (selectedScheduleDate) {
+          const datedTitleCandidates = matchingTitles.filter((scope) => scopeMatchesSelectedDate(scope, selectedScheduleDate));
+          const datedTitleMatch = pickBestScope(datedTitleCandidates);
+          if (datedTitleMatch) return datedTitleMatch.id;
+        }
 
-        if (matchingTitles.length === 1) return matchingTitles[0].id;
+        const bestTitleMatch = pickBestScope(matchingTitles);
+        if (bestTitleMatch) return bestTitleMatch.id;
       }
 
       return null;

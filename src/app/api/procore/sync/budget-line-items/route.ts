@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig } from '@/lib/procore';
+import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
-import { ensureBudgetLineItemsTable, upsertBudgetLineItem } from '@/lib/procoreBudgetLineItems';
+import { ensureBudgetLineItemsTable, batchUpsertBudgetLineItems, type BatchBudgetLineItem } from '@/lib/procoreBudgetLineItems';
 
 type JsonObject = Record<string, unknown>;
 
@@ -36,6 +36,13 @@ function firstText(...values: unknown[]): string | null {
     if (text) return text;
   }
   return null;
+}
+
+function parseCsvIds(value: unknown): string[] {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function unwrapArray(response: unknown): JsonObject[] {
@@ -132,21 +139,37 @@ export async function POST(request: Request) {
     const fetchAll = body?.fetchAll === true;
 
     const cookieStore = await cookies();
-    const accessToken = cookieStore.get('procore_access_token')?.value;
+    const userAccessToken = String(
+      cookieStore.get('procore_access_token')?.value || body?.accessToken || ''
+    ).trim();
     const companyId = String(
       companyIdFromBody || cookieStore.get('procore_company_id')?.value || procoreConfig.companyId || ''
     ).trim();
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: 'Missing access token. Please login via OAuth.' },
-        { status: 401 }
-      );
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Missing access token. Please login via OAuth.' },
+          { status: 401 }
+        );
+      }
     }
+
 
     await ensureBudgetLineItemsTable();
 
-    const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+    const explicitProjectIds = Array.isArray(body?.projectIds)
+      ? body.projectIds.map((v: unknown) => String(v || '').trim()).filter(Boolean)
+      : parseCsvIds(body?.projectIds);
+
+    const projectIds = explicitProjectIds.length > 0
+      ? explicitProjectIds
+      : await getProjectIdsFromFeed(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {
@@ -161,12 +184,33 @@ export async function POST(request: Request) {
     let projectsSkippedAccess = 0;
     let fetched = 0;
     let upserted = 0;
+    const maxWarningMessages = 100;
+    const maxErrorMessages = 200;
+    let warningsTruncated = 0;
+    let errorsTruncated = 0;
     const warnings: string[] = [];
     const errors: string[] = [];
+
+    function pushWarning(message: string) {
+      if (warnings.length < maxWarningMessages) {
+        warnings.push(message);
+      } else {
+        warningsTruncated += 1;
+      }
+    }
+
+    function pushError(message: string) {
+      if (errors.length < maxErrorMessages) {
+        errors.push(message);
+      } else {
+        errorsTruncated += 1;
+      }
+    }
 
     for (const projectId of projectIds) {
       projectsScanned += 1;
       let page = 1;
+      const projectItems: BatchBudgetLineItem[] = [];
 
       while (true) {
         let result: { data: unknown; endpoint: string; failures: string[] } | null = null;
@@ -182,11 +226,9 @@ export async function POST(request: Request) {
           const message = error instanceof Error ? error.message : String(error);
           if (isAccessSkippedError(message)) {
             projectsSkippedAccess += 1;
-            if (warnings.length < 25) {
-              warnings.push(`project:${projectId} budget_line_items skipped (access): ${message}`);
-            }
+            pushWarning(`project:${projectId} budget_line_items skipped (access): ${message}`);
           } else {
-            errors.push(`project:${projectId} budget_line_items => ${message}`);
+            pushError(`project:${projectId} budget_line_items => ${message}`);
           }
         }
 
@@ -197,60 +239,62 @@ export async function POST(request: Request) {
         fetched += items.length;
 
         for (const item of items) {
-          try {
-            const budgetLineItemId = firstText(item.id, item.budget_line_item_id);
-            if (!budgetLineItemId) continue;
+          const budgetLineItemId = firstText(item.id, item.budget_line_item_id);
+          if (!budgetLineItemId) continue;
 
-            const costCodeObject = asObject(item.cost_code);
-            const lineItemTypeObject = asObject(item.line_item_type);
-            const wbsCodeObject = asObject(item.wbs_code);
-            const currencyObject = asObject(item.currency_configuration);
+          const costCodeObject = asObject(item.cost_code);
+          const lineItemTypeObject = asObject(item.line_item_type);
+          const wbsCodeObject = asObject(item.wbs_code);
+          const currencyObject = asObject(item.currency_configuration);
 
-            await upsertBudgetLineItem({
-              companyId,
-              projectId,
-              budgetLineItemId,
-              name: firstText(item.name, item.title),
-              costCode: firstText(
-                item.cost_code_string,
-                wbsCodeObject?.flat_code,
-                costCodeObject?.code,
-                costCodeObject?.name,
-                item.cost_code
-              ),
-              costCodeDescription: firstText(
-                wbsCodeObject?.description,
-                costCodeObject?.description
-              ),
-              wbsCodeId: firstText(wbsCodeObject?.id, item.wbs_code_id),
-              lineItemType: firstText(
-                lineItemTypeObject?.name,
-                lineItemTypeObject?.id,
-                item.line_item_type
-              ),
-              uom: firstText(item.uom),
-              quantity: readNumber(item.quantity),
-              unitCost: readNumber(item.unit_cost),
-              originalBudgetAmount: readNumber(item.original_budget_amount),
-              amount: readNumber(item.amount) ?? readNumber(item.budget_amount) ?? readNumber(item.original_budget_amount),
-              calculationStrategy: firstText(item.calculation_strategy),
-              currencyIsoCode: firstText(currencyObject?.currency_iso_code, item.currency_iso_code),
-              sourceCreatedAt: firstText(item.created_at),
-              sourceUpdatedAt: firstText(item.updated_at),
-              payload: item,
-            });
-
-            upserted += 1;
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            const id = firstText(item.id, item.budget_line_item_id) || 'unknown';
-            errors.push(`project:${projectId} budget_line_item:${id} => ${message}`);
-          }
+          projectItems.push({
+            projectId,
+            budgetLineItemId,
+            name: firstText(item.name, item.title),
+            costCode: firstText(
+              item.cost_code_string,
+              wbsCodeObject?.flat_code,
+              costCodeObject?.code,
+              costCodeObject?.name,
+              item.cost_code
+            ),
+            costCodeDescription: firstText(
+              wbsCodeObject?.description,
+              costCodeObject?.description
+            ),
+            wbsCodeId: firstText(wbsCodeObject?.id, item.wbs_code_id),
+            lineItemType: firstText(
+              lineItemTypeObject?.name,
+              lineItemTypeObject?.id,
+              item.line_item_type
+            ),
+            uom: firstText(item.uom),
+            quantity: readNumber(item.quantity),
+            unitCost: readNumber(item.unit_cost),
+            originalBudgetAmount: readNumber(item.original_budget_amount),
+            amount: readNumber(item.amount) ?? readNumber(item.budget_amount) ?? readNumber(item.original_budget_amount),
+            calculationStrategy: firstText(item.calculation_strategy),
+            currencyIsoCode: firstText(currencyObject?.currency_iso_code, item.currency_iso_code),
+            sourceCreatedAt: firstText(item.created_at),
+            sourceUpdatedAt: firstText(item.updated_at),
+            payload: item,
+          });
         }
 
         if (!fetchAll || items.length < perPage) break;
         page += 1;
         if (page > 100) break;
+      }
+
+      // Bulk-upsert all collected items for this project in one statement
+      if (projectItems.length > 0) {
+        try {
+          await batchUpsertBudgetLineItems(companyId, projectItems);
+          upserted += projectItems.length;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          pushError(`project:${projectId} batch upsert => ${message}`);
+        }
       }
     }
 
@@ -264,6 +308,8 @@ export async function POST(request: Request) {
         projectsSkippedAccess,
         fetched,
         upserted,
+        warningsTruncated,
+        errorsTruncated,
         warnings,
         errors,
       },

@@ -2,10 +2,14 @@ import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/auditLog';
 import { getCanonicalProjectCustomFields, getCanonicalProjectIdentity } from '@/lib/projectCanonical';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
+import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+const PROJECTS_CACHE_PREFIX = 'projects:';
+const PROJECTS_CACHE_TTL_MS = 30 * 1000;
 
 function normalizeForPmc(value: unknown) {
   return (value ?? '').toString().trim().replace(/^"+|"+$/g, '').trim().toLowerCase();
@@ -27,11 +31,26 @@ function keyFromProjectIdentity(projectNumber: unknown, projectName: unknown) {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const cacheKey = buildSearchParamsCacheKey(`${PROJECTS_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      const response = NextResponse.json(cached);
+      response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const summaryOnly = (searchParams.get('summary') || '').trim().toLowerCase() === 'true';
+    
+    // Support both OFFSET-based (for backwards compat) and cursor-based pagination
+    const cursor = (searchParams.get('cursor') || '').trim() || null;
+    const useCursorPagination = cursor !== null;
+    
+    // Legacy OFFSET pagination support (for backwards compatibility)
     const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
     const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
     const pageSize = Math.min(500, Math.max(1, requestedPageSize));
-    const skip = (page - 1) * pageSize;
+    const skip = useCursorPagination ? undefined : (page - 1) * pageSize;
     const includeTotal = (searchParams.get('includeTotal') || '').trim().toLowerCase() === 'true';
     const customer = (searchParams.get('customer') || '').trim();
     const projectNumber = (searchParams.get('projectNumber') || '').trim();
@@ -87,6 +106,13 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Cursor-based pagination: filter WHERE id > cursor
+    if (useCursorPagination && cursor) {
+      where.id = {
+        gt: cursor,
+      };
+    }
+
     const queryWhere = Object.keys(where).length > 0 ? where : undefined;
     const legacyWhere: Prisma.ProjectWhereInput = {};
     if (statusList.length > 0) legacyWhere.status = { in: statusList };
@@ -94,13 +120,11 @@ export async function GET(request: NextRequest) {
     if (projectNumber) legacyWhere.projectNumber = projectNumber;
     if (projectName) legacyWhere.projectName = projectName;
     if (endpointOnly) legacyWhere.procoreId = { not: null };
+    // Cursor for legacy as well
+    if (useCursorPagination && cursor) {
+      legacyWhere.id = { gt: cursor };
+    }
     const legacyQueryWhere = Object.keys(legacyWhere).length > 0 ? legacyWhere : undefined;
-    const baseFindManyArgs = {
-      orderBy: {
-        projectName: 'asc' as const, // Reverted from procoreLastSync to ensure it works without a new migration
-      },
-      skip,
-    };
 
     let total: number | undefined;
     let hasNextPage = false;
@@ -118,36 +142,70 @@ export async function GET(request: NextRequest) {
       if (includeTotal) {
         const [countValue, rows] = await Promise.all([
           whereArg ? prisma.project.count({ where: whereArg }) : prisma.project.count(),
-          whereArg
+          useCursorPagination
+            ? whereArg
+              ? prisma.project.findMany({
+                  where: whereArg,
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                  select: summarySelect,
+                })
+              : prisma.project.findMany({
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                  select: summarySelect,
+                })
+            : whereArg
             ? prisma.project.findMany({
                 where: whereArg,
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
                 select: summarySelect,
               })
             : prisma.project.findMany({
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
                 select: summarySelect,
               }),
         ]);
 
+        const hasNext = useCursorPagination
+          ? rows.length === pageSize
+          : skip! + rows.length < countValue;
+
         return {
           total: countValue,
           rows,
-          hasNextPage: skip + rows.length < countValue,
+          hasNextPage: hasNext,
         };
       }
 
-      const pagePlusOne = whereArg
+      const pagePlusOne = useCursorPagination
+        ? whereArg
+          ? await prisma.project.findMany({
+              where: whereArg,
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+              select: summarySelect,
+            })
+          : await prisma.project.findMany({
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+              select: summarySelect,
+            })
+        : whereArg
         ? await prisma.project.findMany({
             where: whereArg,
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
             select: summarySelect,
           })
         : await prisma.project.findMany({
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
             select: summarySelect,
           });
@@ -178,49 +236,89 @@ export async function GET(request: NextRequest) {
         ? Math.max(1, Math.ceil(total / pageSize))
         : (hasNextPage ? page + 1 : page);
 
-      return NextResponse.json({
+      // For cursor pagination, return the cursor for fetching the next page
+      const nextCursor = useCursorPagination && projects.length > 0
+        ? (projects[projects.length - 1] as any)?.id
+        : undefined;
+
+      const response: Record<string, any> = {
         success: true,
         count: projects.length,
         ...(typeof total === 'number' ? { total } : {}),
-        page,
-        pageSize,
-        totalPages,
+        ...(useCursorPagination ? {} : { page, pageSize, totalPages, hasPreviousPage: page > 1 }),
         hasNextPage,
-        hasPreviousPage: page > 1,
+        ...(useCursorPagination && nextCursor ? { nextCursor } : {}),
         data: projects,
-      });
+      };
+
+      setCachedValue(cacheKey, response, PROJECTS_CACHE_TTL_MS);
+      const jsonResponse = NextResponse.json(response);
+      jsonResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      jsonResponse.headers.set('X-Cache', 'MISS');
+      return jsonResponse;
     }
 
     const fetchProjectsPage = async (whereArg: Prisma.ProjectWhereInput | undefined) => {
       if (includeTotal) {
         const [countValue, rows] = await Promise.all([
           whereArg ? prisma.project.count({ where: whereArg }) : prisma.project.count(),
-          whereArg
+          useCursorPagination
+            ? whereArg
+              ? prisma.project.findMany({
+                  where: whereArg,
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                })
+              : prisma.project.findMany({
+                  orderBy: { id: 'asc' },
+                  take: pageSize,
+                })
+            : whereArg
             ? prisma.project.findMany({
                 where: whereArg,
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
               })
             : prisma.project.findMany({
-                ...baseFindManyArgs,
+                orderBy: { projectName: 'asc' },
+                skip,
                 take: pageSize,
               }),
         ]);
+        
+        const hasNext = useCursorPagination
+          ? rows.length === pageSize
+          : skip! + rows.length < countValue;
+
         return {
           total: countValue,
           rows,
-          hasNextPage: skip + rows.length < countValue,
+          hasNextPage: hasNext,
         };
       }
 
-      const pagePlusOne = whereArg
+      const pagePlusOne = useCursorPagination
+        ? whereArg
+          ? await prisma.project.findMany({
+              where: whereArg,
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+            })
+          : await prisma.project.findMany({
+              orderBy: { id: 'asc' },
+              take: pageSize + 1,
+            })
+        : whereArg
         ? await prisma.project.findMany({
             where: whereArg,
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
           })
         : await prisma.project.findMany({
-            ...baseFindManyArgs,
+            orderBy: { projectName: 'asc' },
+            skip,
             take: pageSize + 1,
           });
 
@@ -502,17 +600,26 @@ export async function GET(request: NextRequest) {
       ? Math.max(1, Math.ceil(total / pageSize))
       : (hasNextPage ? page + 1 : page);
 
-    return NextResponse.json({
+    // For cursor pagination, return the cursor for fetching the next page
+    const nextCursor = useCursorPagination && projectsWithPMC.length > 0
+      ? (projectsWithPMC[projectsWithPMC.length - 1] as any)?.id
+      : undefined;
+
+    const response: Record<string, any> = {
       success: true,
       count: projectsWithPMC.length,
       ...(typeof total === 'number' ? { total } : {}),
-      page,
-      pageSize,
-      totalPages,
+      ...(useCursorPagination ? {} : { page, pageSize, totalPages, hasPreviousPage: page > 1 }),
       hasNextPage,
-      hasPreviousPage: page > 1,
+      ...(useCursorPagination && nextCursor ? { nextCursor } : {}),
       data: projectsWithPMC,
-    });
+    };
+
+    setCachedValue(cacheKey, response, PROJECTS_CACHE_TTL_MS);
+    const jsonResponse = NextResponse.json(response);
+    jsonResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+    jsonResponse.headers.set('X-Cache', 'MISS');
+    return jsonResponse;
   } catch (error) {
     console.error('Failed to fetch projects:', error);
     if (shouldFallbackToEmptyRead(error)) {
@@ -520,18 +627,22 @@ export async function GET(request: NextRequest) {
       const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
       const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
       const pageSize = Math.min(500, Math.max(1, requestedPageSize));
+      const cursor = (searchParams.get('cursor') || '').trim() || null;
+      const useCursor = cursor !== null;
 
-      return NextResponse.json({
+      const fallbackResponse: Record<string, any> = {
         success: true,
         count: 0,
         total: 0,
-        page,
-        pageSize,
-        totalPages: 1,
         hasNextPage: false,
-        hasPreviousPage: page > 1,
+        ...(useCursor ? {} : { page, pageSize, totalPages: 1, hasPreviousPage: page > 1 }),
         data: [],
-      });
+      };
+
+      const fallbackJson = NextResponse.json(fallbackResponse);
+      fallbackJson.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      fallbackJson.headers.set('X-Cache', 'MISS');
+      return fallbackJson;
     }
 
     return NextResponse.json(
@@ -599,6 +710,8 @@ export async function PUT(request: NextRequest) {
         updatedCount,
       },
     });
+
+    invalidateCacheByPrefix(PROJECTS_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,

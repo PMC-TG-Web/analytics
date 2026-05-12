@@ -7,6 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SyncLog {
+  id          BigInt    @id @default(autoincrement())
+  startedAt   DateTime  @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  success     Boolean   @default(false)
+  totalMs     Int?      @map("total_ms")
+  companyId   String?   @map("company_id")
+  triggeredBy String    @default("cron") @map("triggered_by")
+  steps       Json?
+  mvResults   Json?     @map("mv_results")
+  error       String?
+
+  @@index([startedAt(sort: Desc)])
+  @@index([companyId])
+  @@map("sync_logs")
+}
+
 model Project {
   id                                   String                                @id @default(cuid())
   projectNumber                        String?
@@ -243,6 +260,9 @@ model TimecardEntry {
   @@index([procoreId], map: "idx_timecard_entry_procore_id")
   @@index([projectId], map: "idx_timecard_entry_project_id")
   @@index([status], map: "idx_timecard_entry_status")
+  // idx_timecard_entry_project_costcode_covering: (procoreProjectId, costCodeFullCode) INCLUDE (hours)
+  // WHERE costCodeFullCode IS NOT NULL AND costCodeFullCode <> ''
+  // — partial covering index; INCLUDE syntax not supported in Prisma @@index; applied via migration SQL
 }
 
 model TimecardTimeType {
@@ -304,6 +324,10 @@ model CommitmentContract {
   @@index([number])
   @@index([status])
   @@index([vendorId])
+  // idx_commitment_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model CommitmentChangeOrder {
@@ -400,6 +424,10 @@ model PurchaseOrderContract {
   @@index([projectId], map: "idx_poc_project_id")
   @@index([status], map: "idx_poc_status")
   @@index([vendorId], map: "idx_poc_vendor_id")
+  // idx_purchase_order_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model PurchaseOrderLineItemContractDetail {
@@ -433,7 +461,8 @@ model PurchaseOrderLineItemContractDetail {
   @@index([procorePurchaseOrderContractId], map: "idx_pold_contract_procore_id")
   @@index([costCode], map: "idx_pold_cost_code")
   @@index([jobKey], map: "idx_pold_job_key")
-  @@index([procoreId], map: "idx_pold_procore_id")
+  // idx_pold_procore_id replaced by covering index idx_pold_procore_id_covering (procoreId) INCLUDE (costCode)
+  // — applied via migration SQL; INCLUDE syntax is not supported in Prisma @@index
   @@index([projectId], map: "idx_pold_project_id")
 }
 
@@ -863,11 +892,13 @@ model ProcoreEstimatingCatalogItemStaging {
   name           String?
   code           String?
   costCodeId     String?  @map("cost_code_id")
+  catalogId      String?  @map("catalog_id")
   payload        Json
   syncedAt       DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
   dynamic_fields Json?
 
   @@unique([companyId, itemId, baseUrl], map: "procore_estimating_catalog_item_company_id_item_id_base_url_key")
+  @@index([companyId, catalogId], map: "idx_catalog_item_staging_company_catalog")
   @@map("procore_estimating_catalog_item_staging")
 }
 
@@ -977,6 +1008,73 @@ model ProcoreProjectFeed {
   @@index([syncedAt(sort: Desc)], map: "idx_procore_project_feed_synced_at")
   @@index([linkedProjectId], map: "idx_procore_project_feed_unmatched")
   @@map("procore_project_feed")
+}
+
+model ProcoreWebhookHook {
+  id               String   @id @default(cuid())
+  procoreHookId    String   @unique @map("procore_hook_id")
+  scope            String
+  companyId        String   @map("company_id")
+  projectId        String?  @map("project_id")
+  namespace        String?
+  payloadVersion   String?  @map("payload_version")
+  destinationUrl   String   @map("destination_url")
+  status           String   @default("active")
+  triggerCount     Int?     @map("trigger_count")
+  lastVerifiedAt   DateTime? @map("last_verified_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([companyId], map: "idx_pwh_company_id")
+  @@index([projectId], map: "idx_pwh_project_id")
+  @@index([scope], map: "idx_pwh_scope")
+  @@index([status], map: "idx_pwh_status")
+  @@map("procore_webhook_hooks")
+}
+
+model ProcoreWebhookEvent {
+  id             String               @id @default(cuid())
+  eventKey       String               @unique @map("event_key")
+  procoreEventId String?              @map("procore_event_id")
+  eventUlid      String?              @map("event_ulid")
+  companyId      String?              @map("company_id")
+  projectId      String?              @map("project_id")
+  resourceName   String?              @map("resource_name")
+  eventType      String?              @map("event_type")
+  resourceId     String?              @map("resource_id")
+  payload        Json
+  receivedAt     DateTime             @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt    DateTime?            @map("processed_at") @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  queueJobs      ProcoreWebhookQueue[]
+
+  @@index([companyId], map: "idx_pwe_company_id")
+  @@index([projectId], map: "idx_pwe_project_id")
+  @@index([resourceName], map: "idx_pwe_resource_name")
+  @@index([eventType], map: "idx_pwe_event_type")
+  @@index([receivedAt(sort: Desc)], map: "idx_pwe_received_at")
+  @@map("procore_webhook_events")
+}
+
+model ProcoreWebhookQueue {
+  id           String              @id @default(cuid())
+  eventId      String              @map("event_id")
+  status       String              @default("pending")
+  attempts     Int                 @default(0)
+  maxAttempts  Int                 @default(5) @map("max_attempts")
+  availableAt  DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
+  lockedAt     DateTime?           @map("locked_at") @db.Timestamptz(6)
+  lockedBy     String?             @map("locked_by")
+  processedAt  DateTime?           @map("processed_at") @db.Timestamptz(6)
+  lastError    String?             @map("last_error")
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event        ProcoreWebhookEvent @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, availableAt], map: "idx_pwq_status_available")
+  @@index([eventId], map: "idx_pwq_event_id")
+  @@index([lockedAt], map: "idx_pwq_locked_at")
+  @@map("procore_webhook_queue")
 }
 
 model GanttV2Project {
@@ -1097,6 +1195,7 @@ model ConcreteOrder {
   time            String
   totalYards      Float    @map("total_yards")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([jobKey])
   @@index([date, time])
@@ -1215,7 +1314,7 @@ model bidforms {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_package_id, bid_form_id])
   @@index([bid_form_id], map: "idx_bidforms_bid_form_id")
@@ -1237,7 +1336,7 @@ model bidpackages {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_package_id])
   @@index([bid_package_id], map: "idx_bidpackages_bid_package_id")
@@ -1258,7 +1357,7 @@ model bids {
   payload           Json
   synced_at         DateTime  @default(now()) @db.Timestamptz(6)
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, project_id, bid_id])
   @@index([bid_id], map: "idx_bids_bid_id")
@@ -1300,6 +1399,10 @@ model procore_bid_board_live {
   @@index([procore_project_id])
   @@index([status])
   @@index([synced_at(sort: Desc)])
+  // idx_bid_board_company_project_synced_covering: (company_id, procore_project_id, synced_at DESC)
+  // INCLUDE (bid_board_id, status, customer)
+  // WHERE procore_project_id IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 }
 
 model procore_prime_contracts_live {
@@ -1389,7 +1492,7 @@ model procore_trades {
   payload            Json
   synced_at          DateTime  @default(now()) @db.Timestamptz(6)
   created_at         DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@unique([company_id, procore_trade_id])
   @@index([active], map: "idx_procore_trades_active")
@@ -1409,7 +1512,7 @@ model productivity_log_unpacked_fields {
   value_boolean   Boolean?
   value_json      Json
   created_at      DateTime        @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
   ProductivityLog ProductivityLog @relation(fields: [log_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_productivity_unpacked_log")
 
   @@unique([log_id, field_path])
@@ -1717,4 +1820,42 @@ model timecard_time_type_unpacked_fields {
   @@index([field_path], map: "idx_tc_tt_unpacked_field_path")
   @@index([field_path, value_text], map: "idx_tc_tt_unpacked_path_text")
   @@index([value_text], map: "idx_tc_tt_unpacked_value_text")
+}
+
+model procore_company_users_live {
+  user_id      String   @id
+  company_id   String
+  login        String?
+  name         String?
+  company_name String?
+  payload      Json
+  synced_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
+}
+
+model procore_company_vendors_live {
+  vendor_id  String   @id
+  company_id String
+  name       String?
+  trade      String?
+  is_active  Boolean?
+  payload    Json
+  synced_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
+}
+
+model procore_estimating_catalogs_live {
+  catalog_id String   @id
+  company_id String
+  base_url   String   @default("")
+  name       String?
+  payload    Json
+  synced_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([synced_at(sort: Desc)])
 }

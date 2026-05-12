@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig } from '@/lib/procore';
+import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureBidsTable, upsertBid } from '@/lib/procoreBids';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
 import { prisma } from '@/lib/prisma';
@@ -82,12 +82,20 @@ export async function POST(request: Request) {
     }
 
     const cookieStore = await cookies();
-    const accessToken = cookieStore.get('procore_access_token')?.value;
+    const userAccessToken = String(cookieStore.get('procore_access_token')?.value || '').trim();
     const companyId = String(companyIdFromBody || cookieStore.get('procore_company_id')?.value || procoreConfig.companyId || '').trim();
 
-    if (!accessToken) {
-      return NextResponse.json({ success: false, error: 'Missing access token. Please login via OAuth.' }, { status: 401 });
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json({ success: false, error: 'Missing access token. Please login via OAuth.' }, { status: 401 });
+      }
     }
+
 
     await ensureBidsTable();
 
@@ -147,6 +155,7 @@ export async function POST(request: Request) {
         if (!fetchAll || items.length < perPage) break;
         currentPage += 1;
         if (currentPage - page > 50) break;
+        await new Promise((r) => setTimeout(r, 150));
       }
     }
 

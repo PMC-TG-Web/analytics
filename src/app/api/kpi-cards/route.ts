@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { auth0 } from '@/lib/auth0';
 import { logAuditEvent } from '@/lib/auditLog';
+import { getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 
 type KPICardRow = {
   kpi: string;
@@ -24,6 +26,9 @@ type StoredCardPayload = {
 
 const KPI_CARD_CATEGORY = 'KPI_CARDS';
 const KPI_CARD_KEY_PREFIX = 'kpi-card:';
+const KPI_CARDS_CACHE_PREFIX = 'kpi-cards:';
+const KPI_CARDS_CACHE_KEY = `${KPI_CARDS_CACHE_PREFIX}list`;
+const KPI_CARDS_CACHE_TTL_MS = 60 * 1000;
 
 function normalizeName(name: string): string {
   return (name || '').trim().toLowerCase();
@@ -71,29 +76,63 @@ function findRowValues(rows: KPICardRow[] | undefined, kpiName: string): string[
   return Array.isArray(match?.values) ? match!.values : [];
 }
 
-export async function GET() {
+function buildCardsETag(cards: KPICard[]): string {
+  const basis = JSON.stringify(cards);
+  const hash = createHash('sha1').update(basis).digest('hex');
+  return `W/"${hash}"`;
+}
+
+function ifNoneMatchContainsETag(ifNoneMatchHeader: string | null, etag: string): boolean {
+  if (!ifNoneMatchHeader) return false;
+  if (ifNoneMatchHeader.trim() === '*') return true;
+  return ifNoneMatchHeader
+    .split(',')
+    .map((value) => value.trim())
+    .includes(etag);
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const rows = await prisma.estimatingConstant.findMany({
-      where: {
-        category: KPI_CARD_CATEGORY,
-        name: { startsWith: KPI_CARD_KEY_PREFIX },
-      },
-      orderBy: { name: 'asc' },
-    });
+    let data = getCachedValue<KPICard[]>(KPI_CARDS_CACHE_KEY);
+    const cacheState = data ? 'HIT' : 'MISS';
 
-    const data: KPICard[] = rows.map((row) => {
-      const payload = parseStoredPayload(row.value);
-      const cardName = (payload.cardName || '').toString().trim() || row.name.replace(KPI_CARD_KEY_PREFIX, '');
-      const cardRows = Array.isArray(payload.rows) ? payload.rows : [];
-      return toCardRecord(cardName, cardRows, row.updatedAt, payload.updatedBy);
-    });
+    if (!data) {
+      const rows = await prisma.estimatingConstant.findMany({
+        where: {
+          category: KPI_CARD_CATEGORY,
+          name: { startsWith: KPI_CARD_KEY_PREFIX },
+        },
+        orderBy: { name: 'asc' },
+      });
 
-    return NextResponse.json({
+      data = rows.map((row) => {
+        const payload = parseStoredPayload(row.value);
+        const cardName = (payload.cardName || '').toString().trim() || row.name.replace(KPI_CARD_KEY_PREFIX, '');
+        const cardRows = Array.isArray(payload.rows) ? payload.rows : [];
+        return toCardRecord(cardName, cardRows, row.updatedAt, payload.updatedBy);
+      });
+      setCachedValue(KPI_CARDS_CACHE_KEY, data, KPI_CARDS_CACHE_TTL_MS);
+    }
+
+    const etag = buildCardsETag(data);
+    if (ifNoneMatchContainsETag(request.headers.get('if-none-match'), etag)) {
+      const notModified = new NextResponse(null, { status: 304 });
+      notModified.headers.set('ETag', etag);
+      notModified.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+      notModified.headers.set('X-Cache', cacheState);
+      return notModified;
+    }
+
+    const response = NextResponse.json({
       success: true,
       data,
       source: 'database',
       fallback: false,
     });
+    response.headers.set('ETag', etag);
+    response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+    response.headers.set('X-Cache', cacheState);
+    return response;
   } catch (error) {
     console.error('Failed to fetch KPI cards:', error);
     return NextResponse.json(
@@ -182,6 +221,7 @@ export async function POST(request: NextRequest) {
     });
 
     const updatedCard = toCardRecord(cardName, rows, record.updatedAt, updatedBy);
+    invalidateCacheByPrefix(KPI_CARDS_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,

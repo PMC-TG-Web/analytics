@@ -108,7 +108,7 @@
 		{
 			"label": "Check Long Term Schedule",
 			"type": "shell",
-			"command": "node -e \"import { initializeApp } from 'firebase/app'; import { getFirestore, collection, getDocs, limit, query } from 'firebase/firestore'; import { readFileSync } from 'fs'; const firebaseConfig = JSON.parse(readFileSync('src/firebaseConfig.json', 'utf8')); const app = initializeApp(firebaseConfig); const db = getFirestore(app); async function check() { const q = query(collection(db, 'long term schedual'), limit(1)); const snap = await getDocs(q); if (!snap.empty) { console.log('Found long term schedual documents'); console.log('jobKey:', snap.docs[0].data().jobKey); } else { console.log('long term schedual is empty'); } process.exit(0); } check();\""
+			"command": "node -e \"console.log('Check Long Term Schedule task removed (legacy dependency retired).')\""
 		},
 		{
 			"label": "Check Job Key Formats Final",
@@ -123,7 +123,7 @@
 		{
 			"label": "Verify Procore Iframe Headers",
 			"type": "shell",
-			"command": "node scripts/verifyIframeHeaders.mjs https://analytics-nine-phi.vercel.app"
+			"command": "node scripts/verifyIframeHeaders.mjs https://analyticspmc.netlify.app"
 		}
 	]
 }

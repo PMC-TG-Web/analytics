@@ -1,11 +1,24 @@
 import { prisma } from '@/lib/prisma';
+import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const ESTIMATING_CONSTANTS_CACHE_PREFIX = 'estimating-constants:';
+const ESTIMATING_CONSTANTS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const cacheKey = buildSearchParamsCacheKey(`${ESTIMATING_CONSTANTS_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<{ success: boolean; data: unknown[]; rebarData: unknown[] }>(cacheKey);
+    if (cached) {
+      const response = NextResponse.json(cached);
+      response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const category = searchParams.get('category');
 
     const where = category
@@ -32,11 +45,17 @@ export async function GET(request: NextRequest) {
       console.warn('Could not fetch rebar constants:', err);
     }
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       data: constants,
       rebarData: rebarConstants,
-    });
+    };
+    setCachedValue(cacheKey, payload, ESTIMATING_CONSTANTS_CACHE_TTL_MS);
+
+    const response = NextResponse.json(payload);
+    response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+    response.headers.set('X-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch constants:', error);
     return NextResponse.json(
@@ -65,6 +84,9 @@ export async function POST(request: NextRequest) {
         category: category || 'General',
       },
     });
+
+    invalidateCacheByPrefix(ESTIMATING_CONSTANTS_CACHE_PREFIX);
+    invalidateCacheByPrefix('kpi-cards:');
 
     return NextResponse.json({
       success: true,
@@ -100,6 +122,9 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    invalidateCacheByPrefix(ESTIMATING_CONSTANTS_CACHE_PREFIX);
+    invalidateCacheByPrefix('kpi-cards:');
+
     return NextResponse.json({
       success: true,
       data: constant,
@@ -128,6 +153,9 @@ export async function DELETE(request: NextRequest) {
     await prisma.estimatingConstant.delete({
       where: { id },
     });
+
+    invalidateCacheByPrefix(ESTIMATING_CONSTANTS_CACHE_PREFIX);
+    invalidateCacheByPrefix('kpi-cards:');
 
     return NextResponse.json({
       success: true,

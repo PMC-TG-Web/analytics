@@ -427,6 +427,7 @@ export async function POST(request: Request) {
                   if (!fetchAll || projectFormItems.length < perPage) break;
                   fallbackPage += 1;
                   if (fallbackPage > 50) break;
+                  await new Promise((r) => setTimeout(r, 150));
                 }
 
                 if (fallbackSucceeded) {
@@ -504,12 +505,14 @@ export async function POST(request: Request) {
                 if (!fetchAll || formItems.length < perPage) break;
                 formsPage += 1;
                 if (formsPage > 50) break;
+                await new Promise((r) => setTimeout(r, 150));
               }
             }
 
             if (!fetchAll || packageItems.length < perPage) break;
             bidPackagesPage += 1;
             if (bidPackagesPage > 50) break;
+            await new Promise((r) => setTimeout(r, 150));
           }
         }
       } else {
@@ -546,6 +549,7 @@ export async function POST(request: Request) {
         if (!fetchAll || items.length < perPage) break;
         currentPage += 1;
         if (currentPage - page > 50) break;
+        await new Promise((r) => setTimeout(r, 150));
       }
       }
     }

@@ -8,6 +8,8 @@ import { hasPageAccess, USER_PERMISSIONS } from "@/lib/permissions";
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
+const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
+const NAV_PERMISSIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface NavLink {
   href: string;
@@ -34,7 +36,7 @@ const navLinks: NavLink[] = [
   { href: "/procore/proposal-line-items-live", label: "Line Items", page: "procore" },
   { href: "/procore/commitments-live", label: "Commitments", page: "procore" },
   { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore" },
-  { href: "/analytics", label: "Analytics", page: "reporting" },
+  { href: "/analytics", label: "Analytics", page: "analytics" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "employees" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
@@ -74,13 +76,68 @@ export default function Navigation({
   useEffect(() => {
     if (!user?.email) return;
 
+    const normalizedEmail = user.email.toLowerCase();
+    const cacheKey = `${NAV_PERMISSIONS_CACHE_PREFIX}${normalizedEmail}`;
+
+    const applyPermissions = (email: string, permissions: string[]) => {
+      Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
+      USER_PERMISSIONS[email] = permissions;
+    };
+
+    // Defer sessionStorage access to avoid blocking the main thread during idle recovery
+    const checkCacheAsync = () => {
+      // Use requestIdleCallback if available to avoid blocking interactions
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(() => {
+          try {
+            const rawCached = sessionStorage.getItem(cacheKey);
+            if (rawCached) {
+              const parsed = JSON.parse(rawCached) as {
+                email?: string;
+                permissions?: unknown;
+                cachedAt?: number;
+              };
+              const isFresh =
+                typeof parsed.cachedAt === "number" &&
+                Date.now() - parsed.cachedAt < NAV_PERMISSIONS_CACHE_TTL_MS;
+              const cachedPermissions = Array.isArray(parsed.permissions)
+                ? parsed.permissions.filter((perm): perm is string => typeof perm === "string")
+                : [];
+
+              if (isFresh && parsed.email === normalizedEmail && cachedPermissions.length > 0) {
+                applyPermissions(normalizedEmail, cachedPermissions);
+                setPermissionsLoaded(true);
+                setPermissionsFailed(false);
+                return;
+              }
+            }
+          } catch {
+            // Ignore cache parse/storage issues
+          }
+          // If no fresh cache, proceed with fetch
+          loadPermissions();
+        });
+      } else {
+        // Fallback: defer with setTimeout to avoid blocking
+        setTimeout(loadPermissions, 0);
+      }
+    };
+
     const loadPermissions = async () => {
       try {
         console.log('Loading permissions for:', user.email);
+        
+        // Add abort signal with timeout to prevent fetch from blocking indefinitely
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+        
         const res = await fetch('/api/permissions/me', { 
           method: 'GET',
-          credentials: 'include'
+          credentials: 'include',
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!res.ok) {
           console.error('Permissions fetch failed:', res.status, res.statusText);
@@ -98,19 +155,57 @@ export default function Navigation({
           : data.data?.permissions;
 
         if (data.data?.email && Array.isArray(responsePermissions)) {
-          Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
-          USER_PERMISSIONS[data.data.email.toLowerCase()] = responsePermissions;
+          const nextEmail = data.data.email.toLowerCase();
+          const nextPermissions = responsePermissions.filter((perm: unknown): perm is string => typeof perm === "string");
+          applyPermissions(nextEmail, nextPermissions);
+          // Defer sessionStorage write to avoid blocking main thread
+          if ("requestIdleCallback" in window) {
+            requestIdleCallback(() => {
+              try {
+                sessionStorage.setItem(
+                  `${NAV_PERMISSIONS_CACHE_PREFIX}${nextEmail}`,
+                  JSON.stringify({
+                    email: nextEmail,
+                    permissions: nextPermissions,
+                    cachedAt: Date.now(),
+                  })
+                );
+              } catch {
+                // Ignore storage failures
+              }
+            });
+          } else {
+            setTimeout(() => {
+              try {
+                sessionStorage.setItem(
+                  `${NAV_PERMISSIONS_CACHE_PREFIX}${nextEmail}`,
+                  JSON.stringify({
+                    email: nextEmail,
+                    permissions: nextPermissions,
+                    cachedAt: Date.now(),
+                  })
+                );
+              } catch {
+                // Ignore storage failures
+              }
+            }, 0);
+          }
           console.log('USER_PERMISSIONS updated:', USER_PERMISSIONS);
         }
+        setPermissionsFailed(false);
         setPermissionsLoaded(true);
       } catch (error) {
-        console.error('Failed to load permissions:', error);
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.warn('Permission fetch timed out after 3s');
+        } else {
+          console.error('Failed to load permissions:', error);
+        }
         setPermissionsFailed(true);
         setPermissionsLoaded(true);
       }
     };
 
-    loadPermissions();
+    checkCacheAsync();
   }, [user?.email]);
 
   useEffect(() => {
@@ -151,17 +246,18 @@ export default function Navigation({
     return null;
   }
 
-  // If user is logged in but we haven't checked permissions yet, show loading
-  if (user?.email && !permissionsLoaded) {
-    return (
-      <nav className="flex items-center justify-end gap-2 px-2 py-1">
-        <span className="text-[11px] text-gray-500">Loading navigation...</span>
-      </nav>
-    );
-  }
+  const hasResolvedPermissionsForUser = Boolean(
+    user?.email && USER_PERMISSIONS[user.email.toLowerCase()]?.length
+  );
 
   const canAccessLink = (link: NavLink) => {
     if (!user?.email) return false;
+
+    // Keep navigation functional while permission hydration is in flight
+    // or temporarily unavailable; backend route guards still enforce access.
+    if (!permissionsLoaded && !hasResolvedPermissionsForUser) return true;
+    if (permissionsFailed && !hasResolvedPermissionsForUser) return true;
+
     return hasPageAccess(user.email, link.page);
   };
 
@@ -178,11 +274,11 @@ export default function Navigation({
         key={link.href}
         href={link.href}
         className={`
-          px-2.5 py-1.5 rounded text-[11px] font-black no-underline transition-colors
+          px-2.5 py-1.5 rounded text-[11px] font-black no-underline transition-colors active:scale-95
           ${
             isActive
               ? "bg-teal-700 text-white border border-teal-800"
-              : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300"
+              : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 active:bg-gray-400"
           }
         `}
       >

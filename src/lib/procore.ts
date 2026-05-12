@@ -23,6 +23,11 @@ export const procoreConfig = {
   redirectUri: (process.env.NEXT_PUBLIC_REDIRECT_URI || `${process.env.AUTH0_BASE_URL || 'http://localhost:3000'}/api/auth/procore/callback`).trim(),
 };
 
+export function isProcoreLiveApiEnabled(): boolean {
+  const value = String(process.env.PROCORE_LIVE_API_ENABLED || '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -98,6 +103,10 @@ export async function getAccessToken(code: string): Promise<ProcoreTokenResponse
 // This token has company-level access to all projects (vs. user OAuth which is scoped to the user's memberships).
 let _cachedServiceToken: { token: string; expiresAt: number } | null = null;
 export async function getClientCredentialsToken(): Promise<string> {
+  // NOTE: No PROCORE_LIVE_API_ENABLED check here — client credentials are a
+  // pure server-to-server call (cron, webhooks). The live API gate in
+  // middleware already protects browser/user-initiated routes.
+
   if (_cachedServiceToken && Date.now() < _cachedServiceToken.expiresAt - 30_000) {
     return _cachedServiceToken.token;
   }
@@ -176,6 +185,10 @@ export async function makeRequest(
   companyIdOverride?: string,
   quietStatuses: number[] = []
 ): Promise<unknown> {
+  if (!isProcoreLiveApiEnabled()) {
+    throw new Error('PROCORE_LIVE_API_DISABLED: Set PROCORE_LIVE_API_ENABLED=true to allow outbound Procore API requests.');
+  }
+
   const apiUrl = (procoreConfig.apiUrl || '').trim();
   const url = `${apiUrl}${endpoint}`;
   const cleanToken = (accessToken || '').trim();

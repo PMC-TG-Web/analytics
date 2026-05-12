@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  APP_BASE_URL = "https://analyticspmc.netlify.app"
+  AUTH0_BASE_URL = "https://analyticspmc.netlify.app"
+  # Public Procore endpoint URL variables are not secrets; omit these keys from scanner checks.
+  SECRETS_SCAN_OMIT_KEYS = "PROCORE_API_URL,PROCORE_AUTH_URL"
+
+[functions]
+  directory = "netlify/functions"
+

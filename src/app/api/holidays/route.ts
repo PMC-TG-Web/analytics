@@ -1,12 +1,25 @@
 import { prisma } from '@/lib/prisma';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
+import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const HOLIDAYS_CACHE_PREFIX = 'holidays:';
+const HOLIDAYS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const cacheKey = buildSearchParamsCacheKey(`${HOLIDAYS_CACHE_PREFIX}get`, searchParams);
+    const cached = getCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      const response = NextResponse.json(cached);
+      response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
     const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '100', 10) || 100;
     const pageSize = Math.min(500, Math.max(1, requestedPageSize));
@@ -32,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       count: holidays.length,
       total,
@@ -42,7 +55,14 @@ export async function GET(request: NextRequest) {
       hasNextPage: page < totalPages,
       hasPreviousPage: page > 1,
       data: holidays,
-    });
+    };
+
+    setCachedValue(cacheKey, payload, HOLIDAYS_CACHE_TTL_MS);
+
+    const response = NextResponse.json(payload);
+    response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+    response.headers.set('X-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch holidays:', error);
     if (shouldFallbackToEmptyRead(error)) {
@@ -98,6 +118,8 @@ export async function POST(request: NextRequest) {
           })
         : { count: 0 };
 
+      invalidateCacheByPrefix(HOLIDAYS_CACHE_PREFIX);
+
       return NextResponse.json({
         success: true,
         data: holidays,
@@ -122,6 +144,8 @@ export async function POST(request: NextRequest) {
         description: description || null,
       },
     });
+
+    invalidateCacheByPrefix(HOLIDAYS_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,
@@ -158,6 +182,8 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    invalidateCacheByPrefix(HOLIDAYS_CACHE_PREFIX);
+
     return NextResponse.json({
       success: true,
       data: holiday,
@@ -186,6 +212,8 @@ export async function DELETE(request: NextRequest) {
     await prisma.holiday.delete({
       where: { id },
     });
+
+    invalidateCacheByPrefix(HOLIDAYS_CACHE_PREFIX);
 
     return NextResponse.json({
       success: true,

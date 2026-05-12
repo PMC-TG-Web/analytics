@@ -28,6 +28,28 @@ const HEAVY_API_ROUTE_PREFIXES = [
   '/api/procore/sync/project-commercial-data',
 ];
 
+const PROCORE_LIVE_API_ROUTE_PREFIXES = [
+  '/api/procore/sync',
+  '/api/procore/projects',
+  '/api/procore/vendors',
+  '/api/procore/prime-contracts',
+  '/api/procore/change-order-packages',
+  '/api/procore/company-users',
+  '/api/procore/configurable-field-sets',
+  '/api/procore/custom-fields',
+  '/api/procore/project-stages',
+  '/api/procore/estimating/bid-board-projects',
+  '/api/procore/estimating/bid-board-project-by-id',
+  '/api/procore/estimating/catalogs',
+  '/api/procore/estimating/catalog-items',
+  '/api/procore/estimating/estimating-project',
+  '/api/procore/estimating/proposals',
+  '/api/procore/estimating/proposals-bulk',
+  '/api/procore/estimating/proposal-line-items',
+  '/api/procore/estimating/proposal-line-items-bulk',
+  '/api/procore/estimating/proposal-line-item-groups',
+];
+
 type PermissionCheckResult = {
   allowed: boolean;
   permissionsCookie?: string | null;
@@ -66,6 +88,10 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
     }
   }
 
+  if (pathname === '/api/concrete-orders' || pathname.startsWith('/api/concrete-orders/')) {
+    permissions.add('concrete-orders-schedule');
+  }
+
   return Array.from(permissions);
 }
 
@@ -81,6 +107,17 @@ function isHeavyApiRoutePath(pathname: string) {
   return HEAVY_API_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+}
+
+function isProcoreLiveApiRoutePath(pathname: string) {
+  return PROCORE_LIVE_API_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+function isProcoreLiveApiEnabled(): boolean {
+  const value = String(process.env.PROCORE_LIVE_API_ENABLED || '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
 }
 
 function getApiRatePolicy(pathname: string) {
@@ -163,6 +200,11 @@ export async function middleware(request: NextRequest) {
   const isAuthApiRoute = pathname.startsWith('/api/auth/');
   const isInternalPermissionCheckRoute = pathname === INTERNAL_PERMISSION_CHECK_ROUTE;
   const isPublicVersionRoute = pathname === '/api/public/version';
+  const isProcoreWebhookReceiverRoute = pathname === '/api/webhooks/procore';
+  const isProcoreWebhookProcessRoute = pathname === '/api/webhooks/procore/process';
+  const isNetlifyScheduledSyncFunctionRoute =
+    pathname === '/.netlify/functions/scheduled-sync' ||
+    pathname.startsWith('/.netlify/functions/scheduled-sync/');
   const isDiagnosticsOrTestApiRoute = matchesDiagnosticsOrTestRoute(
     pathname,
     DIAGNOSTICS_OR_TEST_API_ROUTES
@@ -208,6 +250,19 @@ export async function middleware(request: NextRequest) {
     | null = null;
 
   if (isApiRoute) {
+    // Allow cron/sync-secret callers to bypass the live API gate so the scheduled
+    // sync can run regardless of the PROCORE_LIVE_API_ENABLED flag value.
+    if (isProcoreLiveApiRoutePath(pathname) && !isProcoreLiveApiEnabled() && !hasValidSyncSecret(request)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Procore live API access is disabled',
+          details: 'Set PROCORE_LIVE_API_ENABLED=true only for controlled maintenance windows.',
+        },
+        { status: 503 }
+      );
+    }
+
     const clientId = getClientIdentifier(request.headers);
     const ratePolicy = getApiRatePolicy(pathname);
     apiRateLimit = checkRateLimit({
@@ -262,6 +317,26 @@ export async function middleware(request: NextRequest) {
 
   // Allow login handoff page (used to break out of iframe before Auth0 redirect)
   if (pathname === '/auth/start') {
+    return NextResponse.next();
+  }
+
+  // Allow external Procore webhook deliveries without Auth0 session checks.
+  if (isProcoreWebhookReceiverRoute) {
+    return NextResponse.next();
+  }
+
+  // Allow worker trigger calls from server-to-server callers with sync secret.
+  if (isProcoreWebhookProcessRoute && hasValidSyncSecret(request)) {
+    return NextResponse.next();
+  }
+
+  // Allow Netlify scheduled function route without Auth0 session redirects.
+  if (isNetlifyScheduledSyncFunctionRoute) {
+    return NextResponse.next();
+  }
+
+  // Allow cron/sync — protected by its own CRON_SECRET header check inside the route.
+  if (pathname === '/api/cron/sync' || pathname.startsWith('/api/cron/sync/')) {
     return NextResponse.next();
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { prisma } from '@/lib/prisma';
+import { getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 
 type JobTitleRow = { id: string; title: string };
 type JobTitleDbRow = { id: string; title: string };
@@ -15,6 +16,9 @@ const defaultTitles = [
   'Office Staff',
   'Executive',
 ];
+
+const JOB_TITLES_CACHE_KEY = 'job-titles:list';
+const JOB_TITLES_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function getStorePath() {
   return path.join(process.cwd(), 'public', 'job-titles.json');
@@ -76,13 +80,28 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const cached = getCachedValue<JobTitleRow[]>(JOB_TITLES_CACHE_KEY);
+    if (cached) {
+      const response = NextResponse.json({
+        success: true,
+        data: cached,
+      });
+      response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+      response.headers.set('X-Cache', 'HIT');
+      return response;
+    }
+
     await backfillTitlesIfEmpty();
     const jobTitles = await listTitles();
+    setCachedValue(JOB_TITLES_CACHE_KEY, jobTitles, JOB_TITLES_CACHE_TTL_MS);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: jobTitles,
     });
+    response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
+    response.headers.set('X-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch job titles:', error);
     return NextResponse.json(
@@ -121,6 +140,8 @@ export async function POST(request: NextRequest) {
       INSERT INTO job_titles (id, title)
       VALUES (${created.id}, ${created.title})
     `;
+
+    invalidateCacheByPrefix('job-titles:');
 
     return NextResponse.json({
       success: true,

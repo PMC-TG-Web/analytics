@@ -4,16 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/resolveFailedMigration.mjs && prisma migrate deploy && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test test/*.test.mjs",
+    "procore:webhook:list": "node scripts/registerProcoreWebhook.mjs",
+    "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
+    "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",
     "verify:headers": "node scripts/verifyIframeHeaders.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.14.1",
     "@prisma/client": "^6",
+    "@prisma/extension-accelerate": "^3.0.1",
     "chart.js": "^4.4.1",
     "csv-parse": "^6.1.0",
     "csv-parser": "^3.2.0",
@@ -22,6 +26,7 @@
     "jspdf-autotable": "^5.0.7",
     "next": "16.1.1",
     "pdfjs-dist": "^5.4.296",
+    "pg": "^8.20.0",
     "react": "19.2.3",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "19.2.3",
@@ -30,6 +35,7 @@
     "twilio": "^5.12.2"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.2.0",
     "@opentelemetry/api": "^1.9.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.35",

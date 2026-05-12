@@ -5,6 +5,7 @@ import { getInternalVendorSet, isInternalCustomerName, isMeaningfulCustomer } fr
 
 export type GanttV2ProjectRow = {
   id: string;
+  jobKey?: string | null;
   projectName: string;
   customer: string | null;
   projectNumber: string | null;
@@ -62,6 +63,7 @@ export type GanttV2LongTermSummary = {
 
 export type GanttV2ProjectWithScopes = {
   id: string;
+  jobKey?: string | null;
   projectName: string;
   customer: string | null;
   projectNumber: string | null;
@@ -208,6 +210,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
         `
           CREATE TABLE IF NOT EXISTS gantt_v2_projects (
             id TEXT PRIMARY KEY,
+            job_key TEXT,
             project_name TEXT NOT NULL,
             customer TEXT,
             project_number TEXT,
@@ -253,6 +256,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
           );
         `,
         `ALTER TABLE gantt_v2_scopes ADD COLUMN IF NOT EXISTS predecessor_scope_id TEXT REFERENCES gantt_v2_scopes(id) ON DELETE SET NULL;`,
+        `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS job_key TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_company_id TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_external_id TEXT;`,
@@ -263,6 +267,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_project_owner_type_id TEXT;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_procore_created_at TIMESTAMPTZ;`,
         `ALTER TABLE gantt_v2_projects ADD COLUMN IF NOT EXISTS source_procore_updated_at TIMESTAMPTZ;`,
+        `UPDATE gantt_v2_projects SET job_key = CONCAT(COALESCE(customer, ''), '~', COALESCE(project_number, ''), '~', COALESCE(project_name, '')) WHERE COALESCE(NULLIF(TRIM(job_key), ''), NULL) IS NULL;`,
         `UPDATE gantt_v2_projects SET source = CASE WHEN COALESCE(NULLIF(TRIM(source_company_id), ''), NULL) IS NOT NULL AND COALESCE(NULLIF(TRIM(source_external_id), ''), NULL) IS NOT NULL THEN 'procore' ELSE 'app' END WHERE COALESCE(NULLIF(TRIM(source), ''), NULL) IS NULL;`,
         `
           UPDATE gantt_v2_projects p
@@ -647,6 +652,7 @@ export async function consolidateDuplicateGanttV2Projects(): Promise<void> {
     const internalVendorSet = getInternalVendorSet();
     const rows = await prisma.$queryRawUnsafe<Array<{
       id: string;
+      job_key: string | null;
       project_name: string;
       customer: string | null;
       project_number: string | null;
@@ -661,6 +667,7 @@ export async function consolidateDuplicateGanttV2Projects(): Promise<void> {
     }>>(`
       SELECT
         p.id,
+        p.job_key,
         p.project_name,
         p.customer,
         p.project_number,
@@ -1204,6 +1211,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
     const normalizedProjectId = String(projectId || '').trim();
     const rows = await prisma.$queryRawUnsafe<Array<{
       id: string;
+      job_key: string | null;
       project_name: string;
       customer: string | null;
       project_number: string | null;
@@ -1226,6 +1234,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
       `
       SELECT
         p.id,
+        p.job_key,
         p.project_name,
         p.customer,
         p.project_number,
@@ -1248,6 +1257,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
       LEFT JOIN gantt_v2_scopes s ON s.project_id = p.id
       ${normalizedProjectId ? 'WHERE p.id = $1' : ''}
       GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, p.source,
+               p.job_key,
                p.source_company_id, p.source_external_id, p.source_project_id, p.source_staging_project_id,
                p.source_display_name, p.source_project_owner_type, p.source_project_owner_type_id,
                p.source_procore_created_at, p.source_procore_updated_at
@@ -1258,6 +1268,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
 
     return rows.map((row) => ({
       id: row.id,
+      jobKey: row.job_key,
       projectName: row.project_name,
       customer: row.customer,
       projectNumber: row.project_number,
@@ -1717,7 +1728,15 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   }
 
   const legacyScopesByIdentity = new Map<string, typeof legacyScopes>();
+  const legacyScopesByJobKey = new Map<string, typeof legacyScopes>();
   for (const scope of legacyScopes) {
+    const exactJobKey = String(scope.jobKey || '').trim();
+    if (exactJobKey) {
+      const byJobKeyRows = legacyScopesByJobKey.get(exactJobKey) || [];
+      byJobKeyRows.push(scope);
+      legacyScopesByJobKey.set(exactJobKey, byJobKeyRows);
+    }
+
     const [customer = '', , projectName = ''] = String(scope.jobKey || '').split('~');
     const key = `${normalizeIdentity(customer)}||${normalizeIdentity(projectName)}`;
     if (!key || key === '||' || !giantIdentityKeys.has(key)) continue;
@@ -1841,13 +1860,19 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
     }
   }
   
-  // For each project, fetch its scopes and schedule allocations
+  // Fetch all scopes in a single query instead of N individual queries (N+1 optimization)
+  const projectIds = projects.map((p) => p.id);
+  const scopesByProjectId = await getGanttV2ScopesForProjects(projectIds);
+  
+  // For each project, process its scopes and schedule allocations
   const projectsWithScopes: GanttV2ProjectWithScopes[] = await Promise.all(
     projects.map(async (project) => {
-      let scopes = await getGanttV2Scopes(project.id);
+      let scopes = scopesByProjectId.get(project.id) || [];
 
       const projectIdentityKey = `${normalizeIdentity(project.customer)}||${normalizeIdentity(project.projectName)}`;
+      const projectJobKey = String(project.jobKey || `${String(project.customer || '').trim()}~${String(project.projectNumber || '').trim()}~${String(project.projectName || '').trim()}`).trim();
       const legacyForProject = legacyScopesByIdentity.get(projectIdentityKey) || [];
+      const legacyForProjectByJobKey = legacyScopesByJobKey.get(projectJobKey) || [];
       const isProtectedLegacyProject = giantIdentityKeys.has(projectIdentityKey);
       const canonicalCommercialTitles = (() => {
         const poTitles = poTitlesByIdentity.get(projectIdentityKey) || [];
@@ -1885,6 +1910,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         }
 
         if (insertedLegacyScope) {
+          // Refetch this project's scopes after inserting legacy scope
           scopes = await getGanttV2Scopes(project.id);
         }
       }
@@ -2074,7 +2100,12 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         normalizeIdentity(value || '');
 
       const scopesWithTasks = scopes.map((scope) => {
-        if (!isProtectedLegacyProject) {
+        const candidateLegacyScopes =
+          legacyForProjectByJobKey.length > 0
+            ? legacyForProjectByJobKey
+            : (isProtectedLegacyProject ? legacyForProject : []);
+
+        if (candidateLegacyScopes.length === 0) {
           return {
             ...scope,
             tasks: [],
@@ -2084,14 +2115,14 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         const scopeStart = toSqlDate(scope.startDate);
         const scopeEnd = toSqlDate(scope.endDate);
 
-        const exactMatch = legacyForProject.find((legacyScope) =>
+        const exactMatch = candidateLegacyScopes.find((legacyScope) =>
           normalizeTitle(legacyScope.title) === normalizeTitle(scope.title) &&
           toSqlDate(legacyScope.startDate) === scopeStart &&
           toSqlDate(legacyScope.endDate) === scopeEnd
         );
 
         const titleOnlyMatch = !exactMatch
-          ? legacyForProject.find(
+          ? candidateLegacyScopes.find(
               (legacyScope) => normalizeTitle(legacyScope.title) === normalizeTitle(scope.title)
             )
           : null;
@@ -2227,6 +2258,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
       
       return {
         ...project,
+        jobKey: String(project.jobKey || '').trim() || `${String(project.customer || '').trim()}~${String(project.projectNumber || '').trim()}~${String(project.projectName || '').trim()}`,
         scopeCount: displayScopes.length,
         scopedHours: isProtectedLegacyProject ? effectiveScopedHours : displayScopes.reduce((sum, scope) => sum + Number(scope.totalHours || 0), 0),
         scopes: displayScopes,
@@ -2238,6 +2270,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   return projectsWithScopes;
 }
 
+/**
+ * Fetch scopes for a single project (used for individual project scope loads)
+ */
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
@@ -2293,6 +2328,79 @@ export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeR
       remainingHours: Math.max(totalHours - scheduledHours, 0),
     };
   });
+}
+
+/**
+ * Fetch scopes for multiple projects in a single query (replaces N+1 loop pattern)
+ */
+export async function getGanttV2ScopesForProjects(
+  projectIds: string[]
+): Promise<Map<string, GanttV2ScopeRow[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    id: string;
+    project_id: string;
+    predecessor_scope_id: string | null;
+    title: string;
+    start_date: Date | null;
+    end_date: Date | null;
+    total_hours: number;
+    crew_size: number | null;
+    notes: string | null;
+    scheduled_hours: number;
+  }>>(
+    `
+      SELECT
+        s.id,
+        s.project_id,
+        s.predecessor_scope_id,
+        s.title,
+        s.start_date,
+        s.end_date,
+        s.total_hours,
+        s.crew_size,
+        s.notes,
+        CASE
+          WHEN s.start_date IS NULL OR s.end_date IS NULL OR COALESCE(s.total_hours, 0) <= 0
+            THEN 0
+          ELSE COALESCE(SUM(e.scheduled_hours), 0)
+        END::float8 AS scheduled_hours
+      FROM gantt_v2_scopes s
+      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
+      WHERE s.project_id = ANY($1::text[])
+      GROUP BY s.id
+      ORDER BY s.created_at ASC;
+    `,
+    projectIds
+  );
+
+  const scopesByProjectId = new Map<string, GanttV2ScopeRow[]>();
+  for (const row of rows) {
+    const totalHours = Number(row.total_hours || 0);
+    const scheduledHours = Number(row.scheduled_hours || 0);
+    const scope: GanttV2ScopeRow = {
+      id: row.id,
+      projectId: row.project_id,
+      predecessorScopeId: row.predecessor_scope_id,
+      title: row.title,
+      startDate: row.start_date ? row.start_date.toISOString().split('T')[0] : null,
+      endDate: row.end_date ? row.end_date.toISOString().split('T')[0] : null,
+      totalHours,
+      crewSize: row.crew_size === null ? null : Number(row.crew_size),
+      notes: row.notes,
+      scheduledHours,
+      remainingHours: Math.max(totalHours - scheduledHours, 0),
+    };
+    if (!scopesByProjectId.has(row.project_id)) {
+      scopesByProjectId.set(row.project_id, []);
+    }
+    scopesByProjectId.get(row.project_id)!.push(scope);
+  }
+
+  return scopesByProjectId;
 }
 
 export async function getGanttV2LongTermSummary(startMonth?: string, months = 15): Promise<GanttV2LongTermSummary> {

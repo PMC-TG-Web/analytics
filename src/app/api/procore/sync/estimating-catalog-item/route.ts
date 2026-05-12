@@ -32,22 +32,24 @@ async function upsertEstimatingCatalogItem(params: {
   name?: string | null;
   code?: string | null;
   costCodeId?: string | null;
+  catalogId?: string | null;
   payload: unknown;
   dynamicFields?: Record<string, unknown>;
 }) {
-  const { companyId, itemId, baseUrl, name, code, costCodeId, payload, dynamicFields = {} } = params;
+  const { companyId, itemId, baseUrl, name, code, costCodeId, catalogId, payload, dynamicFields = {} } = params;
 
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO procore_estimating_catalog_item_staging
-        (company_id, item_id, base_url, name, code, cost_code_id, payload, dynamic_fields, synced_at)
+        (company_id, item_id, base_url, name, code, cost_code_id, catalog_id, payload, dynamic_fields, synced_at)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW())
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, NOW())
       ON CONFLICT (company_id, item_id, base_url)
       DO UPDATE SET
         name = EXCLUDED.name,
         code = EXCLUDED.code,
         cost_code_id = EXCLUDED.cost_code_id,
+        catalog_id = EXCLUDED.catalog_id,
         payload = EXCLUDED.payload,
         dynamic_fields = EXCLUDED.dynamic_fields,
         synced_at = NOW()
@@ -58,6 +60,7 @@ async function upsertEstimatingCatalogItem(params: {
     name ?? null,
     code ?? null,
     costCodeId ?? null,
+    catalogId ?? null,
     JSON.stringify(payload),
     JSON.stringify(dynamicFields)
   );
@@ -304,6 +307,7 @@ export async function POST(request: Request) {
         name,
         code,
         costCodeId,
+        catalogId: catalogIdFilter || null,
         payload: itemPayload,
         dynamicFields: payloadObj,
       });
@@ -603,6 +607,7 @@ export async function POST(request: Request) {
           name,
           code,
           costCodeId,
+          catalogId: resolvedCatalogId || catalogIdFilter || null,
           payload: item,
           dynamicFields: buildDynamicFieldsFromPayload(item),
         });

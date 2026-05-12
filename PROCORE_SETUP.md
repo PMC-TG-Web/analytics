@@ -22,7 +22,12 @@ PROCORE_API_URL=https://api.sandbox.procore.com
 PROCORE_AUTH_URL=https://sandbox.procore.com/oauth/authorize
 PROCORE_TOKEN_URL=https://api.sandbox.procore.com/oauth/token
 NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/api/auth/procore/callback
+PROCORE_WEBHOOK_SHARED_SECRET=replace-with-random-secret
+PROCORE_SYNC_SECRET=replace-with-random-secret
+PROCORE_LIVE_API_ENABLED=false
 ```
+
+`PROCORE_LIVE_API_ENABLED` is an emergency safety switch. Keep it `false` or unset in production so page traffic and admin clicks cannot make outbound Procore sync calls. Set it to `true` only during a controlled maintenance window.
 
 ### 2. Start the Development Server
 
@@ -65,7 +70,7 @@ Once you explore and see what data is available, we can:
 1. **Create more specific endpoints** to fetch particular data
 2. **Build dashboard widgets** to display Procore data
 3. **Integrate with your existing KPI dashboard**
-4. **Sync Procore data with Firebase** if needed
+4. **Sync Procore data into Postgres/Prisma** if needed
 5. **Create custom reports** based on Procore data
 
 Let me know what data looks interesting to you, and I'll integrate it into the main dashboard!

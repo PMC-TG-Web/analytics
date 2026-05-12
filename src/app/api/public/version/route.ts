@@ -8,10 +8,10 @@ function clean(value: string | undefined): string | null {
 }
 
 export async function GET() {
-  const commitSha = clean(process.env.VERCEL_GIT_COMMIT_SHA) || clean(process.env.GIT_COMMIT_SHA);
-  const branch = clean(process.env.VERCEL_GIT_COMMIT_REF) || clean(process.env.GIT_BRANCH);
-  const deployedAt = clean(process.env.VERCEL_DEPLOYMENT_CREATED_AT) || null;
-  const environment = clean(process.env.VERCEL_ENV) || process.env.NODE_ENV || 'unknown';
+  const commitSha = clean(process.env.GIT_COMMIT_SHA);
+  const branch = clean(process.env.GIT_BRANCH);
+  const deployedAt = clean(process.env.DEPLOY_TIME) || null;
+  const environment = clean(process.env.CONTEXT) || process.env.NODE_ENV || 'unknown';
 
   return NextResponse.json(
     {

@@ -13,12 +13,67 @@ type ToolResponse = {
   [key: string]: unknown;
 };
 
+type SyncAllStep = {
+  step: string;
+  path: string;
+  payload: Record<string, unknown>;
+};
+
 function toPrettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
   }
+}
+
+function normalizeToolError(error: unknown, actionLabel: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  const looksLikeTimeoutHtml =
+    normalized.includes("inactivity timeout") ||
+    normalized.includes("gateway timeout") ||
+    normalized.includes("non-json content: <html");
+
+  if (!looksLikeTimeoutHtml) {
+    return message;
+  }
+
+  return `${message}. This usually means the platform timed out the request before JSON returned. Try running smaller sync actions or re-running Sync All (which now executes step-by-step client-side).`;
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+function shouldRetryChunk(errorMessage: string, statusCode: number): boolean {
+  if (statusCode === 429) return true;
+  // Do NOT retry timeouts or aborts — they will just time out again
+  const normalized = errorMessage.toLowerCase();
+  if (
+    normalized.includes("inactivity timeout") ||
+    normalized.includes("gateway timeout") ||
+    normalized.includes("aborted") ||
+    normalized.includes("abort") ||
+    normalized.includes("the user aborted")
+  ) return false;
+  if (statusCode >= 500) return true;
+  return (
+    normalized.includes("internal error while processing your request") ||
+    normalized.includes("non-json content")
+  );
 }
 
 export default function ProcoreProjectsFeedToolsPage() {
@@ -587,10 +642,249 @@ export default function ProcoreProjectsFeedToolsPage() {
         toPrettyJson({
           action: actionLabel,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: normalizeToolError(error, actionLabel),
         })
       );
       setLastStatus("error");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function runSyncAllClient() {
+    setBusyAction("Sync All");
+    setLastStatus("running");
+
+    const today = new Date().toISOString().split("T")[0];
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    const steps: SyncAllStep[] = [
+      { step: "all-projects", path: "/api/procore/sync/all-projects", payload: { fetchAll: true } },
+      { step: "prime-contracts", path: "/api/procore/sync/prime-contracts", payload: { concurrency: 2 } },
+      { step: "change-order-packages", path: "/api/procore/sync/change-order-packages", payload: { perPage: 100 } },
+      { step: "commitment-contracts", path: "/api/procore/sync/commitment-contracts", payload: { concurrency: 1, perPage: 100 } },
+      { step: "commitment-change-order-line-items", path: "/api/procore/sync/commitment-change-order-line-items", payload: { concurrency: 2 } },
+      { step: "bids", path: "/api/procore/sync/bids", payload: { companyWide: true, fetchAll: true } },
+      { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 1, perPage: 100 } },
+      { step: "productivity-projects", path: "/api/procore/sync/productivity-projects", payload: { startDate: ninetyDaysAgo, endDate: today, concurrency: 2 } },
+      { step: "budget-line-items", path: "/api/procore/sync/budget-line-items", payload: { fetchAll: true, perPage: 100 } },
+      { step: "company-users", path: "/api/procore/sync/company-users", payload: {} },
+      { step: "vendors", path: "/api/procore/sync/vendors", payload: {} },
+      { step: "estimating-catalogs", path: "/api/procore/sync/estimating-catalogs", payload: {} },
+    ];
+
+    const heavyStepNames = new Set([
+      "change-order-packages",
+      "commitment-contracts",
+      "timecard-entries",
+      "productivity-projects",
+      "budget-line-items",
+    ]);
+
+    const heavyStepConfig: Record<string, { chunkSize: number; maxAttempts: number; pauseMs: number }> = {
+      "change-order-packages": { chunkSize: 24, maxAttempts: 1, pauseMs: 350 },
+      "commitment-contracts": { chunkSize: 8, maxAttempts: 1, pauseMs: 500 },
+      "timecard-entries": { chunkSize: 6, maxAttempts: 1, pauseMs: 500 },
+      "productivity-projects": { chunkSize: 24, maxAttempts: 1, pauseMs: 350 },
+      "budget-line-items": { chunkSize: 4, maxAttempts: 1, pauseMs: 500 },
+    };
+
+    const started = Date.now();
+    const results: Array<Record<string, unknown>> = [];
+
+    try {
+      let cachedProjectIds: string[] | null = null;
+
+      const loadProjectIds = async (): Promise<string[]> => {
+        if (cachedProjectIds) return cachedProjectIds;
+
+        const ids = new Set<string>();
+        let page = 1;
+        const pageSize = 1000;
+
+        while (true) {
+          const res = await fetch(`/api/procore/projects-feed?syncSource=procore_v1_projects&page=${page}&pageSize=${pageSize}`, {
+            method: "GET",
+            credentials: "include",
+          });
+
+          const body = await readJsonResponse<Record<string, unknown>>(res, {
+            label: "projects-feed response",
+            fallback: {},
+          });
+
+          const rows = Array.isArray(body.data) ? body.data : [];
+          for (const row of rows) {
+            const record = row as Record<string, unknown>;
+            const id = String(record.procoreId || record.externalId || "").trim();
+            if (id) ids.add(id);
+          }
+
+          const totalPages = Number(body.totalPages || 1);
+          if (!res.ok || page >= totalPages || rows.length === 0) break;
+          page += 1;
+        }
+
+        cachedProjectIds = Array.from(ids);
+        return cachedProjectIds;
+      };
+
+      for (const step of steps) {
+        try {
+          if (heavyStepNames.has(step.step)) {
+            const projectIds = await loadProjectIds();
+            const config = heavyStepConfig[step.step] || { chunkSize: 20, maxAttempts: 1, pauseMs: 250 };
+            const chunks = chunkArray(projectIds, config.chunkSize);
+            const chunkResults: Array<Record<string, unknown>> = [];
+
+            for (const chunk of chunks) {
+              const payload = { ...step.payload, projectIds: chunk };
+              let chunkResolved = false;
+
+              for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
+                let res: Response;
+                const fetchController = new AbortController();
+                const fetchTimeoutId = window.setTimeout(() => fetchController.abort(), 35_000);
+                try {
+                  res = await fetch(step.path, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                    signal: fetchController.signal,
+                  });
+                } catch (error) {
+                  window.clearTimeout(fetchTimeoutId);
+                  const retryMessage = normalizeToolError(error, step.step);
+                  const canRetry = attempt < config.maxAttempts && shouldRetryChunk(retryMessage, 0);
+
+                  if (!canRetry) {
+                    chunkResults.push({
+                      ok: false,
+                      status: 0,
+                      attempt,
+                      projectIds: chunk,
+                      error: retryMessage,
+                    });
+                    chunkResolved = true;
+                    break;
+                  }
+
+                  const backoffMs = Math.max(1500, config.pauseMs * (attempt + 2));
+                  await wait(backoffMs);
+                  continue;
+                }
+
+                window.clearTimeout(fetchTimeoutId);
+                let body: ToolResponse | Record<string, unknown> = {};
+                let parseErrorMessage: string | null = null;
+
+                try {
+                  body = await readJsonResponse<ToolResponse>(res, {
+                    label: `${step.step} response`,
+                    fallback: {},
+                  });
+                } catch (error) {
+                  parseErrorMessage = normalizeToolError(error, step.step);
+                }
+
+                const chunkOk = res.ok && !parseErrorMessage;
+
+                if (chunkOk) {
+                  chunkResults.push({
+                    ok: true,
+                    status: res.status,
+                    attempt,
+                    projectIds: chunk,
+                    summary: body,
+                  });
+                  chunkResolved = true;
+                  break;
+                }
+
+                const retryAfterSeconds = Number.parseInt(res.headers.get("Retry-After") || "0", 10) || 0;
+                const retryMessage = parseErrorMessage || String((body as Record<string, unknown>)?.error || "Request failed");
+                const canRetry = attempt < config.maxAttempts && shouldRetryChunk(retryMessage, res.status);
+
+                if (!canRetry) {
+                  chunkResults.push({
+                    ok: false,
+                    status: res.status,
+                    attempt,
+                    projectIds: chunk,
+                    summary: body,
+                    error: retryMessage,
+                  });
+                  chunkResolved = true;
+                  break;
+                }
+
+                const backoffMs = Math.max(1500, retryAfterSeconds * 1000, config.pauseMs * (attempt + 2));
+                await wait(backoffMs);
+              }
+
+              if (!chunkResolved) {
+                chunkResults.push({
+                  ok: false,
+                  status: 0,
+                  projectIds: chunk,
+                  error: `${step.step} chunk failed without a resolved response`,
+                });
+              }
+
+              await wait(config.pauseMs);
+            }
+
+            const stepOk = chunkResults.every((row) => row.ok === true);
+            results.push({
+              step: step.step,
+              ok: stepOk,
+              chunks: chunkResults.length,
+              failedChunks: chunkResults.filter((row) => row.ok !== true).length,
+              summary: { chunkResults },
+            });
+            continue;
+          }
+
+          const res = await fetch(step.path, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(step.payload),
+          });
+
+          const body = await readJsonResponse<ToolResponse>(res, {
+            label: `${step.step} response`,
+            fallback: {},
+          });
+
+          results.push({
+            step: step.step,
+            ok: res.ok,
+            status: res.status,
+            summary: body,
+          });
+        } catch (error) {
+          results.push({
+            step: step.step,
+            ok: false,
+            error: normalizeToolError(error, step.step),
+          });
+        }
+      }
+
+      const elapsedMs = Date.now() - started;
+      const allOk = results.every((row) => row.ok === true);
+
+      setOutput(
+        toPrettyJson({
+          action: "Sync All",
+          ok: allOk,
+          elapsedMs,
+          steps: results,
+        })
+      );
+      setLastStatus(allOk ? "ok" : "error");
     } finally {
       setBusyAction(null);
     }
@@ -641,6 +935,15 @@ export default function ProcoreProjectsFeedToolsPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* ── SYNC ALL ─────────────────────────────────────── */}
+              <button
+                disabled={disableSyncActions}
+                onClick={runSyncAllClient}
+                className="sm:col-span-2 px-4 py-4 rounded-xl bg-violet-700 text-white font-black text-sm uppercase tracking-widest hover:bg-violet-800 disabled:opacity-50 border-2 border-violet-500"
+              >
+                {busyAction === "Sync All" ? "⏳ Syncing All — Please Wait..." : "⚡ Sync All (Projects → Contracts → Change Orders → Commitments → Bids)"}
+              </button>
+
               <button
                 disabled={disableSyncActions}
                 onClick={() => runPost(endpointExamples.statusRefreshQuick, "Status Refresh Quick", {

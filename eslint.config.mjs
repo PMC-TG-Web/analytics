@@ -18,7 +18,6 @@ const eslintConfig = defineConfig([
     "logs/**",
     "snapshots/**",
     "scripts/**",
-    "scripts-archived-firebase/**",
     "utils/**",
     "**/*.js",
     "**/*.mjs",

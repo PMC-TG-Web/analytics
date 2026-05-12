@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildSearchParamsCacheKey, getCachedValue, setCachedValue } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,19 @@ type ProjectBudgetRow = {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const disableCache = String(searchParams.get('noCache') || '').trim().toLowerCase() === 'true';
+    const cacheKey = buildSearchParamsCacheKey('scheduling-projects-with-budget', searchParams, ['noCache']);
+
+    if (!disableCache) {
+      const cachedPayload = getCachedValue<Record<string, unknown>>(cacheKey);
+      if (cachedPayload) {
+        const cachedResponse = NextResponse.json(cachedPayload);
+        cachedResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+        cachedResponse.headers.set('X-Data-Cache', 'HIT');
+        return cachedResponse;
+      }
+    }
+
     const rawBidBoardStatus = searchParams.get('bidBoardStatus');
     const bidBoardStatus = String(rawBidBoardStatus ?? 'IN_PROGRESS').trim();
     const bidBoardStatusFilter =
@@ -60,9 +74,7 @@ export async function GET(request: NextRequest) {
       companyId,
       bidBoardStatusFilter
     );
-
-
-    return NextResponse.json({
+    const payload = {
       success: true,
       count: rows.length,
       bidBoardStatus: bidBoardStatusFilter,
@@ -79,7 +91,16 @@ export async function GET(request: NextRequest) {
         uoms: row.uoms || '',
         syncedAt: row.syncedat,
       })),
-    });
+    };
+
+    if (!disableCache) {
+      setCachedValue(cacheKey, payload, 30_000);
+    }
+
+    const response = NextResponse.json(payload);
+    response.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+    response.headers.set('X-Data-Cache', 'MISS');
+    return response;
   } catch (error) {
     console.error('Failed to fetch projects with budget:', error);
     return NextResponse.json(

@@ -62,17 +62,20 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    return NextResponse.json({
-      success: true,
-      count: formattedEmployees.length,
-      total,
-      page,
-      pageSize,
-      totalPages,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-      data: formattedEmployees,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        count: formattedEmployees.length,
+        total,
+        page,
+        pageSize,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+        data: formattedEmployees,
+      },
+      { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } }
+    );
   } catch (error) {
     console.error('Failed to fetch employees:', error);
     if (shouldFallbackToEmptyRead(error)) {

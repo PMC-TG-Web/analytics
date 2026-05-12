@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Navigation from "@/components/Navigation";
 
 type PersistedLineItem = {
@@ -100,7 +100,6 @@ type TrendPoint = {
 };
 
 const DEFAULT_COMPANY_ID = "598134325658789";
-const PAGE_SIZE = 1000;
 const MAX_PAGES = 100;
 const PRESET_STORAGE_KEY = "analytics:advanced-presets";
 
@@ -223,13 +222,6 @@ function csvCell(value: unknown): string {
   return `"${raw.replace(/"/g, '""')}"`;
 }
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
 
 export default function AnalyticsPage() {
   const [rows, setRows] = useState<PersistedLineItem[]>([]);
@@ -247,6 +239,16 @@ export default function AnalyticsPage() {
   const [presetName, setPresetName] = useState<string>("");
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [sortCol, setSortCol] = useState<string>("projectName");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = useCallback((col: string) => {
+    setSortCol((prev) => {
+      if (prev === col) return col;
+      return col;
+    });
+    setSortDir((prev) => (sortCol === col ? (prev === "asc" ? "desc" : "asc") : "asc"));
+  }, [sortCol]);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -292,57 +294,45 @@ export default function AnalyticsPage() {
         });
       }
 
-      const allRows: PersistedLineItem[] = [];
-      const chunks = chunkArray(budgetProjects, 12);
+      const budgetProjectIds = budgetProjects
+        .map((p) => String(p.procoreProjectId || "").trim())
+        .filter(Boolean);
 
-      for (const projectChunk of chunks) {
-        const chunkRows = await Promise.all(
-          projectChunk.map(async (project) => {
-            const projectId = String(project.procoreProjectId || "").trim();
-            if (!projectId) return [] as PersistedLineItem[];
+      const bulkUrl = new URL("/api/procore/budget-line-items-bulk", window.location.origin);
+      bulkUrl.searchParams.set("companyId", DEFAULT_COMPANY_ID);
+      bulkUrl.searchParams.set("projectIds", budgetProjectIds.join(","));
+      bulkUrl.searchParams.set("actualsMode", "cost-code");
 
-            const url = new URL("/api/procore/budget-line-items-live", window.location.origin);
-            url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
-            url.searchParams.set("projectId", projectId);
-            url.searchParams.set("pageSize", String(PAGE_SIZE));
-            url.searchParams.set("actualsMode", "cost-code");
-            url.searchParams.set("_ts", String(Date.now()));
+      const bulkResponse = await fetch(bulkUrl.toString(), { cache: "no-store" });
+      const bulkBody: BudgetLineApiResponse = await bulkResponse.json();
 
-            const response = await fetch(url.toString(), { cache: "no-store" });
-            const body: BudgetLineApiResponse = await response.json();
-            if (!response.ok || body.success === false) {
-              return [] as PersistedLineItem[];
-            }
-
-            const rows = Array.isArray(body.data) ? body.data : [];
-            const meta = projectMeta.get(projectId);
-
-            return rows.map((row) => ({
-              id: `${projectId}:${row.id}`,
-              projectName: meta?.projectName || null,
-              customerName: meta?.customerName || null,
-              projectId,
-              costCode: row.costCode,
-              costCodeName: row.costCodeDescription || null,
-              lineItemType: row.lineItemType || null,
-              uom: row.uom,
-              quantity: row.quantity,
-              unitCost: row.unitCost,
-              originalBudgetAmount: row.originalBudgetAmount,
-              amount: row.amount,
-              totalCost: Number(row.originalBudgetAmount || 0),
-              totalSales: Number(row.amount || 0),
-              actualTimecardHours: Number(row.actualTimecardHours || 0),
-              actualProductivityQty: Number(row.actualProductivityQty || 0),
-              syncedAt: row.syncedAt,
-            }));
-          })
-        );
-
-        for (const rowsForProject of chunkRows) {
-          allRows.push(...rowsForProject);
-        }
+      if (!bulkResponse.ok || bulkBody.success === false) {
+        throw new Error(bulkBody.error || `Failed to load budget data (${bulkResponse.status})`);
       }
+
+      const allRows: PersistedLineItem[] = (Array.isArray(bulkBody.data) ? bulkBody.data : []).map((row) => {
+        const projectId = String(row.projectId || "").trim();
+        const meta = projectMeta.get(projectId);
+        return {
+          id: `${projectId}:${row.id}`,
+          projectName: meta?.projectName || null,
+          customerName: meta?.customerName || null,
+          projectId,
+          costCode: row.costCode,
+          costCodeName: row.costCodeDescription || null,
+          lineItemType: row.lineItemType || null,
+          uom: row.uom,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+          originalBudgetAmount: row.originalBudgetAmount,
+          amount: row.amount,
+          totalCost: Number(row.originalBudgetAmount || 0),
+          totalSales: Number(row.amount || 0),
+          actualTimecardHours: Number(row.actualTimecardHours || 0),
+          actualProductivityQty: Number(row.actualProductivityQty || 0),
+          syncedAt: row.syncedAt,
+        };
+      });
 
       setRows(allRows);
       setNote(
@@ -643,11 +633,10 @@ export default function AnalyticsPage() {
       "costCodeName",
       "uom",
       "effectiveUnitCost",
-      "timecardHours",
-      "productivityQty",
+      "budgetQty",
       "actualUnits",
+      "qtyVariance",
       "runningCost",
-      "originalBudgetAmount",
       "budgetAmount",
     ];
 
@@ -663,11 +652,10 @@ export default function AnalyticsPage() {
           row.costCodeName || "",
           row.uom || "",
           getEffectiveUnitCost(row).toFixed(2),
-          Number(row.actualTimecardHours || 0).toFixed(1),
-          Number(row.actualProductivityQty || 0).toFixed(1),
+          Number(row.quantity || 0).toFixed(2),
           getActualUnits(row).toFixed(1),
+          (Number(row.quantity || 0) - getActualUnits(row)).toFixed(2),
           getRunningCost(row).toFixed(2),
-          Number(row.originalBudgetAmount || 0).toFixed(2),
           Number(row.amount || 0).toFixed(2),
         ]
           .map(csvCell)
@@ -688,37 +676,162 @@ export default function AnalyticsPage() {
     URL.revokeObjectURL(url);
   }, [filteredRows]);
 
+  const groupedRows = useMemo(() => {
+    const map = new Map<string, { budgetQty: number; actualUnits: number; runningCost: number; budgetAmount: number; rowCount: number; lines: PersistedLineItem[] }>();
+    for (const row of filteredRows) {
+      const name = row.costCodeName || "(no name)";
+      const prefix = name.includes(".") ? name.slice(0, name.lastIndexOf(".")).trim() : name.trim();
+      const words = prefix.split(/\s+/);
+      const group = words.length >= 2 ? words.slice(-2).join(" ") : prefix;
+      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, runningCost: 0, budgetAmount: 0, rowCount: 0, lines: [] };
+      existing.budgetQty += Number(row.quantity || 0);
+      existing.actualUnits += getActualUnits(row);
+      existing.runningCost += getRunningCost(row);
+      existing.budgetAmount += Number(row.amount || 0);
+      existing.rowCount += 1;
+      existing.lines.push(row);
+      map.set(group, existing);
+    }
+    return Array.from(map.entries())
+      .map(([group, totals]) => ({ group, ...totals, qtyVariance: totals.budgetQty - totals.actualUnits }))
+      .sort((a, b) => a.group.localeCompare(b.group));
+  }, [filteredRows]);
+
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = useCallback((group: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  }, []);
+
+  const exportGroupedCsv = useCallback(() => {
+    const headers = [
+      "rowType",
+      "category",
+      "project",
+      "customer",
+      "costCode",
+      "costCodeName",
+      "uom",
+      "effectiveUnitCost",
+      "lines",
+      "budgetQty",
+      "actualUnits",
+      "qtyVariance",
+      "runningCost",
+      "budgetAmount",
+    ];
+    const lines = [headers.map(csvCell).join(",")];
+    for (const g of groupedRows) {
+      lines.push(
+        [
+          "group",
+          g.group,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          g.rowCount,
+          g.budgetQty.toFixed(2),
+          g.actualUnits.toFixed(2),
+          g.qtyVariance.toFixed(2),
+          g.runningCost.toFixed(2),
+          g.budgetAmount.toFixed(2),
+        ]
+          .map(csvCell)
+          .join(",")
+      );
+
+      for (const row of g.lines) {
+        lines.push(
+          [
+            "line-item",
+            g.group,
+            row.projectName || "",
+            row.customerName || "",
+            row.costCode || "",
+            row.costCodeName || "",
+            row.uom || "",
+            getEffectiveUnitCost(row).toFixed(2),
+            "",
+            Number(row.quantity || 0).toFixed(2),
+            getActualUnits(row).toFixed(2),
+            (Number(row.quantity || 0) - getActualUnits(row)).toFixed(2),
+            getRunningCost(row).toFixed(2),
+            Number(row.amount || 0).toFixed(2),
+          ]
+            .map(csvCell)
+            .join(",")
+        );
+      }
+    }
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    link.href = url;
+    link.download = `analytics-grouped-${timestamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [groupedRows]);
+
   const tableTotals = useMemo(() => {
     let unitCostTotal = 0;
-    let tcHoursTotal = 0;
-    let prodQtyTotal = 0;
+    let budgetQtyTotal = 0;
     let actualUnitsTotal = 0;
     let runningCostTotal = 0;
-    let originalBudgetTotal = 0;
     let budgetAmountTotal = 0;
 
     for (const row of filteredRows) {
       unitCostTotal += getEffectiveUnitCost(row);
-      tcHoursTotal += Number(row.actualTimecardHours || 0);
-      prodQtyTotal += Number(row.actualProductivityQty || 0);
+      budgetQtyTotal += Number(row.quantity || 0);
       actualUnitsTotal += getActualUnits(row);
       runningCostTotal += getRunningCost(row);
-      originalBudgetTotal += Number(row.originalBudgetAmount || 0);
       budgetAmountTotal += Number(row.amount || 0);
     }
 
     return {
       unitCostTotal,
-      tcHoursTotal,
-      prodQtyTotal,
+      budgetQtyTotal,
       actualUnitsTotal,
+      qtyVarianceTotal: budgetQtyTotal - actualUnitsTotal,
       runningCostTotal,
-      originalBudgetTotal,
       budgetAmountTotal,
     };
   }, [filteredRows]);
 
-  const previewRows = useMemo(() => filteredRows.slice(0, 250), [filteredRows]);
+  const previewRows = useMemo(() => {
+    const sorted = [...filteredRows].sort((a, b) => {
+      let av: string | number = 0;
+      let bv: string | number = 0;
+      switch (sortCol) {
+        case "syncedAt":      av = a.syncedAt || ""; bv = b.syncedAt || ""; break;
+        case "projectName":   av = (a.projectName || "").toLowerCase(); bv = (b.projectName || "").toLowerCase(); break;
+        case "customerName":  av = (a.customerName || "").toLowerCase(); bv = (b.customerName || "").toLowerCase(); break;
+        case "costCode":      av = (a.costCode || "").toLowerCase(); bv = (b.costCode || "").toLowerCase(); break;
+        case "costCodeName":  av = (a.costCodeName || "").toLowerCase(); bv = (b.costCodeName || "").toLowerCase(); break;
+        case "uom":           av = (a.uom || "").toLowerCase(); bv = (b.uom || "").toLowerCase(); break;
+        case "quantity":      av = Number(a.quantity || 0); bv = Number(b.quantity || 0); break;
+        case "unitCost":      av = getEffectiveUnitCost(a); bv = getEffectiveUnitCost(b); break;
+        case "actualUnits":   av = getActualUnits(a); bv = getActualUnits(b); break;
+        case "runningCost":   av = getRunningCost(a); bv = getRunningCost(b); break;
+        case "qtyVariance":   av = Number(a.quantity || 0) - getActualUnits(a); bv = Number(b.quantity || 0) - getActualUnits(b); break;
+        case "amount":        av = Number(a.amount || 0); bv = Number(b.amount || 0); break;
+        default: av = ""; bv = "";
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted.slice(0, 250);
+  }, [filteredRows, sortCol, sortDir]);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -926,46 +1039,64 @@ export default function AnalyticsPage() {
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-left uppercase tracking-wider text-slate-500">
-                  <th className="py-2 pr-3 pl-4">Synced Date</th>
-                  <th className="py-2 pr-3">Project</th>
-                  <th className="py-2 pr-3">Customer</th>
-                  <th className="py-2 pr-3">Cost Code</th>
-                  <th className="py-2 pr-3">Cost Code Name</th>
-                  <th className="py-2 pr-3">UOM</th>
-                  <th className="py-2 pr-3 text-right">Unit Cost (Eff)</th>
-                  <th className="py-2 pr-3 text-right">TC Hours</th>
-                  <th className="py-2 pr-3 text-right">Prod Qty</th>
-                  <th className="py-2 pr-3 text-right">Actual Units</th>
-                  <th className="py-2 pr-3 text-right">Running Cost</th>
-                  <th className="py-2 pr-3 text-right">Original Budget</th>
-                  <th className="py-2 pr-4 text-right">Budget Amount</th>
+                  {(
+                    [
+                      ["syncedAt", "Synced Date"],
+                      ["projectName", "Project"],
+                      ["customerName", "Customer"],
+                      ["costCode", "Cost Code"],
+                      ["costCodeName", "Cost Code Name"],
+                      ["uom", "UOM"],
+                      ["unitCost", "Unit Cost (Eff)"],
+                      ["quantity", "Budget Qty"],
+                      ["actualUnits", "Actual Units"],
+                      ["qtyVariance", "Qty Variance"],
+                      ["runningCost", "Running Cost"],
+                      ["amount", "Budget Amount"],
+                    ] as [string, string][]
+                  ).map(([col, label]) => {
+                    const isActive = sortCol === col;
+                    const numeric = ["quantity","unitCost","actualUnits","qtyVariance","runningCost","amount"].includes(col);
+                    return (
+                      <th
+                        key={col}
+                        onClick={() => handleSort(col)}
+                        className={`cursor-pointer select-none py-2 pr-3 ${col === "syncedAt" ? "pl-4" : ""} ${numeric ? "text-right" : ""} hover:text-slate-800 ${isActive ? "text-teal-700" : ""}`}
+                      >
+                        {label}{isActive ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {!loading && previewRows.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan={12} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
                       No rows match these filters.
                     </td>
                   </tr>
                 )}
-                {previewRows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 text-slate-800">
-                    <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(row.syncedAt) || "-"}</td>
-                    <td className="py-2 pr-3">{row.projectName || "-"}</td>
-                    <td className="py-2 pr-3">{row.customerName || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
-                    <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualTimecardHours || 0))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(Number(row.actualProductivityQty || 0))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(Number(row.originalBudgetAmount || 0))}</td>
-                    <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(Number(row.amount || 0))}</td>
-                  </tr>
-                ))}
+                {previewRows.map((row) => {
+                  const qtyVariance = Number(row.quantity || 0) - getActualUnits(row);
+                  const isOver = qtyVariance < 0;
+                  return (
+                    <tr key={row.id} className={`border-b border-slate-100 text-slate-800 ${isOver ? "bg-red-50" : ""}`}>
+                      <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(row.syncedAt) || "-"}</td>
+                      <td className="py-2 pr-3">{row.projectName || "-"}</td>
+                      <td className="py-2 pr-3">{row.customerName || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
+                      <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
+                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${isOver ? "text-red-600" : ""}`}>{formatNumber(qtyVariance)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
+                      <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(Number(row.amount || 0))}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               {!loading && filteredRows.length > 0 && (
                 <tfoot>
@@ -977,19 +1108,16 @@ export default function AnalyticsPage() {
                       {formatCurrency(tableTotals.unitCostTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.tcHoursTotal)}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.prodQtyTotal)}
+                      {formatNumber(tableTotals.budgetQtyTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
                       {formatNumber(tableTotals.actualUnitsTotal)}
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatCurrency(tableTotals.runningCostTotal)}
+                    <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${tableTotals.qtyVarianceTotal < 0 ? "text-red-600" : ""}`}>
+                      {formatNumber(tableTotals.qtyVarianceTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatCurrency(tableTotals.originalBudgetTotal)}
+                      {formatCurrency(tableTotals.runningCostTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-4 text-right font-black">
                       {formatCurrency(tableTotals.budgetAmountTotal)}
@@ -997,6 +1125,97 @@ export default function AnalyticsPage() {
                   </tr>
                 </tfoot>
               )}
+            </table>
+          </div>
+        </section>
+
+        <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">
+              Grouped by Category ({groupedRows.length} groups)
+            </h2>
+            <button
+              type="button"
+              onClick={exportGroupedCsv}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="overflow-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-left uppercase tracking-wider text-slate-500">
+                  <th className="py-2 pr-3 pl-4">Category</th>
+                  <th className="py-2 pr-3 text-right">Lines</th>
+                  <th className="py-2 pr-3 text-right">Budget Qty</th>
+                  <th className="py-2 pr-3 text-right">Actual Units</th>
+                  <th className="py-2 pr-3 text-right">Qty Variance</th>
+                  <th className="py-2 pr-3 text-right">Running Cost</th>
+                  <th className="py-2 pr-4 text-right">Budget Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedRows.map((g) => {
+                  const isExpanded = expandedGroups.has(g.group);
+                  return (
+                    <React.Fragment key={g.group}>
+                      <tr
+                        onClick={() => toggleGroup(g.group)}
+                        className={`cursor-pointer border-b border-slate-100 text-slate-800 hover:bg-slate-50 ${g.qtyVariance < 0 ? "bg-red-50 hover:bg-red-100" : ""}`}
+                      >
+                        <td className="py-2 pr-3 pl-4 font-semibold">
+                          <span className="mr-2 text-slate-400">{isExpanded ? "▾" : "▸"}</span>
+                          {g.group}
+                        </td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right text-slate-500">{g.rowCount}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.budgetQty)}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.actualUnits)}</td>
+                        <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${g.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(g.qtyVariance)}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(g.runningCost)}</td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(g.budgetAmount)}</td>
+                      </tr>
+                      {isExpanded && g.lines.map((row) => {
+                        const qv = Number(row.quantity || 0) - getActualUnits(row);
+                        return (
+                          <tr key={row.id} className={`border-b border-slate-100 text-slate-600 ${qv < 0 ? "bg-red-50" : "bg-slate-50"}`}>
+                            <td className="py-1.5 pr-3 pl-10 text-[11px]">{row.costCodeName || "-"} <span className="ml-1 text-slate-400">{row.projectName}</span></td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px] text-slate-400">{row.costCode || "-"}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(Number(row.quantity || 0))}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(getActualUnits(row))}</td>
+                            <td className={`whitespace-nowrap py-1.5 pr-3 text-right text-[11px] font-semibold ${qv < 0 ? "text-red-600" : ""}`}>{formatNumber(qv)}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatCurrency(getRunningCost(row))}</td>
+                            <td className="whitespace-nowrap py-1.5 pr-4 text-right text-[11px]">{formatCurrency(Number(row.amount || 0))}</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+              {groupedRows.length > 0 && (() => {
+                const gt = groupedRows.reduce((acc, g) => ({
+                  budgetQty: acc.budgetQty + g.budgetQty,
+                  actualUnits: acc.actualUnits + g.actualUnits,
+                  qtyVariance: acc.qtyVariance + g.qtyVariance,
+                  runningCost: acc.runningCost + g.runningCost,
+                  budgetAmount: acc.budgetAmount + g.budgetAmount,
+                  rowCount: acc.rowCount + g.rowCount,
+                }), { budgetQty: 0, actualUnits: 0, qtyVariance: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 });
+                return (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
+                      <td className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">Totals</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black text-slate-500">{gt.rowCount}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.budgetQty)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.actualUnits)}</td>
+                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${gt.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(gt.qtyVariance)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatCurrency(gt.runningCost)}</td>
+                      <td className="whitespace-nowrap py-2 pr-4 text-right font-black">{formatCurrency(gt.budgetAmount)}</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
         </section>

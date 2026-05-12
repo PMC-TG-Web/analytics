@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
 import {
   normalizeDate,
   persistTimecardEntries,
@@ -10,6 +10,13 @@ import {
 type ProcoreProject = Record<string, unknown>;
 
 function parseCsv(value: unknown): string[] {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseCsvIds(value: unknown): string[] {
   return String(value || "")
     .split(",")
     .map((item) => item.trim())
@@ -49,6 +56,7 @@ async function fetchAllProjects(accessToken: string, companyId: string, maxProje
     if (pageItems.length < perPage) break;
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return projects;
@@ -91,6 +99,7 @@ async function fetchAllTimecardEntriesForProject(params: {
     if (pageEntries.length < params.perPage) break;
     page += 1;
     if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return entries;
@@ -124,10 +133,10 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
-    const accessToken =
+    const userAccessToken =
       cookieStore.get("procore_access_token")?.value ||
       String(body.accessToken || "").trim() ||
-      undefined;
+      "";
     const companyId = String(
       body.companyId ||
         cookieStore.get("procore_company_id")?.value ||
@@ -135,14 +144,21 @@ export async function POST(request: Request) {
         ""
     ).trim();
 
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          error: "Missing access token. Please authenticate via OAuth first or provide accessToken.",
-          connectUrl: "/api/auth/procore/login",
-        },
-        { status: 401 }
-      );
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Missing access token. Please authenticate via OAuth first or provide accessToken.",
+            connectUrl: "/api/auth/procore/login",
+          },
+          { status: 401 }
+        );
+      }
     }
 
     if (!companyId) {
@@ -175,7 +191,13 @@ export async function POST(request: Request) {
     );
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
-    const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+    const explicitProjectIds = Array.isArray(body.projectIds)
+      ? body.projectIds.map((v) => String(v || "").trim()).filter(Boolean)
+      : parseCsvIds(body.projectIds);
+
+    const projects = explicitProjectIds.length > 0
+      ? explicitProjectIds.map((id) => ({ id }))
+      : await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
 
     const summary = {
       success: true,

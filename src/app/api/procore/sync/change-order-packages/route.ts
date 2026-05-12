@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig } from '@/lib/procore';
+import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
 import {
   ensureChangeOrderPackagesTable,
@@ -26,6 +26,13 @@ type PrimeContractRecord = {
 
 function readText(value: unknown): string {
   return String(value ?? '').trim();
+}
+
+function parseCsvIds(value: unknown): string[] {
+  return String(value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function isAccessSkippedError(message: string): boolean {
@@ -148,7 +155,7 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
 
-    const accessToken = readText(
+    const userAccessToken = readText(
       body.accessToken || cookieStore.get('procore_access_token')?.value
     );
     const companyId = readText(
@@ -160,12 +167,20 @@ export async function POST(request: Request) {
     );
     const perPage = Math.min(200, Math.max(1, Number.parseInt(String(body.perPage || '100'), 10) || 100));
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { success: false, error: 'Missing access token. Please authenticate via OAuth first.' },
-        { status: 401 }
-      );
+    let accessToken: string;
+    if (userAccessToken) {
+      accessToken = userAccessToken;
+    } else {
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Missing access token. Please authenticate via OAuth first.' },
+          { status: 401 }
+        );
+      }
     }
+
 
     if (!companyId) {
       return NextResponse.json(
@@ -176,7 +191,13 @@ export async function POST(request: Request) {
 
     await ensureChangeOrderPackagesTable();
 
-    const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+    const explicitProjectIds = Array.isArray(body.projectIds)
+      ? body.projectIds.map((v) => readText(v)).filter((v) => v.length > 0)
+      : parseCsvIds(body.projectIds);
+
+    const projectIds = explicitProjectIds.length > 0
+      ? explicitProjectIds
+      : await getProjectIdsFromFeed(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {

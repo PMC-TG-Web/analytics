@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureGanttV2Schema } from '@/lib/ganttV2Db';
+import { invalidateCacheByPrefix } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,6 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
     await ensureGanttV2Schema();
     const { projectId } = await params;
 
-    // Get project info to construct jobKey for ActiveSchedule cleanup
     const project = await prisma.$queryRawUnsafe<Array<{
       customer: string | null;
       project_number: string | null;
@@ -30,24 +30,12 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
     const { customer, project_number, project_name } = project[0];
     const jobKey = `${customer || ''}~${project_number || ''}~${project_name || ''}`;
 
-    // Delete all ActiveSchedule entries for this project
     await prisma.activeSchedule.deleteMany({ where: { jobKey } });
-
-    // Delete all ProjectScope metadata rows for this project
     await prisma.projectScope.deleteMany({ where: { jobKey } });
+    await prisma.$executeRawUnsafe(`DELETE FROM gantt_v2_scopes WHERE project_id = $1`, projectId);
+    await prisma.$executeRawUnsafe(`DELETE FROM gantt_v2_projects WHERE id = $1`, projectId);
 
-    // Delete all gantt scopes (cascade would handle this but be explicit)
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM gantt_v2_scopes WHERE project_id = $1`,
-      projectId
-    );
-
-    // Delete the project
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM gantt_v2_projects WHERE id = $1`,
-      projectId
-    );
-
+    invalidateCacheByPrefix('gantt-v2:');
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(

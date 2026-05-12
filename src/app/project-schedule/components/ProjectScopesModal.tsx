@@ -1506,7 +1506,17 @@ export function ProjectScopesModal({
 
       if (selectedScopeId) {
         const direct = effectiveScopes.find((scope) => scope.id === selectedScopeId);
-        if (direct) return direct.id;
+        if (direct) {
+          const preferredTitle = normalizeText(selectedScopeTitle || direct.title || '');
+          const duplicateCandidates = effectiveScopes.filter((scope) => {
+            if (normalizeText(scope.title || '') !== preferredTitle) return false;
+            if (!selectedScheduleDate) return true;
+            return scopeMatchesSelectedDate(scope, selectedScheduleDate);
+          });
+
+          const bestDirectMatch = pickBestScope(duplicateCandidates);
+          return bestDirectMatch?.id || direct.id;
+        }
 
         const sourceScope = identityFallbackScopes.find((scope) => scope.id === selectedScopeId);
         if (sourceScope) {

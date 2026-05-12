@@ -2083,7 +2083,7 @@ export default function LongTermSchedulePage() {
       {selectedModalProject && (
         <ProjectScopesModal
           project={selectedModalProject}
-          scopes={scopesByJobKey[selectedModalProject.jobKey] || []}
+          scopes={getScopesForJobKey(scopesByJobKey, selectedModalProject.jobKey)}
           allScopes={scopesByJobKey}
           selectedScopeId={selectedModalScopeId}
           selectedScopeTitle={selectedModalScopeTitle}

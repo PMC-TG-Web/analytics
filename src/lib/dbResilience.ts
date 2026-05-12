@@ -24,8 +24,15 @@ export function isTransientDatabaseConnectionError(error: unknown): boolean {
 export function shouldFallbackToEmptyRead(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
 
+  // Transient connectivity issues should degrade read paths to empty payloads.
+  if (isTransientDatabaseConnectionError(error)) return true;
+
   // Prisma known request errors for missing table/column.
   if (message.includes('p2021') || message.includes('p2022')) return true;
+  if (message.includes('p1001') || message.includes('p1008') || message.includes('p1017')) return true;
+  if (message.includes('prismaclientinitializationerror')) return true;
+  if (message.includes('environment variable not found: database_url')) return true;
+  if (message.includes('invalid `prisma.')) return true;
 
   // Postgres errors surfaced through Prisma for schema drift or restricted DDL.
   if (message.includes('does not exist')) return true;

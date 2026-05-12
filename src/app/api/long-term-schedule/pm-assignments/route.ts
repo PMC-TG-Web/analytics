@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
+import { shouldFallbackToEmptyRead } from '@/lib/dbResilience';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,6 +146,9 @@ export async function GET() {
     );
   } catch (error) {
     console.error('Failed to fetch PM assignments:', error);
+    if (shouldFallbackToEmptyRead(error)) {
+      return NextResponse.json({ success: true, data: [] });
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to fetch PM assignments' },
       { status: 500 }

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncAllocationToActiveSchedule, deleteAllocationFromActiveSchedule } from '@/utils/syncActiveSchedule';
+import { shouldFallbackToEmptyRead } from '@/lib/dbResilience';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +125,12 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('Failed to fetch schedule allocations:', error);
+    if (shouldFallbackToEmptyRead(error)) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+      });
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to fetch allocations' },
       { status: 500 }

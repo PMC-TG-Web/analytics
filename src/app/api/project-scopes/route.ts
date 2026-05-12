@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncProjectScopeToActiveSchedule, deleteProjectScopeFromActiveSchedule } from '@/utils/syncActiveSchedule';
-import { getErrorMessage, withDatabaseRetry } from '@/lib/dbResilience';
+import { getErrorMessage, shouldFallbackToEmptyRead, withDatabaseRetry } from '@/lib/dbResilience';
 import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 
 export const dynamic = 'force-dynamic';
@@ -350,6 +350,14 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Failed to fetch project scopes:', error);
+    if (shouldFallbackToEmptyRead(error)) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        projects: [],
+        scopes: [],
+      });
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to fetch project scopes' },
       { status: 500 }

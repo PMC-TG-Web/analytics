@@ -1214,11 +1214,12 @@ export default function LongTermSchedulePage() {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && Number(data?.data?.updatedCount || 0) > 0) {
         await loadSchedules();
       } else {
-        console.error("Failed to assign foreman:", data.error);
-        alert("Failed to assign foreman: " + data.error);
+        const errorMessage = data?.error || "No matching schedule rows were updated";
+        console.error("Failed to assign foreman:", errorMessage);
+        alert("Failed to assign foreman: " + errorMessage);
       }
     } catch (err) {
       console.error("Error assigning foreman:", err);

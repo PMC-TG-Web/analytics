@@ -554,7 +554,7 @@ export function ProjectScopesModal({
       });
 
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result?.success) {
+      if (!response.ok || !result?.success || Number(result?.data?.updatedCount || 0) < 1) {
         throw new Error(result?.error || 'Failed to save foreman assignment');
       }
 

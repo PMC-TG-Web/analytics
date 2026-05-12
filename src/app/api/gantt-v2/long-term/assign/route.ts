@@ -8,7 +8,10 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { jobKey, scopeOfWork, weekStart, weekEnd, foreman } = body || {};
 
-    if (!jobKey || !scopeOfWork) {
+    const normalizedJobKey = String(jobKey || '').trim();
+    const normalizedScopeOfWork = String(scopeOfWork || '').trim();
+
+    if (!normalizedJobKey || !normalizedScopeOfWork) {
       return NextResponse.json(
         { success: false, error: 'jobKey and scopeOfWork are required' },
         { status: 400 }
@@ -19,9 +22,8 @@ export async function PATCH(request: NextRequest) {
 
     // Build where clause - if weekStart/weekEnd provided, filter by date range
     const whereClause: any = {
-      jobKey,
-      scopeOfWork,
-      source: 'gantt',
+      jobKey: normalizedJobKey,
+      scopeOfWork: normalizedScopeOfWork,
     };
 
     if (weekStart && weekEnd) {

@@ -115,6 +115,43 @@ const getDayProjectRenderKey = (project: DayProject, dateKey: string, foremanId:
   ].join('||');
 };
 
+const normalizeScopeKey = (scopeOfWork: string | undefined) =>
+  String(scopeOfWork || 'Scheduled Work').trim().toLowerCase();
+
+const mergeDayProjects = (projects: DayProject[]): DayProject[] => {
+  const mergedByKey = new Map<string, DayProject>();
+
+  projects.forEach((project) => {
+    const mergeKey = [
+      String(project.jobKey || '').trim(),
+      normalizeScopeKey(project.scopeOfWork),
+      String(project.foreman || '').trim(),
+      String(project.month || '').trim(),
+      String(project.weekNumber || ''),
+      String(project.dayNumber || ''),
+    ].join('||');
+
+    const existing = mergedByKey.get(mergeKey);
+    if (!existing) {
+      mergedByKey.set(mergeKey, {
+        ...project,
+        scopeOfWork: String(project.scopeOfWork || 'Scheduled Work').trim(),
+        employees: Array.isArray(project.employees)
+          ? Array.from(new Set(project.employees.filter(Boolean)))
+          : [],
+      });
+      return;
+    }
+
+    existing.hours = Number(existing.hours || 0) + Number(project.hours || 0);
+    existing.employees = Array.from(
+      new Set([...(existing.employees || []), ...((project.employees || []).filter(Boolean))])
+    );
+  });
+
+  return Array.from(mergedByKey.values());
+};
+
 export default function ShortTermSchedulePage() {
   return (
     <Suspense fallback={<div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>}>
@@ -1135,7 +1172,9 @@ function ShortTermScheduleContent() {
       // Reorganize projects by foreman and date for table view
       const foremanDateMap: Record<string, Record<string, DayProject[]>> = {};
       Object.entries(projectsByDay).forEach(([dateKey, projects]) => {
-        projects.forEach(project => {
+        const compactedProjects = mergeDayProjects(projects);
+
+        compactedProjects.forEach(project => {
           const rawForemanRef = project.foreman || "__unassigned__";
           const resolvedForemanId = foremanIdByRef.get(normalizeForemanRef(rawForemanRef)) || null;
           const fid = resolvedForemanId || "__unassigned__";
@@ -1564,6 +1603,7 @@ function ShortTermScheduleContent() {
                                     className="bg-white border-2 border-orange-50 p-3 rounded-xl shadow-sm active:scale-95 transition-all"
                                   >
                                    <div className="font-black text-gray-900 text-xs uppercase leading-tight italic truncate pr-8">{p.projectName}</div>
+                                   <div className="text-[9px] font-black uppercase tracking-widest text-orange-600 mt-1 truncate">{p.scopeOfWork || 'Scheduled Work'}</div>
                                    <div className="flex justify-between items-end mt-2">
                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">{p.customer}</div>
                                      <div className="bg-orange-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black shadow-sm shadow-orange-600/20">{p.hours.toFixed(0)} <span className="opacity-50">H</span></div>
@@ -1720,6 +1760,7 @@ function ShortTermScheduleContent() {
                                             </button>
 
                                             <div className="font-black text-gray-900 text-[11px] uppercase tracking-tight italic leading-tight mb-1 truncate pr-4">{project.projectName}</div>
+                                            <div className="text-[9px] font-black uppercase tracking-widest text-orange-600 truncate">{project.scopeOfWork || 'Scheduled Work'}</div>
                                             <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest truncate">{project.customer}</div>
                                             <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
                                               <input

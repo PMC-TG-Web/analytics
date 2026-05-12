@@ -762,33 +762,80 @@ function getProjectDisplayGroupKey(jobKey: string): string {
 
 function getDisplayProjects(projects: AllocationProject[]): DisplayProject[] {
   const grouped = new Map<string, DisplayProject>();
+  const buckets = new Map<
+    string,
+    {
+      project: AllocationProject;
+      scopeTitle: string;
+      normalizedJobKey: string;
+      projectNumberRaw: string;
+      normalizedProjectNumber: string;
+    }[]
+  >();
 
   projects.forEach((project) => {
-    const key = getProjectDisplayGroupKey(project.jobKey);
     const scopeTitle = String(project.scopeOfWork || "Unnamed Scope").trim() || "Unnamed Scope";
     const normalizedJobKey = normalizeJobKey(project.jobKey) || project.jobKey;
-    const existing = grouped.get(key);
+    const parts = project.jobKey.split("~");
+    const customer = normalizeDisplayKeySegment(parts[0] || "");
+    const projectNumberRaw = String(parts[1] || "").trim();
+    const normalizedProjectNumber = normalizeDisplayProjectNumber(projectNumberRaw);
+    const projectName = normalizeDisplayKeySegment(parts.slice(2).join("~") || "");
+    const bucketKey = customer && projectName ? `project:${customer}:${projectName}` : getProjectDisplayGroupKey(project.jobKey);
 
-    if (!existing) {
-      grouped.set(key, {
-        ...project,
-        groupKey: key,
-        scopeOfWork: scopeTitle,
-        jobKeys: [normalizedJobKey],
-        scopeCount: 1,
-        scopeTitles: [scopeTitle],
-      });
-      return;
+    if (!buckets.has(bucketKey)) {
+      buckets.set(bucketKey, []);
     }
 
-    existing.hours += project.hours;
-    if (!existing.jobKeys.includes(normalizedJobKey)) {
-      existing.jobKeys.push(normalizedJobKey);
-    }
-    if (!existing.scopeTitles.includes(scopeTitle)) {
-      existing.scopeTitles.push(scopeTitle);
-      existing.scopeCount = existing.scopeTitles.length;
-    }
+    buckets.get(bucketKey)!.push({
+      project,
+      scopeTitle,
+      normalizedJobKey,
+      projectNumberRaw,
+      normalizedProjectNumber,
+    });
+  });
+
+  buckets.forEach((entries, bucketKey) => {
+    const meaningfulNumbers = Array.from(
+      new Set(
+        entries
+          .map((entry) => entry.normalizedProjectNumber)
+          .filter((value) => Boolean(value) && !looksLikeProcoreProjectId(value))
+      )
+    );
+    const canonicalMeaningfulNumber = meaningfulNumbers[0] || "";
+
+    entries.forEach((entry) => {
+      const key =
+        canonicalMeaningfulNumber && bucketKey.startsWith("project:")
+          ? `${bucketKey}:${meaningfulNumbers.length > 1 && entry.normalizedProjectNumber && !looksLikeProcoreProjectId(entry.projectNumberRaw)
+            ? entry.normalizedProjectNumber
+            : canonicalMeaningfulNumber}`
+          : bucketKey;
+      const existing = grouped.get(key);
+
+      if (!existing) {
+        grouped.set(key, {
+          ...entry.project,
+          groupKey: key,
+          scopeOfWork: entry.scopeTitle,
+          jobKeys: [entry.normalizedJobKey],
+          scopeCount: 1,
+          scopeTitles: [entry.scopeTitle],
+        });
+        return;
+      }
+
+      existing.hours += entry.project.hours;
+      if (!existing.jobKeys.includes(entry.normalizedJobKey)) {
+        existing.jobKeys.push(entry.normalizedJobKey);
+      }
+      if (!existing.scopeTitles.includes(entry.scopeTitle)) {
+        existing.scopeTitles.push(entry.scopeTitle);
+        existing.scopeCount = existing.scopeTitles.length;
+      }
+    });
   });
 
   return Array.from(grouped.values()).sort((a, b) => getProjectNameFromJobKey(a.jobKey).localeCompare(getProjectNameFromJobKey(b.jobKey)));

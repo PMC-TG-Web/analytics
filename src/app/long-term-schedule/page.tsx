@@ -728,13 +728,33 @@ function normalizeDisplayKeySegment(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizeDisplayProjectNumber(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "");
+}
+
+function looksLikeProcoreProjectId(value: string): boolean {
+  return /^\d{8,}$/.test(value.trim());
+}
+
 function getProjectDisplayGroupKey(jobKey: string): string {
   const parts = jobKey.split("~");
   const customer = normalizeDisplayKeySegment(parts[0] || "");
+  const projectNumberRaw = String(parts[1] || "").trim();
+  const projectNumber = normalizeDisplayProjectNumber(projectNumberRaw);
   const projectName = normalizeDisplayKeySegment(parts.slice(2).join("~") || "");
+
+  // Prefer a stable number+name key, but ignore numeric Procore-id aliases so
+  // they collapse with the human project-number variant.
+  if (projectName && projectNumber && !looksLikeProcoreProjectId(projectNumberRaw)) {
+    return `project-number:${projectNumber}:${projectName}`;
+  }
 
   if (customer && projectName) {
     return `project:${customer}:${projectName}`;
+  }
+
+  if (projectName) {
+    return `project-name:${projectName}`;
   }
 
   return `job:${normalizeJobKey(jobKey) || jobKey}`;

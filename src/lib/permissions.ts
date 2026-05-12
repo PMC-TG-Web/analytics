@@ -5,20 +5,20 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting"
+    "certifications", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
      "estimating-tools", "constants", "equipment", 
-    "certifications", "kpi-cards-management", "holidays", "handbook", "reporting"
+    "certifications", "kpi-cards-management", "holidays", "handbook", "reporting", "analytics"
   ],
   "HR": [
     "home", "certifications", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
-    "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook"
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook", "analytics"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
@@ -251,6 +251,7 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/certifications', permission: 'certifications' },
   { prefix: '/kpi', permission: 'kpi' },
   { prefix: '/wip', permission: 'wip' },
+  { prefix: '/analytics', permission: 'analytics' },
   { prefix: '/', permission: 'home' },
 ];
 

@@ -139,6 +139,29 @@ const formatDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getWeekRangeFromDateKey = (dateKeyValue: string): { weekStart: string; weekEnd: string } | null => {
+  const parts = String(dateKeyValue || '').trim().split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dayOfWeek = date.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekStart = new Date(date);
+  weekStart.setDate(date.getDate() + mondayOffset);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+
+  return {
+    weekStart: formatDateKey(weekStart),
+    weekEnd: formatDateKey(weekEnd),
+  };
+};
+
 const normalizeText = (value: string | null | undefined) =>
   (value || "")
     .toLowerCase()
@@ -536,9 +559,8 @@ export function ProjectScopesModal({
   const handleLongTermForemanChange = async (nextForemanSelection: string) => {
     const assignmentContext = longTermAssignmentContext || autoLongTermAssignmentContext;
     if (!assignmentContext) return;
-    if (!assignmentContext.scopeOfWork) {
-      return;
-    }
+
+    const weekRange = selectedScheduleDate ? getWeekRangeFromDateKey(selectedScheduleDate) : null;
 
     try {
       setSavingAssignmentForeman(true);
@@ -550,6 +572,9 @@ export function ProjectScopesModal({
           jobKey: assignmentContext.jobKey,
           scopeOfWork: assignmentContext.scopeOfWork,
           foreman: nextForemanSelection === '__unassigned__' ? null : nextForemanSelection,
+          applyAcrossProject: true,
+          weekStart: weekRange?.weekStart,
+          weekEnd: weekRange?.weekEnd,
         }),
       });
 
@@ -2062,6 +2087,9 @@ export function ProjectScopesModal({
                 ? selectedScheduledHours
                 : scopeDetail.hours);
         const dayHours = typeof dayHoursRaw === 'number' ? dayHoursRaw : parseFloat(String(dayHoursRaw || '0'));
+        const foremanSelectionForSave =
+          assignmentForemanSelection ||
+          (selectedForemanId && selectedForemanId !== '__unassigned__' ? selectedForemanId : '__unassigned__');
 
         const response = await fetch('/api/short-term-schedule/move', {
           method: 'POST',
@@ -2071,7 +2099,8 @@ export function ProjectScopesModal({
             scopeOfWork: scopeName,
             sourceDateKey: selectedScheduleDate,
             targetDateKey: selectedScheduleDate,
-            targetForemanId: selectedForemanId === '__unassigned__' ? null : selectedForemanId,
+            targetForemanId: foremanSelectionForSave === '__unassigned__' ? null : foremanSelectionForSave,
+            applyForemanAcrossProjectWeek: true,
             hours: Number.isFinite(dayHours) ? dayHours : 0,
             allowScopeOverrun: true,
           }),

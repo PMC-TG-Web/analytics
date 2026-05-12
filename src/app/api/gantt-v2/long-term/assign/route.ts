@@ -6,14 +6,15 @@ export const dynamic = 'force-dynamic';
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobKey, scopeOfWork, weekStart, weekEnd, foreman } = body || {};
+    const { jobKey, scopeOfWork, weekStart, weekEnd, foreman, applyAcrossProject } = body || {};
 
     const normalizedJobKey = String(jobKey || '').trim();
     const normalizedScopeOfWork = String(scopeOfWork || '').trim();
+    const shouldApplyAcrossProject = Boolean(applyAcrossProject);
 
-    if (!normalizedJobKey || !normalizedScopeOfWork) {
+    if (!normalizedJobKey || (!shouldApplyAcrossProject && !normalizedScopeOfWork)) {
       return NextResponse.json(
-        { success: false, error: 'jobKey and scopeOfWork are required' },
+        { success: false, error: 'jobKey is required, and scopeOfWork is required unless applyAcrossProject is true' },
         { status: 400 }
       );
     }
@@ -23,8 +24,11 @@ export async function PATCH(request: NextRequest) {
     // Build where clause - if weekStart/weekEnd provided, filter by date range
     const whereClause: any = {
       jobKey: normalizedJobKey,
-      scopeOfWork: normalizedScopeOfWork,
     };
+
+    if (!shouldApplyAcrossProject) {
+      whereClause.scopeOfWork = normalizedScopeOfWork;
+    }
 
     if (weekStart && weekEnd) {
       whereClause.date = {

@@ -5,6 +5,36 @@ import { syncActiveScheduleToScope } from '@/lib/ganttV2Db';
 
 export const dynamic = 'force-dynamic';
 
+function getWeekRangeFromDateKey(dateKey: string): { weekStart: string; weekEnd: string } | null {
+  const parts = String(dateKey || '').trim().split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dayOfWeek = date.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekStartDate = new Date(date);
+  weekStartDate.setDate(date.getDate() + mondayOffset);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekStartDate.getDate() + 6);
+
+  const formatDateKey = (value: Date) => {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  return {
+    weekStart: formatDateKey(weekStartDate),
+    weekEnd: formatDateKey(weekEndDate),
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -16,6 +46,7 @@ export async function POST(request: NextRequest) {
       targetForemanId,
       hours,
       allowScopeOverrun,
+      applyForemanAcrossProjectWeek,
     } = body;
 
     console.log('[SHORT-TERM-MOVE] Request:', { jobKey, scopeOfWork, sourceDateKey, targetDateKey, targetForemanId, hours });
@@ -87,6 +118,29 @@ export async function POST(request: NextRequest) {
       fallbackSource: 'wip-page',
       enforceScopeHourCap: allowScopeOverrun === true ? false : true,
     });
+
+    if (applyForemanAcrossProjectWeek === true) {
+      const weekRange = getWeekRangeFromDateKey(targetDateKey);
+      if (weekRange) {
+        const normalizedForeman =
+          typeof targetForemanId === 'string' && targetForemanId.trim() && targetForemanId !== '__unassigned__'
+            ? targetForemanId.trim()
+            : null;
+
+        await prisma.activeSchedule.updateMany({
+          where: {
+            jobKey,
+            date: {
+              gte: weekRange.weekStart,
+              lte: weekRange.weekEnd,
+            },
+          },
+          data: {
+            foreman: normalizedForeman,
+          },
+        });
+      }
+    }
 
     console.log('[SHORT-TERM-MOVE] Reconcile result:', reconcileResult);
 

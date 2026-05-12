@@ -2156,7 +2156,7 @@ export default function LongTermSchedulePage() {
               });
             }
             setScopesByJobKey((prev) => {
-              const previousScopes = prev[jobKey] || [];
+              const previousScopes = getScopesForJobKey(prev, jobKey);
               const previousById = new Map(previousScopes.map((scope) => [scope.id, scope]));
 
               const mergedScopes = updatedScopes.map((scope) => {

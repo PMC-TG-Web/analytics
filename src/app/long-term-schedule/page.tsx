@@ -1577,6 +1577,19 @@ export default function LongTermSchedulePage() {
     scheduleHours?: number,
     foremanId?: string
   ) {
+    const pickBestScope = (candidates: Scope[]): Scope | null => {
+      if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+      const score = (scope: Scope): number => {
+        const taskCount = Array.isArray(scope.tasks) ? scope.tasks.length : 0;
+        const selectedDayCount = Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0;
+        const hasHours = Number(scope.hours || 0) > 0 ? 1 : 0;
+        return (taskCount * 1000) + (selectedDayCount * 10) + hasHours;
+      };
+
+      return [...candidates].sort((a, b) => score(b) - score(a))[0] || null;
+    };
+
     const parts = jobKey.split("~");
     const normalizedScopeTitle = (scopeTitle || "").trim().toLowerCase();
     const scopeCandidates = getScopesForJobKey(scopesByJobKey, jobKey);
@@ -1597,6 +1610,7 @@ export default function LongTermSchedulePage() {
 
     const resolvedScopeId =
       dateScopedMatch?.id ||
+        (!normalizedScopeTitle ? pickBestScope(scopeCandidates)?.id || null : null) ||
       (titleMatches.length === 1 ? titleMatches[0].id : null) ||
       (titleMatches[0]?.id ?? null);
 
@@ -1611,6 +1625,7 @@ export default function LongTermSchedulePage() {
         resolvedScopeId,
         scopeCandidateCount: scopeCandidates.length,
         titleMatchCount: titleMatches.length,
+        pickedDefaultScopeId: !normalizedScopeTitle ? pickBestScope(scopeCandidates)?.id || null : null,
         scopeCandidates: scopeCandidates.map((scope) => ({
           id: scope.id,
           title: scope.title,

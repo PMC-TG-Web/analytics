@@ -1741,6 +1741,7 @@ export function ProjectScopesModal({
         taskCountRaw: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
         taskCountNormalized: normalizeTaskEntries(scope.tasks).length,
         tasks: normalizeTaskEntries(scope.tasks),
+        taskNames: normalizeTaskEntries(scope.tasks).map((task) => task.name),
       });
     }
 

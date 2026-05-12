@@ -1026,7 +1026,7 @@ export function ProjectScopesModal({
         persistedByTitle.set(titleKey, titleBucket);
       });
 
-      return scopes.map((scope) => {
+      const mergedCanonicalScopes = scopes.map((scope) => {
         const compositeMatches = persistedByComposite.get(scopeMatchKey(scope.title, scope.startDate, scope.endDate)) || [];
         const titleMatches = persistedByTitle.get(normalizeText(scope.title || '')) || [];
         const persisted =
@@ -1050,11 +1050,47 @@ export function ProjectScopesModal({
           taskColors: (persisted.taskColors && typeof persisted.taskColors === 'object' ? persisted.taskColors : null) || scope.taskColors || null,
         };
       });
+
+      // Also surface persisted scopes that do not exist in canonical Gantt rows yet
+      // (for example newly created practice scopes saved via /api/project-scopes).
+      const canonicalCompositeKeys = new Set(
+        mergedCanonicalScopes.map((scope) => scopeMatchKey(scope.title, scope.startDate, scope.endDate))
+      );
+
+      const persistedOnlyScopes = persistedScopes
+        .filter((scope) => {
+          if (!normalizeText(scope?.title || '')) return false;
+          const compositeKey = scopeMatchKey(scope.title, scope.startDate, scope.endDate);
+          return !canonicalCompositeKeys.has(compositeKey);
+        })
+        .map((scope) => {
+          const persistedHours = toOptionalPositiveNumber(scope.hours);
+          const persistedManpower = toOptionalPositiveNumber(scope.manpower);
+
+          return {
+            id: scope.id,
+            predecessorScopeId: scope.predecessorScopeId || null,
+            jobKey: scope.jobKey || resolvedJobKey || project.jobKey,
+            title: scope.title || 'Scope',
+            startDate: scope.startDate || '',
+            endDate: scope.endDate || '',
+            manpower: persistedManpower !== null ? persistedManpower : undefined,
+            hours: persistedHours !== null ? persistedHours : 0,
+            description: scope.description || '',
+            tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
+            schedulingMode: scope.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
+            selectedDays: Array.isArray(scope.selectedDays) ? scope.selectedDays : [],
+            color: scope.color || null,
+            taskColors: (scope.taskColors && typeof scope.taskColors === 'object' ? scope.taskColors : null) || null,
+          } as Scope;
+        });
+
+      return [...mergedCanonicalScopes, ...persistedOnlyScopes];
     } catch (error) {
       console.warn('Failed to merge project-scope metadata into canonical scopes:', error);
       return scopes;
     }
-  }, [loadPersistedProjectScopes, scopeMatchKey]);
+  }, [loadPersistedProjectScopes, project.jobKey, resolvedJobKey, scopeMatchKey]);
 
   const loadScopesForGanttProject = useCallback(async (projectId: string): Promise<Scope[] | null> => {
     const response = await fetch(`/api/gantt-v2/projects/${projectId}/scopes`);

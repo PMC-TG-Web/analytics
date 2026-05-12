@@ -200,6 +200,34 @@ export async function reconcileDailyAssignment(command: DailyAssignmentCommand):
       },
     });
 
+    // Auto-create projectScope record if this is a custom user-created scope
+    if (sourceType === 'wip-page' || sourceType === 'custom') {
+      const existingScope = await tx.projectScope.findFirst({
+        where: {
+          jobKey,
+          title: scopeOfWork,
+        },
+        select: { id: true },
+      });
+
+      if (!existingScope) {
+        await tx.projectScope.create({
+          data: {
+            jobKey,
+            title: scopeOfWork,
+            hours: 0,
+            manpower: 0,
+            startDate: '',
+            endDate: '',
+            description: `Auto-created from schedule: ${scopeOfWork}`,
+            tasks: [],
+            schedulingMode: 'contiguous',
+            selectedDays: [],
+          },
+        });
+      }
+    }
+
     return {
       sourceType,
       deletedOldEntryCount,

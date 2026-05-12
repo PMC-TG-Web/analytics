@@ -44,6 +44,36 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
+    // If updating a specific scope, ensure it exists in projectScope
+    if (!shouldApplyAcrossProject && normalizedScopeOfWork) {
+      const existingScope = await prisma.projectScope.findFirst({
+        where: {
+          jobKey: normalizedJobKey,
+          title: normalizedScopeOfWork,
+        },
+        select: { id: true },
+      });
+
+      if (!existingScope) {
+        await prisma.projectScope.create({
+          data: {
+            jobKey: normalizedJobKey,
+            title: normalizedScopeOfWork,
+            hours: 0,
+            manpower: 0,
+            startDate: '',
+            endDate: '',
+            description: `Auto-created from long-term foreman assignment`,
+            tasks: [],
+            schedulingMode: 'contiguous',
+            selectedDays: [],
+          },
+        }).catch(() => {
+          // Ignore duplicate key errors (another request may have created it concurrently)
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {

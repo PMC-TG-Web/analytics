@@ -21,61 +21,83 @@ export const dynamic = "force-dynamic";
 // Allow up to 5 minutes for the full sync on supported plans.
 export const maxDuration = 300;
 
-const SYNC_STEPS = [
-  {
-    name: "projects",
-    path: "/api/procore/sync/all-projects",
-    body: {
-      fetchAll: true,
-      forceUserOAuth: false,
-      maxPages: 200,
-      includeInactiveV1: false,
-      includeTestProjects: false,
+function toDateKey(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function buildSyncSteps(options: { startDate: string; endDate: string; maxProjects: number }) {
+  const { startDate, endDate, maxProjects } = options;
+  return [
+    {
+      name: "projects",
+      path: "/api/procore/sync/all-projects",
+      body: {
+        fetchAll: true,
+        forceUserOAuth: false,
+        maxPages: 200,
+        includeInactiveV1: false,
+        includeTestProjects: false,
+      },
     },
-  },
-  {
-    name: "bids",
-    path: "/api/procore/sync/bids",
-    body: {
-      companyWide: true,
-      fetchAll: true,
-      forceUserOAuth: false,
-      limitProjects: 1000,
+    {
+      name: "bids",
+      path: "/api/procore/sync/bids",
+      body: {
+        companyWide: true,
+        fetchAll: true,
+        forceUserOAuth: false,
+        limitProjects: 1000,
+      },
     },
-  },
-  {
-    name: "budget-line-items",
-    path: "/api/procore/sync/budget-line-items",
-    body: {
-      forceUserOAuth: false,
-      fetchAll: true,
+    {
+      name: "budget-line-items",
+      path: "/api/procore/sync/budget-line-items",
+      body: {
+        forceUserOAuth: false,
+        fetchAll: true,
+      },
     },
-  },
-  {
-    name: "commitment-contracts",
-    path: "/api/procore/sync/commitment-contracts",
-    body: {
-      forceUserOAuth: false,
-      fetchAll: true,
+    {
+      name: "commitment-contracts",
+      path: "/api/procore/sync/commitment-contracts",
+      body: {
+        forceUserOAuth: false,
+        fetchAll: true,
+      },
     },
-  },
-  {
-    name: "timecard-entries",
-    path: "/api/procore/sync/timecard-entries",
-    body: {
-      forceUserOAuth: false,
-      fetchAll: true,
+    {
+      name: "timecard-entries",
+      path: "/api/procore/sync/timecard-entries",
+      body: {
+        forceUserOAuth: false,
+        startDate,
+        endDate,
+        perPage: 50,
+        concurrency: 1,
+        ...(maxProjects > 0 ? { maxProjects } : {}),
+      },
     },
-  },
-  {
-    name: "productivity-logs",
-    path: "/api/procore/sync/productivity-projects",
-    body: {
-      forceUserOAuth: false,
-      persist: true,
+    {
+      name: "productivity-logs",
+      path: "/api/procore/sync/productivity-projects",
+      body: {
+        forceUserOAuth: false,
+        persist: true,
+        startDate,
+        endDate,
+        perPage: 50,
+        concurrency: 1,
+        ...(maxProjects > 0 ? { maxProjects } : {}),
+      },
     },
-  },
-];
+  ];
+}
 
 const MATERIALIZED_VIEWS = [
   "bid_board_latest_mv",
@@ -147,13 +169,21 @@ export async function POST(request: NextRequest) {
     process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || ""
   ).trim();
   const startTime = Date.now();
+  const lookbackDays = Math.min(
+    120,
+    Math.max(7, parsePositiveInt(process.env.PROCORE_SYNC_LOOKBACK_DAYS, 30))
+  );
+  const maxProjects = Math.max(0, parsePositiveInt(process.env.PROCORE_SYNC_MAX_PROJECTS, 0));
+  const endDate = toDateKey(new Date());
+  const startDate = toDateKey(new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000));
+  const syncSteps = buildSyncSteps({ startDate, endDate, maxProjects });
 
   // ── Fire all sync steps concurrently (fire-and-forget per step) ───────────
   // Netlify has a 30-second gateway timeout on API routes, so we cannot await
   // all steps sequentially. Instead we fire every step without awaiting, log
   // the dispatch to the DB, and return 202 immediately. Each step writes its
   // own result to the DB. MV refresh is best-effort after a short delay.
-  const stepPromises = SYNC_STEPS.map((step) =>
+  const stepPromises = syncSteps.map((step) =>
     fetch(`${origin}${step.path}`, {
       method: "POST",
       headers: {
@@ -178,7 +208,7 @@ export async function POST(request: NextRequest) {
     prisma.syncLog.update({
       where: { id: logId },
       data: {
-        steps: SYNC_STEPS.map((s) => ({ step: s.name, status: "dispatched" })) as object[],
+          steps: syncSteps.map((s) => ({ step: s.name, status: "dispatched" })) as object[],
       },
     }).catch(() => {});
   }
@@ -212,7 +242,8 @@ export async function POST(request: NextRequest) {
       accepted: true,
       companyId,
       logId: logId?.toString() ?? null,
-      stepsDispatched: SYNC_STEPS.map((s) => s.name),
+      stepsDispatched: syncSteps.map((s) => s.name),
+      syncWindow: { startDate, endDate, lookbackDays, maxProjects },
       note: "Sync steps dispatched concurrently. Check sync_logs for results.",
     },
     { status: 202 }

@@ -852,10 +852,15 @@ export function ProjectScopesModal({
           const rowJobKey = `${String(row?.customer || '')}~${String(row?.projectNumber || '')}~${String(row?.projectName || '')}`;
           return rowJobKey === jobKey;
         });
-        const projectDefaultPMName = String(matchingProject?.projectManager || '').trim() || 'Project Default';
-        const projectDefaultPmId = pmOptions.find(
-          (pm) => pm.label.trim().toLowerCase() === projectDefaultPMName.toLowerCase()
-        )?.id;
+        const projectDefaultPMName = String(matchingProject?.projectManager || project?.projectManager || '').trim() || 'Project Default';
+        // Check if projectDefaultPMName is actually a PM ID (valid in pmOptions)
+        let projectDefaultPmId = pmOptions.find((pm) => pm.id === projectDefaultPMName)?.id;
+        // If not found as ID, try matching by name
+        if (!projectDefaultPmId) {
+          projectDefaultPmId = pmOptions.find(
+            (pm) => pm.label.trim().toLowerCase() === projectDefaultPMName.toLowerCase()
+          )?.id;
+        }
 
         const pmSelectionId = projectPmAssignment?.pmId || projectDefaultPmId || '';
 
@@ -907,6 +912,7 @@ export function ProjectScopesModal({
     activeScopeTitleForAssignment,
     longTermAssignmentContext,
     project.jobKey,
+    project.projectManager,
     resolvedJobKey,
     selectedForemanId,
   ]);

@@ -1226,8 +1226,12 @@ function DailyCrewDispatchBoardContent() {
             </div>
           ) : (
           <div 
-            className="grid grid-rows-2 grid-flow-col gap-2 h-full"
-            style={{ gridTemplateColumns: `repeat(${Math.ceil(foremen.length / 2)}, minmax(0, 1fr))` }}
+            className="grid gap-2 h-full w-full"
+            style={{ 
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gridTemplateRows: 'repeat(2, minmax(0, 1fr))',
+              gridAutoFlow: 'row'
+            }}
           >
             {foremen.map((foreman) => {
               const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);

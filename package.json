@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/resolveFailedMigration.mjs && prisma migrate deploy && prisma generate && next build",
+    "build": "node scripts/resolveFailedMigration.mjs && node scripts/migrateDeploy.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test test/*.test.mjs",

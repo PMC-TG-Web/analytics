@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
 
 const MIGRATIONS_TO_ROLL_BACK = [
-  '20260504153000_add_projects_master_covering_indexes',
-  '20260505120000_add_bid_board_latest_materialized_view',
-  '20260505130000_verify_budget_agg_indexes',
+  // Migrations listed here are resolved — list is intentionally empty.
+  // Add migration names here only if a migration is stuck in a failed state.
 ];
 
 const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';

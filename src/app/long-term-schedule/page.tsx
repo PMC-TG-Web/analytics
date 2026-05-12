@@ -1014,10 +1014,65 @@ export default function LongTermSchedulePage() {
       });
       setTimeOffRequests(normalizedTimeOffs);
 
-      const ganttInitiatedSchedules = activeSchedules.filter((entry) => {
-        const source = (entry.source || "").toLowerCase();
-        return source === "gantt" || source === "wip-page" || source === "schedules";
+      const scopeIdentityKey = (scope: Scope): string => [
+        String(scope.id || "").trim(),
+        normalizeJobKey(scope.jobKey || ""),
+        normalizeScopeTitle(scope.title || ""),
+        String(scope.startDate || "").trim(),
+        String(scope.endDate || "").trim(),
+      ].join("|");
+
+      const uniqueScopesByIdentity = new Map<string, Scope>();
+      Object.values(scopesByJobKeyLocal).forEach((scopeList) => {
+        (scopeList || []).forEach((scope) => {
+          const key = scopeIdentityKey(scope);
+          if (!key) return;
+          if (!uniqueScopesByIdentity.has(key)) {
+            uniqueScopesByIdentity.set(key, scope);
+          }
+        });
       });
+
+      const scopeDateKeysByIdentity = new Map<string, Set<string>>();
+      const jobsWithExplicitScopeDates = new Set<string>();
+      uniqueScopesByIdentity.forEach((scope) => {
+        const normalizedJobKey = normalizeJobKey(scope.jobKey || "");
+        if (!normalizedJobKey) return;
+
+        const dateKeys = getScopeDisplayDateKeys(scope, startDate, endDate, paidHolidayMap);
+        if (dateKeys.length === 0) return;
+
+        jobsWithExplicitScopeDates.add(normalizedJobKey);
+        scopeDateKeysByIdentity.set(scopeIdentityKey(scope), new Set(dateKeys));
+      });
+
+      const ganttInitiatedSchedules = activeSchedules
+        .filter((entry) => {
+          const source = (entry.source || "").toLowerCase();
+          return source === "gantt" || source === "wip-page" || source === "schedules";
+        })
+        .filter((entry) => {
+          const source = (entry.source || "").toLowerCase();
+          if (source !== "schedules") return true;
+
+          const normalizedJobKey = normalizeJobKey(entry.jobKey || "");
+          if (!normalizedJobKey) return false;
+          if (!jobsWithExplicitScopeDates.has(normalizedJobKey)) return true;
+
+          const assignmentScopes = getScopesForJobKey(scopesByJobKeyLocal, normalizedJobKey);
+          if (assignmentScopes.length === 0) return true;
+
+          const titleKey = normalizeScopeTitle(entry.scopeOfWork || "Unnamed Scope");
+          const titleMatches = assignmentScopes.filter(
+            (scope) => normalizeScopeTitle(scope.title || "") === titleKey
+          );
+          const candidateScopes = titleMatches.length > 0 ? titleMatches : assignmentScopes;
+
+          return candidateScopes.some((scope) => {
+            const dateKeys = scopeDateKeysByIdentity.get(scopeIdentityKey(scope));
+            return Boolean(dateKeys && dateKeys.has(entry.date));
+          });
+        });
 
       const coveredAssignmentDates = new Set(
         ganttInitiatedSchedules.map((entry) => `${getAssignmentKey(entry.jobKey, entry.scopeOfWork || "Unnamed Scope")}|${entry.date}`)

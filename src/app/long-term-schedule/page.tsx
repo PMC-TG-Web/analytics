@@ -2140,6 +2140,21 @@ export default function LongTermSchedulePage() {
             setSelectedModalForemanId(null);
           }}
           onScopesUpdated={(jobKey, updatedScopes) => {
+            const isDebugTarget = /veritas academy/i.test(String(selectedModalProject.projectName || '')) || /todd test 1/i.test(String(selectedModalScopeTitle || ''));
+            if (isDebugTarget) {
+              console.log('[LongTermModalDebug] onScopesUpdated', {
+                jobKey,
+                updatedScopeCount: updatedScopes.length,
+                updatedScopes: updatedScopes.map((scope) => ({
+                  id: scope.id,
+                  title: scope.title,
+                  startDate: scope.startDate,
+                  endDate: scope.endDate,
+                  taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+                  selectedDayCount: Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0,
+                })),
+              });
+            }
             setScopesByJobKey((prev) => ({ ...prev, [jobKey]: updatedScopes }));
             // Scope date changes can resync active schedule rows; refresh the board immediately.
             void loadSchedules();

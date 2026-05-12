@@ -1730,6 +1730,10 @@ export function ProjectScopesModal({
     const scope = effectiveScopes.find((item) => item.id === activeScopeId);
     if (!scope) return;
 
+    const currentTaskCount = normalizeTaskEntries(scopeDetail.tasks).length;
+    const nextTaskCount = normalizeTaskEntries(scope.tasks).length;
+    const shouldPreserveCurrentTasks = currentTaskCount > 0 && nextTaskCount === 0;
+
     const debugScopeSelection =
       /veritas academy/i.test(String(project.projectName || '')) ||
       /todd test 1/i.test(String(selectedScopeTitle || scope.title || ''));
@@ -1740,9 +1744,15 @@ export function ProjectScopesModal({
         selectedScopeTitle,
         taskCountRaw: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
         taskCountNormalized: normalizeTaskEntries(scope.tasks).length,
+        currentTaskCount,
+        shouldPreserveCurrentTasks,
         tasks: normalizeTaskEntries(scope.tasks),
         taskNames: normalizeTaskEntries(scope.tasks).map((task) => task.name),
       });
+    }
+
+    if (shouldPreserveCurrentTasks) {
+      return;
     }
 
     const normalizedSchedulingMode = scope.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous';

@@ -1594,6 +1594,7 @@ export default function LongTermSchedulePage() {
       projectNumber: parts[1] || "",
       projectName: parts[2] || "",
       projectDocId: jobKeyToProjectDocId[jobKey] || "",
+      projectManager: jobKeyToProjectPM[jobKey] || "",
     });
   }
 

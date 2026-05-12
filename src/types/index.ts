@@ -66,6 +66,7 @@ export interface ProjectInfo {
   projectNumber: string;
   projectName: string;
   projectDocId: string;
+  projectManager?: string;
 }
 
 export type ViewMode = "day" | "week" | "month";

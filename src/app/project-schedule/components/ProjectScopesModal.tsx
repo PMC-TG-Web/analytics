@@ -132,6 +132,26 @@ const computeScopeHours = (scope: Partial<Scope>) => {
   return 0;
 };
 
+const getScopeRichnessScore = (scope: Partial<Scope>) => {
+  const taskCount = Array.isArray(scope.tasks) ? scope.tasks.length : 0;
+  const selectedDayCount = Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0;
+  const hasStart = Boolean(dateKey(scope.startDate));
+  const hasEnd = Boolean(dateKey(scope.endDate));
+  const hasHours = Number(scope.hours || 0) > 0;
+  const hasManpower = Number(scope.manpower || 0) > 0;
+  const hasDescription = String(scope.description || '').trim().length > 0;
+
+  return (
+    taskCount * 1000 +
+    selectedDayCount * 100 +
+    (hasStart ? 20 : 0) +
+    (hasEnd ? 20 : 0) +
+    (hasHours ? 10 : 0) +
+    (hasManpower ? 5 : 0) +
+    (hasDescription ? 1 : 0)
+  );
+};
+
 const formatDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -1067,11 +1087,36 @@ export function ProjectScopesModal({
         mergedCanonicalScopes.map((scope) => scopeMatchKey(scope.title, scope.startDate, scope.endDate))
       );
 
+      const bestCanonicalScoreByTitle = new Map<string, number>();
+      mergedCanonicalScopes.forEach((scope) => {
+        const titleKey = normalizeText(scope?.title || '');
+        if (!titleKey) return;
+        const score = getScopeRichnessScore(scope);
+        const previous = bestCanonicalScoreByTitle.get(titleKey) ?? -1;
+        if (score > previous) {
+          bestCanonicalScoreByTitle.set(titleKey, score);
+        }
+      });
+
       const persistedOnlyScopes = persistedScopes
         .filter((scope) => {
-          if (!normalizeText(scope?.title || '')) return false;
+          const titleKey = normalizeText(scope?.title || '');
+          if (!titleKey) return false;
+
           const compositeKey = scopeMatchKey(scope.title, scope.startDate, scope.endDate);
-          return !canonicalCompositeKeys.has(compositeKey);
+          if (canonicalCompositeKeys.has(compositeKey)) return false;
+
+          // Suppress stale duplicates (same title, weaker metadata) when a richer
+          // canonical scope with that title already exists.
+          const bestCanonicalScore = bestCanonicalScoreByTitle.get(titleKey);
+          if (typeof bestCanonicalScore === 'number') {
+            const persistedScore = getScopeRichnessScore(scope);
+            if (persistedScore <= bestCanonicalScore) {
+              return false;
+            }
+          }
+
+          return true;
         })
         .map((scope) => {
           const persistedHours = toOptionalPositiveNumber(scope.hours);

@@ -2123,7 +2123,7 @@ function KPIPageContent({
           >
             <option value="">All Years</option>
             {combinedSalesYears.map((year) => (
-              <option key={year} value={year}>
+              <option key={year as string} value={year}>
                 {year}
               </option>
             ))}

@@ -10,6 +10,8 @@ const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
 const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
 const NAV_PERMISSIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
+const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
 
 interface NavLink {
   href: string;
@@ -126,18 +128,39 @@ export default function Navigation({
     const loadPermissions = async () => {
       try {
         console.log('Loading permissions for:', user.email);
-        
-        // Add abort signal with timeout to prevent fetch from blocking indefinitely
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
-        
-        const res = await fetch('/api/permissions/me', { 
-          method: 'GET',
-          credentials: 'include',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
+
+        let res: Response | null = null;
+        let lastError: unknown = null;
+
+        for (let attempt = 1; attempt <= PERMISSIONS_FETCH_MAX_ATTEMPTS; attempt += 1) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), PERMISSIONS_FETCH_TIMEOUT_MS);
+
+          try {
+            res = await fetch('/api/permissions/me', {
+              method: 'GET',
+              credentials: 'include',
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            break;
+          } catch (error) {
+            clearTimeout(timeoutId);
+            lastError = error;
+
+            const isAbort = error instanceof Error && error.name === 'AbortError';
+            if (!isAbort || attempt >= PERMISSIONS_FETCH_MAX_ATTEMPTS) {
+              throw error;
+            }
+
+            // Brief backoff before retrying a timed-out request.
+            await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+          }
+        }
+
+        if (!res) {
+          throw lastError instanceof Error ? lastError : new Error('Permissions request failed');
+        }
         
         if (!res.ok) {
           console.error('Permissions fetch failed:', res.status, res.statusText);
@@ -196,7 +219,7 @@ export default function Navigation({
         setPermissionsLoaded(true);
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          console.warn('Permission fetch timed out after 3s');
+          console.warn(`Permission fetch timed out after ${PERMISSIONS_FETCH_TIMEOUT_MS / 1000}s`);
         } else {
           console.error('Failed to load permissions:', error);
         }

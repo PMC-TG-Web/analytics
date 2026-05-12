@@ -46,6 +46,7 @@ export interface Scope {
 export interface ScheduleTask {
   name: string;
   startDate?: string;
+  endDate?: string;
   days?: number | null;
   manpower?: number | null;
   yards?: number | null;

@@ -186,10 +186,27 @@ function normalizeTaskForLongTerm(task: string | ScheduleTask): ScheduleTask | n
     const daysRaw = Number(task.days);
     const manpowerRaw = Number(task.manpower);
     const yardsRaw = Number(task.yards);
+       const startDate = String(task.startDate || "").trim();
+       const endDate = String(task.endDate || "").trim();
+   
+       // Calculate days from endDate if days not provided
+       let calculatedDays: number | null = null;
+       if (Number.isFinite(daysRaw) && daysRaw > 0) {
+         calculatedDays = daysRaw;
+       } else if (startDate && endDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+         const start = new Date(`${startDate}T00:00:00`);
+         const end = new Date(`${endDate}T00:00:00`);
+         if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+           const diffMs = end.getTime() - start.getTime();
+           calculatedDays = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
+         }
+       }
+   
     return {
       name,
-      startDate: String(task.startDate || "").trim(),
-      days: Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : null,
+      startDate,
+      endDate,
+      days: calculatedDays,
       manpower: Number.isFinite(manpowerRaw) && manpowerRaw >= 0 ? manpowerRaw : null,
       yards: Number.isFinite(yardsRaw) && yardsRaw >= 0 ? yardsRaw : null,
     };

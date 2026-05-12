@@ -1140,7 +1140,28 @@ export function ProjectScopesModal({
           } as Scope;
         });
 
-      return [...mergedCanonicalScopes, ...persistedOnlyScopes];
+      const dedupedScopes = new Map<string, Scope>();
+      const dedupeScope = (scope: Scope) => {
+        const titleKey = normalizeText(scope.title || '');
+        const compositeKey = scopeMatchKey(scope.title, scope.startDate, scope.endDate);
+        const displayKey = compositeKey || titleKey;
+        if (!displayKey) return;
+
+        const existing = dedupedScopes.get(displayKey);
+        if (!existing) {
+          dedupedScopes.set(displayKey, scope);
+          return;
+        }
+
+        if (getScopeRichnessScore(scope) > getScopeRichnessScore(existing)) {
+          dedupedScopes.set(displayKey, scope);
+        }
+      };
+
+      mergedCanonicalScopes.forEach(dedupeScope);
+      persistedOnlyScopes.forEach(dedupeScope);
+
+      return Array.from(dedupedScopes.values());
     } catch (error) {
       console.warn('Failed to merge project-scope metadata into canonical scopes:', error);
       return scopes;

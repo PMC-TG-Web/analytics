@@ -422,6 +422,7 @@ export function ProjectScopesModal({
   onClose,
   onScopesUpdated,
 }: ProjectScopesModalProps) {
+  const isLongTermModalContext = Boolean(onLongTermAssignmentSaved);
   const usesLegacyScopeMetadata = useMemo(
     () => isGiantProjectName(project.projectName),
     [project.projectName]
@@ -1381,6 +1382,13 @@ export function ProjectScopesModal({
   };
 
   const loadProjectBudgetHours = useCallback(async () => {
+    // Long-term modal does not need schedule diagnostics budget hydration on open.
+    // Skipping this avoids an extra 404 + paginated fallback scan that slows modal startup.
+    if (isLongTermModalContext) {
+      setProjectBudgetHours(null);
+      return;
+    }
+
     const params = new URLSearchParams({ jobKey: project.jobKey || '' });
 
     const response = await fetch(`/api/scheduling/diagnostics?${params.toString()}`);
@@ -1457,7 +1465,7 @@ export function ProjectScopesModal({
     }
 
     setProjectBudgetHours(foundHours);
-  }, [matchesProjectIdentity, project.customer, project.jobKey, project.projectName, project.projectNumber]);
+  }, [isLongTermModalContext, matchesProjectIdentity, project.customer, project.jobKey, project.projectName, project.projectNumber]);
 
   const getScheduledHoursForScope = (scope: Scope) => {
     if (!scheduledHoursByJobKeyDate || !project.jobKey) return 0;

@@ -2234,8 +2234,9 @@ export default function LongTermSchedulePage() {
 
               return { ...prev, [jobKey]: mergedScopes };
             });
-            // Scope date changes can resync active schedule rows; refresh the board immediately.
-            void loadSchedules();
+            // Avoid a full board reload on every scope metadata save from the modal.
+            // Local scope-state merge above keeps the UI responsive; the next scheduled
+            // data refresh will pull server truth.
           }}
         />
       )}

@@ -1579,7 +1579,7 @@ export default function LongTermSchedulePage() {
   ) {
     const parts = jobKey.split("~");
     const normalizedScopeTitle = (scopeTitle || "").trim().toLowerCase();
-    const scopeCandidates = scopesByJobKey[jobKey] || [];
+    const scopeCandidates = getScopesForJobKey(scopesByJobKey, jobKey);
     const titleMatches = normalizedScopeTitle
       ? scopeCandidates.filter((scope) => (scope.title || "").trim().toLowerCase() === normalizedScopeTitle)
       : [];
@@ -1599,6 +1599,28 @@ export default function LongTermSchedulePage() {
       dateScopedMatch?.id ||
       (titleMatches.length === 1 ? titleMatches[0].id : null) ||
       (titleMatches[0]?.id ?? null);
+
+    const isDebugTarget =
+      /veritas academy/i.test(String(parts[2] || "")) ||
+      /todd test 1/i.test(String(scopeTitle || ""));
+    if (isDebugTarget) {
+      console.log("[LongTermModalDebug] openScopeModal", {
+        jobKey,
+        scopeTitle,
+        dateKey,
+        resolvedScopeId,
+        scopeCandidateCount: scopeCandidates.length,
+        titleMatchCount: titleMatches.length,
+        scopeCandidates: scopeCandidates.map((scope) => ({
+          id: scope.id,
+          title: scope.title,
+          startDate: scope.startDate,
+          endDate: scope.endDate,
+          taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+          schedulingMode: scope.schedulingMode,
+        })),
+      });
+    }
 
     setSelectedModalScopeId(resolvedScopeId);
     setSelectedModalScopeTitle((scopeTitle || "").trim() || null);

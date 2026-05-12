@@ -1488,6 +1488,9 @@ export function ProjectScopesModal({
   // the user explicitly clicked "+ Add Scope" and is in create mode.
   useEffect(() => {
     if (isCreatingNewScope) return;
+    const debugScopeSelection =
+      /veritas academy/i.test(String(project.projectName || '')) ||
+      /todd test 1/i.test(String(selectedScopeTitle || ''));
 
     const resolveToEffectiveScopeId = () => {
       const pickBestScope = (candidates: Scope[]): Scope | null => {
@@ -1515,6 +1518,28 @@ export function ProjectScopesModal({
           });
 
           const bestDirectMatch = pickBestScope(duplicateCandidates);
+          if (debugScopeSelection) {
+            console.log('[LongTermModalDebug] resolve selectedScopeId direct', {
+              selectedScopeId,
+              selectedScopeTitle,
+              selectedScheduleDate,
+              preferredTitle,
+              direct: {
+                id: direct.id,
+                title: direct.title,
+                taskCount: Array.isArray(direct.tasks) ? direct.tasks.length : 0,
+              },
+              duplicateCandidates: duplicateCandidates.map((scope) => ({
+                id: scope.id,
+                title: scope.title,
+                startDate: scope.startDate,
+                endDate: scope.endDate,
+                taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+                selectedDayCount: Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0,
+              })),
+              pickedId: bestDirectMatch?.id || direct.id,
+            });
+          }
           return bestDirectMatch?.id || direct.id;
         }
 
@@ -1552,7 +1577,38 @@ export function ProjectScopesModal({
         }
 
         const bestTitleMatch = pickBestScope(matchingTitles);
+        if (debugScopeSelection) {
+          console.log('[LongTermModalDebug] resolve selectedScopeTitle', {
+            selectedScopeTitle,
+            selectedScheduleDate,
+            matchingTitles: matchingTitles.map((scope) => ({
+              id: scope.id,
+              title: scope.title,
+              startDate: scope.startDate,
+              endDate: scope.endDate,
+              taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+              selectedDayCount: Array.isArray(scope.selectedDays) ? scope.selectedDays.length : 0,
+            })),
+            pickedId: bestTitleMatch?.id || null,
+          });
+        }
         if (bestTitleMatch) return bestTitleMatch.id;
+      }
+
+      if (debugScopeSelection) {
+        console.log('[LongTermModalDebug] resolve no-scope-match', {
+          selectedScopeId,
+          selectedScopeTitle,
+          selectedScheduleDate,
+          effectiveScopeCount: effectiveScopes.length,
+          effectiveScopes: effectiveScopes.map((scope) => ({
+            id: scope.id,
+            title: scope.title,
+            startDate: scope.startDate,
+            endDate: scope.endDate,
+            taskCount: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+          })),
+        });
       }
 
       return null;
@@ -1589,6 +1645,7 @@ export function ProjectScopesModal({
     setActiveScopeId(null);
   }, [
     activeScopeId,
+    project.projectName,
     selectedScopeId,
     selectedScopeTitle,
     selectedScheduleDate,
@@ -1672,6 +1729,20 @@ export function ProjectScopesModal({
     if (suppressPopulateEffectRef.current) return;
     const scope = effectiveScopes.find((item) => item.id === activeScopeId);
     if (!scope) return;
+
+    const debugScopeSelection =
+      /veritas academy/i.test(String(project.projectName || '')) ||
+      /todd test 1/i.test(String(selectedScopeTitle || scope.title || ''));
+    if (debugScopeSelection) {
+      console.log('[LongTermModalDebug] hydrate scopeDetail from active scope', {
+        activeScopeId,
+        scopeTitle: scope.title,
+        selectedScopeTitle,
+        taskCountRaw: Array.isArray(scope.tasks) ? scope.tasks.length : 0,
+        taskCountNormalized: normalizeTaskEntries(scope.tasks).length,
+        tasks: normalizeTaskEntries(scope.tasks),
+      });
+    }
 
     const normalizedSchedulingMode = scope.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous';
     const normalizedTasks = normalizeTaskEntries(scope.tasks);

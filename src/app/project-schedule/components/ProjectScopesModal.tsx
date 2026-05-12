@@ -1164,6 +1164,13 @@ export function ProjectScopesModal({
 
     if (!match) {
       setGanttProjectId(null);
+      // No Gantt project match – still surface any persisted-only scopes
+      // (e.g. scopes created via /api/project-scopes with no Gantt entry).
+      const persistedFallback = await mergePersistedScopeMetadata([]);
+      if (persistedFallback.length > 0) {
+        setCanonicalScopes(persistedFallback);
+        return persistedFallback;
+      }
       setCanonicalScopes(null);
       return null;
     }

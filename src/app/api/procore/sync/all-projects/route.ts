@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -418,7 +418,8 @@ async function applyBidBoardStatusToV1Staging(params: {
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = await request.json().catch(() => ({}));
 
     const parseDebugIds = (input: unknown): string[] => {
@@ -1465,8 +1466,9 @@ export async function POST(request: Request) {
       } : undefined,
     });
 
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  });
 }

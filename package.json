@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test test/*.test.mjs",
+    "verify": "tsc --noEmit && npm test && npm run lint",
     "procore:webhook:list": "node scripts/registerProcoreWebhook.mjs",
     "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
     "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",

@@ -5,7 +5,14 @@ import {
   getUserPermissions,
   hasPageAccess,
   resolvePermissionForPath,
+  USER_PERMISSIONS,
 } from '../src/lib/permissions.ts';
+
+Object.keys(USER_PERMISSIONS).forEach((email) => delete USER_PERMISSIONS[email]);
+Object.assign(USER_PERMISSIONS, {
+  'todd@pmcdecor.com': ['OWNER'],
+  'david@pmcdecor.com': ['dashboard', 'employees', 'onboarding'],
+});
 
 test('hasPageAccess is case-insensitive for user emails and permission names', () => {
   assert.equal(hasPageAccess('TODD@PMCDECOR.COM', 'DIAGNOSTICS'), true);

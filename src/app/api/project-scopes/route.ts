@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncProjectScopeToActiveSchedule, deleteProjectScopeFromActiveSchedule } from '@/utils/syncActiveSchedule';
 import { getErrorMessage, shouldFallbackToEmptyRead, withDatabaseRetry } from '@/lib/dbResilience';
@@ -25,7 +26,23 @@ type ScopeTaskEntry = {
 };
 
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-let ensureProjectScopeColumnsPromise: Promise<void> | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toNullableJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  return value === null || value === undefined
+    ? Prisma.DbNull
+    : value as Prisma.InputJsonValue;
+}
+
+function normalizeColor(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+
+  const color = String(value).trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
 
 function toSelectedDayEntries(value: unknown): SelectedDayEntry[] | null | undefined {
   if (value === undefined) return undefined;
@@ -33,10 +50,11 @@ function toSelectedDayEntries(value: unknown): SelectedDayEntry[] | null | undef
   if (!Array.isArray(value)) return null;
 
   return value
-    .map((row: any) => ({
-      date: String(row?.date || '').trim(),
-      hours: Number(row?.hours || 0),
-      foreman: row?.foreman ? String(row.foreman) : null,
+    .filter(isRecord)
+    .map((row) => ({
+      date: String(row.date || '').trim(),
+      hours: Number(row.hours || 0),
+      foreman: row.foreman ? String(row.foreman) : null,
     }))
     .filter((row) => DATE_KEY_REGEX.test(row.date) && Number.isFinite(row.hours) && row.hours > 0);
 }
@@ -93,9 +111,9 @@ function normalizeScopeTasks(value: unknown): ScopeTaskEntry[] | null | undefine
       if (typeof entry === 'string') {
         return parseStringTask(entry);
       }
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      if (!isRecord(entry)) return null;
 
-      const row = entry as Record<string, unknown>;
+      const row = entry;
       const name = String(row.name || '').trim();
       if (!name) return null;
 
@@ -168,30 +186,8 @@ async function validateSpecificDays(
   return { valid: true as const };
 }
 
-async function ensureProjectScopeColumns() {
-  if (!ensureProjectScopeColumnsPromise) {
-    ensureProjectScopeColumnsPromise = (async () => {
-      try {
-        await prisma.$executeRawUnsafe(`
-          ALTER TABLE "ProjectScope"
-            ADD COLUMN IF NOT EXISTS "schedulingMode" TEXT NOT NULL DEFAULT 'contiguous',
-            ADD COLUMN IF NOT EXISTS "selectedDays" JSONB,
-            ADD COLUMN IF NOT EXISTS "color" VARCHAR(7),
-            ADD COLUMN IF NOT EXISTS "taskColors" JSONB
-        `);
-      } catch (error) {
-        // Production DBs may disallow DDL from the app role. Continue with fallback selects.
-        console.warn('ensureProjectScopeColumns skipped:', error);
-      }
-    })();
-  }
-
-  await ensureProjectScopeColumnsPromise;
-}
-
 export async function GET(request: NextRequest) {
   try {
-    await ensureProjectScopeColumns();
     const searchParams = request.nextUrl.searchParams;
     const cacheKey = buildSearchParamsCacheKey(`${PROJECT_SCOPES_CACHE_PREFIX}get`, searchParams);
     const cached = getCachedValue<Record<string, unknown>>(cacheKey);
@@ -204,128 +200,55 @@ export async function GET(request: NextRequest) {
 
     const jobKey = searchParams.get('jobKey');
 
-    let projects: Array<Record<string, unknown>> = [];
-    let scopes: Array<Record<string, unknown>> = [];
+    const [projects, scopes] = await Promise.all([
+      prisma.project.findMany({
+        where: jobKey ? {
+          OR: [
+            { customer: { contains: jobKey } },
+            { projectNumber: { contains: jobKey } },
+            { projectName: { contains: jobKey } },
+          ]
+        } : undefined,
+        select: {
+          id: true,
+          customer: true,
+          projectNumber: true,
+          projectName: true,
+          status: true,
+          hours: true,
+          sales: true,
+          projectArchived: true,
+          cost: true,
+          laborSales: true,
+          laborCost: true,
+          dateCreated: true,
+          dateUpdated: true,
+          estimator: true,
+          projectManager: true,
+          customFields: true,
+        },
+      }),
+      prisma.projectScope.findMany({
+        where: jobKey ? { jobKey } : undefined,
+        select: {
+          id: true,
+          jobKey: true,
+          title: true,
+          startDate: true,
+          endDate: true,
+          manpower: true,
+          hours: true,
+          description: true,
+          tasks: true,
+          schedulingMode: true,
+          selectedDays: true,
+          color: true,
+          taskColors: true,
+        },
+      }),
+    ]);
 
-    try {
-      // Preferred path with newer columns.
-      [projects, scopes] = await Promise.all([
-        prisma.project.findMany({
-          where: jobKey ? {
-            OR: [
-              { customer: { contains: jobKey } },
-              { projectNumber: { contains: jobKey } },
-              { projectName: { contains: jobKey } },
-            ]
-          } : undefined,
-          select: {
-            id: true,
-            customer: true,
-            projectNumber: true,
-            projectName: true,
-            status: true,
-            hours: true,
-            sales: true,
-            projectArchived: true,
-            cost: true,
-            laborSales: true,
-            laborCost: true,
-            dateCreated: true,
-            dateUpdated: true,
-            estimator: true,
-            projectManager: true,
-            customFields: true,
-          },
-        }) as unknown as Promise<Array<Record<string, unknown>>>,
-        prisma.projectScope.findMany({
-          where: jobKey ? { jobKey } : undefined,
-          select: {
-            id: true,
-            jobKey: true,
-            title: true,
-            startDate: true,
-            endDate: true,
-            manpower: true,
-            hours: true,
-            description: true,
-            tasks: true,
-            schedulingMode: true,
-            selectedDays: true,
-          },
-        }) as unknown as Promise<Array<Record<string, unknown>>>,
-      ]);
-    } catch (schemaError) {
-      console.warn('Falling back to legacy project/projectScope selects:', schemaError);
-      [projects, scopes] = await Promise.all([
-        prisma.project.findMany({
-          where: jobKey ? {
-            OR: [
-              { customer: { contains: jobKey } },
-              { projectNumber: { contains: jobKey } },
-              { projectName: { contains: jobKey } },
-            ]
-          } : undefined,
-          select: {
-            id: true,
-            customer: true,
-            projectNumber: true,
-            projectName: true,
-            status: true,
-            hours: true,
-            sales: true,
-            cost: true,
-            dateCreated: true,
-            dateUpdated: true,
-            estimator: true,
-            projectManager: true,
-            customFields: true,
-          },
-        }) as unknown as Promise<Array<Record<string, unknown>>>,
-        prisma.projectScope.findMany({
-          where: jobKey ? { jobKey } : undefined,
-          select: {
-            id: true,
-            jobKey: true,
-            title: true,
-            startDate: true,
-            endDate: true,
-            manpower: true,
-            hours: true,
-            description: true,
-            tasks: true,
-          },
-        }) as unknown as Promise<Array<Record<string, unknown>>>,
-      ]);
-    }
-
-    // Fetch color and taskColors using raw SQL since they may not be in Prisma schema yet
-    let scopesWithColors = scopes;
-    try {
-      const scopeIds = scopes.map((s) => String(s.id || ''));
-      if (scopeIds.length > 0) {
-        console.log(`[GET] Fetching colors for ${scopeIds.length} scopes`);
-        
-        const colorData = await prisma.$queryRawUnsafe<Array<{ id: string; color: string | null; taskColors: any }>>(
-          `SELECT id, "color", "taskColors" FROM "ProjectScope" WHERE id = ANY($1)`,
-          scopeIds
-        );
-        
-        console.log(`[GET] Retrieved color data:`, colorData);
-        
-        const colorMap = new Map(colorData.map(d => [d.id, { color: d.color, taskColors: d.taskColors }]));
-        
-        scopesWithColors = scopes.map(scope => ({
-          ...scope,
-          color: colorMap.get(String(scope.id || ''))?.color || null,
-          taskColors: colorMap.get(String(scope.id || ''))?.taskColors || null,
-        }));
-      }
-    } catch (colorError) {
-      console.warn('Failed to fetch colors for scopes:', colorError);
-      // Continue without colors if query fails
-    }
-
-    const normalizedScopes = scopesWithColors.map((scope) => ({
+    const normalizedScopes = scopes.map((scope) => ({
       ...scope,
       tasks: normalizeScopeTasks(scope.tasks) ?? null,
     }));
@@ -418,32 +341,14 @@ export async function POST(request: NextRequest) {
           manpower: manpower !== undefined && manpower !== null ? manpower : null,
           hours: hours && hours > 0 ? hours : null,
           description: description || null,
-          tasks: normalizedTasks,
+          tasks: toNullableJsonInput(normalizedTasks),
           schedulingMode: normalizedSchedulingMode,
-          selectedDays: normalizedSelectedDays,
-        } as any,
+          selectedDays: toNullableJsonInput(normalizedSelectedDays),
+          color: normalizeColor(color),
+          taskColors: toNullableJsonInput(taskColors ?? null),
+        },
       })
     );
-
-    // Update color and taskColors with raw SQL - handle them separately for clarity
-    try {
-      const colorValue = color || null;
-      const taskColorsValue = taskColors ? JSON.stringify(taskColors) : null;
-      
-      console.log(`[POST] Updating colors for new scope ${scope.id}:`, { colorValue, taskColorsValue });
-      
-      await prisma.$executeRawUnsafe(
-        `UPDATE "ProjectScope" SET "color" = $1, "taskColors" = $2::jsonb WHERE id = $3`,
-        colorValue,
-        taskColorsValue,
-        scope.id
-      );
-      
-      console.log(`[POST] Color update successful for scope ${scope.id}`);
-    } catch (colorError) {
-      console.error('Failed to update scope colors on POST:', colorError);
-      // Don't fail the whole request if color save fails
-    }
 
     const shouldSync = syncToActiveSchedule !== false;
     if (shouldSync) {
@@ -475,7 +380,6 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('[PUT] Request body:', JSON.stringify(body, null, 2));
     const {
       id,
       jobKey,
@@ -493,7 +397,6 @@ export async function PUT(request: NextRequest) {
       syncToActiveSchedule,
       allowWeekendSelectedDays,
     } = body;
-    console.log('[PUT] Parsed fields:', { id, title, schedulingMode, selectedDays, allowWeekendSelectedDays });
 
     const normalizedSchedulingMode =
       schedulingMode === undefined
@@ -504,7 +407,6 @@ export async function PUT(request: NextRequest) {
       selectedDays === undefined
         ? undefined
         : (toSelectedDayEntries(selectedDays) ?? null);
-    console.log('[PUT] Normalized selectedDays:', normalizedSelectedDays);
     const normalizedTasks = normalizeScopeTasks(tasks);
 
     if (!id) {
@@ -570,10 +472,12 @@ export async function PUT(request: NextRequest) {
             manpower: normalizedManpower ?? null,
             hours: normalizedHours ?? null,
             description: description || null,
-            tasks: normalizedTasks ?? null,
+            tasks: toNullableJsonInput(normalizedTasks ?? null),
             schedulingMode: effectiveSchedulingMode,
-            selectedDays: effectiveSelectedDays,
-          } as any,
+            selectedDays: toNullableJsonInput(effectiveSelectedDays),
+            color: normalizeColor(color),
+            taskColors: toNullableJsonInput(taskColors ?? null),
+          },
         })
       );
 
@@ -595,20 +499,16 @@ export async function PUT(request: NextRequest) {
         createdFromFallback: true,
       });
     }
-    console.log('[PUT] Found existing scope:', { id, title: existing.title });
 
     const effectiveSchedulingMode = normalizedSchedulingMode ?? (existing?.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous');
     const effectiveSelectedDays = normalizedSelectedDays === undefined
       ? (Array.isArray(existing?.selectedDays) ? (existing?.selectedDays as SelectedDayEntry[]) : null)
       : normalizedSelectedDays;
-    console.log('[PUT] Validation check:', { effectiveSchedulingMode, effectiveSelectedDays });
 
     const specificDaysValidation = await validateSpecificDays(effectiveSelectedDays, effectiveSchedulingMode, {
       allowWeekendSelectedDays: allowWeekendSelectedDays === true,
     });
-    console.log('[PUT] Validation result:', specificDaysValidation);
     if (!specificDaysValidation.valid) {
-      console.error('[PUT] Validation failed:', specificDaysValidation.error);
       return NextResponse.json(
         { success: false, error: specificDaysValidation.error },
         { status: 400 }
@@ -624,19 +524,6 @@ export async function PUT(request: NextRequest) {
       (normalizedSchedulingMode !== undefined && normalizedSchedulingMode !== (existing?.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous')) ||
       (normalizedSelectedDays !== undefined && JSON.stringify(normalizedSelectedDays) !== JSON.stringify(Array.isArray(existing?.selectedDays) ? existing.selectedDays : null));
 
-    console.log('[PUT] About to update scope with:', {
-      id,
-      normalizedTitle,
-      normalizedStartDate,
-      normalizedEndDate,
-      normalizedManpower,
-      normalizedHours,
-      description,
-      tasks: normalizedTasks,
-      normalizedSchedulingMode,
-      normalizedSelectedDays,
-    });
-
     const scope = await withDatabaseRetry(() =>
       prisma.projectScope.update({
         where: { id },
@@ -647,50 +534,14 @@ export async function PUT(request: NextRequest) {
           ...(normalizedManpower !== undefined && { manpower: normalizedManpower }),
           ...(normalizedHours !== undefined && { hours: normalizedHours }),
           ...(description !== undefined && { description: description || null }),
-          ...(tasks !== undefined && { tasks: normalizedTasks ?? null }),
+          ...(tasks !== undefined && { tasks: toNullableJsonInput(normalizedTasks ?? null) }),
           ...(normalizedSchedulingMode !== undefined && { schedulingMode: normalizedSchedulingMode }),
-          ...(normalizedSelectedDays !== undefined && { selectedDays: normalizedSelectedDays }),
-        } as any,
+          ...(normalizedSelectedDays !== undefined && { selectedDays: toNullableJsonInput(normalizedSelectedDays) }),
+          ...(color !== undefined && { color: normalizeColor(color) }),
+          ...(taskColors !== undefined && { taskColors: toNullableJsonInput(taskColors ?? null) }),
+        },
       })
     );
-    console.log('[PUT] Update successful, scope:', scope);
-
-    // Update color and taskColors with raw SQL
-    if (color !== undefined || taskColors !== undefined) {
-      try {
-        const colorValue = color !== undefined ? (color || null) : undefined;
-        const taskColorsValue = taskColors !== undefined ? (taskColors ? JSON.stringify(taskColors) : null) : undefined;
-        
-        console.log(`[PUT] Received color update for scope ${id}:`, { color, colorValue, taskColors, taskColorsValue });
-        
-        const updates = [];
-        const params: any[] = [];
-        
-        if (color !== undefined) {
-          params.push(colorValue);
-          updates.push(`"color" = $${params.length}`);
-        }
-        
-        if (taskColors !== undefined) {
-          params.push(taskColorsValue);
-          updates.push(`"taskColors" = $${params.length}::jsonb`);
-        }
-        
-        if (updates.length > 0) {
-          params.push(id);
-          const query = `UPDATE "ProjectScope" SET ${updates.join(', ')} WHERE id = $${params.length}`;
-          console.log(`[PUT] Executing query:`, query);
-          console.log(`[PUT] With params:`, params);
-          
-          await prisma.$executeRawUnsafe(query, ...params);
-          
-          console.log(`[PUT] Color update successful for scope ${id}`);
-        }
-      } catch (colorError) {
-        console.error('Failed to update scope colors on PUT:', colorError);
-        // Don't fail the whole request if color save fails
-      }
-    }
 
     const shouldSync = syncToActiveSchedule !== false;
     if (shouldSync && didScheduleAffectingFieldsChange) {

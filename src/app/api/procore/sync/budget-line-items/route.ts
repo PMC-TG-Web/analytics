@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from '@/lib/procore';
 import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
 import { ensureBudgetLineItemsTable, batchUpsertBudgetLineItems, type BatchBudgetLineItem } from '@/lib/procoreBudgetLineItems';
 
@@ -131,7 +131,8 @@ async function fetchProjectBudgetLineItemsPage(params: {
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = await request.json().catch(() => ({}));
     const companyIdFromBody = String(body?.companyId || '').trim();
     const limitProjects = Math.max(1, Math.min(10000, Number.parseInt(String(body?.limitProjects || '100'), 10) || 100));
@@ -314,13 +315,14 @@ export async function POST(request: Request) {
         errors,
       },
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, error: `Failed to sync company budget line items: ${message}` },
-      { status: 500 }
-    );
-  }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        { success: false, error: `Failed to sync company budget line items: ${message}` },
+        { status: 500 }
+      );
+    }
+  });
 }
 
 export async function GET() {

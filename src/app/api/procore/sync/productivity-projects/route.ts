@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import {
   normalizeDate,
   persistProductivityLogs,
@@ -149,7 +149,8 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
     const userAccessToken =
@@ -288,16 +289,17 @@ export async function POST(request: Request) {
     summary.activeProjects.sort((left, right) => right.logCount - left.logCount);
 
     return NextResponse.json(summary);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Procore productivity project sync error:", message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("Procore productivity project sync error:", message);
 
-    return NextResponse.json(
-      {
-        error: "Failed to sync projects with Procore productivity activity",
-        details: message,
-      },
-      { status: 500 }
-    );
-  }
+      return NextResponse.json(
+        {
+          error: "Failed to sync projects with Procore productivity activity",
+          details: message,
+        },
+        { status: 500 }
+      );
+    }
+  });
 }

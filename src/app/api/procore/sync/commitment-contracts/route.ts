@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import {
   persistCommitmentContracts,
   type ProcoreCommitmentContract,
@@ -114,7 +114,8 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
     const userAccessToken = cookieStore.get("procore_access_token")?.value || String(body.accessToken || "").trim() || "";
@@ -215,7 +216,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(summary);
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
-  }
+    } catch (err) {
+      return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+  });
 }

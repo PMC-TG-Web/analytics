@@ -1,4 +1,5 @@
 // lib/procore.ts - Procore API utilities
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 interface ProcoreTokenResponse {
   access_token: string;
@@ -13,6 +14,8 @@ type ErrorWithStatusAndCause = Error & {
   cause?: unknown;
 };
 
+const liveApiBypassStore = new AsyncLocalStorage<boolean>();
+
 export const procoreConfig = {
   clientId: (process.env.PROCORE_CLIENT_ID || '').trim(),
   clientSecret: (process.env.PROCORE_CLIENT_SECRET || '').trim(),
@@ -26,6 +29,33 @@ export const procoreConfig = {
 export function isProcoreLiveApiEnabled(): boolean {
   const value = String(process.env.PROCORE_LIVE_API_ENABLED || '').trim().toLowerCase();
   return value === 'true' || value === '1' || value === 'yes';
+}
+
+function getRequestSyncSecret(request: Request): string {
+  const headerSecret = request.headers.get('x-sync-secret')?.trim();
+  if (headerSecret) return headerSecret;
+
+  const authorization = request.headers.get('authorization')?.trim() || '';
+  const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
+  return bearerMatch?.[1]?.trim() || '';
+}
+
+export function hasValidProcoreSyncSecret(request: Request): boolean {
+  const expectedSecret = (process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || '').trim();
+  if (!expectedSecret) return false;
+
+  return getRequestSyncSecret(request) === expectedSecret;
+}
+
+export function withProcoreLiveApiBypassForSyncSecret<T>(
+  request: Request,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!hasValidProcoreSyncSecret(request)) {
+    return operation();
+  }
+
+  return liveApiBypassStore.run(true, operation);
 }
 
 function sleep(ms: number) {
@@ -160,7 +190,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<ProcoreT
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
       console.error('Token refresh failed:', {
         status: response.status,
         statusText: response.statusText,
@@ -185,7 +214,7 @@ export async function makeRequest(
   companyIdOverride?: string,
   quietStatuses: number[] = []
 ): Promise<unknown> {
-  if (!isProcoreLiveApiEnabled()) {
+  if (!isProcoreLiveApiEnabled() && liveApiBypassStore.getStore() !== true) {
     throw new Error('PROCORE_LIVE_API_DISABLED: Set PROCORE_LIVE_API_ENABLED=true to allow outbound Procore API requests.');
   }
 

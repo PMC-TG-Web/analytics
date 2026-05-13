@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import {
   normalizeDate,
   persistTimecardEntries,
@@ -130,7 +130,8 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
     const userAccessToken =
@@ -294,8 +295,9 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(summary);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
-  }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    }
+  });
 }

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { makeRequest, getClientCredentialsToken, procoreConfig } from '@/lib/procore';
+import {
+  makeRequest,
+  getClientCredentialsToken,
+  procoreConfig,
+  withProcoreLiveApiBypassForSyncSecret,
+} from '@/lib/procore';
 import {
   extractCustomerFromCustomFields,
   isMeaningfulCustomer,
@@ -569,18 +574,38 @@ function nextRetryDelayMs(attemptNumber: number): number {
   return Math.min(maxMs, baseMs * Math.pow(2, Math.max(0, attemptNumber - 1)));
 }
 
+function getWebhookWorkKey(event: {
+  companyId: string | null;
+  projectId: string | null;
+  resourceName: string | null;
+  eventType: string | null;
+  resourceId: string | null;
+}) {
+  const action = String(event.eventType || '').toLowerCase() === 'delete' ? 'delete' : 'upsert';
+  return [
+    String(event.companyId || '').toLowerCase(),
+    String(event.projectId || '').toLowerCase(),
+    String(event.resourceName || '').toLowerCase(),
+    String(event.resourceId || '').toLowerCase(),
+    action,
+  ].join(':');
+}
+
 export async function POST(request: NextRequest) {
   if (!hasValidSyncSecret(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  let requestedBatchSize = 25;
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+  let requestedBatchSize = Number.parseInt(request.nextUrl.searchParams.get('batchSize') || '25', 10) || 25;
+  let dryRun = request.nextUrl.searchParams.get('dryRun') === 'true';
   try {
-    const body = (await request.json().catch(() => ({}))) as { batchSize?: unknown };
-    const parsed = Number.parseInt(String(body.batchSize ?? '25'), 10);
+    const body = (await request.json().catch(() => ({}))) as { batchSize?: unknown; dryRun?: unknown };
+    const parsed = Number.parseInt(String(body.batchSize ?? requestedBatchSize), 10);
     if (Number.isFinite(parsed) && parsed > 0) {
       requestedBatchSize = parsed;
     }
+    dryRun = dryRun || body.dryRun === true;
   } catch {
     // Keep default batch size.
   }
@@ -599,11 +624,38 @@ export async function POST(request: NextRequest) {
     take: batchSize,
   });
 
+  if (dryRun) {
+    return NextResponse.json({
+      success: true,
+      dryRun: true,
+      requestedBatchSize: batchSize,
+      scanned: candidates.length,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      candidates: candidates.map((queueItem) => ({
+        queueId: queueItem.id,
+        eventId: queueItem.eventId,
+        resourceName: queueItem.event.resourceName,
+        eventType: queueItem.event.eventType,
+        projectId: queueItem.event.projectId,
+        resourceId: queueItem.event.resourceId,
+        attempts: queueItem.attempts,
+        availableAt: queueItem.availableAt,
+      })),
+    });
+  }
+
   let claimed = 0;
   let processed = 0;
   let failed = 0;
+  let coalesced = 0;
+  let deferredDuplicates = 0;
+  const completedWorkKeys = new Set<string>();
+  const failedWorkKeys = new Map<string, string>();
 
   for (const queueItem of candidates) {
+    const workKey = getWebhookWorkKey(queueItem.event);
     const claimResult = await prisma.procoreWebhookQueue.updateMany({
       where: {
         id: queueItem.id,
@@ -622,6 +674,47 @@ export async function POST(request: NextRequest) {
     }
 
     claimed += 1;
+
+    if (completedWorkKeys.has(workKey)) {
+      await prisma.$transaction([
+        prisma.procoreWebhookQueue.update({
+          where: { id: queueItem.id },
+          data: {
+            status: 'completed',
+            processedAt: new Date(),
+            lastError: null,
+          },
+        }),
+        prisma.procoreWebhookEvent.update({
+          where: { id: queueItem.eventId },
+          data: { processedAt: new Date() },
+        }),
+      ]);
+      processed += 1;
+      coalesced += 1;
+      continue;
+    }
+
+    const priorFailure = failedWorkKeys.get(workKey);
+    if (priorFailure) {
+      const attempted = queueItem.attempts + 1;
+      const shouldFailPermanently = attempted >= queueItem.maxAttempts;
+      await prisma.procoreWebhookQueue.update({
+        where: { id: queueItem.id },
+        data: {
+          status: shouldFailPermanently ? 'failed' : 'pending',
+          availableAt: shouldFailPermanently
+            ? queueItem.availableAt
+            : new Date(Date.now() + nextRetryDelayMs(attempted)),
+          lockedAt: null,
+          lockedBy: null,
+          lastError: priorFailure,
+        },
+      });
+      failed += 1;
+      deferredDuplicates += 1;
+      continue;
+    }
 
     try {
       await processEvent({
@@ -648,6 +741,7 @@ export async function POST(request: NextRequest) {
         }),
       ]);
       processed += 1;
+      completedWorkKeys.add(workKey);
     } catch (error) {
       const attempted = queueItem.attempts + 1;
       const shouldFailPermanently = attempted >= queueItem.maxAttempts;
@@ -667,6 +761,10 @@ export async function POST(request: NextRequest) {
       });
 
       failed += 1;
+      failedWorkKeys.set(
+        workKey,
+        error instanceof Error ? error.message.slice(0, 1000) : 'Unknown processing failure'
+      );
     }
   }
 
@@ -677,5 +775,8 @@ export async function POST(request: NextRequest) {
     claimed,
     processed,
     failed,
+    coalesced,
+    deferredDuplicates,
+  });
   });
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 
 import { ConcreteOrderModal, type ConcreteOrderProjectRef } from "@/components/ConcreteOrderModal";
 import { ProjectInfo, Scope, ScheduleTask } from "@/types";
+import { clearFetchJsonCache, fetchJsonWithRetry } from "@/utils/fetchJsonWithRetry";
 import { readJsonResponse } from "@/utils/readJsonResponse";
 
 type GanttProjectResponse = {
@@ -24,6 +25,41 @@ type GanttProjectResponse = {
 const NEW_SCOPE_ID = '__new_scope__';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PM_TITLES = ["Project Manager", "Lead Foreman / Project Manager", "Superintendent"];
+const REFERENCE_DATA_CACHE_TTL_MS = 60_000;
+const EMPLOYEES_CACHE_KEY = "schedule:employees:active";
+const PM_ASSIGNMENTS_CACHE_KEY = "long-term:pm-assignments";
+const HOLIDAY_CACHE_KEY = "schedule:holidays:all";
+
+type AssignmentContextResponse<T> = {
+  data?: T[];
+};
+
+type AssignmentEmployeeRecord = {
+  id?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  jobTitle?: string | null;
+  isActive?: boolean | null;
+};
+
+type AssignmentPmRecord = {
+  assignmentKey?: string | null;
+  jobKey?: string | null;
+  pmId?: string | null;
+};
+
+type AssignmentProjectRecord = {
+  customer?: string | null;
+  projectNumber?: string | null;
+  projectName?: string | null;
+  projectManager?: string | null;
+};
+
+type AssignmentScheduleRecord = {
+  jobKey?: string | null;
+  scopeOfWork?: string | null;
+  foreman?: string | null;
+};
 
 const isCanonicalScopeId = (value: string | null | undefined) =>
   Boolean(
@@ -518,6 +554,7 @@ export function ProjectScopesModal({
   const [savingAssignmentPm, setSavingAssignmentPm] = useState(false);
   const [savingAssignmentForeman, setSavingAssignmentForeman] = useState(false);
   const [autoLongTermAssignmentContext, setAutoLongTermAssignmentContext] = useState<LongTermAssignmentContext | null>(null);
+  const [isLoadingAssignmentContext, setIsLoadingAssignmentContext] = useState(false);
   const [hasManualDateOverride, setHasManualDateOverride] = useState(false);
 
   const emptyScopeDetail = useMemo<Partial<Scope>>(() => ({
@@ -566,6 +603,7 @@ export function ProjectScopesModal({
       }
 
       setAssignmentPmSelection(nextPmSelection);
+  clearFetchJsonCache(PM_ASSIGNMENTS_CACHE_KEY);
       if (onLongTermAssignmentSaved) {
         void Promise.resolve(onLongTermAssignmentSaved()).catch((refreshError) => {
           console.error('Failed to refresh after long-term PM assignment save:', refreshError);
@@ -851,6 +889,7 @@ export function ProjectScopesModal({
   useEffect(() => {
     if (longTermAssignmentContext) {
       setAutoLongTermAssignmentContext(null);
+      setIsLoadingAssignmentContext(false);
       return;
     }
 
@@ -858,23 +897,56 @@ export function ProjectScopesModal({
     const scopeOfWork = activeScopeTitleForAssignment;
     if (!jobKey) {
       setAutoLongTermAssignmentContext(null);
+      setIsLoadingAssignmentContext(false);
       return;
     }
+
+    const immediateForemanSelectionId =
+      selectedForemanId && selectedForemanId !== '__unassigned__'
+        ? selectedForemanId
+        : '__unassigned__';
+
+    // Render assignment card immediately with best-known defaults,
+    // then hydrate option lists and persisted assignments in background.
+    setIsLoadingAssignmentContext(true);
+    setAutoLongTermAssignmentContext((prev) => ({
+      assignmentKey: jobKey,
+      jobKey,
+      scopeOfWork: scopeOfWork || '',
+      pmSelectionId: prev?.jobKey === jobKey ? prev.pmSelectionId : '',
+      projectDefaultPMName: String(project?.projectManager || '').trim() || 'Project Default',
+      foremanSelectionId: immediateForemanSelectionId,
+      pmOptions: prev?.jobKey === jobKey ? prev.pmOptions : [],
+      foremanOptions: prev?.jobKey === jobKey ? prev.foremanOptions : [],
+    }));
 
     let cancelled = false;
     const loadAssignmentContext = async () => {
       try {
-        const [employeesRes, pmAssignmentsRes, projectsRes, activeScheduleRes] = await Promise.all([
-          fetch('/api/short-term-schedule?action=employees', { cache: 'no-store' }),
-          fetch('/api/long-term-schedule/pm-assignments', { cache: 'no-store' }),
-          fetch('/api/projects?page=1&pageSize=500', { cache: 'no-store' }),
-          fetch('/api/short-term-schedule?action=active-schedule', { cache: 'no-store' }),
+        const [employeesJson, pmAssignmentsJson, projectsJson, activeScheduleJson] = await Promise.all([
+          fetchJsonWithRetry<AssignmentContextResponse<AssignmentEmployeeRecord>>('/api/short-term-schedule?action=employees', {
+            fallback: { data: [] },
+            label: 'scope modal employees',
+            cacheKey: EMPLOYEES_CACHE_KEY,
+            ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
+          }),
+          fetchJsonWithRetry<AssignmentContextResponse<AssignmentPmRecord>>('/api/long-term-schedule/pm-assignments', {
+            fallback: { data: [] },
+            label: 'scope modal pm assignments',
+            cacheKey: PM_ASSIGNMENTS_CACHE_KEY,
+            ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
+          }),
+          fetchJsonWithRetry<AssignmentContextResponse<AssignmentProjectRecord>>('/api/projects?page=1&pageSize=500', {
+            fallback: { data: [] },
+            label: 'scope modal projects',
+            cacheKey: 'projects:lookup:1:500',
+            ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
+          }),
+          fetchJsonWithRetry<AssignmentContextResponse<AssignmentScheduleRecord>>('/api/short-term-schedule?action=active-schedule', {
+            fallback: { data: [] },
+            label: 'scope modal active schedule',
+          }),
         ]);
-
-        const employeesJson = await employeesRes.json().catch(() => ({}));
-        const pmAssignmentsJson = await pmAssignmentsRes.json().catch(() => ({}));
-        const projectsJson = await projectsRes.json().catch(() => ({}));
-        const activeScheduleJson = await activeScheduleRes.json().catch(() => ({}));
 
         const employees = Array.isArray(employeesJson?.data) ? employeesJson.data : [];
         const pmAssignments = Array.isArray(pmAssignmentsJson?.data) ? pmAssignmentsJson.data : [];
@@ -950,6 +1022,10 @@ export function ProjectScopesModal({
       } catch {
         if (!cancelled) {
           setAutoLongTermAssignmentContext(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAssignmentContext(false);
         }
       }
     };
@@ -2182,9 +2258,12 @@ export function ProjectScopesModal({
 
     paidHolidayLoadPromiseRef.current = (async () => {
       try {
-        const response = await fetch('/api/holidays?page=1&pageSize=500');
-        if (!response.ok) return;
-        const json = await response.json().catch(() => ({}));
+        const json = await fetchJsonWithRetry<{ data?: HolidayApiRow[] }>('/api/holidays?page=1&pageSize=500', {
+          fallback: { data: [] },
+          label: 'scope modal holidays',
+          cacheKey: HOLIDAY_CACHE_KEY,
+          ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
+        });
         const holidays: HolidayApiRow[] = Array.isArray(json?.data) ? json.data : [];
         const paid = holidays
           .filter((h) => Boolean(h?.isPaid) && typeof h?.date === 'string')
@@ -2391,11 +2470,8 @@ export function ProjectScopesModal({
 
       if (!isClearingSchedule && dayEditMode && selectedScheduleDate && effectiveSchedulingMode === 'specific-days' && (selectedScopeTitle || scopeDetail.title)) {
         const scopeName = (scopeDetail.title || selectedScopeTitle || '').trim();
-        const resolvedStartDate = (derivedTaskRange?.startDate || scopeDetail.startDate || selectedScheduleDate || '').trim();
-        const resolvedEndDate = (derivedTaskRange?.endDate || scopeDetail.endDate || resolvedStartDate || '').trim();
-        if (!resolvedStartDate) {
-          throw new Error('Scope start date is required.');
-        }
+        const resolvedStartDate = (selectedDays[0]?.date || derivedTaskRange?.startDate || scopeDetail.startDate || '').trim();
+        const resolvedEndDate = (selectedDays[selectedDays.length - 1]?.date || derivedTaskRange?.endDate || scopeDetail.endDate || resolvedStartDate || '').trim();
         const selectedDayEntry = selectedDays.find((entry) => entry.date === selectedScheduleDate);
         const dayHoursRaw =
           scopeDetail.schedulingMode === 'specific-days'
@@ -3165,26 +3241,28 @@ export function ProjectScopesModal({
               <div className="mb-4 border border-blue-200 bg-blue-50/50 rounded-md p-3">
                 <label className="block text-sm font-semibold mb-1">Project Assignment</label>
                 <p className="text-[11px] text-gray-600 mb-3">
-                  The Project Manager applies to every scope and task in this project.
+                  {isLoadingAssignmentContext
+                    ? 'Loading assignment details...'
+                    : 'The Project Manager applies to every scope and task in this project.'}
                   {allowLongTermAssignmentEditing ? ' Foreman remains optional for the currently selected scope.' : ''}
                 </p>
                 <div className={`grid grid-cols-1 ${allowLongTermAssignmentEditing ? 'md:grid-cols-2' : ''} gap-3`}>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Project Manager</label>
                     <select
-                      disabled={savingAssignmentPm}
+                      disabled={savingAssignmentPm || isLoadingAssignmentContext}
                       value={assignmentPmSelection}
                       onChange={(e) => handleLongTermPmChange(e.target.value)}
                       className="w-full px-3 py-2 border rounded-md text-sm bg-white"
                     >
-                      <option value="">Select Project Manager</option>
+                      <option value="">{isLoadingAssignmentContext ? 'Loading project managers...' : 'Select Project Manager'}</option>
                       {effectiveLongTermAssignmentContext.pmOptions.map((pm) => (
                         <option key={pm.id} value={pm.id}>
                           {pm.label}
                         </option>
                       ))}
                     </select>
-                    {!assignmentPmSelection && (
+                    {!assignmentPmSelection && !isLoadingAssignmentContext && (
                       <p className="mt-1 text-[11px] font-semibold text-red-600">Project Manager is required.</p>
                     )}
                   </div>
@@ -3192,12 +3270,12 @@ export function ProjectScopesModal({
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Foreman</label>
                       <select
-                        disabled={savingAssignmentForeman || !effectiveLongTermAssignmentContext.scopeOfWork}
+                        disabled={savingAssignmentForeman || isLoadingAssignmentContext || !effectiveLongTermAssignmentContext.scopeOfWork}
                         value={assignmentForemanSelection}
                         onChange={(e) => handleLongTermForemanChange(e.target.value)}
                         className="w-full px-3 py-2 border rounded-md text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                       >
-                        <option value="__unassigned__">Unassigned</option>
+                        <option value="__unassigned__">{isLoadingAssignmentContext ? 'Loading foremen...' : 'Unassigned'}</option>
                         {effectiveLongTermAssignmentContext.foremanOptions.map((foreman) => (
                           <option key={foreman.id} value={foreman.id}>
                             {foreman.label}

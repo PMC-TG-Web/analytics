@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 
-import { Scope, Project, ProjectInfo, Holiday } from "@/types";
+import { Scope, Project, ProjectInfo, Holiday, ScheduleTask } from "@/types";
 import { ProjectScopesModal } from "@/app/project-schedule/components/ProjectScopesModal";
 import { getEnrichedScopes, getProjectKey } from "@/utils/projectUtils";
 import { getActiveScheduleDocId, recalculateScopeTracking } from "@/utils/activeScheduleUtils";
@@ -78,6 +78,59 @@ interface Employee {
   isActive?: boolean;
 }
 
+type ShortTermSelectedDayRecord = {
+  date?: unknown;
+  hours?: unknown;
+  foreman?: unknown;
+};
+
+type ShortTermScopeRecord = {
+  id?: string;
+  jobKey?: string;
+  title?: string | null;
+  scopeOfWork?: string | null;
+  hours?: unknown;
+  manpower?: unknown;
+  startDate?: string | null;
+  endDate?: string | null;
+  description?: string | null;
+  tasks?: unknown;
+  schedulingMode?: string | null;
+  selectedDays?: unknown;
+};
+
+type ShortTermTimeOffRecord = {
+  id?: string;
+  employeeId?: string;
+  startDate?: string;
+  endDate?: string;
+  dates?: unknown;
+  type?: string;
+  hours?: unknown;
+};
+
+type ShortTermActiveScheduleRecord = {
+  jobKey?: string;
+  scopeOfWork?: string | null;
+  source?: string | null;
+  customer?: string | null;
+  projectNumber?: string | null;
+  projectName?: string | null;
+  date?: string;
+  hours?: unknown;
+  foreman?: string | null;
+  employees?: string[];
+};
+
+type ShortTermBootstrapPayload = {
+  data?: {
+    employees?: Employee[];
+    timeOffs?: ShortTermTimeOffRecord[];
+    scopes?: ShortTermScopeRecord[];
+    projects?: Project[];
+  };
+};
+
 const isForemanRole = (jobTitle?: string) => {
   const title = (jobTitle || '').toLowerCase();
   return (
@@ -117,6 +170,164 @@ const getDayProjectRenderKey = (project: DayProject, dateKey: string, foremanId:
 
 const normalizeScopeKey = (scopeOfWork: string | undefined) =>
   String(scopeOfWork || 'Scheduled Work').trim().toLowerCase();
+
+const HOURS_PER_FTE_DAY = 10;
+const REFERENCE_DATA_CACHE_TTL_MS = 60_000;
+const HOLIDAY_CACHE_KEY = "schedule:holidays:all";
+
+function normalizeTaskForShortTerm(task: string | ScheduleTask): ScheduleTask | null {
+  if (!task) return null;
+  if (typeof task === "object" && !Array.isArray(task)) {
+    const name = String(task.name || "").trim();
+    if (!name) return null;
+
+    const daysRaw = Number(task.days);
+    const manpowerRaw = Number(task.manpower);
+    const yardsRaw = Number(task.yards);
+    const startDate = String(task.startDate || "").trim();
+    const endDate = String(task.endDate || "").trim();
+
+    let calculatedDays: number | null = null;
+    if (Number.isFinite(daysRaw) && daysRaw > 0) {
+      calculatedDays = daysRaw;
+    } else if (startDate && endDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      const start = new Date(`${startDate}T00:00:00`);
+      const end = new Date(`${endDate}T00:00:00`);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const diffMs = end.getTime() - start.getTime();
+        calculatedDays = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
+      }
+    }
+
+    return {
+      name,
+      startDate,
+      endDate,
+      days: calculatedDays,
+      manpower: Number.isFinite(manpowerRaw) && manpowerRaw >= 0 ? manpowerRaw : null,
+      yards: Number.isFinite(yardsRaw) && yardsRaw >= 0 ? yardsRaw : null,
+    };
+  }
+
+  const raw = String(task).trim();
+  if (!raw) return null;
+  return { name: raw };
+}
+
+function getScopeSpecificDayHours(scope: Scope | null | undefined, dateKey: string): number | null {
+  if (!scope || !Array.isArray(scope.selectedDays) || !dateKey) return null;
+  const match = scope.selectedDays.find((entry) => String(entry?.date || "").trim() === dateKey);
+  const hours = Number(match?.hours || 0);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+}
+
+function getScopeTaskDayHours(scope: Scope | null | undefined, dateKey: string): number | null {
+  if (!scope || !Array.isArray(scope.tasks) || !dateKey) return null;
+
+  let totalHours = 0;
+
+  for (const rawTask of scope.tasks) {
+    const task = normalizeTaskForShortTerm(rawTask);
+    if (!task) continue;
+
+    const startDate = String(task.startDate || "").trim();
+    const daysRaw = Number(task.days || 0);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 1;
+    const manpower = Number(task.manpower || 0);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) continue;
+    if (!Number.isFinite(manpower) || manpower <= 0) continue;
+
+    const start = new Date(`${startDate}T00:00:00`);
+    if (isNaN(start.getTime())) continue;
+
+    for (let offset = 0; offset < days; offset += 1) {
+      const current = new Date(start);
+      current.setDate(current.getDate() + offset);
+      if (formatDateKey(current) === dateKey) {
+        totalHours += manpower * HOURS_PER_FTE_DAY;
+      }
+    }
+  }
+
+  return totalHours > 0 ? totalHours : null;
+}
+
+function getScopeContiguousDayHours(
+  scope: Scope | null | undefined,
+  dateKey: string,
+  paidHolidayByDate: Record<string, Holiday>
+): number | null {
+  if (!scope || scope.schedulingMode === "specific-days") return null;
+  const startDate = String(scope.startDate || "").trim();
+  const endDate = String(scope.endDate || "").trim();
+  const totalHours = Number(scope.hours || 0);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return null;
+  if (!Number.isFinite(totalHours) || totalHours <= 0) return null;
+  if (dateKey < startDate || dateKey > endDate) return null;
+
+  const workingDates: string[] = [];
+  const current = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+
+  while (current <= end) {
+    const weekday = current.getDay();
+    const key = formatDateKey(current);
+    if (weekday >= 1 && weekday <= 5 && !paidHolidayByDate[key]) {
+      workingDates.push(key);
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  if (workingDates.length === 0) return null;
+  if (!workingDates.includes(dateKey)) return 0;
+  return totalHours / workingDates.length;
+}
+
+function getScopeScheduledHoursForDate(
+  scope: Scope | null | undefined,
+  dateKey: string,
+  paidHolidayByDate: Record<string, Holiday>
+): number | null {
+  if (!scope || !dateKey) return null;
+
+  const taskDayHours = getScopeTaskDayHours(scope, dateKey);
+  if (Number.isFinite(taskDayHours || 0) && (taskDayHours || 0) > 0) return Number(taskDayHours);
+
+  const specificDayHours = getScopeSpecificDayHours(scope, dateKey);
+  if (Number.isFinite(specificDayHours || 0) && (specificDayHours || 0) > 0) return Number(specificDayHours);
+
+  const contiguousDayHours = getScopeContiguousDayHours(scope, dateKey, paidHolidayByDate);
+  if (Number.isFinite(contiguousDayHours || 0) && (contiguousDayHours || 0) > 0) return Number(contiguousDayHours);
+
+  const manpower = Number(scope.manpower || 0);
+  return Number.isFinite(manpower) && manpower > 0 ? manpower * HOURS_PER_FTE_DAY : null;
+}
+
+function findMatchingScopeForDay(
+  scopesByJobKey: Record<string, Scope[]>,
+  jobKey: string,
+  scopeName: string | undefined,
+  dateKey: string,
+  paidHolidayByDate: Record<string, Holiday>
+): Scope | null {
+  const scopes = scopesByJobKey[jobKey] || [];
+  if (scopes.length === 0) return null;
+
+  const titleKey = normalizeScopeKey(scopeName);
+  const titleMatches = scopes.filter((scope) => normalizeScopeKey(scope.title) === titleKey);
+  const candidates = titleMatches.length > 0 ? titleMatches : scopes;
+
+  return (
+    candidates.find((scope) => {
+      const hours = getScopeScheduledHoursForDate(scope, dateKey, paidHolidayByDate);
+      return Number.isFinite(hours || 0) && (hours || 0) > 0;
+    }) ||
+    (titleMatches.length === 1 ? titleMatches[0] : null) ||
+    (scopes.length === 1 ? scopes[0] : null)
+  );
+}
 
 const mergeDayProjects = (projects: DayProject[]): DayProject[] => {
   const mergedByKey = new Map<string, DayProject>();
@@ -534,10 +745,13 @@ function ShortTermScheduleContent() {
     if (position) {
       setSaving(true);
       try {
-        // Get the manpower for this scope to calculate hours
-        const manpower = p.manpower || 0;
-        const hoursToSchedule = manpower > 0 ? manpower * 10 : 8; // Calculate from manpower, or fallback to 8
         const scopeOfWork = (p.scopeOfWork || "Scheduled Work").trim();
+        const matchingScope = findMatchingScopeForDay(scopesByJobKey, jobKey, scopeOfWork, dateKey, paidHolidayByDate);
+        const resolvedScopeHours = getScopeScheduledHoursForDate(matchingScope, dateKey, paidHolidayByDate);
+        const projectManpower = Number(p.manpower || 0);
+        const hoursToSchedule = Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0
+          ? Number(resolvedScopeHours)
+          : (Number.isFinite(projectManpower) && projectManpower > 0 ? projectManpower * HOURS_PER_FTE_DAY : HOURS_PER_FTE_DAY);
         
         // Add new project to schedule (no source date, just creating new entry)
         const response = await fetch('/api/short-term-schedule/move', {
@@ -916,7 +1130,7 @@ function ShortTermScheduleContent() {
 
       // Fetch all data in parallel (was: 2-step serial waterfall)
       const [schedulePayload, holidayJson, schedData] = await Promise.all([
-        fetchJsonWithRetry<{ data?: { employees?: any[]; timeOffs?: any[]; scopes?: any[]; projects?: any[] } }>(
+        fetchJsonWithRetry<ShortTermBootstrapPayload>(
           '/api/short-term-schedule',
           {
             fallback: { data: { employees: [], timeOffs: [], scopes: [], projects: [] } },
@@ -926,8 +1140,10 @@ function ShortTermScheduleContent() {
         fetchJsonWithRetry<{ data?: Holiday[] }>('/api/holidays?page=1&pageSize=500', {
           fallback: { data: [] },
           label: 'short-term holidays',
+          cacheKey: HOLIDAY_CACHE_KEY,
+          ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
         }),
-        fetchJsonWithRetry<{ data?: any[] }>(
+        fetchJsonWithRetry<{ data?: ShortTermActiveScheduleRecord[] }>(
           `/api/short-term-schedule?action=active-schedule&startDate=${earlyStartStr}&endDate=${earlyEndStr}`,
           {
             fallback: { data: [] },
@@ -949,7 +1165,7 @@ function ShortTermScheduleContent() {
 
       // Process employees
       const allEmps = employees
-        .sort((a: any, b: any) => {
+        .sort((a: Employee, b: Employee) => {
           const nameA = `${a.firstName} ${a.lastName}`;
           const nameB = `${b.firstName} ${b.lastName}`;
           return nameA.localeCompare(nameB);
@@ -958,13 +1174,13 @@ function ShortTermScheduleContent() {
       setAllEmployees(allEmps);
 
       // Match Crew Dispatch base capacity roles
-      const dispatchCapacityStaff = allEmps.filter((e: any) =>
+      const dispatchCapacityStaff = allEmps.filter((e: Employee) =>
         e.isActive && (isForemanRole(e.jobTitle) || isDispatchCapacityFieldRole(e.jobTitle))
       );
       const baseDispatchCapacity = dispatchCapacityStaff.length * 10;
       setCompanyCapacity(baseDispatchCapacity);
       
-      const foremenList = allEmps.filter((emp: any) => 
+      const foremenList = allEmps.filter((emp: Employee) => 
         emp.isActive && isForemanRole(emp.jobTitle)
       );
       setForemen(foremenList);
@@ -988,38 +1204,38 @@ function ShortTermScheduleContent() {
       });
       
       // Set project scopes
-      const rawScopes: Scope[] = scopes.map((s: any) => ({
-        id: s.id,
-        jobKey: s.jobKey,
+      const rawScopes: Scope[] = scopes.map((s: ShortTermScopeRecord) => ({
+        id: String(s.id || ''),
+        jobKey: s.jobKey || '',
         title: s.title || s.scopeOfWork || 'Scope',
-        hours: s.hours,
+        hours: Number.isFinite(Number(s.hours)) ? Number(s.hours) : 0,
         manpower: Number.isFinite(Number(s.manpower)) ? Number(s.manpower) : 0,
         startDate: s.startDate || '',
         endDate: s.endDate || '',
         description: s.description || '',
-        tasks: Array.isArray(s.tasks) ? s.tasks : [],
+        tasks: Array.isArray(s.tasks) ? s.tasks as Array<string | ScheduleTask> : [],
         schedulingMode: s.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
         selectedDays: Array.isArray(s.selectedDays)
-          ? s.selectedDays
-              .map((entry: any) => ({
+          ? (s.selectedDays as ShortTermSelectedDayRecord[])
+              .map((entry: ShortTermSelectedDayRecord) => ({
                 date: String(entry?.date || '').trim(),
                 hours: Number(entry?.hours || 0),
                 foreman: entry?.foreman ? String(entry.foreman) : null,
               }))
-              .filter((entry: any) => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0)
+              .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0)
           : []
       }));
 
       // Normalize time off requests for date range calculations
-      const normalizedTimeOffs: TimeOffRequest[] = (timeOffs || []).flatMap((t: any) => {
+      const normalizedTimeOffs: TimeOffRequest[] = (timeOffs || []).flatMap((t: ShortTermTimeOffRecord) => {
         const dates = Array.isArray(t?.dates)
           ? t.dates.filter((d: unknown) => typeof d === 'string' && d)
           : [];
 
         if (typeof t?.startDate === 'string' && typeof t?.endDate === 'string') {
           return [{
-            id: t.id,
-            employeeId: t.employeeId,
+            id: String(t.id || ''),
+            employeeId: String(t.employeeId || ''),
             startDate: t.startDate,
             endDate: t.endDate,
             type: (t.type || 'Other') as TimeOffRequest['type'],
@@ -1031,8 +1247,8 @@ function ShortTermScheduleContent() {
         const sortedDates = [...dates].sort();
 
         return [{
-          id: t.id,
-          employeeId: t.employeeId,
+          id: String(t.id || ''),
+          employeeId: String(t.employeeId || ''),
           startDate: sortedDates[0],
           endDate: sortedDates[sortedDates.length - 1],
           type: (t.type || 'Other') as TimeOffRequest['type'],
@@ -1058,17 +1274,17 @@ function ShortTermScheduleContent() {
       const endDateStr = formatDateKey(new Date(fiveWeeksFromStart.getTime() - 1));
 
       const activeSchedules = schedData.data || [];
-      const ganttInitiatedSchedules = activeSchedules.filter((entry: any) => {
+      const ganttInitiatedSchedules = activeSchedules.filter((entry: ShortTermActiveScheduleRecord) => {
         const source = (entry.source || '').toLowerCase();
         return source === 'gantt' || source === 'wip-page';
       });
-      const initiatedJobKeys = new Set(ganttInitiatedSchedules.map((entry: any) => entry.jobKey).filter(Boolean));
+      const initiatedJobKeys = new Set(ganttInitiatedSchedules.map((entry: ShortTermActiveScheduleRecord) => entry.jobKey).filter(Boolean));
 
       // Create synthetic projects from Gantt V2 activeSchedule entries
       const ganttProjects: Project[] = [];
       const seenJobKeys = new Set<string>();
       
-      ganttInitiatedSchedules.forEach((entry: any) => {
+      ganttInitiatedSchedules.forEach((entry: ShortTermActiveScheduleRecord) => {
         const jobKey = entry.jobKey;
         if (!jobKey || seenJobKeys.has(jobKey)) return;
         
@@ -1097,7 +1313,7 @@ function ShortTermScheduleContent() {
       });
       
       // Also add synthetic scopes from Gantt activeSchedule entries
-      ganttInitiatedSchedules.forEach((entry: any) => {
+      ganttInitiatedSchedules.forEach((entry: ShortTermActiveScheduleRecord) => {
         const jobKey = entry.jobKey;
         if (!jobKey) return;
         
@@ -1145,13 +1361,17 @@ function ShortTermScheduleContent() {
       
       // Load data from activeSchedule API response
       // Only show projects initiated from Gantt actual schedule
-      ganttInitiatedSchedules.forEach((entry: any) => {
+      ganttInitiatedSchedules.forEach((entry: ShortTermActiveScheduleRecord) => {
         if (!scopesObj[entry.jobKey]) return;
         
         const dateKey = entry.date;
         const dateCol = dayMap.get(dateKey);
         
         if (dateCol) {
+          const matchingScope = findMatchingScopeForDay(scopesObj, entry.jobKey, entry.scopeOfWork, dateKey, paidHolidayMap);
+          const resolvedScopeHours = getScopeScheduledHoursForDate(matchingScope, dateKey, paidHolidayMap);
+          const entryHours = Number(entry.hours || 0);
+
           projectsByDay[dateKey].push({
             jobKey: entry.jobKey,
             scopeOfWork: entry.scopeOfWork || 'Scheduled Work',
@@ -1159,7 +1379,9 @@ function ShortTermScheduleContent() {
             customer: entry.customer || '',
             projectNumber: entry.projectNumber || '',
             projectName: entry.projectName || '',
-            hours: entry.hours || 0,
+            hours: Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0
+              ? Number(resolvedScopeHours)
+              : (Number.isFinite(entryHours) && entryHours > 0 ? entryHours : 0),
             foreman: entry.foreman || '',
             employees: entry.employees || [],
             month: dateKey.substring(0, 7),
@@ -1224,7 +1446,7 @@ function ShortTermScheduleContent() {
 
         let totalHoursOff = 0;
 
-        dispatchCapacityStaff.forEach((employee: any) => {
+        dispatchCapacityStaff.forEach((employee: Employee) => {
           const employeeHoursOff = normalizedTimeOffs
             .filter((req) => req.employeeId === employee.id && dateKey >= req.startDate && dateKey <= req.endDate)
             .reduce((sum, req) => sum + (req.hours || 10), 0);
@@ -1863,43 +2085,34 @@ function ShortTermScheduleContent() {
               if (targetingCell) {
                 const { date, foremanId } = targetingCell;
                 const dateKey = formatDateKey(date);
-                const targetScope = updatedScopes.find(s => {
-                  if (!s.startDate || !s.endDate) return false;
-                  return dateKey >= s.startDate && dateKey <= s.endDate;
-                }) || updatedScopes[updatedScopes.length - 1];
-                
-                if (targetScope?.startDate && targetScope?.endDate) {
-                  const start = new Date(targetScope.startDate + 'T00:00:00');
-                  const end = new Date(targetScope.endDate + 'T00:00:00');
-                  if (date >= start && date <= end) {
-                    const monthStr = dateKey.substring(0, 7);
-                    const position = getWeekDayPositionForDate(monthStr, date);
-                    if (position) {
-                      const newProject: DayProject = {
-                        jobKey,
-                        customer: selectedGanttProject?.customer || "",
-                        projectNumber: selectedGanttProject?.projectNumber || "",
-                        projectName: selectedGanttProject?.projectName || "",
-                        hours: 0,
-                        foreman: foremanId === "__unassigned__" ? "" : foremanId,
-                        employees: [],
-                        month: monthStr,
-                        weekNumber: position.weekNumber,
-                        dayNumber: position.dayNumber
-                      };
-                      if (targetScope.manpower && targetScope.manpower > 0) {
-                        newProject.hours = targetScope.manpower * 10;
-                      } else {
-                        let workDaysInRange = 0;
-                        let curr = new Date(start);
-                        while (curr <= end) {
-                          if (curr.getDay() !== 0 && curr.getDay() !== 6) workDaysInRange++;
-                          curr.setDate(curr.getDate() + 1);
-                        }
-                        if (workDaysInRange > 0) { newProject.hours = (targetScope.hours || 0) / workDaysInRange; }
-                      }
-                      if (newProject.hours > 0) { await updateProjectAssignment(newProject, dateKey, dateKey, foremanId, foremanId, newProject.hours); }
-                    }
+                const updatedScopesByJobKey = { [jobKey]: updatedScopes };
+                const targetScope = findMatchingScopeForDay(
+                  updatedScopesByJobKey,
+                  jobKey,
+                  selectedGanttScopeTitle || undefined,
+                  dateKey,
+                  paidHolidayByDate
+                ) || updatedScopes[updatedScopes.length - 1];
+                const resolvedScopeHours = getScopeScheduledHoursForDate(targetScope, dateKey, paidHolidayByDate);
+
+                if (targetScope && Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0) {
+                  const monthStr = dateKey.substring(0, 7);
+                  const position = getWeekDayPositionForDate(monthStr, date);
+                  if (position) {
+                    const newProject: DayProject = {
+                      jobKey,
+                      scopeOfWork: targetScope.title || selectedGanttScopeTitle || 'Scheduled Work',
+                      customer: selectedGanttProject?.customer || "",
+                      projectNumber: selectedGanttProject?.projectNumber || "",
+                      projectName: selectedGanttProject?.projectName || "",
+                      hours: Number(resolvedScopeHours),
+                      foreman: foremanId === "__unassigned__" ? "" : foremanId,
+                      employees: [],
+                      month: monthStr,
+                      weekNumber: position.weekNumber,
+                      dayNumber: position.dayNumber,
+                    };
+                    await updateProjectAssignment(newProject, dateKey, dateKey, foremanId, foremanId, newProject.hours);
                   }
                 }
               }

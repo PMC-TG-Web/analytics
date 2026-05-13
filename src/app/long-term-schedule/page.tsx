@@ -154,6 +154,10 @@ type ColDef =
 const PM_TITLES = ["Project Manager", "Lead Foreman / Project Manager", "Superintendent"];
 const HOURS_PER_FTE_DAY = 10;
 const HOURS_PER_FTE_WEEK = 50;
+const REFERENCE_DATA_CACHE_TTL_MS = 60_000;
+const HOLIDAY_CACHE_KEY = "schedule:holidays:all";
+const EMPLOYEES_CACHE_KEY = "schedule:employees:active";
+const PM_ASSIGNMENTS_CACHE_KEY = "long-term:pm-assignments";
 
 function getHoursFromScheduleEntry(entry: ActiveScheduleEntry): number {
   const hours = Number(entry.hours || 0);
@@ -229,11 +233,11 @@ function getScopeTaskDayHours(scope: Scope | null | undefined, dateKey: string):
     if (!task) continue;
 
     const startDate = String(task.startDate || "").trim();
-    const days = Number(task.days || 0);
+    const daysRaw = Number(task.days || 0);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 1;
     const manpower = Number(task.manpower || 0);
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) continue;
-    if (!Number.isFinite(days) || days <= 0) continue;
     if (!Number.isFinite(manpower) || manpower <= 0) continue;
 
     const start = new Date(`${startDate}T00:00:00`);
@@ -379,9 +383,9 @@ function getScopeDisplayDateKeys(
       if (!task) return;
 
       const startDate = String(task.startDate || "").trim();
-      const days = Number(task.days || 0);
+      const daysRaw = Number(task.days || 0);
+      const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 1;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return;
-      if (!Number.isFinite(days) || days <= 0) return;
 
       hasTaskDates = true;
       const start = new Date(`${startDate}T00:00:00`);
@@ -573,6 +577,8 @@ async function fetchLongTermProjectSummaries(): Promise<{ data?: ProjectSummary[
       {
         fallback: { data: [], hasNextPage: false },
         label: `long-term projects page ${page}`,
+        cacheKey: `projects:summary:${page}:500`,
+        ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
       }
     );
 
@@ -942,13 +948,12 @@ export default function LongTermSchedulePage() {
       rangeEnd.setDate(rangeEnd.getDate() + 15 * 7 - 1);
       const startDate = currentWeekStart.toISOString().split("T")[0];
       const endDate = rangeEnd.toISOString().split("T")[0];
-      const startMonth = startDate.slice(0, 7);
-      const endMonth = endDate.slice(0, 7);
-
-      const [employeesJson, scheduleJson, holidaysJson, projectsJson, pmAssignmentsJson, timeOffJson, scopesJson, ganttProjectsJson, scheduleAllocationsJson] = await Promise.all([
+      const [employeesJson, scheduleJson, holidaysJson, projectsJson, pmAssignmentsJson, timeOffJson, scopesJson, ganttProjectsJson] = await Promise.all([
         fetchJsonWithRetry<{ data?: Employee[] }>("/api/short-term-schedule?action=employees", {
           fallback: { data: [] },
           label: "long-term employees",
+          cacheKey: EMPLOYEES_CACHE_KEY,
+          ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
         }),
         fetchJsonWithRetry<{ data?: ActiveScheduleEntry[] }>(
           `/api/short-term-schedule?action=active-schedule&startDate=${startDate}&endDate=${endDate}`,
@@ -960,11 +965,15 @@ export default function LongTermSchedulePage() {
         fetchJsonWithRetry<{ data?: Holiday[] }>("/api/holidays?page=1&pageSize=500", {
           fallback: { data: [] },
           label: "long-term holidays",
+          cacheKey: HOLIDAY_CACHE_KEY,
+          ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
         }),
         fetchLongTermProjectSummaries(),
         fetchJsonWithRetry<{ data?: PMAssignment[] }>("/api/long-term-schedule/pm-assignments", {
           fallback: { data: [] },
           label: "long-term pm assignments",
+          cacheKey: PM_ASSIGNMENTS_CACHE_KEY,
+          ttlMs: REFERENCE_DATA_CACHE_TTL_MS,
         }),
         fetchJsonWithRetry<{ data?: RawTimeOffRecord[] }>("/api/time-off", {
           fallback: { data: [] },
@@ -978,13 +987,6 @@ export default function LongTermSchedulePage() {
           fallback: { data: [] },
           label: "long-term live gantt projects",
         }),
-        fetchJsonWithRetry<{ success?: boolean; data?: ScheduleAllocationEntry[] }>(
-          `/api/schedule-allocations?startMonth=${startMonth}&endMonth=${endMonth}`,
-          {
-            fallback: { success: false, data: [] },
-            label: "long-term schedule allocations",
-          }
-        ),
       ]);
 
       const employees: Employee[] = employeesJson?.data || [];
@@ -993,7 +995,6 @@ export default function LongTermSchedulePage() {
       const pmAssignments: PMAssignment[] = pmAssignmentsJson?.data || [];
       const allScopes: Scope[] = Array.isArray(scopesJson?.data) ? scopesJson.data : [];
       const ganttProjects: GanttV2ProjectSummary[] = Array.isArray(ganttProjectsJson?.data) ? ganttProjectsJson.data : [];
-      const scheduleAllocations: ScheduleAllocationEntry[] = Array.isArray(scheduleAllocationsJson?.data) ? scheduleAllocationsJson.data : [];
       const getMatchingScopeForEntry = (entry: Pick<ActiveScheduleEntry, "jobKey" | "scopeOfWork" | "date">): Scope | null => {
         return findMatchingScopeForScheduleEntry(scopesByJobKeyLocal, entry);
       };
@@ -1151,39 +1152,14 @@ export default function LongTermSchedulePage() {
       const ganttInitiatedSchedules = activeSchedules
         .filter((entry) => {
           const source = (entry.source || "").toLowerCase();
-          return source === "gantt" || source === "wip-page" || source === "schedules";
+          return source === "gantt";
         })
         .filter((entry) => {
-          const source = (entry.source || "").toLowerCase();
-          if (source === "schedules") return true;
-
           const matchingScope = getMatchingScopeForEntry(entry);
           if (!matchingScope) return true;
 
           const dateKeys = scopeDateKeysByIdentity.get(scopeIdentityKey(matchingScope));
           return Boolean(dateKeys && dateKeys.has(entry.date));
-        })
-        .filter((entry) => {
-          const source = (entry.source || "").toLowerCase();
-          if (source !== "schedules") return true;
-
-          const normalizedJobKey = normalizeJobKey(entry.jobKey || "");
-          if (!normalizedJobKey) return false;
-          if (!jobsWithExplicitScopeDates.has(normalizedJobKey)) return true;
-
-          const assignmentScopes = getScopesForJobKey(scopesByJobKeyLocal, normalizedJobKey);
-          if (assignmentScopes.length === 0) return true;
-
-          const titleKey = normalizeScopeTitle(entry.scopeOfWork || "Unnamed Scope");
-          const titleMatches = assignmentScopes.filter(
-            (scope) => normalizeScopeTitle(scope.title || "") === titleKey
-          );
-          const candidateScopes = titleMatches.length > 0 ? titleMatches : assignmentScopes;
-
-          return candidateScopes.some((scope) => {
-            const dateKeys = scopeDateKeysByIdentity.get(scopeIdentityKey(scope));
-            return Boolean(dateKeys && dateKeys.has(entry.date));
-          });
         });
 
       const coveredAssignmentDates = new Set(
@@ -1244,44 +1220,7 @@ export default function LongTermSchedulePage() {
         });
       });
 
-      const displayScheduleMonthKeys = new Set(
-        [...ganttInitiatedSchedules, ...derivedScopeSchedules]
-          .filter((entry) => entry.jobKey && /^\d{4}-\d{2}-\d{2}$/.test(entry.date || ""))
-          .map((entry) => `${normalizeJobKey(entry.jobKey)}|${entry.date.slice(0, 7)}`)
-      );
-
-      const allocationFallbackSchedules: ActiveScheduleEntry[] = [];
-      scheduleAllocations.forEach((allocation) => {
-        const jobKey = normalizeJobKey(allocation.schedule?.jobKey || "");
-        const period = String(allocation.period || "").trim();
-        const hours = Number(allocation.hours || 0);
-
-        if (!jobKey || !/^\d{4}-\d{2}$/.test(period)) return;
-        if ((allocation.periodType || "month") !== "month") return;
-        if (!Number.isFinite(hours) || hours <= 0) return;
-        if (displayScheduleMonthKeys.has(`${jobKey}|${period}`)) return;
-
-        const workingDateCount = getWorkingDateCountForMonth(period, paidHolidayMap);
-        if (workingDateCount <= 0) return;
-
-        const visibleDateKeys = getWorkingDateKeysForMonth(period, startDate, endDate, paidHolidayMap);
-        if (visibleDateKeys.length === 0) return;
-
-        const dailyHours = hours / workingDateCount;
-        visibleDateKeys.forEach((dateKey) => {
-          allocationFallbackSchedules.push({
-            jobKey,
-            scopeOfWork: "Scheduled work",
-            date: dateKey,
-            hours: dailyHours,
-            manpower: null,
-            foreman: null,
-            source: "schedules",
-          });
-        });
-      });
-
-      const displaySchedules = [...ganttInitiatedSchedules, ...derivedScopeSchedules, ...allocationFallbackSchedules];
+      const displaySchedules = [...ganttInitiatedSchedules, ...derivedScopeSchedules];
 
       const hasUnassignedEntries = displaySchedules.some((entry) => !entry.foreman);
 

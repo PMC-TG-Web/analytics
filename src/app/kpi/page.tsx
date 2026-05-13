@@ -790,6 +790,10 @@ function KPIPageContent({
 }: any) {
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
+  const estimatesActHoursOverridesByMonth: Record<string, number> = {
+    '2026-03': 23783,
+    '2026-04': 9214,
+  };
   const [cardLoadWarning, setCardLoadWarning] = useState<string>("");
   const [editingCell, setEditingCell] = useState<{year: string; month: number; field: string} | null>(null);
   const [editValue, setEditValue] = useState<string>("");
@@ -2731,19 +2735,31 @@ function KPIPageContent({
                   rowIndex += 1;
 
                   const actHoursColor = rowColors[rowIndex % 2];
+                  const actHoursMonthValues = monthNames.map((_, idx) => {
+                    const month = idx + 1;
+                    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+                    const explicitOverride = estimatesActHoursOverridesByMonth[monthKey];
+                    const manualValue = kpiData.find((entry) => {
+                      const record = (entry ?? {}) as Record<string, unknown>;
+                      return record.year === year && record.month === month;
+                    })?.estimatesActualHours;
+                    const calculatedValue = bidSubmittedHoursYearMonthMap[year]?.[month] || 0;
+                    const hasExplicitOverride = Number.isFinite(explicitOverride);
+                    const isManual = hasExplicitOverride || (manualValue !== undefined && manualValue !== null);
+                    return {
+                      month,
+                      hours: hasExplicitOverride ? Number(explicitOverride) : (isManual ? Number(manualValue) : calculatedValue),
+                      isManual,
+                    };
+                  });
+                  const hasManualActHours = actHoursMonthValues.some(({ isManual }) => isManual);
                   rows.push(
                 <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: actHoursColor, fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
-                  {monthNames.map((_, idx) => {
-                    let hours = 0;
-                    if (yearFilter) {
-                      hours = bidSubmittedHoursYearMonthMap[yearFilter]?.[idx + 1] || 0;
-                    } else {
-                      hours = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + (yearData[idx + 1] || 0), 0);
-                    }
+                  {actHoursMonthValues.map(({ month, hours, isManual }, idx) => {
                     return (
-                      <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? actHoursColor : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
-                        {hours > 0 ? (
+                      <td key={month} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? actHoursColor : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
+                        {hours > 0 && !isManual ? (
                           <button
                             type="button"
                             onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${monthNames[idx]} ${yearFilter}` : `Act Hrs ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
@@ -2751,25 +2767,17 @@ function KPIPageContent({
                           >
                             {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </button>
-                        ) : "—"}
+                        ) : hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
                       </td>
                     );
                   })}
                   <td style={{ padding: "4px 6px", textAlign: "center", color: actHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                     {(() => {
-                      let total = 0;
-                      let ytdTotal = 0;
-                      if (yearFilter) {
-                        total = Object.values(bidSubmittedHoursYearMonthMap[yearFilter] || {}).reduce((sum, val) => sum + val, 0);
-                        ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => sum + (bidSubmittedHoursYearMonthMap[yearFilter]?.[idx + 1] || 0), 0);
-                      } else {
-                        total = Object.values(bidSubmittedHoursYearMonthMap).reduce((sum, yearData) => sum + Object.values(yearData).reduce((s, v) => s + v, 0), 0);
-                        ytdTotal = Object.values(bidSubmittedHoursYearMonthMap).reduce(
-                          (sum, yearData) => sum + monthNames.slice(0, ytdMonthCutoff).reduce((s, _, idx) => s + (yearData[idx + 1] || 0), 0),
-                          0
-                        );
-                      }
-                      return total > 0 ? (
+                      const total = actHoursMonthValues.reduce((sum, { hours }) => sum + hours, 0);
+                      const ytdTotal = actHoursMonthValues
+                        .filter(({ month }) => month <= ytdMonthCutoff)
+                        .reduce((sum, { hours }) => sum + hours, 0);
+                      return total > 0 && !hasManualActHours ? (
                         <button
                           type="button"
                           onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${yearFilter} Total` : "Act Hrs Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}

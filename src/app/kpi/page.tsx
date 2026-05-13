@@ -1396,20 +1396,42 @@ function KPIPageContent({
   console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
   console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
   
-  const bidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
+  const calculatedBidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   
   console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
   console.log("[KPI] Year filter:", yearFilter);
   
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
-  bidSubmittedSalesMonths.forEach((month) => {
+  calculatedBidSubmittedSalesMonths.forEach((month) => {
     const [year, m] = month.split("-");
     if (!bidSubmittedSalesYearMonthMap[year]) {
       bidSubmittedSalesYearMonthMap[year] = {};
     }
     bidSubmittedSalesYearMonthMap[year][Number(m)] = bidSubmittedSalesByMonth[month];
   });
-  const bidSubmittedSalesYears = Object.keys(bidSubmittedSalesYearMonthMap).sort();
+  const manualBidSubmittedSalesByMonth: Record<string, number> = {};
+  kpiData.forEach((entry) => {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const year = String(record.year ?? "").trim();
+    const month = Number(record.month);
+    const rawValue = record.bidSubmittedSales;
+    if (!year || rawValue === undefined || rawValue === null) return;
+    if (!Number.isInteger(month) || month < 1 || month > 12) return;
+
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return;
+
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+    manualBidSubmittedSalesByMonth[monthKey] = value;
+  });
+
+  // Keep chart data in sync with the Sales by Month table by honoring manual overrides.
+  const effectiveBidSubmittedSalesByMonth: Record<string, number> = {
+    ...bidSubmittedSalesByMonth,
+    ...manualBidSubmittedSalesByMonth,
+  };
+  const bidSubmittedSalesMonths = Object.keys(effectiveBidSubmittedSalesByMonth).sort();
+  const bidSubmittedSalesYears = Array.from(new Set(bidSubmittedSalesMonths.map((month) => month.split("-")[0]))).sort();
 
   const newBidsSalesByMonth: Record<string, number> = {};
   aggregatedBidSubmittedProjects.forEach((project) => {
@@ -2004,7 +2026,7 @@ function KPIPageContent({
       const [year] = month.split("-");
       if (year !== yearFilter) return false;
     }
-    filteredBidSubmittedSalesByMonth[month] = bidSubmittedSalesByMonth[month];
+    filteredBidSubmittedSalesByMonth[month] = effectiveBidSubmittedSalesByMonth[month];
     return true;
   });
 

@@ -272,8 +272,10 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
         await prisma.activeSchedule.deleteMany({
           where: {
             jobKey,
-            scopeOfWork: title,
-            source: 'gantt',
+            scopeOfWork: {
+              equals: title,
+              mode: 'insensitive',
+            },
           },
         });
       }
@@ -285,9 +287,9 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
       scopeId
     );
 
+    invalidateCacheByPrefix('gantt-v2:');
+
     return NextResponse.json({ success: true });
-      invalidateCacheByPrefix('gantt-v2:');
-      return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: `Failed to delete Gantt V2 scope: ${String(error)}` },

@@ -457,6 +457,7 @@ export async function POST(request: NextRequest) {
     }
 
     invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+    invalidateCacheByPrefix('gantt-v2:');
 
     return NextResponse.json({
       success: true,
@@ -576,6 +577,18 @@ export async function PUT(request: NextRequest) {
         })
       );
 
+      if (syncToActiveSchedule !== false) {
+        try {
+          const syncResult = await syncProjectScopeToActiveSchedule(createdScope.id);
+          console.log(`[project-scopes PUT] Synced fallback-created scope ${createdScope.id} to ActiveSchedule:`, syncResult);
+        } catch (syncError) {
+          console.error('[project-scopes PUT] Failed to sync fallback-created scope to ActiveSchedule:', syncError);
+        }
+      }
+
+      invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+      invalidateCacheByPrefix('gantt-v2:');
+
       return NextResponse.json({
         success: true,
         data: createdScope,
@@ -691,6 +704,7 @@ export async function PUT(request: NextRequest) {
     }
 
     invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+    invalidateCacheByPrefix('gantt-v2:');
 
     return NextResponse.json({
       success: true,
@@ -711,8 +725,10 @@ export async function DELETE(request: NextRequest) {
     const id = request.nextUrl.searchParams.get('id');
     const jobKey = request.nextUrl.searchParams.get('jobKey');
     const title = request.nextUrl.searchParams.get('title');
+    const normalizedJobKey = String(jobKey || '').trim();
+    const normalizedTitle = String(title || '').trim();
 
-    if (!id && !(jobKey && title)) {
+    if (!id && !(normalizedJobKey && normalizedTitle)) {
       return NextResponse.json(
         { success: false, error: 'id is required, or provide both jobKey and title' },
         { status: 400 }
@@ -722,18 +738,32 @@ export async function DELETE(request: NextRequest) {
     // Clean up ActiveSchedule entries before deleting (only applicable when scope id is known)
     if (id) {
       await deleteProjectScopeFromActiveSchedule(id);
+    } else {
+      await prisma.activeSchedule.deleteMany({
+        where: {
+          jobKey: normalizedJobKey,
+          scopeOfWork: {
+            equals: normalizedTitle,
+            mode: 'insensitive',
+          },
+        },
+      });
     }
 
     const deleted = await prisma.projectScope.deleteMany({
       where: id
         ? { id }
         : {
-            jobKey: String(jobKey || ''),
-            title: String(title || ''),
+            jobKey: normalizedJobKey,
+            title: {
+              equals: normalizedTitle,
+              mode: 'insensitive',
+            },
           },
     });
 
-        invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+    invalidateCacheByPrefix(PROJECT_SCOPES_CACHE_PREFIX);
+    invalidateCacheByPrefix('gantt-v2:');
 
     return NextResponse.json({ success: true, deletedCount: deleted.count });
   } catch (error) {

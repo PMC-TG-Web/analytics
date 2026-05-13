@@ -77,6 +77,8 @@ interface GanttV2ScopeSummary {
   totalHours?: number | null;
   crewSize?: number | null;
   tasks?: Array<string | ScheduleTask>;
+  schedulingMode?: "contiguous" | "specific-days";
+  selectedDays?: Scope["selectedDays"];
   color?: string;
   taskColors?: Record<string, string>;
 }
@@ -419,6 +421,35 @@ function normalizeScopeTitle(value?: string | null): string {
   return String(value || "").trim().toLowerCase();
 }
 
+function scopeTitlesLikelyMatch(left?: string | null, right?: string | null): boolean {
+  const leftTitle = normalizeScopeTitle(left);
+  const rightTitle = normalizeScopeTitle(right);
+  if (!leftTitle || !rightTitle) return false;
+  if (leftTitle === rightTitle) return true;
+
+  const toTokens = (value: string) =>
+    new Set(
+      value
+        .replace(/\b\d+(?:[.,]\d+)?\b/g, " ")
+        .replace(/\b(?:sq|sf|lf|ln|ft|inch|in|x|and|with|the|of)\b/g, " ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(" ")
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 4)
+    );
+
+  const leftTokens = toTokens(leftTitle);
+  const rightTokens = toTokens(rightTitle);
+  if (leftTokens.size === 0 || rightTokens.size === 0) return false;
+
+  const anchors = new Set(["sidewalks", "sidewalk", "steps", "landings", "patio", "porch", "turndowns", "slab", "curb", "walls", "wall"]);
+  for (const token of leftTokens) {
+    if (rightTokens.has(token) && anchors.has(token)) return true;
+  }
+
+  return false;
+}
+
 function normalizeJobKey(value?: string | null): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -491,8 +522,8 @@ function mapGanttScopeToScheduleScope(scope: GanttV2ScopeSummary, jobKey: string
     tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
     color: scope.color,
     taskColors: scope.taskColors,
-    schedulingMode: "contiguous",
-    selectedDays: [],
+    schedulingMode: scope.schedulingMode === "specific-days" ? "specific-days" : "contiguous",
+    selectedDays: Array.isArray(scope.selectedDays) ? scope.selectedDays : [],
   };
 }
 
@@ -562,7 +593,7 @@ function findMatchingScopeForScheduleEntry(
 ): Scope | null {
   const assignmentScopes = getScopesForJobKey(scopesByJobKey, entry.jobKey);
   const matchingScopeByTitleAndDate = assignmentScopes.find((scope) => {
-    const sameTitle = normalizeScopeTitle(scope.title) === normalizeScopeTitle(entry.scopeOfWork || "Unnamed Scope");
+    const sameTitle = scopeTitlesLikelyMatch(scope.title, entry.scopeOfWork || "Unnamed Scope");
     if (!sameTitle) return false;
     const start = String(scope.startDate || "").trim();
     const end = String(scope.endDate || "").trim();
@@ -572,7 +603,7 @@ function findMatchingScopeForScheduleEntry(
     return entry.date >= rangeStart && entry.date <= rangeEnd;
   });
   const matchingScopeByTitleOnly = assignmentScopes.find(
-    (scope) => normalizeScopeTitle(scope.title) === normalizeScopeTitle(entry.scopeOfWork || "Unnamed Scope")
+    (scope) => scopeTitlesLikelyMatch(scope.title, entry.scopeOfWork || "Unnamed Scope")
   );
   const dateScopedMatches = assignmentScopes.filter((scope) => {
     const start = String(scope.startDate || "").trim();
@@ -688,6 +719,10 @@ function addProjectToAllocation(
   scopeOfWork: string,
   hours: number
 ) {
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return;
+  }
+
   allocation.hours += hours;
   const projectKey = `${jobKey}|${scopeOfWork}`;
   let projectEntry = allocation.projects.find((p) => `${p.jobKey}|${p.scopeOfWork}` === projectKey);
@@ -1117,6 +1152,16 @@ export default function LongTermSchedulePage() {
         .filter((entry) => {
           const source = (entry.source || "").toLowerCase();
           return source === "gantt" || source === "wip-page" || source === "schedules";
+        })
+        .filter((entry) => {
+          const source = (entry.source || "").toLowerCase();
+          if (source === "schedules") return true;
+
+          const matchingScope = getMatchingScopeForEntry(entry);
+          if (!matchingScope) return true;
+
+          const dateKeys = scopeDateKeysByIdentity.get(scopeIdentityKey(matchingScope));
+          return Boolean(dateKeys && dateKeys.has(entry.date));
         })
         .filter((entry) => {
           const source = (entry.source || "").toLowerCase();
@@ -2285,25 +2330,27 @@ export default function LongTermSchedulePage() {
                 const previous = previousById.get(scope.id);
                 if (!previous) return scope;
 
-                const nextTasks = Array.isArray(scope.tasks) ? scope.tasks : [];
-                const preservedTasks = nextTasks.length > 0 ? nextTasks : (Array.isArray(previous.tasks) ? previous.tasks : []);
-                const nextSelectedDays = Array.isArray(scope.selectedDays) ? scope.selectedDays : [];
-                const preservedSelectedDays = nextSelectedDays.length > 0 ? nextSelectedDays : (Array.isArray(previous.selectedDays) ? previous.selectedDays : []);
+                const nextTasks = Array.isArray(scope.tasks)
+                  ? scope.tasks
+                  : (Array.isArray(previous.tasks) ? previous.tasks : []);
+                const nextSelectedDays = Array.isArray(scope.selectedDays)
+                  ? scope.selectedDays
+                  : (Array.isArray(previous.selectedDays) ? previous.selectedDays : []);
 
                 return {
                   ...previous,
                   ...scope,
-                  tasks: preservedTasks,
-                  selectedDays: preservedSelectedDays,
+                  tasks: nextTasks,
+                  selectedDays: nextSelectedDays,
                   schedulingMode: scope.schedulingMode || previous.schedulingMode,
                 };
               });
 
               return { ...prev, [jobKey]: mergedScopes };
             });
-            // Avoid a full board reload on every scope metadata save from the modal.
-            // Local scope-state merge above keeps the UI responsive; the next scheduled
-            // data refresh will pull server truth.
+            void loadSchedules().catch((error) => {
+              console.error('Failed to refresh long-term schedule after scope update:', error);
+            });
           }}
         />
       )}

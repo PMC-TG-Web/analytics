@@ -37,6 +37,8 @@ export type GanttV2ScopeRow = {
   crewSize: number | null;
   notes: string | null;
   tasks?: Array<string | { [key: string]: unknown }>;
+  schedulingMode?: 'contiguous' | 'specific-days';
+  selectedDays?: Array<{ date: string; hours: number; foreman: string | null }>;
   color?: string; // Hex color code for scope
   taskColors?: Record<string, string>; // Map of task names to color codes
   scheduledHours: number;
@@ -1691,6 +1693,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
     hours: number | null;
     description: string | null;
     tasks?: unknown;
+    schedulingMode?: string | null;
+    selectedDays?: unknown;
+    updatedAt?: Date | null;
   }> = [];
   try {
     legacyScopes = await prisma.projectScope.findMany({
@@ -1704,6 +1709,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         hours: true,
         description: true,
         tasks: true,
+        schedulingMode: true,
+        selectedDays: true,
+        updatedAt: true,
       },
     });
   } catch (projectScopeError) {
@@ -1719,6 +1727,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
           manpower: true,
           hours: true,
           description: true,
+          updatedAt: true,
         },
       });
     } catch (fallbackProjectScopeError) {
@@ -1729,6 +1738,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
 
   const legacyScopesByIdentity = new Map<string, typeof legacyScopes>();
   const legacyScopesByJobKey = new Map<string, typeof legacyScopes>();
+  const projectScopeMetadataByIdentity = new Map<string, typeof legacyScopes>();
   for (const scope of legacyScopes) {
     const exactJobKey = String(scope.jobKey || '').trim();
     if (exactJobKey) {
@@ -1739,10 +1749,27 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
 
     const [customer = '', , projectName = ''] = String(scope.jobKey || '').split('~');
     const key = `${normalizeIdentity(customer)}||${normalizeIdentity(projectName)}`;
-    if (!key || key === '||' || !giantIdentityKeys.has(key)) continue;
+    if (!key || key === '||') continue;
+
+    const metadataRows = projectScopeMetadataByIdentity.get(key) || [];
+    metadataRows.push(scope);
+    projectScopeMetadataByIdentity.set(key, metadataRows);
+
+    if (!giantIdentityKeys.has(key)) continue;
     const rows = legacyScopesByIdentity.get(key) || [];
     rows.push(scope);
     legacyScopesByIdentity.set(key, rows);
+  }
+
+  for (const [key, rows] of projectScopeMetadataByIdentity.entries()) {
+    projectScopeMetadataByIdentity.set(
+      key,
+      [...rows].sort((a, b) => {
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        return bTime - aTime;
+      })
+    );
   }
 
   const nonProtectedIdentityKeys = new Set(
@@ -2099,6 +2126,84 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
       const normalizeTitle = (value: string | null | undefined) =>
         normalizeIdentity(value || '');
 
+      const projectScopeMetadata = projectScopeMetadataByIdentity.get(projectIdentityKey) || [];
+      const normalizeSelectedDays = (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return value
+          .map((entry) => {
+            const record = asObject(entry);
+            if (!record) return null;
+            const date = String(record.date || '').trim();
+            const hours = Number(record.hours || 0);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(hours) || hours <= 0) {
+              return null;
+            }
+            return {
+              date,
+              hours,
+              foreman: record.foreman ? String(record.foreman) : null,
+            };
+          })
+          .filter((entry): entry is { date: string; hours: number; foreman: string | null } => Boolean(entry));
+      };
+
+      const findMetadataOverride = (title: string, members: GanttV2ScopeRow[] = []) => {
+        if (projectScopeMetadata.length === 0) return null;
+        const titleKey = normalizeTitle(title);
+        const memberTitleKeys = new Set(members.map((member) => normalizeTitle(member.title)).filter(Boolean));
+
+        const exactMatches = projectScopeMetadata.filter((scope) => normalizeTitle(scope.title) === titleKey);
+        if (exactMatches.length > 0) return exactMatches[0];
+
+        const memberMatches = projectScopeMetadata.filter((scope) => memberTitleKeys.has(normalizeTitle(scope.title)));
+        if (memberMatches.length > 0) return memberMatches[0];
+
+        const scoredMatches = projectScopeMetadata
+          .map((scope) => ({
+            scope,
+            score: Math.max(
+              compareTitles(String(scope.title || ''), title),
+              ...members.map((member) => compareTitles(String(scope.title || ''), member.title))
+            ),
+          }))
+          .filter((entry) => entry.score >= 75)
+          .sort((a, b) => b.score - a.score);
+
+        return scoredMatches[0]?.scope || null;
+      };
+
+      const applyMetadataOverride = (scope: GanttV2ScopeRow, metadata: (typeof legacyScopes)[number] | null): GanttV2ScopeRow => {
+        if (!metadata) return scope;
+
+        const selectedDays = normalizeSelectedDays(metadata.selectedDays);
+        const schedulingMode = metadata.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous';
+        const totalHours = Number(metadata.hours || 0) > 0 ? Number(metadata.hours || 0) : Number(scope.totalHours || 0);
+        const startDate = toSqlDate(metadata.startDate);
+        const endDate = toSqlDate(metadata.endDate);
+        const hasSchedule = schedulingMode === 'specific-days'
+          ? selectedDays.length > 0
+          : Boolean(startDate && endDate);
+        const scheduledHours = hasSchedule ? Number(scope.scheduledHours || 0) : 0;
+
+        return {
+          ...scope,
+          title: String(metadata.title || scope.title || '').trim() || scope.title,
+          startDate,
+          endDate,
+          totalHours,
+          crewSize:
+            metadata.manpower === null || metadata.manpower === undefined
+              ? scope.crewSize
+              : Number(metadata.manpower),
+          notes: metadata.description || scope.notes,
+          tasks: normalizeLegacyTasks(metadata.tasks),
+          schedulingMode,
+          selectedDays,
+          scheduledHours,
+          remainingHours: hasSchedule ? Math.max(totalHours - scheduledHours, 0) : totalHours,
+        };
+      };
+
       const scopesWithTasks = scopes.map((scope) => {
         const candidateLegacyScopes =
           legacyForProjectByJobKey.length > 0
@@ -2106,10 +2211,11 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
             : (isProtectedLegacyProject ? legacyForProject : []);
 
         if (candidateLegacyScopes.length === 0) {
-          return {
+          const baseScope = {
             ...scope,
             tasks: [],
           };
+          return applyMetadataOverride(baseScope, findMetadataOverride(scope.title));
         }
 
         const scopeStart = toSqlDate(scope.startDate);
@@ -2130,10 +2236,11 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         const matchedLegacy = exactMatch || titleOnlyMatch;
         const tasks = matchedLegacy ? normalizeLegacyTasks(matchedLegacy.tasks) : [];
 
-        return {
+        const baseScope = {
           ...scope,
           tasks,
         };
+        return applyMetadataOverride(baseScope, findMetadataOverride(scope.title));
       });
 
       const canonicalScopes =
@@ -2199,8 +2306,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
                   const sourceNotes = members
                     .map((scope) => String(scope.title || '').trim())
                     .filter(Boolean);
+                  const metadataOverride = findMetadataOverride(source.title, members);
 
-                  return {
+                  const mergedScope = {
                     id: source.id,
                     projectId: project.id,
                     predecessorScopeId: null,
@@ -2219,6 +2327,8 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
                     remainingHours,
                     tasks: [],
                   } satisfies GanttV2ScopeRow;
+
+                  return applyMetadataOverride(mergedScope, metadataOverride);
                 })
                 .filter(Boolean) as GanttV2ScopeRow[];
 

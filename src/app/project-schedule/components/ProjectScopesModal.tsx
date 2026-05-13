@@ -29,9 +29,7 @@ const isCanonicalScopeId = (value: string | null | undefined) =>
   Boolean(
     value &&
     value !== NEW_SCOPE_ID &&
-    !value.startsWith('fallback-') &&
-    !value.startsWith('virtual-') &&
-    !value.startsWith('generated-')
+    UUID_REGEX.test(value)
   );
 
 type AssignmentOption = {
@@ -500,6 +498,7 @@ export function ProjectScopesModal({
   const onScopesUpdatedRef = useRef(onScopesUpdated);
   const lastNotifiedScopesSignatureRef = useRef<string>('');
   const suppressPopulateEffectRef = useRef(false);
+  const clearedScheduleScopeIdsRef = useRef<Set<string>>(new Set());
   const lastCanonicalLoadRequestKeyRef = useRef<string>('');
   const persistedScopesByJobKeyRef = useRef<Map<string, Scope[]>>(new Map());
   const ganttProjectsCacheRef = useRef<{ expiresAt: number; data: GanttProjectResponse[] | null }>({
@@ -519,6 +518,7 @@ export function ProjectScopesModal({
   const [savingAssignmentPm, setSavingAssignmentPm] = useState(false);
   const [savingAssignmentForeman, setSavingAssignmentForeman] = useState(false);
   const [autoLongTermAssignmentContext, setAutoLongTermAssignmentContext] = useState<LongTermAssignmentContext | null>(null);
+  const [hasManualDateOverride, setHasManualDateOverride] = useState(false);
 
   const emptyScopeDetail = useMemo<Partial<Scope>>(() => ({
     title: "",
@@ -782,8 +782,35 @@ export function ProjectScopesModal({
         !scope.id?.startsWith('virtual-') &&
         !scope.id?.startsWith('generated-')
     );
+    const activeDraftTaskRange = calculateTaskDateRange(normalizeTaskEntries(scopeDetail.tasks));
+    const baseScopesWithActiveDraft = baseScopes.map((scope) => {
+      if (isCreatingNewScope || !activeScopeId || scope.id !== activeScopeId) return scope;
 
-    if (!isCreatingNewScope) return baseScopes;
+      const draftStartDate = hasManualDateOverride
+        ? (scopeDetail.startDate || "")
+        : (activeDraftTaskRange?.startDate || scopeDetail.startDate || "");
+      const draftEndDate = hasManualDateOverride
+        ? (scopeDetail.endDate || "")
+        : (activeDraftTaskRange?.endDate || scopeDetail.endDate || "");
+      const draftTasks = Array.isArray(scopeDetail.tasks) ? scopeDetail.tasks : [];
+      const draftSelectedDays = Array.isArray(scopeDetail.selectedDays) ? scopeDetail.selectedDays : [];
+      const draftHours = computeScopeHours(scopeDetail);
+
+      return {
+        ...scope,
+        title: scopeDetail.title?.trim() || scope.title,
+        startDate: draftStartDate,
+        endDate: draftEndDate,
+        manpower: scopeDetail.manpower,
+        hours: draftHours > 0 ? draftHours : scopeDetail.hours,
+        description: scopeDetail.description || '',
+        tasks: draftTasks,
+        schedulingMode: scopeDetail.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
+        selectedDays: draftSelectedDays,
+      } as Scope;
+    });
+
+    if (!isCreatingNewScope) return baseScopesWithActiveDraft;
 
     return [
       {
@@ -799,9 +826,9 @@ export function ProjectScopesModal({
         schedulingMode: scopeDetail.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous',
         selectedDays: Array.isArray(scopeDetail.selectedDays) ? scopeDetail.selectedDays : [],
       } as Scope,
-      ...baseScopes,
+      ...baseScopesWithActiveDraft,
     ];
-  }, [effectiveScopes, isCreatingNewScope, project.jobKey, resolvedJobKey, scopeDetail]);
+  }, [activeScopeId, effectiveScopes, hasManualDateOverride, isCreatingNewScope, project.jobKey, resolvedJobKey, scopeDetail]);
 
   const activeScopeTitleForAssignment = useMemo(() => {
     if (activeScopeId) {
@@ -1086,6 +1113,11 @@ export function ProjectScopesModal({
       const canonicalCompositeKeys = new Set(
         mergedCanonicalScopes.map((scope) => scopeMatchKey(scope.title, scope.startDate, scope.endDate))
       );
+      const canonicalTitleKeys = new Set(
+        mergedCanonicalScopes
+          .map((scope) => normalizeText(scope?.title || ''))
+          .filter(Boolean)
+      );
 
       const bestCanonicalScoreByTitle = new Map<string, number>();
       mergedCanonicalScopes.forEach((scope) => {
@@ -1105,6 +1137,7 @@ export function ProjectScopesModal({
 
           const compositeKey = scopeMatchKey(scope.title, scope.startDate, scope.endDate);
           if (canonicalCompositeKeys.has(compositeKey)) return false;
+          if (canonicalTitleKeys.has(titleKey)) return false;
 
           // Suppress stale duplicates (same title, weaker metadata) when a richer
           // canonical scope with that title already exists.
@@ -1755,6 +1788,7 @@ export function ProjectScopesModal({
   // Notify parent when canonical scopes finish loading
   useEffect(() => {
     if (!canonicalScopes || canonicalScopes.length === 0 || isLoadingScopes) return;
+    if (clearedScheduleScopeIdsRef.current.size > 0) return;
 
     const effectiveJobKey = resolvedJobKey || project.jobKey || '';
     const signature = JSON.stringify({
@@ -1778,6 +1812,7 @@ export function ProjectScopesModal({
   // Initialize blank form once when entering explicit create mode.
   useEffect(() => {
     if (!isCreatingNewScope) return;
+    setHasManualDateOverride(false);
     setScopeDetail({
       ...emptyScopeDetail,
       startDate: selectedScheduleDate || "",
@@ -1793,6 +1828,7 @@ export function ProjectScopesModal({
   useEffect(() => {
     if (isCreatingNewScope) return;
     if (activeScopeId) return;
+    setHasManualDateOverride(false);
     setScopeDetail(emptyScopeDetail);
   }, [activeScopeId, emptyScopeDetail, isCreatingNewScope]);
 
@@ -1800,8 +1836,11 @@ export function ProjectScopesModal({
   useEffect(() => {
     if (isCreatingNewScope || !activeScopeId) return;
     if (suppressPopulateEffectRef.current) return;
+    if (clearedScheduleScopeIdsRef.current.has(activeScopeId)) return;
     const scope = effectiveScopes.find((item) => item.id === activeScopeId);
     if (!scope) return;
+
+    setHasManualDateOverride(false);
 
     const currentTaskCount = normalizeTaskEntries(scopeDetail.tasks).length;
     const nextTaskCount = normalizeTaskEntries(scope.tasks).length;
@@ -1973,9 +2012,14 @@ export function ProjectScopesModal({
       delete updatedTaskColors[taskName];
       const nextTasks = normalizedTasks.filter((_, i) => i !== index);
       const rollups = calculateTaskRollups(nextTasks);
+      const clearedTaskSchedule =
+        nextTasks.length === 0 && !hasManualDateOverride
+          ? { startDate: "", endDate: "" }
+          : {};
       
       return {
         ...prev,
+        ...clearedTaskSchedule,
         tasks: nextTasks,
         manpower: rollups.manpower > 0 ? rollups.manpower : undefined,
         hours: rollups.hours > 0 ? rollups.hours : undefined,
@@ -2176,6 +2220,45 @@ export function ProjectScopesModal({
     setScopeDetail((prev) => ({ ...prev, schedulingMode: nextMode }));
   };
 
+  const clearScopeScheduleDates = () => {
+    suppressPopulateEffectRef.current = true;
+    if (activeScopeId) {
+      clearedScheduleScopeIdsRef.current.add(activeScopeId);
+    }
+    setHasManualDateOverride(true);
+    setScopeDetail((prev) => ({
+      ...prev,
+      startDate: "",
+      endDate: "",
+      schedulingMode: "contiguous",
+      selectedDays: [],
+      tasks: normalizeTaskEntries(prev.tasks).map((task) => ({
+        ...task,
+        startDate: "",
+      })),
+    }));
+  };
+
+  const isScopeScheduleClearDraft = () => {
+    const effectiveSchedulingMode =
+      scopeDetail.schedulingMode === 'specific-days' && selectedDays.length > 0
+        ? 'specific-days'
+        : 'contiguous';
+
+    if (effectiveSchedulingMode === 'specific-days') {
+      return selectedDays.length === 0;
+    }
+
+    const draftStartDate = hasManualDateOverride
+      ? scopeDetail.startDate
+      : (derivedTaskRange?.startDate || scopeDetail.startDate || "");
+    const draftEndDate = hasManualDateOverride
+      ? scopeDetail.endDate
+      : (derivedTaskRange?.endDate || scopeDetail.endDate || "");
+
+    return !dateKey(draftStartDate) && !dateKey(draftEndDate) && selectedDays.length === 0;
+  };
+
   const addSelectedDay = async () => {
     const date = newSelectedDayDate.trim();
     const hours = Number(newSelectedDayHours || 0);
@@ -2238,7 +2321,9 @@ export function ProjectScopesModal({
     setIsSaving(true);
     suppressPopulateEffectRef.current = true;
     try {
-      if (effectiveLongTermAssignmentContext && !assignmentPmSelection) {
+      const isClearingSchedule = isScopeScheduleClearDraft();
+
+      if (effectiveLongTermAssignmentContext && !assignmentPmSelection && !isClearingSchedule) {
         throw new Error('Project Manager is required. Select a PM before saving.');
       }
 
@@ -2300,11 +2385,11 @@ export function ProjectScopesModal({
         throw new Error(`Specific day is invalid: ${invalidSpecificDay.date}. Weekends and paid holidays are blocked.`);
       }
 
-      if (dayEditMode && !selectedScheduleDate) {
+      if (!isClearingSchedule && dayEditMode && !selectedScheduleDate) {
         throw new Error('Day edit context is missing. Close and reopen the card from the schedule grid.');
       }
 
-      if (dayEditMode && selectedScheduleDate && effectiveSchedulingMode === 'specific-days' && (selectedScopeTitle || scopeDetail.title)) {
+      if (!isClearingSchedule && dayEditMode && selectedScheduleDate && effectiveSchedulingMode === 'specific-days' && (selectedScopeTitle || scopeDetail.title)) {
         const scopeName = (scopeDetail.title || selectedScopeTitle || '').trim();
         const resolvedStartDate = (derivedTaskRange?.startDate || scopeDetail.startDate || selectedScheduleDate || '').trim();
         const resolvedEndDate = (derivedTaskRange?.endDate || scopeDetail.endDate || resolvedStartDate || '').trim();
@@ -2398,16 +2483,27 @@ export function ProjectScopesModal({
 
       const normalizedTasks = normalizeTaskEntries(scopeDetail.tasks);
       const rollups = calculateTaskRollups(normalizedTasks);
+      const explicitDateClearRequested =
+        effectiveSchedulingMode === 'contiguous' &&
+        hasManualDateOverride &&
+        !String(scopeDetail.startDate || '').trim() &&
+        !String(scopeDetail.endDate || '').trim();
+      const contiguousStartDate = hasManualDateOverride
+        ? (scopeDetail.startDate || "")
+        : (derivedTaskRange?.startDate || scopeDetail.startDate || "");
+      const contiguousEndDate = hasManualDateOverride
+        ? (scopeDetail.endDate || "")
+        : (derivedTaskRange?.endDate || scopeDetail.endDate || "");
 
       const payload: ScopeMetadataPayload = {
         jobKey: resolvedJobKey,
         title: (scopeDetail.title || "Scope").trim() || "Scope",
         startDate: effectiveSchedulingMode === 'specific-days'
           ? (selectedDays[0]?.date || scopeDetail.startDate || "")
-          : (derivedTaskRange?.startDate || scopeDetail.startDate || ""),
+          : (explicitDateClearRequested ? "" : contiguousStartDate),
         endDate: effectiveSchedulingMode === 'specific-days'
           ? (selectedDays[selectedDays.length - 1]?.date || scopeDetail.endDate || "")
-          : (derivedTaskRange?.endDate || scopeDetail.endDate || ""),
+          : (explicitDateClearRequested ? "" : contiguousEndDate),
         description: scopeDetail.description || "",
         tasks: normalizedTasks,
 
@@ -2493,15 +2589,18 @@ export function ProjectScopesModal({
           ? activeScopeId
           : (exactCanonicalMatch?.id || (titleOnlyCanonicalMatches.length === 1 ? titleOnlyCanonicalMatches[0].id : null));
 
-      const shouldCreateNewScope = isCreatingNewScope || !targetCanonicalScopeId;
+      const hasExistingMetadataScope =
+        Boolean(activeScopeId && activeScopeId !== NEW_SCOPE_ID && !isCanonicalScopeId(activeScopeId) && activeScope);
+      const targetMetadataScopeId = hasExistingMetadataScope ? activeScopeId : targetCanonicalScopeId;
+      const shouldCreateNewScope = isCreatingNewScope || (!targetCanonicalScopeId && !hasExistingMetadataScope);
 
-      if (!isCreatingNewScope && !targetCanonicalScopeId) {
+      if (!isCreatingNewScope && !targetCanonicalScopeId && !hasExistingMetadataScope) {
         throw new Error('Select an existing scope to update, or click + Add Scope to create a new one.');
       }
 
       const targetGanttProjectId = await resolveWritableGanttProjectId();
       let savedScope;
-      if (targetGanttProjectId) {
+      if (targetGanttProjectId && !hasExistingMetadataScope) {
         const predecessorCandidate = String(payload.predecessorScopeId || '').trim();
         const currentScopeIdForValidation = shouldCreateNewScope ? null : targetCanonicalScopeId;
         const predecessorIsLocalAndValid =
@@ -2585,7 +2684,9 @@ export function ProjectScopesModal({
           }
         }
 
-        suppressPopulateEffectRef.current = false;
+        if (!isClearingSchedule) {
+          suppressPopulateEffectRef.current = false;
+        }
         const savedScopeId = String(savedScope?.id || targetCanonicalScopeId || '').trim();
         const baseScope =
           (savedScopeId
@@ -2623,7 +2724,9 @@ export function ProjectScopesModal({
             );
 
         publishScopes(updatedScopes);
-        refreshScopesInBackground();
+        if (!isClearingSchedule) {
+          refreshScopesInBackground();
+        }
 
         if (!shouldCreateNewScope && targetCanonicalScopeId) {
           setActiveScopeId(targetCanonicalScopeId);
@@ -2631,15 +2734,15 @@ export function ProjectScopesModal({
           setActiveScopeId(savedScopeId);
         }
       } else {
-        if (!usesLegacyScopeMetadata) {
+        if (!usesLegacyScopeMetadata && !hasExistingMetadataScope) {
           throw new Error('Unable to resolve a valid Gantt project id for this scope. Refresh and try again.');
         }
 
-        if (!shouldCreateNewScope && targetCanonicalScopeId) {
+        if (!shouldCreateNewScope && targetMetadataScopeId) {
           const response = await fetch('/api/project-scopes', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: targetCanonicalScopeId, ...payload }),
+            body: JSON.stringify({ id: targetMetadataScopeId, ...payload }),
           });
           const result = await readJsonResponse<{ success?: boolean; error?: string; data?: Scope }>(response, {
             label: 'Update scope metadata',
@@ -2649,11 +2752,13 @@ export function ProjectScopesModal({
           }
           savedScope = result.data;
           const updatedScopes = scopesToMatchAgainst.map((scope) =>
-            scope.id === targetCanonicalScopeId ? { ...scope, ...savedScope } : scope
+            scope.id === targetMetadataScopeId ? { ...scope, ...savedScope } : scope
           );
-          suppressPopulateEffectRef.current = false;
+          if (!isClearingSchedule) {
+            suppressPopulateEffectRef.current = false;
+          }
           publishScopes(updatedScopes);
-          setActiveScopeId(targetCanonicalScopeId);
+          setActiveScopeId(targetMetadataScopeId);
         } else {
           const response = await fetch('/api/project-scopes', {
             method: 'POST',
@@ -2690,7 +2795,9 @@ export function ProjectScopesModal({
       console.error("Failed to save scope:", errorMessage, error);
       alert(`Failed to save scope: ${errorMessage}`);
     } finally {
-      suppressPopulateEffectRef.current = false;
+      if (!isScopeScheduleClearDraft()) {
+        suppressPopulateEffectRef.current = false;
+      }
       setIsSaving(false);
     }
   };
@@ -2714,6 +2821,7 @@ export function ProjectScopesModal({
       if (!isGeneratedId) {
         let deletedSomewhere = false;
         let metadataError: string | undefined;
+        const cacheJobKey = resolvedJobKey || project.jobKey || '';
 
         // Try deleting canonical gantt scope first (primary source of truth).
         const ganttRes = await fetch(`/api/gantt-v2/scopes/${deletedScopeId}`, { method: 'DELETE' });
@@ -2725,7 +2833,7 @@ export function ProjectScopesModal({
         // Cleanup metadata row by project identity and scope title so it can't be auto-recreated.
         if (resolvedJobKey || project.jobKey) {
           const metadataRes = await fetch(
-            `/api/project-scopes?jobKey=${encodeURIComponent(resolvedJobKey || project.jobKey || '')}&title=${encodeURIComponent(scopeTitle)}`,
+            `/api/project-scopes?jobKey=${encodeURIComponent(cacheJobKey)}&title=${encodeURIComponent(scopeTitle)}`,
             { method: 'DELETE' }
           );
           const metadataJson = await metadataRes.json().catch(() => ({}));
@@ -2738,6 +2846,9 @@ export function ProjectScopesModal({
         if (!deletedSomewhere) {
           throw new Error(ganttJson?.error || metadataError || 'Scope was not deleted');
         }
+
+        persistedScopesByJobKeyRef.current.delete(cacheJobKey);
+        ganttProjectsCacheRef.current = { expiresAt: 0, data: null };
       }
 
       setActiveScopeId(null);
@@ -2761,6 +2872,10 @@ export function ProjectScopesModal({
   };
 
   const handleStartCreateScope = () => {
+    suppressPopulateEffectRef.current = false;
+    if (activeScopeId) {
+      clearedScheduleScopeIdsRef.current.delete(activeScopeId);
+    }
     previousActiveScopeIdRef.current =
       activeScopeId && activeScopeId !== NEW_SCOPE_ID ? activeScopeId : null;
     // Start a fresh scope draft so prior scope values (especially hours) do not leak.
@@ -2918,6 +3033,8 @@ export function ProjectScopesModal({
                       "border-gray-200 hover:border-orange-200"
                     } ${!isNew ? 'cursor-move' : ''}`}
                     onClick={() => {
+                      suppressPopulateEffectRef.current = false;
+                      clearedScheduleScopeIdsRef.current.delete(scope.id);
                       setIsCreatingNewScope(false);
                       setActiveScopeId(scope.id);
                     }}
@@ -3009,18 +3126,40 @@ export function ProjectScopesModal({
                   {isCreatingNewScope ? "Fill out the details below, then save the new scope." : "Update the selected scope details below."}
                 </p>
               </div>
-              {isCreatingNewScope && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreatingNewScope(false);
-                    setActiveScopeId(previousActiveScopeIdRef.current || selectedScopeId || null);
-                  }}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel New
-                </button>
-              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {!isCreatingNewScope && activeScopeId && activeScopeId !== NEW_SCOPE_ID && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={clearScopeScheduleDates}
+                      disabled={isSaving}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-md border border-red-200 bg-white text-red-700 hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      Clear Schedule
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveScope(false)}
+                      disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection && !isScopeScheduleClearDraft())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-400"
+                    >
+                      {isSaving ? "Saving..." : "Save Schedule"}
+                    </button>
+                  </>
+                )}
+                {isCreatingNewScope && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewScope(false);
+                      setActiveScopeId(previousActiveScopeIdRef.current || selectedScopeId || null);
+                    }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel New
+                  </button>
+                )}
+              </div>
             </div>
             {effectiveLongTermAssignmentContext && (
               <div className="mb-4 border border-blue-200 bg-blue-50/50 rounded-md p-3">
@@ -3138,14 +3277,48 @@ export function ProjectScopesModal({
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-semibold mb-1">Start Date</label>
-                <input type="date" value={derivedTaskRange?.startDate || scopeDetail.startDate || ""} onChange={(e) => setScopeDetail(p => ({ ...p, startDate: e.target.value }))} className="w-full px-3 py-2 border rounded-md text-sm" />
-                {derivedTaskRange && <p className="mt-1 text-[10px] text-gray-500">Driven by task dates.</p>}
+                <input
+                  type="date"
+                  value={hasManualDateOverride ? (scopeDetail.startDate || "") : (derivedTaskRange?.startDate || scopeDetail.startDate || "")}
+                  onChange={(e) => {
+                    setHasManualDateOverride(true);
+                    setScopeDetail((p) => ({ ...p, startDate: e.target.value }));
+                  }}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+                {derivedTaskRange && !hasManualDateOverride && <p className="mt-1 text-[10px] text-gray-500">Driven by task dates.</p>}
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1">End Date</label>
-                <input type="date" value={derivedTaskRange?.endDate || scopeDetail.endDate || ""} onChange={(e) => setScopeDetail(p => ({ ...p, endDate: e.target.value }))} className="w-full px-3 py-2 border rounded-md text-sm" />
-                {derivedTaskRange && <p className="mt-1 text-[10px] text-gray-500">Driven by task dates.</p>}
+                <input
+                  type="date"
+                  value={hasManualDateOverride ? (scopeDetail.endDate || "") : (derivedTaskRange?.endDate || scopeDetail.endDate || "")}
+                  onChange={(e) => {
+                    setHasManualDateOverride(true);
+                    setScopeDetail((p) => ({ ...p, endDate: e.target.value }));
+                  }}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+                {derivedTaskRange && !hasManualDateOverride && <p className="mt-1 text-[10px] text-gray-500">Driven by task dates.</p>}
               </div>
+            </div>
+            <div className="mb-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={clearScopeScheduleDates}
+                disabled={isSaving}
+                className="px-3 py-2 border border-red-200 bg-white text-red-700 rounded-md text-xs font-semibold hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                Clear Dates
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveScope(false)}
+                disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection && !isScopeScheduleClearDraft())}
+                className="px-3 py-2 bg-orange-600 text-white rounded-md text-xs font-semibold hover:bg-orange-700 disabled:bg-gray-400"
+              >
+                {isSaving ? "Saving..." : "Save Dates"}
+              </button>
             </div>
 
             <div className="bg-orange-50 border border-orange-100 rounded-md p-4 mb-4">
@@ -3305,7 +3478,7 @@ export function ProjectScopesModal({
               <button
                 type="button"
                 onClick={() => handleSaveScope(false)}
-                disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection)}
+                disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection && !isScopeScheduleClearDraft())}
                 className="px-4 py-2 bg-orange-600 text-white rounded-md text-sm font-semibold hover:bg-orange-700 disabled:bg-gray-400"
               >
                 {isSaving ? "Saving..." : "Save Scope"}
@@ -3528,7 +3701,7 @@ export function ProjectScopesModal({
           </div>
 
           <div className="flex gap-2 pt-4 border-t">
-            <button type="button" onClick={() => handleSaveScope(true)} disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection)} className="flex-1 px-4 py-2 bg-orange-100 text-orange-800 rounded-md text-sm font-semibold hover:bg-orange-200 disabled:bg-gray-200 disabled:text-gray-500">
+            <button type="button" onClick={() => handleSaveScope(true)} disabled={isSaving || (effectiveLongTermAssignmentContext && !assignmentPmSelection && !isScopeScheduleClearDraft())} className="flex-1 px-4 py-2 bg-orange-100 text-orange-800 rounded-md text-sm font-semibold hover:bg-orange-200 disabled:bg-gray-200 disabled:text-gray-500">
               Save & Close
             </button>
             {activeScopeId && activeScopeId !== NEW_SCOPE_ID && !activeScopeId.startsWith('fallback-') && !activeScopeId.startsWith('virtual-') && !activeScopeId.startsWith('generated-') && (

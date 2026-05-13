@@ -481,7 +481,6 @@ export async function deleteProjectScopeFromActiveSchedule(
     where: {
       jobKey: scope.jobKey,
       scopeOfWork: scope.title,
-      source: 'gantt',
     },
   });
 }

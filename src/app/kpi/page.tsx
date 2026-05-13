@@ -2735,21 +2735,63 @@ function KPIPageContent({
                   rowIndex += 1;
 
                   const actHoursColor = rowColors[rowIndex % 2];
+                  const allActHoursYears = Array.from(new Set<string>([
+                    ...Object.keys(bidSubmittedHoursYearMonthMap),
+                    ...kpiData
+                      .map((entry) => String(((entry ?? {}) as Record<string, unknown>).year || '').trim())
+                      .filter(Boolean),
+                    ...Object.keys(estimatesActHoursOverridesByMonth)
+                      .map((monthKey) => monthKey.split('-')[0])
+                      .filter(Boolean),
+                  ])).sort();
+
+                  const resolveActHoursForYearMonth = (targetYear: string, month: number) => {
+                    const monthKey = `${targetYear}-${String(month).padStart(2, '0')}`;
+                    const explicitOverride = estimatesActHoursOverridesByMonth[monthKey];
+                    const matchingEntry = kpiData.find((entry) => {
+                      const record = (entry ?? {}) as Record<string, unknown>;
+                      return String(record.year || '').trim() === targetYear && Number(record.month) === month;
+                    });
+                    const manualValueRaw = ((matchingEntry ?? {}) as Record<string, unknown>).estimatesActualHours;
+                    const manualValue = Number(manualValueRaw);
+                    const hasExplicitOverride = Number.isFinite(explicitOverride);
+                    const hasManualValue = manualValueRaw !== undefined && manualValueRaw !== null && Number.isFinite(manualValue);
+                    const calculatedValue = bidSubmittedHoursYearMonthMap[targetYear]?.[month] || 0;
+
+                    return {
+                      hours: hasExplicitOverride
+                        ? Number(explicitOverride)
+                        : (hasManualValue ? manualValue : calculatedValue),
+                      isManual: hasExplicitOverride || hasManualValue,
+                    };
+                  };
+
                   const actHoursMonthValues = monthNames.map((_, idx) => {
                     const month = idx + 1;
-                    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-                    const explicitOverride = estimatesActHoursOverridesByMonth[monthKey];
-                    const manualValue = kpiData.find((entry) => {
-                      const record = (entry ?? {}) as Record<string, unknown>;
-                      return record.year === year && record.month === month;
-                    })?.estimatesActualHours;
-                    const calculatedValue = bidSubmittedHoursYearMonthMap[year]?.[month] || 0;
-                    const hasExplicitOverride = Number.isFinite(explicitOverride);
-                    const isManual = hasExplicitOverride || (manualValue !== undefined && manualValue !== null);
+                    if (yearFilter) {
+                      const resolved = resolveActHoursForYearMonth(yearFilter, month);
+                      return {
+                        month,
+                        hours: resolved.hours,
+                        isManual: resolved.isManual,
+                      };
+                    }
+
+                    const aggregated = allActHoursYears.reduce(
+                      (acc, targetYear) => {
+                        const resolved = resolveActHoursForYearMonth(targetYear, month);
+                        return {
+                          hours: acc.hours + resolved.hours,
+                          isManual: acc.isManual || resolved.isManual,
+                        };
+                      },
+                      { hours: 0, isManual: false }
+                    );
+
                     return {
                       month,
-                      hours: hasExplicitOverride ? Number(explicitOverride) : (isManual ? Number(manualValue) : calculatedValue),
-                      isManual,
+                      hours: aggregated.hours,
+                      isManual: aggregated.isManual,
                     };
                   });
                   const hasManualActHours = actHoursMonthValues.some(({ isManual }) => isManual);

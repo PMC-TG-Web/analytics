@@ -1221,7 +1221,8 @@ export default function ProjectSchedulePage() {
                           </div>
                         )
                       ) : (
-                        scopes.map((scope) => {
+                        scopes.map((scope, scopeIdx) => {
+                          const scopeRenderKey = `${project.id}-scope-${scope.id}-${scopeIdx}`;
                           const start = asDate(scope.startDate);
                           const end = asDate(scope.endDate);
                           const hasDates = start && end && start <= end;
@@ -1234,7 +1235,7 @@ export default function ProjectSchedulePage() {
                           const projectHours = projectTotalHours || 0;
 
                           return (
-                            <React.Fragment key={scope.id}>
+                            <React.Fragment key={scopeRenderKey}>
                               <div className="grid border-t border-gray-100" style={{ gridTemplateColumns: `320px repeat(${totalTimelineColumns}, ${getColumnWidth()})` }}>
                                 <div className="sticky left-0 z-20 bg-white border-r border-gray-200 px-3 py-2 ml-6">
                                   <div className="flex items-start gap-2">
@@ -1278,7 +1279,7 @@ export default function ProjectSchedulePage() {
                               <div className="col-span-full relative" style={{ gridColumn: `2 / span ${timeline.length}` }}>
                                 <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${timeline.length}, ${getColumnWidth()})` }}>
                                   {timeline.map((t) => (
-                                    <div key={`${scope.id}-${t.toISOString()}`} className="border-r border-gray-100" />
+                                    <div key={`${scopeRenderKey}-${t.toISOString()}`} className="border-r border-gray-100" />
                                   ))}
                                 </div>
 
@@ -1323,7 +1324,7 @@ export default function ProjectSchedulePage() {
                                     const scopeColor = SCOPE_LINE_COLOR;
                                     return (
                                       <div
-                                        key={`${scope.id}-${alloc.period}`}
+                                        key={`${scopeRenderKey}-${alloc.period}`}
                                         onClick={(event) => {
                                           if (viewMode === "day") {
                                             openDayHoursEditor(event, project, scope, allocIdx, allocIdx);
@@ -1368,7 +1369,7 @@ export default function ProjectSchedulePage() {
                                   const taskHasBar = taskStartIdx >= 0 && taskEndIdx >= 0 && taskEndIdx >= taskStartIdx;
 
                                   return (
-                                    <div key={`${scope.id}-task-${taskIdx}`} className="grid border-t border-gray-200" style={{ gridTemplateColumns: `320px repeat(${totalTimelineColumns}, ${getColumnWidth()})` }}>
+                                    <div key={`${scopeRenderKey}-task-${taskIdx}`} className="grid border-t border-gray-200" style={{ gridTemplateColumns: `320px repeat(${totalTimelineColumns}, ${getColumnWidth()})` }}>
                                       <div className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200 px-3 py-2 ml-12">
                                         <div
                                             onClick={() => openProjectScopesModal(project, scope.id, taskIdx)}
@@ -1407,7 +1408,7 @@ export default function ProjectSchedulePage() {
                                       <div className="col-span-full relative" style={{ gridColumn: `2 / span ${timeline.length}` }}>
                                         <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${timeline.length}, ${getColumnWidth()})` }}>
                                           {timeline.map((t) => (
-                                            <div key={`${scope.id}-task-${taskIdx}-${t.toISOString()}`} className="border-r border-gray-200" />
+                                            <div key={`${scopeRenderKey}-task-${taskIdx}-${t.toISOString()}`} className="border-r border-gray-200" />
                                           ))}
                                         </div>
 

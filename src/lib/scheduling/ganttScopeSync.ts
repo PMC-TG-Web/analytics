@@ -211,6 +211,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       select: {
         date: true,
         foreman: true,
+        source: true,
       },
     });
 
@@ -219,12 +220,19 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
         .filter((entry) => Boolean(entry.foreman))
         .map((entry) => [entry.date, entry.foreman as string])
     );
+    // Preserve manual rows for this scope; gantt sync should only own/source='gantt' rows.
+    const protectedManualDates = new Set(
+      existingAssignments
+        .filter((entry) => String(entry.source || '').toLowerCase() !== 'gantt')
+        .map((entry) => entry.date)
+    );
     const defaultForeman = existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
 
     await prisma.activeSchedule.deleteMany({
       where: {
         jobKey,
         scopeOfWork: title,
+        source: 'gantt',
       },
     });
 
@@ -236,6 +244,10 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     }
 
     for (const entry of selectedDays) {
+      if (protectedManualDates.has(entry.date)) {
+        continue;
+      }
+
       const [year, month, day] = entry.date.split('-').map(Number);
       const weekday = new Date(year, month - 1, day).getDay();
       if (weekday === 0 || weekday === 6) {
@@ -297,6 +309,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       where: {
         jobKey,
         scopeOfWork: title,
+        source: 'gantt',
       },
     });
 
@@ -340,6 +353,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
       where: {
         jobKey,
         scopeOfWork: title,
+        source: 'gantt',
       },
     });
 
@@ -365,6 +379,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     select: {
       date: true,
       foreman: true,
+      source: true,
     },
   });
 
@@ -372,6 +387,11 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     existingAssignments
       .filter((entry) => Boolean(entry.foreman))
       .map((entry) => [entry.date, entry.foreman as string])
+  );
+  const protectedManualDates = new Set(
+    existingAssignments
+      .filter((entry) => String(entry.source || '').toLowerCase() !== 'gantt')
+      .map((entry) => entry.date)
   );
   const defaultForeman = existingAssignments.find((entry) => Boolean(entry.foreman))?.foreman ?? null;
 
@@ -386,6 +406,7 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     where: {
       jobKey,
       scopeOfWork: title,
+      source: 'gantt',
     },
   });
 
@@ -404,6 +425,8 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
 
   for (const entry of distribution) {
     const dateStr = entry.date;
+    if (protectedManualDates.has(dateStr)) continue;
+
     const scheduledHours = Number(entry.hours || 0);
     if (!Number.isFinite(scheduledHours) || scheduledHours <= 0) continue;
 

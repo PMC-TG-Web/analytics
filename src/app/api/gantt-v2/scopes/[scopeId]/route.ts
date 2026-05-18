@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureGanttV2Schema } from '@/lib/ganttV2Db';
 import { syncGanttScopeToActiveSchedule } from '@/lib/scheduling/ganttScopeSync';
+import { upsertGanttScopeToProjectScope, deleteGanttScopeFromProjectScope } from '@/lib/scheduling/ganttScopeToPrismaScope';
 import { cascadeDependentScopesFromLead } from '@/lib/scheduling/ganttDependencyCascade';
 import { SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
 import { invalidateCacheByPrefix } from '@/lib/serverReadCache';
@@ -198,6 +199,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       console.log('[PUT] Scope sync complete');
     }
 
+    // Mirror to ProjectScope (dual-write bridge)
+    await upsertGanttScopeToProjectScope({
+      ganttV2ScopeId: scopeId,
+      projectId,
+      title,
+      startDate,
+      endDate,
+      totalHours: Number.isFinite(totalHours) ? totalHours : 0,
+      crewSize,
+      notes,
+      predecessorScopeId,
+    });
+
     let cascadeUpdates: Array<{
       scopeId: string;
       oldStartDate: string | null;
@@ -281,11 +295,12 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Delete the scope
+    // Delete the scope from GanttV2Scope and mirror the delete to ProjectScope
     await prisma.$executeRawUnsafe(
       `DELETE FROM gantt_v2_scopes WHERE id = $1;`,
       scopeId
     );
+    await deleteGanttScopeFromProjectScope(scopeId);
 
     invalidateCacheByPrefix('gantt-v2:');
 

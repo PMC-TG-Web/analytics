@@ -69,26 +69,30 @@ model Project {
 }
 
 model ProjectScope {
-  id             String   @id @default(cuid())
-  jobKey         String
-  projectId      String?
-  startDate      String?
-  endDate        String?
-  hours          Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  description    String?
-  manpower       Float?
-  tasks          Json?
-  title          String
-  schedulingMode String   @default("contiguous")
-  selectedDays   Json?
-  color          String?  @db.VarChar(7)
-  taskColors     Json?
-  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  jobKey             String
+  projectId          String?
+  startDate          String?
+  endDate            String?
+  hours              Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  description        String?
+  manpower           Float?
+  tasks              Json?
+  title              String
+  schedulingMode     String   @default("contiguous")
+  selectedDays       Json?
+  color              String?  @db.VarChar(7)
+  taskColors         Json?
+  notes              String?
+  predecessorScopeId String?
+  ganttV2ScopeId     String?  @unique
+  project            Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([jobKey])
   @@index([projectId])
+  @@index([ganttV2ScopeId])
 }
 
 model Schedule {

@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/prisma';
 import { ensureGanttV2Schema, getGanttV2ProjectsWithScopes } from '@/lib/ganttV2Db';
 import { syncGanttScopeToActiveSchedule } from '@/lib/scheduling/ganttScopeSync';
+import { upsertGanttScopeToProjectScope } from '@/lib/scheduling/ganttScopeToPrismaScope';
 import { SchedulingConflictError } from '@/lib/scheduling/dailyAssignment';
 import { getCachedValue, setCachedValue, invalidateCacheByPrefix } from '@/lib/serverReadCache';
 
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
 
       await syncScopeToActiveSchedule(existingId, projectId, title, startDate, endDate, safeHours, crewSize);
+      await upsertGanttScopeToProjectScope({ ganttV2ScopeId: existingId, projectId, title, startDate, endDate, totalHours: safeHours, crewSize, notes, predecessorScopeId });
       invalidateCacheByPrefix('gantt-v2:');
 
       return NextResponse.json({ success: true, data: { id: existingId, projectId, predecessorScopeId, title, startDate, endDate, totalHours: safeHours, crewSize, notes } });
@@ -111,6 +113,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     console.log('[POST] About to sync scope for ActiveSchedule');
     await syncScopeToActiveSchedule(id, projectId, title, startDate, endDate, safeHours, crewSize);
     console.log('[POST] Scope sync complete');
+    await upsertGanttScopeToProjectScope({ ganttV2ScopeId: id, projectId, title, startDate, endDate, totalHours: safeHours, crewSize, notes, predecessorScopeId });
 
     invalidateCacheByPrefix('gantt-v2:');
 

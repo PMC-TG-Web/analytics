@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { shouldFallbackToEmptyRead } from '@/lib/dbResilience';
 import { getClientCredentialsToken, makeRequest, procoreConfig } from '@/lib/procore';
 import { getInternalVendorSet, isInternalCustomerName, isMeaningfulCustomer } from '@/lib/procoreProjectFeed';
+import { upsertGanttScopeToProjectScope } from '@/lib/scheduling/ganttScopeToPrismaScope';
 
 export type GanttV2ProjectRow = {
   id: string;
@@ -1917,20 +1918,38 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
           if (!legacyTitle) continue;
           if (existingTitles.has(normalizeIdentity(legacyTitle))) continue;
 
+          const legacyScopeId = crypto.randomUUID();
+          const legacyScopeStartDate = toSqlDate(legacyScope.startDate);
+          const legacyScopeEndDate = toSqlDate(legacyScope.endDate);
+          const legacyScopeHours = Number(legacyScope.hours || 0);
+          const legacyScopeCrewSize = legacyScope.manpower === null || legacyScope.manpower === undefined ? null : Number(legacyScope.manpower);
+          const legacyScopeNotes = (legacyScope.description || '').toString().trim() || 'Migrated from legacy projectScope';
+
           await prisma.$executeRawUnsafe(
             `
               INSERT INTO gantt_v2_scopes (id, project_id, title, start_date, end_date, total_hours, crew_size, notes)
               VALUES ($1, $2, $3, CAST($4 AS date), CAST($5 AS date), $6, $7, $8)
             `,
-            crypto.randomUUID(),
+            legacyScopeId,
             project.id,
             legacyTitle,
-            toSqlDate(legacyScope.startDate),
-            toSqlDate(legacyScope.endDate),
-            Number(legacyScope.hours || 0),
-            legacyScope.manpower === null || legacyScope.manpower === undefined ? null : Number(legacyScope.manpower),
-            (legacyScope.description || '').toString().trim() || 'Migrated from legacy projectScope'
+            legacyScopeStartDate,
+            legacyScopeEndDate,
+            legacyScopeHours,
+            legacyScopeCrewSize,
+            legacyScopeNotes
           );
+          await upsertGanttScopeToProjectScope({
+            ganttV2ScopeId: legacyScopeId,
+            projectId: project.id,
+            title: legacyTitle,
+            startDate: legacyScopeStartDate,
+            endDate: legacyScopeEndDate,
+            totalHours: legacyScopeHours,
+            crewSize: legacyScopeCrewSize,
+            notes: legacyScopeNotes,
+            predecessorScopeId: null,
+          });
 
           existingTitles.add(normalizeIdentity(legacyTitle));
           insertedLegacyScope = true;
@@ -2101,6 +2120,17 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
           effectiveScopedHours,
           scopes[0].id
         );
+        await upsertGanttScopeToProjectScope({
+          ganttV2ScopeId: scopes[0].id,
+          projectId: project.id,
+          title: scopes[0].title,
+          startDate: scopes[0].startDate,
+          endDate: scopes[0].endDate,
+          totalHours: effectiveScopedHours,
+          crewSize: scopes[0].crewSize,
+          notes: scopes[0].notes,
+          predecessorScopeId: scopes[0].predecessorScopeId,
+        });
 
         scopes = await getGanttV2Scopes(project.id);
       }
@@ -2119,6 +2149,17 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
           effectiveScopedHours,
           'Auto-created from schedule allocations'
         );
+        await upsertGanttScopeToProjectScope({
+          ganttV2ScopeId: defaultScopeId,
+          projectId: project.id,
+          title: 'Primary Scope',
+          startDate: null,
+          endDate: null,
+          totalHours: effectiveScopedHours,
+          crewSize: null,
+          notes: 'Auto-created from schedule allocations',
+          predecessorScopeId: null,
+        });
 
         scopes = await getGanttV2Scopes(project.id);
       }
@@ -2384,6 +2425,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
  * Fetch scopes for a single project (used for individual project scope loads)
  */
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
+  // Phase 4: read canonical scope data from ProjectScope; use gantt_v2_scopes.id as the
+  // scope identifier so all write APIs (PUT/DELETE /api/gantt-v2/scopes/[scopeId]) continue
+  // to function without modification.
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;
@@ -2398,25 +2442,26 @@ export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeR
   }>>(
     `
       SELECT
-        s.id,
-        s.project_id,
-        s.predecessor_scope_id,
-        s.title,
-        s.start_date,
-        s.end_date,
-        s.total_hours,
-        s.crew_size,
-        s.notes,
+        gs.id,
+        gs.project_id,
+        ps."predecessorScopeId"  AS predecessor_scope_id,
+        ps.title,
+        NULLIF(ps."startDate", '')::date AS start_date,
+        NULLIF(ps."endDate",   '')::date AS end_date,
+        ps.hours                         AS total_hours,
+        ps.manpower                      AS crew_size,
+        ps.notes,
         CASE
-          WHEN s.start_date IS NULL OR s.end_date IS NULL OR COALESCE(s.total_hours, 0) <= 0
+          WHEN ps."startDate" IS NULL OR ps."startDate" = '' OR ps."endDate" IS NULL OR ps."endDate" = '' OR COALESCE(ps.hours, 0) <= 0
             THEN 0
           ELSE COALESCE(SUM(e.scheduled_hours), 0)
         END::float8 AS scheduled_hours
-      FROM gantt_v2_scopes s
-      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
-      WHERE s.project_id = $1
-      GROUP BY s.id
-      ORDER BY s.created_at ASC;
+      FROM "ProjectScope" ps
+      JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
+      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
+      WHERE gs.project_id = $1
+      GROUP BY gs.id, gs.project_id, ps.id
+      ORDER BY ps."createdAt" ASC;
     `,
     projectId
   );
@@ -2450,6 +2495,7 @@ export async function getGanttV2ScopesForProjects(
     return new Map();
   }
 
+  // Phase 4: read canonical scope data from ProjectScope (same pattern as getGanttV2Scopes).
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;
@@ -2464,25 +2510,26 @@ export async function getGanttV2ScopesForProjects(
   }>>(
     `
       SELECT
-        s.id,
-        s.project_id,
-        s.predecessor_scope_id,
-        s.title,
-        s.start_date,
-        s.end_date,
-        s.total_hours,
-        s.crew_size,
-        s.notes,
+        gs.id,
+        gs.project_id,
+        ps."predecessorScopeId"  AS predecessor_scope_id,
+        ps.title,
+        NULLIF(ps."startDate", '')::date AS start_date,
+        NULLIF(ps."endDate",   '')::date AS end_date,
+        ps.hours                         AS total_hours,
+        ps.manpower                      AS crew_size,
+        ps.notes,
         CASE
-          WHEN s.start_date IS NULL OR s.end_date IS NULL OR COALESCE(s.total_hours, 0) <= 0
+          WHEN ps."startDate" IS NULL OR ps."startDate" = '' OR ps."endDate" IS NULL OR ps."endDate" = '' OR COALESCE(ps.hours, 0) <= 0
             THEN 0
           ELSE COALESCE(SUM(e.scheduled_hours), 0)
         END::float8 AS scheduled_hours
-      FROM gantt_v2_scopes s
-      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
-      WHERE s.project_id = ANY($1::text[])
-      GROUP BY s.id
-      ORDER BY s.created_at ASC;
+      FROM "ProjectScope" ps
+      JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
+      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
+      WHERE gs.project_id = ANY($1::text[])
+      GROUP BY gs.id, gs.project_id, ps.id
+      ORDER BY ps."createdAt" ASC;
     `,
     projectIds
   );
@@ -2543,16 +2590,17 @@ export async function getGanttV2LongTermSummary(startMonth?: string, months = 15
       p.customer,
       p.project_number,
       p.status,
-      s.id AS scope_id,
-      s.total_hours,
-      s.start_date,
-      s.end_date,
+      gs.id AS scope_id,
+      ps.hours AS total_hours,
+      NULLIF(ps."startDate", '')::date AS start_date,
+      NULLIF(ps."endDate",   '')::date AS end_date,
       COALESCE(SUM(e.scheduled_hours), 0)::float8 AS scheduled_hours
     FROM gantt_v2_projects p
-    JOIN gantt_v2_scopes s ON s.project_id = p.id
-    LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = s.id
+    JOIN "ProjectScope" ps ON ps."jobKey" = p.job_key AND ps."ganttV2ScopeId" IS NOT NULL
+    JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
+    LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
     WHERE p.status = 'In Progress'
-    GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, s.id
+    GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, gs.id, ps.id
     ORDER BY p.project_name ASC;
   `);
 

@@ -2218,9 +2218,11 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
 
         const selectedDays = normalizeSelectedDays(metadata.selectedDays);
         const schedulingMode = metadata.schedulingMode === 'specific-days' ? 'specific-days' : 'contiguous';
-        const totalHours = Number(metadata.hours || 0) > 0 ? Number(metadata.hours || 0) : Number(scope.totalHours || 0);
-        const startDate = toSqlDate(metadata.startDate);
-        const endDate = toSqlDate(metadata.endDate);
+        // Phase 4: scope.totalHours/startDate/endDate/crewSize are authoritative (from gantt-linked
+        // ProjectScope). Only fall back to metadata values when the scope fields are unset.
+        const totalHours = Number(scope.totalHours || 0) > 0 ? Number(scope.totalHours || 0) : Number(metadata.hours || 0);
+        const startDate = scope.startDate || toSqlDate(metadata.startDate);
+        const endDate = scope.endDate || toSqlDate(metadata.endDate);
         const hasSchedule = schedulingMode === 'specific-days'
           ? selectedDays.length > 0
           : Boolean(startDate && endDate);
@@ -2233,9 +2235,9 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
           endDate,
           totalHours,
           crewSize:
-            metadata.manpower === null || metadata.manpower === undefined
+            scope.crewSize !== null && scope.crewSize !== undefined
               ? scope.crewSize
-              : Number(metadata.manpower),
+              : (metadata.manpower === null || metadata.manpower === undefined ? null : Number(metadata.manpower)),
           notes: metadata.description || scope.notes,
           tasks: normalizeLegacyTasks(metadata.tasks),
           schedulingMode,

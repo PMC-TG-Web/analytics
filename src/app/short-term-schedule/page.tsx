@@ -45,6 +45,7 @@ interface DayProject {
   projectNumber: string;
   projectName: string;
   hours: number;
+  manpower: number;
   foreman?: string;
   employees?: string[]; // Employee IDs assigned to this day
   month: string;
@@ -118,6 +119,7 @@ type ShortTermActiveScheduleRecord = {
   projectName?: string | null;
   date?: string;
   hours?: unknown;
+  manpower?: unknown;
   foreman?: string | null;
   employees?: string[];
 };
@@ -172,6 +174,7 @@ const normalizeScopeKey = (scopeOfWork: string | undefined) =>
   String(scopeOfWork || 'Scheduled Work').trim().toLowerCase();
 
 const HOURS_PER_FTE_DAY = 10;
+const MANPOWER_CAPACITY_HOURS = 190;
 const REFERENCE_DATA_CACHE_TTL_MS = 60_000;
 const HOLIDAY_CACHE_KEY = "schedule:holidays:all";
 
@@ -355,6 +358,7 @@ const mergeDayProjects = (projects: DayProject[]): DayProject[] => {
     }
 
     existing.hours = Number(existing.hours || 0) + Number(project.hours || 0);
+    existing.manpower = Number(existing.manpower || 0) + Number(project.manpower || 0);
     existing.employees = Array.from(
       new Set([...(existing.employees || []), ...((project.employees || []).filter(Boolean))])
     );
@@ -381,7 +385,7 @@ function ShortTermScheduleContent() {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [paidHolidayByDate, setPaidHolidayByDate] = useState<Record<string, Holiday>>({});
-  const [companyCapacity, setCompanyCapacity] = useState<number>(210); // Standard 210, will be dynamic
+  const [companyCapacity, setCompanyCapacity] = useState<number>(MANPOWER_CAPACITY_HOURS);
   const [dailyCapacity, setDailyCapacity] = useState<Record<string, number>>({});
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [scopesByJobKey, setScopesByJobKey] = useState<Record<string, Scope[]>>({});
@@ -1177,7 +1181,7 @@ function ShortTermScheduleContent() {
       const dispatchCapacityStaff = allEmps.filter((e: Employee) =>
         e.isActive && (isForemanRole(e.jobTitle) || isDispatchCapacityFieldRole(e.jobTitle))
       );
-      const baseDispatchCapacity = dispatchCapacityStaff.length * 10;
+      const baseDispatchCapacity = MANPOWER_CAPACITY_HOURS;
       setCompanyCapacity(baseDispatchCapacity);
       
       const foremenList = allEmps.filter((emp: Employee) => 
@@ -1371,6 +1375,21 @@ function ShortTermScheduleContent() {
           const matchingScope = findMatchingScopeForDay(scopesObj, entry.jobKey, entry.scopeOfWork, dateKey, paidHolidayMap);
           const resolvedScopeHours = getScopeScheduledHoursForDate(matchingScope, dateKey, paidHolidayMap);
           const entryHours = Number(entry.hours || 0);
+          const entryManpowerHours = Number(entry.manpower || 0) > 0
+            ? Number(entry.manpower) * HOURS_PER_FTE_DAY
+            : 0;
+          const scheduledHours = Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0
+            ? Number(resolvedScopeHours)
+            : (Number.isFinite(entryHours) && entryHours > 0
+              ? entryHours
+              : (entryManpowerHours > 0 ? entryManpowerHours : 0));
+          const scopeManpower = Number(matchingScope?.manpower || 0);
+          const entryManpower = Number(entry.manpower || 0);
+          const scheduledManpower = Number.isFinite(scopeManpower) && scopeManpower > 0
+            ? scopeManpower
+            : (Number.isFinite(entryManpower) && entryManpower > 0
+              ? entryManpower
+              : (scheduledHours > 0 ? scheduledHours / HOURS_PER_FTE_DAY : 0));
 
           projectsByDay[dateKey].push({
             jobKey: entry.jobKey,
@@ -1379,9 +1398,8 @@ function ShortTermScheduleContent() {
             customer: entry.customer || '',
             projectNumber: entry.projectNumber || '',
             projectName: entry.projectName || '',
-            hours: Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0
-              ? Number(resolvedScopeHours)
-              : (Number.isFinite(entryHours) && entryHours > 0 ? entryHours : 0),
+            hours: scheduledHours,
+            manpower: scheduledManpower,
             foreman: entry.foreman || '',
             employees: entry.employees || [],
             month: dateKey.substring(0, 7),
@@ -1547,14 +1565,104 @@ function ShortTermScheduleContent() {
     setSaving(false);
   }
 
+  const weekByDateKey = useMemo(() => {
+    const map: Record<string, number> = {};
+    dayColumns.forEach((day) => {
+      map[formatDateKey(day.date)] = day.weekNumber;
+    });
+    return map;
+  }, [dayColumns]);
+
   if (!mounted) {
     return <div className="h-screen bg-gray-50 flex items-center justify-center font-black text-gray-400 p-6 animate-pulse uppercase tracking-[0.2em]">Loading Schedule...</div>;
   }
 
+  const getForemanWeekTotals = (foremanProjects: Record<string, DayProject[]>, weekNumber: number) => {
+    let hours = 0;
+    const workingDaysInWeek = Math.max(
+      dayColumns.filter((day) => day.weekNumber === weekNumber && !paidHolidayByDate[formatDateKey(day.date)]).length,
+      1
+    );
+
+    Object.entries(foremanProjects).forEach(([dateKey, projects]) => {
+      if (weekByDateKey[dateKey] !== weekNumber) return;
+      projects.forEach((project) => {
+        const projectHours = Number(project.hours || 0);
+        if (Number.isFinite(projectHours) && projectHours > 0) hours += projectHours;
+      });
+    });
+
+    const manpower = hours > 0 ? hours / (workingDaysInWeek * HOURS_PER_FTE_DAY) : 0;
+
+    return { hours, manpower };
+  };
+
+  const getForemanGrandTotals = (foremanProjects: Record<string, DayProject[]>) => {
+    let hours = 0;
+    const totalWorkingDays = Math.max(
+      dayColumns.filter((day) => !paidHolidayByDate[formatDateKey(day.date)]).length,
+      1
+    );
+
+    Object.values(foremanProjects).forEach((projects) => {
+      projects.forEach((project) => {
+        const projectHours = Number(project.hours || 0);
+        if (Number.isFinite(projectHours) && projectHours > 0) hours += projectHours;
+      });
+    });
+
+    const manpower = hours > 0 ? hours / (totalWorkingDays * HOURS_PER_FTE_DAY) : 0;
+
+    return { hours, manpower };
+  };
+
+  const getWeekHeaderTotals = (weekNumber: number) => {
+    let hours = 0;
+    const workingDaysInWeek = Math.max(
+      dayColumns.filter((day) => day.weekNumber === weekNumber && !paidHolidayByDate[formatDateKey(day.date)]).length,
+      1
+    );
+
+    Object.entries(foremanDateProjects).forEach(([_, dateMap]) => {
+      Object.entries(dateMap).forEach(([dateKey, projects]) => {
+        if (weekByDateKey[dateKey] !== weekNumber) return;
+        projects.forEach((project) => {
+          const projectHours = Number(project.hours || 0);
+          if (Number.isFinite(projectHours) && projectHours > 0) hours += projectHours;
+        });
+      });
+    });
+
+    const manpower = hours > 0 ? hours / (workingDaysInWeek * HOURS_PER_FTE_DAY) : 0;
+
+    return { hours, manpower };
+  };
+
+  const getGrandHeaderTotals = () => {
+    let hours = 0;
+    const totalWorkingDays = Math.max(
+      dayColumns.filter((day) => !paidHolidayByDate[formatDateKey(day.date)]).length,
+      1
+    );
+
+    Object.values(foremanDateProjects).forEach((dateMap) => {
+      Object.values(dateMap).forEach((projects) => {
+        projects.forEach((project) => {
+          const projectHours = Number(project.hours || 0);
+          if (Number.isFinite(projectHours) && projectHours > 0) hours += projectHours;
+        });
+      });
+    });
+
+    const manpower = hours > 0 ? hours / (totalWorkingDays * HOURS_PER_FTE_DAY) : 0;
+
+    return { hours, manpower };
+  };
+
   return (
-    <main className="min-h-screen bg-neutral-100 p-2 md:p-4 font-sans text-slate-900">
-      <div className="w-full flex flex-col max-h-[calc(100vh-1rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-4 md:p-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 pb-8 border-b border-gray-100">
+    <main className="min-h-screen bg-neutral-100 p-2 md:p-3 font-sans text-slate-900">
+      <div className="w-full flex flex-col max-h-[calc(100vh-1rem)] bg-white shadow-2xl rounded-3xl overflow-hidden border border-gray-200 p-3 md:p-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-3 pb-3 border-b border-gray-100">
           <div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 uppercase italic leading-none">
               Short-Term <span className="text-orange-600">Schedule</span>
@@ -1769,7 +1877,7 @@ function ShortTermScheduleContent() {
         ) : (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Mobile Cards for Field Users */}
-            <div className="md:hidden flex-1 overflow-y-auto space-y-6 custom-scrollbar pb-10">
+            <div className="md:hidden flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6">
               {dayColumns.slice(0, 14).map((day) => {
                 const dateKey = formatDateKey(day.date);
                 const dayTotal = Object.values(foremanDateProjects).reduce((sum, fMap) => {
@@ -1799,36 +1907,37 @@ function ShortTermScheduleContent() {
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {[...foremen, { id: "__unassigned__", firstName: "Unassigned", lastName: "" }].map((foreman) => {
                         const projects = (foremanDateProjects[foreman.id]?.[dateKey] || []).filter(p => p.hours > 0);
                         if (projects.length === 0) return null;
 
                         return (
-                          <div key={foreman.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100 shadow-sm relative overflow-hidden group">
+                          <div key={foreman.id} className="bg-gray-50 rounded-xl p-3 border border-gray-100 shadow-sm relative overflow-hidden group">
                              <div className="absolute top-0 right-0 p-2 opacity-5">
                                <div className="text-xs font-black uppercase italic bg-gray-200 px-2 py-0.5 rounded rotate-12">{foreman.lastName || 'PMC'}</div>
                              </div>
-                             <div className="flex items-center gap-2 mb-3">
+                             <div className="flex items-center gap-2 mb-2">
                                <div className="w-1.5 h-1.5 rounded-full bg-orange-600"></div>
                                <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
                                  {foreman.firstName} {foreman.lastName}
                                </h4>
                              </div>
-                             <div className="space-y-2">
+                             <div className="space-y-1.5">
                               {projects.map((p) => {
                                 const projectKey = getDayProjectRenderKey(p, dateKey, foreman.id);
                                 return (
                                  <div 
                                     key={projectKey} 
                                     onClick={() => openGanttModal(p.customer, p.projectName, p.projectNumber, p.scopeOfWork, dateKey, p.hours, foreman.id)}
-                                    className="bg-white border-2 border-orange-50 p-3 rounded-xl shadow-sm active:scale-95 transition-all"
+                                    className="bg-white border border-orange-100 p-2.5 rounded-lg shadow-sm active:scale-95 transition-all"
                                   >
                                    <div className="font-black text-gray-900 text-xs uppercase leading-tight italic truncate pr-8">{p.projectName}</div>
-                                   <div className="text-[9px] font-black uppercase tracking-widest text-orange-600 mt-1 truncate">{p.scopeOfWork || 'Scheduled Work'}</div>
-                                   <div className="flex justify-between items-end mt-2">
-                                     <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">{p.customer}</div>
-                                     <div className="bg-orange-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black shadow-sm shadow-orange-600/20">{p.hours.toFixed(0)} <span className="opacity-50">H</span></div>
+                                   <div className="flex justify-end items-end mt-1.5">
+                                       <div className="flex items-center gap-1.5">
+                                         <div className="bg-stone-700 text-white px-1.5 py-0 rounded-md text-[9px] font-black shadow-sm shadow-stone-700/20">{p.manpower.toFixed(1)} <span className="opacity-50">MP</span></div>
+                                         <div className="bg-orange-600 text-white px-1.5 py-0 rounded-md text-[9px] font-black shadow-sm shadow-orange-600/20">{p.hours.toFixed(0)} <span className="opacity-50">H</span></div>
+                                       </div>
                                    </div>
                                  </div>
                                 );
@@ -1852,13 +1961,14 @@ function ShortTermScheduleContent() {
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-stone-800">
-                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-6 px-6 text-xs font-black text-white uppercase tracking-[0.2em] italic border-r border-stone-700 w-48 shadow-lg">
+                      <th className="sticky left-0 z-40 bg-stone-800 text-left py-2 px-3 text-[10px] font-black text-white uppercase tracking-[0.15em] italic border-r border-stone-700 w-40 shadow-lg">
                         Capacity
                       </th>
-                      {dayColumns.map((day) => {
+                      {dayColumns.map((day, dayIndex) => {
                         const dateKey = formatDateKey(day.date);
                         const holiday = paidHolidayByDate[dateKey];
                         const isDayOff = Boolean(holiday);
+                        const isWeekEnd = dayIndex === dayColumns.length - 1 || dayColumns[dayIndex + 1].weekNumber !== day.weekNumber;
                         let totalHours = 0;
                         Object.values(foremanDateProjects).forEach(dateMap => {
                           if (dateMap[dateKey]) {
@@ -1873,34 +1983,66 @@ function ShortTermScheduleContent() {
                         else if (availabilityPercent > 90) capacityColor = "bg-yellow-500/10 text-yellow-500";
                         if (isDayOff) capacityColor = "bg-rose-500/20 text-rose-300";
 
+                        const allocatedFTE = totalHours / HOURS_PER_FTE_DAY;
+                        const headcount = isDayOff ? 0 : dayCapacity / HOURS_PER_FTE_DAY;
                         return (
-                          <th key={dateKey} className={`text-center py-5 px-4 text-xs font-black text-white border-r border-stone-700 min-w-[300px] ${isDayOff ? 'bg-rose-900/40' : ''}`}>
-                            <div className="flex flex-col items-center">
-                              <span className="text-xl italic leading-none mb-1 tracking-tighter">{day.dayLabel}</span>
-                              <div className="flex gap-2 items-center mb-2">
-                                <span className="text-[9px] uppercase tracking-widest text-stone-500">{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
-                                {isDayOff && (
-                                  <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-black border border-rose-300/40 bg-rose-500/15 text-rose-200 uppercase tracking-widest">
-                                    Day Off
+                          <React.Fragment key={dateKey}>
+                            <th className={`text-center py-1.5 px-1.5 text-xs font-black text-white border-r border-stone-700 min-w-[210px] ${isDayOff ? 'bg-rose-900/40' : ''}`}>
+                              <div className="flex flex-col items-center">
+                                <span className="text-sm italic leading-none mb-0.5 tracking-tight">{day.dayLabel}</span>
+                                <div className="flex gap-1 items-center mb-1">
+                                  <span className="text-[9px] uppercase tracking-widest text-stone-500">{day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                                  {isDayOff && (
+                                    <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-black border border-rose-300/40 bg-rose-500/15 text-rose-200 uppercase tracking-widest">
+                                      Day Off
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black border border-white/5 ${capacityColor}`}>
+                                    {totalHours.toFixed(0)}<span className="opacity-30">/</span>{isDayOff ? 0 : dayCapacity}H
                                   </span>
-                                )}
-                                <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black border border-white/5 ${capacityColor}`}>
-                                  {totalHours.toFixed(0)}<span className="opacity-30">/</span>{isDayOff ? 0 : dayCapacity}H
-                                </span>
+                                </div>
+                                <div className="w-full rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 mb-1">
+                                  <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-widest gap-1.5 leading-none">
+                                    <span className="text-stone-300">Man Power</span>
+                                    <span className="text-orange-300">{Number.isInteger(headcount) ? headcount : headcount.toFixed(1)}</span>
+                                    <span className="text-stone-500">|</span>
+                                    <span className="text-orange-200">Man Power {allocatedFTE.toFixed(1)}</span>
+                                  </div>
+                                </div>
+                                <div className="w-24 h-0.5 bg-stone-700 rounded-full overflow-hidden border border-white/5">
+                                  <div 
+                                    className={`h-full transition-all duration-700 ${
+                                      availabilityPercent > 100 ? 'bg-red-500 shadow-sm shadow-red-500/50' : 
+                                      availabilityPercent > 85 ? 'bg-yellow-400' : 'bg-green-500'
+                                    }`}
+                                    style={{ width: `${Math.min(availabilityPercent, 100)}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="w-32 h-1 bg-stone-700 rounded-full overflow-hidden border border-white/5">
-                                <div 
-                                  className={`h-full transition-all duration-700 ${
-                                    availabilityPercent > 100 ? 'bg-red-500 shadow-sm shadow-red-500/50' : 
-                                    availabilityPercent > 85 ? 'bg-yellow-400' : 'bg-green-500'
-                                  }`}
-                                  style={{ width: `${Math.min(availabilityPercent, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </th>
+                            </th>
+                            {isWeekEnd && (() => {
+                              const weekTotals = getWeekHeaderTotals(day.weekNumber);
+                              return (
+                                <th className="text-center py-1.5 px-1.5 text-xs font-black text-white border-r-2 border-orange-700 bg-stone-900 min-w-[110px]">
+                                  <div className="text-[9px] uppercase tracking-wider text-orange-300">Wk {day.weekNumber} Total</div>
+                                  <div className="mt-1 text-[10px] font-black text-orange-200">{weekTotals.hours.toFixed(1)}H</div>
+                                  <div className="text-[9px] font-black text-stone-300">{weekTotals.manpower.toFixed(1)} MP</div>
+                                </th>
+                              );
+                            })()}
+                          </React.Fragment>
                         );
                       })}
+                      {(() => {
+                        const grandTotals = getGrandHeaderTotals();
+                        return (
+                          <th className="text-center py-1.5 px-1.5 text-xs font-black text-white border-l-2 border-orange-700 bg-stone-900 min-w-[120px]">
+                            <div className="text-[9px] uppercase tracking-wider text-orange-300">Total</div>
+                            <div className="mt-1 text-[10px] font-black text-orange-200">{grandTotals.hours.toFixed(1)}H</div>
+                            <div className="text-[9px] font-black text-stone-300">{grandTotals.manpower.toFixed(1)} MP</div>
+                          </th>
+                        );
+                      })()}
                     </tr>
                   </thead>
                   <tbody>
@@ -1908,140 +2050,163 @@ function ShortTermScheduleContent() {
                       const foremanProjects = foremanDateProjects[foreman.id] || {};
                       return (
                         <tr key={foreman.id} className={`border-b border-gray-50 group hover:bg-gray-50/50 transition-colors ${foremanIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          <td className="sticky left-0 z-20 bg-inherit py-4 px-6 text-[11px] font-black text-gray-800 uppercase tracking-wider italic border-r border-gray-100 shadow-md">
+                          <td className="sticky left-0 z-20 bg-inherit py-2 px-3 text-[9px] font-black text-gray-800 uppercase tracking-wider italic border-r border-gray-100 shadow-md">
                             {foreman.firstName} <span className="text-gray-400 opacity-50">{foreman.lastName}</span>
                           </td>
-                          {dayColumns.map((day) => {
+                          {dayColumns.map((day, dayIndex) => {
                             const dateKey = formatDateKey(day.date);
                             const holiday = paidHolidayByDate[dateKey];
                             const isDayOff = Boolean(holiday);
                             const projects = (foremanProjects[dateKey] || []).filter(p => p.hours > 0);
                             const dayTotal = projects.reduce((sum, p) => sum + p.hours, 0);
                             const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
+                            const isWeekEnd = dayIndex === dayColumns.length - 1 || dayColumns[dayIndex + 1].weekNumber !== day.weekNumber;
                             
                             return (
-                              <td
-                                key={dateKey}
-                                className={`py-4 px-3 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${isDayOff ? 'bg-rose-50/70' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
-                                onDragOver={(e) => {
-                                  if (isDayOff) return;
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  e.currentTarget.classList.add('bg-orange-50/50');
-                                }}
-                                onDragLeave={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); }}
-                                onDrop={(e) => {
-                                  if (isDayOff) return;
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  e.currentTarget.classList.remove('bg-orange-50/50');
-                                  handleDrop(e, day.date, foreman.id);
-                                }}
-                              >
-                                <div className="flex flex-col h-full min-h-[100px]">
-                                  {isDayOff && (
-                                    <div className="mb-3 px-2 py-1 rounded-xl bg-rose-100 border border-rose-200 text-[9px] font-black uppercase tracking-widest text-rose-700 text-center">
-                                      Day Off: {holiday?.name || 'Paid Holiday'}
-                                    </div>
-                                  )}
-                                  {projects.length > 0 ? (
-                                    <div className="space-y-3 mb-3">
-                                      {projects.map((project) => {
-                                        const projectKey = getDayProjectRenderKey(project, dateKey, foreman.id);
-                                        const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
-                                        return (
-                                          <div 
-                                            key={projectKey} 
-                                            draggable={!saving}
-                                            onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
-                                            className={`relative group/proj border-2 rounded-2xl p-3 cursor-grab transition-all shadow-sm ${
-                                              isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-4 ring-yellow-400/20 scale-105 z-10' : 'bg-white border-orange-100 hover:border-orange-500'
-                                            }`}
-                                            onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber, project.scopeOfWork, dateKey, project.hours, foreman.id)}
-                                          >
-                                            <button
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                if (confirm(`Remove \"${project.scopeOfWork || 'Scheduled Work'}\" from ${project.projectName} on ${dateKey}?`)) {
-                                                  setSaving(true);
-                                                  try {
-                                                    await removeScopeFromDay(project, dateKey);
-                                                    await loadSchedules();
-                                                    setRemoveSuccessMessage(`Removed from ${dateKey}`);
-                                                  }
-                                                  finally { setSaving(false); }
-                                                }
-                                              }}
-                                              className="absolute -top-2 -right-2 opacity-0 group-hover/proj:opacity-100 p-1.5 bg-red-900 text-white rounded-full shadow-lg hover:scale-110 transition-all z-20"
-                                              title="Remove from Day"
-                                              aria-label="Remove from Day"
+                              <React.Fragment key={dateKey}>
+                                <td
+                                  className={`py-1.5 px-1.5 text-xs border-r border-gray-50 align-top transition-all ${isWeekend ? 'bg-gray-50/50' : ''} ${isDayOff ? 'bg-rose-50/70' : ''} ${saving ? 'opacity-40 animate-pulse' : ''}`}
+                                  onDragOver={(e) => {
+                                    if (isDayOff) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.classList.add('bg-orange-50/50');
+                                  }}
+                                  onDragLeave={(e) => { e.currentTarget.classList.remove('bg-orange-50/50'); }}
+                                  onDrop={(e) => {
+                                    if (isDayOff) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.classList.remove('bg-orange-50/50');
+                                    handleDrop(e, day.date, foreman.id);
+                                  }}
+                                >
+                                  <div className="flex flex-col h-full min-h-[52px]">
+                                    {isDayOff && (
+                                      <div className="mb-2 px-2 py-0.5 rounded-lg bg-rose-100 border border-rose-200 text-[8px] font-black uppercase tracking-wider text-rose-700 text-center">
+                                        Day Off: {holiday?.name || 'Paid Holiday'}
+                                      </div>
+                                    )}
+                                    {projects.length > 0 ? (
+                                      <div className="space-y-1 mb-1">
+                                        {projects.map((project) => {
+                                          const projectKey = getDayProjectRenderKey(project, dateKey, foreman.id);
+                                          const isHighlighted = projectSearch && project.projectName?.toLowerCase().includes(projectSearch.toLowerCase());
+                                          return (
+                                            <div 
+                                              key={projectKey} 
+                                              draggable={!saving}
+                                              onDragStart={() => handleDragStart(project, dateKey, foreman.id)}
+                                              className={`relative group/proj border rounded-lg p-1.5 cursor-grab transition-all shadow-sm ${
+                                                isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-4 ring-yellow-400/20 scale-105 z-10' : 'bg-white border-orange-100 hover:border-orange-500'
+                                              }`}
+                                              onClick={() => openGanttModal(project.customer, project.projectName, project.projectNumber, project.scopeOfWork, dateKey, project.hours, foreman.id)}
                                             >
-                                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                                                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-                                              </svg>
-                                            </button>
-
-                                            <div className="font-black text-gray-900 text-[11px] uppercase tracking-tight italic leading-tight mb-1 truncate pr-4">{project.projectName}</div>
-                                            <div className="text-[9px] font-black uppercase tracking-widest text-orange-600 truncate">{project.scopeOfWork || 'Scheduled Work'}</div>
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest truncate">{project.customer}</div>
-                                            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
-                                              <input
-                                                key={`${projectKey}|${project.hours}`}
-                                                type="number"
-                                                step="0.5"
-                                                defaultValue={project.hours.toFixed(1)}
-                                                onBlur={async (e) => {
-                                                  const newHrs = parseFloat(e.target.value);
-                                                  if (!isNaN(newHrs) && newHrs !== project.hours) {
+                                              <button
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  if (confirm(`Remove \"${project.scopeOfWork || 'Scheduled Work'}\" from ${project.projectName} on ${dateKey}?`)) {
                                                     setSaving(true);
-                                                    try { await updateProjectAssignment(project, dateKey, dateKey, foreman.id, foreman.id, newHrs); await loadSchedules(); }
+                                                    try {
+                                                      await removeScopeFromDay(project, dateKey);
+                                                      await loadSchedules();
+                                                      setRemoveSuccessMessage(`Removed from ${dateKey}`);
+                                                    }
                                                     finally { setSaving(false); }
                                                   }
                                                 }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="w-10 bg-gray-50 text-[10px] font-black text-orange-600 focus:outline-none text-center rounded border border-transparent focus:border-orange-500"
-                                              />
-                                              <span className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Hrs</span>
+                                                className="absolute -top-2 -right-2 opacity-0 group-hover/proj:opacity-100 p-1.5 bg-red-900 text-white rounded-full shadow-lg hover:scale-110 transition-all z-20"
+                                                title="Remove from Day"
+                                                aria-label="Remove from Day"
+                                              >
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                                  <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                                </svg>
+                                              </button>
+
+                                              <div className="font-black text-gray-900 text-[9px] uppercase tracking-tight italic leading-tight mb-0.5 truncate pr-4">{project.projectName}</div>
+                                              <div className="flex items-center gap-1 mt-1 pt-1 border-t border-gray-50">
+                                                <div className="inline-flex items-center px-1 py-0 rounded-md bg-stone-100 border border-stone-200 text-[7px] font-black uppercase tracking-wider text-stone-700">
+                                                  {project.manpower.toFixed(1)} MP
+                                                </div>
+                                                <input
+                                                  key={`${projectKey}|${project.hours}`}
+                                                  type="number"
+                                                  step="0.5"
+                                                  defaultValue={project.hours.toFixed(1)}
+                                                  onBlur={async (e) => {
+                                                    const newHrs = parseFloat(e.target.value);
+                                                    if (!isNaN(newHrs) && newHrs !== project.hours) {
+                                                      setSaving(true);
+                                                      try { await updateProjectAssignment(project, dateKey, dateKey, foreman.id, foreman.id, newHrs); await loadSchedules(); }
+                                                      finally { setSaving(false); }
+                                                    }
+                                                  }}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="w-8 bg-gray-50 text-[8px] font-black text-orange-600 focus:outline-none text-center rounded border border-transparent focus:border-orange-500"
+                                                />
+                                                <span className="text-[7px] font-black uppercase text-gray-400 tracking-tighter">H</span>
+                                              </div>
                                             </div>
-                                          </div>
-                                        );
-                                      })}
-                                      <div className="text-center py-1.5 text-[10px] font-black text-orange-600 bg-orange-50 uppercase tracking-widest rounded-xl border border-orange-100">
-                                        Σ {dayTotal.toFixed(1)} <span className="opacity-50 text-[8px]">H Total</span>
+                                          );
+                                        })}
+                                        <div className="text-center py-0.5 text-[8px] font-black text-orange-600 bg-orange-50 uppercase tracking-wider rounded-md border border-orange-100">
+                                          Σ {dayTotal.toFixed(1)} <span className="opacity-50 text-[8px]">H Total</span>
+                                        </div>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex-1 flex items-center justify-center opacity-5 select-none pointer-events-none">
-                                      <div className="text-xl font-black italic tracking-tighter">PMC</div>
-                                    </div>
-                                  )}
-                                  
-                                  <button
-                                    onClick={() => {
-                                      if (isDayOff) return;
-                                      setTargetingCell({ date: day.date, foremanId: foreman.id });
-                                      setIsAddingProject(true);
-                                      setProjectSearch("");
-                                    }}
-                                    disabled={isDayOff}
-                                    className={`mt-auto py-2 border-2 border-dashed rounded-2xl transition-all flex items-center justify-center gap-2 ${
-                                      isDayOff
-                                      ? 'border-rose-200 text-rose-300 bg-rose-50 cursor-not-allowed opacity-100'
-                                      :
-                                      targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
-                                      ? 'border-green-500 text-green-600 bg-green-50 ring-4 ring-green-100'
-                                      : 'border-transparent text-gray-300 hover:border-orange-200 hover:text-orange-500 opacity-0 group-hover:opacity-100'
-                                    }`}
-                                  >
-                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Assign</span>
-                                  </button>
-                                </div>
-                              </td>
+                                    ) : (
+                                      <div className="flex-1 flex items-center justify-center opacity-5 select-none pointer-events-none">
+                                        <div className="text-xl font-black italic tracking-tighter">PMC</div>
+                                      </div>
+                                    )}
+                                    
+                                    <button
+                                      onClick={() => {
+                                        if (isDayOff) return;
+                                        setTargetingCell({ date: day.date, foremanId: foreman.id });
+                                        setIsAddingProject(true);
+                                        setProjectSearch("");
+                                      }}
+                                      disabled={isDayOff}
+                                      className={`mt-auto py-1 border-2 border-dashed rounded-lg transition-all items-center justify-center gap-1 ${
+                                        isDayOff
+                                        ? 'flex border-rose-200 text-rose-300 bg-rose-50 cursor-not-allowed opacity-100'
+                                        :
+                                        targetingCell?.date.getTime() === day.date.getTime() && targetingCell?.foremanId === foreman.id
+                                        ? 'flex border-green-500 text-green-600 bg-green-50 ring-4 ring-green-100'
+                                        : 'hidden group-hover:flex border-transparent text-gray-300 hover:border-orange-200 hover:text-orange-500'
+                                      }`}
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                      <span className="text-[8px] font-black uppercase tracking-wider">Assign</span>
+                                    </button>
+                                  </div>
+                                </td>
+                                {isWeekEnd && (() => {
+                                  const weekTotals = getForemanWeekTotals(foremanProjects, day.weekNumber);
+                                  return (
+                                    <td className="py-1 px-1 text-center border-r-2 border-orange-200 bg-orange-50/70 min-w-[110px]">
+                                      <div className="text-[8px] font-black uppercase tracking-wider text-orange-700">Wk {day.weekNumber}</div>
+                                      <div className="mt-1 text-[9px] font-black text-orange-900">{weekTotals.hours.toFixed(1)}H</div>
+                                      <div className="text-[8px] font-black text-stone-600">{weekTotals.manpower.toFixed(1)} MP</div>
+                                    </td>
+                                  );
+                                })()}
+                              </React.Fragment>
                             );
                           })}
+                          {(() => {
+                            const grandTotals = getForemanGrandTotals(foremanProjects);
+                            return (
+                              <td className="py-1 px-1 text-center border-l-2 border-orange-200 bg-orange-100/70 min-w-[120px]">
+                                <div className="text-[8px] font-black uppercase tracking-wider text-orange-700">Total</div>
+                                <div className="mt-1 text-[9px] font-black text-orange-900">{grandTotals.hours.toFixed(1)}H</div>
+                                <div className="text-[8px] font-black text-stone-600">{grandTotals.manpower.toFixed(1)} MP</div>
+                              </td>
+                            );
+                          })()}
                         </tr>
                       );
                     })}
@@ -2106,6 +2271,9 @@ function ShortTermScheduleContent() {
                       projectNumber: selectedGanttProject?.projectNumber || "",
                       projectName: selectedGanttProject?.projectName || "",
                       hours: Number(resolvedScopeHours),
+                      manpower: Number(targetScope.manpower || 0) > 0
+                        ? Number(targetScope.manpower)
+                        : Number(resolvedScopeHours) / HOURS_PER_FTE_DAY,
                       foreman: foremanId === "__unassigned__" ? "" : foremanId,
                       employees: [],
                       month: monthStr,

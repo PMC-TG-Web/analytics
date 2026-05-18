@@ -90,6 +90,37 @@ function buildTaskBasedDailyHours(
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function normalizeDistributionHours(
+  distribution: Array<{ date: string; hours: number }>,
+  targetTotalHours: number
+): Array<{ date: string; hours: number }> {
+  if (!Array.isArray(distribution) || distribution.length === 0) return [];
+
+  const safeTarget = Number(targetTotalHours || 0);
+  if (!Number.isFinite(safeTarget) || safeTarget <= 0) return distribution;
+
+  const currentTotal = distribution.reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+  if (!Number.isFinite(currentTotal) || currentTotal <= 0) return distribution;
+
+  const delta = Math.abs(currentTotal - safeTarget);
+  if (delta < 0.0001) return distribution;
+
+  const scale = safeTarget / currentTotal;
+  const scaled = distribution.map((entry) => ({
+    date: entry.date,
+    hours: Number(entry.hours || 0) * scale,
+  }));
+
+  // Keep floating-point drift from accumulating by correcting the last day.
+  const scaledTotal = scaled.reduce((sum, entry) => sum + entry.hours, 0);
+  const correction = safeTarget - scaledTotal;
+  if (scaled.length > 0 && Math.abs(correction) >= 0.0001) {
+    scaled[scaled.length - 1].hours += correction;
+  }
+
+  return scaled;
+}
+
 async function getPaidHolidaySet(startDate: string, endDate: string): Promise<Set<string>> {
   const rows = await prisma.holiday.findMany({
     where: {
@@ -365,9 +396,11 @@ export async function syncGanttScopeToActiveSchedule(params: SyncGanttScopeParam
     );
   }
 
-  const distribution = hasTaskBasedDistribution
+  const rawDistribution = hasTaskBasedDistribution
     ? taskBasedDays
     : workingDays.map((date) => ({ date: formatDateOnly(date), hours: hoursPerDay }));
+
+  const distribution = normalizeDistributionHours(rawDistribution, totalHours);
 
   for (const entry of distribution) {
     const dateStr = entry.date;

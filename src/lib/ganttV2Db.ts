@@ -2427,9 +2427,8 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
  * Fetch scopes for a single project (used for individual project scope loads)
  */
 export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeRow[]> {
-  // Phase 4: read canonical scope data from ProjectScope; use gantt_v2_scopes.id as the
-  // scope identifier so all write APIs (PUT/DELETE /api/gantt-v2/scopes/[scopeId]) continue
-  // to function without modification.
+  // Phase 4: prefer canonical scope data from ProjectScope, but anchor on gantt_v2_scopes
+  // so every existing Gantt scope remains visible even when link backfill is incomplete.
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;
@@ -2446,24 +2445,50 @@ export async function getGanttV2Scopes(projectId: string): Promise<GanttV2ScopeR
       SELECT
         gs.id,
         gs.project_id,
-        ps."predecessorScopeId"  AS predecessor_scope_id,
-        ps.title,
-        NULLIF(ps."startDate", '')::date AS start_date,
-        NULLIF(ps."endDate",   '')::date AS end_date,
-        ps.hours                         AS total_hours,
-        ps.manpower                      AS crew_size,
-        ps.notes,
+        COALESCE(ps.predecessor_scope_id, gs.predecessor_scope_id) AS predecessor_scope_id,
+        COALESCE(ps.title, gs.title) AS title,
+        COALESCE(ps.start_date, gs.start_date) AS start_date,
+        COALESCE(ps.end_date, gs.end_date) AS end_date,
+        COALESCE(ps.total_hours, gs.total_hours, 0) AS total_hours,
+        COALESCE(ps.crew_size, gs.crew_size) AS crew_size,
+        COALESCE(ps.notes, gs.notes) AS notes,
         CASE
-          WHEN ps."startDate" IS NULL OR ps."startDate" = '' OR ps."endDate" IS NULL OR ps."endDate" = '' OR COALESCE(ps.hours, 0) <= 0
+          WHEN COALESCE(ps.start_date, gs.start_date) IS NULL
+            OR COALESCE(ps.end_date, gs.end_date) IS NULL
+            OR COALESCE(ps.total_hours, gs.total_hours, 0) <= 0
             THEN 0
-          ELSE COALESCE(SUM(e.scheduled_hours), 0)
+          ELSE COALESCE((
+            SELECT SUM(e.scheduled_hours)
+            FROM gantt_v2_schedule_entries e
+            WHERE e.scope_id = gs.id
+          ), 0)
         END::float8 AS scheduled_hours
-      FROM "ProjectScope" ps
-      JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
-      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
+      FROM gantt_v2_scopes gs
+      JOIN gantt_v2_projects gp ON gp.id = gs.project_id
+      LEFT JOIN LATERAL (
+        SELECT
+          ps."predecessorScopeId" AS predecessor_scope_id,
+          ps.title,
+          NULLIF(ps."startDate", '')::date AS start_date,
+          NULLIF(ps."endDate", '')::date AS end_date,
+          ps.hours AS total_hours,
+          ps.manpower AS crew_size,
+          ps.notes
+        FROM "ProjectScope" ps
+        WHERE
+          ps."ganttV2ScopeId" = gs.id
+          OR (
+            ps."ganttV2ScopeId" IS NULL
+            AND ps."jobKey" = (COALESCE(gp.customer, '') || '~' || COALESCE(gp.project_number, '') || '~' || COALESCE(gp.project_name, ''))
+            AND LOWER(ps.title) = LOWER(gs.title)
+          )
+        ORDER BY
+          CASE WHEN ps."ganttV2ScopeId" = gs.id THEN 0 ELSE 1 END,
+          ps."updatedAt" DESC
+        LIMIT 1
+      ) ps ON TRUE
       WHERE gs.project_id = $1
-      GROUP BY gs.id, gs.project_id, ps.id
-      ORDER BY ps."createdAt" ASC;
+      ORDER BY gs.created_at ASC;
     `,
     projectId
   );
@@ -2497,7 +2522,7 @@ export async function getGanttV2ScopesForProjects(
     return new Map();
   }
 
-  // Phase 4: read canonical scope data from ProjectScope (same pattern as getGanttV2Scopes).
+  // Phase 4: prefer ProjectScope metadata while preserving visibility of all gantt_v2_scopes.
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string;
     project_id: string;
@@ -2514,24 +2539,50 @@ export async function getGanttV2ScopesForProjects(
       SELECT
         gs.id,
         gs.project_id,
-        ps."predecessorScopeId"  AS predecessor_scope_id,
-        ps.title,
-        NULLIF(ps."startDate", '')::date AS start_date,
-        NULLIF(ps."endDate",   '')::date AS end_date,
-        ps.hours                         AS total_hours,
-        ps.manpower                      AS crew_size,
-        ps.notes,
+        COALESCE(ps.predecessor_scope_id, gs.predecessor_scope_id) AS predecessor_scope_id,
+        COALESCE(ps.title, gs.title) AS title,
+        COALESCE(ps.start_date, gs.start_date) AS start_date,
+        COALESCE(ps.end_date, gs.end_date) AS end_date,
+        COALESCE(ps.total_hours, gs.total_hours, 0) AS total_hours,
+        COALESCE(ps.crew_size, gs.crew_size) AS crew_size,
+        COALESCE(ps.notes, gs.notes) AS notes,
         CASE
-          WHEN ps."startDate" IS NULL OR ps."startDate" = '' OR ps."endDate" IS NULL OR ps."endDate" = '' OR COALESCE(ps.hours, 0) <= 0
+          WHEN COALESCE(ps.start_date, gs.start_date) IS NULL
+            OR COALESCE(ps.end_date, gs.end_date) IS NULL
+            OR COALESCE(ps.total_hours, gs.total_hours, 0) <= 0
             THEN 0
-          ELSE COALESCE(SUM(e.scheduled_hours), 0)
+          ELSE COALESCE((
+            SELECT SUM(e.scheduled_hours)
+            FROM gantt_v2_schedule_entries e
+            WHERE e.scope_id = gs.id
+          ), 0)
         END::float8 AS scheduled_hours
-      FROM "ProjectScope" ps
-      JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
-      LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
+      FROM gantt_v2_scopes gs
+      JOIN gantt_v2_projects gp ON gp.id = gs.project_id
+      LEFT JOIN LATERAL (
+        SELECT
+          ps."predecessorScopeId" AS predecessor_scope_id,
+          ps.title,
+          NULLIF(ps."startDate", '')::date AS start_date,
+          NULLIF(ps."endDate", '')::date AS end_date,
+          ps.hours AS total_hours,
+          ps.manpower AS crew_size,
+          ps.notes
+        FROM "ProjectScope" ps
+        WHERE
+          ps."ganttV2ScopeId" = gs.id
+          OR (
+            ps."ganttV2ScopeId" IS NULL
+            AND ps."jobKey" = (COALESCE(gp.customer, '') || '~' || COALESCE(gp.project_number, '') || '~' || COALESCE(gp.project_name, ''))
+            AND LOWER(ps.title) = LOWER(gs.title)
+          )
+        ORDER BY
+          CASE WHEN ps."ganttV2ScopeId" = gs.id THEN 0 ELSE 1 END,
+          ps."updatedAt" DESC
+        LIMIT 1
+      ) ps ON TRUE
       WHERE gs.project_id = ANY($1::text[])
-      GROUP BY gs.id, gs.project_id, ps.id
-      ORDER BY ps."createdAt" ASC;
+      ORDER BY gs.created_at ASC;
     `,
     projectIds
   );

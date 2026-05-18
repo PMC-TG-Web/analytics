@@ -154,6 +154,7 @@ type ColDef =
 const PM_TITLES = ["Project Manager", "Lead Foreman / Project Manager", "Superintendent"];
 const HOURS_PER_FTE_DAY = 10;
 const HOURS_PER_FTE_WEEK = 50;
+const MANPOWER_CAPACITY_HOURS = 190;
 const REFERENCE_DATA_CACHE_TTL_MS = 60_000;
 const HOLIDAY_CACHE_KEY = "schedule:holidays:all";
 const EMPLOYEES_CACHE_KEY = "schedule:employees:active";
@@ -1162,7 +1163,7 @@ export default function LongTermSchedulePage() {
       const ganttInitiatedSchedules = activeSchedules
         .filter((entry) => {
           const source = (entry.source || "").toLowerCase();
-          return source === "gantt";
+          return source === "gantt" || source === "wip-page";
         })
         .filter((entry) => {
           const matchingScope = getMatchingScopeForEntry(entry);
@@ -1203,34 +1204,9 @@ export default function LongTermSchedulePage() {
         }
       });
 
-      const derivedScopeSchedules: ActiveScheduleEntry[] = [];
-      scopeSeedMap.forEach(({ scope, foremanByDate, defaultForeman }) => {
-        const dateKeys = getScopeDisplayDateKeys(scope, startDate, endDate, paidHolidayMap);
-
-        dateKeys.forEach((dateKey) => {
-          const assignmentDateKey = `${getAssignmentKey(scope.jobKey || "", scope.title || "Unnamed Scope")}|${dateKey}`;
-          if (coveredAssignmentDates.has(assignmentDateKey)) return;
-
-          const derivedHours = getScopeDisplayHoursForDate(scope, dateKey, paidHolidayMap);
-          if (!Number.isFinite(derivedHours || 0) || (derivedHours || 0) <= 0) return;
-
-          const selectedDayForeman = Array.isArray(scope.selectedDays)
-            ? scope.selectedDays.find((entry) => String(entry?.date || "").trim() === dateKey)?.foreman || null
-            : null;
-
-          derivedScopeSchedules.push({
-            jobKey: String(scope.jobKey || "").trim(),
-            scopeOfWork: scope.title || "Unnamed Scope",
-            date: dateKey,
-            hours: Number(derivedHours),
-            manpower: Number(scope.manpower || 0) || null,
-            foreman: selectedDayForeman || foremanByDate.get(dateKey) || defaultForeman || null,
-            source: "gantt",
-          });
-        });
-      });
-
-      const displaySchedules = [...ganttInitiatedSchedules, ...derivedScopeSchedules];
+      // Keep long-term totals aligned with short-term by rendering from persisted
+      // ActiveSchedule rows only (no synthetic in-memory derived rows).
+      const displaySchedules = [...ganttInitiatedSchedules];
 
       const hasUnassignedEntries = displaySchedules.some((entry) => !entry.foreman);
 
@@ -1279,37 +1255,14 @@ export default function LongTermSchedulePage() {
           const dayAllocation = dayAllocations[dayKey];
 
           const scopeOfWork = entry.scopeOfWork || "Unnamed Scope";
-          const assignmentScopes = scopesByJobKeyLocal[entry.jobKey] || [];
           const matchingScope = getMatchingScopeForEntry(entry);
-
-          const fallbackManpower = Number(matchingScope?.manpower || 0);
-          const taskDayHours =
-            getScopeTaskDayHours(matchingScope, entry.date) ||
-            assignmentScopes
-              .map((scope) => getScopeTaskDayHours(scope, entry.date))
-              .find((hours): hours is number => Number.isFinite(hours || 0) && (hours || 0) > 0) ||
-            null;
-          const specificDayHours =
-            getBestSpecificDayHours(assignmentScopes, entry.date, entry.scopeOfWork || "") ||
-            getScopeSpecificDayHours(matchingScope, entry.date);
-          const contiguousDayHours =
-            getScopeContiguousDayHours(matchingScope, entry.date, paidHolidayMap) ||
-            assignmentScopes
-              .map((scope) => getScopeContiguousDayHours(scope, entry.date, paidHolidayMap))
-              .find((hours): hours is number => Number.isFinite(hours || 0) && (hours || 0) >= 0) ||
-            null;
+          const resolvedScopeHours = getScopeDisplayHoursForDate(matchingScope, entry.date, paidHolidayMap);
           const scheduleHours = getHoursFromScheduleEntry(entry);
-          const hours = (Number.isFinite(taskDayHours || 0) && (taskDayHours || 0) > 0)
-            ? Number(taskDayHours)
-            : (Number.isFinite(specificDayHours || 0) && (specificDayHours || 0) > 0)
-            ? Number(specificDayHours)
-            : (Number.isFinite(contiguousDayHours || 0) && (contiguousDayHours || 0) > 0)
-              ? Number(contiguousDayHours)
+          const hours = (Number.isFinite(resolvedScopeHours || 0) && (resolvedScopeHours || 0) > 0)
+            ? Number(resolvedScopeHours)
             : (Number.isFinite(scheduleHours) && scheduleHours > 0)
               ? scheduleHours
-              : (Number.isFinite(fallbackManpower) && fallbackManpower > 0)
-                ? fallbackManpower * HOURS_PER_FTE_DAY
-                : 0;
+              : 0;
           addProjectToAllocation(weekAllocation, entry.jobKey, scopeOfWork, hours);
           addProjectToAllocation(dayAllocation, entry.jobKey, scopeOfWork, hours);
         });
@@ -1915,7 +1868,7 @@ export default function LongTermSchedulePage() {
                           (alloc?.projects || []).forEach((p) => uniqueJobs.add(p.jobKey));
                           return sum + (alloc?.hours || 0);
                         }, 0);
-                        const baseDispatchCapacity = dispatchCapacityStaff.length * 10;
+                        const baseDispatchCapacity = MANPOWER_CAPACITY_HOURS;
 
                         const getDayCapacity = (dateKey: string) => {
                           if (paidHolidayByDate[dateKey]) {
@@ -1973,7 +1926,7 @@ export default function LongTermSchedulePage() {
                               <div className="text-lg italic tracking-tight text-white leading-none">{col.weekLabel}</div>
                               <div className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-2 py-1">
                                 <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest gap-2 leading-none">
-                                  <span className="text-stone-300">Headcount</span>
+                                  <span className="text-stone-300">Man Power</span>
                                   <span className="text-orange-300">{Number.isInteger(activeHeadcount) ? activeHeadcount : activeHeadcount.toFixed(1)}</span>
                                   <span className="text-stone-500">|</span>
                                   <span className="text-orange-200">Man Power {allocatedFTE.toFixed(1)}</span>
@@ -2004,7 +1957,7 @@ export default function LongTermSchedulePage() {
                             <div className="text-[10px] uppercase tracking-wider text-orange-200 leading-none">{col.dateLabel}</div>
                             <div className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-1.5 py-1">
                               <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-widest gap-1.5 leading-none">
-                                <span className="text-stone-300">Headcount</span>
+                                <span className="text-stone-300">Man Power</span>
                                 <span className="text-orange-300">{Number.isInteger(activeHeadcount) ? activeHeadcount : activeHeadcount.toFixed(1)}</span>
                                 <span className="text-stone-500">|</span>
                                 <span className="text-orange-200">Man Power {allocatedFTE.toFixed(1)}</span>

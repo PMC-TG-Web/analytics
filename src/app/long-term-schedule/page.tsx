@@ -1005,10 +1005,20 @@ export default function LongTermSchedulePage() {
         return jobKeys.flatMap((jobKey) => scopes.map((scope) => mapGanttScopeToScheduleScope(scope, jobKey)));
       });
 
-      const scopesByJobKeyLocal = [...allScopes, ...liveGanttScopes].reduce<Record<string, Scope[]>>((acc, scope) => {
-        addScopeToLookup(acc, scope);
-        return acc;
-      }, {});
+      // Only include scopes for jobs that have been initiated via Gantt (mirrors short-term filter)
+      const ganttInitiatedJobKeys = new Set(
+        activeSchedules
+          .filter((e) => (e.source || "").toLowerCase() === "gantt")
+          .map((e) => e.jobKey)
+          .filter(Boolean)
+      );
+
+      const scopesByJobKeyLocal = [...allScopes, ...liveGanttScopes]
+        .filter((scope) => scope.jobKey && ganttInitiatedJobKeys.has(scope.jobKey))
+        .reduce<Record<string, Scope[]>>((acc, scope) => {
+          addScopeToLookup(acc, scope);
+          return acc;
+        }, {});
       setScopesByJobKey(scopesByJobKeyLocal);
 
       const paidHolidayMap: Record<string, Holiday> = {};

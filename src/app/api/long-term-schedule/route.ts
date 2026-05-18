@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       const entryDate = new Date(`${entry.date}T00:00:00Z`);
       
       // Calculate week number within the month
-      const dayOfMonth = entryDate.getDate();
+      const dayOfMonth = entryDate.getUTCDate();
       const weekNumber = Math.ceil(dayOfMonth / 7);
 
       if (!weekMap[weekNumber]) {

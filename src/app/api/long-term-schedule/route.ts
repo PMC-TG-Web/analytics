@@ -176,12 +176,25 @@ export async function POST(request: NextRequest) {
       });
 
       // Filter scopes active in this month
-      const activeScopesInMonth = projectScopes.filter((scope) => {
-        if (!scope.startDate || !scope.endDate) return true;
-        const scopeStartStr = typeof scope.startDate === 'string' ? scope.startDate : (scope.startDate as Date).toISOString().split('T')[0];
-        const scopeEndStr = typeof scope.endDate === 'string' ? scope.endDate : (scope.endDate as Date).toISOString().split('T')[0];
-        return scopeStartStr <= endDate && scopeEndStr >= startDate;
-      });
+      const activeScopesInMonth = (() => {
+        const filtered = projectScopes.filter((scope) => {
+          if (!scope.startDate || !scope.endDate) return true;
+          const scopeStartStr = typeof scope.startDate === 'string' ? scope.startDate : (scope.startDate as Date).toISOString().split('T')[0];
+          const scopeEndStr = typeof scope.endDate === 'string' ? scope.endDate : (scope.endDate as Date).toISOString().split('T')[0];
+          return scopeStartStr <= endDate && scopeEndStr >= startDate;
+        });
+        // Deduplicate by title: if backfill created a gantt-linked row alongside the original,
+        // keep the gantt-linked one (ganttV2ScopeId set) to avoid split proportional distributions.
+        const seen = new Map<string, (typeof filtered)[number]>();
+        for (const scope of filtered) {
+          const key = (scope.title || '').trim().toLowerCase();
+          const existing = seen.get(key);
+          if (!existing || (scope as any).ganttV2ScopeId) {
+            seen.set(key, scope);
+          }
+        }
+        return Array.from(seen.values());
+      })();
 
       const recordsToCreate = [];
 

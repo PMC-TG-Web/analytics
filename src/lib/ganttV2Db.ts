@@ -2591,13 +2591,13 @@ export async function getGanttV2LongTermSummary(startMonth?: string, months = 15
       p.project_number,
       p.status,
       gs.id AS scope_id,
-      ps.hours AS total_hours,
-      NULLIF(ps."startDate", '')::date AS start_date,
-      NULLIF(ps."endDate",   '')::date AS end_date,
+      COALESCE(ps.hours, gs.total_hours, 0) AS total_hours,
+      COALESCE(NULLIF(ps."startDate", ''), gs.start_date::text)::date AS start_date,
+      COALESCE(NULLIF(ps."endDate",   ''), gs.end_date::text)::date   AS end_date,
       COALESCE(SUM(e.scheduled_hours), 0)::float8 AS scheduled_hours
     FROM gantt_v2_projects p
-    JOIN "ProjectScope" ps ON ps."jobKey" = p.job_key AND ps."ganttV2ScopeId" IS NOT NULL
-    JOIN gantt_v2_scopes gs ON gs.id = ps."ganttV2ScopeId"
+    JOIN gantt_v2_scopes gs ON gs.project_id = p.id
+    LEFT JOIN "ProjectScope" ps ON ps."ganttV2ScopeId" = gs.id
     LEFT JOIN gantt_v2_schedule_entries e ON e.scope_id = gs.id
     WHERE p.status = 'In Progress'
     GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, gs.id, ps.id

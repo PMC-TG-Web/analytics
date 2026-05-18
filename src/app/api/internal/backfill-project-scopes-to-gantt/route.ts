@@ -25,6 +25,46 @@ function parseJobKey(jobKey: string): { customer: string; projectNumber: string;
   };
 }
 
+export async function GET(req: NextRequest) {
+  const auth = req.headers.get('authorization') ?? '';
+  const secret = process.env.CRON_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Diagnostic: show gantt projects + scopes for a jobKey
+  const jobKey = req.nextUrl.searchParams.get('jobKey');
+  if (!jobKey) {
+    return NextResponse.json({ error: 'Pass ?jobKey=...' }, { status: 400 });
+  }
+
+  const { customer, projectNumber, projectName } = parseJobKey(jobKey);
+
+  const projects = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT id, customer, project_number, project_name, job_key, source
+     FROM gantt_v2_projects
+     WHERE job_key = $1
+        OR (customer = $2 AND project_number = $3 AND project_name = $4)`,
+    jobKey, customer, projectNumber, projectName
+  );
+
+  const results: any[] = [];
+  for (const p of projects) {
+    const scopes = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, title, start_date, end_date, total_hours FROM gantt_v2_scopes WHERE project_id = $1`,
+      p.id
+    );
+    results.push({ project: p, scopes });
+  }
+
+  const psRows = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT id, title, "startDate", "endDate", hours, "ganttV2ScopeId" FROM "ProjectScope" WHERE "jobKey" = $1`,
+    jobKey
+  );
+
+  return NextResponse.json({ ganttProjects: results, projectScopes: psRows });
+}
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization') ?? '';
   const secret = process.env.CRON_SECRET;
@@ -33,11 +73,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Clean up any orphaned gantt_v2_projects rows with no scopes (created by a failed backfill run)
+    // Clean up orphaned gantt_v2_projects rows created by a previous failed backfill run:
+    // these have no scopes AND were never sourced from Procore/app (job_key was set by us)
     await prisma.$executeRawUnsafe(
       `DELETE FROM gantt_v2_projects
-       WHERE id NOT IN (SELECT DISTINCT project_id FROM gantt_v2_scopes)
-         AND source IS NULL`
+       WHERE id NOT IN (SELECT DISTINCT project_id FROM gantt_v2_scopes)`
     );
 
     // Find all ProjectScope rows with no ganttV2ScopeId link

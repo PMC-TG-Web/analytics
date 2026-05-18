@@ -340,6 +340,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow one-time backfill — protected by its own CRON_SECRET header check inside the route.
+  if (pathname === '/api/internal/backfill-gantt-scopes') {
+    return NextResponse.next();
+  }
+
   const session = await auth0.getSession(request);
   if (!session) {
     if (isApiRoute) {

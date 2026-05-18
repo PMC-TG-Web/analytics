@@ -33,6 +33,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Clean up any orphaned gantt_v2_projects rows with no scopes (created by a failed backfill run)
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM gantt_v2_projects
+       WHERE id NOT IN (SELECT DISTINCT project_id FROM gantt_v2_scopes)
+         AND source IS NULL`
+    );
+
     // Find all ProjectScope rows with no ganttV2ScopeId link
     const unlinked = await prisma.$queryRawUnsafe<any[]>(
       `SELECT id, "jobKey", title, "startDate", "endDate", hours, manpower, notes, "predecessorScopeId"
@@ -58,11 +65,13 @@ export async function POST(req: NextRequest) {
       if (!ganttProjectId) {
         const { customer, projectNumber, projectName } = parseJobKey(jobKey);
 
+        // Match by job_key first (most reliable), then fall back to field-by-field
         const existing = await prisma.$queryRawUnsafe<any[]>(
           `SELECT id FROM gantt_v2_projects
-           WHERE customer = $1 AND project_number = $2 AND project_name = $3
+           WHERE job_key = $1
+              OR (customer = $2 AND project_number = $3 AND project_name = $4)
            LIMIT 1`,
-          customer, projectNumber, projectName
+          jobKey, customer, projectNumber, projectName
         );
 
         if (existing.length > 0) {
@@ -70,10 +79,10 @@ export async function POST(req: NextRequest) {
         } else {
           ganttProjectId = randomUUID();
           await prisma.$executeRawUnsafe(
-            `INSERT INTO gantt_v2_projects (id, customer, project_number, project_name, status, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, 'active', NOW(), NOW())
+            `INSERT INTO gantt_v2_projects (id, customer, project_number, project_name, job_key, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
              ON CONFLICT DO NOTHING`,
-            ganttProjectId, customer, projectNumber, projectName
+            ganttProjectId, customer, projectNumber, projectName, jobKey
           );
           console.log(`[reverse-backfill] Created gantt project: ${jobKey}`);
         }

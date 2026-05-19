@@ -22,6 +22,7 @@ export interface Project {
 
 export interface Scope {
   id: string;
+  ganttV2ScopeId?: string | null;
   title: string;
   predecessorScopeId?: string | null;
   jobKey?: string;

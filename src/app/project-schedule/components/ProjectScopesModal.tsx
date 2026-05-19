@@ -1098,6 +1098,7 @@ export function ProjectScopesModal({
   const mapGanttScopes = useCallback((rows: NonNullable<GanttProjectResponse["scopes"]>): Scope[] =>
     rows.map((scope) => ({
       id: scope.id,
+      ganttV2ScopeId: scope.id,
       predecessorScopeId: scope.predecessorScopeId || null,
       jobKey: resolvedJobKey || project.jobKey,
       title: scope.title,
@@ -1143,9 +1144,15 @@ export function ProjectScopesModal({
         return scopes;
       }
 
+      const persistedByGanttId = new Map<string, Scope>();
       const persistedByComposite = new Map<string, Scope[]>();
       const persistedByTitle = new Map<string, Scope[]>();
       persistedScopes.forEach((scope) => {
+        const ganttScopeId = String(scope?.ganttV2ScopeId || '').trim();
+        if (ganttScopeId) {
+          persistedByGanttId.set(ganttScopeId, scope);
+        }
+
         const titleKey = normalizeText(scope?.title || '');
         if (!titleKey) return;
 
@@ -1160,9 +1167,13 @@ export function ProjectScopesModal({
       });
 
       const mergedCanonicalScopes = scopes.map((scope) => {
+        const persistedByIdentity = scope.ganttV2ScopeId
+          ? persistedByGanttId.get(String(scope.ganttV2ScopeId).trim())
+          : undefined;
         const compositeMatches = persistedByComposite.get(scopeMatchKey(scope.title, scope.startDate, scope.endDate)) || [];
         const titleMatches = persistedByTitle.get(normalizeText(scope.title || '')) || [];
         const persisted =
+          persistedByIdentity ||
           compositeMatches[0] ||
           (titleMatches.length === 1 ? titleMatches[0] : undefined);
 
@@ -1173,6 +1184,7 @@ export function ProjectScopesModal({
 
         return {
           ...scope,
+          ganttV2ScopeId: persisted.ganttV2ScopeId || scope.ganttV2ScopeId || null,
           hours: persistedHours !== null ? persistedHours : scope.hours,
           manpower: persistedManpower !== null ? persistedManpower : scope.manpower,
           description: persisted.description || scope.description || '',
@@ -1233,6 +1245,7 @@ export function ProjectScopesModal({
 
           return {
             id: scope.id,
+            ganttV2ScopeId: scope.ganttV2ScopeId || null,
             predecessorScopeId: scope.predecessorScopeId || null,
             jobKey: scope.jobKey || resolvedJobKey || project.jobKey,
             title: scope.title || 'Scope',
@@ -1481,12 +1494,19 @@ export function ProjectScopesModal({
     const payloadEndDate = dateKey(payload?.endDate);
     const activeStartDate = dateKey(activeScope?.startDate);
     const activeEndDate = dateKey(activeScope?.endDate);
+    const activeGanttScopeId = String(activeScope?.ganttV2ScopeId || activeScope?.id || '').trim();
 
     const titleMatches = projectScopes.filter((scope) => normalizeText(scope?.title || '') === titleKey);
 
     let existing: Scope | undefined;
 
-    if (activeScope?.id) {
+    if (activeGanttScopeId) {
+      existing = projectScopes.find(
+        (scope) => String(scope?.ganttV2ScopeId || '').trim() === activeGanttScopeId
+      );
+    }
+
+    if (!existing && activeScope?.id) {
       existing = projectScopes.find((scope) => scope.id === activeScope.id);
     }
 

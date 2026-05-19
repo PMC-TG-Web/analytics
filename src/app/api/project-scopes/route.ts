@@ -25,6 +25,23 @@ type ScopeTaskEntry = {
   concreteConfirmed?: boolean;
 };
 
+type ProjectScopeRow = {
+  id: string;
+  ganttV2ScopeId: string | null;
+  jobKey: string;
+  title: string;
+  startDate: string | null;
+  endDate: string | null;
+  manpower: number | null;
+  hours: number | null;
+  description: string | null;
+  tasks: unknown;
+  schedulingMode: string | null;
+  selectedDays: unknown;
+  color: string | null;
+  taskColors: unknown;
+};
+
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -228,24 +245,44 @@ export async function GET(request: NextRequest) {
           customFields: true,
         },
       }),
-      prisma.projectScope.findMany({
-        where: jobKey ? { jobKey } : undefined,
-        select: {
-          id: true,
-          jobKey: true,
-          title: true,
-          startDate: true,
-          endDate: true,
-          manpower: true,
-          hours: true,
-          description: true,
-          tasks: true,
-          schedulingMode: true,
-          selectedDays: true,
-          color: true,
-          taskColors: true,
-        },
-      }),
+      jobKey
+        ? prisma.$queryRaw<ProjectScopeRow[]>`
+            SELECT
+              id,
+              "ganttV2ScopeId",
+              "jobKey",
+              title,
+              "startDate",
+              "endDate",
+              manpower,
+              hours,
+              description,
+              tasks,
+              "schedulingMode",
+              "selectedDays",
+              color,
+              "taskColors"
+            FROM "ProjectScope"
+            WHERE "jobKey" = ${jobKey}
+          `
+        : prisma.$queryRaw<ProjectScopeRow[]>`
+            SELECT
+              id,
+              "ganttV2ScopeId",
+              "jobKey",
+              title,
+              "startDate",
+              "endDate",
+              manpower,
+              hours,
+              description,
+              tasks,
+              "schedulingMode",
+              "selectedDays",
+              color,
+              "taskColors"
+            FROM "ProjectScope"
+          `,
     ]);
 
     const normalizedScopes = scopes.map((scope) => ({

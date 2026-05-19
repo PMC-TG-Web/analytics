@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const projects = projectIds.length > 0
       ? await prisma.$queryRaw<any[]>`
           SELECT id, customer, project_number, project_name, job_key,
-                 (SELECT COUNT(*) FROM gantt_v2_scopes WHERE project_id = gantt_v2_projects.id) as scope_count
+                 CAST((SELECT COUNT(*) FROM gantt_v2_scopes WHERE project_id = gantt_v2_projects.id) AS integer) as scope_count
           FROM gantt_v2_projects
           WHERE id = ANY(${projectIds}::text[])
         `

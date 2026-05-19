@@ -300,6 +300,7 @@ type ScopeMetadataPayload = {
   predecessorScopeId?: string | null;
   manpower?: number;
   hours?: number;
+  ganttV2ScopeId?: string | null;
 };
 
 const LEGACY_TASK_REGEX = /^\[(.*?)\]\s*(.+)$/;
@@ -1552,6 +1553,7 @@ export function ProjectScopesModal({
           jobKey: resolvedJobKey,
           id: existing.id,
           ...payload,
+          ganttV2ScopeId: activeGanttScopeId || null,
           syncToActiveSchedule: false,
         }),
       });
@@ -1569,6 +1571,7 @@ export function ProjectScopesModal({
       body: JSON.stringify({
         jobKey: resolvedJobKey,
         ...payload,
+        ganttV2ScopeId: activeGanttScopeId || null,
         syncToActiveSchedule: false,
       }),
     });

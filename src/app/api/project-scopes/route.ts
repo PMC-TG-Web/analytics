@@ -343,6 +343,7 @@ export async function POST(request: NextRequest) {
       selectedDays,
       syncToActiveSchedule,
       allowWeekendSelectedDays,
+      ganttV2ScopeId,
     } = body;
 
     const normalizedSchedulingMode =
@@ -386,6 +387,10 @@ export async function POST(request: NextRequest) {
         },
       })
     );
+
+    if (ganttV2ScopeId) {
+      await prisma.$executeRaw`UPDATE "ProjectScope" SET "ganttV2ScopeId" = ${String(ganttV2ScopeId)} WHERE id = ${scope.id} AND "ganttV2ScopeId" IS NULL`;
+    }
 
     const shouldSync = syncToActiveSchedule !== false;
     if (shouldSync) {
@@ -433,6 +438,7 @@ export async function PUT(request: NextRequest) {
       selectedDays,
       syncToActiveSchedule,
       allowWeekendSelectedDays,
+      ganttV2ScopeId,
     } = body;
 
     const normalizedSchedulingMode =
@@ -473,6 +479,12 @@ export async function PUT(request: NextRequest) {
         },
       })
     );
+
+    // Fetch ganttV2ScopeId separately via raw SQL (not exposed in generated Prisma types)
+    const existingGanttLink = id
+      ? await prisma.$queryRaw<{ ganttV2ScopeId: string | null }[]>`SELECT "ganttV2ScopeId" FROM "ProjectScope" WHERE id = ${id} LIMIT 1`
+      : [];
+    const existingGanttV2ScopeId = existingGanttLink[0]?.ganttV2ScopeId ?? null;
 
     if (!existing) {
       const fallbackJobKey = typeof jobKey === 'string' ? jobKey.trim() : '';
@@ -517,6 +529,10 @@ export async function PUT(request: NextRequest) {
           },
         })
       );
+
+      if (ganttV2ScopeId) {
+        await prisma.$executeRaw`UPDATE "ProjectScope" SET "ganttV2ScopeId" = ${String(ganttV2ScopeId)} WHERE id = ${createdScope.id} AND "ganttV2ScopeId" IS NULL`;
+      }
 
       if (syncToActiveSchedule !== false) {
         try {
@@ -579,6 +595,11 @@ export async function PUT(request: NextRequest) {
         },
       })
     );
+
+    // Set ganttV2ScopeId link only when the row doesn't already own one (avoids unique constraint violation)
+    if (ganttV2ScopeId && !existingGanttV2ScopeId) {
+      await prisma.$executeRaw`UPDATE "ProjectScope" SET "ganttV2ScopeId" = ${String(ganttV2ScopeId)} WHERE id = ${id} AND "ganttV2ScopeId" IS NULL`;
+    }
 
     const shouldSync = syncToActiveSchedule !== false;
     if (shouldSync && didScheduleAffectingFieldsChange) {

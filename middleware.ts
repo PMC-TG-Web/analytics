@@ -342,7 +342,8 @@ export async function middleware(request: NextRequest) {
 
   // Allow one-time backfills — protected by their own CRON_SECRET header check inside the route.
   if (pathname === '/api/internal/backfill-gantt-scopes' ||
-      pathname === '/api/internal/backfill-project-scopes-to-gantt') {
+      pathname === '/api/internal/backfill-project-scopes-to-gantt' ||
+      pathname === '/api/internal/scope-diagnostics') {
     return NextResponse.next();
   }
 

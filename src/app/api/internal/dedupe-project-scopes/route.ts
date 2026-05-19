@@ -64,10 +64,25 @@ function mergeScopeData(primary: ScopeRow, scopes: ScopeRow[]) {
     scopes.flatMap((scope) => safeJsonArray(scope.tasks)),
     (task) => JSON.stringify(task)
   );
-  const mergedSelectedDays = dedupeJsonArray(
-    scopes.flatMap((scope) => safeJsonArray(scope.selectedDays)),
-    (day) => JSON.stringify(day)
-  );
+  const selectedDayMap = new Map<string, { date: string; hours: number; foreman: string | null }>();
+  for (const day of scopes.flatMap((scope) => safeJsonArray(scope.selectedDays))) {
+    if (!day || typeof day !== 'object' || Array.isArray(day)) continue;
+    const row = day as { date?: unknown; hours?: unknown; foreman?: unknown };
+    const date = String(row.date || '').trim();
+    if (!date) continue;
+
+    const hours = Number(row.hours || 0);
+    if (!Number.isFinite(hours)) continue;
+
+    const existing = selectedDayMap.get(date);
+    selectedDayMap.set(date, {
+      date,
+      hours: (existing?.hours || 0) + hours,
+      foreman: existing?.foreman ?? (row.foreman ? String(row.foreman) : null),
+    });
+  }
+
+  const mergedSelectedDays = Array.from(selectedDayMap.values()).sort((left, right) => left.date.localeCompare(right.date));
 
   const firstNonNull = <T,>(values: Array<T | null | undefined>): T | null => {
     for (const value of values) {

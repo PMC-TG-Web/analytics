@@ -177,11 +177,11 @@ export async function POST(req: NextRequest) {
             manpower = ${mergedData.manpower},
             hours = ${mergedData.hours},
             description = ${mergedData.description},
-            tasks = ${mergedData.tasks as unknown as object},
+            tasks = CAST(${JSON.stringify(mergedData.tasks)} AS jsonb),
             "schedulingMode" = ${mergedData.schedulingMode},
-            "selectedDays" = ${mergedData.selectedDays as unknown as object},
+            "selectedDays" = CAST(${JSON.stringify(mergedData.selectedDays)} AS jsonb),
             color = ${mergedData.color},
-            "taskColors" = ${mergedData.taskColors as unknown as object},
+            "taskColors" = ${mergedData.taskColors === null ? null : JSON.stringify(mergedData.taskColors)},
             "updatedAt" = NOW()
         WHERE id = ${canonical.id}
       `;

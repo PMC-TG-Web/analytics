@@ -340,14 +340,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-    // Allow one-time backfills — protected by their own CRON_SECRET header check inside the route.
-    if (pathname === '/api/internal/backfill-gantt-scopes' ||
-      pathname === '/api/internal/backfill-project-scopes-to-gantt' ||
-      pathname === '/api/internal/dedupe-project-scopes' ||
-      pathname === '/api/internal/scope-diagnostics' ||
-      pathname === '/api/internal/projects-diagnostics' ||
-      pathname === '/api/internal/debug-scope-project-split' ||
-      pathname === '/api/internal/check-duplicate-projects') {
+      // Allow one-time backfills — protected by their own CRON_SECRET header check inside the route.
+      if (pathname === '/api/internal/backfill-gantt-scopes' ||
+        pathname === '/api/internal/backfill-project-scopes-to-gantt' ||
+        pathname === '/api/internal/dedupe-project-scopes' ||
+        pathname === '/api/internal/scope-diagnostics' ||
+        pathname === '/api/internal/projects-diagnostics' ||
+        pathname === '/api/internal/debug-scope-project-split' ||
+        pathname === '/api/internal/check-duplicate-projects' ||
+        pathname === '/api/internal/merge-duplicate-projects') {
     return NextResponse.next();
   }
 

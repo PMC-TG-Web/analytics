@@ -31,6 +31,20 @@ function safeJsonArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function dedupeJsonArray<T>(values: T[], keyFn: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+
+  for (const value of values) {
+    const key = keyFn(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(value);
+  }
+
+  return deduped;
+}
+
 function pickPreferredScope(scopes: ScopeRow[]): ScopeRow {
   const linked = scopes.find((scope) => Boolean(scope.ganttV2ScopeId));
   if (linked) return linked;
@@ -46,8 +60,14 @@ function pickPreferredScope(scopes: ScopeRow[]): ScopeRow {
 }
 
 function mergeScopeData(primary: ScopeRow, scopes: ScopeRow[]) {
-  const mergedTasks = scopes.flatMap((scope) => safeJsonArray(scope.tasks));
-  const mergedSelectedDays = scopes.flatMap((scope) => safeJsonArray(scope.selectedDays));
+  const mergedTasks = dedupeJsonArray(
+    scopes.flatMap((scope) => safeJsonArray(scope.tasks)),
+    (task) => JSON.stringify(task)
+  );
+  const mergedSelectedDays = dedupeJsonArray(
+    scopes.flatMap((scope) => safeJsonArray(scope.selectedDays)),
+    (day) => JSON.stringify(day)
+  );
 
   const firstNonNull = <T,>(values: Array<T | null | undefined>): T | null => {
     for (const value of values) {

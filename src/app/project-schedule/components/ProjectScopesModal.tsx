@@ -22,6 +22,22 @@ type GanttProjectResponse = {
   }>;
 };
 
+type ProjectIdentity = {
+  customer: string;
+  projectNumber: string;
+  projectName: string;
+  jobKey: string;
+};
+
+type ProjectLookupResponse = {
+  success?: boolean;
+  data?: Array<{
+    customer?: string | null;
+    projectNumber?: string | null;
+    projectName?: string | null;
+  }>;
+};
+
 const NEW_SCOPE_ID = '__new_scope__';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PM_TITLES = ["Project Manager", "Lead Foreman / Project Manager", "Superintendent"];
@@ -661,15 +677,83 @@ export function ProjectScopesModal({
     }
   };
 
-  const matchesProjectIdentity = useCallback((
+  const [resolvedIdentityOverride, setResolvedIdentityOverride] = useState<ProjectIdentity | null>(null);
+
+  const baseProjectIdentity = useMemo<ProjectIdentity>(() => {
+    const parsed = parseJobKeyParts(project.jobKey);
+    const customer = (project.customer || parsed.customer || '').trim();
+    const projectNumber = (project.projectNumber || parsed.projectNumber || '').trim();
+    const projectName = (project.projectName || parsed.projectName || '').trim();
+    return {
+      customer,
+      projectNumber,
+      projectName,
+      jobKey: projectName ? `${customer}~${projectNumber}~${projectName}` : '',
+    };
+  }, [project.customer, project.jobKey, project.projectName, project.projectNumber]);
+
+  const effectiveProjectIdentity = resolvedIdentityOverride || baseProjectIdentity;
+
+  const lookupCanonicalProjectIdentity = useCallback(async (): Promise<ProjectIdentity | null> => {
+    const projectNumber = baseProjectIdentity.projectNumber;
+    const projectName = baseProjectIdentity.projectName;
+    const customer = baseProjectIdentity.customer;
+
+    if (!projectName || customer) {
+      return customer ? baseProjectIdentity : null;
+    }
+
+    const params = new URLSearchParams({ summary: 'true' });
+    if (projectNumber) params.set('projectNumber', projectNumber);
+    if (projectName) params.set('projectName', projectName);
+    params.set('pageSize', '10');
+
+    const response = await fetch(`/api/projects?${params.toString()}`, {
+      cache: 'no-store',
+      credentials: 'include',
+    });
+    const result = await readJsonResponse<ProjectLookupResponse>(response, {
+      label: 'Lookup canonical project identity',
+      fallback: { success: false, data: [] },
+    });
+
+    if (!response.ok || !result?.success || !Array.isArray(result.data)) {
+      return null;
+    }
+
+    const matches = result.data.filter((row) => {
+      const rowCustomer = String(row.customer || '').trim();
+      const rowProjectNumber = String(row.projectNumber || '').trim();
+      const rowProjectName = String(row.projectName || '').trim();
+      if (!rowCustomer || !rowProjectName) return false;
+      if (projectNumber && rowProjectNumber !== projectNumber) return false;
+      return rowProjectName === projectName;
+    });
+
+    const bestMatch = matches[0];
+    if (!bestMatch) return null;
+
+    const resolved: ProjectIdentity = {
+      customer: String(bestMatch.customer || '').trim(),
+      projectNumber: String(bestMatch.projectNumber || projectNumber || '').trim(),
+      projectName: String(bestMatch.projectName || projectName || '').trim(),
+      jobKey: `${String(bestMatch.customer || '').trim()}~${String(bestMatch.projectNumber || projectNumber || '').trim()}~${String(bestMatch.projectName || projectName || '').trim()}`,
+    };
+
+    setResolvedIdentityOverride((current) => (current?.jobKey === resolved.jobKey ? current : resolved));
+    return resolved;
+  }, [baseProjectIdentity]);
+
+  const matchesIdentity = useCallback((
+    identity: ProjectIdentity,
     item: { customer?: string | null; projectNumber?: string | null; projectName?: string | null }
   ) => {
     const normalizedItemCustomer = normalizeText(item.customer);
-    const normalizedProjectCustomer = normalizeText(project.customer);
+    const normalizedProjectCustomer = normalizeText(identity.customer);
     const normalizedItemNumber = normalizeText(item.projectNumber);
-    const normalizedProjectNumber = normalizeText(project.projectNumber);
+    const normalizedProjectNumber = normalizeText(identity.projectNumber);
     const normalizedItemName = normalizeText(item.projectName);
-    const normalizedProjectName = normalizeText(project.projectName);
+    const normalizedProjectName = normalizeText(identity.projectName);
 
     const customerMatch =
       normalizedItemCustomer === normalizedProjectCustomer ||
@@ -687,7 +771,13 @@ export function ProjectScopesModal({
       normalizedItemNumber === normalizedProjectNumber;
 
     return customerMatch && nameMatch && projectNumberMatch;
-  }, [project.customer, project.projectName, project.projectNumber]);
+  }, []);
+
+  const matchesProjectIdentity = useCallback((
+    item: { customer?: string | null; projectNumber?: string | null; projectName?: string | null }
+  ) => {
+    return matchesIdentity(effectiveProjectIdentity, item);
+  }, [effectiveProjectIdentity, matchesIdentity]);
 
   const identityFallbackScopes = useMemo(() => {
     if (scopes.length > 0) return scopes;
@@ -702,21 +792,13 @@ export function ProjectScopesModal({
   }, [allScopes, scopes, matchesProjectIdentity]);
 
   const resolvedJobKey = useMemo(() => {
-    const explicit = (project.jobKey || '').trim();
-    if (explicit) return explicit;
-
-    const customer = (project.customer || '').trim();
-    const projectNumber = (project.projectNumber || '').trim();
-    const projectName = (project.projectName || '').trim();
-    if (!projectName) return '';
-
-    return `${customer}~${projectNumber}~${projectName}`;
-  }, [project.customer, project.jobKey, project.projectName, project.projectNumber]);
+    return effectiveProjectIdentity.jobKey;
+  }, [effectiveProjectIdentity]);
 
   const canonicalLoadRequestKey = useMemo(() => {
-    const customerKey = normalizeText(project.customer || '');
-    const projectNumberKey = normalizeText(project.projectNumber || '');
-    const projectNameKey = normalizeText(project.projectName || '');
+    const customerKey = normalizeText(effectiveProjectIdentity.customer || '');
+    const projectNumberKey = normalizeText(effectiveProjectIdentity.projectNumber || '');
+    const projectNameKey = normalizeText(effectiveProjectIdentity.projectName || '');
     return [
       (resolvedJobKey || '').trim(),
       (liveGanttProjectId || '').trim(),
@@ -724,14 +806,37 @@ export function ProjectScopesModal({
       projectNumberKey,
       projectNameKey,
     ].join('|');
-  }, [liveGanttProjectId, project.customer, project.projectName, project.projectNumber, resolvedJobKey]);
+  }, [effectiveProjectIdentity.customer, effectiveProjectIdentity.projectName, effectiveProjectIdentity.projectNumber, liveGanttProjectId, resolvedJobKey]);
 
   const concreteProjectRef = useMemo<ConcreteOrderProjectRef>(() => ({
     jobKey: resolvedJobKey || project.jobKey,
-    projectName: project.projectName,
-    customer: project.customer,
-    projectNumber: project.projectNumber,
-  }), [project.customer, project.jobKey, project.projectName, project.projectNumber, resolvedJobKey]);
+    projectName: effectiveProjectIdentity.projectName,
+    customer: effectiveProjectIdentity.customer,
+    projectNumber: effectiveProjectIdentity.projectNumber,
+  }), [effectiveProjectIdentity.customer, effectiveProjectIdentity.projectName, effectiveProjectIdentity.projectNumber, project.jobKey, resolvedJobKey]);
+
+  useEffect(() => {
+    setResolvedIdentityOverride(null);
+  }, [project.customer, project.jobKey, project.projectName, project.projectNumber]);
+
+  useEffect(() => {
+    const explicitCustomer = parseJobKeyParts(project.jobKey).customer.trim();
+    const needsLookup = !effectiveProjectIdentity.customer && !explicitCustomer && Boolean(baseProjectIdentity.projectName);
+    if (!needsLookup) return;
+
+    let cancelled = false;
+    void lookupCanonicalProjectIdentity().then((identity) => {
+      if (!cancelled && identity?.jobKey) {
+        setResolvedIdentityOverride(identity);
+      }
+    }).catch((error) => {
+      console.warn('Unable to resolve canonical project identity for scope modal:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseProjectIdentity.projectName, effectiveProjectIdentity.customer, lookupCanonicalProjectIdentity, project.jobKey]);
 
   useEffect(() => {
     setCanonicalScopes(null);
@@ -1380,7 +1485,8 @@ export function ProjectScopesModal({
     return mergedScopes;
   }, [ganttProjectId, liveGanttProjectId, loadGanttProjectsList, loadScopesForGanttProject, mapGanttScopes, matchesProjectIdentity, mergePersistedScopeMetadata]);
 
-  const resolveWritableGanttProjectId = useCallback(async (): Promise<string | null> => {
+  const resolveWritableGanttProjectId = useCallback(async (identityOverride?: ProjectIdentity | null): Promise<string | null> => {
+    const projectIdentity = identityOverride || effectiveProjectIdentity;
     const preferredCandidates = [ganttProjectId, liveGanttProjectId]
       .map((id) => String(id || '').trim())
       .filter((id): id is string => Boolean(id));
@@ -1411,7 +1517,7 @@ export function ProjectScopesModal({
     }
 
     const matchedProject = projects.find((item) =>
-      matchesProjectIdentity({
+      matchesIdentity(projectIdentity, {
         customer: item.customer,
         projectNumber: item.projectNumber,
         projectName: item.projectName,
@@ -1423,9 +1529,9 @@ export function ProjectScopesModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectName: project.projectName || parseJobKeyParts(project.jobKey).projectName,
-          customer: project.customer || parseJobKeyParts(project.jobKey).customer || null,
-          projectNumber: project.projectNumber || parseJobKeyParts(project.jobKey).projectNumber || null,
+          projectName: projectIdentity.projectName || null,
+          customer: projectIdentity.customer || null,
+          projectNumber: projectIdentity.projectNumber || null,
           status: 'In Progress',
         }),
       });
@@ -1447,7 +1553,7 @@ export function ProjectScopesModal({
 
     setGanttProjectId(matchedProject.id);
     return matchedProject.id;
-  }, [ganttProjectId, liveGanttProjectId, loadGanttProjectsList, matchesProjectIdentity, project.customer, project.jobKey, project.projectName, project.projectNumber]);
+  }, [effectiveProjectIdentity, ganttProjectId, liveGanttProjectId, loadGanttProjectsList, matchesProjectIdentity]);
 
   const sanitizePredecessorScopeId = useCallback(
     async (projectId: string, predecessorId: string | null | undefined, currentScopeId?: string | null) => {
@@ -2430,7 +2536,8 @@ export function ProjectScopesModal({
       }
 
       const isNewScope = isCreatingNewScope || activeScopeId === NEW_SCOPE_ID;
-      const scopeUpdateJobKey = resolvedJobKey || project.jobKey || '';
+      const writableProjectIdentity = resolvedIdentityOverride || await lookupCanonicalProjectIdentity() || effectiveProjectIdentity;
+      const scopeUpdateJobKey = writableProjectIdentity.jobKey || resolvedJobKey || project.jobKey || '';
 
       const publishScopes = (nextScopes: Scope[]) => {
         setCanonicalScopes(nextScopes);
@@ -2511,7 +2618,7 @@ export function ProjectScopesModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            jobKey: project.jobKey,
+            jobKey: scopeUpdateJobKey,
             scopeOfWork: scopeName,
             sourceDateKey: selectedScheduleDate,
             targetDateKey: selectedScheduleDate,
@@ -2539,7 +2646,7 @@ export function ProjectScopesModal({
         const canUseRollupsForMetadata = hasCompleteTaskInputs(normalizedTasks);
 
         const metadataPayload: ScopeMetadataPayload = {
-          jobKey: resolvedJobKey,
+          jobKey: scopeUpdateJobKey,
           title: scopeName || 'Scope',
           startDate: resolvedStartDate,
           endDate: resolvedEndDate,
@@ -2595,7 +2702,7 @@ export function ProjectScopesModal({
         : (derivedTaskRange?.endDate || scopeDetail.endDate || "");
 
       const payload: ScopeMetadataPayload = {
-        jobKey: resolvedJobKey,
+        jobKey: scopeUpdateJobKey,
         title: (scopeDetail.title || "Scope").trim() || "Scope",
         startDate: effectiveSchedulingMode === 'specific-days'
           ? (selectedDays[0]?.date || scopeDetail.startDate || "")
@@ -2697,7 +2804,7 @@ export function ProjectScopesModal({
         throw new Error('Select an existing scope to update, or click + Add Scope to create a new one.');
       }
 
-      const targetGanttProjectId = await resolveWritableGanttProjectId();
+      const targetGanttProjectId = await resolveWritableGanttProjectId(writableProjectIdentity);
       let savedScope;
       if (targetGanttProjectId && !hasExistingMetadataScope) {
         const predecessorCandidate = String(payload.predecessorScopeId || '').trim();

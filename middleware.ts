@@ -347,6 +347,7 @@ export async function middleware(request: NextRequest) {
         pathname === '/api/internal/scope-diagnostics' ||
         pathname === '/api/internal/projects-diagnostics' ||
           pathname === '/api/internal/project-lookup' ||
+        pathname === '/api/internal/repair-project-identity' ||
         pathname === '/api/internal/debug-scope-project-split' ||
         pathname === '/api/internal/check-duplicate-projects' ||
           pathname === '/api/internal/merge-duplicate-projects' ||

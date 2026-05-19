@@ -344,7 +344,8 @@ export async function middleware(request: NextRequest) {
   if (pathname === '/api/internal/backfill-gantt-scopes' ||
       pathname === '/api/internal/backfill-project-scopes-to-gantt' ||
       pathname === '/api/internal/dedupe-project-scopes' ||
-      pathname === '/api/internal/scope-diagnostics') {
+      pathname === '/api/internal/scope-diagnostics' ||
+      pathname === '/api/internal/projects-diagnostics') {
     return NextResponse.next();
   }
 

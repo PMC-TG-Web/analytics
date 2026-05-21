@@ -14,6 +14,12 @@ export type CanonicalProcoreProjectRow = {
   synced_at: Date;
 };
 
+export type CanonicalProcoreProjectPayloadRow = {
+  canonical_project_id: string;
+  payload: unknown;
+  synced_at: Date;
+};
+
 export async function fetchCanonicalProcoreProjects(params: {
   pageSize: number;
   offset: number;
@@ -95,4 +101,55 @@ export async function countCanonicalProcoreProjects(): Promise<number> {
   );
 
   return Number(rows[0]?.total_count ?? 0);
+}
+
+export async function fetchCanonicalProcoreProjectPayloads(companyId: string): Promise<unknown[]> {
+  const rows = await prisma.$queryRawUnsafe<CanonicalProcoreProjectPayloadRow[]>(
+    `
+    WITH ranked AS (
+      SELECT
+        COALESCE(s.procore_project_id, s.external_id) AS canonical_project_id,
+        s.payload,
+        s.synced_at,
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(s.procore_project_id, s.external_id)
+          ORDER BY s.synced_at DESC
+        ) AS rn
+      FROM procore_project_staging s
+      WHERE s.source = 'procore_v1_projects'
+        AND ($1 = '' OR s.company_id = $1)
+        AND COALESCE(s.procore_project_id, s.external_id) IS NOT NULL
+    )
+    SELECT canonical_project_id, payload, synced_at
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY synced_at DESC
+    `,
+    companyId
+  );
+
+  return rows.map((row) => row.payload);
+}
+
+export async function fetchCanonicalProcoreProjectPayloadById(companyId: string, projectId: string): Promise<unknown | null> {
+  const rows = await prisma.$queryRawUnsafe<Array<{ payload: unknown }>>(
+    `
+    SELECT s.payload
+    FROM procore_project_staging s
+    WHERE s.source = 'procore_v1_projects'
+      AND ($1 = '' OR s.company_id = $1)
+      AND (
+        COALESCE(s.procore_project_id, s.external_id) = $2
+        OR s.external_id = $2
+        OR COALESCE(s.procore_project_id, '') = $2
+        OR COALESCE(s.project_id, '') = $2
+      )
+    ORDER BY s.synced_at DESC
+    LIMIT 1
+    `,
+    companyId,
+    projectId
+  );
+
+  return rows[0]?.payload ?? null;
 }

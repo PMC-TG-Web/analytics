@@ -1,18 +1,13 @@
 // API endpoint to read Procore projects from the database (populated by sync/all-projects + webhooks).
-// Direct Procore API calls removed — all data served from procore_project_feed.
+// Direct Procore API calls removed — all data served from canonical Procore staging.
 import { NextResponse } from "next/server";
 import { procoreConfig } from "@/lib/procore";
-import { prisma } from "@/lib/prisma";
+import { fetchCanonicalProcoreProjectPayloads } from "@/lib/procoreProjectsCanonical";
 
 export const dynamic = "force-dynamic";
 
 async function queryProjectFeed(companyId: string) {
-  const rows = await prisma.procoreProjectFeed.findMany({
-    where: { companyId, softDeleted: false },
-    orderBy: { projectName: "asc" },
-    select: { payload: true, procoreId: true, projectName: true, externalId: true, syncedAt: true },
-  });
-  return rows.map((r) => r.payload);
+  return fetchCanonicalProcoreProjectPayloads(companyId);
 }
 
 export async function GET(request: Request) {

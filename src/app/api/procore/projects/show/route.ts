@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { procoreConfig } from "@/lib/procore";
-import { prisma } from "@/lib/prisma";
+import { fetchCanonicalProcoreProjectPayloadById } from "@/lib/procoreProjectsCanonical";
 
 export const dynamic = "force-dynamic";
 
@@ -23,36 +23,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Missing projectId (or id)." }, { status: 400 });
     }
 
-    // Read from procore_project_staging (populated by sync/all-projects or previous show calls)
-    const existing = await prisma.procoreProjectStaging.findFirst({
-      where: { companyId: companyId || undefined, projectId },
-      orderBy: { syncedAt: "desc" },
-    });
+    const payload = await fetchCanonicalProcoreProjectPayloadById(companyId, projectId);
 
-    if (!existing) {
-      // Fall back to procore_project_feed by externalId/procoreId
-      const feedRow = await prisma.procoreProjectFeed.findFirst({
-        where: {
-          OR: [
-            { externalId: projectId, companyId: companyId || undefined },
-            { procoreId: projectId, companyId: companyId || undefined },
-          ],
-        },
-        orderBy: { syncedAt: "desc" },
-      });
-
-      if (feedRow) {
-        return NextResponse.json({
-          success: true,
-          companyId,
-          projectId,
-          source: "procore_project_feed",
-          data: feedRow.payload,
-          raw: feedRow.payload,
-          stored: true,
-        });
-      }
-
+    if (!payload) {
       return NextResponse.json(
         {
           success: false,
@@ -68,8 +41,8 @@ export async function POST(request: Request) {
       companyId,
       projectId,
       source: "procore_project_staging",
-      data: existing.payload,
-      raw: existing.payload,
+      data: payload,
+      raw: payload,
       stored: true,
     });
   } catch (error: unknown) {

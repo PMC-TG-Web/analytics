@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Navigation from "@/components/Navigation";
 
-const DEFAULT_PROCORE_COMPANY_ID = "598134325658789";
+const DEFAULT_PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
 
 type EntrySyncResponse = {
   success?: boolean;

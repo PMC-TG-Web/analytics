@@ -145,7 +145,7 @@ export default function CommitmentsLivePage() {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [companyId, setCompanyId] = useState("598134325658789");
+  const [companyId, setCompanyId] = useState(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "");
   const [projectId, setProjectId] = useState("");
   const [sourceType, setSourceType] = useState("");
   const [projectStatus, setProjectStatus] = useState("");

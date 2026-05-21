@@ -146,7 +146,7 @@ function getNextMonths(count: number) {
   return months;
 }
 
-const DEFAULT_PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "598134325658789";
+const DEFAULT_PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
 
 export default function SchedulingPage() {
   return <SchedulingContent />;

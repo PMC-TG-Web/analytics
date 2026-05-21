@@ -351,7 +351,10 @@ export async function middleware(request: NextRequest) {
         pathname === '/api/internal/debug-scope-project-split' ||
         pathname === '/api/internal/check-duplicate-projects' ||
           pathname === '/api/internal/merge-duplicate-projects' ||
-          pathname === '/api/internal/projects-audit') {
+          pathname === '/api/internal/projects-audit' ||
+          pathname === '/api/internal/reset-procore-data' ||
+          pathname === '/api/internal/export-kpi-entries' ||
+          pathname === '/api/internal/import-kpi-entries') {
     return NextResponse.next();
   }
 

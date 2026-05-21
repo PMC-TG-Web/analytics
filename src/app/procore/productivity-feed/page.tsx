@@ -367,7 +367,7 @@ type ChangeOrderSyncResponse = {
 export default function ProcoreProductivityFeedPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [procoreConnected, setProcoreConnected] = useState(false);
-  const [companyId, setCompanyId] = useState("598134325658789");
+  const [companyId, setCompanyId] = useState(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "");
   const [logDate, setLogDate] = useState("");
   const [startDate, setStartDate] = useState("2025-08-01");
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);

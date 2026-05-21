@@ -1,5 +1,3 @@
-import type { Config } from "@netlify/functions";
-
 /**
  * Netlify Scheduled Function. Runs every 15 minutes and drains queued Procore
  * webhook events. Full Procore syncs are intentionally manual/bootstrap-only
@@ -71,7 +69,3 @@ const handler = async () => {
 };
 
 export default handler;
-
-export const config: Config = {
-  schedule: "*/15 * * * *",
-};

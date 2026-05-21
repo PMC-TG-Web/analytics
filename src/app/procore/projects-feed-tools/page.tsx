@@ -87,9 +87,9 @@ export default function ProcoreProjectsFeedToolsPage() {
   const [bidFormsProjectId, setBidFormsProjectId] = useState<string>("");
   const [bidFormsPackageId, setBidFormsPackageId] = useState<string>("");
   const [projectIdsToCheck, setProjectIdsToCheck] = useState<string>("598134326375662,598134326375719,598134326376806");
-  const [bidBoardCompanyId, setBidBoardCompanyId] = useState<string>("598134325658789");
+  const [bidBoardCompanyId, setBidBoardCompanyId] = useState<string>(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "");
   const [bidBoardStatusFilter, setBidBoardStatusFilter] = useState<string>("All");
-  const [lineItemGroupsCompanyId, setLineItemGroupsCompanyId] = useState<string>("598134325658789");
+  const [lineItemGroupsCompanyId, setLineItemGroupsCompanyId] = useState<string>(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "");
   const [lineItemGroupsBidBoardProjectId, setLineItemGroupsBidBoardProjectId] = useState<string>("562949955352714");
   const [lineItemGroupsProposalId, setLineItemGroupsProposalId] = useState<string>("3206336");
 
@@ -116,7 +116,7 @@ export default function ProcoreProjectsFeedToolsPage() {
       lineItemGroups: "/api/procore/estimating/proposal-line-item-groups (POST body: { companyId, bidBoardProjectId, proposalId, page, perPage })",
       lineItems: "/api/procore/estimating/proposal-line-items (POST body: { companyId, bidBoardProjectId, proposalId, page, perPage })",
       lineItemsBulk: "/api/procore/estimating/proposal-line-items-bulk (POST body: { companyId, fetchAll, filters[by_status] })",
-      lineItemsLiveApi: "/api/procore/estimating/proposal-line-items-live?page=1&pageSize=200&companyId=598134325658789",
+      lineItemsLiveApi: `/api/procore/estimating/proposal-line-items-live?page=1&pageSize=200&companyId=${process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || ""}`,
       lineItemsLivePage: "/procore/proposal-line-items-live",
     }),
     []
@@ -1189,7 +1189,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   type="text"
                   value={bidBoardCompanyId}
                   onChange={(e) => setBidBoardCompanyId(e.target.value)}
-                  placeholder="598134325658789"
+                  placeholder={process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "Company ID"}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-900 outline-none focus:border-gray-500"
                 />
 
@@ -1221,7 +1221,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   type="text"
                   value={lineItemGroupsCompanyId}
                   onChange={(e) => setLineItemGroupsCompanyId(e.target.value)}
-                  placeholder="598134325658789"
+                  placeholder={process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "Company ID"}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-900 outline-none focus:border-gray-500"
                 />
 
@@ -1342,7 +1342,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Bid Board Projects",
                   usePost: "/api/procore/estimating/bid-board-projects",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: bidBoardCompanyId,
                     fetchAll: true,
                     page: 1,
                     perPage: 100,
@@ -1358,7 +1358,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Proposals",
                   usePost: "/api/procore/estimating/proposals",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: bidBoardCompanyId,
                     bidBoardProjectId: "562949955352714",
                     page: 1,
                     perPage: 100,
@@ -1373,7 +1373,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Proposal Line Item Groups",
                   usePost: "/api/procore/estimating/proposal-line-item-groups",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: lineItemGroupsCompanyId,
                     bidBoardProjectId: "562949955352714",
                     proposalId: "3206336",
                     page: 1,
@@ -1389,7 +1389,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Proposals Bulk",
                   usePost: "/api/procore/estimating/proposals-bulk",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: bidBoardCompanyId,
                     fetchAll: true,
                     perPage: 100,
                     "filters[by_status]": "All",
@@ -1406,7 +1406,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Proposal Line Items",
                   usePost: "/api/procore/estimating/proposal-line-items",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: lineItemGroupsCompanyId,
                     bidBoardProjectId: "562949955352714",
                     proposalId: "3206336",
                     page: 1,
@@ -1422,7 +1422,7 @@ export default function ProcoreProjectsFeedToolsPage() {
                   action: "Fetch Proposal Line Items Bulk",
                   usePost: "/api/procore/estimating/proposal-line-items-bulk",
                   payload: {
-                    companyId: "598134325658789",
+                    companyId: bidBoardCompanyId,
                     fetchAll: true,
                     persist: true,
                     perPage: 100,

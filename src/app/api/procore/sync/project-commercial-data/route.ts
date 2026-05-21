@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const DEFAULT_COMPANY_ID = "598134325658789";
+const DEFAULT_COMPANY_ID = process.env.PROCORE_COMPANY_ID || "";
 
 type SyncSummary = {
   ok: boolean;

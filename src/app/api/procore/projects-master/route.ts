@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(10000, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
 
-    const companyId = String(searchParams.get("companyId") || "598134325658789").trim();
+    const companyId = String(searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
     const search = String(searchParams.get("search") || "").trim().toLowerCase();
     const projectStatus = String(searchParams.get("projectStatus") || "").trim().toLowerCase();
     const bidBoardStatus = String(searchParams.get("bidBoardStatus") || "").trim().toLowerCase();

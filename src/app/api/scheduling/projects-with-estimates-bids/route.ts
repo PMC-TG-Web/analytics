@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const bidBoardStatus = String(rawBidBoardStatus ?? 'IN_PROGRESS').trim();
     const bidBoardStatusFilter =
       !bidBoardStatus || bidBoardStatus.toLowerCase() === 'all' ? null : bidBoardStatus;
-    const companyId = String(searchParams.get('companyId') || '598134325658789').trim();
+    const companyId = String(searchParams.get('companyId') || process.env.PROCORE_COMPANY_ID || '').trim();
 
     const relationRows = await prisma.$queryRawUnsafe<RelationRow[]>(`
       SELECT

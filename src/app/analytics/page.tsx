@@ -99,7 +99,7 @@ type TrendPoint = {
   runningCost: number;
 };
 
-const DEFAULT_COMPANY_ID = "598134325658789";
+const DEFAULT_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
 const MAX_PAGES = 100;
 const PRESET_STORAGE_KEY = "analytics:advanced-presets";
 

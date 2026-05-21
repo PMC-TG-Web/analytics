@@ -525,6 +525,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      if (process.env.DISABLE_LEGACY_SCHEDULE_WRITES === 'true') {
+        return NextResponse.json({
+          success: true,
+          message: 'Legacy schedule writes disabled (DISABLE_LEGACY_SCHEDULE_WRITES=true)',
+          data: scheduleData,
+        });
+      }
+
       const schedule = await prisma.schedule.upsert({
         where: { jobKey: body.jobKey },
         create: {
@@ -565,6 +573,14 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'jobKey and month are required' },
         { status: 400 }
       );
+    }
+
+    if (process.env.DISABLE_LEGACY_SCHEDULE_WRITES === 'true') {
+      return NextResponse.json({
+        success: true,
+        message: 'Legacy schedule writes disabled (DISABLE_LEGACY_SCHEDULE_WRITES=true)',
+        data: null,
+      });
     }
 
     // Ensure Schedule exists

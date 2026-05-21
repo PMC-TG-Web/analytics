@@ -180,7 +180,7 @@ export default function ProposalLineItemsLivePage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [note, setNote] = useState<string>("");
-  const [companyId, setCompanyId] = useState<string>("598134325658789");
+  const [companyId, setCompanyId] = useState<string>(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "");
   const [bidBoardProjectId, setBidBoardProjectId] = useState<string>("");
   const [proposalId, setProposalId] = useState<string>("");
   const [projectStatus, setProjectStatus] = useState<string>("");

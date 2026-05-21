@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 
-export const CUSTOMER_CUSTOM_FIELD_ID = '598134325737314';
+export const CUSTOMER_CUSTOM_FIELD_ID = process.env.PROCORE_CUSTOMER_FIELD_ID || '598134325737314';
 export const DEFAULT_INTERNAL_VENDOR_NAMES = [
   'paradise masonry, llc',
   'paradise concrete solutions',

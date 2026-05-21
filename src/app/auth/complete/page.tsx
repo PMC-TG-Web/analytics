@@ -6,7 +6,7 @@ const AUTH_SIGNAL_KEY = "analytics-auth-complete";
 const AUTH_SIGNAL_CHANNEL = "analytics-auth";
 
 export default function AuthCompletePage() {
-  const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
+  const procoreAppUrl = `https://us02.procore.com/${process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || ""}/company/apps/${process.env.NEXT_PUBLIC_PROCORE_APP_ID || ""}`;
 
   const resolveFallbackUrl = () => {
     if (typeof window === "undefined") return procoreAppUrl;

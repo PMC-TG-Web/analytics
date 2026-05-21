@@ -150,6 +150,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (process.env.DISABLE_LEGACY_SCHEDULE_WRITES === 'true') {
+      return NextResponse.json({
+        success: true,
+        message: 'Legacy schedule writes disabled (DISABLE_LEGACY_SCHEDULE_WRITES=true)',
+        data: null,
+      });
+    }
+
     const allocation = await prisma.scheduleAllocation.upsert({
       where: {
         scheduleId_period: {

@@ -7,7 +7,7 @@ const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
 
 export default function LogoutCompletePage() {
-  const procoreAppUrl = "https://us02.procore.com/598134325658789/company/apps/598134325530275";
+  const procoreAppUrl = `https://us02.procore.com/${process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || ""}/company/apps/${process.env.NEXT_PUBLIC_PROCORE_APP_ID || ""}`;
   const [source, setSource] = useState<"embedded" | "app">("app");
   const [appReturnTo, setAppReturnTo] = useState("/");
 

@@ -136,6 +136,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (process.env.DISABLE_LEGACY_SCHEDULE_WRITES === 'true') {
+      return NextResponse.json({
+        success: true,
+        message: 'Legacy schedule writes disabled (DISABLE_LEGACY_SCHEDULE_WRITES=true)',
+        data: null,
+      });
+    }
+
     // Create or update schedule (without allocations - those are managed separately)
     const schedule = await prisma.schedule.upsert({
       where: { jobKey },

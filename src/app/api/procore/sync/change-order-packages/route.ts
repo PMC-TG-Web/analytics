@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
-import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
+import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 import {
   ensureChangeOrderPackagesTable,
   upsertChangeOrderPackage,
@@ -84,27 +84,6 @@ function choosePrimeContract(records: PrimeContractRecord[]): PrimeContractRecor
 }
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
-
-async function getProjectIdsFromFeed(companyId: string, limitProjects: number): Promise<string[]> {
-  await ensureProcoreProjectFeedTable();
-  const { prisma } = await import('@/lib/prisma');
-
-  const rows = await prisma.$queryRawUnsafe<Array<{ procore_id: string | null }>>(
-    `
-      SELECT DISTINCT procore_id
-      FROM procore_project_feed
-      WHERE company_id = $1
-        AND soft_deleted = FALSE
-        AND procore_id IS NOT NULL
-      ORDER BY procore_id ASC
-      LIMIT $2
-    `,
-    companyId,
-    Math.max(1, Math.min(10000, limitProjects))
-  );
-
-  return rows.map((r) => readText(r.procore_id)).filter((v) => v.length > 0);
-}
 
 // ─── Procore fetchers ────────────────────────────────────────────────────────
 
@@ -197,12 +176,12 @@ export async function POST(request: Request) {
 
     const projectIds = explicitProjectIds.length > 0
       ? explicitProjectIds
-      : await getProjectIdsFromFeed(companyId, limitProjects);
+      : await getCanonicalProjectIdsForCompany(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No project IDs found in procore_project_feed. Run Projects Feed Sync first.',
+          error: 'No project IDs found in canonical Procore project staging. Run All Projects Sync first.',
         },
         { status: 400 }
       );

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
 import { ensureBidsTable, upsertBid } from '@/lib/procoreBids';
-import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
+import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 import { prisma } from '@/lib/prisma';
 
 type JsonObject = Record<string, unknown>;
@@ -45,27 +45,6 @@ function isAccessSkippedError(message: string): boolean {
   );
 }
 
-async function getProjectIdsFromFeed(companyId: string, limitProjects: number) {
-  await ensureProcoreProjectFeedTable();
-  const rows = await prisma.$queryRawUnsafe<Array<{ procore_id: string | null }>>(
-    `
-      SELECT DISTINCT procore_id
-      FROM procore_project_feed
-      WHERE company_id = $1
-        AND soft_deleted = FALSE
-        AND procore_id IS NOT NULL
-      ORDER BY procore_id ASC
-      LIMIT $2
-    `,
-    companyId,
-    Math.max(1, Math.min(10000, limitProjects))
-  );
-
-  return rows
-    .map((r) => String(r.procore_id || '').trim())
-    .filter((v) => v.length > 0);
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -106,13 +85,13 @@ export async function POST(request: Request) {
     let projectsScanned = 0;
     let skippedProjectsNoBiddingAccess = 0;
 
-    const projectIds = companyWide ? await getProjectIdsFromFeed(companyId, limitProjects) : [projectId];
+    const projectIds = companyWide ? await getCanonicalProjectIdsForCompany(companyId, limitProjects) : [projectId];
 
     if (companyWide && projectIds.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No project IDs found in procore_project_feed for this company. Run Projects Feed Sync first so company-wide bids has project context.',
+          error: 'No project IDs found in canonical Procore project staging for this company. Run All Projects Sync first so company-wide bids has project context.',
         },
         { status: 400 }
       );

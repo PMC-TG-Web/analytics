@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { makeRequest, procoreConfig } from '@/lib/procore';
 import { ensureBidFormsTable, upsertBidForm } from '@/lib/procoreBidForms';
 import { ensureBidPackagesTable, upsertBidPackage } from '@/lib/procoreBidPackages';
-import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
+import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 
 type JsonObject = Record<string, unknown>;
 
@@ -250,27 +250,6 @@ async function fetchBidPackagesForProject(params: {
   throw new Error(failures.join(' | '));
 }
 
-async function getProjectIdsFromFeed(companyId: string, limitProjects: number) {
-  await ensureProcoreProjectFeedTable();
-  const rows = await (await import('@/lib/prisma')).prisma.$queryRawUnsafe<Array<{ procore_id: string | null }>>(
-    `
-      SELECT DISTINCT procore_id
-      FROM procore_project_feed
-      WHERE company_id = $1
-        AND soft_deleted = FALSE
-        AND procore_id IS NOT NULL
-      ORDER BY procore_id ASC
-      LIMIT $2
-    `,
-    companyId,
-    Math.max(1, Math.min(10000, limitProjects))
-  );
-
-  return rows
-    .map((r) => String(r.procore_id || '').trim())
-    .filter((v) => v.length > 0);
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -354,12 +333,12 @@ export async function POST(request: Request) {
       if (companyWide) {
         // Company-wide direct endpoint is often unavailable (404) in Procore.
         // Crawl through known projects -> bid packages -> bid forms.
-        const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+        const projectIds = await getCanonicalProjectIdsForCompany(companyId, limitProjects);
         if (projectIds.length === 0) {
           return NextResponse.json(
             {
               success: false,
-              error: 'No project IDs found in procore_project_feed for this company. Run Projects Feed Sync first so company-wide Bid Forms has project/package context.',
+              error: 'No project IDs found in canonical Procore project staging for this company. Run All Projects Sync first so company-wide Bid Forms has project/package context.',
             },
             { status: 400 }
           );

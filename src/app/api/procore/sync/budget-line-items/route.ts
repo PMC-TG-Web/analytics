@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from '@/lib/procore';
-import { ensureProcoreProjectFeedTable } from '@/lib/procoreProjectFeed';
+import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 import { ensureBudgetLineItemsTable, batchUpsertBudgetLineItems, type BatchBudgetLineItem } from '@/lib/procoreBudgetLineItems';
 
 type JsonObject = Record<string, unknown>;
@@ -69,29 +69,6 @@ function isAccessSkippedError(message: string): boolean {
     lower.includes('error 404') ||
     lower.includes('not found')
   );
-}
-
-async function getProjectIdsFromFeed(companyId: string, limitProjects: number) {
-  await ensureProcoreProjectFeedTable();
-  const { prisma } = await import('@/lib/prisma');
-
-  const rows = await prisma.$queryRawUnsafe<Array<{ procore_id: string | null }>>(
-    `
-      SELECT DISTINCT procore_id
-      FROM procore_project_feed
-      WHERE company_id = $1
-        AND soft_deleted = FALSE
-        AND procore_id IS NOT NULL
-      ORDER BY procore_id ASC
-      LIMIT $2
-    `,
-    companyId,
-    Math.max(1, Math.min(10000, limitProjects))
-  );
-
-  return rows
-    .map((r) => String(r.procore_id || '').trim())
-    .filter((v) => v.length > 0);
 }
 
 async function fetchProjectBudgetLineItemsPage(params: {
@@ -170,12 +147,12 @@ export async function POST(request: Request) {
 
     const projectIds = explicitProjectIds.length > 0
       ? explicitProjectIds
-      : await getProjectIdsFromFeed(companyId, limitProjects);
+      : await getCanonicalProjectIdsForCompany(companyId, limitProjects);
     if (projectIds.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No project IDs found in procore_project_feed for this company. Run Projects Feed Sync first.',
+          error: 'No project IDs found in canonical Procore project staging for this company. Run All Projects Sync first.',
         },
         { status: 400 }
       );

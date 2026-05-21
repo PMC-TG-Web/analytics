@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { makeRequest, procoreConfig } from "@/lib/procore";
-import { ensureProcoreProjectFeedTable } from "@/lib/procoreProjectFeed";
-import { prisma } from "@/lib/prisma";
+import { getCanonicalProjectIdsForCompany } from "@/lib/procoreCanonicalProjectIds";
 
 export const dynamic = "force-dynamic";
 
@@ -55,28 +54,6 @@ function isInvalidToolNameError(message: string): boolean {
   return /invalid tool name/i.test(message);
 }
 
-async function getProjectIdsFromFeed(companyId: string, limitProjects: number): Promise<string[]> {
-  await ensureProcoreProjectFeedTable();
-
-  const rows = await prisma.$queryRawUnsafe<Array<{ procore_id: string | null }>>(
-    `
-      SELECT DISTINCT procore_id
-      FROM procore_project_feed
-      WHERE company_id = $1
-        AND soft_deleted = FALSE
-        AND procore_id IS NOT NULL
-      ORDER BY procore_id ASC
-      LIMIT $2
-    `,
-    companyId,
-    Math.max(1, Math.min(10000, limitProjects))
-  );
-
-  return rows
-    .map((row) => readText(row.procore_id))
-    .filter((id) => id.length > 0);
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -121,7 +98,7 @@ export async function POST(request: Request) {
     if (search) qs.set("filters[search]", search);
 
     if (allProjects) {
-      const projectIds = await getProjectIdsFromFeed(companyId, limitProjects);
+      const projectIds = await getCanonicalProjectIdsForCompany(companyId, limitProjects);
 
       if (projectIds.length === 0) {
         return NextResponse.json({

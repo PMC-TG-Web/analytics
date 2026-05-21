@@ -35,61 +35,35 @@ function resolveCompanyId(input: unknown, cookieCompanyId: unknown): string {
 async function checkIdsFromDb(params: { companyId: string; ids: string[] }) {
   const { companyId, ids } = params;
 
-  // Query project feed by procore_id matching the requested IDs
-  const feedRows = await prisma.procoreProjectFeed.findMany({
+  const stagingRows = await prisma.procoreProjectStaging.findMany({
     where: {
       companyId,
-      procoreId: { in: ids },
-      softDeleted: false,
+      source: 'procore_v1_projects',
+      OR: [
+        { procoreProjectId: { in: ids } },
+        { externalId: { in: ids } },
+      ],
     },
     select: {
-      procoreId: true,
-      projectName: true,
+      procoreProjectId: true,
+      externalId: true,
+      displayName: true,
+      name: true,
+      projectNumber: true,
       status: true,
-      updatedAt: true,
+      syncedAt: true,
     },
   });
 
-  // Also check project staging for any not found in feed
-  const foundIds = new Set(feedRows.map((r) => r.procoreId).filter(Boolean) as string[]);
-  const missingIds = ids.filter((id) => !foundIds.has(id));
-
-  const stagingRows = missingIds.length > 0
-    ? await prisma.procoreProjectStaging.findMany({
-        where: {
-          companyId,
-          procoreProjectId: { in: missingIds },
-        },
-        select: {
-          procoreProjectId: true,
-          displayName: true,
-          name: true,
-          projectNumber: true,
-          status: true,
-          updatedAt: true,
-        },
-      })
-    : [];
-
-  const stagingById = new Map(stagingRows.map((r) => [r.procoreProjectId, r]));
+  const stagingById = new Map<string, (typeof stagingRows)[number]>();
+  for (const row of stagingRows) {
+    const procoreId = String(row.procoreProjectId || '').trim();
+    const externalId = String(row.externalId || '').trim();
+    if (procoreId) stagingById.set(procoreId, row);
+    if (externalId) stagingById.set(externalId, row);
+  }
 
   return ids.map((id) => {
-    const feed = feedRows.find((r) => r.procoreId === id);
-    if (feed) {
-      return {
-        id,
-        exists: true,
-        source: "db",
-        httpStatus: 200,
-        projectName: feed.projectName || null,
-        displayName: feed.projectName || null,
-        projectNumber: null,
-        stage: feed.status || null,
-        active: true,
-        updatedAt: feed.updatedAt?.toISOString() || null,
-      };
-    }
-
     const staging = stagingById.get(id);
     if (staging) {
       return {
@@ -102,7 +76,7 @@ async function checkIdsFromDb(params: { companyId: string; ids: string[] }) {
         projectNumber: staging.projectNumber || null,
         stage: staging.status || null,
         active: true,
-        updatedAt: staging.updatedAt?.toISOString() || null,
+        updatedAt: staging.syncedAt?.toISOString() || null,
       };
     }
 

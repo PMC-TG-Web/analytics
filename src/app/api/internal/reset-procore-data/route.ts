@@ -106,7 +106,10 @@ export async function POST(request: NextRequest) {
   const protectedSet = new Set(PROTECTED_TABLES.map(normalizeTableName));
   const requestedTables = scope === 'full' ? await getAllPublicTables() : [...TABLES_TO_TRUNCATE];
   const overlap = requestedTables.filter((table) => protectedSet.has(normalizeTableName(table)));
-  if (overlap.length > 0) {
+
+  // In full mode, overlap is expected because we discover all public tables;
+  // we exclude protected tables from truncation below.
+  if (scope !== 'full' && overlap.length > 0) {
     return NextResponse.json(
       {
         error: 'Configuration error: protected tables were included in truncation set.',

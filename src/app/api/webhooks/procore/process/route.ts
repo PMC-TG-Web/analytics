@@ -9,7 +9,6 @@ import {
 import {
   extractCustomerFromCustomFields,
   isMeaningfulCustomer,
-  upsertProcoreProjectFeed,
 } from '@/lib/procoreProjectFeed';
 import { persistTimecardEntries, type ProcoreTimecardEntry } from '@/lib/procoreTimecardEntries';
 import { persistProductivityLogs, type ProcoreLog } from '@/lib/procoreProductivity';
@@ -195,16 +194,6 @@ async function handleProjectsEvent(event: {
 
   // Soft-delete on delete events — no API fetch needed.
   if (event.eventType === 'delete') {
-    // Set soft_deleted = true for all sync_source rows matching this project.
-    await prisma.$executeRawUnsafe(
-      `UPDATE procore_project_feed
-          SET soft_deleted = TRUE, updated_at = NOW(), synced_at = NOW()
-        WHERE company_id = $1
-          AND (procore_id = $2 OR external_id = $2)
-          AND soft_deleted = FALSE`,
-      companyId,
-      resourceId
-    );
     return;
   }
 
@@ -216,16 +205,6 @@ async function handleProjectsEvent(event: {
     const raw = await makeRequest(endpoint, token, undefined, companyId, [404]);
     project = asObj(raw);
   } catch {
-    // If Procore returns 404 the project is gone — soft-delete it.
-    await prisma.$executeRawUnsafe(
-      `UPDATE procore_project_feed
-          SET soft_deleted = TRUE, updated_at = NOW(), synced_at = NOW()
-        WHERE company_id = $1
-          AND (procore_id = $2 OR external_id = $2)
-          AND soft_deleted = FALSE`,
-      companyId,
-      resourceId
-    );
     return;
   }
 
@@ -248,54 +227,6 @@ async function handleProjectsEvent(event: {
       customerSource = 'project_field';
     }
   }
-
-  await upsertProcoreProjectFeed({
-    companyId,
-    syncSource: 'procore_webhook',
-    externalId: resourceId,
-    procoreId: resourceId,
-    projectNumber:
-      readStr(project.project_number) ||
-      (project.project_number ? String(project.project_number) : null),
-    projectName:
-      readStr(project.name) || readStr(project.display_name) || 'Untitled Procore Project',
-    status:
-      readStr(project.status) ||
-      readStr(asObj(project.project_status)?.name) ||
-      readStr(asObj(project.project_stage)?.name) ||
-      null,
-    customer,
-    customerSource,
-    officeName: firstStr(asObj(project.office)?.name, project.office_name),
-    city: firstStr(project.city, asObj(project.address)?.city),
-    stateCode: firstStr(
-      project.state_code,
-      project.state,
-      asObj(project.address)?.state_code,
-      asObj(project.address)?.state
-    ),
-    countryCode: firstStr(
-      project.country_code,
-      project.country,
-      asObj(project.address)?.country_code,
-      asObj(project.address)?.country
-    ),
-    stageName: firstStr(asObj(project.project_stage)?.name),
-    dueDate: readStr(project.due_date),
-    createdOn: firstStr(project.created_at, project.created_on),
-    sourceId: firstStr(project.id, project.project_id),
-    sourceName: firstStr(project.name, project.display_name),
-    sourceCreatedBy: firstStr(
-      asObj(project.created_by)?.name,
-      asObj(project.created_by)?.email,
-      project.created_by
-    ),
-    sourceCreatedAt: firstStr(project.created_at, project.created_on),
-    lastModifiedAt: readStr(project.updated_at) || readStr(project.last_modified_at) || null,
-    estimatedValue: readNum(project.value) ?? readNum(project.estimated_value),
-    softDeleted: Boolean(project.deleted_at),
-    payload: project,
-  });
 
   const projectName =
     readStr(project.name) || readStr(project.display_name) || 'Untitled Procore Project';
@@ -322,15 +253,27 @@ async function handleProjectsEvent(event: {
     customer,
   });
 
-  await upsertV1StagingFromWebhook({
-    companyId,
-    procoreProjectId: resourceId,
-    name: projectName,
-    status,
-    bidBoardStatus,
-    customer,
-    payload: project,
-  });
+  if (bidBoardStatus) {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO procore_bid_board_live
+          (company_id, project_id, bid_board_status, project_name, owner_name, synced_at, payload)
+        VALUES
+          ($1, $2, $3, $4, NULL, NOW(), $5::jsonb)
+        ON CONFLICT (company_id, project_id)
+        DO UPDATE SET
+          bid_board_status = EXCLUDED.bid_board_status,
+          project_name = COALESCE(EXCLUDED.project_name, procore_bid_board_live.project_name),
+          synced_at = NOW(),
+          payload = EXCLUDED.payload
+      `,
+      companyId,
+      resourceId,
+      bidBoardStatus,
+      projectName,
+      JSON.stringify(project)
+    );
+  }
 }
 
 // ─── Timecards handler ───────────────────────────────────────────────────────

@@ -15,7 +15,6 @@ import { prisma } from '@/lib/prisma';
 
 const TABLES_TO_TRUNCATE = [
   // Procore project feed / staging
-  'procore_project_feed',
   'procore_project_staging',
   'procore_bid_board_live',
   'procore_prime_contracts_live',

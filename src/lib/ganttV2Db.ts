@@ -108,7 +108,7 @@ type ContractRecord = {
   procoreProjectId: string | null;
 };
 
-type ProcoreProjectFeedRecord = {
+type LegacyProjectLinkRecord = {
   externalId: string;
   procoreId: string | null;
   customer: string | null;
@@ -345,20 +345,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
         },
         orderBy: [{ name: "asc" }],
       }),
-      prisma.procoreProjectFeed.findMany({
-        where: {
-          syncSource: 'procore_v1_projects',
-          softDeleted: false,
-        },
-        select: {
-          externalId: true,
-          procoreId: true,
-          customer: true,
-          projectName: true,
-          projectNumber: true,
-          linkedProjectId: true,
-        },
-      }),
+      Promise.resolve([]),
       prisma.project.findMany({
         where: {
           projectArchived: false,
@@ -1428,8 +1415,8 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   const resolveContractIdentity = (
     row: ContractRecord,
     projectById: Map<string, ProjectRecord>,
-    feedByExternalId: Map<string, ProcoreProjectFeedRecord>,
-    feedByProcoreId: Map<string, ProcoreProjectFeedRecord>
+    feedByExternalId: Map<string, LegacyProjectLinkRecord>,
+    feedByProcoreId: Map<string, LegacyProjectLinkRecord>
   ) => {
     const directProject = row.projectId ? projectById.get(row.projectId) : null;
     const externalFeed = row.procoreProjectId ? feedByExternalId.get(row.procoreProjectId) : null;
@@ -1585,7 +1572,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
 
   // First get all projects with summary info
   const projects = await getGanttV2Projects(targetProjectId);
-  const [projectRecords, purchaseOrderContracts, commitmentContracts, procoreProjectFeed] = await Promise.all([
+  const [projectRecords, purchaseOrderContracts, commitmentContracts, legacyProjectLinks] = await Promise.all([
     prisma.project.findMany({
       select: {
         id: true,
@@ -1614,28 +1601,15 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
         procoreProjectId: true,
       },
     }) as Promise<ContractRecord[]>,
-    prisma.procoreProjectFeed.findMany({
-      where: {
-        syncSource: 'procore_v1_projects',
-        softDeleted: false,
-      },
-      select: {
-        externalId: true,
-        procoreId: true,
-        customer: true,
-        projectName: true,
-        projectNumber: true,
-        linkedProjectId: true,
-      },
-    }) as Promise<ProcoreProjectFeedRecord[]>,
+    Promise.resolve([] as LegacyProjectLinkRecord[]),
   ]);
 
   const projectById = new Map(projectRecords.map((project) => [project.id, project]));
   const feedByExternalId = new Map(
-    procoreProjectFeed.filter((row) => row.externalId).map((row) => [row.externalId, row])
+    legacyProjectLinks.filter((row) => row.externalId).map((row) => [row.externalId, row])
   );
   const feedByProcoreId = new Map(
-    procoreProjectFeed.filter((row) => row.procoreId).map((row) => [row.procoreId as string, row])
+    legacyProjectLinks.filter((row) => row.procoreId).map((row) => [row.procoreId as string, row])
   );
 
   const poTitlesByIdentity = new Map<string, CommercialSource[]>();

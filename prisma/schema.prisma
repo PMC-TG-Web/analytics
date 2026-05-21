@@ -958,63 +958,6 @@ model ProcoreProjectStagingUnpackedField {
   @@map("procore_project_staging_unpacked_fields")
 }
 
-model ProcoreProjectFeed {
-  id              BigInt    @id(map: "procore_project_feed_reordered_pkey1") @default(autoincrement())
-  companyId       String    @map("company_id")
-  syncSource      String    @map("sync_source")
-  externalId      String    @map("external_id")
-  procoreId       String?   @map("procore_id")
-  projectNumber   String?   @map("project_number")
-  projectName     String    @map("project_name")
-  status          String?
-  customer        String?
-  customerSource  String?   @map("customer_source")
-  officeName      String?   @map("office_name")
-  city            String?
-  stateCode       String?   @map("state_code")
-  countryCode     String?   @map("country_code")
-  stageName       String?   @map("stage_name")
-  dueDate         DateTime? @map("due_date") @db.Timestamptz(6)
-  createdOn       DateTime? @map("created_on") @db.Timestamptz(6)
-  sourceId        String?   @map("source_id")
-  sourceName      String?   @map("source_name")
-  sourceCreatedBy String?   @map("source_created_by")
-  sourceCreatedAt DateTime? @map("source_created_at") @db.Timestamptz(6)
-  lastModifiedAt  DateTime? @map("last_modified_at") @db.Timestamptz(6)
-  estimatedValue  Float?    @map("estimated_value")
-  linkedProjectId String?   @map("linked_project_id")
-  matchConfidence String?   @map("match_confidence")
-  matchedAt       DateTime? @map("matched_at") @db.Timestamptz(6)
-  softDeleted     Boolean   @default(false) @map("soft_deleted")
-  syncedAt        DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  payload         Json
-
-  @@unique([companyId, syncSource, externalId], map: "procore_project_feed_reordere_company_id_sync_source_exter_key1")
-  @@index([companyId], map: "ProcoreProjectFeed_companyId_idx")
-  @@index([customer], map: "ProcoreProjectFeed_customer_idx")
-  @@index([linkedProjectId], map: "ProcoreProjectFeed_linkedProjectId_idx")
-  @@index([projectName], map: "ProcoreProjectFeed_projectName_idx")
-  @@index([softDeleted], map: "ProcoreProjectFeed_softDeleted_idx")
-  @@index([syncedAt], map: "ProcoreProjectFeed_syncedAt_idx")
-  @@index([city], map: "idx_procore_project_feed_city")
-  @@index([companyId], map: "idx_procore_project_feed_company")
-  @@index([createdOn], map: "idx_procore_project_feed_created_on")
-  @@index([customer], map: "idx_procore_project_feed_customer")
-  @@index([dueDate], map: "idx_procore_project_feed_due_date")
-  @@index([projectName], map: "idx_procore_project_feed_name")
-  @@index([officeName], map: "idx_procore_project_feed_office_name")
-  @@index([softDeleted], map: "idx_procore_project_feed_soft_deleted")
-  @@index([sourceCreatedAt], map: "idx_procore_project_feed_source_created_at")
-  @@index([sourceCreatedBy], map: "idx_procore_project_feed_source_created_by")
-  @@index([sourceId], map: "idx_procore_project_feed_source_id")
-  @@index([stateCode], map: "idx_procore_project_feed_state_code")
-  @@index([syncedAt(sort: Desc)], map: "idx_procore_project_feed_synced_at")
-  @@index([linkedProjectId], map: "idx_procore_project_feed_unmatched")
-  @@map("procore_project_feed")
-}
-
 model ProcoreWebhookHook {
   id               String   @id @default(cuid())
   procoreHookId    String   @unique @map("procore_hook_id")

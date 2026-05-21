@@ -46,7 +46,7 @@ export function parsePositiveInt(value: string | undefined, fallback: number): n
 }
 
 export function getRequiredSyncSecret(): string {
-  return (process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || '').trim();
+  return (process.env.PROCORE_SYNC_SECRET || '').trim();
 }
 
 export function buildSyncWindow(options?: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildCanonicalProcoreProjectsCte } from '@/lib/procoreProjectsCanonicalSql';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,31 +65,22 @@ export async function GET(request: NextRequest) {
     const hasBidForms = Boolean(relations?.bidformsrelation);
     const hasProposalLineItems = Boolean(relations?.proposalrelation);
     const hasBidBoardLive = Boolean(relations?.bidboardrelation);
+    const canonicalProjectsCte = buildCanonicalProcoreProjectsCte(1);
 
     const projectRows = await prisma.$queryRawUnsafe<ProjectRow[]>(
       `
+        WITH
+        ${canonicalProjectsCte}
         SELECT
-          s.external_id AS projectId,
-          s.procore_project_id AS procoreProjectId,
-          s.name AS projectName,
-          s.customer AS customer,
-          s.bid_board_status AS bidBoardStatus,
-          bb.bid_board_id AS bidBoardId
-        FROM procore_project_staging s
-        LEFT JOIN LATERAL (
-          SELECT b.bid_board_id
-          FROM procore_bid_board_live b
-          WHERE b.company_id = s.company_id
-            AND (b.procore_project_id = s.procore_project_id OR b.procore_project_id = s.external_id)
-          ORDER BY b.synced_at DESC
-          LIMIT 1
-        ) bb ON TRUE
-        WHERE s.source = 'procore_v1_projects'
-          AND s.company_id = $1
-          AND s.external_id IS NOT NULL
-          AND s.name IS NOT NULL
-          AND ($2::text IS NULL OR s.bid_board_status = $2::text)
-        ORDER BY s.name ASC NULLS LAST
+          cp.external_project_id AS projectId,
+          cp.procore_project_id AS procoreProjectId,
+          cp.project_name AS projectName,
+          cp.customer AS customer,
+          cp.bid_board_status AS bidBoardStatus,
+          cp.bid_board_id AS bidBoardId
+        FROM canonical_projects cp
+        WHERE ($2::text IS NULL OR cp.bid_board_status = $2::text)
+        ORDER BY cp.project_name ASC NULLS LAST
       `,
       companyId,
       bidBoardStatusFilter

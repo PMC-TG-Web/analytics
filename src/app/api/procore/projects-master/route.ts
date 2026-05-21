@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildSearchParamsCacheKey, getCachedValue, setCachedValue } from "@/lib/serverReadCache";
+import { buildCanonicalProcoreProjectsCte } from "@/lib/procoreProjectsCanonicalSql";
 
 export const dynamic = "force-dynamic";
 
@@ -602,6 +603,7 @@ export async function GET(request: NextRequest) {
     }
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+    const canonicalProjectsCte = buildCanonicalProcoreProjectsCte(1);
 
     const baseCte = `
       WITH
@@ -612,19 +614,20 @@ export async function GET(request: NextRequest) {
       ${bidsCte}
       ${bidFormsCte}
       ${estimatesCte}
+      ${canonicalProjectsCte},
       v1_base AS (
         SELECT
-          COALESCE(s.procore_project_id, s.external_id) AS canonical_project_id,
-          s.procore_project_id,
-          s.external_id AS external_project_id,
-          bb.bid_board_id AS bid_board_project_id,
-          s.company_id,
-          s.name AS project_name,
-          COALESCE(NULLIF(TRIM(s.customer), ''), NULLIF(TRIM(bb.customer), '')) AS customer,
-          s.status AS project_status,
-          COALESCE(s.bid_board_status, bb.status) AS bid_board_status,
-          s.synced_at::text AS v1_synced_at,
-          bb.synced_at::text AS bid_board_synced_at,
+          cp.canonical_project_id,
+          cp.procore_project_id,
+          cp.external_project_id,
+          cp.bid_board_id AS bid_board_project_id,
+          cp.company_id,
+          cp.project_name,
+          cp.customer,
+          cp.project_status,
+          cp.bid_board_status,
+          cp.synced_at::text AS v1_synced_at,
+          NULL::text AS bid_board_synced_at,
           commitments.commitment_contract_count,
           commitments.purchase_order_contract_count,
           commitments.commitment_total_count,
@@ -649,25 +652,19 @@ export async function GET(request: NextRequest) {
           estimates.estimate_proposal_names,
           estimates.estimate_bid_board_project_ids,
           estimates.latest_estimate_at
-        FROM procore_project_staging s
-        LEFT JOIN bid_board_latest bb
-          ON bb.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
+        FROM canonical_projects cp
         LEFT JOIN commitments_agg commitments
-          ON commitments.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
+          ON commitments.canonical_project_id = cp.canonical_project_id
         LEFT JOIN budget_agg budget
-          ON budget.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
+          ON budget.canonical_project_id = cp.canonical_project_id
         LEFT JOIN change_order_agg change_orders
-          ON change_orders.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
+          ON change_orders.canonical_project_id = cp.canonical_project_id
         LEFT JOIN bids_agg bids
-          ON bids.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
+          ON bids.canonical_project_id = cp.canonical_project_id
         LEFT JOIN bid_forms_agg bid_forms
-          ON bid_forms.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
+          ON bid_forms.canonical_project_id = cp.canonical_project_id
         LEFT JOIN estimate_agg estimates
-          ON estimates.canonical_project_id = COALESCE(s.procore_project_id, s.external_id)
-        WHERE s.source = 'procore_v1_projects'
-          AND s.company_id = $1
-          AND s.external_id IS NOT NULL
-          AND s.name IS NOT NULL
+          ON estimates.canonical_project_id = cp.canonical_project_id
       ),
       bid_board_only AS (
         SELECT

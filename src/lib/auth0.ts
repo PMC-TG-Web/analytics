@@ -3,8 +3,7 @@ import { Auth0Client } from '@auth0/nextjs-auth0/server';
 function resolveAppBaseUrl(explicitBaseUrl?: string) {
   return (
     explicitBaseUrl ||
-    process.env.APP_BASE_URL ||
-    process.env.AUTH0_BASE_URL
+    process.env.APP_BASE_URL
   );
 }
 

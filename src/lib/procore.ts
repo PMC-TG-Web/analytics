@@ -23,7 +23,7 @@ export const procoreConfig = {
   apiUrl: (process.env.PROCORE_API_URL || 'https://api.procore.com').trim(),
   authUrl: (process.env.PROCORE_AUTH_URL || 'https://login.procore.com/oauth/authorize').trim(),
   tokenUrl: (process.env.PROCORE_TOKEN_URL || 'https://api.procore.com/oauth/token').trim(),
-  redirectUri: (process.env.NEXT_PUBLIC_REDIRECT_URI || `${process.env.AUTH0_BASE_URL || 'http://localhost:3000'}/api/auth/procore/callback`).trim(),
+  redirectUri: (process.env.NEXT_PUBLIC_REDIRECT_URI || '').trim(),
 };
 
 export function isProcoreLiveApiEnabled(): boolean {
@@ -41,7 +41,7 @@ function getRequestSyncSecret(request: Request): string {
 }
 
 export function hasValidProcoreSyncSecret(request: Request): boolean {
-  const expectedSecret = (process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || '').trim();
+  const expectedSecret = (process.env.PROCORE_SYNC_SECRET || '').trim();
   if (!expectedSecret) return false;
 
   return getRequestSyncSecret(request) === expectedSecret;

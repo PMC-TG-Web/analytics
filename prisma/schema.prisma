@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model SyncLog {
@@ -1441,21 +1442,6 @@ model procore_project_stages_live {
   has_children     Boolean?
 
   @@index([name])
-  @@index([synced_at(sort: Desc)])
-}
-
-model procore_projects_v1_live {
-  procore_project_id String   @id
-  company_id         String?
-  name               String?
-  project_number     String?
-  status             String?
-  status_raw         String?
-  customer           String?
-  payload            Json
-  synced_at          DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([status])
   @@index([synced_at(sort: Desc)])
 }
 

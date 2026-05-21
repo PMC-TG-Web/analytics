@@ -82,7 +82,6 @@ export default function Navigation({
     const cacheKey = `${NAV_PERMISSIONS_CACHE_PREFIX}${normalizedEmail}`;
 
     const applyPermissions = (email: string, permissions: string[]) => {
-      Object.keys(USER_PERMISSIONS).forEach(key => delete USER_PERMISSIONS[key]);
       USER_PERMISSIONS[email] = permissions;
     };
 
@@ -180,6 +179,15 @@ export default function Navigation({
         if (data.data?.email && Array.isArray(responsePermissions)) {
           const nextEmail = data.data.email.toLowerCase();
           const nextPermissions = responsePermissions.filter((perm: unknown): perm is string => typeof perm === "string");
+
+          // Do not overwrite known permissions with an empty payload.
+          // Empty arrays can occur during transient auth/session propagation.
+          if (nextPermissions.length === 0) {
+            setPermissionsFailed(true);
+            setPermissionsLoaded(true);
+            return;
+          }
+
           applyPermissions(nextEmail, nextPermissions);
           // Defer sessionStorage write to avoid blocking main thread
           if ("requestIdleCallback" in window) {

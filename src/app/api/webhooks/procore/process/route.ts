@@ -563,7 +563,7 @@ function getSyncSecretFromRequest(request: NextRequest): string {
 }
 
 function hasValidSyncSecret(request: NextRequest): boolean {
-  const expected = (process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || '').trim();
+  const expected = (process.env.PROCORE_SYNC_SECRET || '').trim();
   if (!expected) return false;
   return getSyncSecretFromRequest(request) === expected;
 }
@@ -591,12 +591,55 @@ function getWebhookWorkKey(event: {
   ].join(':');
 }
 
+async function findRecentOrActiveSyncLog(windowMinutes: number) {
+  const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000);
+  return prisma.syncLog.findFirst({
+    where: {
+      startedAt: { gte: cutoff },
+      OR: [
+        { finishedAt: null },
+        { finishedAt: { gte: cutoff } },
+      ],
+      triggeredBy: { in: ['cron', 'cron-background', 'manual'] },
+    },
+    orderBy: { startedAt: 'desc' },
+    select: {
+      id: true,
+      startedAt: true,
+      finishedAt: true,
+      triggeredBy: true,
+      success: true,
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   if (!hasValidSyncSecret(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+  const syncWindowMinutes = Math.max(
+    1,
+    Number.parseInt(process.env.WEBHOOK_SYNC_CONFLICT_WINDOW_MINUTES || '5', 10) || 5
+  );
+  const activeOrRecentSync = await findRecentOrActiveSyncLog(syncWindowMinutes);
+  if (activeOrRecentSync) {
+    return NextResponse.json({
+      success: true,
+      deferred: true,
+      reason: 'full-sync-window',
+      windowMinutes: syncWindowMinutes,
+      syncLog: activeOrRecentSync,
+      scanned: 0,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      coalesced: 0,
+      deferredDuplicates: 0,
+    });
+  }
+
   let requestedBatchSize = Number.parseInt(request.nextUrl.searchParams.get('batchSize') || '25', 10) || 25;
   let dryRun = request.nextUrl.searchParams.get('dryRun') === 'true';
   try {

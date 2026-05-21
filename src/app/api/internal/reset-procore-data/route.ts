@@ -17,7 +17,6 @@ const TABLES_TO_TRUNCATE = [
   // Procore project feed / staging
   'procore_project_feed',
   'procore_project_staging',
-  'procore_projects_v1_live',
   'procore_bid_board_live',
   'procore_prime_contracts_live',
   'procore_proposal_line_items_live',

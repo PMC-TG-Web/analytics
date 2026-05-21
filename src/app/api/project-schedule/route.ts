@@ -126,10 +126,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (process.env.DISABLE_LEGACY_SCHEDULE_WRITES === 'true') {
+    if (String(process.env.DISABLE_LEGACY_SCHEDULE_WRITES || 'true').trim().toLowerCase() !== 'false') {
       return NextResponse.json({
         success: true,
-        message: 'Legacy schedule writes disabled (DISABLE_LEGACY_SCHEDULE_WRITES=true)',
+        message: 'Legacy schedule writes disabled (set DISABLE_LEGACY_SCHEDULE_WRITES=false to re-enable)',
         data: null,
       });
     }

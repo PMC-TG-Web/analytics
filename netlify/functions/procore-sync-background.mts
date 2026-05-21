@@ -1,12 +1,7 @@
 import { getRequiredSyncSecret, parsePositiveInt, runProcoreCronSync } from "../../src/lib/cronSync";
 
 function getBaseUrl(): string {
-  return (
-    process.env.URL ||
-    process.env.APP_BASE_URL ||
-    process.env.AUTH0_BASE_URL ||
-    ""
-  ).replace(/\/$/, "");
+  return (process.env.APP_BASE_URL || "").replace(/\/$/, "");
 }
 
 const handler = async (request: Request) => {

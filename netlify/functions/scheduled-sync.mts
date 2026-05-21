@@ -8,12 +8,8 @@
  *   URL or APP_BASE_URL
  */
 const handler = async () => {
-  const syncSecret = (process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET || "").trim();
-  const baseUrl = (
-    process.env.URL ||
-    process.env.APP_BASE_URL ||
-    ""
-  ).replace(/\/$/, "");
+  const syncSecret = (process.env.PROCORE_SYNC_SECRET || "").trim();
+  const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
   const batchSize = Math.max(
     1,
     Number.parseInt(process.env.PROCORE_WEBHOOK_PROCESS_BATCH_SIZE || "25", 10) || 25

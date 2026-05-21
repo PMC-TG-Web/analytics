@@ -68,33 +68,8 @@ export function expandAssignedPermissions(permissions: string[]): string[] {
 }
 
 function parseUserPermissionsFromEnv(): Record<string, string[]> {
-  const sources = [
-    process.env.USER_PERMISSIONS_JSON,
-    process.env.NEXT_PUBLIC_USER_PERMISSIONS_JSON,
-  ];
-
-  for (const raw of sources) {
-    if (!raw || !raw.trim()) continue;
-
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-
-      const normalized: Record<string, string[]> = {};
-      for (const [email, permissions] of Object.entries(parsed)) {
-        if (typeof email !== "string" || !Array.isArray(permissions)) continue;
-        const normalizedPermissions = permissions.filter((perm): perm is string => typeof perm === "string");
-        if (normalizedPermissions.length > 0) {
-          normalized[email.toLowerCase()] = normalizedPermissions;
-        }
-      }
-
-      return normalized;
-    } catch {
-      // Ignore malformed JSON and continue to fallback.
-    }
-  }
-
+  // Production hardening: permissions must come from the database only.
+  // Keep this function for API compatibility, but disable env-based sources.
   return {};
 }
 
@@ -162,7 +137,7 @@ let permissionsLoadedFromDb = false;
 
 // Lazy-load permissions from database on first access (if not already loaded)
 export async function ensurePermissionsLoaded(prisma: RawQueryClient): Promise<void> {
-  if (permissionsLoadedFromDb || Object.keys(USER_PERMISSIONS).length > 0) {
+  if (permissionsLoadedFromDb) {
     return; // Already loaded
   }
 
@@ -181,7 +156,7 @@ export async function ensurePermissionsLoaded(prisma: RawQueryClient): Promise<v
 
 // Initialize permissions from database (called from root layout)
 export async function initializePermissions(): Promise<void> {
-  if (permissionsLoadedFromDb || Object.keys(USER_PERMISSIONS).length > 0) {
+  if (permissionsLoadedFromDb) {
     return; // Already initialized
   }
 

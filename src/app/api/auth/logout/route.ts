@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAuth0Client } from '@/lib/auth0';
 
 function resolveCanonicalBaseUrl(request: NextRequest) {
-  const explicit = (process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL || '').trim();
+  const explicit = (process.env.APP_BASE_URL || '').trim();
   const fallback = request.nextUrl.origin;
   const base = explicit || fallback;
   return base.replace(/\/$/, '');

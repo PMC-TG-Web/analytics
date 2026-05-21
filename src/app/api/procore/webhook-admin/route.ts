@@ -26,7 +26,7 @@ const RESOURCE_ALIASES: Record<string, string[]> = {
 };
 
 function getDestinationUrl(): string {
-  const appBase = (process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL || '').replace(/\/$/, '');
+  const appBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
   if (appBase && !appBase.includes('localhost')) {
     return `${appBase}/api/webhooks/procore`;
   }

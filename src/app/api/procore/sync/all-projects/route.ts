@@ -51,30 +51,6 @@ function mapV1StatusToBidBoardStatus(status: string | null | undefined): string 
 
 async function ensureEndpointLiveTables() {
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS procore_projects_v1_live (
-      procore_project_id TEXT PRIMARY KEY,
-      company_id TEXT,
-      name TEXT,
-      project_number TEXT,
-      status TEXT,
-      status_raw TEXT,
-      customer TEXT,
-      payload JSONB NOT NULL,
-      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS procore_projects_v1_live_status_idx
-      ON procore_projects_v1_live (status)
-  `);
-
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS procore_projects_v1_live_synced_at_idx
-      ON procore_projects_v1_live (synced_at DESC)
-  `);
-
-  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS procore_bid_board_live (
       bid_board_id TEXT PRIMARY KEY,
       company_id TEXT,
@@ -138,55 +114,6 @@ async function ensureEndpointLiveTables() {
     ALTER TABLE procore_project_staging
       ADD COLUMN IF NOT EXISTS bid_board_status TEXT NULL
   `);
-}
-
-async function upsertV1Live(params: {
-  companyId: string;
-  procoreProjectId: string;
-  name?: string | null;
-  projectNumber?: string | null;
-  status?: string | null;
-  statusRaw?: string | null;
-  customer?: string | null;
-  payload: unknown;
-}) {
-  const {
-    companyId,
-    procoreProjectId,
-    name,
-    projectNumber,
-    status,
-    statusRaw,
-    customer,
-    payload,
-  } = params;
-
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO procore_projects_v1_live
-        (procore_project_id, company_id, name, project_number, status, status_raw, customer, payload, synced_at)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
-      ON CONFLICT (procore_project_id)
-      DO UPDATE SET
-        company_id = EXCLUDED.company_id,
-        name = EXCLUDED.name,
-        project_number = EXCLUDED.project_number,
-        status = EXCLUDED.status,
-        status_raw = EXCLUDED.status_raw,
-        customer = EXCLUDED.customer,
-        payload = EXCLUDED.payload,
-        synced_at = NOW()
-    `,
-    procoreProjectId,
-    companyId,
-    name ?? null,
-    projectNumber ?? null,
-    status ?? null,
-    statusRaw ?? null,
-    customer ?? null,
-    JSON.stringify(payload)
-  );
 }
 
 async function upsertBidBoardLive(params: {
@@ -1207,17 +1134,6 @@ export async function POST(request: Request) {
         const status = p.status || p.project_status?.name || p.project_stage?.name || "Active";
         const statusRaw = p.status || p.project_status?.name || p.project_stage?.name || null;
         const fallbackBidBoardStatus = mapV1StatusToBidBoardStatus(status);
-
-        await upsertV1Live({
-          companyId,
-          procoreProjectId: procoreId,
-          name,
-          projectNumber: number,
-          status,
-          statusRaw,
-          customer: isMeaningfulCustomer(customer) ? customer : null,
-          payload: p,
-        });
 
         await upsertProcoreStaging({
           source: "procore_v1_projects",

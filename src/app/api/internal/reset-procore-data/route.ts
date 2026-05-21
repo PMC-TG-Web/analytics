@@ -55,6 +55,16 @@ const TABLES_TO_TRUNCATE = [
   'Project',
 ] as const;
 
+// Hard safety guard: these tables must never be truncated by this endpoint.
+const PROTECTED_TABLES = [
+  'KPIEntry',
+  '_prisma_migrations',
+] as const;
+
+function normalizeTableName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 // Tables we verify exist before building the TRUNCATE statement
 async function getExistingTables(tableNames: readonly string[]): Promise<string[]> {
   const rows = await prisma.$queryRaw<{ tablename: string }[]>`
@@ -62,6 +72,15 @@ async function getExistingTables(tableNames: readonly string[]): Promise<string[
     FROM pg_tables
     WHERE schemaname = 'public'
       AND tablename = ANY(${tableNames as unknown as string[]})
+  `;
+  return rows.map((r) => r.tablename);
+}
+
+async function getAllPublicTables(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ tablename: string }[]>`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
   `;
   return rows.map((r) => r.tablename);
 }
@@ -75,16 +94,46 @@ export async function POST(request: NextRequest) {
 
   const url = new URL(request.url);
   const dryRun = url.searchParams.get('dryRun') !== 'false';
+  const scope = (url.searchParams.get('scope') || 'procore').trim().toLowerCase();
+  const allowedScopes = new Set(['procore', 'full']);
+  if (!allowedScopes.has(scope)) {
+    return NextResponse.json(
+      { error: "Invalid scope. Use scope=procore or scope=full." },
+      { status: 400 }
+    );
+  }
 
-  const existing = await getExistingTables(TABLES_TO_TRUNCATE);
-  const missing = TABLES_TO_TRUNCATE.filter((t) => !existing.includes(t));
+  const protectedSet = new Set(PROTECTED_TABLES.map(normalizeTableName));
+  const requestedTables = scope === 'full' ? await getAllPublicTables() : [...TABLES_TO_TRUNCATE];
+  const overlap = requestedTables.filter((table) => protectedSet.has(normalizeTableName(table)));
+  if (overlap.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'Configuration error: protected tables were included in truncation set.',
+        overlap,
+      },
+      { status: 500 }
+    );
+  }
+
+  const effectiveRequestedTables = requestedTables.filter(
+    (table) => !protectedSet.has(normalizeTableName(table))
+  );
+
+  const existing = await getExistingTables(effectiveRequestedTables);
+  const missing = effectiveRequestedTables.filter((t) => !existing.includes(t));
 
   if (dryRun) {
     return NextResponse.json({
       dryRun: true,
+      scope,
       tablesToTruncate: existing,
       tablesNotFound: missing,
-      message: 'Pass ?dryRun=false to execute',
+      protectedTables: PROTECTED_TABLES,
+      message:
+        scope === 'full'
+          ? 'Full wipe mode: pass ?scope=full&dryRun=false to execute (keeps KPIEntry and _prisma_migrations only).'
+          : 'Procore-only mode: pass ?dryRun=false to execute.',
     });
   }
 
@@ -98,8 +147,13 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    scope,
     truncated: existing,
     skipped: missing,
-    message: `Truncated ${existing.length} tables. Re-run full cron sync to repopulate.`,
+    protectedTables: PROTECTED_TABLES,
+    message:
+      scope === 'full'
+        ? `Full wipe complete. Truncated ${existing.length} tables. KPIEntry was preserved.`
+        : `Truncated ${existing.length} tables. Re-run full cron sync to repopulate.`,
   });
 }

@@ -396,6 +396,7 @@ export default function Home() {
 
 function HomeContent() {
   const { user, loading: authLoading } = useAuth();
+  const canReadEmployees = Boolean(user?.email && hasPageAccess(user.email, "employees"));
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -456,7 +457,9 @@ function HomeContent() {
         setAnnouncements([]);
 
         const [employeesRes, scheduleRes, timeOffRes, concreteRes, pmRes, crewTemplatesRes, projectsRes, scopesRes] = await Promise.all([
-          fetch("/api/employees?isActive=true&page=1&pageSize=500", { cache: "no-store" }),
+          canReadEmployees
+            ? fetch("/api/employees?isActive=true&page=1&pageSize=500", { cache: "no-store" })
+            : Promise.resolve(new Response(JSON.stringify({ success: true, data: [] }), { status: 200 })),
           fetch(`/api/short-term-schedule?action=active-schedule&startDate=${startDate}&endDate=${endDate}`, {
             cache: "no-store",
           }),
@@ -511,7 +514,7 @@ function HomeContent() {
     }
 
     fetchData();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, canReadEmployees]);
 
   const currentMonthIdx = new Date().getMonth();
   const currentSafetyTopic = SAFETY_TOPICS[currentMonthIdx];

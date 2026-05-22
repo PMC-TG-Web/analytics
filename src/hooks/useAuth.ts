@@ -128,6 +128,16 @@ export function useAuth() {
   useEffect(() => {
     let cancelled = false;
 
+    const cached = inMemoryAuthState;
+    if (cached && isCacheFresh(cached.cachedAt)) {
+      setUser(cached.user);
+      setError(cached.user ? null : 'Not authenticated');
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function hydrateAuth() {
       try {
         const nextUser = await getAuthUserDeduped();

@@ -7,33 +7,150 @@ interface User {
   name?: string | null;
 }
 
+type CachedAuthState = {
+  user: User | null;
+  cachedAt: number;
+};
+
+const AUTH_CACHE_KEY = 'analytics-auth-user';
+const AUTH_CACHE_TTL_MS = 60 * 60 * 1000;
+
+let inMemoryAuthState: CachedAuthState | null = null;
+let inFlightAuthRequest: Promise<User | null> | null = null;
+
+function isCacheFresh(cachedAt: number): boolean {
+  return Date.now() - cachedAt < AUTH_CACHE_TTL_MS;
+}
+
+function readSessionAuthCache(): CachedAuthState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = sessionStorage.getItem(AUTH_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { user?: unknown; cachedAt?: unknown };
+    if (typeof parsed.cachedAt !== 'number') return null;
+    if (!isCacheFresh(parsed.cachedAt)) return null;
+
+    const candidate = parsed.user;
+    if (candidate === null) {
+      return { user: null, cachedAt: parsed.cachedAt };
+    }
+
+    if (!candidate || typeof candidate !== 'object') return null;
+    const userObj = candidate as { email?: unknown; name?: unknown };
+    if (typeof userObj.email !== 'string' || !userObj.email.trim()) return null;
+
+    return {
+      user: {
+        email: userObj.email,
+        name: typeof userObj.name === 'string' ? userObj.name : null,
+      },
+      cachedAt: parsed.cachedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionAuthCache(state: CachedAuthState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function setAuthCache(user: User | null): void {
+  const nextState: CachedAuthState = { user, cachedAt: Date.now() };
+  inMemoryAuthState = nextState;
+  writeSessionAuthCache(nextState);
+}
+
+async function fetchAuthUser(): Promise<User | null> {
+  console.log('Checking auth status...');
+  const response = await fetch('/api/auth/me', {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    console.log('User is not authenticated (401)');
+    return null;
+  }
+
+  const userData = await response.json();
+  console.log('User is authenticated:', userData.email);
+  const user: User = {
+    email: String(userData.email || '').trim(),
+    name: typeof userData.name === 'string' ? userData.name : null,
+  };
+  return user.email ? user : null;
+}
+
+async function getAuthUserDeduped(): Promise<User | null> {
+  if (inFlightAuthRequest) return inFlightAuthRequest;
+
+  inFlightAuthRequest = fetchAuthUser()
+    .then((user) => {
+      setAuthCache(user);
+      return user;
+    })
+    .finally(() => {
+      inFlightAuthRequest = null;
+    });
+
+  return inFlightAuthRequest;
+}
+
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    if (inMemoryAuthState && isCacheFresh(inMemoryAuthState.cachedAt)) {
+      return inMemoryAuthState.user;
+    }
+
+    const cached = readSessionAuthCache();
+    if (cached) {
+      inMemoryAuthState = cached;
+      return cached.user;
+    }
+
+    return null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (inMemoryAuthState && isCacheFresh(inMemoryAuthState.cachedAt)) return false;
+    return readSessionAuthCache() ? false : true;
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function checkAuth() {
+    let cancelled = false;
+
+    async function hydrateAuth() {
       try {
-        console.log('Checking auth status...');
-        const response = await fetch('/api/auth/me');
-        if (response.ok) {
-          const userData = await response.json();
-          console.log('User is authenticated:', userData.email);
-          setUser(userData);
-        } else {
-          console.log('User is not authenticated (401)');
-          setError('Not authenticated');
-        }
+        const nextUser = await getAuthUserDeduped();
+        if (cancelled) return;
+
+        setUser(nextUser);
+        setError(nextUser ? null : 'Not authenticated');
       } catch (err) {
+        if (cancelled) return;
         console.error('Auth check fetch error:', err);
         setError('Failed to check auth');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    checkAuth();
+    void hydrateAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const checkAccess = (page: string) => {

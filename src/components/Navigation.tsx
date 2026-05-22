@@ -9,7 +9,7 @@ const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
 const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
-const NAV_PERMISSIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const NAV_PERMISSIONS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
 const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
 const NAV_KEEPALIVE_INTERVAL_MS = 2 * 60 * 1000;
@@ -81,47 +81,45 @@ export default function Navigation({
     const normalizedEmail = user.email.toLowerCase();
     const cacheKey = `${NAV_PERMISSIONS_CACHE_PREFIX}${normalizedEmail}`;
 
+    // If permissions are already resolved in-memory, avoid a redundant network call.
+    if (Array.isArray(USER_PERMISSIONS[normalizedEmail]) && USER_PERMISSIONS[normalizedEmail].length > 0) {
+      setPermissionsLoaded(true);
+      setPermissionsFailed(false);
+      return;
+    }
+
     const applyPermissions = (email: string, permissions: string[]) => {
       USER_PERMISSIONS[email] = permissions;
     };
 
-    // Defer sessionStorage access to avoid blocking the main thread during idle recovery
-    const checkCacheAsync = () => {
-      // Use requestIdleCallback if available to avoid blocking interactions
-      if ("requestIdleCallback" in window) {
-        requestIdleCallback(() => {
-          try {
-            const rawCached = sessionStorage.getItem(cacheKey);
-            if (rawCached) {
-              const parsed = JSON.parse(rawCached) as {
-                email?: string;
-                permissions?: unknown;
-                cachedAt?: number;
-              };
-              const isFresh =
-                typeof parsed.cachedAt === "number" &&
-                Date.now() - parsed.cachedAt < NAV_PERMISSIONS_CACHE_TTL_MS;
-              const cachedPermissions = Array.isArray(parsed.permissions)
-                ? parsed.permissions.filter((perm): perm is string => typeof perm === "string")
-                : [];
+    const checkCacheAndLoad = () => {
+      try {
+        const rawCached = sessionStorage.getItem(cacheKey);
+        if (rawCached) {
+          const parsed = JSON.parse(rawCached) as {
+            email?: string;
+            permissions?: unknown;
+            cachedAt?: number;
+          };
+          const isFresh =
+            typeof parsed.cachedAt === "number" &&
+            Date.now() - parsed.cachedAt < NAV_PERMISSIONS_CACHE_TTL_MS;
+          const cachedPermissions = Array.isArray(parsed.permissions)
+            ? parsed.permissions.filter((perm): perm is string => typeof perm === "string")
+            : [];
 
-              if (isFresh && parsed.email === normalizedEmail && cachedPermissions.length > 0) {
-                applyPermissions(normalizedEmail, cachedPermissions);
-                setPermissionsLoaded(true);
-                setPermissionsFailed(false);
-                return;
-              }
-            }
-          } catch {
-            // Ignore cache parse/storage issues
+          if (isFresh && parsed.email === normalizedEmail && cachedPermissions.length > 0) {
+            applyPermissions(normalizedEmail, cachedPermissions);
+            setPermissionsLoaded(true);
+            setPermissionsFailed(false);
+            return;
           }
-          // If no fresh cache, proceed with fetch
-          loadPermissions();
-        });
-      } else {
-        // Fallback: defer with setTimeout to avoid blocking
-        setTimeout(loadPermissions, 0);
+        }
+      } catch {
+        // Ignore cache parse/storage issues
       }
+
+      void loadPermissions();
     };
 
     const loadPermissions = async () => {
@@ -236,7 +234,7 @@ export default function Navigation({
       }
     };
 
-    checkCacheAsync();
+    checkCacheAndLoad();
   }, [user?.email]);
 
   // Keep auth/permission path warm so first navigation after idle is faster.

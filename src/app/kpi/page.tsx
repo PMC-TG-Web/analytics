@@ -17,6 +17,13 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
+const KPI_DEBUG_LOGS = process.env.NODE_ENV !== "production";
+
+function logKpiDebug(...args: unknown[]) {
+  if (!KPI_DEBUG_LOGS) return;
+  console.log(...args);
+}
+
 type Schedule = {
   id: string;
   jobKey: string;
@@ -588,7 +595,7 @@ export default function KPIPage() {
         }
         const kpiJson = await kpiRes.json();
         const data = kpiJson.data || [];
-        console.log(`[KPI] Fetched ${data.length} KPI entries for year ${currentYear}:`, data);
+        logKpiDebug(`[KPI] Fetched ${data.length} KPI entries for year ${currentYear}:`, data);
         setKpiData(data);
       } catch (err) {
         console.warn("Error fetching KPI data (using empty defaults):", err);
@@ -628,7 +635,7 @@ export default function KPIPage() {
         }
 
         try {
-          console.log("[KPI] Fetching projects and schedules in parallel...");
+          logKpiDebug("[KPI] Fetching projects and schedules in parallel...");
           const [loadedProjects, loadedSchedules, budgetProjectsRes, activeScheduleRes] = await Promise.all([
             fetchAllParallel<Project>('/api/projects?mode=dashboard'),
             fetchAllParallel<any>('/api/scheduling', 'data'),
@@ -696,7 +703,7 @@ export default function KPIPage() {
 
           setProjects(projectsData);
           setProjectsForHours(projectsForHoursData);
-          console.log("[KPI] Loaded projects:", projectsData.length, "schedules:", schedulesData.length);
+          logKpiDebug("[KPI] Loaded projects:", projectsData.length, "schedules:", schedulesData.length);
         } catch (err) {
           console.warn("[KPI] Error fetching data:", err);
           setProjects([]);
@@ -837,7 +844,7 @@ function KPIPageContent({
     // Don't wait for save - just initiate it in background
     const monthName = monthNames[month - 1];
     
-    console.log(`[KPI] Saving ${fieldName} for ${year}-${month}: ${value}`);
+    logKpiDebug(`[KPI] Saving ${fieldName} for ${year}-${month}: ${value}`);
     
     const requestBody = {
       year,
@@ -849,15 +856,15 @@ function KPIPageContent({
     // Fire and forget - save in background without blocking UI
     (async () => {
       try {
-        console.log(`[KPI] Request body:`, requestBody);
+        logKpiDebug(`[KPI] Request body:`, requestBody);
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
-          console.log(`[KPI] Request timeout - aborting after 10 seconds`);
+          logKpiDebug(`[KPI] Request timeout - aborting after 10 seconds`);
           controller.abort();
         }, 10000);
         
-        console.log(`[KPI] Fetching POST /api/kpi`);
+        logKpiDebug(`[KPI] Fetching POST /api/kpi`);
         const response = await fetch("/api/kpi", {
           method: "POST",
           credentials: "include",
@@ -869,7 +876,7 @@ function KPIPageContent({
         
         clearTimeout(timeoutId);
         
-        console.log(`[KPI] Response status: ${response.status} ${response.statusText}`);
+        logKpiDebug(`[KPI] Response status: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
           console.warn(`[KPI] API endpoint not available, skipping save`);
@@ -877,10 +884,10 @@ function KPIPageContent({
         }
         
         const result = await response.json();
-        console.log(`[KPI] Save successful:`, result);
+        logKpiDebug(`[KPI] Save successful:`, result);
         
         // Refresh kpi data in background (don't block)
-        console.log(`[KPI] Refreshing data for ${year}`);
+        logKpiDebug(`[KPI] Refreshing data for ${year}`);
         try {
           const kpiRes = await fetch(`/api/kpi?year=${year}`, { credentials: "include", cache: "no-store" });
           if (kpiRes.ok) {
@@ -891,7 +898,7 @@ function KPIPageContent({
           console.warn(`[KPI] Could not refresh data:`, err);
         }
         
-        console.log(`[KPI] OK Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
+        logKpiDebug(`[KPI] OK Saved ${fieldName} for ${year}-${month}: ${value.toLocaleString()}`);
       } catch (error) {
         console.warn(`[KPI] Error saving ${fieldName} (API not available):`, error);
         // Gracefully skip in static export mode - no alerts needed
@@ -944,7 +951,7 @@ function KPIPageContent({
         });
 
         setCardLoadData(mapped);
-        console.log("[KPI] Loaded", Object.keys(mapped).length, "KPI cards from API");
+        logKpiDebug("[KPI] Loaded", Object.keys(mapped).length, "KPI cards from API");
 
         if (cards.length === 0) {
           setCardLoadData(defaultCardLoadData);
@@ -1365,8 +1372,8 @@ function KPIPageContent({
     return (value / 3938).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  console.log("[KPI] Total projects:", projects.length);
-  console.log("[KPI] Filtered projects:", filteredProjects.length);
+  logKpiDebug("[KPI] Total projects:", projects.length);
+  logKpiDebug("[KPI] Filtered projects:", filteredProjects.length);
 
   // Bid Submitted sales by month - use aggregatedProjects so we keep one
   // selected customer version per project identifier.
@@ -1394,16 +1401,16 @@ function KPIPageContent({
     bidSubmittedSalesByMonth[monthKey] = (bidSubmittedSalesByMonth[monthKey] || 0) + sales;
   });
   
-  console.log("[KPI] === Bid Submitted Breakdown ===");
-  console.log(`[KPI] Total Bid Submitted projects (deduplicated): ${aggregatedBidSubmittedProjects.length}`);
-  console.log(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
-  console.log(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
-  console.log(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
+  logKpiDebug("[KPI] === Bid Submitted Breakdown ===");
+  logKpiDebug(`[KPI] Total Bid Submitted projects (deduplicated): ${aggregatedBidSubmittedProjects.length}`);
+  logKpiDebug(`[KPI] Projects with dates: ${bidSubmittedWithDates}`);
+  logKpiDebug(`[KPI] Projects without dates: ${bidSubmittedWithoutDates}`);
+  logKpiDebug(`[KPI] Total Bid Submitted sales: $${bidSubmittedTotal.toLocaleString()}`);
   
   const calculatedBidSubmittedSalesMonths = Object.keys(bidSubmittedSalesByMonth).sort();
   
-  console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
-  console.log("[KPI] Year filter:", yearFilter);
+  logKpiDebug("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
+  logKpiDebug("[KPI] Year filter:", yearFilter);
   
   const bidSubmittedSalesYearMonthMap: Record<string, Record<number, number>> = {};
   calculatedBidSubmittedSalesMonths.forEach((month) => {
@@ -1974,12 +1981,12 @@ function KPIPageContent({
   
   const scheduledTotal = Object.values(scheduledSalesByMonth).reduce((sum, val) => sum + val, 0);
   
-  console.log("[KPI] === Scheduled Sales Breakdown ===");
-  console.log(`[KPI] Projects with qualifying status (In Progress/Accepted/Complete): ${qualifyingProjectsWithSalesCount}`);
-  console.log(`[KPI] Schedules used for allocation: ${schedules.length}`);
-  console.log(`[KPI] Total Scheduled sales: $${scheduledTotal.toLocaleString()}`);
-  console.log("[KPI] Scheduled sales by month:", scheduledSalesByMonth);
-  console.log("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
+  logKpiDebug("[KPI] === Scheduled Sales Breakdown ===");
+  logKpiDebug(`[KPI] Projects with qualifying status (In Progress/Accepted/Complete): ${qualifyingProjectsWithSalesCount}`);
+  logKpiDebug(`[KPI] Schedules used for allocation: ${schedules.length}`);
+  logKpiDebug(`[KPI] Total Scheduled sales: $${scheduledTotal.toLocaleString()}`);
+  logKpiDebug("[KPI] Scheduled sales by month:", scheduledSalesByMonth);
+  logKpiDebug("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
   
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
   scheduledSalesMonths.forEach((month) => {
@@ -2034,8 +2041,8 @@ function KPIPageContent({
     return true;
   });
 
-  console.log("[KPI] Filtered bid submitted months:", filteredBidSubmittedSalesMonths);
-  console.log("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
+  logKpiDebug("[KPI] Filtered bid submitted months:", filteredBidSubmittedSalesMonths);
+  logKpiDebug("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
 
   const filteredScheduledSalesByMonth: Record<string, number> = {};
   const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {

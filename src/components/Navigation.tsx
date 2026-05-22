@@ -337,6 +337,7 @@ export default function Navigation({
       <Link
         key={link.href}
         href={link.href}
+        prefetch={false}
         className={`
           px-2.5 py-1.5 rounded text-[11px] font-black no-underline transition-colors active:scale-95
           ${

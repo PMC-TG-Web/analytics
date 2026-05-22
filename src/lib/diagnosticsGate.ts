@@ -18,7 +18,6 @@ export const DIAGNOSTICS_OR_TEST_PAGE_ROUTES = [
   "/dev-login",
   "/diagnostics",
   "/test-schedules",
-  "/seed-kpi-cards",
 ] as const;
 
 export function areProductionDiagnosticsEnabled(): boolean {

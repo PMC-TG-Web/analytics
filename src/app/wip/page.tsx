@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useEffect, useState } from "react";
 import { ProjectScopesModal } from "../project-schedule/components/ProjectScopesModal";
 import { ProjectInfo, Scope, Project } from "@/types";
@@ -21,6 +21,13 @@ import {
 import { Line } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+
+const WIP_DEBUG_LOGS = process.env.NODE_ENV !== "production";
+
+function logWipDebug(...args: unknown[]) {
+  if (!WIP_DEBUG_LOGS) return;
+  logWipDebug(...args);
+}
 
 // Custom plugin to draw data labels on points
 const dataLabelsPlugin: Plugin = {
@@ -311,7 +318,7 @@ function WIPReportContent() {
     async function fetchData() {
       try {
         setLoading(true);
-        console.log("[WIP] Starting data fetch...");
+        logWipDebug("[WIP] Starting data fetch...");
         const start = Date.now();
 
         // Parallelize all primary data fetches
@@ -340,9 +347,9 @@ function WIPReportContent() {
         // Handle schedules response
         if (Array.isArray(schedulesData)) {
           schedulesDataLocal = schedulesData;
-          console.log("[WIP] Raw schedules from API:", schedulesDataLocal.length, "records");
+          logWipDebug("[WIP] Raw schedules from API:", schedulesDataLocal.length, "records");
           if (schedulesDataLocal.length > 0) {
-            console.log("[WIP] First schedule sample:", {
+            logWipDebug("[WIP] First schedule sample:", {
               jobKey: schedulesDataLocal[0]?.jobKey,
               status: schedulesDataLocal[0]?.status,
               allocations: schedulesDataLocal[0]?.allocations?.length
@@ -355,12 +362,12 @@ function WIPReportContent() {
         if (activeScheduleRes.ok) {
           const activeScheduleJson = await activeScheduleRes.json();
           activeScheduleDataLocal = Array.isArray(activeScheduleJson?.data) ? activeScheduleJson.data : [];
-          console.log("[WIP] Live active schedule rows:", activeScheduleDataLocal.length, "records");
+          logWipDebug("[WIP] Live active schedule rows:", activeScheduleDataLocal.length, "records");
         } else {
           console.warn("[WIP] active-schedule endpoint not available");
         }
 
-        console.log(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
+        logWipDebug(`[WIP] Fetched all primary data in ${Date.now() - start}ms`);
 
         const schedulesWithStatus = schedulesDataLocal.map((schedule: any) => {
           // Keep the status from the schedule data (already populated from DB)
@@ -370,12 +377,12 @@ function WIPReportContent() {
           };
         });
 
-        console.log("[WIP] Schedules after mapping:", schedulesWithStatus.length, "records");
+        logWipDebug("[WIP] Schedules after mapping:", schedulesWithStatus.length, "records");
 
         setProjects(projectsData);
         setSchedules(schedulesWithStatus);
         setActiveScheduleEntries(activeScheduleDataLocal);
-        console.log("[WIP] Called setSchedules with:", schedulesWithStatus.length, "records");
+        logWipDebug("[WIP] Called setSchedules with:", schedulesWithStatus.length, "records");
         
         // Fetch scopes for Gantt feed
         const rawScopes = scopesSnapshot as Scope[];
@@ -389,7 +396,7 @@ function WIPReportContent() {
           scopesMap[scope.jobKey].push(scope);
         });
         setScopesByJobKey(scopesMap);
-        console.log(`[WIP] Processed all data in ${Date.now() - start}ms`);
+        logWipDebug(`[WIP] Processed all data in ${Date.now() - start}ms`);
       } catch (error) {
         console.warn("[WIP] Error loading data (using empty defaults):", error);
         setProjects([]);
@@ -872,7 +879,7 @@ function WIPReportContent() {
         console.warn("[WIP] Long-term-schedule API endpoint not available, skipping save");
         // Don't throw, just skip in static export mode
       } else {
-        console.log("[WIP] Weekly schedule saved successfully");
+        logWipDebug("[WIP] Weekly schedule saved successfully");
       }
 
       setWeeklyModalVisible(false);
@@ -912,7 +919,7 @@ function WIPReportContent() {
         console.warn("[WIP] Scheduling API endpoint not available, skipping save");
         // Don't throw, just skip in static export mode
       } else {
-        console.log("[WIP] Schedule saved successfully");
+        logWipDebug("[WIP] Schedule saved successfully");
       }
 
       setModalVisible(false);
@@ -933,7 +940,7 @@ function WIPReportContent() {
     poolBreakdown,
     scheduledHoursByJob
   } = React.useMemo(() => {
-    console.log("[WIP] useMemo - Starting calculation with live entries:", activeScheduleEntries?.length || 0, "scopesByJobKey:", Object.keys(scopesByJobKey || {}).length);
+    logWipDebug("[WIP] useMemo - Starting calculation with live entries:", activeScheduleEntries?.length || 0, "scopesByJobKey:", Object.keys(scopesByJobKey || {}).length);
     
     const monthlyData: Record<string, MonthlyWIP> = {};
     const scheduledSalesByMonth: Record<string, number> = {};
@@ -946,7 +953,7 @@ function WIPReportContent() {
     const inProgressJobsByProjectNumName = new Map<string, Schedule>();
     const inProgressJobsByCustomerProject = new Map<string, Schedule>();
     
-    console.log("[WIP] In Progress schedules:", inProgressSchedules.length);
+    logWipDebug("[WIP] In Progress schedules:", inProgressSchedules.length);
 
     inProgressSchedules.forEach((schedule) => {
       inProgressJobsByExactKey.set(schedule.jobKey, schedule);
@@ -1010,7 +1017,7 @@ function WIPReportContent() {
 
       });
     
-    console.log("[WIP] Monthly data from active schedule:", Object.keys(monthlyData).length, "months");
+    logWipDebug("[WIP] Monthly data from active schedule:", Object.keys(monthlyData).length, "months");
     
     // Calculate sales data
     projects.forEach((project) => {
@@ -1110,9 +1117,9 @@ function WIPReportContent() {
   const months = Object.keys(monthlyData).sort();
   
   // Debug logging
-  console.log("[WIP] useMemo completed - monthlyData has:", months.length, "months");
+  logWipDebug("[WIP] useMemo completed - monthlyData has:", months.length, "months");
   if (months.length > 0) {
-    console.log("[WIP] Sample months:", months.slice(0, 5));
+    logWipDebug("[WIP] Sample months:", months.slice(0, 5));
   }
   
   const totalHours = Object.values(monthlyData).reduce((sum, m) => sum + m.hours, 0);
@@ -1161,10 +1168,10 @@ function WIPReportContent() {
 
   // Debug logging
   if (typeof window !== 'undefined') {
-    console.log("[WIP] Render debug - Total schedules in state:", schedules.length);
-    console.log("[WIP] Render debug - Qualifying (In Progress) schedules:", qualifyingSchedules.length);
+    logWipDebug("[WIP] Render debug - Total schedules in state:", schedules.length);
+    logWipDebug("[WIP] Render debug - Qualifying (In Progress) schedules:", qualifyingSchedules.length);
     if (schedules.length > 0) {
-      console.log("[WIP] Render debug - Sample schedule statuses:", schedules.slice(0, 3).map(s => ({ 
+      logWipDebug("[WIP] Render debug - Sample schedule statuses:", schedules.slice(0, 3).map(s => ({ 
         jobKey: s.jobKey, 
         status: s.status, 
         statusLower: (s.status || "").toString().toLowerCase().trim(),

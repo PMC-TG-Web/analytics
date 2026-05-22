@@ -106,23 +106,9 @@ async function getAuthUserDeduped(): Promise<User | null> {
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(() => {
-    if (inMemoryAuthState && isCacheFresh(inMemoryAuthState.cachedAt)) {
-      return inMemoryAuthState.user;
-    }
-
-    const cached = readSessionAuthCache();
-    if (cached) {
-      inMemoryAuthState = cached;
-      return cached.user;
-    }
-
-    return null;
-  });
-  const [loading, setLoading] = useState(() => {
-    if (inMemoryAuthState && isCacheFresh(inMemoryAuthState.cachedAt)) return false;
-    return readSessionAuthCache() ? false : true;
-  });
+  // Keep initial render deterministic across server/client to avoid hydration mismatch.
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -132,6 +118,17 @@ export function useAuth() {
     if (cached && isCacheFresh(cached.cachedAt)) {
       setUser(cached.user);
       setError(cached.user ? null : 'Not authenticated');
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const sessionCached = readSessionAuthCache();
+    if (sessionCached && isCacheFresh(sessionCached.cachedAt)) {
+      inMemoryAuthState = sessionCached;
+      setUser(sessionCached.user);
+      setError(sessionCached.user ? null : 'Not authenticated');
       setLoading(false);
       return () => {
         cancelled = true;

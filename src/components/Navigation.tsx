@@ -12,6 +12,8 @@ const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
 const NAV_PERMISSIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
 const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
+const NAV_KEEPALIVE_INTERVAL_MS = 2 * 60 * 1000;
+const NAV_KEEPALIVE_TIMEOUT_MS = 4000;
 
 interface NavLink {
   href: string;
@@ -235,6 +237,41 @@ export default function Navigation({
     };
 
     checkCacheAsync();
+  }, [user?.email]);
+
+  // Keep auth/permission path warm so first navigation after idle is faster.
+  useEffect(() => {
+    if (!user?.email) return;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const ping = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), NAV_KEEPALIVE_TIMEOUT_MS);
+
+      try {
+        await fetch('/api/permissions/me', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+      } catch {
+        // Silent on purpose: this is only a best-effort warm ping.
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    timer = setInterval(() => {
+      void ping();
+    }, NAV_KEEPALIVE_INTERVAL_MS);
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [user?.email]);
 
   useEffect(() => {

@@ -1032,7 +1032,22 @@ export async function POST(request: Request) {
       console.warn("Vendor fallback map unavailable for this run.");
     }
 
-    await ensureEndpointLiveTables();
+    try {
+      await ensureEndpointLiveTables();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isSchemaPermissionError =
+        /permission denied for schema public/i.test(message) ||
+        /Code:\s*`42501`/i.test(message);
+
+      if (isSchemaPermissionError) {
+        // Production DB users can be write-only for existing tables.
+        // In that case, continue sync without runtime DDL and rely on migrations.
+        console.warn("[Sync] Skipping runtime table/index ensure due to schema permissions.");
+      } else {
+        throw error;
+      }
+    }
 
     console.log(
       `Syncing ${allV1Projects.length} V1 Projects, ${allBidBoardProjects.length} Bid Board items, and ${allProjectStages.length} Project Stages.`

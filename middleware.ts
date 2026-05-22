@@ -424,7 +424,9 @@ export async function middleware(request: NextRequest) {
     return applyPermissionCookie(response, permissionCookieToSet);
   }
 
-  return applyPermissionCookie(await auth0.middleware(request), permissionCookieToSet);
+  // Session and permission checks already passed above.
+  // Avoid invoking auth middleware a second time on every navigation.
+  return applyPermissionCookie(NextResponse.next(), permissionCookieToSet);
 }
 
 export const config = {

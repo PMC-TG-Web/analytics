@@ -76,6 +76,49 @@ function findRowValues(rows: KPICardRow[] | undefined, kpiName: string): string[
   return Array.isArray(match?.values) ? match!.values : [];
 }
 
+function normalizeCardRows(rows: unknown): KPICardRow[] {
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const candidate = row as { kpi?: unknown; values?: unknown };
+      const kpi = String(candidate.kpi || '').trim();
+      if (!kpi) return null;
+
+      const values = Array.isArray(candidate.values)
+        ? candidate.values.map((value) => String(value ?? ''))
+        : [];
+
+      return { kpi, values };
+    })
+    .filter((row): row is KPICardRow => row !== null);
+}
+
+function mergeCardRowsPreserveExisting(existingRows: KPICardRow[], incomingRows: KPICardRow[]): KPICardRow[] {
+  const mergedRows = existingRows.map((row) => ({ kpi: row.kpi, values: [...row.values] }));
+  const indexByKpi = new Map<string, number>();
+
+  mergedRows.forEach((row, index) => {
+    indexByKpi.set(normalizeName(row.kpi), index);
+  });
+
+  for (const row of incomingRows) {
+    const key = normalizeName(row.kpi);
+    const existingIndex = indexByKpi.get(key);
+
+    if (existingIndex === undefined) {
+      indexByKpi.set(key, mergedRows.length);
+      mergedRows.push({ kpi: row.kpi, values: [...row.values] });
+      continue;
+    }
+
+    mergedRows[existingIndex] = { kpi: row.kpi, values: [...row.values] };
+  }
+
+  return mergedRows;
+}
+
 function buildCardsETag(cards: KPICard[]): string {
   const basis = JSON.stringify(cards);
   const hash = createHash('sha1').update(basis).digest('hex');
@@ -155,7 +198,8 @@ export async function POST(request: NextRequest) {
     const actorEmail = session?.user?.email?.toString().trim() || 'unknown';
     const body = await request.json();
     const cardName = (body?.cardName || '').toString().trim();
-    const rows = Array.isArray(body?.rows) ? body.rows : [];
+    const incomingRows = normalizeCardRows(body?.rows);
+    const allowRowDeletes = body?.allowRowDeletes === true;
     const clientUpdatedBy = (body?.updatedBy || '').toString().trim();
     const updatedBy = actorEmail !== 'unknown' ? actorEmail : (clientUpdatedBy || 'unknown');
 
@@ -173,17 +217,21 @@ export async function POST(request: NextRequest) {
     });
 
     const previousPayload = existing?.value ? parseStoredPayload(existing.value) : {};
+    const previousRows = normalizeCardRows(previousPayload.rows);
+    const rowsToPersist = allowRowDeletes
+      ? incomingRows
+      : mergeCardRowsPreserveExisting(previousRows, incomingRows);
 
     const record = await prisma.estimatingConstant.upsert({
       where: { name: toCardKey(cardName) },
       update: {
         category: KPI_CARD_CATEGORY,
-        value: JSON.stringify({ cardName, rows, updatedBy }),
+        value: JSON.stringify({ cardName, rows: rowsToPersist, updatedBy }),
       },
       create: {
         name: toCardKey(cardName),
         category: KPI_CARD_CATEGORY,
-        value: JSON.stringify({ cardName, rows, updatedBy }),
+        value: JSON.stringify({ cardName, rows: rowsToPersist, updatedBy }),
       },
     });
 
@@ -198,12 +246,13 @@ export async function POST(request: NextRequest) {
           name: key,
           cardName,
           actorEmail,
+          allowRowDeletes,
           clientUpdatedBy: clientUpdatedBy || null,
           previousUpdatedBy: previousPayload.updatedBy || null,
           rowCountBefore: Array.isArray(previousPayload.rows) ? previousPayload.rows.length : 0,
-          rowCountAfter: rows.length,
+          rowCountAfter: rowsToPersist.length,
           revenueActualHoursBefore: findRowValues(previousPayload.rows, 'Revenue Actual Hours Worked'),
-          revenueActualHoursAfter: findRowValues(rows, 'Revenue Actual Hours Worked'),
+          revenueActualHoursAfter: findRowValues(rowsToPersist, 'Revenue Actual Hours Worked'),
         },
       },
     });
@@ -215,12 +264,13 @@ export async function POST(request: NextRequest) {
       details: {
         cardName,
         actorEmail,
-        rowCount: rows.length,
+        rowCount: rowsToPersist.length,
+        allowRowDeletes,
         operation: existing ? 'update' : 'create',
       },
     });
 
-    const updatedCard = toCardRecord(cardName, rows, record.updatedAt, updatedBy);
+    const updatedCard = toCardRecord(cardName, rowsToPersist, record.updatedAt, updatedBy);
     invalidateCacheByPrefix(KPI_CARDS_CACHE_PREFIX);
 
     return NextResponse.json({

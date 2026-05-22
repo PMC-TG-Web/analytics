@@ -1,5 +1,15 @@
 export const PERMISSION_COOKIE_NAME = 'analytics_permissions';
-export const PERMISSION_COOKIE_MAX_AGE_SECONDS = 5 * 60;
+const DEFAULT_PERMISSION_COOKIE_MAX_AGE_SECONDS = 60 * 60;
+
+function resolvePermissionCookieMaxAgeSeconds(): number {
+  const fromEnv = Number.parseInt(String(process.env.PERMISSION_COOKIE_MAX_AGE_SECONDS || '').trim(), 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) {
+    return fromEnv;
+  }
+  return DEFAULT_PERMISSION_COOKIE_MAX_AGE_SECONDS;
+}
+
+export const PERMISSION_COOKIE_MAX_AGE_SECONDS = resolvePermissionCookieMaxAgeSeconds();
 
 type PermissionCookiePayload = {
   v: 1;

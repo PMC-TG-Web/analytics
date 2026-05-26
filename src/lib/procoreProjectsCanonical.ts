@@ -52,7 +52,8 @@ export async function fetchCanonicalProcoreProjects(params: {
       LEFT JOIN LATERAL (
         SELECT bb.status, bb.bid_board_id
         FROM procore_bid_board_live bb
-        WHERE bb.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
+        WHERE bb.company_id = s.company_id
+          AND bb.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
         ORDER BY bb.synced_at DESC
         LIMIT 1
       ) b ON TRUE

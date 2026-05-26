@@ -1277,6 +1277,11 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
                p.source_company_id, p.source_external_id, p.source_project_id, p.source_staging_project_id,
                p.source_display_name, p.source_project_owner_type, p.source_project_owner_type_id,
                p.source_procore_created_at, p.source_procore_updated_at
+      HAVING (
+        COALESCE(NULLIF(TRIM(p.source), ''), 'app') <> 'procore'
+        OR COUNT(s.id) > 0
+        OR ${normalizedProjectId ? 'TRUE' : 'FALSE'}
+      )
       ORDER BY p.created_at DESC;
     `,
       ...(normalizedProjectId ? [normalizedProjectId] : [])

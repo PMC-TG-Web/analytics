@@ -20,8 +20,18 @@ type ProjectBudgetRow = {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const resolvedCompanyId = String(
+      request.cookies.get('procore_company_id')?.value ||
+      searchParams.get('companyId') ||
+      process.env.PROCORE_COMPANY_ID ||
+      ''
+    ).trim();
     const disableCache = String(searchParams.get('noCache') || '').trim().toLowerCase() === 'true';
-    const cacheKey = buildSearchParamsCacheKey('scheduling-projects-with-budget', searchParams, ['noCache']);
+    const cacheKey = buildSearchParamsCacheKey(
+      `scheduling-projects-with-budget:${resolvedCompanyId || 'none'}`,
+      searchParams,
+      ['noCache', 'companyId']
+    );
 
     if (!disableCache) {
       const cachedPayload = getCachedValue<Record<string, unknown>>(cacheKey);
@@ -37,7 +47,14 @@ export async function GET(request: NextRequest) {
     const bidBoardStatus = String(rawBidBoardStatus ?? 'IN_PROGRESS').trim();
     const bidBoardStatusFilter =
       !bidBoardStatus || bidBoardStatus.toLowerCase() === 'all' ? null : bidBoardStatus;
-    const companyId = String(searchParams.get('companyId') || process.env.PROCORE_COMPANY_ID || '').trim();
+    const companyId = resolvedCompanyId;
+
+    if (!companyId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing companyId context for projects-with-budget.' },
+        { status: 400 }
+      );
+    }
 
     const rows = await prisma.$queryRawUnsafe<ProjectBudgetRow[]>(
       `

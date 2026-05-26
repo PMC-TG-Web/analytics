@@ -50,7 +50,19 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(10000, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
 
-    const companyId = String(searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
+    const companyId = String(
+      request.cookies.get('procore_company_id')?.value ||
+      searchParams.get("companyId") ||
+      process.env.PROCORE_COMPANY_ID ||
+      ""
+    ).trim();
+
+    if (!companyId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing companyId context for commitments-live.' },
+        { status: 400 }
+      );
+    }
     const projectId = String(searchParams.get("projectId") || "").trim();
     const sourceType = String(searchParams.get("sourceType") || "").trim().toLowerCase();
     const projectStatus = String(searchParams.get("projectStatus") || "").trim().toLowerCase();

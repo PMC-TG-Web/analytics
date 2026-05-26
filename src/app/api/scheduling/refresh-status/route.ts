@@ -11,8 +11,8 @@ export async function POST(request: NextRequest) {
       ? body.debugProjectIds.map((v: unknown) => String(v).trim()).filter(Boolean)
       : [];
     const companyId = String(
-      body?.companyId ||
       request.cookies.get('procore_company_id')?.value ||
+      body?.companyId ||
       process.env.PROCORE_COMPANY_ID ||
       process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
       ''

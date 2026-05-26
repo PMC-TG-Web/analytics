@@ -23,11 +23,24 @@ type ExistingRelationRow = {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const resolvedCompanyId = String(
+      request.cookies.get('procore_company_id')?.value ||
+      searchParams.get('companyId') ||
+      process.env.PROCORE_COMPANY_ID ||
+      ''
+    ).trim();
     const rawBidBoardStatus = searchParams.get('bidBoardStatus');
     const bidBoardStatus = String(rawBidBoardStatus ?? 'IN_PROGRESS').trim();
     const bidBoardStatusFilter =
       !bidBoardStatus || bidBoardStatus.toLowerCase() === 'all' ? null : bidBoardStatus;
-    const companyId = String(searchParams.get('companyId') || process.env.PROCORE_COMPANY_ID || '').trim();
+    const companyId = resolvedCompanyId;
+
+    if (!companyId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing companyId context for projects-with-change-orders.' },
+        { status: 400 }
+      );
+    }
 
     const relationRows = await prisma.$queryRawUnsafe<ExistingRelationRow[]>(
       `

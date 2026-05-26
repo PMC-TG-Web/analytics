@@ -230,6 +230,20 @@ async function handleProjectsEvent(event: {
 
   const projectName =
     readStr(project.name) || readStr(project.display_name) || 'Untitled Procore Project';
+  const procoreProjectId =
+    readStr((project as Record<string, unknown>).id) ||
+    ((project as Record<string, unknown>).id != null ? String((project as Record<string, unknown>).id) : resourceId);
+  const displayName = readStr(project.display_name) || projectName;
+  const projectOwnerTypeObj = asObj(project.project_owner_type);
+  const projectOwnerType =
+    readStr(projectOwnerTypeObj?.name) ||
+    readStr(project.project_owner_type) ||
+    null;
+  const projectOwnerTypeId =
+    readStr(projectOwnerTypeObj?.id) ||
+    (projectOwnerTypeObj?.id != null ? String(projectOwnerTypeObj.id) : null);
+  const procoreCreatedAt = readStr(project.created_at) || null;
+  const procoreUpdatedAt = readStr(project.updated_at) || null;
   const status =
     readStr(project.status) ||
     readStr(asObj(project.project_status)?.name) ||
@@ -252,6 +266,82 @@ async function handleProjectsEvent(event: {
     statusRaw,
     customer,
   });
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_project_staging
+        (
+          source,
+          company_id,
+          external_id,
+          procore_project_id,
+          name,
+          status,
+          customer,
+          payload,
+          synced_at,
+          project_id,
+          display_name,
+          project_number,
+          project_owner_type,
+          project_owner_type_id,
+          procore_created_at,
+          procore_updated_at,
+          bid_board_status
+        )
+      VALUES
+        (
+          'procore_v1_projects',
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7::jsonb,
+          NOW(),
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13::timestamptz,
+          $14::timestamptz,
+          $15
+        )
+      ON CONFLICT (source, company_id, external_id)
+      DO UPDATE SET
+        procore_project_id = EXCLUDED.procore_project_id,
+        name = EXCLUDED.name,
+        status = EXCLUDED.status,
+        customer = COALESCE(EXCLUDED.customer, procore_project_staging.customer),
+        payload = EXCLUDED.payload,
+        synced_at = NOW(),
+        project_id = EXCLUDED.project_id,
+        display_name = EXCLUDED.display_name,
+        project_number = EXCLUDED.project_number,
+        project_owner_type = EXCLUDED.project_owner_type,
+        project_owner_type_id = EXCLUDED.project_owner_type_id,
+        procore_created_at = COALESCE(EXCLUDED.procore_created_at, procore_project_staging.procore_created_at),
+        procore_updated_at = COALESCE(EXCLUDED.procore_updated_at, procore_project_staging.procore_updated_at),
+        bid_board_status = EXCLUDED.bid_board_status
+    `,
+    companyId,
+    resourceId,
+    procoreProjectId,
+    projectName,
+    status,
+    customer,
+    JSON.stringify(project),
+    procoreProjectId,
+    displayName,
+    readStr(project.project_number) || (project.project_number != null ? String(project.project_number) : null),
+    projectOwnerType,
+    projectOwnerTypeId,
+    procoreCreatedAt,
+    procoreUpdatedAt,
+    bidBoardStatus
+  );
 
   if (bidBoardStatus) {
     const bidBoardId = `${companyId || 'company'}:${resourceId}`;

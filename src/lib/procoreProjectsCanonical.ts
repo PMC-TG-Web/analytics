@@ -38,7 +38,7 @@ export async function fetchCanonicalProcoreProjects(params: {
         (s.payload ->> 'project_number')::text AS project_number,
         (s.payload -> 'project_stage' ->> 'name')::text AS stage_name,
         ps.category AS stage_category,
-        COALESCE(s.bid_board_status, b.status) AS bid_board_status,
+        COALESCE(b.status, s.bid_board_status) AS bid_board_status,
         b.bid_board_id,
         s.synced_at,
         ROW_NUMBER() OVER (

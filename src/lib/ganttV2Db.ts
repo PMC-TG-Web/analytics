@@ -321,7 +321,7 @@ export async function ensureGanttV2Schema(): Promise<void> {
 export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> {
   try {
     const internalVendorSet = getInternalVendorSet();
-    const [stagedProjects, feedProjects, canonicalProjectRows] = await Promise.all([
+    const [stagedProjects, liveBidBoardRows, feedProjects, canonicalProjectRows] = await Promise.all([
       prisma.procoreProjectStaging.findMany({
         where: {
           source: 'procore_v1_projects',
@@ -345,6 +345,18 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
         },
         orderBy: [{ name: "asc" }],
       }),
+      prisma.$queryRawUnsafe<Array<{
+        company_id: string | null;
+        procore_project_id: string | null;
+        status: string | null;
+      }>>(
+        `
+          SELECT company_id, procore_project_id, status
+          FROM procore_bid_board_live
+          WHERE company_id IS NOT NULL
+            AND procore_project_id IS NOT NULL
+        `
+      ),
       Promise.resolve([]),
       prisma.project.findMany({
         where: {
@@ -360,6 +372,14 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
       }),
     ]);
 
+    const bidBoardStatusByProjectKey = new Map(
+      liveBidBoardRows
+        .filter((row) => String(row.company_id || '').trim() && String(row.procore_project_id || '').trim())
+        .map((row) => [
+          `${String(row.company_id || '').trim()}~${String(row.procore_project_id || '').trim()}`,
+          String(row.status || '').trim() || null,
+        ] as const)
+    );
     const canonicalProjectById = new Map(canonicalProjectRows.map((project) => [project.id, project]));
     const canonicalProjectByProcoreId = new Map(
       canonicalProjectRows
@@ -397,6 +417,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
           (matchedFeed?.linkedProjectId ? canonicalProjectById.get(String(matchedFeed.linkedProjectId || '').trim()) : null) ||
           (procoreProjectId ? canonicalProjectByProcoreId.get(procoreProjectId) : null) ||
           null;
+        const liveBidBoardStatus = bidBoardStatusByProjectKey.get(`${companyId}~${externalId}`) || null;
         const bidBoardStatus = String(project.bidBoardStatus || '').trim();
         const fallbackStatus = String(project.status || '').trim();
         const customerCandidates = [
@@ -434,7 +455,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
             customer,
             projectNumber: resolvedProjectNumber,
             projectName: resolvedProjectName,
-            status: bidBoardStatus || fallbackStatus || null,
+            status: liveBidBoardStatus || bidBoardStatus || fallbackStatus || null,
           },
         ] as const;
       })

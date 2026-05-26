@@ -146,7 +146,14 @@ function getNextMonths(count: number) {
   return months;
 }
 
-const DEFAULT_PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
+const DEFAULT_PROCORE_COMPANY_ID =
+  String(process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "598134325805519").trim();
+
+function withCompanyId(url: string): string {
+  if (!DEFAULT_PROCORE_COMPANY_ID) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}companyId=${encodeURIComponent(DEFAULT_PROCORE_COMPANY_ID)}`;
+}
 
 export default function SchedulingPage() {
   return <SchedulingContent />;
@@ -287,7 +294,9 @@ function SchedulingContent() {
         const [budgetProjectsList, schedulesResult] = await Promise.all([
           (async (): Promise<Project[]> => {
             try {
-              const budgetProjectsRes = await fetch("/api/scheduling/projects-with-budget?bidBoardStatus=IN_PROGRESS");
+              const budgetProjectsRes = await fetch(
+                withCompanyId("/api/scheduling/projects-with-budget?bidBoardStatus=IN_PROGRESS")
+              );
               if (!budgetProjectsRes.ok) {
                 console.warn(`[Scheduling] Budget endpoint returned status ${budgetProjectsRes.status}`);
                 return [];
@@ -359,7 +368,7 @@ function SchedulingContent() {
 
         void (async () => {
           try {
-            const scopesRes = await fetch("/api/gantt-v2/projects");
+            const scopesRes = await fetch(withCompanyId("/api/gantt-v2/projects"));
             if (!scopesRes.ok) throw new Error("Failed to fetch Gantt V2 scopes");
             const scopesJson = await readJsonResponse<{ data?: Array<Record<string, unknown>> }>(scopesRes, {
               label: "Gantt V2 projects",
@@ -693,7 +702,7 @@ function SchedulingContent() {
   async function refreshProcoreStatus() {
     try {
       setRefreshingProcoreStatus(true);
-      const response = await fetch("/api/procore/sync/all-projects", {
+      const response = await fetch(withCompanyId("/api/procore/sync/all-projects"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

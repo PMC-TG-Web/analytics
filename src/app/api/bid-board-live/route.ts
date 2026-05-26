@@ -15,6 +15,26 @@ type BidBoardLiveRow = {
   synced_at: string;
 };
 
+function normalizeBidBoardStatus(status: string | null | undefined): string | null {
+  const raw = String(status || '').trim();
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized) return null;
+  if (normalized === 'bid submitted' || normalized === 'bidding') return 'Bid Submitted';
+  if (normalized === 'pre construction' || normalized === 'estimating') return 'Estimating';
+  if (normalized === 'post construction' || normalized === 'complete') return 'Complete';
+  if (normalized === 'active' || normalized === 'in progress' || normalized === 'course of construction') return 'In Progress';
+  if (normalized === 'accepted') return 'Accepted';
+  if (normalized === 'invitation' || normalized === 'invitations') return 'Invitations';
+  if (normalized === 'lost') return 'Lost';
+  if (normalized === 'to do' || normalized === 'todo') return 'To Do';
+
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function isTransientDbError(error: unknown): boolean {
   const code = String((error as { code?: string })?.code || '').toUpperCase();
   if (code === 'P1001' || code === 'P2024') return true;
@@ -113,7 +133,7 @@ export async function GET(request: NextRequest) {
       bidBoardId: row.bid_board_id,
       procoreId: row.procore_project_id,
       projectName: row.name,
-      status: row.status,
+      status: normalizeBidBoardStatus(row.status) || normalizeBidBoardStatus(row.status_raw) || row.status,
       statusRaw: row.status_raw,
       customer: row.customer,
       statusSource: 'procore_bid_board_live',

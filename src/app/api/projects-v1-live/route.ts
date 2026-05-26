@@ -3,6 +3,26 @@ import { countCanonicalProcoreProjects, fetchCanonicalProcoreProjects } from "@/
 
 const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
 
+function normalizeBidBoardStatus(status: string | null | undefined): string | null {
+  const raw = String(status || '').trim();
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized) return null;
+  if (normalized === 'bid submitted' || normalized === 'bidding') return 'Bid Submitted';
+  if (normalized === 'pre construction' || normalized === 'estimating') return 'Estimating';
+  if (normalized === 'post construction' || normalized === 'complete') return 'Complete';
+  if (normalized === 'active' || normalized === 'in progress' || normalized === 'course of construction') return 'In Progress';
+  if (normalized === 'accepted') return 'Accepted';
+  if (normalized === 'invitation' || normalized === 'invitations') return 'Invitations';
+  if (normalized === 'lost') return 'Lost';
+  if (normalized === 'to do' || normalized === 'todo') return 'To Do';
+
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -32,12 +52,22 @@ export async function GET(req: NextRequest) {
       countCanonicalProcoreProjects(resolvedCompanyId),
     ]);
 
+    const normalizedRows = rows.map((row) => {
+      const normalizedStatus = normalizeBidBoardStatus(row.status);
+      const normalizedBidBoardStatus = normalizeBidBoardStatus(row.bid_board_status);
+      return {
+        ...row,
+        status: normalizedStatus || normalizedBidBoardStatus || row.status,
+        bid_board_status: normalizedBidBoardStatus || normalizedStatus || row.bid_board_status,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       page,
       pageSize,
       total,
-      rows,
+      rows: normalizedRows,
     });
   } catch (err) {
     return NextResponse.json(

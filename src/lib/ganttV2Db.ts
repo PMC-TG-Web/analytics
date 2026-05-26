@@ -417,7 +417,6 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
           (matchedFeed?.linkedProjectId ? canonicalProjectById.get(String(matchedFeed.linkedProjectId || '').trim()) : null) ||
           (procoreProjectId ? canonicalProjectByProcoreId.get(procoreProjectId) : null) ||
           null;
-        const liveBidBoardStatus = bidBoardStatusByProjectKey.get(`${companyId}~${externalId}`) || null;
         const bidBoardStatus = String(project.bidBoardStatus || '').trim();
         const fallbackStatus = String(project.status || '').trim();
         const customerCandidates = [
@@ -455,7 +454,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
             customer,
             projectNumber: resolvedProjectNumber,
             projectName: resolvedProjectName,
-            status: liveBidBoardStatus || bidBoardStatus || fallbackStatus || null,
+            status: fallbackStatus || null,
           },
         ] as const;
       })

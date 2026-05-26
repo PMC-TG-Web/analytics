@@ -254,23 +254,31 @@ async function handleProjectsEvent(event: {
   });
 
   if (bidBoardStatus) {
+    const bidBoardId = `${companyId || 'company'}:${resourceId}`;
     await prisma.$executeRawUnsafe(
       `
         INSERT INTO procore_bid_board_live
-          (company_id, project_id, bid_board_status, project_name, owner_name, synced_at, payload)
+          (bid_board_id, company_id, procore_project_id, name, status, status_raw, customer, payload, synced_at)
         VALUES
-          ($1, $2, $3, $4, NULL, NOW(), $5::jsonb)
-        ON CONFLICT (company_id, project_id)
+          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+        ON CONFLICT (bid_board_id)
         DO UPDATE SET
-          bid_board_status = EXCLUDED.bid_board_status,
-          project_name = COALESCE(EXCLUDED.project_name, procore_bid_board_live.project_name),
+          company_id = EXCLUDED.company_id,
+          procore_project_id = EXCLUDED.procore_project_id,
+          name = COALESCE(EXCLUDED.name, procore_bid_board_live.name),
+          status = EXCLUDED.status,
+          status_raw = EXCLUDED.status_raw,
+          customer = COALESCE(EXCLUDED.customer, procore_bid_board_live.customer),
           synced_at = NOW(),
           payload = EXCLUDED.payload
       `,
+      bidBoardId,
       companyId,
       resourceId,
-      bidBoardStatus,
       projectName,
+      bidBoardStatus,
+      statusRaw,
+      customer,
       JSON.stringify(project)
     );
   }

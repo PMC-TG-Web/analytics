@@ -1311,26 +1311,15 @@ export async function POST(request: Request) {
               ? (existing.customFields as Record<string, unknown>)
               : {};
 
-          // Only update status from Bid Board if no V1 project status is already set
-          // V1 project status is canonical; Bid Board status is for bid workflow only
-          const shouldUpdateStatus = existing.statusSource !== 'procore_v1';
-          const updatedStatus = shouldUpdateStatus ? bidStatus : existing.status;
-          const updatedStatusSource = shouldUpdateStatus ? 'procore_bid_board' : existing.statusSource;
-
           await prisma.project.update({
             where: { id: existing.id },
             data: {
               bidBoardId: bidId,
               procoreId: procoreProjectId || existing.procoreId,
               customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
-              // IMPORTANT: Only update status from Bid Board if not already synced from V1
-              // V1 project status (e.g., "In Progress") is canonical
-              // Bid Board status (e.g., "Estimating", "Bidding") is bid workflow state
-              status: updatedStatus,
               customerSource: isMeaningfulCustomer(customer)
                 ? 'procore_bid_board'
                 : (existing.customerSource || null),
-              statusSource: updatedStatusSource,
               customFields: {
                 ...existingCustomFields,
                 bidBoardId: bidId,
@@ -1338,7 +1327,8 @@ export async function POST(request: Request) {
                 customerLabel: isMeaningfulCustomer(customer)
                   ? customer
                   : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-                statusRaw: shouldUpdateStatus ? bidStatusRaw : (existingCustomFields.statusRaw as string | null | undefined),
+                bidBoardStatus: bidStatus,
+                bidBoardStatusRaw: bidStatusRaw,
                 statusSyncedAt: new Date().toISOString(),
                 syncedAt: new Date().toISOString()
               }
@@ -1352,11 +1342,14 @@ export async function POST(request: Request) {
               procoreId: procoreProjectId,
               customer: isMeaningfulCustomer(customer) ? customer : null,
               customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : null,
-              status: bidStatus,
-              statusSource: 'procore_bid_board',
+              // Canonical project status must come from the V1 project/staging path, not bid board.
+              status: null,
+              statusSource: null,
               customFields: {
                 bidBoardId: bidId,
                 procoreId: procoreProjectId,
+                bidBoardStatus: bidStatus,
+                bidBoardStatusRaw: bidStatusRaw,
                 customerLabel: isMeaningfulCustomer(customer) ? customer : null,
                 source: 'procore_bid_board',
                 syncedAt: new Date().toISOString()

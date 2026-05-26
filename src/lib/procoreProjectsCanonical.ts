@@ -21,10 +21,11 @@ export type CanonicalProcoreProjectPayloadRow = {
 };
 
 export async function fetchCanonicalProcoreProjects(params: {
+  companyId: string;
   pageSize: number;
   offset: number;
 }): Promise<CanonicalProcoreProjectRow[]> {
-  const { pageSize, offset } = params;
+  const { companyId, pageSize, offset } = params;
 
   return prisma.$queryRawUnsafe<CanonicalProcoreProjectRow[]>(
     `
@@ -56,6 +57,7 @@ export async function fetchCanonicalProcoreProjects(params: {
         LIMIT 1
       ) b ON TRUE
       WHERE s.source = 'procore_v1_projects'
+        AND s.company_id = $1
         AND COALESCE(s.procore_project_id, s.external_id) IS NOT NULL
     )
     SELECT
@@ -73,14 +75,15 @@ export async function fetchCanonicalProcoreProjects(params: {
     FROM ranked
     WHERE rn = 1
     ORDER BY synced_at DESC
-    LIMIT $1 OFFSET $2
+    LIMIT $2 OFFSET $3
     `,
+    companyId,
     pageSize,
     offset
   );
 }
 
-export async function countCanonicalProcoreProjects(): Promise<number> {
+export async function countCanonicalProcoreProjects(companyId: string): Promise<number> {
   const rows = await prisma.$queryRawUnsafe<Array<{ total_count: bigint }>>(
     `
     WITH ranked AS (
@@ -92,12 +95,14 @@ export async function countCanonicalProcoreProjects(): Promise<number> {
         ) AS rn
       FROM procore_project_staging s
       WHERE s.source = 'procore_v1_projects'
+        AND s.company_id = $1
         AND COALESCE(s.procore_project_id, s.external_id) IS NOT NULL
     )
     SELECT COUNT(*)::bigint AS total_count
     FROM ranked
     WHERE rn = 1
-    `
+    `,
+    companyId
   );
 
   return Number(rows[0]?.total_count ?? 0);

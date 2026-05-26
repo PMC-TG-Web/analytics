@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 type BidBoardLiveRow = {
   bid_board_id: string;
   procore_project_id: string | null;
@@ -27,6 +29,23 @@ export async function GET(request: NextRequest) {
     const requestedPageSize = Number.parseInt(searchParams.get('pageSize') || '500', 10) || 500;
     const pageSize = Math.min(2000, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
+    const queryCompanyId = String(searchParams.get('companyId') || '').trim();
+    const cookieCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim();
+
+    if (cookieCompanyId && queryCompanyId && cookieCompanyId !== queryCompanyId) {
+      return NextResponse.json(
+        { success: false, error: 'Company context mismatch between session cookie and request query.' },
+        { status: 403 }
+      );
+    }
+
+    const companyId = (cookieCompanyId || queryCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID).trim();
+    if (companyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
 
     const rows = await prisma.$queryRawUnsafe<BidBoardLiveRow[]>(
       `
@@ -45,6 +64,7 @@ export async function GET(request: NextRequest) {
             ) AS rn
           FROM procore_bid_board_live
           WHERE bid_board_id IS NOT NULL
+            AND company_id = $3
         )
         SELECT
           bid_board_id,
@@ -61,7 +81,8 @@ export async function GET(request: NextRequest) {
         OFFSET $2
       `,
       pageSize,
-      skip
+      skip,
+      companyId
     );
 
     const countRows = await prisma.$queryRawUnsafe<Array<{ total: number }>>(
@@ -74,11 +95,13 @@ export async function GET(request: NextRequest) {
             ) AS rn
           FROM procore_bid_board_live
           WHERE bid_board_id IS NOT NULL
+            AND company_id = $1
         )
         SELECT COUNT(*)::int AS total
         FROM ranked
         WHERE rn = 1
-      `
+      `,
+      companyId
     );
 
     const total = countRows[0]?.total ?? 0;

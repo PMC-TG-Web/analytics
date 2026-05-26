@@ -13,6 +13,8 @@ import { getCachedValue, setCachedValue, invalidateCacheByPrefix } from '@/lib/s
 
 export const dynamic = 'force-dynamic';
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 const GANTT_PROJECTS_CACHE_KEY_PREFIX = 'gantt-v2:projects';
 const GANTT_PROJECTS_TTL_MS = 60_000; // 60 seconds
 const GANTT_PROJECTS_MAINTENANCE_TTL_MS = 60_000;
@@ -57,7 +59,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const procoreCompanyId = (cookieCompanyId || queryCompanyId || '').trim() || null;
+    const requestedCompanyId = (cookieCompanyId || queryCompanyId || '').trim();
+    const procoreCompanyId = (requestedCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID).trim() || null;
+
+    if (procoreCompanyId && procoreCompanyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
+
     if (!procoreCompanyId) {
       return NextResponse.json(
         { success: false, error: 'Missing Procore company context. Reconnect Procore or provide companyId.' },

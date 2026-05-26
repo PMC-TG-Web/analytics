@@ -472,7 +472,7 @@ export async function processEvent(event: {
 }): Promise<void> {
   const resource = (event.resourceName || '').toLowerCase();
 
-  if (resource === 'projects') {
+  if (resource === 'projects' || resource === 'project') {
     return handleProjectsEvent(event);
   }
 

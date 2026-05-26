@@ -77,12 +77,14 @@ async function runImmediateProjectsProcessing(params: {
   }
 
   const processingPromise = processEvent(event);
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Immediate processing timed out after ${timeoutMs}ms`)), timeoutMs);
+    timeoutHandle = setTimeout(() => reject(new Error(`Immediate processing timed out after ${timeoutMs}ms`)), timeoutMs);
   });
 
   try {
     await Promise.race([processingPromise, timeoutPromise]);
+    if (timeoutHandle) clearTimeout(timeoutHandle);
 
     await prisma.$transaction([
       prisma.procoreWebhookQueue.update({
@@ -103,6 +105,7 @@ async function runImmediateProjectsProcessing(params: {
 
     return { attempted: true, processed: true };
   } catch (error) {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     const attempted = 1;
     const shouldFailPermanently = attempted >= maxAttempts;
 

@@ -32,7 +32,7 @@ export async function fetchCanonicalProcoreProjects(params: {
       SELECT
         COALESCE(s.procore_project_id, s.external_id) AS procore_project_id,
         s.name,
-        s.status,
+        COALESCE(b.status, s.bid_board_status) AS status,
         s.status AS status_raw,
         s.customer,
         (s.payload ->> 'project_number')::text AS project_number,

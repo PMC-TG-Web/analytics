@@ -8,7 +8,7 @@ export function buildCanonicalProcoreProjectsCte(paramIndex: number, cteName = "
         s.company_id,
         s.name AS project_name,
         COALESCE(NULLIF(TRIM(s.customer), ''), NULLIF(TRIM(bb.customer), '')) AS customer,
-        s.status AS project_status,
+        COALESCE(bb.status, s.bid_board_status) AS project_status,
         COALESCE(bb.status, s.bid_board_status) AS bid_board_status,
         bb.bid_board_id,
         s.synced_at

@@ -97,6 +97,7 @@ type ProjectRecord = {
   customer: string | null;
   projectNumber: string | null;
   projectName: string;
+  status: string | null;
 };
 
 type ContractRecord = {
@@ -367,6 +368,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
           customer: true,
           projectNumber: true,
           projectName: true,
+          status: true,
           procoreId: true,
         },
       }),
@@ -419,6 +421,10 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
           null;
         const bidBoardStatus = String(project.bidBoardStatus || '').trim();
         const fallbackStatus = String(project.status || '').trim();
+        const resolvedStatus =
+          String(linkedProject?.status || '').trim() ||
+          bidBoardStatus ||
+          fallbackStatus;
         const customerCandidates = [
           String(project.customer || '').trim(),
           String(matchedFeed?.customer || '').trim(),
@@ -454,7 +460,7 @@ export async function syncGanttV2ProjectsFromCanonicalProjects(): Promise<void> 
             customer,
             projectNumber: resolvedProjectNumber,
             projectName: resolvedProjectName,
-            status: fallbackStatus || null,
+            status: resolvedStatus || null,
           },
         ] as const;
       })

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 function readText(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -22,14 +24,11 @@ function parseIds(input: unknown): string[] {
 }
 
 function resolveCompanyId(input: unknown, cookieCompanyId: unknown): string {
-  return readText(
-    input ||
-      cookieCompanyId ||
-      procoreConfig.companyId ||
-      process.env.PROCORE_COMPANY_ID ||
-      process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
-      ""
-  );
+  const requested = readText(input || cookieCompanyId || procoreConfig.companyId || "");
+  if (requested && requested !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+    return "__FORBIDDEN__";
+  }
+  return requested || SINGLE_ALLOWED_PROCORE_COMPANY_ID;
 }
 
 async function checkIdsFromDb(params: { companyId: string; ids: string[] }) {
@@ -97,6 +96,10 @@ export async function GET(request: Request) {
     const companyId = resolveCompanyId(searchParams.get("companyId"), cookieStore.get("procore_company_id")?.value);
     const ids = parseIds(searchParams.get("ids"));
 
+    if (companyId === "__FORBIDDEN__") {
+      return NextResponse.json({ success: false, error: "Forbidden company context for this deployment." }, { status: 403 });
+    }
+
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
     }
@@ -126,6 +129,10 @@ export async function POST(request: Request) {
 
     const companyId = resolveCompanyId(body?.companyId, cookieStore.get("procore_company_id")?.value);
     const ids = parseIds(body?.ids);
+
+    if (companyId === "__FORBIDDEN__") {
+      return NextResponse.json({ success: false, error: "Forbidden company context for this deployment." }, { status: 403 });
+    }
 
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });

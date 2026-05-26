@@ -6,17 +6,28 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const companyId = String(body?.companyId || procoreConfig.companyId || "").trim();
+    const requestedCompanyId = String(body?.companyId || procoreConfig.companyId || "").trim();
     const maxProjects = typeof body?.maxProjects === "number" && body.maxProjects > 0
       ? Math.floor(body.maxProjects)
       : undefined;
 
+    if (requestedCompanyId && requestedCompanyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+      return NextResponse.json(
+        { error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
+
+    const companyId = requestedCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID;
+
     if (!companyId) {
       return NextResponse.json(
-        { error: "Missing companyId. Set PROCORE_COMPANY_ID or send companyId in request body." },
+        { error: "Missing companyId." },
         { status: 400 }
       );
     }

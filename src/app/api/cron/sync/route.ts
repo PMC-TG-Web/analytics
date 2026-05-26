@@ -12,6 +12,8 @@ import { getRequiredSyncSecret, parsePositiveInt, runProcoreCronSync } from "@/l
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 export async function POST(request: NextRequest) {
   const cronSecret = (process.env.CRON_SECRET || "").trim();
   if (!cronSecret) {
@@ -43,13 +45,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const maxProjectsInput = body?.maxProjects ?? request.nextUrl.searchParams.get("maxProjects");
   const lookbackDaysInput = body?.lookbackDays ?? request.nextUrl.searchParams.get("lookbackDays");
-  const companyId = String(
-    body?.companyId ||
-      request.nextUrl.searchParams.get("companyId") ||
-      process.env.PROCORE_COMPANY_ID ||
-      process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
-      ""
+  const requestedCompanyId = String(
+    body?.companyId || request.nextUrl.searchParams.get("companyId") || ""
   ).trim();
+  if (requestedCompanyId && requestedCompanyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+    return NextResponse.json(
+      { error: 'Forbidden company context for this deployment.' },
+      { status: 403 }
+    );
+  }
+  const companyId = requestedCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID;
   const triggeredByInput = body?.triggeredBy ?? request.nextUrl.searchParams.get("triggeredBy");
   const triggeredBy: string = triggeredByInput === "manual" ? "manual" : "cron";
   const maxProjects = maxProjectsInput === undefined || maxProjectsInput === null
@@ -61,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   if (!companyId) {
     return NextResponse.json(
-      { error: "MISSING_COMPANY_ID: Set PROCORE_COMPANY_ID in environment." },
+      { error: "MISSING_COMPANY_ID: company context is not configured." },
       { status: 400 }
     );
   }

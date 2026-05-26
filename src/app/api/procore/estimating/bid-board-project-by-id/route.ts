@@ -56,12 +56,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get company ID from body, cookie, or env
-    const companyId = bodyCompanyId || cookieStore.get('procore_company_id')?.value || process.env.PROCORE_COMPANY_ID;
+    const requestedCompanyId = String(bodyCompanyId || cookieStore.get('procore_company_id')?.value || '').trim();
+    if (requestedCompanyId && requestedCompanyId !== '598134325805519') {
+      return NextResponse.json(
+        { error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
+
+    const companyId = requestedCompanyId || '598134325805519';
     
     if (!companyId) {
       return NextResponse.json(
-        { error: 'No company ID provided. Pass it in the request body or set PROCORE_COMPANY_ID env variable' },
+        { error: 'No company ID provided.' },
         { status: 401 }
       );
     }

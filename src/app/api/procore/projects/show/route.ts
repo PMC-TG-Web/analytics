@@ -4,6 +4,8 @@ import { fetchCanonicalProcoreProjectPayloadById } from "@/lib/procoreProjectsCa
 
 export const dynamic = "force-dynamic";
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 function readText(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -11,12 +13,15 @@ function readText(value: unknown): string {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
+    const requestedCompanyId = readText(body?.companyId || procoreConfig.companyId || '');
+    if (requestedCompanyId && requestedCompanyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
 
-    const companyId = readText(
-      body?.companyId ||
-        procoreConfig.companyId ||
-        ""
-    );
+    const companyId = requestedCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID;
     const projectId = readText(body?.projectId || body?.id);
 
     if (!projectId) {

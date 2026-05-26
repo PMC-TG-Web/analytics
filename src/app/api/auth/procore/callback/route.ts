@@ -53,22 +53,13 @@ export async function GET(request: Request) {
       });
     }
 
-    const companyId = String(
-      cookieStore.get("procore_company_id")?.value ||
-      process.env.PROCORE_COMPANY_ID ||
-      process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
-      ""
-    ).trim();
-
-    if (companyId) {
-      cookieStore.set("procore_company_id", companyId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        path: "/",
-        maxAge: tokenResponse.expires_in || 7200,
-      });
-    }
+    cookieStore.set("procore_company_id", "598134325805519", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: tokenResponse.expires_in || 7200,
+    });
 
     const grantedScope = String(tokenResponse.scope || "").trim();
     if (grantedScope) {

@@ -5,6 +5,8 @@ import { getRolledUpCostCode, normalizeCostCodeForRollup } from "@/lib/costCodeR
 
 export const dynamic = "force-dynamic";
 
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+
 type ProposalLineItemLiveRow = {
   id: number | bigint;
   company_id: string;
@@ -86,7 +88,22 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(10000, Math.max(1, requestedPageSize));
     const skip = (page - 1) * pageSize;
 
-    const companyId = String(searchParams.get("companyId") || "").trim();
+    const requestedCompanyId = String(searchParams.get("companyId") || "").trim();
+    const cookieCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim();
+    if (cookieCompanyId && requestedCompanyId && cookieCompanyId !== requestedCompanyId) {
+      return NextResponse.json(
+        { error: 'Company context mismatch between session cookie and request query.' },
+        { status: 403 }
+      );
+    }
+
+    const companyId = (requestedCompanyId || cookieCompanyId || SINGLE_ALLOWED_PROCORE_COMPANY_ID).trim();
+    if (companyId !== SINGLE_ALLOWED_PROCORE_COMPANY_ID) {
+      return NextResponse.json(
+        { error: 'Forbidden company context for this deployment.' },
+        { status: 403 }
+      );
+    }
     const bidBoardProjectId = String(searchParams.get("bidBoardProjectId") || "").trim();
     const proposalId = String(searchParams.get("proposalId") || "").trim();
     const projectStatus = String(searchParams.get("projectStatus") || "").trim();

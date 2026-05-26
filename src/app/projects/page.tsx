@@ -415,7 +415,7 @@ export default function ProjectsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          companyId: DEFAULT_PROCORE_COMPANY_ID,
+          companyId: DEFAULT_PROCORE_COMPANY_ID || "598134325805519",
           fetchAll: true,
           includeInactiveV1: true,
           includeTestProjects: true,
@@ -466,7 +466,7 @@ export default function ProjectsPage() {
         "/api/procore/sync/bids",
         {
           companyWide: true,
-          companyId: DEFAULT_PROCORE_COMPANY_ID,
+            companyId: DEFAULT_PROCORE_COMPANY_ID || "598134325805519",
           fetchAll: true,
           limitProjects: 1000,
           perPage: 100,
@@ -478,7 +478,7 @@ export default function ProjectsPage() {
         "/api/procore/sync/bidforms",
         {
           companyWide: true,
-          companyId: DEFAULT_PROCORE_COMPANY_ID,
+            companyId: DEFAULT_PROCORE_COMPANY_ID || "598134325805519",
           fetchAll: true,
           limitProjects: 1000,
           perPage: 100,
@@ -489,7 +489,7 @@ export default function ProjectsPage() {
       await runStep(
         "/api/procore/estimating/proposal-line-items-bulk",
         {
-          companyId: DEFAULT_PROCORE_COMPANY_ID,
+            companyId: DEFAULT_PROCORE_COMPANY_ID || "598134325805519",
           fetchAll: true,
           persist: true,
           includeProjectSummaries: false,

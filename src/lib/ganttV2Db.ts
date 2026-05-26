@@ -1271,17 +1271,22 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
         MAX(s.end_date) AS end_date
       FROM gantt_v2_projects p
       LEFT JOIN gantt_v2_scopes s ON s.project_id = p.id
-      ${normalizedProjectId ? 'WHERE p.id = $1' : ''}
+      ${
+        normalizedProjectId
+          ? 'WHERE p.id = $1'
+          : `WHERE NOT (
+            COALESCE(NULLIF(TRIM(p.source), ''), 'app') = 'procore'
+            AND (
+              LOWER(COALESCE(p.project_name, '')) LIKE '%template%'
+              OR LOWER(COALESCE(p.project_name, '')) LIKE '%sandbox%'
+            )
+          )`
+      }
       GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, p.source,
                p.job_key,
                p.source_company_id, p.source_external_id, p.source_project_id, p.source_staging_project_id,
                p.source_display_name, p.source_project_owner_type, p.source_project_owner_type_id,
                p.source_procore_created_at, p.source_procore_updated_at
-      HAVING (
-        COALESCE(NULLIF(TRIM(p.source), ''), 'app') <> 'procore'
-        OR COUNT(s.id) > 0
-        OR ${normalizedProjectId ? 'TRUE' : 'FALSE'}
-      )
       ORDER BY p.created_at DESC;
     `,
       ...(normalizedProjectId ? [normalizedProjectId] : [])

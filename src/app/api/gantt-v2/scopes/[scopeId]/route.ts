@@ -34,11 +34,45 @@ type RouteParams = {
   params: Promise<{ scopeId: string }>;
 };
 
+async function ensureScopeCompanyAccess(scopeId: string, companyId: string | null): Promise<{ projectId: string }> {
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    project_id: string;
+    source: string | null;
+    source_company_id: string | null;
+  }>>(
+    `
+      SELECT s.project_id, p.source, p.source_company_id
+      FROM gantt_v2_scopes s
+      JOIN gantt_v2_projects p ON p.id = s.project_id
+      WHERE s.id = $1
+      LIMIT 1
+    `,
+    scopeId
+  );
+
+  if (!rows || rows.length === 0) {
+    throw new Error('SCOPE_NOT_FOUND');
+  }
+
+  const row = rows[0];
+  const source = String(row.source || '').trim().toLowerCase();
+  const sourceCompanyId = String(row.source_company_id || '').trim();
+  const resolvedCompanyId = String(companyId || '').trim();
+
+  if (source === 'procore' && (!resolvedCompanyId || sourceCompanyId !== resolvedCompanyId)) {
+    throw new Error('SCOPE_FORBIDDEN');
+  }
+
+  return { projectId: row.project_id };
+}
+
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     console.log('[PUT] Starting scope update request');
     await ensureGanttV2Schema();
     const { scopeId } = await params;
+    const procoreCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim() || null;
+    await ensureScopeCompanyAccess(scopeId, procoreCompanyId);
     const body = await request.json();
 
     // Get projectId before updating
@@ -230,6 +264,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     invalidateCacheByPrefix('gantt-v2:');
     return NextResponse.json({ success: true, cascadeUpdates });
   } catch (error) {
+    if (error instanceof Error && error.message === 'SCOPE_NOT_FOUND') {
+      return NextResponse.json({ success: false, error: 'Scope not found' }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === 'SCOPE_FORBIDDEN') {
+      return NextResponse.json({ success: false, error: 'Scope is not accessible in this company context' }, { status: 403 });
+    }
     if (error instanceof SchedulingConflictError) {
       return NextResponse.json(
         {
@@ -251,10 +291,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     await ensureGanttV2Schema();
     const { scopeId } = await params;
+    const procoreCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim() || null;
+    await ensureScopeCompanyAccess(scopeId, procoreCompanyId);
 
     // Get scope and project info before deleting
     const scope = await prisma.$queryRawUnsafe<Array<{
@@ -306,6 +348,12 @@ export async function DELETE(_: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === 'SCOPE_NOT_FOUND') {
+      return NextResponse.json({ success: false, error: 'Scope not found' }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === 'SCOPE_FORBIDDEN') {
+      return NextResponse.json({ success: false, error: 'Scope is not accessible in this company context' }, { status: 403 });
+    }
     return NextResponse.json(
       { success: false, error: `Failed to delete Gantt V2 scope: ${String(error)}` },
       { status: 500 }

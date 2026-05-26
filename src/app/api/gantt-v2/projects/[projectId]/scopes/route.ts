@@ -26,19 +26,57 @@ type RouteParams = {
   params: Promise<{ projectId: string }>;
 };
 
-export async function GET(_: NextRequest, { params }: RouteParams) {
+async function ensureProjectCompanyAccess(projectId: string, companyId: string | null): Promise<void> {
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    id: string;
+    source: string | null;
+    source_company_id: string | null;
+  }>>(
+    `
+      SELECT id, source, source_company_id
+      FROM gantt_v2_projects
+      WHERE id = $1
+      LIMIT 1
+    `,
+    projectId
+  );
+
+  if (!rows || rows.length === 0) {
+    throw new Error('PROJECT_NOT_FOUND');
+  }
+
+  const project = rows[0];
+  const source = String(project.source || '').trim().toLowerCase();
+  const sourceCompanyId = String(project.source_company_id || '').trim();
+  const resolvedCompanyId = String(companyId || '').trim();
+
+  if (source === 'procore' && (!resolvedCompanyId || sourceCompanyId !== resolvedCompanyId)) {
+    throw new Error('PROJECT_FORBIDDEN');
+  }
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { projectId } = await params;
-    const cacheKey = `gantt-v2:scopes:${projectId}`;
+    const procoreCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim() || null;
+    await ensureProjectCompanyAccess(projectId, procoreCompanyId);
+
+    const cacheKey = `gantt-v2:scopes:${procoreCompanyId || 'none'}:${projectId}`;
     const cached = getCachedValue<unknown[]>(cacheKey);
     if (cached) {
       return NextResponse.json({ success: true, data: cached, cached: true });
     }
-    const [project] = await getGanttV2ProjectsWithScopes({ includeEstimateHours: false, projectId });
+    const [project] = await getGanttV2ProjectsWithScopes({ includeEstimateHours: false, projectId, procoreCompanyId });
     const scopes = project?.scopes || [];
     setCachedValue(cacheKey, scopes, GANTT_SCOPES_TTL_MS);
     return NextResponse.json({ success: true, data: scopes, cached: false });
   } catch (error) {
+    if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === 'PROJECT_FORBIDDEN') {
+      return NextResponse.json({ success: false, error: 'Project is not accessible in this company context' }, { status: 403 });
+    }
     return NextResponse.json(
       { success: false, error: `Failed to load Gantt V2 scopes: ${String(error)}` },
       { status: 500 }
@@ -49,6 +87,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     await ensureGanttV2Schema();
     const { projectId } = await params;
+    const procoreCompanyId = String(request.cookies.get('procore_company_id')?.value || '').trim() || null;
+    await ensureProjectCompanyAccess(projectId, procoreCompanyId);
     const body = await request.json();
 
     const title = (body?.title || '').toString().trim();
@@ -119,6 +159,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true, data: { id, projectId, predecessorScopeId, title, startDate, endDate, totalHours: safeHours, crewSize, notes } });
   } catch (error) {
+    if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === 'PROJECT_FORBIDDEN') {
+      return NextResponse.json({ success: false, error: 'Project is not accessible in this company context' }, { status: 403 });
+    }
     if (error instanceof SchedulingConflictError) {
       return NextResponse.json(
         { success: false, error: error.message, conflict: { code: error.code, details: error.details ?? null } },

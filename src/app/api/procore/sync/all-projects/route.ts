@@ -1171,6 +1171,9 @@ export async function POST(request: Request) {
               ? (existing.customFields as Record<string, unknown>)
               : {};
 
+          const canonicalStatus = fallbackBidBoardStatus || existing.status;
+          const canonicalStatusSource = fallbackBidBoardStatus ? 'procore_v1_mapped' : existing.statusSource;
+
           await prisma.project.update({
             where: { id: existing.id },
             data: {
@@ -1182,12 +1185,11 @@ export async function POST(request: Request) {
               customer: isMeaningfulCustomer(customer)
                 ? customer
                 : (existing.customer || customer || null),
-              // Authoritative: always refresh canonical project status from Procore V1.
-              status,
+              status: canonicalStatus,
               customerSource: isMeaningfulCustomer(customer)
                 ? 'procore_v1'
                 : (existing.customerSource || null),
-              statusSource: 'procore_v1',
+              statusSource: canonicalStatusSource,
               customFields: {
                 ...existingCustomFields,
                 procoreId: procoreId, // Storing in JSON instead of new column for now
@@ -1195,6 +1197,7 @@ export async function POST(request: Request) {
                   ? customer
                   : ((existingCustomFields.customerLabel as string | null | undefined) || null),
                 statusRaw,
+                bidBoardStatus: fallbackBidBoardStatus,
                 statusSyncedAt: new Date().toISOString(),
                 syncedFrom: 'procore_v1',
                 syncedAt: new Date().toISOString()
@@ -1209,12 +1212,14 @@ export async function POST(request: Request) {
               projectNumber: number,
               customer: isMeaningfulCustomer(customer) ? customer : null,
               customerSource: isMeaningfulCustomer(customer) ? 'procore_v1' : null,
-              status: status,
-              statusSource: 'procore_v1',
+              status: fallbackBidBoardStatus,
+              statusSource: fallbackBidBoardStatus ? 'procore_v1_mapped' : null,
               // procoreProjectId: procoreId,
               customFields: { 
                 procoreId: procoreId,
                 customerLabel: isMeaningfulCustomer(customer) ? customer : null,
+                bidBoardStatus: fallbackBidBoardStatus,
+                statusRaw,
                 source: 'procore_v1',
                 syncedAt: new Date().toISOString()
               }
@@ -1317,9 +1322,11 @@ export async function POST(request: Request) {
               bidBoardId: bidId,
               procoreId: procoreProjectId || existing.procoreId,
               customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
+              status: bidStatus,
               customerSource: isMeaningfulCustomer(customer)
                 ? 'procore_bid_board'
                 : (existing.customerSource || null),
+              statusSource: 'procore_bid_board',
               customFields: {
                 ...existingCustomFields,
                 bidBoardId: bidId,
@@ -1342,9 +1349,8 @@ export async function POST(request: Request) {
               procoreId: procoreProjectId,
               customer: isMeaningfulCustomer(customer) ? customer : null,
               customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : null,
-              // Canonical project status must come from the V1 project/staging path, not bid board.
-              status: null,
-              statusSource: null,
+              status: bidStatus,
+              statusSource: 'procore_bid_board',
               customFields: {
                 bidBoardId: bidId,
                 procoreId: procoreProjectId,

@@ -129,7 +129,8 @@ async function upsertCanonicalProjectFromWebhook(params: {
         projectNumber: existing.projectNumber || projectNumber,
         customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
         customerSource: isMeaningfulCustomer(customer) ? 'procore_webhook' : (existing.customerSource || null),
-        statusSource: 'procore_v1',
+        status: bidBoardStatus || existing.status,
+        statusSource: bidBoardStatus ? 'procore_v1_mapped' : existing.statusSource,
         customFields: {
           ...existingCustomFields,
           procoreId,
@@ -137,6 +138,7 @@ async function upsertCanonicalProjectFromWebhook(params: {
             ? customer
             : ((existingCustomFields.customerLabel as string | null | undefined) || null),
           statusRaw,
+          bidBoardStatus,
           statusSyncedAt: nowIso,
           syncedFrom: 'procore_webhook',
           syncedAt: nowIso,
@@ -153,8 +155,8 @@ async function upsertCanonicalProjectFromWebhook(params: {
       projectNumber,
       customer: isMeaningfulCustomer(customer) ? customer : null,
       customerSource: isMeaningfulCustomer(customer) ? 'procore_webhook' : null,
-      status,
-      statusSource: 'procore_v1',
+      status: bidBoardStatus,
+      statusSource: bidBoardStatus ? 'procore_v1_mapped' : null,
       customFields: {
         procoreId,
         customerLabel: isMeaningfulCustomer(customer) ? customer : null,

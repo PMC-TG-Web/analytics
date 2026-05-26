@@ -79,16 +79,42 @@ async function upsertCanonicalProjectFromWebhook(params: {
 }): Promise<void> {
   const { procoreId, projectNumber, projectName, status, statusRaw, customer } = params;
   const bidBoardStatus = mapV1StatusToBidBoardStatus(status);
+  const nowIso = new Date().toISOString();
 
-  const existing = await prisma.project.findFirst({
+  const matches = await prisma.project.findMany({
     where: {
       OR: [
         { procoreId },
         { customFields: { path: ['procoreId'], equals: procoreId } },
-        ...(projectNumber ? [{ projectNumber, projectName }] : []),
       ],
     },
+    orderBy: [{ updatedAt: 'desc' }],
   });
+
+  const existing = matches[0] ?? null;
+  const duplicateMatches = matches.slice(1);
+
+  // Keep one authoritative canonical row per Procore ID.
+  for (const duplicate of duplicateMatches) {
+    const duplicateCustomFields =
+      duplicate.customFields && typeof duplicate.customFields === 'object' && !Array.isArray(duplicate.customFields)
+        ? (duplicate.customFields as Record<string, unknown>)
+        : {};
+
+    await prisma.project.update({
+      where: { id: duplicate.id },
+      data: {
+        projectArchived: true,
+        procoreId: null,
+        customFields: {
+          ...duplicateCustomFields,
+          mergedIntoProcoreId: procoreId,
+          mergedBy: 'procore_webhook',
+          mergedAt: nowIso,
+        },
+      },
+    });
+  }
 
   if (existing) {
     const existingCustomFields =
@@ -113,9 +139,9 @@ async function upsertCanonicalProjectFromWebhook(params: {
             : ((existingCustomFields.customerLabel as string | null | undefined) || null),
           statusRaw,
           bidBoardStatus,
-          statusSyncedAt: new Date().toISOString(),
+          statusSyncedAt: nowIso,
           syncedFrom: 'procore_webhook',
-          syncedAt: new Date().toISOString(),
+          syncedAt: nowIso,
         },
       },
     });
@@ -137,7 +163,7 @@ async function upsertCanonicalProjectFromWebhook(params: {
         statusRaw,
         bidBoardStatus,
         source: 'procore_webhook',
-        syncedAt: new Date().toISOString(),
+        syncedAt: nowIso,
       },
     },
   });

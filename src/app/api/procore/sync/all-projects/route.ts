@@ -45,6 +45,8 @@ function mapV1StatusToBidBoardStatus(status: string | null | undefined): string 
   if (normalized === "bidding") return "BID_SUBMITTED";
   if (normalized === "pre construction") return "ESTIMATING";
   if (normalized === "post construction") return "COMPLETE";
+  if (normalized === "active") return "IN_PROGRESS";
+  if (normalized === "in progress") return "IN_PROGRESS";
   if (normalized === "course of construction") return "IN_PROGRESS";
   return null;
 }

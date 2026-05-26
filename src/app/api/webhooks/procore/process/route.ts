@@ -48,21 +48,28 @@ function readNum(value: unknown): number | null {
   return null;
 }
 
-function mapV1StatusToBidBoardStatus(status: string | null | undefined): string | null {
-  const normalized = String(status || '')
-    .trim()
+function normalizeBidBoardStatus(status: string | null | undefined): string | null {
+  const raw = String(status || '').trim();
+  const normalized = raw
     .toLowerCase()
-    .replace(/-/g, ' ')
+    .replace(/[_-]/g, ' ')
     .replace(/\s+/g, ' ');
 
   if (!normalized) return null;
-  if (normalized === 'bidding') return 'BID_SUBMITTED';
-  if (normalized === 'pre construction') return 'ESTIMATING';
-  if (normalized === 'post construction') return 'COMPLETE';
-  if (normalized === 'active') return 'IN_PROGRESS';
-  if (normalized === 'in progress') return 'IN_PROGRESS';
-  if (normalized === 'course of construction') return 'IN_PROGRESS';
-  return null;
+  if (normalized === 'bid submitted' || normalized === 'bidding') return 'Bid Submitted';
+  if (normalized === 'pre construction' || normalized === 'estimating') return 'Estimating';
+  if (normalized === 'post construction' || normalized === 'complete') return 'Complete';
+  if (normalized === 'active' || normalized === 'in progress' || normalized === 'course of construction') return 'In Progress';
+  if (normalized === 'accepted') return 'Accepted';
+  if (normalized === 'invitation' || normalized === 'invitations') return 'Invitations';
+  if (normalized === 'lost') return 'Lost';
+  if (normalized === 'to do' || normalized === 'todo') return 'To Do';
+
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function mapV1StatusToBidBoardStatus(status: string | null | undefined): string | null {
+  return normalizeBidBoardStatus(status);
 }
 
 async function getServiceToken(): Promise<string> {

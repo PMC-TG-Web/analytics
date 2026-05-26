@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
             customer,
             synced_at,
             ROW_NUMBER() OVER (
-              PARTITION BY bid_board_id
+              PARTITION BY COALESCE(NULLIF(procore_project_id, ''), bid_board_id)
               ORDER BY synced_at DESC, bid_board_id DESC
             ) AS rn
           FROM procore_bid_board_live
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         WITH ranked AS (
           SELECT
             ROW_NUMBER() OVER (
-              PARTITION BY bid_board_id
+              PARTITION BY COALESCE(NULLIF(procore_project_id, ''), bid_board_id)
               ORDER BY synced_at DESC, bid_board_id DESC
             ) AS rn
           FROM procore_bid_board_live

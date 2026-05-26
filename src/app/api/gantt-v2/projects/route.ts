@@ -13,7 +13,7 @@ import { getCachedValue, setCachedValue, invalidateCacheByPrefix } from '@/lib/s
 
 export const dynamic = 'force-dynamic';
 
-const GANTT_PROJECTS_CACHE_KEY = 'gantt-v2:projects';
+const GANTT_PROJECTS_CACHE_KEY_PREFIX = 'gantt-v2:projects';
 const GANTT_PROJECTS_TTL_MS = 60_000; // 60 seconds
 const GANTT_PROJECTS_MAINTENANCE_TTL_MS = 60_000;
 let lastGanttProjectsMaintenanceAt = 0;
@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     const cookieStore = await cookies();
     const procoreAccessToken = String(cookieStore.get('procore_access_token')?.value || '').trim() || null;
     const procoreCompanyId = String(cookieStore.get('procore_company_id')?.value || '').trim() || null;
+    const cacheKey = `${GANTT_PROJECTS_CACHE_KEY_PREFIX}:${procoreCompanyId || 'none'}`;
 
     if (forceRefresh) {
       await withDatabaseRetry(async () => {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!forceRefresh) {
-      const cached = getCachedValue<unknown[]>(GANTT_PROJECTS_CACHE_KEY);
+      const cached = getCachedValue<unknown[]>(cacheKey);
       if (cached) {
         return NextResponse.json({ success: true, data: cached, cached: true });
       }
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     const projects = await withDatabaseRetry(() =>
       getGanttV2ProjectsWithScopes({ procoreAccessToken, procoreCompanyId, includeEstimateHours: false })
     );
-    setCachedValue(GANTT_PROJECTS_CACHE_KEY, projects, GANTT_PROJECTS_TTL_MS);
+    setCachedValue(cacheKey, projects, GANTT_PROJECTS_TTL_MS);
     return NextResponse.json({ success: true, data: projects, cached: false, refreshed: forceRefresh });
   } catch (error) {
     if (shouldFallbackToEmptyRead(error)) {

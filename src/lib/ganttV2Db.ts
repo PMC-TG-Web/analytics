@@ -1222,9 +1222,39 @@ export async function consolidateDuplicateGanttV2Scopes(): Promise<void> {
   }
 }
 
-export async function getGanttV2Projects(projectId?: string | null): Promise<GanttV2ProjectRow[]> {
+export async function getGanttV2Projects(projectId?: string | null, procoreCompanyId?: string | null): Promise<GanttV2ProjectRow[]> {
   try {
     const normalizedProjectId = String(projectId || '').trim();
+    const normalizedCompanyId = String(procoreCompanyId || '').trim();
+    const includeTemplateSandboxSuppression = !normalizedProjectId;
+    const whereClauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (normalizedProjectId) {
+      params.push(normalizedProjectId);
+      whereClauses.push(`p.id = $${params.length}`);
+    }
+
+    if (normalizedCompanyId) {
+      params.push(normalizedCompanyId);
+      whereClauses.push(`(
+        COALESCE(NULLIF(TRIM(p.source), ''), 'app') <> 'procore'
+        OR p.source_company_id = $${params.length}
+      )`);
+    }
+
+    if (includeTemplateSandboxSuppression) {
+      whereClauses.push(`NOT (
+        COALESCE(NULLIF(TRIM(p.source), ''), 'app') = 'procore'
+        AND (
+          LOWER(COALESCE(p.project_name, '')) LIKE '%template%'
+          OR LOWER(COALESCE(p.project_name, '')) LIKE '%sandbox%'
+        )
+      )`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
     const rows = await prisma.$queryRawUnsafe<Array<{
       id: string;
       job_key: string | null;
@@ -1271,17 +1301,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
         MAX(s.end_date) AS end_date
       FROM gantt_v2_projects p
       LEFT JOIN gantt_v2_scopes s ON s.project_id = p.id
-      ${
-        normalizedProjectId
-          ? 'WHERE p.id = $1'
-          : `WHERE NOT (
-            COALESCE(NULLIF(TRIM(p.source), ''), 'app') = 'procore'
-            AND (
-              LOWER(COALESCE(p.project_name, '')) LIKE '%template%'
-              OR LOWER(COALESCE(p.project_name, '')) LIKE '%sandbox%'
-            )
-          )`
-      }
+      ${whereSql}
       GROUP BY p.id, p.project_name, p.customer, p.project_number, p.status, p.source,
                p.job_key,
                p.source_company_id, p.source_external_id, p.source_project_id, p.source_staging_project_id,
@@ -1289,7 +1309,7 @@ export async function getGanttV2Projects(projectId?: string | null): Promise<Gan
                p.source_procore_created_at, p.source_procore_updated_at
       ORDER BY p.created_at DESC;
     `,
-      ...(normalizedProjectId ? [normalizedProjectId] : [])
+      ...params
     );
 
     return rows.map((row) => ({
@@ -1607,7 +1627,7 @@ export async function getGanttV2ProjectsWithScopes(options: GanttProjectsOptions
   };
 
   // First get all projects with summary info
-  const projects = await getGanttV2Projects(targetProjectId);
+  const projects = await getGanttV2Projects(targetProjectId, options.procoreCompanyId);
   const [projectRecords, purchaseOrderContracts, commitmentContracts, legacyProjectLinks] = await Promise.all([
     prisma.project.findMany({
       select: {

@@ -167,7 +167,6 @@ const DEFAULT_PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
 
 export default function ProjectsPage() {
   const [rows, setRows] = useState<ProjectRow[]>([]);
-  const [bidBoardRows, setBidBoardRows] = useState<BidBoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingCommercial, setSyncingCommercial] = useState(false);
@@ -336,7 +335,7 @@ export default function ProjectsPage() {
         }
       }
 
-      const projectItems = (Array.isArray(payload.data) ? payload.data : []).map((project) => {
+      const projectItems: ProjectRow[] = (Array.isArray(payload.data) ? payload.data : []).map((project) => {
         const lookupId = (project.procoreId || project.id || "").toString().trim();
         const budget = lookupId ? budgetByProjectId.get(lookupId) : undefined;
         const changeOrders = lookupId ? changeOrdersByProjectId.get(lookupId) : undefined;
@@ -378,7 +377,7 @@ export default function ProjectsPage() {
           estimateProposalNames,
         };
       });
-      const bidItems = Array.isArray(bidPayload.projects)
+      const bidItems: BidBoardRow[] = Array.isArray(bidPayload.projects)
         ? bidPayload.projects.map((project) => ({
             id: String(project.id || project.project_id || ""),
             bidBoardId: String(project.id || ""),
@@ -386,18 +385,51 @@ export default function ProjectsPage() {
             projectName: project.name || null,
             customer: project.customer_name || null,
             status: project.status || null,
+            statusRaw: project.status || null,
             syncedAt: project.updated_at || null,
           }))
         : (Array.isArray(bidPayload.data) ? bidPayload.data : []);
 
-      setRows(projectItems);
-      setBidBoardRows(bidItems);
+      const mergedProjectItems: ProjectRow[] = [...projectItems];
+      const existingProcoreIds = new Set(
+        projectItems
+          .map((item) => String(item.procoreId || "").trim())
+          .filter(Boolean)
+      );
+      const existingBidBoardIds = new Set(
+        projectItems
+          .map((item) => String(item.bidBoardId || "").trim())
+          .filter(Boolean)
+      );
+
+      for (const bidItem of bidItems) {
+        const procoreId = String(bidItem.procoreId || "").trim();
+        const bidBoardId = String(bidItem.bidBoardId || bidItem.id || "").trim();
+        const hasMatch =
+          (procoreId && existingProcoreIds.has(procoreId)) ||
+          (bidBoardId && existingBidBoardIds.has(bidBoardId));
+
+        if (hasMatch) continue;
+
+        mergedProjectItems.push({
+          id: bidBoardId || procoreId || String(bidItem.id || ""),
+          projectName: bidItem.projectName || null,
+          customer: bidItem.customer || null,
+          status: bidItem.status || null,
+          statusRaw: bidItem.statusRaw || null,
+          bidBoardStatus: bidItem.status || null,
+          bidBoardId: bidBoardId || null,
+          procoreId: procoreId || null,
+          syncedAt: bidItem.syncedAt || null,
+        });
+      }
+
+      setRows(mergedProjectItems);
       setChangeOrderSource((changeOrdersPayload.source || "").toString());
       setLastRefreshedAt(new Date().toLocaleString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
       setRows([]);
-      setBidBoardRows([]);
       setChangeOrderSource("");
     } finally {
       setLoading(false);
@@ -522,13 +554,9 @@ export default function ProjectsPage() {
       const status = (row.status || "").trim();
       if (status) all.add(status);
     }
-    for (const row of bidBoardRows) {
-      const status = (row.status || "").trim();
-      if (status) all.add(status);
-    }
 
     return ["All", ...Array.from(all).sort((a, b) => a.localeCompare(b))];
-  }, [rows, bidBoardRows]);
+  }, [rows]);
 
   const filteredProjects = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -589,34 +617,6 @@ export default function ProjectsPage() {
 
     return sorted;
   }, [rows, query, statusFilter, sortKey, sortDirection]);
-
-  const filteredBidBoard = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    const base = bidBoardRows.filter((row) => {
-      if (statusFilter !== "All" && (row.status || "") !== statusFilter) return false;
-
-      if (!q) return true;
-
-      const fields = [
-        row.projectName,
-        row.customer,
-        row.status,
-        row.procoreId,
-        row.bidBoardId,
-      ]
-        .map((v) => (v || "").toString().toLowerCase())
-        .join(" ");
-
-      return fields.includes(q);
-    });
-
-    return [...base].sort((a, b) => {
-      const av = (a.projectName || "").toString().toLowerCase();
-      const bv = (b.projectName || "").toString().toLowerCase();
-      return av.localeCompare(bv);
-    });
-  }, [bidBoardRows, query, statusFilter]);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -833,40 +833,6 @@ export default function ProjectsPage() {
       </div>
       <p className="mb-6 mt-2 text-xs text-gray-500">Showing {filteredProjects.length.toLocaleString()} V1 project(s).</p>
 
-      <h2 className="mb-2 text-lg font-semibold text-gray-900">Bid Board (Live)</h2>
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-3 py-2 text-left">Project Name</th>
-              <th className="px-3 py-2 text-left">Customer</th>
-              <th className="px-3 py-2 text-left">Status</th>
-              <th className="px-3 py-2 text-left">Procore Project ID</th>
-              <th className="px-3 py-2 text-left">Bid Board ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!loading && filteredBidBoard.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-gray-400">
-                  No bid board items found.
-                </td>
-              </tr>
-            )}
-
-            {filteredBidBoard.map((row) => (
-              <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50">
-                <td className="px-3 py-2 font-medium text-gray-900">{row.projectName || "Unknown"}</td>
-                <td className="px-3 py-2 text-gray-700">{row.customer || "Unknown"}</td>
-                <td className="px-3 py-2 text-gray-700">{row.status || "Unknown"}</td>
-                <td className="px-3 py-2 text-gray-700">{row.procoreId || ""}</td>
-                <td className="px-3 py-2 text-gray-700">{row.bidBoardId || ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-3 text-xs text-gray-500">Showing {filteredBidBoard.length.toLocaleString()} bid board item(s).</p>
     </div>
   );
 }

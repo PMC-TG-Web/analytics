@@ -13,10 +13,18 @@ export async function POST(request: NextRequest) {
     const companyId = String(
       request.cookies.get('procore_company_id')?.value ||
       body?.companyId ||
-      process.env.PROCORE_COMPANY_ID ||
-      process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ||
       ''
     ).trim();
+
+    if (!companyId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing companyId context. Reconnect Procore session or provide companyId explicitly.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Lightweight default refresh for status updates without a full heavy sync.
     const syncPayload: Record<string, unknown> = {

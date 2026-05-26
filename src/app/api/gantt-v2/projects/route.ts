@@ -45,9 +45,26 @@ export async function GET(request: NextRequest) {
   try {
     const refreshParam = request.nextUrl.searchParams.get('refresh');
     const forceRefresh = refreshParam === '1' || refreshParam === 'true';
+    const queryCompanyId = String(request.nextUrl.searchParams.get('companyId') || '').trim();
     const cookieStore = await cookies();
     const procoreAccessToken = String(cookieStore.get('procore_access_token')?.value || '').trim() || null;
-    const procoreCompanyId = String(cookieStore.get('procore_company_id')?.value || '').trim() || null;
+    const cookieCompanyId = String(cookieStore.get('procore_company_id')?.value || '').trim();
+
+    if (cookieCompanyId && queryCompanyId && cookieCompanyId !== queryCompanyId) {
+      return NextResponse.json(
+        { success: false, error: 'Company context mismatch between session cookie and request query.' },
+        { status: 403 }
+      );
+    }
+
+    const procoreCompanyId = (cookieCompanyId || queryCompanyId || '').trim() || null;
+    if (!procoreCompanyId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing Procore company context. Reconnect Procore or provide companyId.' },
+        { status: 400 }
+      );
+    }
+
     const cacheKey = `${GANTT_PROJECTS_CACHE_KEY_PREFIX}:${procoreCompanyId || 'none'}`;
 
     if (forceRefresh) {

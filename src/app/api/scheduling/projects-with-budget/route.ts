@@ -23,7 +23,6 @@ export async function GET(request: NextRequest) {
     const resolvedCompanyId = String(
       request.cookies.get('procore_company_id')?.value ||
       searchParams.get('companyId') ||
-      process.env.PROCORE_COMPANY_ID ||
       ''
     ).trim();
     const disableCache = String(searchParams.get('noCache') || '').trim().toLowerCase() === 'true';

@@ -41,24 +41,37 @@ const maybeRunGanttProjectsMaintenanceInBackground = () => {
   })();
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const refreshParam = request.nextUrl.searchParams.get('refresh');
+    const forceRefresh = refreshParam === '1' || refreshParam === 'true';
     const cookieStore = await cookies();
     const procoreAccessToken = String(cookieStore.get('procore_access_token')?.value || '').trim() || null;
     const procoreCompanyId = String(cookieStore.get('procore_company_id')?.value || '').trim() || null;
 
-    maybeRunGanttProjectsMaintenanceInBackground();
+    if (forceRefresh) {
+      await withDatabaseRetry(async () => {
+        await syncGanttV2ProjectsFromCanonicalProjects();
+        await consolidateDuplicateGanttV2Projects();
+        await consolidateDuplicateGanttV2Scopes();
+      });
+      invalidateCacheByPrefix('gantt-v2:');
+    } else {
+      maybeRunGanttProjectsMaintenanceInBackground();
+    }
 
-    const cached = getCachedValue<unknown[]>(GANTT_PROJECTS_CACHE_KEY);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached, cached: true });
+    if (!forceRefresh) {
+      const cached = getCachedValue<unknown[]>(GANTT_PROJECTS_CACHE_KEY);
+      if (cached) {
+        return NextResponse.json({ success: true, data: cached, cached: true });
+      }
     }
 
     const projects = await withDatabaseRetry(() =>
       getGanttV2ProjectsWithScopes({ procoreAccessToken, procoreCompanyId, includeEstimateHours: false })
     );
     setCachedValue(GANTT_PROJECTS_CACHE_KEY, projects, GANTT_PROJECTS_TTL_MS);
-    return NextResponse.json({ success: true, data: projects, cached: false });
+    return NextResponse.json({ success: true, data: projects, cached: false, refreshed: forceRefresh });
   } catch (error) {
     if (shouldFallbackToEmptyRead(error)) {
       return NextResponse.json({ success: true, data: [] });

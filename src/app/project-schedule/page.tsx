@@ -474,7 +474,7 @@ export default function ProjectSchedulePage() {
     setLoadError(null);
     try {
       const [ganttRes, metadataRes, concreteOrdersRes] = await Promise.all([
-        fetch("/api/gantt-v2/projects", { cache: "no-store", credentials: "include" }),
+        fetch("/api/gantt-v2/projects?refresh=1", { cache: "no-store", credentials: "include" }),
         fetch("/api/project-scopes", { cache: "no-store", credentials: "include" }),
         fetch("/api/project-schedule/concrete-yards", { cache: "no-store", credentials: "include" }),
       ]);

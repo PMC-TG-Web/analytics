@@ -28,10 +28,13 @@ export async function GET(request: NextRequest) {
     // Unpack customFields to top-level properties for UI compatibility
     const formattedEmployees = employees.map(emp => {
       const custom = (emp.customFields ?? {}) as Record<string, unknown>;
+      const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.replace(/\s+/g, ' ').trim();
       return {
         id: emp.id,
         firstName: emp.firstName,
         lastName: emp.lastName,
+        fullName,
+        title: emp.jobTitle,
         jobTitle: emp.jobTitle,
         email: emp.email,
         phone: emp.phone,

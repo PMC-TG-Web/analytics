@@ -102,6 +102,21 @@ type ProjectSummary = {
   projectManager?: string | null;
 };
 
+type HomeSnapshotApiResponse = {
+  success?: boolean;
+  data?: {
+    announcements?: Announcement[];
+    employees?: Employee[];
+    activeSchedules?: ActiveScheduleEntry[];
+    timeOff?: TimeOffEntry[];
+    concreteOrders?: ConcreteOrder[];
+    pmAssignments?: PMAssignment[];
+    crewTemplates?: CrewTemplate[];
+    projects?: ProjectSummary[];
+    scopes?: Array<{ jobKey?: string; title?: string; tasks?: unknown }>;
+  };
+};
+
 type StoredScheduleDay = {
   dayNumber: number;
   hours: number;
@@ -454,51 +469,33 @@ function HomeContent() {
     async function fetchData() {
       setLoading(true);
       try {
-        setAnnouncements([]);
+        const snapshotRes = await fetch(
+          `/api/home-snapshot?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&canReadEmployees=${canReadEmployees ? "true" : "false"}`,
+          { cache: "no-store", credentials: "include" }
+        );
 
-        const [employeesRes, scheduleRes, timeOffRes, concreteRes, pmRes, crewTemplatesRes, projectsRes, scopesRes] = await Promise.all([
-          canReadEmployees
-            ? fetch("/api/employees?isActive=true&page=1&pageSize=500", { cache: "no-store" })
-            : Promise.resolve(new Response(JSON.stringify({ success: true, data: [] }), { status: 200 })),
-          fetch(`/api/short-term-schedule?action=active-schedule&startDate=${startDate}&endDate=${endDate}`, {
-            cache: "no-store",
-          }),
-          fetch("/api/time-off", { cache: "no-store" }),
-          fetch(`/api/concrete-orders?startDate=${startDate}&endDate=${endDate}`, { cache: "no-store" }),
-          fetch("/api/long-term-schedule/pm-assignments", { cache: "no-store" }),
-          fetch("/api/crew-templates", { cache: "no-store" }),
-          fetch("/api/projects?page=1&pageSize=500&summary=true", { cache: "no-store" }),
-          fetch("/api/project-scopes", { cache: "no-store" }),
-        ]);
+        const snapshotJson = (await snapshotRes.json().catch(() => ({ success: false, data: {} }))) as HomeSnapshotApiResponse;
+        const snapshotData = snapshotJson?.data || {};
 
-        const [employeesJson, scheduleJson, timeOffJson, concreteJson, pmJson, crewTemplatesJson, projectsJson, scopesJson] = await Promise.all([
-          employeesRes.json().catch(() => ({ success: false, data: [] })),
-          scheduleRes.json().catch(() => ({ success: false, data: [] })),
-          timeOffRes.json().catch(() => ({ success: false, data: [] })),
-          concreteRes.json().catch(() => ({ success: false, data: [] })),
-          pmRes.json().catch(() => ({ success: false, data: [] })),
-          crewTemplatesRes.json().catch(() => ({ success: false, data: [] })),
-          projectsRes.json().catch(() => ({ success: false, data: [] })),
-          scopesRes.json().catch(() => ({ success: false, data: [] })),
-        ]);
+        setAnnouncements(Array.isArray(snapshotData.announcements) ? snapshotData.announcements : []);
+        setEmployees(Array.isArray(snapshotData.employees) ? snapshotData.employees : []);
+        setActiveSchedules(Array.isArray(snapshotData.activeSchedules) ? snapshotData.activeSchedules : []);
+        setTimeOff(Array.isArray(snapshotData.timeOff) ? snapshotData.timeOff : []);
+        setConcreteOrders(Array.isArray(snapshotData.concreteOrders) ? snapshotData.concreteOrders : []);
+        setPmAssignments(Array.isArray(snapshotData.pmAssignments) ? snapshotData.pmAssignments : []);
+        setCrewTemplates(Array.isArray(snapshotData.crewTemplates) ? snapshotData.crewTemplates : []);
+        setProjects(Array.isArray(snapshotData.projects) ? snapshotData.projects : []);
 
-        setEmployees(Array.isArray(employeesJson?.data) ? employeesJson.data : []);
-        setActiveSchedules(Array.isArray(scheduleJson?.data) ? scheduleJson.data : []);
-        setTimeOff(Array.isArray(timeOffJson?.data) ? timeOffJson.data : []);
-        setConcreteOrders(Array.isArray(concreteJson?.data) ? concreteJson.data : []);
-        setPmAssignments(Array.isArray(pmJson?.data) ? pmJson.data : []);
-        setCrewTemplates(Array.isArray(crewTemplatesJson?.data) ? crewTemplatesJson.data : []);
-        setProjects(Array.isArray(projectsJson?.data) ? projectsJson.data : []);
-        
-        const scopesData = Array.isArray(scopesJson?.data) ? scopesJson.data : [];
-        const parsedScopes = scopesData.map((scope: any) => ({
-          jobKey: scope.jobKey,
-          title: scope.title,
+        const scopesData = Array.isArray(snapshotData.scopes) ? snapshotData.scopes : [];
+        const parsedScopes = scopesData.map((scope) => ({
+          jobKey: String(scope.jobKey || ""),
+          title: String(scope.title || ""),
           tasks: Array.isArray(scope.tasks) ? scope.tasks : [],
         }));
         setScopes(parsedScopes);
       } catch (error) {
         console.error("Error fetching home page data:", error);
+        setAnnouncements([]);
         setEmployees([]);
         setActiveSchedules([]);
         setTimeOff([]);
@@ -506,7 +503,6 @@ function HomeContent() {
         setPmAssignments([]);
         setCrewTemplates([]);
         setProjects([]);
-        setScopes([]);
         setScopes([]);
       } finally {
         setLoading(false);

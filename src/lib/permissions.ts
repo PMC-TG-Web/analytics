@@ -242,6 +242,7 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/procore/estimating/proposal-line-items-bulk', permission: 'admin' },
   { prefix: '/api/procore/sync', permission: 'admin' },
   { prefix: '/api/weather', permission: 'home' },
+  { prefix: '/api/home-snapshot', permission: 'home' },
   { prefix: '/api/gantt-v2/debug-sync', permission: 'diagnostics' },
   { prefix: '/api/gantt-v2/setup', permission: 'admin' },
   { prefix: '/api/gantt-v2', permission: 'project-schedule' },

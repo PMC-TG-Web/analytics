@@ -12,7 +12,8 @@ const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
 const NAV_PERMISSIONS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
 const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
-const NAV_KEEPALIVE_INTERVAL_MS = 2 * 60 * 1000;
+const NAV_KEEPALIVE_INTERVAL_MS = 45 * 1000;
+const NAV_KEEPALIVE_MIN_GAP_MS = 15 * 1000;
 const NAV_KEEPALIVE_TIMEOUT_MS = 4000;
 
 interface NavLink {
@@ -242,9 +243,14 @@ export default function Navigation({
     if (!user?.email) return;
 
     let timer: ReturnType<typeof setInterval> | null = null;
+    let lastPingAt = 0;
 
     const ping = async () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+      const now = Date.now();
+      if (now - lastPingAt < NAV_KEEPALIVE_MIN_GAP_MS) return;
+      lastPingAt = now;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), NAV_KEEPALIVE_TIMEOUT_MS);
@@ -263,12 +269,24 @@ export default function Navigation({
       }
     };
 
+    const onVisibleOrFocus = () => {
+      void ping();
+    };
+
+    // Warm once immediately so first navigation click is less likely to hit a cold path.
+    void ping();
+
     timer = setInterval(() => {
       void ping();
     }, NAV_KEEPALIVE_INTERVAL_MS);
 
+    window.addEventListener("focus", onVisibleOrFocus);
+    document.addEventListener("visibilitychange", onVisibleOrFocus);
+
     return () => {
       if (timer) clearInterval(timer);
+      window.removeEventListener("focus", onVisibleOrFocus);
+      document.removeEventListener("visibilitychange", onVisibleOrFocus);
     };
   }, [user?.email]);
 
@@ -337,7 +355,6 @@ export default function Navigation({
       <Link
         key={link.href}
         href={link.href}
-        prefetch={false}
         className={`
           px-2.5 py-1.5 rounded text-[11px] font-black no-underline transition-colors active:scale-95
           ${

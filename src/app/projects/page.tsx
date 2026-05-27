@@ -571,24 +571,19 @@ export default function ProjectsPage() {
   }, [loadProjects]);
 
   useEffect(() => {
-    const triggerAutoSyncOnce = () => {
+    const timer = window.setTimeout(() => {
       if (autoSyncTriggeredRef.current) {
         return;
       }
 
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
+      // Run auto-sync once per page load without tying it to tab refocus,
+      // which can make the first click after idle feel delayed.
       autoSyncTriggeredRef.current = true;
       void syncAndReload({ auto: true });
-    };
-
-    triggerAutoSyncOnce();
-    document.addEventListener("visibilitychange", triggerAutoSyncOnce);
+    }, 15000);
 
     return () => {
-      document.removeEventListener("visibilitychange", triggerAutoSyncOnce);
+      window.clearTimeout(timer);
     };
   }, [syncAndReload]);
 

@@ -114,6 +114,7 @@ type HomeSnapshotApiResponse = {
     crewTemplates?: CrewTemplate[];
     projects?: ProjectSummary[];
     scopes?: Array<{ jobKey?: string; title?: string; tasks?: unknown }>;
+    viewerEmployee?: Employee | null;
   };
 };
 
@@ -422,6 +423,7 @@ function HomeContent() {
   const [crewTemplates, setCrewTemplates] = useState<CrewTemplate[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [scopes, setScopes] = useState<ScopeWithTasks[]>([]);
+  const [viewerEmployee, setViewerEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCallOffModal, setShowCallOffModal] = useState(false);
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
@@ -484,6 +486,7 @@ function HomeContent() {
         setPmAssignments(Array.isArray(snapshotData.pmAssignments) ? snapshotData.pmAssignments : []);
         setCrewTemplates(Array.isArray(snapshotData.crewTemplates) ? snapshotData.crewTemplates : []);
         setProjects(Array.isArray(snapshotData.projects) ? snapshotData.projects : []);
+        setViewerEmployee(snapshotData.viewerEmployee || null);
 
         const scopesData = Array.isArray(snapshotData.scopes) ? snapshotData.scopes : [];
         const parsedScopes = scopesData.map((scope) => ({
@@ -503,6 +506,7 @@ function HomeContent() {
         setCrewTemplates([]);
         setProjects([]);
         setScopes([]);
+        setViewerEmployee(null);
       } finally {
         setLoading(false);
       }
@@ -569,8 +573,10 @@ function HomeContent() {
       return employees.find((emp) => normalizePersonName(emp.firstName || "") === myName) || null;
     }
 
+    if (viewerEmployee) return viewerEmployee;
+
     return null;
-  }, [employees, user?.email, user?.name]);
+  }, [employees, user?.email, user?.name, viewerEmployee]);
 
   const persona = useMemo<Persona>(() => {
     const userEmail = normalizeEmail(user?.email);

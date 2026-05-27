@@ -557,9 +557,13 @@ function HomeContent() {
         return options.includes(myEmail);
       });
       if (byEmail) return byEmail;
+
+      if (viewerEmployee && normalizeEmail(viewerEmployee.email) === myEmail) {
+        return viewerEmployee;
+      }
     }
 
-    if (!myName) return null;
+    if (!myName) return viewerEmployee || null;
 
     // Full name match (e.g. Auth0 returns "Abner Miller")
     const byFullName = employees.find((emp) => {
@@ -570,12 +574,11 @@ function HomeContent() {
 
     // Single-word name fallback: dev-login sets name = email prefix (e.g. "abner")
     if (!myName.includes(" ")) {
-      return employees.find((emp) => normalizePersonName(emp.firstName || "") === myName) || null;
+      const singleWordMatch = employees.find((emp) => normalizePersonName(emp.firstName || "") === myName) || null;
+      return singleWordMatch || viewerEmployee || null;
     }
 
-    if (viewerEmployee) return viewerEmployee;
-
-    return null;
+    return viewerEmployee || null;
   }, [employees, user?.email, user?.name, viewerEmployee]);
 
   const persona = useMemo<Persona>(() => {

@@ -63,6 +63,8 @@ const ACTIVE_HOOK_ID = (process.env.PROCORE_WEBHOOK_HOOK_ID || '').trim();
 // Desired resources; final trigger set is filtered to supported resources/actions.
 const DESIRED_TRIGGERS = [
   { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
+  { resourceName: 'Bid Board Projects', eventTypes: ['create', 'update', 'delete'] },
+  { resourceName: 'Estimating Projects', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
@@ -70,6 +72,8 @@ const DESIRED_TRIGGERS = [
 
 const RESOURCE_ALIASES = {
   'Projects': ['Projects'],
+  'Bid Board Projects': ['Bid Board Projects', 'Bidboard Projects', 'Bid Board Projects V2'],
+  'Estimating Projects': ['Estimating Projects', 'Bid Board Projects', 'Bidboard Projects', 'Projects'],
   'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
   'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
   'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
@@ -255,25 +259,54 @@ async function cmdRegister() {
   console.log('Fetching access token...');
   const token = await getToken();
 
-  console.log(`Creating hook → ${DESTINATION_URL}`);
-  let hook;
-  try {
-    hook = await createHook(token);
-  } catch (err) {
-    console.error('Failed to create hook:', err.message);
-    process.exit(1);
+  const hooks = await listHooks(token);
+  let hookId = '';
+  const activeHook = ACTIVE_HOOK_ID ? hooks.find((hook) => String(hook?.id || '') === ACTIVE_HOOK_ID) : null;
+  const matchingHook = hooks.find((hook) => {
+    const destination = String(hook?.destination_url || '').trim();
+    const namespace = String(hook?.namespace || '').trim();
+    return destination === DESTINATION_URL && namespace === WEBHOOK_NAMESPACE;
+  });
+
+  if (activeHook) {
+    hookId = String(activeHook.id || '').trim();
+  } else if (matchingHook) {
+    hookId = String(matchingHook.id || '').trim();
   }
 
-  const hookId = hook?.data?.id ?? hook?.id;
-  if (!hookId) {
-    console.error('Hook created but could not parse hook id from response:', JSON.stringify(hook));
-    process.exit(1);
+  if (hookId) {
+    console.log(`Reusing existing hook id=${hookId} → ${DESTINATION_URL}`);
+  } else {
+    console.log(`Creating hook → ${DESTINATION_URL}`);
+    let hook;
+    try {
+      hook = await createHook(token);
+    } catch (err) {
+      console.error('Failed to create hook:', err.message);
+      process.exit(1);
+    }
+
+    hookId = hook?.data?.id ?? hook?.id;
+    if (!hookId) {
+      console.error('Hook created but could not parse hook id from response:', JSON.stringify(hook));
+      process.exit(1);
+    }
+    console.log(`Hook created: id=${hookId}`);
   }
-  console.log(`Hook created: id=${hookId}`);
 
   console.log('Fetching supported webhook resources...');
   const resourceCatalog = await listResourcesAll(token);
   const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
+
+  let existingTriggers = [];
+  try {
+    existingTriggers = hookId ? await listTriggers(token, hookId) : [];
+  } catch (err) {
+    console.warn('Unable to read existing triggers for hook; proceeding without dedupe:', err.message);
+  }
+  const existingTriggerKeys = new Set(
+    existingTriggers.map((t) => `${String(t.resource_name || '').toLowerCase()}::${String(t.event_type || '').toLowerCase()}`)
+  );
 
   const triggerPlan = [];
   for (const desired of DESIRED_TRIGGERS) {
@@ -298,6 +331,10 @@ async function cmdRegister() {
     }
 
     for (const eventType of validEvents) {
+      const triggerKey = `${matched.name.toLowerCase()}::${eventType.toLowerCase()}`;
+      if (existingTriggerKeys.has(triggerKey)) {
+        continue;
+      }
       triggerPlan.push({ resourceName: matched.name, eventType });
     }
   }

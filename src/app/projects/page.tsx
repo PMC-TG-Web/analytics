@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ProjectRow = {
   id: string;
@@ -177,6 +177,7 @@ export default function ProjectsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("projectName");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [changeOrderSource, setChangeOrderSource] = useState<string>("");
+  const syncInFlightRef = useRef(false);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -437,6 +438,11 @@ export default function ProjectsPage() {
   }, []);
 
   const syncAndReload = useCallback(async () => {
+    if (syncInFlightRef.current) {
+      return;
+    }
+
+    syncInFlightRef.current = true;
     setSyncing(true);
     setError("");
 
@@ -465,6 +471,7 @@ export default function ProjectsPage() {
       setError(err instanceof Error ? err.message : "Failed to sync from Procore");
     } finally {
       setSyncing(false);
+      syncInFlightRef.current = false;
     }
   }, [loadProjects]);
 
@@ -546,6 +553,28 @@ export default function ProjectsPage() {
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    const refreshIntervalMs = 120_000;
+
+    const triggerRefresh = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      void syncAndReload();
+    };
+
+    const intervalId = window.setInterval(triggerRefresh, refreshIntervalMs);
+    window.addEventListener("focus", triggerRefresh);
+    document.addEventListener("visibilitychange", triggerRefresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", triggerRefresh);
+      document.removeEventListener("visibilitychange", triggerRefresh);
+    };
+  }, [syncAndReload]);
 
   const statusOptions = useMemo(() => {
     const all = new Set<string>();

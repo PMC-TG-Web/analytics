@@ -8,6 +8,8 @@ const WEBHOOK_NAMESPACE = 'pmc-analytics';
 // Desired resources; final trigger set is filtered to what the company supports.
 const DESIRED_TRIGGER_PLAN = [
   { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
+  { resourceName: 'Bid Board Projects', eventTypes: ['create', 'update', 'delete'] },
+  { resourceName: 'Estimating Projects', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
@@ -20,6 +22,8 @@ type ResourceCatalogItem = {
 
 const RESOURCE_ALIASES: Record<string, string[]> = {
   Projects: ['Projects'],
+  'Bid Board Projects': ['Bid Board Projects', 'Bidboard Projects', 'Bid Board Projects V2'],
+  'Estimating Projects': ['Estimating Projects', 'Bid Board Projects', 'Bidboard Projects', 'Projects'],
   'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
   'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
   'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],

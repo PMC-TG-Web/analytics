@@ -6,6 +6,7 @@ import {
   procoreConfig,
   withProcoreLiveApiBypassForSyncSecret,
 } from '@/lib/procore';
+import { buildAllowedProcoreHostCandidates } from '@/lib/procoreHosts';
 import {
   extractCustomerFromCustomFields,
   isMeaningfulCustomer,
@@ -70,6 +71,29 @@ function normalizeBidBoardStatus(status: string | null | undefined): string | nu
 
 function mapV1StatusToBidBoardStatus(status: string | null | undefined): string | null {
   return normalizeBidBoardStatus(status);
+}
+
+function unwrapBidBoardProjectPayload(payload: unknown): JsonObject | null {
+  if (Array.isArray(payload)) {
+    const first = payload.find((item) => asObj(item));
+    return first ? asObj(first) : null;
+  }
+
+  const record = asObj(payload);
+  if (!record) return null;
+
+  const candidates = [record.data, record.project, record.bid_board_project, record.projects, record.bid_board_projects];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      const first = candidate.find((item) => asObj(item));
+      if (first) return asObj(first);
+    }
+
+    const nested = asObj(candidate);
+    if (nested) return nested;
+  }
+
+  return record;
 }
 
 async function getServiceToken(): Promise<string> {
@@ -211,6 +235,276 @@ async function upsertV1StagingFromWebhook(params: {
     customer,
     JSON.stringify(payload)
   );
+}
+
+async function applyBidBoardStatusToV1Staging(params: {
+  companyId: string;
+  procoreProjectId?: string | null;
+  bidBoardStatus?: string | null;
+  bidBoardId?: string | null;
+  bidBoardName?: string | null;
+  customer?: string | null;
+}) {
+  const { companyId, procoreProjectId, bidBoardStatus, bidBoardId, bidBoardName, customer } = params;
+
+  if (procoreProjectId) {
+    const updatedById = await prisma.$executeRawUnsafe(
+      `
+        UPDATE procore_project_staging
+        SET
+          bid_board_status = $1,
+          payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
+            'bidBoardStatus', $1,
+            'bidBoardExternalId', $2,
+            'bidBoardSyncedAt', NOW()::text
+          ),
+          synced_at = NOW()
+        WHERE source = 'procore_v1_projects'
+          AND company_id = $3
+          AND procore_project_id = $4
+      `,
+      bidBoardStatus ?? null,
+      bidBoardId ?? null,
+      companyId,
+      procoreProjectId
+    );
+
+    if (updatedById > 0) return updatedById;
+  }
+
+  const normalizedName = String(bidBoardName || '').trim();
+  if (!normalizedName) return 0;
+  const normalizedCustomer = isMeaningfulCustomer(customer) ? String(customer).trim() : null;
+
+  return prisma.$executeRawUnsafe(
+    `
+      WITH candidate AS (
+        SELECT ctid
+        FROM procore_project_staging
+        WHERE source = 'procore_v1_projects'
+          AND company_id = $3
+          AND LOWER(BTRIM(COALESCE(name, ''))) = LOWER(BTRIM($4))
+        ORDER BY
+          CASE
+            WHEN $5::text IS NOT NULL
+              AND LOWER(BTRIM(COALESCE(customer, ''))) = LOWER(BTRIM($5::text))
+            THEN 0 ELSE 1
+          END,
+          synced_at DESC
+        LIMIT 1
+      )
+      UPDATE procore_project_staging s
+      SET
+        bid_board_status = $1,
+        payload = COALESCE(s.payload, '{}'::jsonb) || jsonb_build_object(
+          'bidBoardStatus', $1,
+          'bidBoardExternalId', $2,
+          'bidBoardSyncedAt', NOW()::text,
+          'bidBoardMatchMode', 'name_fallback'
+        ),
+        synced_at = NOW()
+      FROM candidate
+      WHERE s.ctid = candidate.ctid
+    `,
+    bidBoardStatus ?? null,
+    bidBoardId ?? null,
+    companyId,
+    normalizedName,
+    normalizedCustomer
+  );
+}
+
+async function upsertBidBoardLive(params: {
+  companyId: string;
+  bidBoardId: string;
+  procoreProjectId?: string | null;
+  name?: string | null;
+  status?: string | null;
+  statusRaw?: string | null;
+  customer?: string | null;
+  payload: unknown;
+}) {
+  const {
+    companyId,
+    bidBoardId,
+    procoreProjectId,
+    name,
+    status,
+    statusRaw,
+    customer,
+    payload,
+  } = params;
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_bid_board_live
+        (bid_board_id, company_id, procore_project_id, name, status, status_raw, customer, payload, synced_at)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+      ON CONFLICT (bid_board_id)
+      DO UPDATE SET
+        company_id = EXCLUDED.company_id,
+        procore_project_id = EXCLUDED.procore_project_id,
+        name = COALESCE(EXCLUDED.name, procore_bid_board_live.name),
+        status = EXCLUDED.status,
+        status_raw = EXCLUDED.status_raw,
+        customer = COALESCE(EXCLUDED.customer, procore_bid_board_live.customer),
+        synced_at = NOW(),
+        payload = EXCLUDED.payload
+    `,
+    bidBoardId,
+    companyId,
+    procoreProjectId ?? null,
+    name ?? null,
+    status ?? null,
+    statusRaw ?? null,
+    customer ?? null,
+    JSON.stringify(payload)
+  );
+}
+
+async function fetchBidBoardProjectById(params: {
+  companyId: string;
+  bidBoardId: string;
+  token: string;
+}): Promise<JsonObject | null> {
+  const { companyId, bidBoardId, token } = params;
+  const hostCandidates = buildAllowedProcoreHostCandidates({
+    requestedOrigin: process.env.PROCORE_ESTIMATING_API_URL || 'https://api.procore.com',
+    extraOrigins: [process.env.PROCORE_ESTIMATING_API_URL, 'https://api.procore.com'],
+  });
+
+  if (hostCandidates.error) {
+    return null;
+  }
+
+  for (const host of hostCandidates.candidates) {
+    const endpoint = `${host.replace(/\/$/, '')}/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(bidBoardId)}`;
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Procore-Company-Id': companyId,
+      },
+    });
+
+    if (!response.ok) {
+      continue;
+    }
+
+    const data = await response.json().catch(() => null);
+    const record = unwrapBidBoardProjectPayload(data);
+    if (record) return record;
+  }
+
+  return null;
+}
+
+async function upsertCanonicalProjectFromBidBoardWebhook(params: {
+  companyId: string;
+  bidBoardId: string;
+  procoreProjectId: string | null;
+  projectName: string;
+  status: string | null;
+  statusRaw: string | null;
+  customer: string | null;
+}): Promise<void> {
+  const { bidBoardId, procoreProjectId, projectName, status, statusRaw, customer } = params;
+  const nowIso = new Date().toISOString();
+  const bidBoardStatus = normalizeBidBoardStatus(status);
+
+  const matches = await prisma.project.findMany({
+    where: {
+      OR: [
+        { bidBoardId },
+        { customFields: { path: ['bidBoardId'], equals: bidBoardId } },
+        ...(procoreProjectId ? [{ procoreId: procoreProjectId }] : []),
+        ...(procoreProjectId ? [{ customFields: { path: ['procoreId'], equals: procoreProjectId } }] : []),
+      ],
+    },
+    orderBy: [{ updatedAt: 'desc' }],
+  });
+
+  const existing = matches[0] ?? null;
+  const duplicateMatches = matches.slice(1);
+
+  for (const duplicate of duplicateMatches) {
+    const duplicateCustomFields =
+      duplicate.customFields && typeof duplicate.customFields === 'object' && !Array.isArray(duplicate.customFields)
+        ? (duplicate.customFields as Record<string, unknown>)
+        : {};
+
+    await prisma.project.update({
+      where: { id: duplicate.id },
+      data: {
+        projectArchived: true,
+        procoreId: null,
+        bidBoardId: null,
+        customFields: {
+          ...duplicateCustomFields,
+          mergedIntoProcoreId: procoreProjectId || bidBoardId,
+          mergedBy: 'procore_webhook',
+          mergedAt: nowIso,
+        },
+      },
+    });
+  }
+
+  if (existing) {
+    const existingCustomFields =
+      existing.customFields && typeof existing.customFields === 'object' && !Array.isArray(existing.customFields)
+        ? (existing.customFields as Record<string, unknown>)
+        : {};
+
+    await prisma.project.update({
+      where: { id: existing.id },
+      data: {
+        bidBoardId,
+        procoreId: procoreProjectId || existing.procoreId,
+        projectName: existing.projectName || projectName,
+        customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
+        customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : (existing.customerSource || null),
+        status: bidBoardStatus || existing.status,
+        statusSource: bidBoardStatus ? 'procore_bid_board' : existing.statusSource,
+        customFields: {
+          ...existingCustomFields,
+          bidBoardId,
+          procoreId: procoreProjectId || (existingCustomFields.procoreId as string | null | undefined),
+          customerLabel: isMeaningfulCustomer(customer)
+            ? customer
+            : ((existingCustomFields.customerLabel as string | null | undefined) || null),
+          bidBoardStatus,
+          bidBoardStatusRaw: statusRaw,
+          statusSyncedAt: nowIso,
+          syncedFrom: 'procore_webhook',
+          syncedAt: nowIso,
+        },
+      },
+    });
+    return;
+  }
+
+  await prisma.project.create({
+    data: {
+      projectName,
+      bidBoardId,
+      procoreId: procoreProjectId,
+      customer: isMeaningfulCustomer(customer) ? customer : null,
+      customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : null,
+      status: bidBoardStatus,
+      statusSource: bidBoardStatus ? 'procore_bid_board' : null,
+      customFields: {
+        bidBoardId,
+        procoreId: procoreProjectId,
+        bidBoardStatus,
+        bidBoardStatusRaw: statusRaw,
+        customerLabel: isMeaningfulCustomer(customer) ? customer : null,
+        source: 'procore_webhook',
+        syncedAt: nowIso,
+      },
+    },
+  });
 }
 
 // ─── Projects handler ────────────────────────────────────────────────────────
@@ -405,6 +699,105 @@ async function handleProjectsEvent(event: {
       statusRaw,
       customer,
       JSON.stringify(project)
+    );
+  }
+}
+
+async function handleBidBoardProjectsEvent(event: {
+  companyId: string | null;
+  resourceId: string | null;
+  eventType: string | null;
+  payload: unknown;
+}): Promise<void> {
+  const companyId = (event.companyId || procoreConfig.companyId || '').trim();
+  if (!companyId) throw new Error('handleBidBoardProjectsEvent: missing companyId');
+
+  const payloadRecord = unwrapBidBoardProjectPayload(event.payload) || asObj(event.payload);
+  const resourceId = (
+    event.resourceId ||
+    firstStr(payloadRecord?.id, payloadRecord?.bid_board_project_id, payloadRecord?.project_id) ||
+    ''
+  ).trim();
+
+  if (!resourceId) throw new Error('handleBidBoardProjectsEvent: missing resourceId');
+
+  if (event.eventType === 'delete') {
+    return;
+  }
+
+  const token = await getServiceToken();
+  const freshProject = await fetchBidBoardProjectById({ companyId, bidBoardId: resourceId, token });
+  const project = freshProject || payloadRecord;
+  if (!project) return;
+
+  const bidBoardId = firstStr(project.id, project.bid_board_project_id, resourceId) || resourceId;
+  const procoreProjectId = firstStr(project.project_id, project.procore_project_id) || null;
+  const projectName = firstStr(project.name, project.display_name, project.title) || 'Untitled Bid Board Project';
+  const statusRaw =
+    firstStr(
+      project.status,
+      asObj(project.status)?.name,
+      asObj(project.bid_status)?.name,
+      asObj(project.project_status)?.name
+    ) || null;
+  const bidBoardStatus = normalizeBidBoardStatus(statusRaw);
+
+  let customer: string | null = null;
+  const customFieldCustomer = extractCustomerFromCustomFields((project as JsonObject).custom_fields);
+  if (isMeaningfulCustomer(customFieldCustomer)) {
+    customer = customFieldCustomer;
+  } else {
+    const direct =
+      firstStr(project.customer_name, project.client_name) ||
+      firstStr(asObj(project.customer_company)?.name, asObj(project.company)?.name) ||
+      null;
+    if (isMeaningfulCustomer(direct)) {
+      customer = direct;
+    }
+  }
+
+  await upsertBidBoardLive({
+    companyId,
+    bidBoardId,
+    procoreProjectId,
+    name: projectName,
+    status: bidBoardStatus,
+    statusRaw,
+    customer: isMeaningfulCustomer(customer) ? customer : null,
+    payload: project,
+  });
+
+  await upsertCanonicalProjectFromBidBoardWebhook({
+    companyId,
+    bidBoardId,
+    procoreProjectId,
+    projectName,
+    status: bidBoardStatus,
+    statusRaw,
+    customer,
+  });
+
+  const updatedStagingRows = await applyBidBoardStatusToV1Staging({
+    companyId,
+    procoreProjectId,
+    bidBoardStatus,
+    bidBoardId,
+    bidBoardName: projectName,
+    customer,
+  });
+
+  if (bidBoardStatus && updatedStagingRows === 0 && procoreProjectId) {
+    await prisma.$executeRawUnsafe(
+      `
+        UPDATE procore_project_staging
+        SET bid_board_status = $1, synced_at = NOW()
+        WHERE source = 'procore_v1_projects'
+          AND company_id = $2
+          AND procore_project_id = $3
+      `,
+      bidBoardStatus,
+      companyId,
+      procoreProjectId
     );
   }
 }
@@ -607,6 +1000,15 @@ export async function processEvent(event: {
 
   if (resource === 'projects' || resource === 'project') {
     return handleProjectsEvent(event);
+  }
+
+  if (resource.includes('bid board') || (resource.includes('estimating') && resource.includes('project'))) {
+    return handleBidBoardProjectsEvent({
+      companyId: event.companyId,
+      resourceId: event.resourceId,
+      eventType: event.eventType,
+      payload: event.payload,
+    });
   }
 
   if (resource === 'timecard entries' || resource.includes('timecard')) {

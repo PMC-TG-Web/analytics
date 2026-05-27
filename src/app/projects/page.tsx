@@ -178,7 +178,7 @@ export default function ProjectsPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [changeOrderSource, setChangeOrderSource] = useState<string>("");
   const syncInFlightRef = useRef(false);
-  const lastAutoFullSyncAtRef = useRef(0);
+  const autoSyncTriggeredRef = useRef(false);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -571,42 +571,26 @@ export default function ProjectsPage() {
   }, [loadProjects]);
 
   useEffect(() => {
-    const refreshIntervalMs = 60_000;
-    const minAutoFullSyncIntervalMs = 3 * 60_000;
+    const triggerAutoSyncOnce = () => {
+      if (autoSyncTriggeredRef.current) {
+        return;
+      }
 
-    const triggerRefresh = (allowFullSync: boolean) => {
       if (document.visibilityState !== "visible") {
         return;
       }
 
-      const now = Date.now();
-      const canRunFullSync =
-        allowFullSync &&
-        now - lastAutoFullSyncAtRef.current >= minAutoFullSyncIntervalMs;
-
-      if (canRunFullSync) {
-        lastAutoFullSyncAtRef.current = now;
-        void syncAndReload({ auto: true });
-        return;
-      }
-
-      void loadProjects();
+      autoSyncTriggeredRef.current = true;
+      void syncAndReload({ auto: true });
     };
 
-    const onInterval = () => triggerRefresh(true);
-    const onFocus = () => triggerRefresh(true);
-    const onVisibilityChange = () => triggerRefresh(true);
-
-    const intervalId = window.setInterval(onInterval, refreshIntervalMs);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    triggerAutoSyncOnce();
+    document.addEventListener("visibilitychange", triggerAutoSyncOnce);
 
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("visibilitychange", triggerAutoSyncOnce);
     };
-  }, [loadProjects, syncAndReload]);
+  }, [syncAndReload]);
 
   const statusOptions = useMemo(() => {
     const all = new Set<string>();

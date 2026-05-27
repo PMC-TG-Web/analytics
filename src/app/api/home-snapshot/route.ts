@@ -32,8 +32,6 @@ export async function GET(request: NextRequest) {
   try {
     const startDate = String(request.nextUrl.searchParams.get('startDate') || '').trim();
     const endDate = String(request.nextUrl.searchParams.get('endDate') || '').trim();
-    const canReadEmployees =
-      String(request.nextUrl.searchParams.get('canReadEmployees') || '').trim().toLowerCase() === 'true';
 
     if (!startDate || !endDate) {
       return NextResponse.json(
@@ -64,9 +62,7 @@ export async function GET(request: NextRequest) {
 
     const [employees, activeSchedules, timeOff, concreteOrders, pmAssignments, crewTemplates, projects, scopes] =
       await Promise.all([
-        canReadEmployees
-          ? fetchArray('/api/employees?isActive=true&page=1&pageSize=500')
-          : Promise.resolve([]),
+        fetchArray('/api/employees?isActive=true&page=1&pageSize=500'),
         fetchArray(`/api/short-term-schedule?action=active-schedule&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`),
         fetchArray('/api/time-off'),
         fetchArray(`/api/concrete-orders?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`),

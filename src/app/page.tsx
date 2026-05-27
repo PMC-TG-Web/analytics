@@ -411,7 +411,6 @@ export default function Home() {
 
 function HomeContent() {
   const { user, loading: authLoading } = useAuth();
-  const canReadEmployees = Boolean(user?.email && hasPageAccess(user.email, "employees"));
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -470,7 +469,7 @@ function HomeContent() {
       setLoading(true);
       try {
         const snapshotRes = await fetch(
-          `/api/home-snapshot?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&canReadEmployees=${canReadEmployees ? "true" : "false"}`,
+          `/api/home-snapshot?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
           { cache: "no-store", credentials: "include" }
         );
 
@@ -510,7 +509,7 @@ function HomeContent() {
     }
 
     fetchData();
-  }, [startDate, endDate, canReadEmployees]);
+  }, [startDate, endDate]);
 
   const currentMonthIdx = new Date().getMonth();
   const currentSafetyTopic = SAFETY_TOPICS[currentMonthIdx];
@@ -1078,7 +1077,9 @@ function HomeContent() {
             <div>
               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">{personalTitle}</h2>
               <p className="text-white/70 text-xs md:text-sm font-bold">
-                {me ? `${me.firstName} ${me.lastName}${me.jobTitle ? ` • ${me.jobTitle}` : ""}` : "No employee profile match found for your email."}
+                {me
+                  ? `${me.firstName} ${me.lastName}${me.jobTitle ? ` • ${me.jobTitle}` : ""}`
+                  : `${user?.name || user?.email || "Signed-in user"} • Position unavailable`}
               </p>
             </div>
             <div className="text-[10px] md:text-xs font-black uppercase tracking-widest text-white/70">Window: {formatDayLabel(startDate)} - {formatDayLabel(endDate)}</div>

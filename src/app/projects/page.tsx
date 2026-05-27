@@ -178,6 +178,7 @@ export default function ProjectsPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [changeOrderSource, setChangeOrderSource] = useState<string>("");
   const syncInFlightRef = useRef(false);
+  const lastAutoFullSyncAtRef = useRef(0);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -468,7 +469,14 @@ export default function ProjectsPage() {
 
       await loadProjects();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync from Procore");
+      const message = err instanceof Error ? err.message : "Failed to sync from Procore";
+      if (/429|too many requests/i.test(message)) {
+        // Procore can rate-limit bursty syncs; keep stale-safe UI by reloading local API data only.
+        await loadProjects();
+        return;
+      }
+
+      setError(message);
     } finally {
       setSyncing(false);
       syncInFlightRef.current = false;
@@ -555,26 +563,42 @@ export default function ProjectsPage() {
   }, [loadProjects]);
 
   useEffect(() => {
-    const refreshIntervalMs = 120_000;
+    const refreshIntervalMs = 60_000;
+    const minAutoFullSyncIntervalMs = 10 * 60_000;
 
-    const triggerRefresh = () => {
+    const triggerRefresh = (allowFullSync: boolean) => {
       if (document.visibilityState !== "visible") {
         return;
       }
 
-      void syncAndReload();
+      const now = Date.now();
+      const canRunFullSync =
+        allowFullSync &&
+        now - lastAutoFullSyncAtRef.current >= minAutoFullSyncIntervalMs;
+
+      if (canRunFullSync) {
+        lastAutoFullSyncAtRef.current = now;
+        void syncAndReload();
+        return;
+      }
+
+      void loadProjects();
     };
 
-    const intervalId = window.setInterval(triggerRefresh, refreshIntervalMs);
-    window.addEventListener("focus", triggerRefresh);
-    document.addEventListener("visibilitychange", triggerRefresh);
+    const onInterval = () => triggerRefresh(true);
+    const onFocus = () => triggerRefresh(false);
+    const onVisibilityChange = () => triggerRefresh(false);
+
+    const intervalId = window.setInterval(onInterval, refreshIntervalMs);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", triggerRefresh);
-      document.removeEventListener("visibilitychange", triggerRefresh);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [syncAndReload]);
+  }, [loadProjects, syncAndReload]);
 
   const statusOptions = useMemo(() => {
     const all = new Set<string>();

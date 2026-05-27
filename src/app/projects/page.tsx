@@ -438,14 +438,18 @@ export default function ProjectsPage() {
     }
   }, []);
 
-  const syncAndReload = useCallback(async () => {
+  const syncAndReload = useCallback(async (options?: { auto?: boolean }) => {
+    const isAuto = options?.auto === true;
+
     if (syncInFlightRef.current) {
       return;
     }
 
     syncInFlightRef.current = true;
-    setSyncing(true);
-    setError("");
+    if (!isAuto) {
+      setSyncing(true);
+      setError("");
+    }
 
     try {
       const response = await fetch("/api/procore/sync/all-projects", {
@@ -455,10 +459,10 @@ export default function ProjectsPage() {
         },
         body: JSON.stringify({
           companyId: DEFAULT_PROCORE_COMPANY_ID || "598134325805519",
-          fetchAll: true,
-          includeInactiveV1: true,
-          includeTestProjects: true,
-          maxPages: 1000,
+          fetchAll: !isAuto,
+          includeInactiveV1: !isAuto,
+          includeTestProjects: !isAuto,
+          maxPages: isAuto ? 1 : 1000,
         }),
       });
 
@@ -476,9 +480,13 @@ export default function ProjectsPage() {
         return;
       }
 
-      setError(message);
+      if (!isAuto) {
+        setError(message);
+      }
     } finally {
-      setSyncing(false);
+      if (!isAuto) {
+        setSyncing(false);
+      }
       syncInFlightRef.current = false;
     }
   }, [loadProjects]);
@@ -564,7 +572,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     const refreshIntervalMs = 60_000;
-    const minAutoFullSyncIntervalMs = 10 * 60_000;
+    const minAutoFullSyncIntervalMs = 3 * 60_000;
 
     const triggerRefresh = (allowFullSync: boolean) => {
       if (document.visibilityState !== "visible") {
@@ -578,7 +586,7 @@ export default function ProjectsPage() {
 
       if (canRunFullSync) {
         lastAutoFullSyncAtRef.current = now;
-        void syncAndReload();
+        void syncAndReload({ auto: true });
         return;
       }
 
@@ -586,8 +594,8 @@ export default function ProjectsPage() {
     };
 
     const onInterval = () => triggerRefresh(true);
-    const onFocus = () => triggerRefresh(false);
-    const onVisibilityChange = () => triggerRefresh(false);
+    const onFocus = () => triggerRefresh(true);
+    const onVisibilityChange = () => triggerRefresh(true);
 
     const intervalId = window.setInterval(onInterval, refreshIntervalMs);
     window.addEventListener("focus", onFocus);

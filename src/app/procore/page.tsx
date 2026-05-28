@@ -37,6 +37,37 @@ function ProcoreContent() {
   const [productivityDebugResult, setProductivityDebugResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [importBidBoardProjectId, setImportBidBoardProjectId] = useState("");
+  const [importProposalName, setImportProposalName] = useState("Imported Estimate");
+  const [importProposalId, setImportProposalId] = useState("");
+  const [importRowsText, setImportRowsText] = useState("[]");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importWorkbookSummary, setImportWorkbookSummary] = useState<string | null>(null);
+  const [projectImportRowsText, setProjectImportRowsText] = useState("[]");
+  const [projectImportBusy, setProjectImportBusy] = useState(false);
+  const [projectImportResult, setProjectImportResult] = useState<any>(null);
+  const [projectImportError, setProjectImportError] = useState<string | null>(null);
+  const [projectImportWorkbookSummary, setProjectImportWorkbookSummary] = useState<string | null>(null);
+
+  // Step 2: Line Item Groups import state
+  const [groupImportBidBoardProjectId, setGroupImportBidBoardProjectId] = useState("");
+  const [groupImportProposalId, setGroupImportProposalId] = useState("");
+  const [groupImportRowsText, setGroupImportRowsText] = useState("[]");
+  const [groupImportBusy, setGroupImportBusy] = useState(false);
+  const [groupImportResult, setGroupImportResult] = useState<any>(null);
+  const [groupImportError, setGroupImportError] = useState<string | null>(null);
+  const [groupImportWorkbookSummary, setGroupImportWorkbookSummary] = useState<string | null>(null);
+
+  // Step 3: Line Items import state
+  const [lineItemImportBidBoardProjectId, setLineItemImportBidBoardProjectId] = useState("");
+  const [lineItemImportProposalId, setLineItemImportProposalId] = useState("");
+  const [lineItemImportRowsText, setLineItemImportRowsText] = useState("[]");
+  const [lineItemImportBusy, setLineItemImportBusy] = useState(false);
+  const [lineItemImportResult, setLineItemImportResult] = useState<any>(null);
+  const [lineItemImportError, setLineItemImportError] = useState<string | null>(null);
+  const [lineItemImportWorkbookSummary, setLineItemImportWorkbookSummary] = useState<string | null>(null);
 
   useEffect(() => {
     const checkProcoreAuth = async () => {
@@ -257,6 +288,734 @@ function ProcoreContent() {
       console.warn('Error checking database:', err);
     } finally {
       setCheckingDatabase(false);
+    }
+  };
+
+  const parseImportRows = (): Record<string, unknown>[] => {
+    const parsed = JSON.parse(importRowsText || "[]");
+    if (!Array.isArray(parsed)) {
+      throw new Error("Rows input must be a JSON array of objects.");
+    }
+    const rows = parsed.filter((row) => row && typeof row === "object");
+    if (rows.length === 0) {
+      throw new Error("Rows input is empty. Paste workbook rows as a JSON array.");
+    }
+    return rows as Record<string, unknown>[];
+  };
+
+  const handleEstimateWorkbookImport = async (dryRun: boolean) => {
+    const bidBoardProjectId = importBidBoardProjectId.trim();
+    if (!bidBoardProjectId) {
+      setImportError("Bid Board Project ID is required.");
+      return;
+    }
+
+    if (!dryRun) {
+      const confirmed = window.confirm(
+        "This will create real proposal/groups/line-items in Procore. Continue with live import?"
+      );
+      if (!confirmed) return;
+    }
+
+    let rows: Record<string, unknown>[] = [];
+    try {
+      rows = parseImportRows();
+    } catch (parseError) {
+      const message = parseError instanceof Error ? parseError.message : String(parseError);
+      setImportError(message);
+      return;
+    }
+
+    setImportBusy(true);
+    setImportError(null);
+    setImportResult(null);
+
+    try {
+      const payload: Record<string, unknown> = {
+        bidBoardProjectId,
+        dryRun,
+        rows,
+        createProposal: !importProposalId.trim(),
+      };
+
+      if (importProposalId.trim()) {
+        payload.proposalId = importProposalId.trim();
+      } else {
+        payload.proposal = {
+          name: importProposalName.trim() || "Imported Estimate",
+        };
+      }
+
+      const response = await fetch("/api/procore/estimating/import-estimate-workbook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const details = typeof result?.details === "string" ? result.details : "Unknown import error";
+        throw new Error(details);
+      }
+
+      if (!dryRun && typeof result?.proposalId === "string" && result.proposalId.trim()) {
+        setImportProposalId(result.proposalId);
+      }
+
+      setImportResult(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setImportError(message);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const handleWorkbookFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportWorkbookSummary(null);
+
+    try {
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+
+      if (!workbook.SheetNames.length) {
+        throw new Error("Workbook has no sheets.");
+      }
+
+      let selectedSheetName = workbook.SheetNames[0];
+      let selectedRows: Record<string, unknown>[] = [];
+
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) {
+          selectedSheetName = sheetName;
+          selectedRows = rows;
+          break;
+        }
+      }
+
+      if (selectedRows.length === 0) {
+        throw new Error("No row data found in workbook sheets.");
+      }
+
+      setImportRowsText(JSON.stringify(selectedRows, null, 2));
+      setImportWorkbookSummary(
+        `${file.name}: loaded ${selectedRows.length} rows from sheet \"${selectedSheetName}\".`
+      );
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : String(uploadError);
+      setImportError(`Failed to parse workbook: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const parseProjectImportRows = (): Record<string, unknown>[] => {
+    const parsed = JSON.parse(projectImportRowsText || "[]");
+    if (!Array.isArray(parsed)) {
+      throw new Error("Project rows input must be a JSON array of objects.");
+    }
+    const rows = parsed.filter((row) => row && typeof row === "object");
+    if (rows.length === 0) {
+      throw new Error("Project rows input is empty. Upload workbook rows or paste JSON.");
+    }
+    return rows as Record<string, unknown>[];
+  };
+
+  const getRowString = (row: Record<string, unknown>, keys: string[]): string => {
+    for (const key of keys) {
+      const value = row[key];
+      if (value === null || value === undefined) continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return "";
+  };
+
+  const getRowBoolean = (row: Record<string, unknown>, keys: string[]): boolean | undefined => {
+    for (const key of keys) {
+      const value = row[key];
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "true") return true;
+        if (normalized === "false") return false;
+      }
+    }
+    return undefined;
+  };
+
+  const getRowNumber = (row: Record<string, unknown>, keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const value = row[key];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string") {
+        const parsed = Number(value.trim());
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+    return undefined;
+  };
+
+  const buildBidBoardProjectPayloadFromRow = (row: Record<string, unknown>) => {
+    const payload: Record<string, unknown> = {
+      name: getRowString(row, ["name", "Name"]),
+      status: getRowString(row, ["status", "Status"]) || "ESTIMATING",
+    };
+
+    const description = getRowString(row, ["description", "Description"]);
+    const dueDate = getRowString(row, ["due_date", "dueDate", "Due Date", "due date"]);
+    const projectNumber = getRowString(row, ["project_number", "projectNumber", "Project Number", "project number"]);
+    const squareFootage = getRowNumber(row, ["square_footage", "squareFootage", "Square Footage", "square footage"]);
+
+    const isTemplate = getRowBoolean(row, ["is_template", "isTemplate", "as_template", "asTemplate", "template"]);
+    const useMetricUnits = getRowBoolean(row, ["use_metric_units", "useMetricUnits"]);
+    const useTaxFromCost = getRowBoolean(row, ["use_tax_from_cost", "useTaxFromCost"]);
+    const individualLaborRates = getRowBoolean(row, ["individual_labor_rates", "individualLaborRates"]);
+    const useUnitLaborCost = getRowBoolean(row, ["use_unit_labor_cost", "useUnitLaborCost"]);
+    const wbsValidationEnabled = getRowBoolean(row, ["wbs_validation_enabled", "wbsValidationEnabled"]);
+    const disableEaPartsRounding = getRowBoolean(row, ["disable_ea_parts_rounding", "disableEaPartsRounding"]);
+
+    if (description) payload.description = description;
+    if (dueDate) payload.due_date = dueDate;
+    if (projectNumber) payload.project_number = projectNumber;
+    if (squareFootage !== undefined) payload.square_footage = squareFootage;
+    if (isTemplate !== undefined) payload.is_template = isTemplate;
+    if (useMetricUnits !== undefined) payload.use_metric_units = useMetricUnits;
+    if (useTaxFromCost !== undefined) payload.use_tax_from_cost = useTaxFromCost;
+    if (individualLaborRates !== undefined) payload.individual_labor_rates = individualLaborRates;
+    if (useUnitLaborCost !== undefined) payload.use_unit_labor_cost = useUnitLaborCost;
+    if (wbsValidationEnabled !== undefined) payload.wbs_validation_enabled = wbsValidationEnabled;
+    if (disableEaPartsRounding !== undefined) payload.disable_ea_parts_rounding = disableEaPartsRounding;
+
+    const addressStreet = getRowString(row, ["address.street", "address_street", "Address Street"]);
+    const addressCity = getRowString(row, ["address.city", "address_city", "Address City"]);
+    const addressState = getRowString(row, ["address.state", "address_state", "Address State"]);
+    const addressZip = getRowString(row, ["address.zip", "address_zip", "Address Zip"]);
+    const addressCountry = getRowString(row, ["address.country", "address_country", "Address Country"]);
+
+    if (addressStreet || addressCity || addressState || addressZip || addressCountry) {
+      payload.address = {
+        ...(addressStreet ? { street: addressStreet } : {}),
+        ...(addressCity ? { city: addressCity } : {}),
+        ...(addressState ? { state: addressState } : {}),
+        ...(addressZip ? { zip: addressZip } : {}),
+        ...(addressCountry ? { country: addressCountry } : {}),
+      };
+    }
+
+    return payload;
+  };
+
+  const handleBidBoardProjectWorkbookUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setProjectImportError(null);
+    setProjectImportWorkbookSummary(null);
+
+    try {
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+
+      if (!workbook.SheetNames.length) {
+        throw new Error("Workbook has no sheets.");
+      }
+
+      let selectedSheetName = workbook.SheetNames[0];
+      let selectedRows: Record<string, unknown>[] = [];
+
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) {
+          selectedSheetName = sheetName;
+          selectedRows = rows;
+          break;
+        }
+      }
+
+      if (selectedRows.length === 0) {
+        throw new Error("No row data found in workbook sheets.");
+      }
+
+      setProjectImportRowsText(JSON.stringify(selectedRows, null, 2));
+      setProjectImportWorkbookSummary(
+        `${file.name}: loaded ${selectedRows.length} rows from sheet "${selectedSheetName}".`
+      );
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : String(uploadError);
+      setProjectImportError(`Failed to parse workbook: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleCreateBidBoardProjectsFromRows = async () => {
+    let rows: Record<string, unknown>[] = [];
+    try {
+      rows = parseProjectImportRows();
+    } catch (parseError) {
+      const message = parseError instanceof Error ? parseError.message : String(parseError);
+      setProjectImportError(message);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `This will create ${rows.length} Bid Board project(s) in Procore. Continue?`
+    );
+    if (!confirmed) return;
+
+    setProjectImportBusy(true);
+    setProjectImportError(null);
+    setProjectImportResult(null);
+
+    try {
+      const results: Array<Record<string, unknown>> = [];
+
+      for (let index = 0; index < rows.length; index += 1) {
+        const sourceRow = rows[index];
+        const payload = buildBidBoardProjectPayloadFromRow(sourceRow);
+
+        if (!payload.name || typeof payload.name !== "string" || !payload.name.trim()) {
+          results.push({
+            index,
+            ok: false,
+            error: "Missing required field: name",
+            payload,
+          });
+          continue;
+        }
+
+        const response = await fetch("/api/procore/estimating/bid-board-projects-create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        results.push({
+          index,
+          ok: response.ok,
+          status: response.status,
+          payload,
+          result,
+        });
+      }
+
+      const created = results.filter((entry) => entry.ok).length;
+      const failed = results.length - created;
+      setProjectImportResult({
+        source: "estimating.create_bid_board_project.bulk_from_rows",
+        attempted: results.length,
+        created,
+        failed,
+        results,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setProjectImportError(message);
+    } finally {
+      setProjectImportBusy(false);
+    }
+  };
+
+  const handlePreviewBidBoardProjectsFromRows = () => {
+    let rows: Record<string, unknown>[] = [];
+    try {
+      rows = parseProjectImportRows();
+    } catch (parseError) {
+      const message = parseError instanceof Error ? parseError.message : String(parseError);
+      setProjectImportError(message);
+      return;
+    }
+
+    setProjectImportError(null);
+    const previewResults = rows.map((sourceRow, index) => {
+      const payload = buildBidBoardProjectPayloadFromRow(sourceRow);
+      const hasName = typeof payload.name === "string" && payload.name.trim().length > 0;
+      return {
+        index,
+        ok: hasName,
+        error: hasName ? null : "Missing required field: name",
+        payload,
+      };
+    });
+
+    const valid = previewResults.filter((entry) => entry.ok).length;
+    const invalid = previewResults.length - valid;
+
+    setProjectImportResult({
+      source: "estimating.create_bid_board_project.bulk_from_rows",
+      mode: "dry-run",
+      attempted: previewResults.length,
+      created: 0,
+      failed: invalid,
+      valid,
+      invalid,
+      results: previewResults,
+    });
+  };
+
+  // ── Step 2: Line Item Groups helpers ────────────────────────────────────────
+
+  const parseGroupImportRows = (): Record<string, unknown>[] => {
+    try {
+      const parsed = JSON.parse(groupImportRowsText);
+      if (!Array.isArray(parsed)) throw new Error("Rows JSON must be an array.");
+      return parsed as Record<string, unknown>[];
+    } catch (e) {
+      throw new Error(`Invalid Rows JSON: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const buildGroupPayloadFromRow = (row: Record<string, unknown>): Record<string, unknown> => {
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
+    const num = (v: unknown): number | undefined => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && v.trim() !== "") { const n = Number(v); if (Number.isFinite(n)) return n; }
+      return undefined;
+    };
+    const bool = (v: unknown): boolean | undefined => {
+      if (typeof v === "boolean") return v;
+      if (typeof v === "string") { const s = v.trim().toLowerCase(); if (s === "true") return true; if (s === "false") return false; }
+      return undefined;
+    };
+
+    const payload: Record<string, unknown> = {};
+    const name = str(row.name);
+    if (name) payload.name = name;
+    const notes = str(row.notes);
+    if (notes) payload.notes = notes;
+    const multiplier = num(row.multiplier);
+    if (multiplier !== undefined) payload.multiplier = multiplier;
+
+    const po: Record<string, unknown> = {};
+    const numFields: Array<[string, string]> = [
+      ["unit_material_cost", "unitMaterialCost"],
+      ["material_margin", "materialMargin"],
+      ["unit_labor", "unitLabor"],
+      ["labor_factor", "laborFactor"],
+      ["unit_labor_rate", "unitLaborRate"],
+      ["unit_labor_cost", "unitLaborCost"],
+      ["labor_margin", "laborMargin"],
+    ];
+    for (const [snake, camel] of numFields) {
+      const v = num(row[snake] ?? row[camel]);
+      if (v !== undefined) po[snake] = v;
+    }
+    const isUntaxed = bool(row.is_untaxed ?? row.isUntaxed);
+    if (isUntaxed !== undefined) po.is_untaxed = isUntaxed;
+    if (Object.keys(po).length > 0) payload.pricing_override = po;
+
+    return payload;
+  };
+
+  const handleGroupWorkbookUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setGroupImportError(null);
+    setGroupImportWorkbookSummary(null);
+    try {
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      if (!workbook.SheetNames.length) throw new Error("Workbook has no sheets.");
+      let selectedSheetName = workbook.SheetNames[0];
+      let selectedRows: Record<string, unknown>[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) { selectedSheetName = sheetName; selectedRows = rows; break; }
+      }
+      if (selectedRows.length === 0) throw new Error("No row data found in workbook sheets.");
+      setGroupImportRowsText(JSON.stringify(selectedRows, null, 2));
+      setGroupImportWorkbookSummary(`${file.name}: loaded ${selectedRows.length} rows from sheet "${selectedSheetName}".`);
+    } catch (uploadError) {
+      setGroupImportError(`Failed to parse workbook: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handlePreviewGroupsFromRows = () => {
+    let rows: Record<string, unknown>[] = [];
+    try { rows = parseGroupImportRows(); } catch (e) { setGroupImportError(e instanceof Error ? e.message : String(e)); return; }
+    setGroupImportError(null);
+    const previewResults = rows.map((sourceRow, index) => {
+      const payload = buildGroupPayloadFromRow(sourceRow);
+      const hasName = typeof payload.name === "string" && (payload.name as string).trim().length > 0;
+      return { index, ok: hasName, error: hasName ? null : "Missing required field: name", payload };
+    });
+    const valid = previewResults.filter((r) => r.ok).length;
+    const invalid = previewResults.length - valid;
+    setGroupImportResult({ source: "estimating.create_line_item_group.bulk_from_rows", mode: "dry-run", attempted: previewResults.length, valid, invalid, failed: invalid, results: previewResults });
+  };
+
+  const handleCreateGroupsFromRows = async () => {
+    const bidBoardProjectId = groupImportBidBoardProjectId.trim();
+    const proposalId = groupImportProposalId.trim();
+    if (!bidBoardProjectId || !proposalId) { setGroupImportError("Bid Board Project ID and Proposal ID are required."); return; }
+
+    let rows: Record<string, unknown>[] = [];
+    try { rows = parseGroupImportRows(); } catch (e) { setGroupImportError(e instanceof Error ? e.message : String(e)); return; }
+
+    if (!window.confirm(`This will create ${rows.length} line item group(s) in Procore. Continue?`)) return;
+
+    setGroupImportBusy(true);
+    setGroupImportError(null);
+    setGroupImportResult(null);
+    try {
+      const results: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < rows.length; index++) {
+        const payload = buildGroupPayloadFromRow(rows[index]);
+        if (!payload.name || !(payload.name as string).trim()) {
+          results.push({ index, ok: false, error: "Missing required field: name", payload });
+          continue;
+        }
+        const response = await fetch("/api/procore/estimating/proposal-line-item-groups-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bidBoardProjectId, proposalId, ...payload }),
+        });
+        const result = await response.json().catch(() => ({}));
+        results.push({ index, ok: response.ok, status: response.status, payload, result });
+      }
+      const created = results.filter((r) => r.ok).length;
+      setGroupImportResult({ source: "estimating.create_line_item_group.bulk_from_rows", attempted: results.length, created, failed: results.length - created, results });
+    } catch (err) {
+      setGroupImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGroupImportBusy(false);
+    }
+  };
+
+  // ── Step 3: Line Items helpers ────────────────────────────────────────────
+
+  const parseLineItemImportRows = (): Record<string, unknown>[] => {
+    try {
+      const parsed = JSON.parse(lineItemImportRowsText);
+      if (!Array.isArray(parsed)) throw new Error("Rows JSON must be an array.");
+      return parsed as Record<string, unknown>[];
+    } catch (e) {
+      throw new Error(`Invalid Rows JSON: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const buildLineItemPayloadFromRow = (row: Record<string, unknown>): Record<string, unknown> => {
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
+    const num = (v: unknown): number | undefined => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && v.trim() !== "") { const n = Number(v); if (Number.isFinite(n)) return n; }
+      return undefined;
+    };
+    const bool = (v: unknown): boolean | undefined => {
+      if (typeof v === "boolean") return v;
+      if (typeof v === "string") { const s = v.trim().toLowerCase(); if (s === "true") return true; if (s === "false") return false; }
+      return undefined;
+    };
+
+    const payload: Record<string, unknown> = {};
+    const name = str(row.name);
+    if (name) payload.name = name;
+    const groupId = str(row.group_id ?? row.groupId);
+    if (groupId) payload.group_id = groupId;
+    const tag = str(row.tag);
+    if (tag) payload.tag = tag;
+    const laborFactor = num(row.labor_factor ?? row.laborFactor);
+    if (laborFactor !== undefined) payload.labor_factor = laborFactor;
+
+    // Build cost_item from ci_ prefixed flat columns
+    const ci: Record<string, unknown> = {};
+    const ciStrFields: Array<[string, string[]]> = [
+      ["type",             ["ci_type"]],
+      ["name",             ["ci_name", "ci_costItemName"]],
+      ["description",      ["ci_description"]],
+      ["unit",             ["ci_unit"]],
+      ["labor_time_unit",  ["ci_labor_time_unit", "ci_laborTimeUnit"]],
+      ["manufacturer",     ["ci_manufacturer"]],
+      ["catalog_number",   ["ci_catalog_number", "ci_catalogNumber"]],
+      ["url",              ["ci_url"]],
+      ["supplier",         ["ci_supplier"]],
+      ["notes",            ["ci_notes", "ci_costItemNotes"]],
+      ["id",               ["ci_id", "ci_costItemId"]],
+      ["color",            ["ci_color"]],
+      ["symbol_id",        ["ci_symbol_id", "ci_symbolId"]],
+      ["catalog_id",       ["ci_catalog_id", "ci_catalogId"]],
+      ["based_on_item_id", ["ci_based_on_item_id", "ci_basedOnItemId"]],
+    ];
+    const ciNumFields: Array<[string, string[]]> = [
+      ["unit_cost",       ["ci_unit_cost", "ci_unitCost"]],
+      ["unit_labor",      ["ci_unit_labor", "ci_unitLabor"]],
+      ["unit_labor_cost", ["ci_unit_labor_cost", "ci_unitLaborCost"]],
+      ["unit_labor_rate", ["ci_unit_labor_rate", "ci_unitLaborRate"]],
+      ["waste",           ["ci_waste"]],
+      ["material_waste",  ["ci_material_waste", "ci_materialWaste"]],
+      ["item_margin",     ["ci_item_margin", "ci_itemMargin"]],
+      ["labor_margin",    ["ci_labor_margin", "ci_laborMargin"]],
+      ["delivery_unit",   ["ci_delivery_unit", "ci_deliveryUnit"]],
+    ];
+    for (const [snake, keys] of ciStrFields) {
+      const v = str(keys.reduce<unknown>((acc, k) => acc ?? row[k], undefined));
+      if (v) ci[snake] = v;
+    }
+    for (const [snake, keys] of ciNumFields) {
+      const v = num(keys.reduce<unknown>((acc, k) => acc ?? row[k], undefined));
+      if (v !== undefined) ci[snake] = v;
+    }
+    const isUntaxed = bool(row.ci_is_untaxed ?? row.ci_isUntaxed);
+    if (isUntaxed !== undefined) ci.is_untaxed = isUntaxed;
+    if (Object.keys(ci).length > 0) payload.cost_item = ci;
+
+    return payload;
+  };
+
+  const handleLineItemWorkbookUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setLineItemImportError(null);
+    setLineItemImportWorkbookSummary(null);
+    try {
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      if (!workbook.SheetNames.length) throw new Error("Workbook has no sheets.");
+      let selectedSheetName = workbook.SheetNames[0];
+      let selectedRows: Record<string, unknown>[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) { selectedSheetName = sheetName; selectedRows = rows; break; }
+      }
+      if (selectedRows.length === 0) throw new Error("No row data found in workbook sheets.");
+      setLineItemImportRowsText(JSON.stringify(selectedRows, null, 2));
+      setLineItemImportWorkbookSummary(`${file.name}: loaded ${selectedRows.length} rows from sheet "${selectedSheetName}".`);
+    } catch (uploadError) {
+      setLineItemImportError(`Failed to parse workbook: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  // Fetch all groups for a proposal and return a lowercase-name → id map
+  const fetchGroupNameMap = async (bidBoardProjectId: string, proposalId: string): Promise<Record<string, string>> => {
+    try {
+      const res = await fetch("/api/procore/estimating/proposal-line-item-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidBoardProjectId, proposalId, perPage: 200 }),
+      });
+      if (!res.ok) return {};
+      const data = await res.json().catch(() => ({}));
+      const groups: unknown[] = Array.isArray(data.groups) ? data.groups
+        : Array.isArray(data.data) ? data.data
+        : Array.isArray(data) ? data : [];
+      const map: Record<string, string> = {};
+      for (const g of groups) {
+        if (g && typeof g === "object") {
+          const rec = g as Record<string, unknown>;
+          const id = String(rec.id || "").trim();
+          const name = String(rec.name || "").trim();
+          if (id && name) map[name.toLowerCase()] = id;
+        }
+      }
+      return map;
+    } catch {
+      return {};
+    }
+  };
+
+  // Copy a row and inject group_id from name map if group_name is present
+  const resolveGroupName = (row: Record<string, unknown>, nameMap: Record<string, string>): Record<string, unknown> => {
+    const groupName = typeof row.group_name === "string" ? row.group_name.trim() : "";
+    if (!groupName) return row;
+    const resolvedId = nameMap[groupName.toLowerCase()];
+    return { ...row, group_id: resolvedId || row.group_id || "" };
+  };
+
+  const handlePreviewLineItemsFromRows = async () => {
+    const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
+    const proposalId = lineItemImportProposalId.trim();
+    let rows: Record<string, unknown>[] = [];
+    try { rows = parseLineItemImportRows(); } catch (e) { setLineItemImportError(e instanceof Error ? e.message : String(e)); return; }
+    setLineItemImportError(null);
+
+    // Fetch group name→id map if any row uses group_name and IDs are provided
+    let groupNameMap: Record<string, string> = {};
+    const hasGroupNames = rows.some((r) => typeof r.group_name === "string" && (r.group_name as string).trim());
+    if (hasGroupNames && bidBoardProjectId && proposalId) {
+      groupNameMap = await fetchGroupNameMap(bidBoardProjectId, proposalId);
+    }
+
+    const previewResults = rows.map((sourceRow, index) => {
+      const resolvedRow = resolveGroupName(sourceRow, groupNameMap);
+      const payload = buildLineItemPayloadFromRow(resolvedRow);
+      const hasName = typeof payload.name === "string" && (payload.name as string).trim().length > 0;
+      const groupName = typeof sourceRow.group_name === "string" ? (sourceRow.group_name as string).trim() : "";
+      const groupWarning = groupName && !resolvedRow.group_id ? `group_name "${groupName}" not found in proposal` : null;
+      return { index, ok: hasName, error: hasName ? null : "Missing required field: name", groupWarning, payload };
+    });
+    const valid = previewResults.filter((r) => r.ok).length;
+    const invalid = previewResults.length - valid;
+    setLineItemImportResult({ source: "estimating.create_line_item.bulk_from_rows", mode: "dry-run", attempted: previewResults.length, valid, invalid, failed: invalid, results: previewResults });
+  };
+
+  const handleCreateLineItemsFromRows = async () => {
+    const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
+    const proposalId = lineItemImportProposalId.trim();
+    if (!bidBoardProjectId || !proposalId) { setLineItemImportError("Bid Board Project ID and Proposal ID are required."); return; }
+
+    let rows: Record<string, unknown>[] = [];
+    try { rows = parseLineItemImportRows(); } catch (e) { setLineItemImportError(e instanceof Error ? e.message : String(e)); return; }
+
+    if (!window.confirm(`This will create ${rows.length} line item(s) in Procore. Continue?`)) return;
+
+    setLineItemImportBusy(true);
+    setLineItemImportError(null);
+    setLineItemImportResult(null);
+    try {
+      // Resolve group names → IDs once before the loop
+      const hasGroupNames = rows.some((r) => typeof r.group_name === "string" && (r.group_name as string).trim());
+      const groupNameMap = hasGroupNames ? await fetchGroupNameMap(bidBoardProjectId, proposalId) : {};
+
+      const results: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < rows.length; index++) {
+        const resolvedRow = resolveGroupName(rows[index], groupNameMap);
+        const payload = buildLineItemPayloadFromRow(resolvedRow);
+        if (!payload.name || !(payload.name as string).trim()) {
+          results.push({ index, ok: false, error: "Missing required field: name", payload });
+          continue;
+        }
+        const response = await fetch("/api/procore/estimating/proposal-line-items-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bidBoardProjectId, proposalId, ...payload }),
+        });
+        const result = await response.json().catch(() => ({}));
+        results.push({ index, ok: response.ok, status: response.status, payload, result });
+      }
+      const created = results.filter((r) => r.ok).length;
+      setLineItemImportResult({ source: "estimating.create_line_item.bulk_from_rows", attempted: results.length, created, failed: results.length - created, results });
+    } catch (err) {
+      setLineItemImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLineItemImportBusy(false);
     }
   };
 
@@ -548,6 +1307,356 @@ function ProcoreContent() {
               >
                 {checkingDatabase ? "Checking..." : "📊 Check Database"}
               </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+              <h2 className="text-xl font-bold text-sky-900 mb-3">Bid Board Project Import (Step 1)</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload a Bid Board project workbook, review the JSON rows, then create one Procore Bid Board project per row.
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Project Workbook (.xlsx/.xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleBidBoardProjectWorkbookUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                {projectImportWorkbookSummary && (
+                  <p className="text-xs text-sky-700 mt-2">{projectImportWorkbookSummary}</p>
+                )}
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Project Rows JSON</label>
+              <textarea
+                value={projectImportRowsText}
+                onChange={(e) => setProjectImportRowsText(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                placeholder='[{"name":"Bid Board Template Example","status":"ESTIMATING","is_template":true}]'
+              />
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={handlePreviewBidBoardProjectsFromRows}
+                  disabled={projectImportBusy}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {projectImportBusy ? "Working..." : "Preview Projects (Dry Run)"}
+                </button>
+
+                <button
+                  onClick={handleCreateBidBoardProjectsFromRows}
+                  disabled={projectImportBusy}
+                  className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {projectImportBusy ? "Creating..." : "Create Projects From Rows"}
+                </button>
+              </div>
+
+              {projectImportError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Project Import Error:</strong> {projectImportError}
+                </div>
+              )}
+
+              {projectImportResult && (
+                <div className="mt-4">
+                  <div className="bg-sky-50 border border-sky-200 text-sky-900 px-4 py-3 rounded mb-3">
+                    <strong>Project Import Result:</strong>{" "}
+                    {projectImportResult.mode === "dry-run"
+                      ? `Dry-run preview ready. Attempted ${projectImportResult.attempted}, Valid ${projectImportResult.valid}, Invalid ${projectImportResult.invalid}`
+                      : `Attempted ${projectImportResult.attempted}, Created ${projectImportResult.created}, Failed ${projectImportResult.failed}`}
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(projectImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6">
+              <h2 className="text-xl font-bold text-violet-900 mb-3">Line Item Groups Import (Step 2)</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload the groups template, enter the Bid Board Project ID and Proposal ID, then create line item groups.{" "}
+                <a href="/templates/procore-line-item-groups-template.xlsx" className="text-violet-700 underline text-xs" download>
+                  Download template
+                </a>
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={groupImportBidBoardProjectId}
+                    onChange={(e) => setGroupImportBidBoardProjectId(e.target.value)}
+                    placeholder="e.g. 562949955815658"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
+                  <input
+                    type="text"
+                    value={groupImportProposalId}
+                    onChange={(e) => setGroupImportProposalId(e.target.value)}
+                    placeholder="e.g. 123456"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Groups Workbook (.xlsx/.xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleGroupWorkbookUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                {groupImportWorkbookSummary && (
+                  <p className="text-xs text-violet-700 mt-2">{groupImportWorkbookSummary}</p>
+                )}
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Group Rows JSON</label>
+              <textarea
+                value={groupImportRowsText}
+                onChange={(e) => setGroupImportRowsText(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                placeholder='[{"name":"Concrete - Sidewalk","multiplier":1,"unit_material_cost":45,"material_margin":0.1}]'
+              />
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={handlePreviewGroupsFromRows}
+                  disabled={groupImportBusy}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {groupImportBusy ? "Working..." : "Preview Groups (Dry Run)"}
+                </button>
+                <button
+                  onClick={handleCreateGroupsFromRows}
+                  disabled={groupImportBusy}
+                  className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {groupImportBusy ? "Creating..." : "Create Groups From Rows"}
+                </button>
+              </div>
+
+              {groupImportError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Groups Import Error:</strong> {groupImportError}
+                </div>
+              )}
+
+              {groupImportResult && (
+                <div className="mt-4">
+                  <div className="bg-violet-50 border border-violet-200 text-violet-900 px-4 py-3 rounded mb-3">
+                    <strong>Groups Import Result:</strong>{" "}
+                    {groupImportResult.mode === "dry-run"
+                      ? `Dry-run preview ready. Attempted ${groupImportResult.attempted}, Valid ${groupImportResult.valid}, Invalid ${groupImportResult.invalid}`
+                      : `Attempted ${groupImportResult.attempted}, Created ${groupImportResult.created}, Failed ${groupImportResult.failed}`}
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(groupImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+              <h2 className="text-xl font-bold text-emerald-900 mb-3">Line Items Import (Step 3)</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload the line items template, enter the Bid Board Project ID and Proposal ID, then create individual line items.{" "}
+                <a href="/templates/procore-line-items-template.xlsx" className="text-emerald-700 underline text-xs" download>
+                  Download template
+                </a>
+              </p>
+              <p className="text-xs text-gray-500 mb-4">
+                Cost item fields use a <code className="bg-gray-100 px-1 rounded">ci_</code> prefix in the template (e.g. <code className="bg-gray-100 px-1 rounded">ci_type</code>, <code className="bg-gray-100 px-1 rounded">ci_unit_cost</code>). Only <strong>name</strong> is required.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={lineItemImportBidBoardProjectId}
+                    onChange={(e) => setLineItemImportBidBoardProjectId(e.target.value)}
+                    placeholder="e.g. 562949955815658"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
+                  <input
+                    type="text"
+                    value={lineItemImportProposalId}
+                    onChange={(e) => setLineItemImportProposalId(e.target.value)}
+                    placeholder="e.g. 123456"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Line Items Workbook (.xlsx/.xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleLineItemWorkbookUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                {lineItemImportWorkbookSummary && (
+                  <p className="text-xs text-emerald-700 mt-2">{lineItemImportWorkbookSummary}</p>
+                )}
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Line Item Rows JSON</label>
+              <textarea
+                value={lineItemImportRowsText}
+                onChange={(e) => setLineItemImportRowsText(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                placeholder='[{"name":"Concrete - 4000 PSI","ci_type":"PART","ci_unit":"CY","ci_unit_cost":155}]'
+              />
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={handlePreviewLineItemsFromRows}
+                  disabled={lineItemImportBusy}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {lineItemImportBusy ? "Working..." : "Preview Line Items (Dry Run)"}
+                </button>
+                <button
+                  onClick={handleCreateLineItemsFromRows}
+                  disabled={lineItemImportBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {lineItemImportBusy ? "Creating..." : "Create Line Items From Rows"}
+                </button>
+              </div>
+
+              {lineItemImportError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Line Items Import Error:</strong> {lineItemImportError}
+                </div>
+              )}
+
+              {lineItemImportResult && (
+                <div className="mt-4">
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded mb-3">
+                    <strong>Line Items Import Result:</strong>{" "}
+                    {lineItemImportResult.mode === "dry-run"
+                      ? `Dry-run preview ready. Attempted ${lineItemImportResult.attempted}, Valid ${lineItemImportResult.valid}, Invalid ${lineItemImportResult.invalid}`
+                      : `Attempted ${lineItemImportResult.attempted}, Created ${lineItemImportResult.created}, Failed ${lineItemImportResult.failed}`}
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(lineItemImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
+              <h2 className="text-xl font-bold text-teal-900 mb-3">Estimate Workbook Import</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload an Excel workbook or paste rows JSON, run a dry-run preview, then run live import to create proposal, groups, and line items.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={importBidBoardProjectId}
+                    onChange={(e) => setImportBidBoardProjectId(e.target.value)}
+                    placeholder="e.g. 11403839"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Existing Proposal ID (Optional)</label>
+                  <input
+                    type="text"
+                    value={importProposalId}
+                    onChange={(e) => setImportProposalId(e.target.value)}
+                    placeholder="Leave blank to create a proposal"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">New Proposal Name</label>
+                  <input
+                    type="text"
+                    value={importProposalName}
+                    onChange={(e) => setImportProposalName(e.target.value)}
+                    placeholder="Imported Estimate"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    disabled={Boolean(importProposalId.trim())}
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Workbook (.xlsx/.xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleWorkbookFileUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                {importWorkbookSummary && (
+                  <p className="text-xs text-teal-700 mt-2">{importWorkbookSummary}</p>
+                )}
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Workbook Rows JSON</label>
+              <textarea
+                value={importRowsText}
+                onChange={(e) => setImportRowsText(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                placeholder='[{"Cost item":"Division A","Cost Code":"03-100","Quantity":1}]'
+              />
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={() => handleEstimateWorkbookImport(true)}
+                  disabled={importBusy}
+                  className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {importBusy ? "Working..." : "Preview Import (Dry Run)"}
+                </button>
+
+                <button
+                  onClick={() => handleEstimateWorkbookImport(false)}
+                  disabled={importBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {importBusy ? "Working..." : "Run Live Import"}
+                </button>
+              </div>
+
+              {importError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Import Error:</strong> {importError}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="mt-4">
+                  <div className="bg-teal-50 border border-teal-200 text-teal-900 px-4 py-3 rounded mb-3">
+                    <strong>Import Result:</strong> {importResult.mode === "dry-run" ? "Dry-run preview ready" : "Live import finished"}
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(importResult, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
 
             {debugResult && (

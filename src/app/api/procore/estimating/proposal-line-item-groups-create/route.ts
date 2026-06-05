@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { procoreConfig } from "@/lib/procore";
-import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
-
-const DEFAULT_ESTIMATING_BASE_URL = "https://api.procore.com";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -36,6 +33,16 @@ export async function POST(request: Request) {
     if (!companyId || !bidBoardProjectId || !proposalId) {
       return NextResponse.json(
         { error: "Missing required fields: companyId, bidBoardProjectId, proposalId" },
+        { status: 400 }
+      );
+    }
+
+    if (bidBoardProjectId === companyId) {
+      return NextResponse.json(
+        {
+          error: "Invalid bidBoardProjectId",
+          details: "bidBoardProjectId matches companyId. Provide the Bid Board Project ID (not the company ID).",
+        },
         { status: 400 }
       );
     }
@@ -90,83 +97,54 @@ export async function POST(request: Request) {
     if (isUntaxed !== undefined) pricingOverride.is_untaxed = isUntaxed;
     if (Object.keys(pricingOverride).length > 0) groupPayload.pricing_override = pricingOverride;
 
-    const requestedBaseUrl = String(
-      body.baseUrl || process.env.PROCORE_ESTIMATING_API_URL || DEFAULT_ESTIMATING_BASE_URL
-    ).trim();
+    const baseUrl = "https://api.procore.com";
+    const url = `${baseUrl}/rest/v2.0/companies/${encodeURIComponent(
+      companyId
+    )}/estimating/bid_board_projects/${encodeURIComponent(
+      bidBoardProjectId
+    )}/proposals/${encodeURIComponent(proposalId)}/line_item_groups`;
 
-    const hostCandidates = buildAllowedProcoreHostCandidates({
-      requestedOrigin: requestedBaseUrl,
-      extraOrigins: [process.env.PROCORE_ESTIMATING_API_URL, DEFAULT_ESTIMATING_BASE_URL, "https://api.procore.com"],
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Procore-Company-Id": companyId,
+      },
+      body: JSON.stringify(groupPayload),
     });
 
-    if (hostCandidates.error) {
-      return NextResponse.json({ error: hostCandidates.error }, { status: 400 });
-    }
-
-    const attempts: Array<{ host: string; status: number; message: string }> = [];
-
-    for (const host of hostCandidates.candidates) {
-      const url = `${host.replace(/\/$/, "")}/rest/v2.0/companies/${encodeURIComponent(
-        companyId
-      )}/estimating/bid_board_projects/${encodeURIComponent(
-        bidBoardProjectId
-      )}/proposals/${encodeURIComponent(proposalId)}/line_item_groups`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "Procore-Company-Id": companyId,
+    if (!response.ok) {
+      const errorText = await response.text();
+      return NextResponse.json(
+        {
+          error: `Create line item group API error ${response.status}`,
+          details: errorText || "No response body",
+          host: baseUrl,
+          url,
+          attemptedPayload: groupPayload,
         },
-        body: JSON.stringify(groupPayload),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        attempts.push({
-          host,
-          status: response.status,
-          message: errorText || "No response body",
-        });
-        if (response.status === 404) continue;
-        return NextResponse.json(
-          {
-            error: `Create line item group API error ${response.status}`,
-            details: errorText,
-            host,
-            attemptedPayload: groupPayload,
-          },
-          { status: response.status }
-        );
-      }
-
-      const payload = (await response.json().catch(() => ({}))) as unknown;
-      const payloadRecord = isRecord(payload) ? payload : {};
-      const dataRecord = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
-      const createdGroupId = String(dataRecord.id || dataRecord.line_item_group_id || "").trim() || null;
-
-      return NextResponse.json({
-        success: true,
-        source: "estimating.create_line_item_group",
-        companyId,
-        bidBoardProjectId,
-        proposalId,
-        baseUrl: host,
-        lineItemGroupId: createdGroupId,
-        lineItemGroup: payload,
-      });
+        { status: response.status }
+      );
     }
 
-    return NextResponse.json(
-      {
-        error: "Failed to create line item group",
-        details: "All configured hosts failed",
-        attempts,
-      },
-      { status: 404 }
-    );
+    const payload = (await response.json().catch(() => ({}))) as unknown;
+    const payloadRecord = isRecord(payload) ? payload : {};
+    const dataRecord = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
+    const createdGroupId = String(dataRecord.id || dataRecord.line_item_group_id || "").trim() || null;
+
+    return NextResponse.json({
+      success: true,
+      source: "estimating.create_line_item_group",
+      companyId,
+      bidBoardProjectId,
+      proposalId,
+      baseUrl,
+      url,
+      lineItemGroupId: createdGroupId,
+      lineItemGroup: payload,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(

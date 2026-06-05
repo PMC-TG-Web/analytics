@@ -308,6 +308,7 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/procore/estimating/proposal-line-item-groups-create', permission: 'admin' },
   { prefix: '/api/procore/estimating/proposal-line-items-create', permission: 'admin' },
   { prefix: '/api/procore/estimating/import-line-item-groups', permission: 'admin' },
+  { prefix: '/api/procore/direct-costs/line-items-sync', permission: 'admin' },
   { prefix: '/api/procore/estimating/import-estimate-workbook', permission: 'admin' },
   { prefix: '/api/procore/sync', permission: 'admin' },
   { prefix: '/api/weather', permission: 'home' },

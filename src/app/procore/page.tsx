@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
 
 
 interface ProcoreData {
@@ -68,6 +69,20 @@ function ProcoreContent() {
   const [lineItemImportResult, setLineItemImportResult] = useState<any>(null);
   const [lineItemImportError, setLineItemImportError] = useState<string | null>(null);
   const [lineItemImportWorkbookSummary, setLineItemImportWorkbookSummary] = useState<string | null>(null);
+  const [lineItemPayloadPullBusy, setLineItemPayloadPullBusy] = useState(false);
+  const [lineItemPayloadPullResult, setLineItemPayloadPullResult] = useState<any>(null);
+  const [lineItemPayloadPullError, setLineItemPayloadPullError] = useState<string | null>(null);
+  const [lineItemImportViaImportBusy, setLineItemImportViaImportBusy] = useState(false);
+  const [lineItemImportViaImportResult, setLineItemImportViaImportResult] = useState<any>(null);
+  const [lineItemImportViaImportError, setLineItemImportViaImportError] = useState<string | null>(null);
+
+  // Direct Cost Line Items Sync
+  const [directCostProjectId, setDirectCostProjectId] = useState("");
+  const [directCostRowsText, setDirectCostRowsText] = useState("[]");
+  const [directCostBusy, setDirectCostBusy] = useState(false);
+  const [directCostResult, setDirectCostResult] = useState<any>(null);
+  const [directCostError, setDirectCostError] = useState<string | null>(null);
+  const [directCostWorkbookSummary, setDirectCostWorkbookSummary] = useState<string | null>(null);
 
   useEffect(() => {
     const checkProcoreAuth = async () => {
@@ -811,7 +826,16 @@ function ProcoreContent() {
     try {
       const parsed = JSON.parse(lineItemImportRowsText);
       if (!Array.isArray(parsed)) throw new Error("Rows JSON must be an array.");
-      return parsed as Record<string, unknown>[];
+      const rows = (parsed as unknown[]).filter(
+        (entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null
+      );
+      return rows.filter((row) =>
+        Object.values(row).some((value) => {
+          if (value === null || value === undefined) return false;
+          if (typeof value === "string") return value.trim() !== "";
+          return true;
+        })
+      );
     } catch (e) {
       throw new Error(`Invalid Rows JSON: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -819,6 +843,13 @@ function ProcoreContent() {
 
   const buildLineItemPayloadFromRow = (row: Record<string, unknown>): Record<string, unknown> => {
     const str = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
+    const readCostCode = (v: unknown): string => {
+      if (v && typeof v === "object") {
+        const rec = v as Record<string, unknown>;
+        return str(rec.code ?? rec.name ?? rec.value);
+      }
+      return str(v);
+    };
     const num = (v: unknown): number | undefined => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") { const n = Number(v); if (Number.isFinite(n)) return n; }
@@ -829,46 +860,55 @@ function ProcoreContent() {
       if (typeof v === "string") { const s = v.trim().toLowerCase(); if (s === "true") return true; if (s === "false") return false; }
       return undefined;
     };
-
     const payload: Record<string, unknown> = {};
     const name = str(row.name);
     if (name) payload.name = name;
+    const projectId = str(row.project_id ?? row.projectId);
+    if (projectId) payload.project_id = projectId;
     const groupId = str(row.group_id ?? row.groupId);
     if (groupId) payload.group_id = groupId;
     const tag = str(row.tag);
     if (tag) payload.tag = tag;
     const laborFactor = num(row.labor_factor ?? row.laborFactor);
     if (laborFactor !== undefined) payload.labor_factor = laborFactor;
+    const count = num(row.count ?? row.quantity ?? row.qty);
+    if (count !== undefined) payload.count = count;
+    const itemCost = num(row.item_cost ?? row.itemCost);
+    if (itemCost !== undefined) payload.item_cost = itemCost;
+    const laborCost = num(row.labor_cost ?? row.laborCost);
+    if (laborCost !== undefined) payload.labor_cost = laborCost;
+    const budgetCode = readCostCode(row.budget_code ?? row["cost_code.code"] ?? row.cost_code ?? row.costCode);
+    if (budgetCode) payload.cost_code = { code: budgetCode };
 
     // Build cost_item from ci_ prefixed flat columns
     const ci: Record<string, unknown> = {};
     const ciStrFields: Array<[string, string[]]> = [
-      ["type",             ["ci_type"]],
-      ["name",             ["ci_name", "ci_costItemName"]],
-      ["description",      ["ci_description"]],
-      ["unit",             ["ci_unit"]],
-      ["labor_time_unit",  ["ci_labor_time_unit", "ci_laborTimeUnit"]],
-      ["manufacturer",     ["ci_manufacturer"]],
-      ["catalog_number",   ["ci_catalog_number", "ci_catalogNumber"]],
-      ["url",              ["ci_url"]],
-      ["supplier",         ["ci_supplier"]],
-      ["notes",            ["ci_notes", "ci_costItemNotes"]],
-      ["id",               ["ci_id", "ci_costItemId"]],
-      ["color",            ["ci_color"]],
-      ["symbol_id",        ["ci_symbol_id", "ci_symbolId"]],
-      ["catalog_id",       ["ci_catalog_id", "ci_catalogId"]],
-      ["based_on_item_id", ["ci_based_on_item_id", "ci_basedOnItemId"]],
+      ["type",             ["ci_type", "cost_item.type"]],
+      ["name",             ["ci_name", "ci_costItemName", "cost_item.name"]],
+      ["description",      ["ci_description", "cost_item.description"]],
+      ["unit",             ["ci_unit", "cost_item.unit"]],
+      ["labor_time_unit",  ["ci_labor_time_unit", "ci_laborTimeUnit", "cost_item.labor_time_unit"]],
+      ["manufacturer",     ["ci_manufacturer", "cost_item.manufacturer"]],
+      ["catalog_number",   ["ci_catalog_number", "ci_catalogNumber", "cost_item.catalog_number"]],
+      ["url",              ["ci_url", "cost_item.url"]],
+      ["supplier",         ["ci_supplier", "cost_item.supplier"]],
+      ["notes",            ["ci_notes", "ci_costItemNotes", "cost_item.notes"]],
+      ["id",               ["ci_id", "ci_costItemId", "ci_item_id", "ci_itemId", "cost_item.id"]],
+      ["color",            ["ci_color", "cost_item.color"]],
+      ["symbol_id",        ["ci_symbol_id", "ci_symbolId", "cost_item.symbol_id"]],
+      ["catalog_id",       ["ci_catalog_id", "ci_catalogId", "cost_item.catalog_id"]],
+      ["based_on_item_id", ["ci_based_on_item_id", "ci_basedOnItemId", "cost_item.based_on_item_id"]],
     ];
     const ciNumFields: Array<[string, string[]]> = [
-      ["unit_cost",       ["ci_unit_cost", "ci_unitCost"]],
-      ["unit_labor",      ["ci_unit_labor", "ci_unitLabor"]],
-      ["unit_labor_cost", ["ci_unit_labor_cost", "ci_unitLaborCost"]],
-      ["unit_labor_rate", ["ci_unit_labor_rate", "ci_unitLaborRate"]],
-      ["waste",           ["ci_waste"]],
-      ["material_waste",  ["ci_material_waste", "ci_materialWaste"]],
-      ["item_margin",     ["ci_item_margin", "ci_itemMargin"]],
-      ["labor_margin",    ["ci_labor_margin", "ci_laborMargin"]],
-      ["delivery_unit",   ["ci_delivery_unit", "ci_deliveryUnit"]],
+      ["unit_cost",       ["ci_unit_cost", "ci_unitCost", "cost_item.unit_cost"]],
+      ["unit_labor",      ["ci_unit_labor", "ci_unitLabor", "cost_item.unit_labor"]],
+      ["unit_labor_cost", ["ci_unit_labor_cost", "ci_unitLaborCost", "cost_item.unit_labor_cost"]],
+      ["unit_labor_rate", ["ci_unit_labor_rate", "ci_unitLaborRate", "cost_item.unit_labor_rate"]],
+      ["waste",           ["ci_waste", "cost_item.waste"]],
+      ["material_waste",  ["ci_material_waste", "ci_materialWaste", "cost_item.material_waste"]],
+      ["item_margin",     ["ci_item_margin", "ci_itemMargin", "cost_item.item_margin"]],
+      ["labor_margin",    ["ci_labor_margin", "ci_laborMargin", "cost_item.labor_margin"]],
+      ["delivery_unit",   ["ci_delivery_unit", "ci_deliveryUnit", "cost_item.delivery_unit"]],
     ];
     for (const [snake, keys] of ciStrFields) {
       const v = str(keys.reduce<unknown>((acc, k) => acc ?? row[k], undefined));
@@ -878,9 +918,26 @@ function ProcoreContent() {
       const v = num(keys.reduce<unknown>((acc, k) => acc ?? row[k], undefined));
       if (v !== undefined) ci[snake] = v;
     }
-    const isUntaxed = bool(row.ci_is_untaxed ?? row.ci_isUntaxed);
+    if (typeof ci.labor_time_unit === "string") {
+        const normalizedLaborTimeUnit = normalizeProcoreLaborTimeUnit(ci.labor_time_unit);
+        if (normalizedLaborTimeUnit) {
+          ci.labor_time_unit = normalizedLaborTimeUnit;
+        } else {
+          delete ci.labor_time_unit;
+        }
+    }
+    if (typeof ci.unit === "string") {
+        ci.unit = normalizeProcoreCostItemUnit(ci.unit);
+    }
+    const isUntaxed = bool(row.ci_is_untaxed ?? row.ci_isUntaxed ?? row["cost_item.is_untaxed"]);
     if (isUntaxed !== undefined) ci.is_untaxed = isUntaxed;
     if (Object.keys(ci).length > 0) payload.cost_item = ci;
+
+    const normalizedCostItemType = typeof ci.type === "string" ? ci.type.trim().toLowerCase() : "";
+    if (normalizedCostItemType === "labor") {
+      delete payload.item_cost;
+      delete ci.unit_cost;
+    }
 
     return payload;
   };
@@ -913,7 +970,15 @@ function ProcoreContent() {
     }
   };
 
-  // Fetch all groups for a proposal and return a lowercase-name → id map
+  const normalizeGroupNameKey = (value: string): string => {
+    return value
+      .toLowerCase()
+      .replace(/[\u2010-\u2015]/g, "-")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  };
+
+  // Fetch all groups for a proposal and return a normalized-name -> id map
   const fetchGroupNameMap = async (bidBoardProjectId: string, proposalId: string): Promise<Record<string, string>> => {
     try {
       const res = await fetch("/api/procore/estimating/proposal-line-item-groups", {
@@ -932,7 +997,7 @@ function ProcoreContent() {
           const rec = g as Record<string, unknown>;
           const id = String(rec.id || "").trim();
           const name = String(rec.name || "").trim();
-          if (id && name) map[name.toLowerCase()] = id;
+          if (id && name) map[normalizeGroupNameKey(name)] = id;
         }
       }
       return map;
@@ -945,7 +1010,7 @@ function ProcoreContent() {
   const resolveGroupName = (row: Record<string, unknown>, nameMap: Record<string, string>): Record<string, unknown> => {
     const groupName = typeof row.group_name === "string" ? row.group_name.trim() : "";
     if (!groupName) return row;
-    const resolvedId = nameMap[groupName.toLowerCase()];
+    const resolvedId = nameMap[normalizeGroupNameKey(groupName)];
     return { ...row, group_id: resolvedId || row.group_id || "" };
   };
 
@@ -967,9 +1032,16 @@ function ProcoreContent() {
       const resolvedRow = resolveGroupName(sourceRow, groupNameMap);
       const payload = buildLineItemPayloadFromRow(resolvedRow);
       const hasName = typeof payload.name === "string" && (payload.name as string).trim().length > 0;
+      const payloadCostItem = payload.cost_item as Record<string, unknown> | undefined;
+      const hasItemId = typeof payloadCostItem?.id === "string" && payloadCostItem.id.trim().length > 0;
       const groupName = typeof sourceRow.group_name === "string" ? (sourceRow.group_name as string).trim() : "";
       const groupWarning = groupName && !resolvedRow.group_id ? `group_name "${groupName}" not found in proposal` : null;
-      return { index, ok: hasName, error: hasName ? null : "Missing required field: name", groupWarning, payload };
+      const error = !hasName
+        ? "Missing required field: name"
+        : !hasItemId
+          ? "Missing required field: cost_item.id (use ci_item_id or ci_itemId)"
+          : null;
+      return { index, ok: !error, error, groupWarning, payload };
     });
     const valid = previewResults.filter((r) => r.ok).length;
     const invalid = previewResults.length - valid;
@@ -1002,6 +1074,12 @@ function ProcoreContent() {
           results.push({ index, ok: false, error: "Missing required field: name", payload });
           continue;
         }
+        const payloadCostItem = payload.cost_item as Record<string, unknown> | undefined;
+        const hasItemId = typeof payloadCostItem?.id === "string" && payloadCostItem.id.trim().length > 0;
+        if (!hasItemId) {
+          results.push({ index, ok: false, error: "Missing required field: cost_item.id (use ci_item_id or ci_itemId)", payload });
+          continue;
+        }
         const response = await fetch("/api/procore/estimating/proposal-line-items-create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1016,6 +1094,444 @@ function ProcoreContent() {
       setLineItemImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setLineItemImportBusy(false);
+    }
+  };
+
+  const handlePullLineItemPayloads = async () => {
+    const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
+    const proposalId = lineItemImportProposalId.trim();
+    if (!bidBoardProjectId || !proposalId) {
+      setLineItemPayloadPullError("Bid Board Project ID and Proposal ID are required.");
+      return;
+    }
+
+    setLineItemPayloadPullBusy(true);
+    setLineItemPayloadPullError(null);
+    setLineItemPayloadPullResult(null);
+
+    try {
+      const response = await fetch("/api/procore/estimating/proposal-line-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidBoardProjectId, proposalId, perPage: 200 }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLineItemPayloadPullError(result?.error ? `${result.error}${result?.details ? `: ${result.details}` : ""}` : `Failed to pull payloads (${response.status}).`);
+        return;
+      }
+
+      const lineItems = Array.isArray(result?.lineItems) ? result.lineItems : [];
+      const qtyInspection = lineItems.map((item: any) => {
+        const costItem = item?.cost_item && typeof item.cost_item === "object" ? item.cost_item : {};
+        return {
+          line_item_id: String(item?.id || item?.line_item_id || ""),
+          name: String(item?.name || ""),
+          count: item?.count ?? null,
+          quantity: item?.quantity ?? null,
+          qty: item?.qty ?? null,
+          unit: typeof costItem?.unit === "string" ? costItem.unit : null,
+          item_cost: item?.item_cost ?? null,
+          labor_cost: item?.labor_cost ?? null,
+        };
+      });
+
+      setLineItemPayloadPullResult({
+        source: "estimating.proposal_line_items.pull_for_qty_review",
+        bidBoardProjectId,
+        proposalId,
+        count: lineItems.length,
+        qtyInspection,
+        lineItems,
+        raw: result?.raw ?? null,
+      });
+    } catch (err) {
+      setLineItemPayloadPullError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLineItemPayloadPullBusy(false);
+    }
+  };
+
+  const handleImportGroupsAndLayersFromRows = async () => {
+    const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
+    if (!bidBoardProjectId) {
+      setLineItemImportViaImportError("Bid Board Project ID is required.");
+      return;
+    }
+
+    let rows: Record<string, unknown>[] = [];
+    try {
+      rows = parseLineItemImportRows();
+    } catch (e) {
+      setLineItemImportViaImportError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+
+    if (!rows.length) {
+      setLineItemImportViaImportError("No valid line item rows found.");
+      return;
+    }
+
+    setLineItemImportViaImportBusy(true);
+    setLineItemImportViaImportError(null);
+    setLineItemImportViaImportResult(null);
+
+    try {
+      const readStr = (value: unknown): string => {
+        if (typeof value === "string") return value.trim();
+        if (typeof value === "number") return String(value);
+        return "";
+      };
+      const readNum = (value: unknown): number | undefined => {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "string" && value.trim() !== "") {
+          const n = Number(value);
+          if (Number.isFinite(n)) return n;
+        }
+        return undefined;
+      };
+      const readBool = (value: unknown): boolean | undefined => {
+        if (typeof value === "boolean") return value;
+        if (typeof value === "string") {
+          const normalized = value.trim().toLowerCase();
+          if (normalized === "true") return true;
+          if (normalized === "false") return false;
+        }
+        return undefined;
+      };
+      const readCostCode = (value: unknown): string => {
+        if (value && typeof value === "object") {
+          const rec = value as Record<string, unknown>;
+          return readStr(rec.code ?? rec.name ?? rec.value);
+        }
+        return readStr(value);
+      };
+      const pickValue = (row: Record<string, unknown>, keys: string[]): unknown => {
+        for (const key of keys) {
+          if (key in row) return row[key];
+        }
+        return undefined;
+      };
+
+      let groupNameMap: Record<string, string> = {};
+      const proposalIdForLookup = lineItemImportProposalId.trim();
+      const hasGroupNames = rows.some((r) => typeof r.group_name === "string" && (r.group_name as string).trim());
+      if (hasGroupNames && proposalIdForLookup) {
+        groupNameMap = await fetchGroupNameMap(bidBoardProjectId, proposalIdForLookup);
+      }
+
+      type GroupPayload = { name: string; layers: Array<Record<string, unknown>>; order: number };
+      const groupsByKey = new Map<string, GroupPayload>();
+      const rowDiagnostics: Array<Record<string, unknown>> = [];
+
+      for (let index = 0; index < rows.length; index += 1) {
+        const sourceRow = rows[index];
+        const resolvedRow = resolveGroupName(sourceRow, groupNameMap);
+        const payload = buildLineItemPayloadFromRow(resolvedRow);
+
+        const groupName = readStr(
+          pickValue(sourceRow, ["group.name", "group_name"])
+        ) || "Imported Group";
+
+        const layerName = readStr(
+          pickValue(sourceRow, ["name", "layer.name"]) ?? payload.name
+        );
+
+        const costItemFromRow: Record<string, unknown> = {};
+        const costItemStringFields = [
+          "type",
+          "based_on_item_id",
+          "name",
+          "description",
+          "labor_time_unit",
+          "manufacturer",
+          "catalog_number",
+          "url",
+          "supplier",
+          "unit",
+          "notes",
+          "id",
+          "color",
+          "symbol_id",
+          "catalog_id",
+        ];
+        const costItemNumericFields = [
+          "unit_cost",
+          "unit_labor",
+          "unit_labor_cost",
+          "waste",
+          "material_waste",
+          "item_margin",
+          "labor_margin",
+          "unit_labor_rate",
+          "delivery_unit",
+        ];
+        for (const field of costItemStringFields) {
+          const value = readStr(pickValue(sourceRow, [`cost_item.${field}`]));
+          if (value) costItemFromRow[field] = value;
+        }
+        for (const field of costItemNumericFields) {
+          const value = readNum(pickValue(sourceRow, [`cost_item.${field}`]));
+          if (value !== undefined) costItemFromRow[field] = value;
+        }
+        if (typeof costItemFromRow.labor_time_unit === "string") {
+          const normalizedLaborTimeUnit = normalizeProcoreLaborTimeUnit(costItemFromRow.labor_time_unit);
+          if (normalizedLaborTimeUnit) {
+            costItemFromRow.labor_time_unit = normalizedLaborTimeUnit;
+          } else {
+            delete costItemFromRow.labor_time_unit;
+          }
+        }
+        if (typeof costItemFromRow.unit === "string") {
+          costItemFromRow.unit = normalizeProcoreCostItemUnit(costItemFromRow.unit);
+        }
+        const isUntaxed = readBool(pickValue(sourceRow, ["cost_item.is_untaxed"]));
+        if (isUntaxed !== undefined) costItemFromRow.is_untaxed = isUntaxed;
+
+        const payloadCostItemBase = payload.cost_item && typeof payload.cost_item === "object"
+          ? (payload.cost_item as Record<string, unknown>)
+          : {};
+        const payloadCostItem = {
+          ...payloadCostItemBase,
+          ...costItemFromRow,
+        };
+        const normalizedCostItemType = typeof payloadCostItem.type === "string"
+          ? payloadCostItem.type.trim().toLowerCase()
+          : "";
+        if (normalizedCostItemType === "labor") {
+          delete payloadCostItem.unit_cost;
+        }
+
+        const hasName = layerName.length > 0;
+        const hasCostItem = Object.keys(payloadCostItem).length > 0;
+        const hasCostItemId = typeof payloadCostItem.id === "string" && payloadCostItem.id.trim().length > 0;
+
+        if (!hasName || !hasCostItem || !hasCostItemId) {
+          rowDiagnostics.push({
+            index,
+            skipped: true,
+            reason: !hasName ? "Missing name" : !hasCostItem ? "Missing cost_item" : "Missing cost_item.id",
+            payload: {
+              ...payload,
+              name: layerName || payload.name,
+              cost_item: payloadCostItem,
+            },
+          });
+          continue;
+        }
+
+        const groupKey = normalizeGroupNameKey(groupName) || `group-${index}`;
+        if (!groupsByKey.has(groupKey)) {
+          groupsByKey.set(groupKey, { name: groupName, layers: [], order: groupsByKey.size + 1 });
+        }
+
+        const group = groupsByKey.get(groupKey)!;
+        const layer: Record<string, unknown> = {
+          name: layerName,
+          cost_item: payloadCostItem,
+        };
+
+        const groupId = readStr(pickValue(sourceRow, ["group_id", "layer.group_id"]) ?? payload.group_id);
+        const tag = readStr(pickValue(sourceRow, ["tag", "layer.tag"]) ?? payload.tag);
+        const layerId = readStr(pickValue(sourceRow, ["id", "layer.id"]));
+        const layerType = readStr(pickValue(sourceRow, ["type", "layer.type"])) || "COUNT";
+        const updatedAt = readStr(pickValue(sourceRow, ["updated_at", "layer.updated_at"]));
+
+        const laborFactor = readNum(pickValue(sourceRow, ["labor_factor", "layer.labor_factor"]) ?? payload.labor_factor);
+        const count = readNum(pickValue(sourceRow, ["count", "layer.count"]) ?? payload.count);
+        const explicitItemCost = readNum(pickValue(sourceRow, ["layer.item_cost"]));
+        const itemSales = readNum(pickValue(sourceRow, ["layer.item_sales"]));
+        const explicitLaborCost = readNum(pickValue(sourceRow, ["layer.labor_cost", "labor_cost"]));
+        const laborSales = readNum(pickValue(sourceRow, ["layer.labor_sales"]));
+        const profit = readNum(pickValue(sourceRow, ["layer.profit"]));
+        const payloadCostCode = readCostCode((payload as Record<string, unknown>).cost_code);
+        const budgetCode = readCostCode(
+          pickValue(sourceRow, ["budget_code", "cost_code.code", "cost_code", "layer.cost_code.code", "layer.cost_code"])
+        ) || payloadCostCode;
+
+        const costItemUnitLaborCost = readNum(payloadCostItem.unit_labor_cost);
+        const costItemUnitLabor = readNum(payloadCostItem.unit_labor);
+        const costItemUnitLaborRate = readNum(payloadCostItem.unit_labor_rate);
+        const itemCost = normalizedCostItemType === "labor" ? undefined : explicitItemCost;
+        const derivedLaborCost = count !== undefined
+          ? (costItemUnitLaborCost !== undefined
+            ? costItemUnitLaborCost * count
+            : (costItemUnitLabor !== undefined && costItemUnitLaborRate !== undefined
+              ? costItemUnitLabor * costItemUnitLaborRate * count
+              : undefined))
+          : undefined;
+        const laborCost = explicitLaborCost ?? derivedLaborCost;
+
+        if (groupId) layer.group_id = groupId;
+        if (tag) layer.tag = tag;
+        if (layerId) layer.id = layerId;
+        if (layerType) layer.type = layerType;
+        if (updatedAt) layer.updated_at = updatedAt;
+        if (laborFactor !== undefined) layer.labor_factor = laborFactor;
+        if (count !== undefined) layer.count = count;
+        if (itemCost !== undefined) layer.item_cost = itemCost;
+        if (itemSales !== undefined) layer.item_sales = itemSales;
+        if (laborCost !== undefined) layer.labor_cost = laborCost;
+        if (laborSales !== undefined) layer.labor_sales = laborSales;
+        if (profit !== undefined) layer.profit = profit;
+        if (budgetCode) layer.cost_code = { code: budgetCode };
+
+        const pricingOverride: Record<string, unknown> = {};
+        const poNumericFields = [
+          "unit_material_cost",
+          "material_margin",
+          "unit_labor",
+          "labor_factor",
+          "unit_labor_rate",
+          "unit_labor_cost",
+          "labor_margin",
+        ];
+        for (const field of poNumericFields) {
+          const value = readNum(
+            pickValue(sourceRow, [`pricing_override.${field}`])
+          );
+          if (value !== undefined) pricingOverride[field] = value;
+        }
+        const poIsUntaxed = readBool(
+          pickValue(sourceRow, ["pricing_override.is_untaxed"])
+        );
+        if (poIsUntaxed !== undefined) pricingOverride.is_untaxed = poIsUntaxed;
+
+        const groupNotes = readStr(pickValue(sourceRow, ["group.notes"]));
+        const groupMultiplier = readNum(pickValue(sourceRow, ["group.multiplier"]));
+        const groupOrder = readNum(pickValue(sourceRow, ["group.order"]));
+        if (groupNotes) (group as Record<string, unknown>).notes = groupNotes;
+        if (groupMultiplier !== undefined) (group as Record<string, unknown>).multiplier = groupMultiplier;
+        if (groupOrder !== undefined) group.order = groupOrder;
+        if (Object.keys(pricingOverride).length > 0) {
+          (group as Record<string, unknown>).pricing_override = pricingOverride;
+        }
+
+        group.layers.push(layer);
+        rowDiagnostics.push({ index, skipped: false, group: group.name, layer });
+      }
+
+      const groups = Array.from(groupsByKey.values())
+        .filter((g) => g.layers.length > 0)
+        .map((g) => ({
+          name: g.name,
+          ...(typeof (g as any).notes === "string" ? { notes: (g as any).notes } : {}),
+          ...(typeof (g as any).multiplier === "number" ? { multiplier: (g as any).multiplier } : {}),
+          ...(typeof g.order === "number" ? { order: g.order } : {}),
+          ...((g as any).pricing_override && typeof (g as any).pricing_override === "object"
+            ? { pricing_override: (g as any).pricing_override }
+            : {}),
+          layers: g.layers,
+        }));
+
+      if (!groups.length) {
+        setLineItemImportViaImportError("No valid layers could be built from rows. Ensure each row has at least name and cost_item.* fields.");
+        return;
+      }
+
+      if (!window.confirm(`This will import ${groups.length} group(s) and ${rowDiagnostics.filter((r) => r.skipped === false).length} layer(s) via Bid Board import API. Continue?`)) {
+        return;
+      }
+
+      const response = await fetch("/api/procore/estimating/import-line-item-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidBoardProjectId, groups }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLineItemImportViaImportError(result?.error ? `${result.error}${result?.details ? `: ${result.details}` : ""}` : `Import endpoint failed (${response.status}).`);
+        setLineItemImportViaImportResult({
+          source: "estimating.import_line_item_groups.ui_from_rows",
+          bidBoardProjectId,
+          attemptedGroupCount: groups.length,
+          rowDiagnostics,
+          responseStatus: response.status,
+          responseBody: result,
+        });
+        return;
+      }
+
+      setLineItemImportViaImportResult({
+        source: "estimating.import_line_item_groups.ui_from_rows",
+        bidBoardProjectId,
+        attemptedGroupCount: groups.length,
+        attemptedLayerCount: rowDiagnostics.filter((r) => r.skipped === false).length,
+        rowDiagnostics,
+        requestGroups: groups,
+        responseBody: result,
+      });
+    } catch (err) {
+      setLineItemImportViaImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLineItemImportViaImportBusy(false);
+    }
+  };
+
+  const handleDirectCostWorkbookUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setDirectCostError(null);
+    setDirectCostWorkbookSummary(null);
+    try {
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      if (!workbook.SheetNames.length) throw new Error("Workbook has no sheets.");
+      let selectedSheetName = workbook.SheetNames[0];
+      let selectedRows: Record<string, unknown>[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) { selectedSheetName = sheetName; selectedRows = rows; break; }
+      }
+      if (selectedRows.length === 0) throw new Error("No row data found in workbook sheets.");
+      setDirectCostRowsText(JSON.stringify(selectedRows, null, 2));
+      setDirectCostWorkbookSummary(`${file.name}: loaded ${selectedRows.length} rows from sheet "${selectedSheetName}".`);
+    } catch (err) {
+      setDirectCostError(`Failed to parse workbook: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleDirectCostSync = async () => {
+    const projectId = directCostProjectId.trim();
+    if (!projectId) { setDirectCostError("Procore Project ID is required."); return; }
+    let updates: Record<string, unknown>[] = [];
+    try {
+      const parsed = JSON.parse(directCostRowsText);
+      if (!Array.isArray(parsed)) throw new Error("Must be a JSON array.");
+      updates = parsed.filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null);
+    } catch (e) {
+      setDirectCostError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    if (updates.length === 0) { setDirectCostError("No valid update rows found."); return; }
+    if (!window.confirm(`This will sync ${updates.length} direct cost line item(s) in Procore. Continue?`)) return;
+    setDirectCostBusy(true);
+    setDirectCostError(null);
+    setDirectCostResult(null);
+    try {
+      const response = await fetch("/api/procore/direct-costs/line-items-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, updates }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDirectCostError(result?.error ? `${result.error}${result?.details ? `: ${result.details}` : ""}` : `Sync failed (${response.status}).`);
+        setDirectCostResult(result);
+      } else {
+        setDirectCostResult(result);
+      }
+    } catch (err) {
+      setDirectCostError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDirectCostBusy(false);
     }
   };
 
@@ -1473,6 +1989,14 @@ function ProcoreContent() {
                 <a href="/templates/procore-line-items-template.xlsx" className="text-emerald-700 underline text-xs" download>
                   Download template
                 </a>
+                {" "}|{" "}
+                <a href="/templates/procore-import-groups-layers-template.json" className="text-amber-700 underline text-xs" download>
+                  Groups + Layers JSON template
+                </a>
+                {" "}|{" "}
+                <a href="/templates/procore-import-groups-layers-template.csv" className="text-amber-700 underline text-xs" download>
+                  Groups + Layers CSV template
+                </a>
               </p>
               <p className="text-xs text-gray-500 mb-4">
                 Cost item fields use a <code className="bg-gray-100 px-1 rounded">ci_</code> prefix in the template (e.g. <code className="bg-gray-100 px-1 rounded">ci_type</code>, <code className="bg-gray-100 px-1 rounded">ci_unit_cost</code>). Only <strong>name</strong> is required.
@@ -1537,6 +2061,20 @@ function ProcoreContent() {
                 >
                   {lineItemImportBusy ? "Creating..." : "Create Line Items From Rows"}
                 </button>
+                <button
+                  onClick={handlePullLineItemPayloads}
+                  disabled={lineItemPayloadPullBusy}
+                  className="bg-slate-700 hover:bg-slate-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {lineItemPayloadPullBusy ? "Pulling..." : "Pull Existing Line Item Payloads"}
+                </button>
+                <button
+                  onClick={handleImportGroupsAndLayersFromRows}
+                  disabled={lineItemImportViaImportBusy}
+                  className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {lineItemImportViaImportBusy ? "Importing..." : "Import Groups + Layers (Bid Board API)"}
+                </button>
               </div>
 
               {lineItemImportError && (
@@ -1555,6 +2093,121 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
                     {JSON.stringify(lineItemImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {lineItemPayloadPullError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Pull Payloads Error:</strong> {lineItemPayloadPullError}
+                </div>
+              )}
+
+              {lineItemPayloadPullResult && (
+                <div className="mt-4">
+                  <div className="bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded mb-3">
+                    <strong>Pulled Line Item Payloads:</strong> Found {lineItemPayloadPullResult.count} line item(s).
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(lineItemPayloadPullResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {lineItemImportViaImportError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Import Groups + Layers Error:</strong> {lineItemImportViaImportError}
+                </div>
+              )}
+
+              {lineItemImportViaImportResult && (
+                <div className="mt-4">
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded mb-3">
+                    <strong>Import Groups + Layers Result:</strong> Attempted {lineItemImportViaImportResult.attemptedGroupCount} group(s)
+                    {typeof lineItemImportViaImportResult.attemptedLayerCount === "number" ? ` and ${lineItemImportViaImportResult.attemptedLayerCount} layer(s)` : ""}.
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(lineItemImportViaImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+              <h2 className="text-xl font-bold text-rose-900 mb-3">Direct Cost Line Items Sync</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Sync (PATCH) direct cost line items to Procore using the <code className="bg-gray-100 px-1 rounded">direct_costs/line_items/sync</code> v1.0 endpoint.
+                Upload an Excel file or paste a JSON array of update objects. Each row must include an <code className="bg-gray-100 px-1 rounded">id</code>.
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Procore Project ID</label>
+                <input
+                  type="text"
+                  value={directCostProjectId}
+                  onChange={(e) => setDirectCostProjectId(e.target.value)}
+                  placeholder="e.g. 123456"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Workbook (.xlsx/.xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleDirectCostWorkbookUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                {directCostWorkbookSummary && <p className="text-xs text-rose-700 mt-2">{directCostWorkbookSummary}</p>}
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Update Rows JSON
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Supported fields per row: <code className="bg-gray-100 px-1 rounded">id</code> (required), <code className="bg-gray-100 px-1 rounded">amount</code>, <code className="bg-gray-100 px-1 rounded">direct_cost_id</code>, <code className="bg-gray-100 px-1 rounded">cost_code_id</code>, <code className="bg-gray-100 px-1 rounded">wbs_code_id</code>, <code className="bg-gray-100 px-1 rounded">description</code>, <code className="bg-gray-100 px-1 rounded">extended_type</code>, <code className="bg-gray-100 px-1 rounded">quantity</code>, <code className="bg-gray-100 px-1 rounded">unit_cost</code>, <code className="bg-gray-100 px-1 rounded">uom</code>, <code className="bg-gray-100 px-1 rounded">line_item_type_id</code>, <code className="bg-gray-100 px-1 rounded">tax_code_id</code>, <code className="bg-gray-100 px-1 rounded">origin_data</code>, <code className="bg-gray-100 px-1 rounded">origin_id</code>.
+                </p>
+                <textarea
+                  value={directCostRowsText}
+                  onChange={(e) => setDirectCostRowsText(e.target.value)}
+                  rows={8}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                  placeholder='[{"id": 123, "amount": 1000, "direct_cost_id": 456, "description": "Updated cost"}]'
+                />
+              </div>
+
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={handleDirectCostSync}
+                  disabled={directCostBusy}
+                  className="bg-rose-600 hover:bg-rose-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {directCostBusy ? "Syncing..." : "Sync Direct Cost Line Items"}
+                </button>
+              </div>
+
+              {directCostError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Sync Error:</strong> {directCostError}
+                </div>
+              )}
+
+              {directCostResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    directCostResult.success
+                      ? "bg-rose-50 border-rose-200 text-rose-900"
+                      : "bg-red-50 border-red-200 text-red-900"
+                  }`}>
+                    {directCostResult.success
+                      ? <><strong>Sync Result:</strong> Updated {directCostResult.updatedCount} line item(s).</>
+                      : <><strong>Sync failed.</strong> See details below.</>
+                    }
+                  </div>
+                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(directCostResult, null, 2)}
                   </pre>
                 </div>
               )}

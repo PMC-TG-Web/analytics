@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { procoreConfig } from "@/lib/procore";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
+import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
 
 const DEFAULT_ESTIMATING_BASE_URL = "https://api.procore.com";
 
@@ -11,56 +12,37 @@ function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
 }
 
-function normalizeLaborTimeUnit(raw: string): string {
-  const key = raw.trim().toLowerCase();
-  const map: Record<string, string> = {
-    min: "MINUTES",
-    mins: "MINUTES",
-    minute: "MINUTES",
-    minutes: "MINUTES",
-    hr: "HOURS",
-    hrs: "HOURS",
-    hour: "HOURS",
-    hours: "HOURS",
-    day: "DAYS",
-    days: "DAYS",
-  };
-  return map[key] || raw.trim().toUpperCase();
+function omitKeys(record: UnknownRecord, keys: string[]): UnknownRecord {
+  const next: UnknownRecord = { ...record };
+  for (const key of keys) {
+    delete next[key];
+  }
+  return next;
 }
 
-function normalizeCostItemUnit(raw: string): string {
-  const key = raw.trim().toLowerCase();
-  const compact = key.replace(/\s+/g, " ");
-  const map: Record<string, string> = {
-    ea: "EA",
-    each: "EA",
-    lf: "LF",
-    ft: "LF",
-    feet: "LF",
-    sf: "SF",
-    "sq ft": "SF",
-    sqft: "SF",
-    sy: "SY",
-    "sq yd": "SY",
-    sqyd: "SY",
-    cf: "CF",
-    "cu ft": "CF",
-    cuft: "CF",
-    cy: "CY",
-    "cu yd": "CY",
-    "c u yd": "CY",
-    "cubic yard": "CY",
-    "cubic yards": "CY",
-    yd3: "CY",
-    ls: "LS",
-    lot: "LS",
-    lots: "LS",
-    hr: "HR",
-    hrs: "HR",
-    hour: "HR",
-    hours: "HR",
-  };
-  return map[compact] || raw.trim().toUpperCase();
+function isUnsupportedLayerTypeError(status: number, bodyText: string): boolean {
+  return status === 500 && /Unsupported LayerType/i.test(bodyText || "");
+}
+
+function extractRequestId(errorText: string): string | null {
+  if (!errorText) return null;
+  try {
+    const parsed = JSON.parse(errorText) as UnknownRecord;
+    const id = typeof parsed.requestId === "string" ? parsed.requestId.trim() : "";
+    if (id) return id;
+  } catch {
+    // Fall back to regex extraction for non-JSON payloads.
+  }
+
+  const match = errorText.match(/"requestId"\s*:\s*"([^"]+)"/i);
+  return match?.[1]?.trim() || null;
+}
+
+function isLayerGroupAccessDenied(status: number, bodyText: string): boolean {
+  return (
+    status === 403 &&
+    /LayerGroup\(ID:\d+\) not accessible/i.test(bodyText || "")
+  );
 }
 
 export async function POST(request: Request) {
@@ -83,11 +65,22 @@ export async function POST(request: Request) {
       body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || ""
     ).trim();
     const bidBoardProjectId = String(body.bidBoardProjectId || body.bid_board_project_id || "").trim();
+    const projectId = String(body.projectId || body.project_id || "").trim();
     const proposalId = String(body.proposalId || body.proposal_id || "").trim();
 
-    if (!companyId || !bidBoardProjectId || !proposalId) {
+    if (!companyId || !proposalId || (!bidBoardProjectId && !projectId)) {
       return NextResponse.json(
-        { error: "Missing required fields: companyId, bidBoardProjectId, proposalId" },
+        { error: "Missing required fields: companyId, proposalId, and either bidBoardProjectId or projectId" },
+        { status: 400 }
+      );
+    }
+
+    if (bidBoardProjectId && bidBoardProjectId === companyId) {
+      return NextResponse.json(
+        {
+          error: "Invalid bidBoardProjectId",
+          details: "bidBoardProjectId matches companyId. Provide the Bid Board Project ID (not the company ID).",
+        },
         { status: 400 }
       );
     }
@@ -104,6 +97,12 @@ export async function POST(request: Request) {
       if (typeof v === "string") { const s = v.trim().toLowerCase(); if (s === "true") return true; if (s === "false") return false; }
       return undefined;
     };
+    const readCostCode = (v: unknown): string => {
+      if (isRecord(v)) {
+        return readStr(v.code ?? v.name ?? v.value);
+      }
+      return readStr(v);
+    };
 
     // Support both a pre-built lineItem object or flat body fields
     const src = isRecord(body.lineItem) ? body.lineItem : body;
@@ -118,9 +117,17 @@ export async function POST(request: Request) {
     const groupId = readStr(src.group_id ?? src.groupId);
     const tag = readStr(src.tag);
     const laborFactor = readNum(src.labor_factor ?? src.laborFactor);
+    const count = readNum(src.count ?? src.quantity ?? src.qty);
+    const itemCost = readNum(src.item_cost ?? src.itemCost);
+    const laborCost = readNum(src.labor_cost ?? src.laborCost);
+    const costCode = readCostCode(src.cost_code ?? src.costCode ?? src.budget_code ?? src.budgetCode);
     if (groupId) lineItemPayload.group_id = groupId;
     if (tag) lineItemPayload.tag = tag;
     if (laborFactor !== undefined) lineItemPayload.labor_factor = laborFactor;
+    if (count !== undefined) lineItemPayload.count = count;
+    if (itemCost !== undefined) lineItemPayload.item_cost = itemCost;
+    if (laborCost !== undefined) lineItemPayload.labor_cost = laborCost;
+    if (costCode) lineItemPayload.cost_code = { code: costCode };
 
     // Build cost_item sub-object — check ci_* prefixed flat keys for xlsx upload ergonomics
     const ciSrc = isRecord(src.cost_item) ? src.cost_item : src;
@@ -158,11 +165,27 @@ export async function POST(request: Request) {
       const v = readStr(ciSrc[snake] ?? ciSrc[camel] ?? src[`ci_${snake}`] ?? src[`ci_${camel}`]);
       if (v) costItem[snake] = v;
     }
+    const aliasedCostItemId = readStr(
+      ciSrc.item_id ??
+      ciSrc.itemId ??
+      src.ci_item_id ??
+      src.ci_itemId ??
+      src.item_id ??
+      src.itemId
+    );
+    if (aliasedCostItemId && typeof costItem.id !== "string") {
+      costItem.id = aliasedCostItemId;
+    }
     if (typeof costItem.labor_time_unit === "string") {
-      costItem.labor_time_unit = normalizeLaborTimeUnit(costItem.labor_time_unit);
+      const normalizedLaborTimeUnit = normalizeProcoreLaborTimeUnit(costItem.labor_time_unit);
+      if (normalizedLaborTimeUnit) {
+        costItem.labor_time_unit = normalizedLaborTimeUnit;
+      } else {
+        delete costItem.labor_time_unit;
+      }
     }
     if (typeof costItem.unit === "string") {
-      costItem.unit = normalizeCostItemUnit(costItem.unit);
+      costItem.unit = normalizeProcoreCostItemUnit(costItem.unit);
     }
     for (const [snake, camel] of ciNumFields) {
       const v = readNum(ciSrc[snake] ?? ciSrc[camel] ?? src[`ci_${snake}`] ?? src[`ci_${camel}`]);
@@ -170,6 +193,18 @@ export async function POST(request: Request) {
     }
     const isUntaxed = readBool(ciSrc.is_untaxed ?? ciSrc.isUntaxed ?? src.is_untaxed ?? src.isUntaxed);
     if (isUntaxed !== undefined) costItem.is_untaxed = isUntaxed;
+
+    const requiredCostItemId = readStr(costItem.id);
+    if (!requiredCostItemId) {
+      return NextResponse.json(
+        {
+          error: "Missing required field: cost_item.id",
+          details: "Provide a valid item id using cost_item.id, item_id/itemId, or ci_item_id/ci_itemId.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (Object.keys(costItem).length > 0) lineItemPayload.cost_item = costItem;
 
     const requestedBaseUrl = String(
@@ -185,62 +220,265 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: hostCandidates.error }, { status: 400 });
     }
 
-    const attempts: Array<{ host: string; status: number; message: string }> = [];
+    const pathVariants: Array<{ label: string; path: string }> = [];
+    if (projectId) {
+      pathVariants.push({
+        label: "project",
+        path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+          projectId
+        )}/estimating/proposals/${encodeURIComponent(proposalId)}/line_items`,
+      });
+    }
+    if (bidBoardProjectId) {
+      pathVariants.push({
+        label: "bid_board_project",
+        path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
+          bidBoardProjectId
+        )}/proposals/${encodeURIComponent(proposalId)}/line_items`,
+      });
+    }
+
+    const attempts: Array<{
+      host: string;
+      url: string;
+      pathVariant: string;
+      variant: string;
+      status: number;
+      message: string;
+      payload: UnknownRecord;
+    }> = [];
+
+    const payloadVariants: Array<{ label: string; payload: UnknownRecord }> = [];
+    const seenPayloads = new Set<string>();
+    const addVariant = (label: string, payload: UnknownRecord) => {
+      const key = JSON.stringify(payload);
+      if (seenPayloads.has(key)) return;
+      seenPayloads.add(key);
+      payloadVariants.push({ label, payload });
+    };
+
+    addVariant("original", lineItemPayload);
+
+    // Keep quantity/cost intent intact: do not fall back to stripped payloads when
+    // caller explicitly provided quantitative fields.
+    const hasQuantitativeInput =
+      count !== undefined ||
+      itemCost !== undefined ||
+      laborCost !== undefined;
+
+    if (isRecord(lineItemPayload.cost_item)) {
+      const costItemNoType = omitKeys(lineItemPayload.cost_item as UnknownRecord, ["type"]);
+      if (Object.keys(costItemNoType).length > 0) {
+        addVariant("no_cost_item_type", { ...lineItemPayload, cost_item: costItemNoType });
+      }
+      if (!hasQuantitativeInput) {
+        addVariant("no_cost_item", omitKeys(lineItemPayload, ["cost_item"]));
+      }
+    }
+
+    if (!hasQuantitativeInput) {
+      const noCostItemBase = omitKeys(lineItemPayload, ["cost_item"]);
+      addVariant("no_group_id", omitKeys(noCostItemBase, ["group_id"]));
+      addVariant("no_labor_factor", omitKeys(noCostItemBase, ["labor_factor"]));
+      addVariant("name_only", { name });
+    }
 
     for (const host of hostCandidates.candidates) {
-      const url = `${host.replace(/\/$/, "")}/rest/v2.0/companies/${encodeURIComponent(
-        companyId
-      )}/estimating/bid_board_projects/${encodeURIComponent(
-        bidBoardProjectId
-      )}/proposals/${encodeURIComponent(proposalId)}/line_items`;
+      for (const pathVariant of pathVariants) {
+        const url = `${host.replace(/\/$/, "")}${pathVariant.path}`;
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "Procore-Company-Id": companyId,
-        },
-        body: JSON.stringify(lineItemPayload),
-      });
+        for (let variantIndex = 0; variantIndex < payloadVariants.length; variantIndex += 1) {
+          const candidate = payloadVariants[variantIndex];
+          const candidatePayload = candidate.payload;
+          let response: Response;
+          try {
+            response = await fetch(url, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "Procore-Company-Id": companyId,
+              },
+              body: JSON.stringify(candidatePayload),
+            });
+          } catch (fetchError) {
+            const errorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+            attempts.push({
+              host,
+              url,
+              pathVariant: pathVariant.label,
+              variant: candidate.label,
+              status: 0,
+              message: `Fetch error: ${errorMessage}`,
+              payload: candidatePayload,
+            });
+            break;
+          }
 
-      if (!response.ok) {
-        const errorText = await response.text();
+          if (!response.ok) {
+            const errorText = await response.text();
 
-        attempts.push({
-          host,
-          status: response.status,
-          message: errorText || "No response body",
-        });
-        if (response.status === 404) continue;
-        return NextResponse.json(
-          {
-            error: `Create line item API error ${response.status}`,
-            details: errorText,
-            host,
-            attemptedPayload: lineItemPayload,
-          },
-          { status: response.status }
-        );
+            attempts.push({
+              host,
+              url,
+              pathVariant: pathVariant.label,
+              variant: candidate.label,
+              status: response.status,
+              message: errorText || "No response body",
+              payload: candidatePayload,
+            });
+
+            // This is a definitive permission/scope error for the supplied group_id.
+            if (isLayerGroupAccessDenied(response.status, errorText)) {
+              const requestIds = Array.from(
+                new Set(
+                  attempts
+                    .map((attempt) => extractRequestId(attempt.message))
+                    .filter((id): id is string => Boolean(id))
+                )
+              );
+
+              return NextResponse.json(
+                {
+                  error: `Create line item API error ${response.status}`,
+                  details: errorText,
+                  host,
+                  url,
+                  attemptedPathVariant: pathVariant.label,
+                  unsupportedLayerType: false,
+                  requestIds,
+                  attemptedVariant: candidate.label,
+                  attemptedPayload: candidatePayload,
+                  attempts,
+                },
+                { status: response.status }
+              );
+            }
+
+            if (response.status === 404) {
+              break;
+            }
+
+            // If one endpoint path is unauthorized, try the next path variant (project vs bid-board).
+            if (response.status === 401 || response.status === 403) {
+              break;
+            }
+
+            const shouldRetryNextVariant =
+              variantIndex < payloadVariants.length - 1 && isUnsupportedLayerTypeError(response.status, errorText);
+            if (shouldRetryNextVariant) {
+              continue;
+            }
+
+            const unsupportedLayerType = isUnsupportedLayerTypeError(response.status, errorText);
+            const requestIds = Array.from(
+              new Set(
+                attempts
+                  .map((attempt) => extractRequestId(attempt.message))
+                  .filter((id): id is string => Boolean(id))
+              )
+            );
+
+            return NextResponse.json(
+              {
+                error: `Create line item API error ${response.status}`,
+                details: errorText,
+                host,
+                url,
+                attemptedPathVariant: pathVariant.label,
+                unsupportedLayerType,
+                requestIds,
+                attemptedVariant: candidate.label,
+                attemptedPayload: candidatePayload,
+                attempts,
+              },
+              { status: response.status }
+            );
+          }
+
+          const payload = (await response.json().catch(() => ({}))) as unknown;
+          const payloadRecord = isRecord(payload) ? payload : {};
+          const dataRecord = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
+          const createdLineItemId = String(dataRecord.id || dataRecord.line_item_id || "").trim() || null;
+
+          const requestedCount = readNum(candidatePayload.count);
+          const requestedItemCost = readNum(candidatePayload.item_cost);
+          const requestedLaborCost = readNum(candidatePayload.labor_cost);
+          const returnedCount = readNum(dataRecord.count);
+          const returnedItemCost = readNum(dataRecord.item_cost);
+          const returnedLaborCost = readNum(dataRecord.labor_cost);
+          const quantitativeMismatch =
+            (requestedCount !== undefined && returnedCount !== undefined && requestedCount !== returnedCount) ||
+            (requestedItemCost !== undefined && returnedItemCost !== undefined && requestedItemCost !== returnedItemCost) ||
+            (requestedLaborCost !== undefined && returnedLaborCost !== undefined && requestedLaborCost !== returnedLaborCost);
+
+          return NextResponse.json({
+            success: true,
+            source: "estimating.create_line_item",
+            companyId,
+            bidBoardProjectId,
+            projectId,
+            proposalId,
+            baseUrl: host,
+            url,
+            attemptedPathVariant: pathVariant.label,
+            attemptedVariant: candidate.label,
+            lineItemId: createdLineItemId,
+            lineItem: payload,
+            attemptedPayload: candidatePayload,
+            requestedQuantitative: {
+              count: requestedCount ?? null,
+              item_cost: requestedItemCost ?? null,
+              labor_cost: requestedLaborCost ?? null,
+            },
+            returnedQuantitative: {
+              count: returnedCount ?? null,
+              item_cost: returnedItemCost ?? null,
+              labor_cost: returnedLaborCost ?? null,
+            },
+            quantitativeMismatch,
+            warning: quantitativeMismatch
+              ? "Procore accepted the create request but returned different quantitative values (count/item_cost/labor_cost)."
+              : null,
+          });
+        }
       }
+    }
 
-      const payload = (await response.json().catch(() => ({}))) as unknown;
-      const payloadRecord = isRecord(payload) ? payload : {};
-      const dataRecord = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
-      const createdLineItemId = String(dataRecord.id || dataRecord.line_item_id || "").trim() || null;
+    if (attempts.length > 0) {
+      const preferredAttempt =
+        attempts.find((attempt) => isLayerGroupAccessDenied(attempt.status, attempt.message)) ||
+        attempts.find((attempt) => attempt.status >= 400 && attempt.status < 500) ||
+        attempts.find((attempt) => attempt.status >= 500) ||
+        attempts.find((attempt) => attempt.status > 0) ||
+        attempts[attempts.length - 1];
+      const requestIds = Array.from(
+        new Set(
+          attempts
+            .map((attempt) => extractRequestId(attempt.message))
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+      const unsupportedLayerType = attempts.some((attempt) =>
+        isUnsupportedLayerTypeError(attempt.status, attempt.message)
+      );
 
-      return NextResponse.json({
-        success: true,
-        source: "estimating.create_line_item",
-        companyId,
-        bidBoardProjectId,
-        proposalId,
-        baseUrl: host,
-        lineItemId: createdLineItemId,
-        lineItem: payload,
-        attemptedPayload: lineItemPayload,
-      });
+      return NextResponse.json(
+        {
+          error: `Create line item API error ${preferredAttempt.status}`,
+          details: preferredAttempt.message,
+          host: preferredAttempt.host,
+          url: preferredAttempt.url,
+          attemptedPathVariant: preferredAttempt.pathVariant,
+          unsupportedLayerType,
+          requestIds,
+          attemptedVariant: preferredAttempt.variant,
+          attemptedPayload: preferredAttempt.payload,
+          attempts,
+        },
+        { status: preferredAttempt.status }
+      );
     }
 
     return NextResponse.json(

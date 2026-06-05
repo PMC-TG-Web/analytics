@@ -72,22 +72,23 @@ function parseRetryAfterMs(value: string | null): number | null {
 }
 
 // Get OAuth authorization URL
-export function getAuthorizationUrl(state: string = 'default'): string {
+export function getAuthorizationUrl(state: string = 'default', redirectUriOverride?: string): string {
+  const redirectUri = String(redirectUriOverride || procoreConfig.redirectUri || '').trim();
   const params = new URLSearchParams({
     client_id: (procoreConfig.clientId || '').trim(),
     response_type: 'code',
-    redirect_uri: (procoreConfig.redirectUri || '').trim(),
+    redirect_uri: redirectUri,
     state,
   });
   return `${procoreConfig.authUrl}?${params.toString()}`;
 }
 
 // Exchange authorization code for access token
-export async function getAccessToken(code: string): Promise<ProcoreTokenResponse> {
+export async function getAccessToken(code: string, redirectUriOverride?: string): Promise<ProcoreTokenResponse> {
   try {
     const clientId = (procoreConfig.clientId || '').trim();
     const clientSecret = (procoreConfig.clientSecret || '').trim();
-    const redirectUri = (procoreConfig.redirectUri || '').trim();
+    const redirectUri = String(redirectUriOverride || procoreConfig.redirectUri || '').trim();
     const tokenUrl = (procoreConfig.tokenUrl || '').trim();
 
     const response = await fetch(tokenUrl, {

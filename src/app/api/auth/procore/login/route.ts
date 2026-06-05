@@ -5,6 +5,8 @@ import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   try {
+    const requestUrl = new URL(request.url);
+    const redirectUri = `${requestUrl.origin}/api/auth/procore/callback`;
     const { searchParams } = new URL(request.url);
     let rawReturnTo = String(searchParams.get("returnTo") || "").trim();
     
@@ -36,9 +38,16 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: 10 * 60,
     });
+    cookieStore.set("procore_oauth_redirect_uri", redirectUri, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: 10 * 60,
+    });
     
     // Get the OAuth authorization URL
-    const authUrl = getAuthorizationUrl(state);
+    const authUrl = getAuthorizationUrl(state, redirectUri);
     
     console.log("Redirecting to Procore OAuth:", authUrl);
     

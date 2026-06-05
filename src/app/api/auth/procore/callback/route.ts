@@ -5,10 +5,16 @@ import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const requestUrl = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
   const cookieStore = await cookies();
   const returnToCookie = cookieStore.get("procore_oauth_return_to")?.value;
+  const redirectUriCookie = cookieStore.get("procore_oauth_redirect_uri")?.value;
+  const redirectUri =
+    redirectUriCookie && redirectUriCookie.startsWith("http")
+      ? redirectUriCookie
+      : `${requestUrl.origin}/api/auth/procore/callback`;
   const returnToPath = returnToCookie && returnToCookie.startsWith("/") ? returnToCookie : "/procore";
 
   // Check for errors from Procore
@@ -30,7 +36,7 @@ export async function GET(request: Request) {
     console.log("Exchanging authorization code for access token...");
     
     // Exchange the authorization code for an access token
-    const tokenResponse = await getAccessToken(code);
+    const tokenResponse = await getAccessToken(code, redirectUri);
 
     // Store the tokens in cookies (session storage)
     // Store access token (expires in 2 hours by default)
@@ -77,6 +83,7 @@ export async function GET(request: Request) {
     console.log("OK Successfully authenticated with Procore");
 
     cookieStore.delete("procore_oauth_return_to");
+    cookieStore.delete("procore_oauth_redirect_uri");
 
     const redirectUrl = new URL(returnToPath, request.url);
     redirectUrl.searchParams.set("status", "authenticated");

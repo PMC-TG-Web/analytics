@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Certification } from "@/types/certifications";
+import {
+  getTemplatePermissionsForJobTitle,
+  NAVIGATION_PERMISSION_OPTIONS,
+  normalizeJobTitleTemplateKey,
+} from "@/lib/permissions";
 
 interface Employee {
   id: string;
@@ -27,6 +32,7 @@ interface Employee {
   dateOfLeave?: string;
   payHistory?: Array<{ date: string; rate: number }>;
   apparelRecords?: Array<{ type: string; size: string; dateReceived: string; count: number }>;
+  navigationPermissions?: string[];
   isActive: boolean;
   notes?: string;
   createdAt: string;
@@ -48,6 +54,9 @@ export default function EmployeesPage() {
 }
 
 function EmployeesContent() {
+  const defaultJobTitle = "Field Worker";
+  const defaultTemplatePermissions = getTemplatePermissionsForJobTitle(defaultJobTitle);
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -95,6 +104,11 @@ function EmployeesContent() {
   ]);
   const [showAddJobTitle, setShowAddJobTitle] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState("");
+  const [templateModalVisible, setTemplateModalVisible] = useState(false);
+  const [jobTitleTemplates, setJobTitleTemplates] = useState<Record<string, string[]>>({});
+  const [selectedTemplateTitle, setSelectedTemplateTitle] = useState(defaultJobTitle);
+  const [templatePermissionsDraft, setTemplatePermissionsDraft] = useState<string[]>(defaultTemplatePermissions);
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<Partial<Employee>>({
@@ -104,7 +118,7 @@ function EmployeesContent() {
     personalEmail: "",
     phone: "",
     workPhone: "",
-    jobTitle: "Field Worker",
+    jobTitle: defaultJobTitle,
     address: "",
     city: "",
     state: "",
@@ -120,15 +134,33 @@ function EmployeesContent() {
     notes: "",
     payHistory: [],
     apparelRecords: [],
+    navigationPermissions: defaultTemplatePermissions,
   });
+
+  function applyPermissionsTemplateForTitle(jobTitle: string) {
+    const templatePermissions = getTemplatePermissionsForTitle(jobTitle);
+    setFormData((prev) => ({
+      ...prev,
+      navigationPermissions: templatePermissions,
+    }));
+  }
 
   useEffect(() => {
     // Only load on client side
     if (typeof window !== 'undefined') {
       loadEmployees();
       loadJobTitles();
+      loadJobTitleTemplates();
     }
   }, []);
+
+  function getTemplatePermissionsForTitle(title: string | null | undefined): string[] {
+    const key = normalizeJobTitleTemplateKey(title);
+    if (Object.prototype.hasOwnProperty.call(jobTitleTemplates, key)) {
+      return [...(jobTitleTemplates[key] || [])];
+    }
+    return getTemplatePermissionsForJobTitle(title);
+  }
 
   // Cache helpers
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -215,6 +247,92 @@ function EmployeesContent() {
     }
   }
 
+  async function loadJobTitleTemplates() {
+    try {
+      const response = await fetch('/api/permission-templates');
+      const result = await response.json();
+      if (result.success && result.data?.templates && typeof result.data.templates === 'object') {
+        setJobTitleTemplates(result.data.templates as Record<string, string[]>);
+      }
+    } catch (error) {
+      console.error("Error loading job title templates:", error);
+    }
+  }
+
+  function openTemplateModal(initialTitle?: string) {
+    const preferredTitle = (initialTitle || formData.jobTitle || defaultJobTitle).trim();
+    const title = preferredTitle || defaultJobTitle;
+    setSelectedTemplateTitle(title);
+    setTemplatePermissionsDraft(getTemplatePermissionsForTitle(title));
+    setTemplateModalVisible(true);
+  }
+
+  async function saveTemplateForSelectedTitle() {
+    const title = selectedTemplateTitle.trim();
+    if (!title) {
+      alert("Select a job title first");
+      return;
+    }
+
+    setTemplateSaving(true);
+    try {
+      const response = await fetch('/api/permission-templates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobTitle: title,
+          permissions: templatePermissionsDraft,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save template');
+      }
+
+      const key = normalizeJobTitleTemplateKey(title);
+      setJobTitleTemplates((prev) => ({
+        ...prev,
+        [key]: [...templatePermissionsDraft].sort((a, b) => a.localeCompare(b)),
+      }));
+      alert(`Template saved for ${title}`);
+    } catch (error) {
+      console.error("Error saving template:", error);
+      alert(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function resetTemplateForSelectedTitle() {
+    const title = selectedTemplateTitle.trim();
+    if (!title) return;
+    if (!confirm(`Reset custom template for ${title} back to default mapping?`)) return;
+
+    setTemplateSaving(true);
+    try {
+      const response = await fetch(`/api/permission-templates?jobTitle=${encodeURIComponent(title)}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to reset template');
+      }
+
+      const key = normalizeJobTitleTemplateKey(title);
+      setJobTitleTemplates((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setTemplatePermissionsDraft(getTemplatePermissionsForJobTitle(title));
+    } catch (error) {
+      console.error("Error resetting template:", error);
+      alert(`Failed to reset template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   async function addJobTitle() {
     if (!newJobTitle.trim()) return;
     
@@ -270,6 +388,11 @@ function EmployeesContent() {
           if (data.role && !data.jobTitle) {
             data.jobTitle = data.role;
           }
+
+          if (!Array.isArray(data.navigationPermissions)) {
+            data.navigationPermissions = [];
+          }
+
           return data as Employee;
         });
         
@@ -303,7 +426,7 @@ function EmployeesContent() {
       personalEmail: "",
       phone: "",
       workPhone: "",
-      jobTitle: "Field Worker",
+      jobTitle: defaultJobTitle,
       address: "",
       city: "",
       state: "",
@@ -319,6 +442,7 @@ function EmployeesContent() {
       notes: "",
       payHistory: [],
       apparelRecords: [],
+      navigationPermissions: getTemplatePermissionsForTitle(defaultJobTitle),
     });
     setModalVisible(true);
   }
@@ -348,6 +472,7 @@ function EmployeesContent() {
       notes: employee.notes || "",
       payHistory: employee.payHistory || [],
       apparelRecords: employee.apparelRecords || [],
+      navigationPermissions: employee.navigationPermissions || [],
     });
     setModalVisible(true);
   }
@@ -366,6 +491,29 @@ function EmployeesContent() {
     try {
       const now = new Date().toISOString();
       const employeeId = editingEmployee?.id || `emp_${Date.now()}`;
+      const customFields = {
+        workEmail: formData.workEmail || "",
+        workPhone: formatPhoneNumber(formData.workPhone || ""),
+        employeePhone: formatPhoneNumber(formData.phone || ""),
+        otherEmail: formData.personalEmail || "",
+        address: formData.address || "",
+        city: formData.city || "",
+        state: formData.state || "",
+        zip: formData.zip || "",
+        country: formData.country || "United States",
+        hourlyRate: formData.hourlyRate || 0,
+        vacationHours: formData.vacationHours || 0,
+        keypadCode: formData.keypadCode || "",
+        dateOfBirth: formData.dateOfBirth || "",
+        hireDate: formData.hireDate || "",
+        dateOfLeave: formData.dateOfLeave || "",
+        payHistory: formData.payHistory || [],
+        apparelRecords: formData.apparelRecords || [],
+        notes: formData.notes || "",
+        navigationPermissions: Array.isArray(formData.navigationPermissions)
+          ? formData.navigationPermissions.filter((permission): permission is string => typeof permission === "string" && permission.trim().length > 0)
+          : [],
+      };
       
       const employeeData: Employee = {
         id: employeeId,
@@ -391,6 +539,7 @@ function EmployeesContent() {
         notes: formData.notes || "",
         payHistory: formData.payHistory || [],
         apparelRecords: formData.apparelRecords || [],
+        navigationPermissions: customFields.navigationPermissions,
         createdAt: editingEmployee?.createdAt || now,
         updatedAt: now,
       };
@@ -398,7 +547,10 @@ function EmployeesContent() {
       await fetch(editingEmployee ? `/api/employees?id=${employeeId}` : '/api/employees', {
         method: editingEmployee ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(employeeData)
+        body: JSON.stringify({
+          ...employeeData,
+          customFields,
+        })
       });
       
       // Update local state
@@ -835,7 +987,7 @@ function EmployeesContent() {
                   lastName: "",
                   email: "",
                   phone: "",
-                  jobTitle: "Field Worker",
+                  jobTitle: defaultJobTitle,
                   hourlyRate: 0,
                   vacationHours: 0,
                   keypadCode: "",
@@ -846,6 +998,7 @@ function EmployeesContent() {
                   notes: "",
                   payHistory: [],
                   apparelRecords: [],
+                  navigationPermissions: getTemplatePermissionsForTitle(defaultJobTitle),
                 });
                 setModalVisible(true);
               }}
@@ -865,6 +1018,13 @@ function EmployeesContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Download Report
+            </button>
+
+            <button
+              onClick={() => openTemplateModal()}
+              className="px-6 py-3 bg-indigo-50 text-indigo-800 border-2 border-indigo-200 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-indigo-100 transition-all shadow-lg shadow-indigo-900/10"
+            >
+              Manage Access Templates
             </button>
             
           </div>
@@ -929,6 +1089,7 @@ function EmployeesContent() {
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Phone</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Job Title</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Rate</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Navigation</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Status</th>
                   <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-teal-400">Actions</th>
                 </tr>
@@ -936,7 +1097,7 @@ function EmployeesContent() {
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-500">
+                    <td colSpan={8} className="text-center py-12 text-gray-500">
                       {searchTerm
                         ? "No employees found matching your search"
                         : "No employees yet. Click 'Add Employee' to get started."}
@@ -958,6 +1119,11 @@ function EmployeesContent() {
                       <td className="py-3 px-4 text-sm text-gray-600">{employee.jobTitle}</td>
                       <td className="py-3 px-4 text-sm text-center font-semibold text-gray-900">
                         {employee.hourlyRate ? `$${employee.hourlyRate.toFixed(2)}/hr` : "-"}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {employee.navigationPermissions && employee.navigationPermissions.length > 0
+                          ? employee.navigationPermissions.join(", ")
+                          : "-"}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <button
@@ -1008,6 +1174,95 @@ function EmployeesContent() {
           </div>
         </div>
       </div>
+
+      {/* Job Title Template Modal */}
+      {templateModalVisible && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setTemplateModalVisible(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Job Title Access Templates</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Define page access by job title. Employee records can still be manually adjusted if needed.
+              </p>
+
+              <div className="mb-4 grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
+                  <select
+                    value={selectedTemplateTitle}
+                    onChange={(e) => {
+                      const title = e.target.value;
+                      setSelectedTemplateTitle(title);
+                      setTemplatePermissionsDraft(getTemplatePermissionsForTitle(title));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {jobTitles.map((title) => (
+                      <option key={title} value={title}>{title}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveTemplateForSelectedTitle}
+                  disabled={templateSaving}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {templateSaving ? "Saving..." : "Save Template"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetTemplateForSelectedTitle}
+                  disabled={templateSaving}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 disabled:opacity-50"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-2">
+                {NAVIGATION_PERMISSION_OPTIONS.map((permission) => {
+                  const selected = templatePermissionsDraft.includes(permission);
+                  return (
+                    <label key={permission} className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={(e) => {
+                          const next = new Set(templatePermissionsDraft);
+                          if (e.target.checked) {
+                            next.add(permission);
+                          } else {
+                            next.delete(permission);
+                          }
+                          setTemplatePermissionsDraft(Array.from(next).sort((a, b) => a.localeCompare(b)));
+                        }}
+                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                      />
+                      <span className="font-mono text-xs">{permission}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end mt-6 pt-6 border-t">
+                <button
+                  onClick={() => setTemplateModalVisible(false)}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Employee Modal */}
       {modalVisible && (
@@ -1132,7 +1387,18 @@ function EmployeesContent() {
                     >
                       +
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPermissionsTemplateForTitle(formData.jobTitle || "")}
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                      title="Apply permissions template for selected job title"
+                    >
+                      Template
+                    </button>
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Apply Template sets page access using the selected job title.
+                  </p>
                   {showAddJobTitle && (
                     <div className="mt-2 flex gap-2">
                       <input
@@ -1329,6 +1595,37 @@ function EmployeesContent() {
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                </div>
+
+                {/* Navigation Permissions */}
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Navigation Permissions
+                  </label>
+                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {NAVIGATION_PERMISSION_OPTIONS.map((permission) => {
+                      const selected = (formData.navigationPermissions || []).includes(permission);
+                      return (
+                        <label key={permission} className="flex items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              const next = new Set(formData.navigationPermissions || []);
+                              if (e.target.checked) {
+                                next.add(permission);
+                              } else {
+                                next.delete(permission);
+                              }
+                              setFormData({ ...formData, navigationPermissions: Array.from(next).sort((a, b) => a.localeCompare(b)) });
+                            }}
+                            className="h-4 w-4 text-teal-600 border-gray-300 rounded"
+                          />
+                          <span className="font-mono text-xs">{permission}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Notes */}

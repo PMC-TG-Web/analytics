@@ -5,16 +5,16 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
-    "certifications", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics"
+    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
-    "certifications", "kpi-cards-management", "holidays", "handbook", "reporting", "analytics"
+    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "reporting", "analytics"
   ],
   "HR": [
-    "home", "certifications", "crew-dispatch", "holidays", "handbook"
+    "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
@@ -33,6 +33,70 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
   ],
  
 };
+
+const JOB_TITLE_TO_PERMISSION_GROUP: Record<string, keyof typeof PERMISSION_GROUPS> = {
+  "executive": "OWNER",
+  "owner": "OWNER",
+  "admin": "ADMIN",
+  "administrator": "ADMIN",
+  "office staff": "HR",
+  "office": "HR",
+  "hr": "HR",
+  "estimator": "ESTIMATOR",
+  "operations": "OPERATIONS",
+  "project manager": "PMs",
+  "pm": "PMs",
+  "superintendent": "FIELD",
+  "foreman": "FIELD",
+  "field worker": "FIELD",
+  "field": "FIELD",
+};
+
+export const JOB_TITLE_TEMPLATE_CATEGORY = "PermissionTemplate";
+export const JOB_TITLE_TEMPLATE_PREFIX = "job-title-template:";
+
+export function normalizeJobTitleTemplateKey(jobTitle: string | null | undefined): string {
+  if (!jobTitle) return "";
+  return jobTitle
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+export function buildJobTitleTemplateConstantName(jobTitle: string): string {
+  return `${JOB_TITLE_TEMPLATE_PREFIX}${normalizeJobTitleTemplateKey(jobTitle)}`;
+}
+
+function resolvePermissionGroupForJobTitle(jobTitle: string | null | undefined): keyof typeof PERMISSION_GROUPS | null {
+  const normalized = normalizeJobTitleTemplateKey(jobTitle);
+  if (!normalized) return null;
+
+  const exactMatch = JOB_TITLE_TO_PERMISSION_GROUP[normalized];
+  if (exactMatch) return exactMatch;
+
+  if (normalized.includes("estimat")) return "ESTIMATOR";
+  if (normalized.includes("project manager")) return "PMs";
+  if (normalized.includes("superintendent") || normalized.includes("foreman") || normalized.includes("field")) return "FIELD";
+  if (normalized.includes("operations")) return "OPERATIONS";
+  if (normalized.includes("office") || normalized.includes("human resources") || normalized === "hr") return "HR";
+  if (normalized.includes("owner") || normalized.includes("executive")) return "OWNER";
+
+  return null;
+}
+
+export function getTemplatePermissionsForJobTitle(jobTitle: string | null | undefined): string[] {
+  const group = resolvePermissionGroupForJobTitle(jobTitle);
+  if (!group) return [];
+  return [...PERMISSION_GROUPS[group]];
+}
+
+export const JOB_TITLE_PERMISSION_TEMPLATES: Record<string, string[]> = Object.keys(JOB_TITLE_TO_PERMISSION_GROUP)
+  .sort((a, b) => a.localeCompare(b))
+  .reduce<Record<string, string[]>>((acc, title) => {
+    const group = JOB_TITLE_TO_PERMISSION_GROUP[title];
+    acc[title] = [...PERMISSION_GROUPS[group]];
+    return acc;
+  }, {});
 
 type UserPermissionRow = {
   email: string | null;
@@ -243,6 +307,7 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/procore/estimating/proposals-create', permission: 'admin' },
   { prefix: '/api/procore/estimating/proposal-line-item-groups-create', permission: 'admin' },
   { prefix: '/api/procore/estimating/proposal-line-items-create', permission: 'admin' },
+  { prefix: '/api/procore/estimating/import-line-item-groups', permission: 'admin' },
   { prefix: '/api/procore/estimating/import-estimate-workbook', permission: 'admin' },
   { prefix: '/api/procore/sync', permission: 'admin' },
   { prefix: '/api/weather', permission: 'home' },
@@ -272,9 +337,20 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/holidays', permission: 'holidays' },
   { prefix: '/api/employees', permission: 'employees' },
   { prefix: '/api/onboarding-submissions', permission: 'onboarding' },
+  { prefix: '/api/permission-templates', permission: 'employees' },
   { prefix: '/api/projects', permission: 'projects' },
   { prefix: '/api/procore', permission: 'procore' },
 ];
+
+export const NAVIGATION_PERMISSION_OPTIONS: string[] = Array.from(
+  new Set([
+    ...Object.values(PERMISSION_GROUPS).flat(),
+    ...PATH_PERMISSION_RULES.map((rule) => rule.permission),
+  ])
+)
+  .map((permission) => permission.trim())
+  .filter((permission) => permission.length > 0)
+  .sort((a, b) => a.localeCompare(b));
 
 function normalizePath(pathname: string): string {
   if (!pathname) return '/';

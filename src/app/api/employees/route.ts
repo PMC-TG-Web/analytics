@@ -1,8 +1,100 @@
 import { prisma } from '@/lib/prisma';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
+import {
+  buildJobTitleTemplateConstantName,
+  getTemplatePermissionsForJobTitle,
+  normalizeJobTitleTemplateKey,
+} from '@/lib/permissions';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeNavigationPermissions(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((permission): permission is string => typeof permission === 'string')
+    .map((permission) => permission.trim())
+    .filter((permission) => permission.length > 0);
+}
+
+function getNavigationPermissionsFromBody(body: Record<string, unknown>): string[] | null {
+  if (Object.prototype.hasOwnProperty.call(body, 'navigationPermissions')) {
+    return normalizeNavigationPermissions(body.navigationPermissions);
+  }
+
+  const customFields = body.customFields;
+  if (!customFields || typeof customFields !== 'object') return null;
+
+  const custom = customFields as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(custom, 'navigationPermissions')) {
+    return normalizeNavigationPermissions(custom.navigationPermissions);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(custom, 'NavigationPermissions')) {
+    return normalizeNavigationPermissions(custom.NavigationPermissions);
+  }
+
+  return null;
+}
+
+async function syncUserPermissions(email: string | null | undefined, permissions: string[], isActive: boolean): Promise<void> {
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!normalizedEmail) return;
+
+  await prisma.user.upsert({
+    where: { email: normalizedEmail },
+    create: {
+      email: normalizedEmail,
+      permissions,
+      isActive,
+    },
+    update: {
+      permissions,
+      isActive,
+    },
+  });
+}
+
+async function resolveTemplatePermissionsForJobTitle(
+  jobTitle: string | null | undefined
+): Promise<{ permissions: string[]; hasCustomTemplate: boolean }> {
+  const normalizedTitle = normalizeJobTitleTemplateKey(jobTitle);
+  if (!normalizedTitle) return { permissions: [], hasCustomTemplate: false };
+
+  const constantName = buildJobTitleTemplateConstantName(normalizedTitle);
+  const customTemplate = await prisma.estimatingConstant.findUnique({
+    where: { name: constantName },
+    select: { value: true },
+  });
+
+  if (customTemplate?.value) {
+    try {
+      const parsed = JSON.parse(customTemplate.value) as unknown;
+
+      if (Array.isArray(parsed)) {
+        return {
+          permissions: normalizeNavigationPermissions(parsed),
+          hasCustomTemplate: true,
+        };
+      }
+
+      if (parsed && typeof parsed === 'object') {
+        const rec = parsed as Record<string, unknown>;
+        return {
+          permissions: normalizeNavigationPermissions(rec.permissions),
+          hasCustomTemplate: true,
+        };
+      }
+    } catch {
+      // Ignore malformed template JSON and fall through to static defaults.
+    }
+  }
+
+  return {
+    permissions: getTemplatePermissionsForJobTitle(normalizedTitle),
+    hasCustomTemplate: false,
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,10 +117,34 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    const employeeEmails = employees
+      .map((employee) => employee.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email));
+
+    const users = employeeEmails.length > 0
+      ? await prisma.user.findMany({
+          where: { email: { in: employeeEmails } },
+          select: { email: true, permissions: true },
+        })
+      : [];
+
+    const userPermissionsByEmail = new Map<string, string[]>();
+    for (const user of users) {
+      userPermissionsByEmail.set(user.email.toLowerCase(), normalizeNavigationPermissions(user.permissions));
+    }
+
     // Unpack customFields to top-level properties for UI compatibility
     const formattedEmployees = employees.map(emp => {
       const custom = (emp.customFields ?? {}) as Record<string, unknown>;
       const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.replace(/\s+/g, ' ').trim();
+      const normalizedEmail = emp.email?.trim().toLowerCase() || '';
+      const customNavigationPermissions = normalizeNavigationPermissions(
+        custom.navigationPermissions ?? custom.NavigationPermissions
+      );
+      const effectiveNavigationPermissions = customNavigationPermissions.length > 0
+        ? customNavigationPermissions
+        : (normalizedEmail ? userPermissionsByEmail.get(normalizedEmail) || [] : []);
+
       return {
         id: emp.id,
         firstName: emp.firstName,
@@ -60,6 +176,7 @@ export async function GET(request: NextRequest) {
         payHistory: custom.payHistory,
         apparelRecords: custom.apparelRecords,
         notes: custom.notes,
+        navigationPermissions: effectiveNavigationPermissions,
       };
     });
 
@@ -110,6 +227,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { firstName, lastName, jobTitle, email, phone, isActive, customFields } = body;
+    const navigationPermissions = getNavigationPermissionsFromBody(body as Record<string, unknown>);
+    const templateResolution = await resolveTemplatePermissionsForJobTitle(
+      typeof jobTitle === 'string' ? jobTitle : null
+    );
 
     if (!firstName || !lastName) {
       return NextResponse.json(
@@ -130,6 +251,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const effectivePermissions = navigationPermissions ?? templateResolution.permissions;
+    if (navigationPermissions !== null || templateResolution.hasCustomTemplate || templateResolution.permissions.length > 0) {
+      await syncUserPermissions(employee.email, effectivePermissions, employee.isActive);
+    }
+
     return NextResponse.json({
       success: true,
       data: employee,
@@ -147,6 +273,7 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, firstName, lastName, jobTitle, email, phone, isActive, customFields } = body;
+    const navigationPermissions = getNavigationPermissionsFromBody(body as Record<string, unknown>);
 
     if (!id) {
       return NextResponse.json(
@@ -154,6 +281,11 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const previousEmployee = await prisma.employee.findUnique({
+      where: { id },
+      select: { email: true },
+    });
 
     const employee = await prisma.employee.update({
       where: { id },
@@ -167,6 +299,32 @@ export async function PUT(request: NextRequest) {
         ...(customFields !== undefined && { customFields: customFields || null }),
       },
     });
+
+    const previousEmail = typeof previousEmployee?.email === 'string'
+      ? previousEmployee.email.trim().toLowerCase()
+      : '';
+    const currentEmail = typeof employee.email === 'string'
+      ? employee.email.trim().toLowerCase()
+      : '';
+
+    if (previousEmail && previousEmail !== currentEmail) {
+      await prisma.user.updateMany({
+        where: { email: previousEmail },
+        data: { isActive: false },
+      });
+    }
+
+    const templateResolution = await resolveTemplatePermissionsForJobTitle(
+      typeof employee.jobTitle === 'string' ? employee.jobTitle : null
+    );
+    const effectivePermissions = navigationPermissions ?? templateResolution.permissions;
+    if (navigationPermissions !== null || templateResolution.hasCustomTemplate || templateResolution.permissions.length > 0) {
+      await syncUserPermissions(
+        employee.email,
+        effectivePermissions,
+        employee.isActive
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -193,9 +351,17 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.employee.delete({
+    const employee = await prisma.employee.delete({
       where: { id },
     });
+
+    const normalizedEmail = typeof employee.email === 'string' ? employee.email.trim().toLowerCase() : '';
+    if (normalizedEmail) {
+      await prisma.user.updateMany({
+        where: { email: normalizedEmail },
+        data: { isActive: false },
+      });
+    }
 
     return NextResponse.json({
       success: true,

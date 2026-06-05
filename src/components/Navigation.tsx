@@ -32,7 +32,7 @@ const navLinks: NavLink[] = [
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },
   { href: "/constants", label: "Constants", page: "constants" },
   { href: "/employees", label: "Employees", page: "employees" },
-  { href: "/certifications", label: "Certifications", page: "employees" },
+  { href: "/certifications", label: "Certifications", page: "certifications" },
   { href: "/equipment", label: "Equipment", page: "equipment" },
   { href: "/holidays", label: "Holidays", page: "holidays" },
   { href: "/procore/timecard-entries", label: "Timecards", page: "procore" },
@@ -41,7 +41,7 @@ const navLinks: NavLink[] = [
   { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore" },
   { href: "/analytics", label: "Analytics", page: "analytics" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
-  { href: "/onboarding/submissions", label: "Onboarding", page: "employees" },
+  { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
 ];

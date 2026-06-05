@@ -1848,7 +1848,7 @@ function ProcoreContent() {
               <textarea
                 value={projectImportRowsText}
                 onChange={(e) => setProjectImportRowsText(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Bid Board Template Example","status":"ESTIMATING","is_template":true}]'
               />
 
@@ -1884,7 +1884,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${projectImportResult.attempted}, Valid ${projectImportResult.valid}, Invalid ${projectImportResult.invalid}`
                       : `Attempted ${projectImportResult.attempted}, Created ${projectImportResult.created}, Failed ${projectImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(projectImportResult, null, 2)}
                   </pre>
                 </div>
@@ -1940,7 +1940,7 @@ function ProcoreContent() {
               <textarea
                 value={groupImportRowsText}
                 onChange={(e) => setGroupImportRowsText(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Concrete - Sidewalk","multiplier":1,"unit_material_cost":45,"material_margin":0.1}]'
               />
 
@@ -1975,7 +1975,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${groupImportResult.attempted}, Valid ${groupImportResult.valid}, Invalid ${groupImportResult.invalid}`
                       : `Attempted ${groupImportResult.attempted}, Created ${groupImportResult.created}, Failed ${groupImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(groupImportResult, null, 2)}
                   </pre>
                 </div>
@@ -2042,7 +2042,7 @@ function ProcoreContent() {
               <textarea
                 value={lineItemImportRowsText}
                 onChange={(e) => setLineItemImportRowsText(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Concrete - 4000 PSI","ci_type":"PART","ci_unit":"CY","ci_unit_cost":155}]'
               />
 
@@ -2091,7 +2091,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${lineItemImportResult.attempted}, Valid ${lineItemImportResult.valid}, Invalid ${lineItemImportResult.invalid}`
                       : `Attempted ${lineItemImportResult.attempted}, Created ${lineItemImportResult.created}, Failed ${lineItemImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(lineItemImportResult, null, 2)}
                   </pre>
                 </div>
@@ -2108,7 +2108,7 @@ function ProcoreContent() {
                   <div className="bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded mb-3">
                     <strong>Pulled Line Item Payloads:</strong> Found {lineItemPayloadPullResult.count} line item(s).
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(lineItemPayloadPullResult, null, 2)}
                   </pre>
                 </div>
@@ -2126,7 +2126,7 @@ function ProcoreContent() {
                     <strong>Import Groups + Layers Result:</strong> Attempted {lineItemImportViaImportResult.attemptedGroupCount} group(s)
                     {typeof lineItemImportViaImportResult.attemptedLayerCount === "number" ? ` and ${lineItemImportViaImportResult.attemptedLayerCount} layer(s)` : ""}.
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(lineItemImportViaImportResult, null, 2)}
                   </pre>
                 </div>
@@ -2173,7 +2173,7 @@ function ProcoreContent() {
                   value={directCostRowsText}
                   onChange={(e) => setDirectCostRowsText(e.target.value)}
                   rows={8}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
                   placeholder='[{"id": 123, "amount": 1000, "direct_cost_id": 456, "description": "Updated cost"}]'
                 />
               </div>
@@ -2206,7 +2206,7 @@ function ProcoreContent() {
                       : <><strong>Sync failed.</strong> See details below.</>
                     }
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(directCostResult, null, 2)}
                   </pre>
                 </div>
@@ -2272,7 +2272,7 @@ function ProcoreContent() {
               <textarea
                 value={importRowsText}
                 onChange={(e) => setImportRowsText(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono h-48"
+                className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"Cost item":"Division A","Cost Code":"03-100","Quantity":1}]'
               />
 
@@ -2305,7 +2305,7 @@ function ProcoreContent() {
                   <div className="bg-teal-50 border border-teal-200 text-teal-900 px-4 py-3 rounded mb-3">
                     <strong>Import Result:</strong> {importResult.mode === "dry-run" ? "Dry-run preview ready" : "Live import finished"}
                   </div>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(importResult, null, 2)}
                   </pre>
                 </div>
@@ -2526,7 +2526,7 @@ function ProcoreContent() {
                   <summary className="cursor-pointer font-semibold hover:text-blue-600">
                     Click to expand
                   </summary>
-                  <pre className="bg-gray-100 p-4 rounded overflow-auto text-xs mt-4">
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono mt-4">
                     {JSON.stringify(data, null, 2)}
                   </pre>
                 </details>

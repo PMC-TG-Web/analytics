@@ -7,9 +7,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestUrl = new URL(request.url);
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
   const error = searchParams.get("error");
   const cookieStore = await cookies();
   const returnToCookie = cookieStore.get("procore_oauth_return_to")?.value;
+  const expectedState = cookieStore.get("procore_oauth_state")?.value;
   const redirectUriCookie = cookieStore.get("procore_oauth_redirect_uri")?.value;
   const redirectUri =
     redirectUriCookie && redirectUriCookie.startsWith("http")
@@ -20,13 +22,22 @@ export async function GET(request: Request) {
   // Check for errors from Procore
   if (error) {
     console.error("Procore OAuth error:", error);
+    cookieStore.delete("procore_oauth_state");
     return NextResponse.redirect(
       new URL(`${returnToPath}?error=${encodeURIComponent(error)}`, request.url)
     );
   }
 
+  if (!state || !expectedState || state !== expectedState) {
+    cookieStore.delete("procore_oauth_state");
+    return NextResponse.redirect(
+      new URL(`${returnToPath}?error=invalid_state`, request.url)
+    );
+  }
+
   // Verify we have an authorization code
   if (!code) {
+    cookieStore.delete("procore_oauth_state");
     return NextResponse.redirect(
       new URL(`${returnToPath}?error=missing_code`, request.url)
     );
@@ -84,6 +95,7 @@ export async function GET(request: Request) {
 
     cookieStore.delete("procore_oauth_return_to");
     cookieStore.delete("procore_oauth_redirect_uri");
+    cookieStore.delete("procore_oauth_state");
 
     const redirectUrl = new URL(returnToPath, request.url);
     redirectUrl.searchParams.set("status", "authenticated");
@@ -93,6 +105,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("OAuth callback error:", message);
+    cookieStore.delete("procore_oauth_state");
     
     return NextResponse.redirect(
       new URL(`${returnToPath}?error=${encodeURIComponent(message)}`, request.url)

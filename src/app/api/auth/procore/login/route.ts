@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { getAuthorizationUrl } from "@/lib/procore";
 import { cookies } from "next/headers";
+import { randomBytes } from "crypto";
 
 export async function GET(request: Request) {
   try {
@@ -27,11 +28,18 @@ export async function GET(request: Request) {
     
     const returnTo = rawReturnTo.startsWith("/") ? rawReturnTo : "/procore";
 
-    // Generate a random state for CSRF protection
-    const state = Math.random().toString(36).substring(7);
+    // Generate a strong random state for CSRF protection.
+    const state = randomBytes(24).toString("hex");
 
     const cookieStore = await cookies();
     cookieStore.set("procore_oauth_return_to", returnTo, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: 10 * 60,
+    });
+    cookieStore.set("procore_oauth_state", state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",

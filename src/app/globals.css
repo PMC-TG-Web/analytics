@@ -32,17 +32,6 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Stronger default readability across pages */
-p,
-label,
-li,
-td,
-th,
-small,
-strong {
-  color: var(--text-secondary);
-}
-
 /* Higher-contrast form controls globally */
 input,
 textarea,
@@ -55,19 +44,6 @@ input::placeholder,
 textarea::placeholder {
   color: var(--placeholder);
   opacity: 1;
-}
-
-/* Darken common muted utility text tokens for readability on light displays */
-.text-gray-400,
-.text-gray-500,
-.text-gray-600,
-.text-slate-400,
-.text-slate-500,
-.text-slate-600,
-.text-zinc-400,
-.text-zinc-500,
-.text-zinc-600 {
-  color: var(--text-muted) !important;
 }
 
 /* Custom scrollbar styling */

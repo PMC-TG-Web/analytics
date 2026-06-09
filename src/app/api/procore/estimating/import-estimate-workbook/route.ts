@@ -907,9 +907,16 @@ export async function POST(request: Request) {
       const lineItemGroupId = groupIdByKey.get(lineItem.groupKey);
       const currentPayload = lineItem.payload;
       const lineName = toStringValue(currentPayload.name) || `Imported line item ${index + 1}`;
+
+      const parsedCount = Number(
+        currentPayload.count ?? currentPayload.quantity ?? currentPayload.qty
+      );
+      const hasCount = Number.isFinite(parsedCount);
+
       const linePayloadBase: UnknownRecord = {
         name: lineName,
         ...(lineItemGroupId ? { group_id: lineItemGroupId } : {}),
+        ...(hasCount ? { count: parsedCount } : {}),
       };
       const payloadVariants: UnknownRecord[] = [
         {

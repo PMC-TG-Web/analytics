@@ -113,8 +113,61 @@ function ProcoreContent() {
   const [proposalShowBidBoardProjectId, setProposalShowBidBoardProjectId] = useState("");
   const [proposalShowProposalId, setProposalShowProposalId] = useState("");
   const [proposalShowBusy, setProposalShowBusy] = useState(false);
+  const [proposalCsvBusy, setProposalCsvBusy] = useState(false);
   const [proposalShowError, setProposalShowError] = useState<string | null>(null);
   const [proposalShowResult, setProposalShowResult] = useState<any>(null);
+
+  const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
+  const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
+  const [purchaseOrderContractAttachmentsText, setPurchaseOrderContractAttachmentsText] = useState('[]');
+  const [purchaseOrderContractJsonText, setPurchaseOrderContractJsonText] = useState(`{
+  "accounting_method": "amount",
+  "approval_letter_date": "2012-10-23",
+  "bill_to_address": "Santa Claus Lane, Carpinteria, CA",
+  "contract_date": "2012-10-23",
+  "delivery_date": "2012-10-23",
+  "description": "<p>3 tons of cement.</p>",
+  "executed": false,
+  "execution_date": "2012-10-23",
+  "issued_on_date": "2012-10-23",
+  "letter_of_intent_date": "2012-10-23",
+  "origin_code": "OC-abc123",
+  "origin_data": "OD-2398273424",
+  "origin_id": 459247544,
+  "number": "PO-17-1990-00001",
+  "payment_terms": "Net 20",
+  "private": false,
+  "retainage_percent": "10",
+  "returned_date": "2012-10-23",
+  "ship_to_address": "1410 Harbor View Drive Newport Beach, CA 92663",
+  "ship_via": "Acme Shipping",
+  "status": "Processing",
+  "title": "Initial cement order.",
+  "custom_field_%{custom_field_definition_id}": "custom field value",
+  "currency_exchange_rate": 1.5,
+  "currency_iso_code": "USD"
+}`);
+  const [purchaseOrderContractBusy, setPurchaseOrderContractBusy] = useState(false);
+  const [purchaseOrderContractError, setPurchaseOrderContractError] = useState<string | null>(null);
+  const [purchaseOrderContractResult, setPurchaseOrderContractResult] = useState<any>(null);
+  const [purchaseOrderLineItemProjectId, setPurchaseOrderLineItemProjectId] = useState("66005");
+  const [purchaseOrderLineItemContractId, setPurchaseOrderLineItemContractId] = useState("");
+  const [purchaseOrderLineItemJsonText, setPurchaseOrderLineItemJsonText] = useState(`{
+  "amount": "1000.0",
+  "budget_line_item_id": 34567,
+  "cost_code_id": 77408196,
+  "description": "Cleanup",
+  "extended_type": "manual",
+  "quantity": "20.0",
+  "line_item_type_id": 5085801,
+  "origin_data": "AC-1234",
+  "origin_id": 55555,
+  "unit_cost": "50.00",
+  "uom": "Hours"
+}`);
+  const [purchaseOrderLineItemBusy, setPurchaseOrderLineItemBusy] = useState(false);
+  const [purchaseOrderLineItemError, setPurchaseOrderLineItemError] = useState<string | null>(null);
+  const [purchaseOrderLineItemResult, setPurchaseOrderLineItemResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -387,6 +440,125 @@ function ProcoreContent() {
       setCreateProductivityError(err instanceof Error ? err.message : String(err));
     } finally {
       setCreateProductivityBusy(false);
+    }
+  };
+
+  const handleCreatePurchaseOrderContract = async () => {
+    const projectId = purchaseOrderContractProjectId.trim();
+    if (!projectId) {
+      setPurchaseOrderContractError("Project ID is required.");
+      return;
+    }
+
+    let purchaseOrderContractPayload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(purchaseOrderContractJsonText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON must be an object.");
+      }
+      purchaseOrderContractPayload = parsed as Record<string, unknown>;
+    } catch (e) {
+      setPurchaseOrderContractError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+
+    let attachments: unknown[] | undefined;
+    if (purchaseOrderContractAttachmentsText.trim()) {
+      try {
+        const parsedAttachments = JSON.parse(purchaseOrderContractAttachmentsText);
+        if (!Array.isArray(parsedAttachments)) {
+          throw new Error("Attachments must be a JSON array.");
+        }
+        attachments = parsedAttachments;
+      } catch (e) {
+        setPurchaseOrderContractError(`Invalid attachments JSON: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+    }
+
+    setPurchaseOrderContractBusy(true);
+    setPurchaseOrderContractError(null);
+    setPurchaseOrderContractResult(null);
+    try {
+      const response = await fetch("/api/procore/purchase-order-contracts/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          attachments,
+          purchase_order_contract: purchaseOrderContractPayload,
+          run_configurable_validations: purchaseOrderContractRunValidations,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setPurchaseOrderContractError(
+          result?.details
+            ? `${result.error}: ${result.details}`
+            : result?.error || `Create failed (${response.status}).`
+        );
+      }
+      setPurchaseOrderContractResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setPurchaseOrderContractError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPurchaseOrderContractBusy(false);
+    }
+  };
+
+  const handleCreatePurchaseOrderContractLineItem = async () => {
+    const projectId = purchaseOrderLineItemProjectId.trim();
+    const purchaseOrderContractId = purchaseOrderLineItemContractId.trim();
+
+    if (!projectId) {
+      setPurchaseOrderLineItemError("Project ID is required.");
+      return;
+    }
+
+    if (!purchaseOrderContractId) {
+      setPurchaseOrderLineItemError("Purchase Order Contract ID is required.");
+      return;
+    }
+
+    let lineItemPayload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(purchaseOrderLineItemJsonText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON must be an object.");
+      }
+      lineItemPayload = parsed as Record<string, unknown>;
+    } catch (e) {
+      setPurchaseOrderLineItemError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+
+    setPurchaseOrderLineItemBusy(true);
+    setPurchaseOrderLineItemError(null);
+    setPurchaseOrderLineItemResult(null);
+
+    try {
+      const response = await fetch("/api/procore/purchase-order-contracts/line-items-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          purchase_order_contract_id: purchaseOrderContractId,
+          line_item: lineItemPayload,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setPurchaseOrderLineItemError(
+          result?.details
+            ? `${result.error}: ${result.details}`
+            : result?.error || `Create failed (${response.status}).`
+        );
+      }
+      setPurchaseOrderLineItemResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setPurchaseOrderLineItemError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPurchaseOrderLineItemBusy(false);
     }
   };
 
@@ -1256,18 +1428,75 @@ function ProcoreContent() {
     }
   };
 
-  const handleExportProposalCsv = () => {
+  const handleExportProposalCsv = async () => {
+    setProposalCsvBusy(true);
+    setProposalShowError(null);
+
     const result = proposalShowResult?.result;
-    const lineItems = Array.isArray(result?.lineItems)
-      ? result.lineItems
-      : Array.isArray(lineItemPayloadPullResult?.lineItems)
-        ? lineItemPayloadPullResult.lineItems
-        : [];
     const lineItemGroups = Array.isArray(result?.lineItemGroups) ? result.lineItemGroups : [];
     const proposal = result?.proposal && typeof result.proposal === "object" ? result.proposal : {};
 
-    if (!lineItems.length) {
-      setProposalShowError("No line items are available to export yet. If the project-scoped pull is empty, try the Bid Board Project ID as a fallback.");
+    const projectId = proposalShowProjectId.trim();
+    const proposalId = proposalShowProposalId.trim();
+
+    let liveRows: Record<string, unknown>[] = [];
+    if (proposalId) {
+      try {
+        const liveResponse = await fetch(
+          `/api/procore/estimating/proposal-line-items-live?proposalId=${encodeURIComponent(proposalId)}&pageSize=10000`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+        const liveResult = await liveResponse.json().catch(() => ({}));
+        liveRows = Array.isArray(liveResult?.data)
+          ? liveResult.data.filter((entry: unknown): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+          : [];
+      } catch {
+        liveRows = [];
+      }
+    }
+
+    if (!liveRows.length && projectId && proposalId) {
+      try {
+        const estimatorResponse = await fetch(`/api/procore/estimating/estimating-project?projectId=${encodeURIComponent(projectId)}`, {
+          method: "GET",
+          cache: "no-store",
+        });
+        const estimatorResult = await estimatorResponse.json().catch(() => ({}));
+        const summary = estimatorResult?.summary && typeof estimatorResult.summary === "object" ? estimatorResult.summary : null;
+        const fallbackBidBoardProjectId = String(summary?.bidBoardProjectId || "").trim();
+
+        if (fallbackBidBoardProjectId) {
+          const liveResponse = await fetch(
+            `/api/procore/estimating/proposal-line-items-live?bidBoardProjectId=${encodeURIComponent(fallbackBidBoardProjectId)}&proposalId=${encodeURIComponent(proposalId)}&pageSize=10000`,
+            {
+              method: "GET",
+              cache: "no-store",
+            }
+          );
+          const liveResult = await liveResponse.json().catch(() => ({}));
+          liveRows = Array.isArray(liveResult?.data)
+            ? liveResult.data.filter((entry: unknown): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+            : [];
+        }
+      } catch {
+        liveRows = [];
+      }
+    }
+
+    const sourceRows = liveRows.length > 0
+      ? liveRows
+      : Array.isArray(result?.lineItems)
+        ? result.lineItems
+        : Array.isArray(lineItemPayloadPullResult?.lineItems)
+          ? lineItemPayloadPullResult.lineItems
+          : [];
+
+    if (!sourceRows.length) {
+      setProposalShowError("No line items are available to export yet. Resolve the bid board project from the project ID or supply it manually.");
+      setProposalCsvBusy(false);
       return;
     }
 
@@ -1299,9 +1528,10 @@ function ProcoreContent() {
           const nested =
             getText(record.code) ||
             getText(record.full_code) ||
-            getText(record.name) ||
+            getText(record.cost_code) ||
             getText(record.value) ||
-            getText(record.flat_code);
+            getText(record.display) ||
+            getText(record.number);
           if (nested) return nested;
         }
         const text = getText(value);
@@ -1310,17 +1540,159 @@ function ProcoreContent() {
       return "";
     };
 
-    const groupRows = (lineItemGroups as Record<string, unknown>[]).map((group) => {
-      const groupCostCode = readCostCode(
-        group.cost_code,
-        group.budget_code,
-        group.wbs_code,
-        group.costCode,
-        group.budgetCode,
-        group.wbsCode
+    const readBudgetCode = (...values: unknown[]): string => {
+      for (const value of values) {
+        if (value && typeof value === "object") {
+          const record = value as Record<string, unknown>;
+          const nested =
+            getText(record.code) ||
+            getText(record.full_code) ||
+            getText(record.cost_code) ||
+            getText(record.value) ||
+            getText(record.display) ||
+            getText(record.number);
+          if (nested) return nested;
+        }
+        const text = getText(value);
+        if (text) return text;
+      }
+      return "";
+    };
+
+    const companyId = getText(result?.companyId);
+    const catalogCodeCache = new Map<string, Promise<string>>();
+
+    const looksLikeIdentifier = (value: string, ...ids: string[]): boolean => {
+      if (!value) return false;
+      if (ids.some((id) => id && value === id)) return true;
+      return /^\d+$/.test(value);
+    };
+
+    const looksLikeCostCode = (value: string): boolean => {
+      if (!value) return false;
+      return /[-./]/.test(value) || /\d/.test(value);
+    };
+
+    const fetchCatalogCodeByItemId = async (itemId: string): Promise<string> => {
+      if (!companyId || !itemId) return "";
+      const cached = catalogCodeCache.get(itemId);
+      if (cached) return cached;
+
+      const pending = (async () => {
+        try {
+          const response = await fetch("/api/procore/sync/estimating-catalog-item", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ companyId, itemId }),
+          });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok) return "";
+          const itemPayload = json?.item && typeof json.item === "object" ? (json.item as Record<string, unknown>) : {};
+          return readBudgetCode(itemPayload.code, itemPayload.full_code, itemPayload.cost_code, itemPayload.costCode);
+        } catch {
+          return "";
+        }
+      })();
+
+      catalogCodeCache.set(itemId, pending);
+      return pending;
+    };
+
+    const resolveRowCodes = async (row: Record<string, unknown>, payload: Record<string, unknown> = {}, costItem: Record<string, unknown> = {}) => {
+      const lineItemId = getText(row.line_item_id ?? row.lineItemId ?? row.id);
+      const costItemId = getText(costItem.id ?? payload.cost_item_id ?? payload.costItemId ?? row.cost_item_id ?? row.costItemId);
+      const catalogCode = await fetchCatalogCodeByItemId(costItemId);
+
+      const rawBudgetCode = readBudgetCode(
+        row.budget_code,
+        row.budgetCode,
+        row.cost_code,
+        row.costCode,
+        row.wbs_code,
+        row.wbsCode,
+        payload.budget_code,
+        payload.budgetCode,
+        payload.cost_code,
+        payload.costCode,
+        payload.wbs_code,
+        payload.wbsCode,
+        costItem.budget_code,
+        costItem.budgetCode,
+        costItem.cost_code,
+        costItem.costCode,
+        costItem.wbs_code,
+        costItem.wbsCode
       );
+
+      const rawCostCode = readCostCode(
+        row.cost_code,
+        row.costCode,
+        row.budget_code,
+        row.budgetCode,
+        row.wbs_code,
+        row.wbsCode,
+        row.rollupCostCode,
+        payload.cost_code,
+        payload.costCode,
+        payload.budget_code,
+        payload.budgetCode,
+        payload.wbs_code,
+        payload.wbsCode,
+        costItem.cost_code,
+        costItem.costCode,
+        costItem.budget_code,
+        costItem.budgetCode,
+        costItem.wbs_code,
+        costItem.wbsCode
+      );
+
+      const budgetCode = catalogCode && (!rawBudgetCode || looksLikeIdentifier(rawBudgetCode, lineItemId, costItemId))
+        ? catalogCode
+        : looksLikeCostCode(rawBudgetCode)
+          ? rawBudgetCode
+          : "";
+      const costCode = catalogCode && (!rawCostCode || looksLikeIdentifier(rawCostCode, lineItemId, costItemId))
+        ? catalogCode
+        : looksLikeCostCode(rawCostCode)
+          ? rawCostCode
+          : "";
+
+      return { budgetCode, costCode, catalogCode, lineItemId, costItemId };
+    };
+
+    const resolvedSourceRows = await Promise.all(
+      sourceRows.map(async (item: Record<string, unknown>) => {
+        const payload = item.payload && typeof item.payload === "object" ? (item.payload as Record<string, unknown>) : {};
+        const costItem = item.cost_item && typeof item.cost_item === "object" ? (item.cost_item as Record<string, unknown>) : {};
+        const groupId = getText(payload.group_id ?? payload.groupId ?? item.group_id ?? item.groupId);
+        const itemName = getText(item.name ?? payload.name ?? costItem.name ?? item.description ?? payload.description);
+        const codes = await resolveRowCodes(item, payload, costItem);
+        const costType = readCostCode(costItem.type, item.cost_type, item.line_item_type, item.type, payload.cost_type, payload.line_item_type);
+        const uom = getText(costItem.unit ?? item.uom ?? item.type ?? payload.uom ?? payload.type);
+
+        return {
+          item,
+          payload,
+          costItem,
+          groupId,
+          itemName,
+          ...codes,
+          costType,
+          uom,
+        };
+      })
+    );
+
+    const groupRows = (lineItemGroups as Record<string, unknown>[]).map((group) => {
       const groupName = getText(group.name ?? group.title ?? group.description);
       const groupId = getText(group.id ?? group.group_id ?? group.line_item_group_id);
+      const sourceRow = groupId
+        ? resolvedSourceRows.find((entry) => entry.groupId === groupId)
+        : undefined;
+      const { budgetCode: groupBudgetCode, costCode: groupCostCode } = sourceRow
+        ? { budgetCode: sourceRow.budgetCode, costCode: sourceRow.costCode }
+        : { budgetCode: "", costCode: "" };
       return [
         "line_item_group",
         getText(result?.companyId),
@@ -1333,6 +1705,7 @@ function ProcoreContent() {
         groupName,
         groupId,
         groupName,
+        groupBudgetCode,
         groupCostCode,
         getText(group.cost_type ?? group.costType),
         getText(group.description),
@@ -1348,25 +1721,10 @@ function ProcoreContent() {
 
     const rows = [
       ...groupRows,
-      ...lineItems.map((item: Record<string, unknown>) => {
-      const costItem = item.cost_item && typeof item.cost_item === "object" ? (item.cost_item as Record<string, unknown>) : {};
-      const groupId = getText(item.group_id ?? item.groupId);
+      ...resolvedSourceRows.map((entry) => {
+      const { item, payload, costItem, groupId, itemName, budgetCode, costCode, costType, uom } = entry;
       const group = groupId ? rowByGroupId.get(groupId) || {} : {};
-      const itemName = getText(item.name ?? costItem.name ?? item.description);
-      const costCode = readCostCode(
-        item.cost_code,
-        item.budget_code,
-        item.wbs_code,
-        item.costCode,
-        item.budgetCode,
-        item.wbsCode,
-        costItem.cost_code,
-        costItem.budget_code,
-        costItem.wbs_code
-      );
-      const costType = readCostCode(costItem.type, item.cost_type, item.line_item_type, item.type);
-      const lineItemId = getText(item.id ?? item.line_item_id);
-      const uom = getText(costItem.unit ?? item.uom ?? item.type);
+      const lineItemId = getText(item.line_item_id ?? item.lineItemId ?? item.id);
 
       return [
         "line_item",
@@ -1380,6 +1738,7 @@ function ProcoreContent() {
         getText(group.name ?? group.title ?? group.description),
         lineItemId,
         itemName,
+        budgetCode,
         costCode,
         costType,
         getText(item.description ?? costItem.description),
@@ -1407,6 +1766,7 @@ function ProcoreContent() {
       "group_name",
       "line_item_id",
       "line_item_name",
+      "budget_code",
       "cost_code",
       "cost_type",
       "description",
@@ -1418,6 +1778,7 @@ function ProcoreContent() {
       "labor_sales",
       "total",
     ], rows);
+    setProposalCsvBusy(false);
   };
 
   const handlePullLineItemPayloads = async () => {
@@ -2148,6 +2509,147 @@ function ProcoreContent() {
               </button>
             </div>
 
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
+              <h2 className="text-xl font-bold text-teal-900 mb-3">Create Purchase Order Contract</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Create a Procore purchase order contract through <code className="bg-gray-100 px-1 rounded">/api/procore/purchase-order-contracts/create</code>.
+                Paste the contract JSON and optionally supply attachments as a JSON array.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={purchaseOrderContractProjectId}
+                    onChange={(e) => setPurchaseOrderContractProjectId(e.target.value)}
+                    placeholder="e.g. 66005"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={purchaseOrderContractRunValidations}
+                      onChange={(e) => setPurchaseOrderContractRunValidations(e.target.checked)}
+                    />
+                    Run configurable validations
+                  </label>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Attachments JSON Array</label>
+                <textarea
+                  value={purchaseOrderContractAttachmentsText}
+                  onChange={(e) => setPurchaseOrderContractAttachmentsText(e.target.value)}
+                  rows={3}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">purchase_order_contract JSON</label>
+                <textarea
+                  value={purchaseOrderContractJsonText}
+                  onChange={(e) => setPurchaseOrderContractJsonText(e.target.value)}
+                  rows={16}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleCreatePurchaseOrderContract}
+                  disabled={purchaseOrderContractBusy}
+                  className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {purchaseOrderContractBusy ? "Creating..." : "Create Purchase Order Contract"}
+                </button>
+              </div>
+
+              {purchaseOrderContractError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Create PO Contract Error:</strong> {purchaseOrderContractError}
+                </div>
+              )}
+
+              {purchaseOrderContractResult && (
+                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                  {JSON.stringify(purchaseOrderContractResult, null, 2)}
+                </pre>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+              <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Purchase Order Contract Line Item</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Create a line item on an existing purchase order contract through <code className="bg-gray-100 px-1 rounded">/api/procore/purchase-order-contracts/line-items-create</code>.
+              </p>
+              <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Use <strong>manual</strong> line items for editable SOV behavior. The previous sample used <strong>calculated</strong>, which can land in a non-editable state in Procore.
+              </div>
+              <div className="mb-4 rounded border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                This form accepts <strong>budget_line_item_id</strong>/<strong>budgetLineItemId</strong>, <strong>budget_code_id</strong>/<strong>budgetCodeId</strong>, and <strong>wbs_code_id</strong>/<strong>wbsCodeId</strong>. The route now forwards both <strong>budget_line_item_id</strong> and <strong>wbs_code_id</strong> when available.
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={purchaseOrderLineItemProjectId}
+                    onChange={(e) => setPurchaseOrderLineItemProjectId(e.target.value)}
+                    placeholder="e.g. 66005"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Purchase Order Contract ID</label>
+                  <input
+                    type="text"
+                    value={purchaseOrderLineItemContractId}
+                    onChange={(e) => setPurchaseOrderLineItemContractId(e.target.value)}
+                    placeholder="e.g. 123456789"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">line_item JSON</label>
+                <textarea
+                  value={purchaseOrderLineItemJsonText}
+                  onChange={(e) => setPurchaseOrderLineItemJsonText(e.target.value)}
+                  rows={14}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleCreatePurchaseOrderContractLineItem}
+                  disabled={purchaseOrderLineItemBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {purchaseOrderLineItemBusy ? "Creating..." : "Create PO Contract Line Item"}
+                </button>
+              </div>
+
+              {purchaseOrderLineItemError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Create PO Line Item Error:</strong> {purchaseOrderLineItemError}
+                </div>
+              )}
+
+              {purchaseOrderLineItemResult && (
+                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                  {JSON.stringify(purchaseOrderLineItemResult, null, 2)}
+                </pre>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
               <h2 className="text-xl font-bold text-cyan-900 mb-3">Create Productivity Log</h2>
               <p className="text-sm text-gray-600 mb-4">
@@ -2578,17 +3080,17 @@ function ProcoreContent() {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handlePullProposalShow}
-                  disabled={proposalShowBusy}
+                  disabled={proposalShowBusy || proposalCsvBusy}
                   className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
                   {proposalShowBusy ? "Pulling..." : "Pull Full Proposal"}
                 </button>
                 <button
                   onClick={handleExportProposalCsv}
-                  disabled={proposalShowBusy}
+                  disabled={proposalShowBusy || proposalCsvBusy}
                   className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  Download CSV Export
+                  {proposalCsvBusy ? "Exporting..." : "Download CSV Export"}
                 </button>
               </div>
 

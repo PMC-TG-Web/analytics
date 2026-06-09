@@ -24,6 +24,68 @@ function extractEmbeddedArray(payload: unknown, keys: string[]): unknown[] {
   return [];
 }
 
+function extractBidBoardProjectId(payload: unknown, projectId: string): string | null {
+  if (!isRecord(payload)) return null;
+
+  const directProjectId = readStr(payload.project_id || payload.procore_project_id || payload.projectId);
+  if (directProjectId && directProjectId === projectId) {
+    return readStr(payload.id || payload.bid_board_project_id || payload.bidBoardProjectId) || null;
+  }
+
+  return null;
+}
+
+async function resolveBidBoardProjectId(options: {
+  host: string;
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}): Promise<string | null> {
+  const baseHost = options.host.replace(/\/$/, "");
+
+  try {
+    const directUrl = `${baseHost}/rest/v2.0/companies/${encodeURIComponent(
+      options.companyId
+    )}/estimating/bid_board_projects?page=1&per_page=100`;
+
+    for (let page = 1; page <= 20; page += 1) {
+      const url = page === 1 ? directUrl : `${baseHost}/rest/v2.0/companies/${encodeURIComponent(
+        options.companyId
+      )}/estimating/bid_board_projects?page=${page}&per_page=100`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${options.accessToken}`,
+          Accept: "application/json",
+          "Procore-Company-Id": options.companyId,
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) break;
+        throw new Error(`Bid board project lookup failed ${response.status}`);
+      }
+
+      const payload = (await response.json().catch(() => ({}))) as unknown;
+      const entries = extractEmbeddedArray(payload, ["data", "projects", "bid_board_projects"]);
+      if (!entries.length) break;
+
+      for (const entry of entries) {
+        const match = extractBidBoardProjectId(entry, options.projectId);
+        if (match) return match;
+      }
+
+      if (entries.length < 100) break;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function fetchPagedCollection(options: {
   host: string;
   accessToken: string;
@@ -34,7 +96,7 @@ async function fetchPagedCollection(options: {
 }): Promise<{ items: unknown[]; attempts: Array<{ page: number; status: number; message: string }> }> {
   const items: unknown[] = [];
   const attempts: Array<{ page: number; status: number; message: string }> = [];
-  const perPage = Math.min(200, Math.max(1, options.perPage || 200));
+  const perPage = Math.min(100, Math.max(1, options.perPage || 100));
 
   for (const urlPath of options.urlPaths) {
     const candidateItems: unknown[] = [];
@@ -151,6 +213,13 @@ export async function POST(request: Request) {
     const attempts: Array<{ host: string; status: number; message: string }> = [];
 
     for (const host of hostCandidates.candidates) {
+      const resolvedBidBoardProjectId = await resolveBidBoardProjectId({
+        host,
+        accessToken,
+        companyId,
+        projectId,
+      });
+
       const url = `${host.replace(/\/$/, "")}/rest/v2.0/companies/${encodeURIComponent(
         companyId
       )}/projects/${encodeURIComponent(projectId)}/estimating/proposals/${encodeURIComponent(proposalId)}`;
@@ -202,6 +271,14 @@ export async function POST(request: Request) {
 
       try {
         const lineItemUrlPaths = [
+          ...(resolvedBidBoardProjectId
+            ? [
+                (page: number, perPage: number) =>
+                  `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
+                    resolvedBidBoardProjectId
+                  )}/proposals/${encodeURIComponent(proposalId)}/line_items?page=${page}&per_page=${perPage}`,
+              ]
+            : []),
           (page: number, perPage: number) =>
             `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
               projectId
@@ -237,6 +314,14 @@ export async function POST(request: Request) {
 
       try {
         const lineItemGroupUrlPaths = [
+          ...(resolvedBidBoardProjectId
+            ? [
+                (page: number, perPage: number) =>
+                  `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
+                    resolvedBidBoardProjectId
+                  )}/proposals/${encodeURIComponent(proposalId)}/line_item_groups?page=${page}&per_page=${perPage}`,
+              ]
+            : []),
           (page: number, perPage: number) =>
             `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
               projectId
@@ -276,6 +361,7 @@ export async function POST(request: Request) {
         companyId,
         projectId,
         bidBoardProjectId: bidBoardProjectId || null,
+        resolvedBidBoardProjectId: resolvedBidBoardProjectId || null,
         proposalId,
         baseUrl: host,
         url,

@@ -50,6 +50,36 @@ export default function ProcoreTestPage() {
   const [estimatingOnlyWithCostCode, setEstimatingOnlyWithCostCode] = useState(false);
   const [estimatingExactCostCode, setEstimatingExactCostCode] = useState("");
   const [estimatingCatalogId, setEstimatingCatalogId] = useState("");
+  const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
+  const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
+  const [purchaseOrderContractAttachmentsText, setPurchaseOrderContractAttachmentsText] = useState('[]');
+  const [purchaseOrderContractJsonText, setPurchaseOrderContractJsonText] = useState(`{
+  "accounting_method": "amount",
+  "approval_letter_date": "2012-10-23",
+  "bill_to_address": "Santa Claus Lane, Carpinteria, CA",
+  "contract_date": "2012-10-23",
+  "delivery_date": "2012-10-23",
+  "description": "<p>3 tons of cement.</p>",
+  "executed": false,
+  "execution_date": "2012-10-23",
+  "issued_on_date": "2012-10-23",
+  "letter_of_intent_date": "2012-10-23",
+  "origin_code": "OC-abc123",
+  "origin_data": "OD-2398273424",
+  "origin_id": 459247544,
+  "number": "PO-17-1990-00001",
+  "payment_terms": "Net 20",
+  "private": false,
+  "retainage_percent": "10",
+  "returned_date": "2012-10-23",
+  "ship_to_address": "1410 Harbor View Drive Newport Beach, CA 92663",
+  "ship_via": "Acme Shipping",
+  "status": "Processing",
+  "title": "Initial cement order.",
+  "custom_field_%{custom_field_definition_id}": "custom field value",
+  "currency_exchange_rate": 1.5,
+  "currency_iso_code": "USD"
+}`);
 
   useEffect(() => {
     // Check configuration on load
@@ -481,6 +511,73 @@ export default function ProcoreTestPage() {
       });
 
       const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+      } else {
+        setError(data.details ? `${data.error}: ${data.details}` : data.error || "Request failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createPurchaseOrderContract = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    if (!purchaseOrderContractProjectId.trim()) {
+      setError("Please enter a project ID for the purchase order contract.");
+      setLoading(false);
+      return;
+    }
+
+    let purchaseOrderContract: unknown;
+    let attachments: unknown[] | undefined;
+
+    try {
+      purchaseOrderContract = JSON.parse(purchaseOrderContractJsonText);
+      if (!purchaseOrderContract || typeof purchaseOrderContract !== "object" || Array.isArray(purchaseOrderContract)) {
+        throw new Error("Purchase order contract JSON must be an object.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? `Invalid purchase order contract JSON: ${err.message}` : "Invalid purchase order contract JSON.");
+      setLoading(false);
+      return;
+    }
+
+    if (purchaseOrderContractAttachmentsText.trim()) {
+      try {
+        const parsedAttachments = JSON.parse(purchaseOrderContractAttachmentsText);
+        if (!Array.isArray(parsedAttachments)) {
+          throw new Error("Attachments must be a JSON array.");
+        }
+        attachments = parsedAttachments;
+      } catch (err) {
+        setError(err instanceof Error ? `Invalid attachments JSON: ${err.message}` : "Invalid attachments JSON.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    try {
+      const response = await fetch("/api/procore/purchase-order-contracts/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          companyId: config?.config?.companyId,
+          project_id: purchaseOrderContractProjectId.trim(),
+          attachments,
+          purchase_order_contract: purchaseOrderContract,
+          run_configurable_validations: purchaseOrderContractRunValidations,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         setResult(data);
@@ -1222,6 +1319,114 @@ export default function ProcoreTestPage() {
             </button>
             <code style={{ fontSize: "0.8rem", color: "#6b7280", wordBreak: "break-all" }}>
               procore_estimating_catalog_item_staging
+            </code>
+          </div>
+        </div>
+
+        {/* Bid Board Project ID Lookup */}
+        <div
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.5rem",
+            padding: "1.5rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "600", marginBottom: "1rem" }}>
+            Purchase Order Contract Create Test
+          </h2>
+          <p style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#6b7280" }}>
+            Creates a purchase order contract through <strong>/api/procore/purchase-order-contracts/create</strong>.
+            Paste the contract payload below and optionally add attachments as a JSON array.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
+            <div>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Project ID
+              </label>
+              <input
+                type="text"
+                value={purchaseOrderContractProjectId}
+                onChange={(e) => setPurchaseOrderContractProjectId(e.target.value)}
+                placeholder="66005"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "end", paddingBottom: "0.5rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: "600" }}>
+                <input
+                  type="checkbox"
+                  checked={purchaseOrderContractRunValidations}
+                  onChange={(e) => setPurchaseOrderContractRunValidations(e.target.checked)}
+                />
+                Run configurable validations
+              </label>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Attachments JSON Array
+              </label>
+              <textarea
+                value={purchaseOrderContractAttachmentsText}
+                onChange={(e) => setPurchaseOrderContractAttachmentsText(e.target.value)}
+                rows={3}
+                placeholder='["string"]'
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ display: "block", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Purchase Order Contract JSON
+              </label>
+              <textarea
+                value={purchaseOrderContractJsonText}
+                onChange={(e) => setPurchaseOrderContractJsonText(e.target.value)}
+                rows={16}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
+                  fontFamily: "monospace",
+                  lineHeight: 1.5,
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={createPurchaseOrderContract}
+              disabled={loading || (!accessToken && !isAuthenticated) || !purchaseOrderContractProjectId.trim()}
+              style={{
+                padding: "0.75rem 1.5rem",
+                backgroundColor: loading || (!accessToken && !isAuthenticated) || !purchaseOrderContractProjectId.trim() ? "#9ca3af" : "#0f766e",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.375rem",
+                fontWeight: "600",
+                cursor: loading || (!accessToken && !isAuthenticated) || !purchaseOrderContractProjectId.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Creating..." : "Create Purchase Order Contract"}
+            </button>
+            <code style={{ fontSize: "0.8rem", color: "#6b7280", wordBreak: "break-all" }}>
+              /api/procore/purchase-order-contracts/create → POST /rest/v1.0/purchase_order_contracts
             </code>
           </div>
         </div>

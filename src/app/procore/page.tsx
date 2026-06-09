@@ -1292,13 +1292,79 @@ function ProcoreContent() {
       return "";
     };
 
-    const rows = lineItems.map((item: Record<string, unknown>) => {
+    const readCostCode = (...values: unknown[]): string => {
+      for (const value of values) {
+        if (value && typeof value === "object") {
+          const record = value as Record<string, unknown>;
+          const nested =
+            getText(record.code) ||
+            getText(record.full_code) ||
+            getText(record.name) ||
+            getText(record.value) ||
+            getText(record.flat_code);
+          if (nested) return nested;
+        }
+        const text = getText(value);
+        if (text) return text;
+      }
+      return "";
+    };
+
+    const groupRows = (lineItemGroups as Record<string, unknown>[]).map((group) => {
+      const groupCostCode = readCostCode(
+        group.cost_code,
+        group.budget_code,
+        group.wbs_code,
+        group.costCode,
+        group.budgetCode,
+        group.wbsCode
+      );
+      const groupName = getText(group.name ?? group.title ?? group.description);
+      const groupId = getText(group.id ?? group.group_id ?? group.line_item_group_id);
+      return [
+        "line_item_group",
+        getText(result?.companyId),
+        getText(result?.projectId),
+        getText(result?.bidBoardProjectId),
+        getText(result?.proposalId),
+        getText((proposal as Record<string, unknown>).name ?? (proposal as Record<string, unknown>).title),
+        getText((proposal as Record<string, unknown>).status),
+        groupId,
+        groupName,
+        groupId,
+        groupName,
+        groupCostCode,
+        getText(group.cost_type ?? group.costType),
+        getText(group.description),
+        getNumber(group.count ?? group.quantity ?? group.qty),
+        getText(group.uom ?? group.unit ?? group.type),
+        getNumber(group.item_cost ?? group.unit_cost),
+        getNumber(group.labor_cost),
+        getNumber(group.item_sales),
+        getNumber(group.labor_sales),
+        getNumber(group.total ?? group.amount),
+      ];
+    });
+
+    const rows = [
+      ...groupRows,
+      ...lineItems.map((item: Record<string, unknown>) => {
       const costItem = item.cost_item && typeof item.cost_item === "object" ? (item.cost_item as Record<string, unknown>) : {};
       const groupId = getText(item.group_id ?? item.groupId);
       const group = groupId ? rowByGroupId.get(groupId) || {} : {};
       const itemName = getText(item.name ?? costItem.name ?? item.description);
-      const costCode = getText(item.cost_code && typeof item.cost_code === "object" ? (item.cost_code as Record<string, unknown>).code : item.cost_code);
-      const costType = getText(costItem.type ?? item.cost_type);
+      const costCode = readCostCode(
+        item.cost_code,
+        item.budget_code,
+        item.wbs_code,
+        item.costCode,
+        item.budgetCode,
+        item.wbsCode,
+        costItem.cost_code,
+        costItem.budget_code,
+        costItem.wbs_code
+      );
+      const costType = readCostCode(costItem.type, item.cost_type, item.line_item_type, item.type);
       const lineItemId = getText(item.id ?? item.line_item_id);
       const uom = getText(costItem.unit ?? item.uom ?? item.type);
 
@@ -1325,7 +1391,8 @@ function ProcoreContent() {
         getNumber(item.labor_sales),
         getNumber(item.total ?? item.amount),
       ];
-    });
+      }),
+    ];
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     downloadCsv(`procore-estimate-export-${timestamp}.csv`, [

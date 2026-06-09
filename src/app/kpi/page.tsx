@@ -907,6 +907,50 @@ function KPIPageContent({
     // Return immediately without waiting
   };
 
+  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates", currentValue: number) => {
+    setEditingCell({ year, month, field });
+    setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
+  };
+
+  const cancelEditKpiCell = () => {
+    setEditingCell(null);
+    setEditValue("");
+  };
+
+  const commitEditKpiCell = () => {
+    if (!editingCell) return;
+
+    const parsed = Number(String(editValue || "").replace(/[$,\s]/g, ""));
+    const sanitized = Number.isFinite(parsed) ? parsed : 0;
+
+    setKpiData((prev: any[]) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const idx = existing.findIndex((entry: any) => entry.year === editingCell.year && entry.month === editingCell.month);
+      if (idx >= 0) {
+        const next = [...existing];
+        next[idx] = {
+          ...next[idx],
+          [editingCell.field]: sanitized,
+          monthName: next[idx]?.monthName || monthNames[editingCell.month - 1],
+        };
+        return next;
+      }
+
+      return [
+        ...existing,
+        {
+          year: editingCell.year,
+          month: editingCell.month,
+          monthName: monthNames[editingCell.month - 1],
+          [editingCell.field]: sanitized,
+        },
+      ];
+    });
+
+    saveKpiField(editingCell.year, editingCell.month, editingCell.field, sanitized);
+    cancelEditKpiCell();
+  };
+
   // Load year filter from localStorage on mount
   useEffect(() => {
     const savedYear = localStorage.getItem("kpi-year-filter");
@@ -1978,6 +2022,26 @@ function KPIPageContent({
   });
 
   const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
+  const manualScheduledSalesByMonth: Record<string, number> = {};
+  kpiData.forEach((entry) => {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const year = String(record.year ?? "").trim();
+    const month = Number(record.month);
+    const rawValue = record.scheduledSales;
+    if (!year || rawValue === undefined || rawValue === null) return;
+    if (!Number.isInteger(month) || month < 1 || month > 12) return;
+
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return;
+
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+    manualScheduledSalesByMonth[monthKey] = value;
+  });
+  const effectiveScheduledSalesByMonth: Record<string, number> = {
+    ...scheduledSalesByMonth,
+    ...manualScheduledSalesByMonth,
+  };
+  const effectiveScheduledSalesMonths = Object.keys(effectiveScheduledSalesByMonth).sort();
   
   const scheduledTotal = Object.values(scheduledSalesByMonth).reduce((sum, val) => sum + val, 0);
   
@@ -1989,12 +2053,12 @@ function KPIPageContent({
   logKpiDebug("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
   
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
-  scheduledSalesMonths.forEach((month) => {
+  effectiveScheduledSalesMonths.forEach((month) => {
     const [year, m] = month.split("-");
     if (!scheduledSalesYearMonthMap[year]) {
       scheduledSalesYearMonthMap[year] = {};
     }
-    scheduledSalesYearMonthMap[year][Number(m)] = scheduledSalesByMonth[month];
+    scheduledSalesYearMonthMap[year][Number(m)] = effectiveScheduledSalesByMonth[month];
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
 
@@ -2045,12 +2109,12 @@ function KPIPageContent({
   logKpiDebug("[KPI] Filtered bid submitted sales:", filteredBidSubmittedSalesByMonth);
 
   const filteredScheduledSalesByMonth: Record<string, number> = {};
-  const filteredScheduledSalesMonths = scheduledSalesMonths.filter(month => {
+  const filteredScheduledSalesMonths = effectiveScheduledSalesMonths.filter(month => {
     if (yearFilter) {
       const [year] = month.split("-");
       if (year !== yearFilter) return false;
     }
-    filteredScheduledSalesByMonth[month] = scheduledSalesByMonth[month];
+    filteredScheduledSalesByMonth[month] = effectiveScheduledSalesByMonth[month];
     return true;
   });
 
@@ -2303,24 +2367,46 @@ function KPIPageContent({
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                         <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
                         {monthNames.map((_, idx) => {
-                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                          const sales = calculatedValue;
+                          const month = idx + 1;
+                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
+                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
+                          const isManual = manualValue !== undefined && manualValue !== null;
+                          const sales = isManual ? Number(manualValue) : calculatedValue;
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === month &&
+                            editingCell?.field === "scheduledSales";
                           
                           return (
                             <td 
-                              key={idx} 
+                              key={idx}
+                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledSales", Number(sales) || 0)}
                               style={{ 
                                 padding: "4px 2px", 
                                 textAlign: "center", 
                                 color: sales > 0 ? ((yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
                                 fontWeight: sales > 0 ? 700 : 400, 
-                                fontSize: 12
+                                fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {sales > 0 ? (
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : sales > 0 && !isManual ? (
                                 <button
                                   type="button"
-                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[idx]} ${year}`, scheduledSalesProjectsByMonth, { year, month: idx + 1, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
+                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[idx]} ${year}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
                                   style={{ background: "transparent", border: "none", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -2455,20 +2541,41 @@ function KPIPageContent({
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
                         {allYearMonths.map(({ year, month }, idx) => {
+                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
                           const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
-                          const sales = calculatedValue;
+                          const isManual = manualValue !== undefined && manualValue !== null;
+                          const sales = isManual ? Number(manualValue) : calculatedValue;
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === month &&
+                            editingCell?.field === "scheduledSales";
                           return (
                             <td 
                               key={idx} 
+                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledSales", Number(sales) || 0)}
                               style={{ 
                                 padding: "4px 2px", 
                                 textAlign: "center", 
                                 color: sales > 0 ? "#15616D" : "#999", 
                                 fontWeight: sales > 0 ? 700 : 400, 
-                                fontSize: 12
+                                fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {sales > 0 ? (
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : sales > 0 && !isManual ? (
                                 <button
                                   type="button"
                                   onClick={() => openKpiDrilldown(`Scheduled ${monthNames[month - 1]} ${year}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2545,6 +2652,9 @@ function KPIPageContent({
         {/* Estimates Table - using Bid Submitted data */}
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Estimates by Month</h3>
+          <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>
+            Double-click any <strong>Bids Submitted</strong> or <strong>New Bids</strong> month cell to override that month value.
+          </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
@@ -2589,18 +2699,37 @@ function KPIPageContent({
                       <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: bidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
                         {bidsMonthValues.map(({ month, value, isManual }, idx) => {
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === month &&
+                            editingCell?.field === "bidSubmittedSales";
                           return (
                             <td
                               key={month}
+                              onDoubleClick={() => beginEditKpiCell(year, month, "bidSubmittedSales", Number(value) || 0)}
                               style={{
                                 padding: "4px 2px",
                                 textAlign: "center",
                                 color: value > 0 ? bidsColor : "#999",
                                 fontWeight: value > 0 ? 700 : 400,
-                                fontSize: 12
+                                fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {value > 0 && !isManual ? (
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : value > 0 && !isManual ? (
                                 <button
                                   type="button"
                                   onClick={() => openKpiDrilldown(`Bids Submitted ${monthNames[idx]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2655,18 +2784,37 @@ function KPIPageContent({
                       <tr key={`new-bids-${year}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: newBidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "New Bids" : `New Bids ${year}`}</td>
                         {newBidsMonthValues.map(({ month, value, isManual }, idx) => {
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === month &&
+                            editingCell?.field === "estimates";
                           return (
                             <td
                               key={month}
+                              onDoubleClick={() => beginEditKpiCell(year, month, "estimates", Number(value) || 0)}
                               style={{
                                 padding: "4px 2px",
                                 textAlign: "center",
                                 color: value > 0 ? newBidsColor : "#999",
                                 fontWeight: value > 0 ? 700 : 400,
-                                fontSize: 12
+                                fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {value > 0 && !isManual ? (
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : value > 0 && !isManual ? (
                                 <button
                                   type="button"
                                   onClick={() => openNewBidsDrilldown(year, month)}

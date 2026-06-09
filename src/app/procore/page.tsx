@@ -36,6 +36,11 @@ function ProcoreContent() {
   const [productivityResult, setProductivityResult] = useState<{ count: number; message: string } | null>(null);
   const [debugResult, setDebugResult] = useState<any>(null);
   const [productivityDebugResult, setProductivityDebugResult] = useState<any>(null);
+  const [createProductivityProjectId, setCreateProductivityProjectId] = useState("");
+  const [createProductivityJson, setCreateProductivityJson] = useState('{\n  "date": "2026-06-08",\n  "line_item_id": 173890,\n  "notes": "Productivity 50% complete",\n  "quantity_delivered": "10",\n  "quantity_used": "4"\n}');
+  const [createProductivityBusy, setCreateProductivityBusy] = useState(false);
+  const [createProductivityError, setCreateProductivityError] = useState<string | null>(null);
+  const [createProductivityResult, setCreateProductivityResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [importBidBoardProjectId, setImportBidBoardProjectId] = useState("");
@@ -75,6 +80,10 @@ function ProcoreContent() {
   const [lineItemImportViaImportBusy, setLineItemImportViaImportBusy] = useState(false);
   const [lineItemImportViaImportResult, setLineItemImportViaImportResult] = useState<any>(null);
   const [lineItemImportViaImportError, setLineItemImportViaImportError] = useState<string | null>(null);
+  const [singleLineItemJson, setSingleLineItemJson] = useState('{\n  "name": "Mobilization",\n  "group_id": "",\n  "labor_factor": 1,\n  "count": 1,\n  "labor_cost": 125,\n  "cost_item": {\n    "id": "51482200",\n    "type": "Labor",\n    "name": "Mobilization",\n    "unit": "Hours"\n  }\n}');
+  const [singleLineItemBusy, setSingleLineItemBusy] = useState(false);
+  const [singleLineItemError, setSingleLineItemError] = useState<string | null>(null);
+  const [singleLineItemResult, setSingleLineItemResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -303,6 +312,50 @@ function ProcoreContent() {
       console.warn('Error checking database:', err);
     } finally {
       setCheckingDatabase(false);
+    }
+  };
+
+  const handleCreateProductivityLog = async () => {
+    const projectId = createProductivityProjectId.trim();
+    if (!projectId) {
+      setCreateProductivityError("Project ID is required.");
+      return;
+    }
+
+    let productivityLogPayload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(createProductivityJson);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON must be an object.");
+      }
+      productivityLogPayload = parsed as Record<string, unknown>;
+    } catch (e) {
+      setCreateProductivityError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+
+    setCreateProductivityBusy(true);
+    setCreateProductivityError(null);
+    setCreateProductivityResult(null);
+    try {
+      const response = await fetch("/api/procore/productivity-logs/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, productivity_log: productivityLogPayload }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setCreateProductivityError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Create failed (${response.status}).`
+        );
+      }
+      setCreateProductivityResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setCreateProductivityError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreateProductivityBusy(false);
     }
   };
 
@@ -1097,6 +1150,47 @@ function ProcoreContent() {
     }
   };
 
+  const handleCreateSingleLineItemFromJson = async () => {
+    const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
+    const proposalId = lineItemImportProposalId.trim();
+    if (!bidBoardProjectId || !proposalId) {
+      setSingleLineItemError("Bid Board Project ID and Proposal ID are required.");
+      return;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      const value = JSON.parse(singleLineItemJson);
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("JSON must be an object payload.");
+      }
+      parsed = value as Record<string, unknown>;
+    } catch (e) {
+      setSingleLineItemError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+
+    setSingleLineItemBusy(true);
+    setSingleLineItemError(null);
+    setSingleLineItemResult(null);
+    try {
+      const response = await fetch("/api/procore/estimating/proposal-line-items-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidBoardProjectId, proposalId, ...parsed }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSingleLineItemError(result?.error ? `${result.error}${result?.details ? `: ${result.details}` : ""}` : `Create failed (${response.status}).`);
+      }
+      setSingleLineItemResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setSingleLineItemError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSingleLineItemBusy(false);
+    }
+  };
+
   const handlePullLineItemPayloads = async () => {
     const bidBoardProjectId = lineItemImportBidBoardProjectId.trim();
     const proposalId = lineItemImportProposalId.trim();
@@ -1825,6 +1919,55 @@ function ProcoreContent() {
               </button>
             </div>
 
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+              <h2 className="text-xl font-bold text-cyan-900 mb-3">Create Productivity Log</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Create a single Procore productivity log directly via API. The <strong>line_item_id</strong> must come from an approved contract.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={createProductivityProjectId}
+                    onChange={(e) => setCreateProductivityProjectId(e.target.value)}
+                    placeholder="e.g. 598134326278124"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">productivity_log JSON</label>
+              <textarea
+                value={createProductivityJson}
+                onChange={(e) => setCreateProductivityJson(e.target.value)}
+                className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
+              />
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={handleCreateProductivityLog}
+                  disabled={createProductivityBusy}
+                  className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {createProductivityBusy ? "Creating..." : "Create Productivity Log"}
+                </button>
+              </div>
+
+              {createProductivityError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Create Productivity Error:</strong> {createProductivityError}
+                </div>
+              )}
+
+              {createProductivityResult && (
+                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                  {JSON.stringify(createProductivityResult, null, 2)}
+                </pre>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Bid Board Project Import (Step 1)</h2>
               <p className="text-sm text-gray-600 mb-4">
@@ -2045,6 +2188,37 @@ function ProcoreContent() {
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Concrete - 4000 PSI","ci_type":"PART","ci_unit":"CY","ci_unit_cost":155}]'
               />
+
+              <div className="mt-5 border border-emerald-200 rounded p-3 bg-emerald-50">
+                <label className="block text-sm font-semibold text-emerald-900 mb-1">Create Single Line Item (Raw JSON)</label>
+                <p className="text-xs text-emerald-800 mb-2">
+                  Sends a single payload directly to <code className="bg-emerald-100 px-1 rounded">/api/procore/estimating/proposal-line-items-create</code>.
+                </p>
+                <textarea
+                  value={singleLineItemJson}
+                  onChange={(e) => setSingleLineItemJson(e.target.value)}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-40"
+                />
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    onClick={handleCreateSingleLineItemFromJson}
+                    disabled={singleLineItemBusy}
+                    className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {singleLineItemBusy ? "Creating..." : "Create Single Line Item (JSON)"}
+                  </button>
+                </div>
+                {singleLineItemError && (
+                  <div className="mt-3 bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">
+                    <strong>Single Create Error:</strong> {singleLineItemError}
+                  </div>
+                )}
+                {singleLineItemResult && (
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(singleLineItemResult, null, 2)}
+                  </pre>
+                )}
+              </div>
 
               <div className="flex flex-wrap gap-3 mt-4">
                 <button

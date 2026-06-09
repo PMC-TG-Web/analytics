@@ -1878,7 +1878,9 @@ function KPIPageContent({
           const month = idx + 1;
           const manualValue = kpiData.find((k: any) => k.year === selectedYear && k.month === month)?.bidSubmittedSales;
           const calculatedValue = bidSubmittedSalesYearMonthMap[selectedYear]?.[month] || 0;
-          const value = manualValue !== undefined && manualValue !== null ? manualValue : calculatedValue;
+          const isManual = manualValue !== undefined && manualValue !== null;
+          const value = isManual ? Number(manualValue) : calculatedValue;
+          if (isManual) return Number.isFinite(value) ? value.toString() : "0";
           return value > 0 ? value.toString() : "";
         });
       }
@@ -1887,8 +1889,12 @@ function KPIPageContent({
         const selectedYear = yearFilter || new Date().getFullYear().toString();
         rowValues = monthNames.map((_, idx) => {
           const month = idx + 1;
+          const manualValue = kpiData.find((k: any) => k.year === selectedYear && k.month === month)?.scheduledSales;
           const calculatedValue = scheduledSalesYearMonthMap[selectedYear]?.[month] || 0;
-          return calculatedValue > 0 ? calculatedValue.toString() : "";
+          const isManual = manualValue !== undefined && manualValue !== null;
+          const value = isManual ? Number(manualValue) : calculatedValue;
+          if (isManual) return Number.isFinite(value) ? value.toString() : "0";
+          return value > 0 ? value.toString() : "";
         });
       }
       
@@ -2411,7 +2417,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : isManual ? `$${Number(sales || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           );
                         })}
@@ -2583,7 +2589,7 @@ function KPIPageContent({
                                 >
                                   ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : "—"}
+                              ) : isManual ? `$${Number(sales || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           );
                         })}
@@ -2737,7 +2743,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              ) : isManual ? `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           );
                         })}
@@ -2832,7 +2838,7 @@ function KPIPageContent({
                                 >
                                   ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </button>
-                              ) : value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                              ) : isManual ? `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           );
                         })}

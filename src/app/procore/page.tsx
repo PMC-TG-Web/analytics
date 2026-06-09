@@ -2,6 +2,31 @@
 import React, { useState, useEffect } from "react";
 import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
 
+function csvCell(value: unknown): string {
+  const text =
+    value === null || value === undefined
+      ? ""
+      : typeof value === "string"
+        ? value
+        : typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : JSON.stringify(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
+  const csv = [headers.map(csvCell).join(","), ...rows.map((row) => row.map(csvCell).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 interface ProcoreData {
   user?: any;
@@ -85,6 +110,7 @@ function ProcoreContent() {
   const [singleLineItemError, setSingleLineItemError] = useState<string | null>(null);
   const [singleLineItemResult, setSingleLineItemResult] = useState<any>(null);
   const [proposalShowProjectId, setProposalShowProjectId] = useState("");
+  const [proposalShowBidBoardProjectId, setProposalShowBidBoardProjectId] = useState("");
   const [proposalShowProposalId, setProposalShowProposalId] = useState("");
   const [proposalShowBusy, setProposalShowBusy] = useState(false);
   const [proposalShowError, setProposalShowError] = useState<string | null>(null);
@@ -1198,6 +1224,7 @@ function ProcoreContent() {
 
   const handlePullProposalShow = async () => {
     const projectId = proposalShowProjectId.trim();
+    const bidBoardProjectId = proposalShowBidBoardProjectId.trim();
     const proposalId = proposalShowProposalId.trim();
     if (!projectId || !proposalId) {
       setProposalShowError("Project ID and Proposal ID are required.");
@@ -1211,7 +1238,7 @@ function ProcoreContent() {
       const response = await fetch("/api/procore/estimating/proposals-show", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, proposalId }),
+        body: JSON.stringify({ projectId, proposalId, ...(bidBoardProjectId ? { bidBoardProjectId } : {}) }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -1227,6 +1254,103 @@ function ProcoreContent() {
     } finally {
       setProposalShowBusy(false);
     }
+  };
+
+  const handleExportProposalCsv = () => {
+    const result = proposalShowResult?.result;
+    const lineItems = Array.isArray(result?.lineItems)
+      ? result.lineItems
+      : Array.isArray(lineItemPayloadPullResult?.lineItems)
+        ? lineItemPayloadPullResult.lineItems
+        : [];
+    const lineItemGroups = Array.isArray(result?.lineItemGroups) ? result.lineItemGroups : [];
+    const proposal = result?.proposal && typeof result.proposal === "object" ? result.proposal : {};
+
+    if (!lineItems.length) {
+      setProposalShowError("No line items are available to export as CSV yet. Pull with a Bid Board Project ID first.");
+      return;
+    }
+
+    const rowByGroupId = new Map<string, Record<string, unknown>>();
+    for (const group of lineItemGroups as Record<string, unknown>[]) {
+      const groupId = String(group?.id || group?.group_id || group?.line_item_group_id || "").trim();
+      if (groupId) rowByGroupId.set(groupId, group);
+    }
+
+    const getText = (value: unknown): string => {
+      if (typeof value === "string") return value.trim();
+      if (typeof value === "number" && Number.isFinite(value)) return String(value);
+      return "";
+    };
+
+    const getNumber = (value: unknown): string => {
+      if (typeof value === "number" && Number.isFinite(value)) return String(value);
+      if (typeof value === "string" && value.trim() !== "") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? String(parsed) : "";
+      }
+      return "";
+    };
+
+    const rows = lineItems.map((item: Record<string, unknown>) => {
+      const costItem = item.cost_item && typeof item.cost_item === "object" ? (item.cost_item as Record<string, unknown>) : {};
+      const groupId = getText(item.group_id ?? item.groupId);
+      const group = groupId ? rowByGroupId.get(groupId) || {} : {};
+      const itemName = getText(item.name ?? costItem.name ?? item.description);
+      const costCode = getText(item.cost_code && typeof item.cost_code === "object" ? (item.cost_code as Record<string, unknown>).code : item.cost_code);
+      const costType = getText(costItem.type ?? item.cost_type);
+      const lineItemId = getText(item.id ?? item.line_item_id);
+      const uom = getText(costItem.unit ?? item.uom ?? item.type);
+
+      return [
+        "line_item",
+        getText(result?.companyId),
+        getText(result?.projectId),
+        getText(result?.bidBoardProjectId),
+        getText(result?.proposalId),
+        getText((proposal as Record<string, unknown>).name ?? (proposal as Record<string, unknown>).title),
+        getText((proposal as Record<string, unknown>).status),
+        groupId,
+        getText(group.name ?? group.title ?? group.description),
+        lineItemId,
+        itemName,
+        costCode,
+        costType,
+        getText(item.description ?? costItem.description),
+        getNumber(item.count ?? item.quantity ?? item.qty),
+        uom,
+        getNumber(item.item_cost ?? item.unit_cost ?? costItem.unit_cost),
+        getNumber(item.labor_cost),
+        getNumber(item.item_sales),
+        getNumber(item.labor_sales),
+        getNumber(item.total ?? item.amount),
+      ];
+    });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadCsv(`procore-estimate-export-${timestamp}.csv`, [
+      "row_type",
+      "company_id",
+      "project_id",
+      "bid_board_project_id",
+      "proposal_id",
+      "proposal_name",
+      "proposal_status",
+      "group_id",
+      "group_name",
+      "line_item_id",
+      "line_item_name",
+      "cost_code",
+      "cost_type",
+      "description",
+      "count",
+      "uom",
+      "item_cost",
+      "labor_cost",
+      "item_sales",
+      "labor_sales",
+      "total",
+    ], rows);
   };
 
   const handlePullLineItemPayloads = async () => {
@@ -2363,6 +2487,16 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={proposalShowBidBoardProjectId}
+                    onChange={(e) => setProposalShowBidBoardProjectId(e.target.value)}
+                    placeholder="Needed for line items and CSV export"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
                   <input
                     type="text"
@@ -2382,6 +2516,13 @@ function ProcoreContent() {
                 >
                   {proposalShowBusy ? "Pulling..." : "Pull Full Proposal"}
                 </button>
+                <button
+                  onClick={handleExportProposalCsv}
+                  disabled={proposalShowBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  Download CSV Export
+                </button>
               </div>
 
               {proposalShowError && (
@@ -2394,6 +2535,12 @@ function ProcoreContent() {
                 <div className="mt-4">
                   <div className="bg-sky-50 border border-sky-200 text-sky-900 px-4 py-3 rounded mb-3">
                     <strong>Proposal Pull Result:</strong> {proposalShowResult.ok ? "Success" : "Failed"}
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded mb-3">
+                    <strong>CSV Export:</strong>{" "}
+                    {Array.isArray(proposalShowResult.result?.lineItems)
+                      ? `${proposalShowResult.result.lineItems.length} line item(s) ready for export.`
+                      : "Pull with a Bid Board Project ID to populate line items for export."}
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(proposalShowResult, null, 2)}

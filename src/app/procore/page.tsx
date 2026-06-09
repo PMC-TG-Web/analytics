@@ -1267,7 +1267,7 @@ function ProcoreContent() {
     const proposal = result?.proposal && typeof result.proposal === "object" ? result.proposal : {};
 
     if (!lineItems.length) {
-      setProposalShowError("No line items are available to export as CSV yet. Pull with a Bid Board Project ID first.");
+      setProposalShowError("No line items are available to export yet. If the project-scoped pull is empty, try the Bid Board Project ID as a fallback.");
       return;
     }
 
@@ -2492,7 +2492,7 @@ function ProcoreContent() {
                     type="text"
                     value={proposalShowBidBoardProjectId}
                     onChange={(e) => setProposalShowBidBoardProjectId(e.target.value)}
-                    placeholder="Needed for line items and CSV export"
+                    placeholder="Optional fallback if project-scoped pull is empty"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
                 </div>

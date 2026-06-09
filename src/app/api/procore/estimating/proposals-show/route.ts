@@ -28,7 +28,7 @@ async function fetchPagedCollection(options: {
   host: string;
   accessToken: string;
   companyId: string;
-  urlPath: (page: number, perPage: number) => string;
+  urlPaths: Array<(page: number, perPage: number) => string>;
   arrayKeys: string[];
   perPage?: number;
 }): Promise<{ items: unknown[]; attempts: Array<{ page: number; status: number; message: string }> }> {
@@ -36,35 +36,52 @@ async function fetchPagedCollection(options: {
   const attempts: Array<{ page: number; status: number; message: string }> = [];
   const perPage = Math.min(200, Math.max(1, options.perPage || 200));
 
-  for (let page = 1; page <= 100; page += 1) {
-    const url = `${options.host.replace(/\/$/, "")}${options.urlPath(page, perPage)}`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${options.accessToken}`,
-        Accept: "application/json",
-        "Procore-Company-Id": options.companyId,
-      },
-      cache: "no-store",
-    });
+  for (const urlPath of options.urlPaths) {
+    const candidateItems: unknown[] = [];
+    let supported = false;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      attempts.push({
-        page,
-        status: response.status,
-        message: errorText || "No response body",
+    for (let page = 1; page <= 100; page += 1) {
+      const url = `${options.host.replace(/\/$/, "")}${urlPath(page, perPage)}`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${options.accessToken}`,
+          Accept: "application/json",
+          "Procore-Company-Id": options.companyId,
+        },
+        cache: "no-store",
       });
-      if (response.status === 404) break;
-      throw new Error(`Collection API error ${response.status}: ${errorText || "No response body"}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        attempts.push({
+          page,
+          status: response.status,
+          message: errorText || "No response body",
+        });
+        if (response.status === 404) {
+          if (page === 1 && candidateItems.length === 0) {
+            break;
+          }
+          supported = true;
+          break;
+        }
+        throw new Error(`Collection API error ${response.status}: ${errorText || "No response body"}`);
+      }
+
+      supported = true;
+      const payload = (await response.json().catch(() => ({}))) as unknown;
+      const pageItems = extractEmbeddedArray(payload, options.arrayKeys);
+      if (!pageItems.length) break;
+
+      candidateItems.push(...pageItems);
+      if (pageItems.length < perPage) break;
     }
 
-    const payload = (await response.json().catch(() => ({}))) as unknown;
-    const pageItems = extractEmbeddedArray(payload, options.arrayKeys);
-    if (!pageItems.length) break;
-
-    items.push(...pageItems);
-    if (pageItems.length < perPage) break;
+    if (supported && candidateItems.length > 0) {
+      items.push(...candidateItems);
+      return { items, attempts };
+    }
   }
 
   return { items, attempts };
@@ -183,52 +200,74 @@ export async function POST(request: Request) {
       let lineItemAttempts: Array<{ page: number; status: number; message: string }> = [];
       let lineItemGroupAttempts: Array<{ page: number; status: number; message: string }> = [];
 
-      if (bidBoardProjectId) {
-        try {
-          const lineItemResult = await fetchPagedCollection({
-            host,
-            accessToken,
-            companyId,
-            arrayKeys: ["data", "line_items", "items"],
-            urlPath: (page, perPage) =>
+      try {
+        const lineItemUrlPaths = [
+          (page: number, perPage: number) =>
+            `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+              projectId
+            )}/estimating/proposals/${encodeURIComponent(proposalId)}/line_items?page=${page}&per_page=${perPage}`,
+        ];
+        if (bidBoardProjectId) {
+          lineItemUrlPaths.push(
+            (page: number, perPage: number) =>
               `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
                 bidBoardProjectId
-              )}/proposals/${encodeURIComponent(proposalId)}/line_items?page=${page}&per_page=${perPage}`,
-          });
-          lineItems = lineItemResult.items;
-          lineItemAttempts = lineItemResult.attempts;
-        } catch (lineItemError) {
-          lineItemAttempts = [
-            {
-              page: 1,
-              status: 500,
-              message: lineItemError instanceof Error ? lineItemError.message : String(lineItemError),
-            },
-          ];
+              )}/proposals/${encodeURIComponent(proposalId)}/line_items?page=${page}&per_page=${perPage}`
+          );
         }
 
-        try {
-          const lineItemGroupResult = await fetchPagedCollection({
-            host,
-            accessToken,
-            companyId,
-            arrayKeys: ["data", "line_item_groups", "groups"],
-            urlPath: (page, perPage) =>
+        const lineItemResult = await fetchPagedCollection({
+          host,
+          accessToken,
+          companyId,
+          arrayKeys: ["data", "line_items", "items"],
+          urlPaths: lineItemUrlPaths,
+        });
+        lineItems = lineItemResult.items;
+        lineItemAttempts = lineItemResult.attempts;
+      } catch (lineItemError) {
+        lineItemAttempts = [
+          {
+            page: 1,
+            status: 500,
+            message: lineItemError instanceof Error ? lineItemError.message : String(lineItemError),
+          },
+        ];
+      }
+
+      try {
+        const lineItemGroupUrlPaths = [
+          (page: number, perPage: number) =>
+            `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+              projectId
+            )}/estimating/proposals/${encodeURIComponent(proposalId)}/line_item_groups?page=${page}&per_page=${perPage}`,
+        ];
+        if (bidBoardProjectId) {
+          lineItemGroupUrlPaths.push(
+            (page: number, perPage: number) =>
               `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
                 bidBoardProjectId
-              )}/proposals/${encodeURIComponent(proposalId)}/line_item_groups?page=${page}&per_page=${perPage}`,
-          });
-          lineItemGroups = lineItemGroupResult.items;
-          lineItemGroupAttempts = lineItemGroupResult.attempts;
-        } catch (lineItemGroupError) {
-          lineItemGroupAttempts = [
-            {
-              page: 1,
-              status: 500,
-              message: lineItemGroupError instanceof Error ? lineItemGroupError.message : String(lineItemGroupError),
-            },
-          ];
+              )}/proposals/${encodeURIComponent(proposalId)}/line_item_groups?page=${page}&per_page=${perPage}`
+          );
         }
+
+        const lineItemGroupResult = await fetchPagedCollection({
+          host,
+          accessToken,
+          companyId,
+          arrayKeys: ["data", "line_item_groups", "groups"],
+          urlPaths: lineItemGroupUrlPaths,
+        });
+        lineItemGroups = lineItemGroupResult.items;
+        lineItemGroupAttempts = lineItemGroupResult.attempts;
+      } catch (lineItemGroupError) {
+        lineItemGroupAttempts = [
+          {
+            page: 1,
+            status: 500,
+            message: lineItemGroupError instanceof Error ? lineItemGroupError.message : String(lineItemGroupError),
+          },
+        ];
       }
 
       return NextResponse.json({

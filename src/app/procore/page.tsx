@@ -84,6 +84,11 @@ function ProcoreContent() {
   const [singleLineItemBusy, setSingleLineItemBusy] = useState(false);
   const [singleLineItemError, setSingleLineItemError] = useState<string | null>(null);
   const [singleLineItemResult, setSingleLineItemResult] = useState<any>(null);
+  const [proposalShowProjectId, setProposalShowProjectId] = useState("");
+  const [proposalShowProposalId, setProposalShowProposalId] = useState("");
+  const [proposalShowBusy, setProposalShowBusy] = useState(false);
+  const [proposalShowError, setProposalShowError] = useState<string | null>(null);
+  const [proposalShowResult, setProposalShowResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -1188,6 +1193,39 @@ function ProcoreContent() {
       setSingleLineItemError(err instanceof Error ? err.message : String(err));
     } finally {
       setSingleLineItemBusy(false);
+    }
+  };
+
+  const handlePullProposalShow = async () => {
+    const projectId = proposalShowProjectId.trim();
+    const proposalId = proposalShowProposalId.trim();
+    if (!projectId || !proposalId) {
+      setProposalShowError("Project ID and Proposal ID are required.");
+      return;
+    }
+
+    setProposalShowBusy(true);
+    setProposalShowError(null);
+    setProposalShowResult(null);
+    try {
+      const response = await fetch("/api/procore/estimating/proposals-show", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, proposalId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setProposalShowError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Pull failed (${response.status}).`
+        );
+      }
+      setProposalShowResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setProposalShowError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProposalShowBusy(false);
     }
   };
 
@@ -2302,6 +2340,63 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(lineItemImportViaImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+              <h2 className="text-xl font-bold text-sky-900 mb-3">Estimate Pull (Full Proposal Show)</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Pull the full proposal payload from <code className="bg-gray-100 px-1 rounded">/rest/v2.0/companies/&#123;company_id&#125;/projects/&#123;project_id&#125;/estimating/proposals/&#123;proposal_id&#125;</code>.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={proposalShowProjectId}
+                    onChange={(e) => setProposalShowProjectId(e.target.value)}
+                    placeholder="e.g. 598134326278124"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
+                  <input
+                    type="text"
+                    value={proposalShowProposalId}
+                    onChange={(e) => setProposalShowProposalId(e.target.value)}
+                    placeholder="e.g. 123456"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handlePullProposalShow}
+                  disabled={proposalShowBusy}
+                  className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {proposalShowBusy ? "Pulling..." : "Pull Full Proposal"}
+                </button>
+              </div>
+
+              {proposalShowError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Proposal Pull Error:</strong> {proposalShowError}
+                </div>
+              )}
+
+              {proposalShowResult && (
+                <div className="mt-4">
+                  <div className="bg-sky-50 border border-sky-200 text-sky-900 px-4 py-3 rounded mb-3">
+                    <strong>Proposal Pull Result:</strong> {proposalShowResult.ok ? "Success" : "Failed"}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(proposalShowResult, null, 2)}
                   </pre>
                 </div>
               )}

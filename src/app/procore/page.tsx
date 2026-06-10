@@ -27,6 +27,18 @@ function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
   URL.revokeObjectURL(url);
 }
 
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 interface ProcoreData {
   user?: any;
@@ -42,6 +54,21 @@ interface ProcoreData {
   productivityLogs?: any;
   giantProductivity?: any;
   error?: string;
+}
+
+interface EstimateConversionResponse {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  detectedColumns?: {
+    costCodeColumn?: string;
+    itemIdColumn?: string;
+  };
+  rowsTotal?: number;
+  rowsMatched?: number;
+  rowsUnmatched?: number;
+  convertedCsv?: string;
+  unmatchedCsv?: string;
 }
 
 export default function ProcorePage() {
@@ -176,6 +203,15 @@ function ProcoreContent() {
   const [directCostResult, setDirectCostResult] = useState<any>(null);
   const [directCostError, setDirectCostError] = useState<string | null>(null);
   const [directCostWorkbookSummary, setDirectCostWorkbookSummary] = useState<string | null>(null);
+  const [estimateConversionBusy, setEstimateConversionBusy] = useState(false);
+  const [estimateConversionError, setEstimateConversionError] = useState<string | null>(null);
+  const [estimateConversionResult, setEstimateConversionResult] = useState<EstimateConversionResponse | null>(null);
+  const [estimateCsvFileName, setEstimateCsvFileName] = useState<string>("");
+  const [estimateCsvText, setEstimateCsvText] = useState<string>("");
+  const [crosswalkCsvFileName, setCrosswalkCsvFileName] = useState<string>("");
+  const [crosswalkCsvText, setCrosswalkCsvText] = useState<string>("");
+  const [estimateCostCodeColumn, setEstimateCostCodeColumn] = useState<string>("");
+  const [estimateItemIdColumn, setEstimateItemIdColumn] = useState<string>("");
 
   useEffect(() => {
     const checkProcoreAuth = async () => {
@@ -2219,6 +2255,87 @@ function ProcoreContent() {
     }
   };
 
+  const handleEstimateCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      setEstimateCsvText(text);
+      setEstimateCsvFileName(file.name);
+      setEstimateConversionError(null);
+      setEstimateConversionResult(null);
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      setEstimateConversionError(`Failed to read estimate CSV: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleCrosswalkCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      setCrosswalkCsvText(text);
+      setCrosswalkCsvFileName(file.name);
+      setEstimateConversionError(null);
+      setEstimateConversionResult(null);
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      setEstimateConversionError(`Failed to read crosswalk CSV: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleConvertEstimateCsv = async () => {
+    if (!estimateCsvText.trim()) {
+      setEstimateConversionError("Upload an estimate CSV first.");
+      return;
+    }
+
+    setEstimateConversionBusy(true);
+    setEstimateConversionError(null);
+    setEstimateConversionResult(null);
+
+    try {
+      const response = await fetch("/api/procore/estimating/convert-estimate-crosswalk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estimateCsv: estimateCsvText,
+          crosswalkCsv: crosswalkCsvText || undefined,
+          costCodeColumn: estimateCostCodeColumn.trim() || undefined,
+          itemIdColumn: estimateItemIdColumn.trim() || undefined,
+        }),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as EstimateConversionResponse;
+      if (!response.ok || !result.success) {
+        const details = result.details ? `: ${result.details}` : "";
+        throw new Error(`${result.error || "Conversion failed"}${details}`);
+      }
+
+      setEstimateConversionResult(result);
+
+      const baseName = (estimateCsvFileName || "estimate").replace(/\.csv$/i, "");
+      if (result.convertedCsv) {
+        downloadTextFile(`${baseName}_converted.csv`, result.convertedCsv, "text/csv;charset=utf-8;");
+      }
+      if (result.unmatchedCsv) {
+        downloadTextFile(`${baseName}_unmatched.csv`, result.unmatchedCsv, "text/csv;charset=utf-8;");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setEstimateConversionError(message);
+    } finally {
+      setEstimateConversionBusy(false);
+    }
+  };
+
   const getCount = (items: any) => {
     if (!items) return 0;
     if (Array.isArray(items)) return items.length;
@@ -3194,6 +3311,94 @@ function ProcoreContent() {
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(directCostResult, null, 2)}
                   </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
+              <h2 className="text-xl font-bold text-amber-900 mb-3">Estimate Key Conversion (Old -&gt; New)</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Convert an old estimate CSV to new Cost Code + ItemId values using the catalog crosswalk.
+                If no crosswalk file is uploaded, the server uses <code className="bg-gray-100 px-1 rounded">catalog_lookup_crosswalk.csv</code> from project root/public.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Estimate CSV (.csv)</label>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleEstimateCsvUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-amber-700 mt-2">
+                    {estimateCsvFileName ? `Loaded: ${estimateCsvFileName}` : "No estimate CSV loaded."}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Crosswalk CSV (Optional)</label>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleCrosswalkCsvUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-amber-700 mt-2">
+                    {crosswalkCsvFileName
+                      ? `Loaded: ${crosswalkCsvFileName}`
+                      : "Using server default crosswalk file if available."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Cost Code Column (Optional)</label>
+                  <input
+                    type="text"
+                    value={estimateCostCodeColumn}
+                    onChange={(e) => setEstimateCostCodeColumn(e.target.value)}
+                    placeholder="Auto-detect if blank"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Item ID Column (Optional)</label>
+                  <input
+                    type="text"
+                    value={estimateItemIdColumn}
+                    onChange={(e) => setEstimateItemIdColumn(e.target.value)}
+                    placeholder="Auto-detect if blank"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={handleConvertEstimateCsv}
+                  disabled={estimateConversionBusy}
+                  className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {estimateConversionBusy ? "Converting..." : "Convert + Download CSVs"}
+                </button>
+              </div>
+
+              {estimateConversionError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Conversion Error:</strong> {estimateConversionError}
+                </div>
+              )}
+
+              {estimateConversionResult && (
+                <div className="mt-4">
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded mb-3">
+                    <strong>Conversion Result:</strong> {estimateConversionResult.rowsMatched ?? 0} matched, {estimateConversionResult.rowsUnmatched ?? 0} unmatched, {estimateConversionResult.rowsTotal ?? 0} total.
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Detected columns: cost code <strong>{estimateConversionResult.detectedColumns?.costCodeColumn || "n/a"}</strong>, item ID <strong>{estimateConversionResult.detectedColumns?.itemIdColumn || "n/a"}</strong>.
+                  </p>
                 </div>
               )}
             </div>

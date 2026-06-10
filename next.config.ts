@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const frameAncestors = [
   "'self'",
@@ -20,6 +24,9 @@ const scriptSources = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  turbopack: {
+    root: configDir,
+  },
   images: {
     unoptimized: true,
   },

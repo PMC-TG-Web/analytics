@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "node scripts/resolveFailedMigration.mjs && node scripts/migrateDeploy.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",

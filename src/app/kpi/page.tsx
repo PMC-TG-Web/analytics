@@ -907,7 +907,7 @@ function KPIPageContent({
     // Return immediately without waiting
   };
 
-  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates", currentValue: number) => {
+  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates" | "estimatesActualHours", currentValue: number) => {
     setEditingCell({ year, month, field });
     setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
   };
@@ -2659,7 +2659,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Estimates by Month</h3>
           <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>
-            Double-click any <strong>Bids Submitted</strong> or <strong>New Bids</strong> month cell to override that month value.
+            Double-click any <strong>Bids Submitted</strong>, <strong>New Bids</strong>, or <strong>Act Hrs</strong> month cell to override that month value when a single year is selected.
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
@@ -2960,9 +2960,39 @@ function KPIPageContent({
                 <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                   <td style={{ padding: "4px 6px", color: actHoursColor, fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
                   {actHoursMonthValues.map(({ month, hours, isManual }, idx) => {
+                    const isEditing =
+                      Boolean(yearFilter) &&
+                      editingCell?.year === yearFilter &&
+                      editingCell?.month === month &&
+                      editingCell?.field === "estimatesActualHours";
+
                     return (
-                      <td key={month} style={{ padding: "4px 2px", textAlign: "center", color: hours > 0 ? actHoursColor : "#999", fontWeight: hours > 0 ? 700 : 400, fontSize: 12 }}>
-                        {hours > 0 && !isManual ? (
+                      <td
+                        key={month}
+                        onDoubleClick={yearFilter ? () => beginEditKpiCell(yearFilter, month, "estimatesActualHours", Number(hours) || 0) : undefined}
+                        style={{
+                          padding: "4px 2px",
+                          textAlign: "center",
+                          color: hours > 0 ? actHoursColor : "#999",
+                          fontWeight: hours > 0 ? 700 : 400,
+                          fontSize: 12,
+                          cursor: yearFilter ? "pointer" : "default",
+                        }}
+                        title={yearFilter ? "Double-click to edit" : "Select a single year to edit"}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={commitEditKpiCell}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitEditKpiCell();
+                              if (e.key === "Escape") cancelEditKpiCell();
+                            }}
+                            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                          />
+                        ) : hours > 0 && !isManual ? (
                           <button
                             type="button"
                             onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${monthNames[idx]} ${yearFilter}` : `Act Hrs ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}

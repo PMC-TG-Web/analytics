@@ -62,7 +62,7 @@ export default function SeedKPICardsPage() {
           This will populate the database with the default KPI card data including:
         </p>
         <ul style={{ margin: "10px 0", paddingLeft: "20px" }}>
-          <li>Estimates By Month (2 rows)</li>
+          <li>Estimates By Month (3 rows: Goal, Goal Hours, and Actual Hours)</li>
           <li>Sales By Month (2 rows)</li>
           <li>Revenue By Month (2 rows)</li>
           <li>Subs By Month (2 rows)</li>

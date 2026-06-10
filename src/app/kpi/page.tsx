@@ -1416,6 +1416,22 @@ function KPIPageContent({
     return (value / 3938).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
+  const leadtimeFallbackHoursByMonth = useMemo(() => {
+    const rows = cardLoadData[normalizeCardName("Leadtimes by Month")] || [];
+    const leadtimeHoursRow =
+      rows.find((row: any) => (row?.kpi || "").toString().toLowerCase().includes("leadtime")) ||
+      rows[0];
+
+    const map: Record<number, number | undefined> = {};
+    monthNames.forEach((_, idx) => {
+      const raw = leadtimeHoursRow?.values?.[idx];
+      const parsed = Number(String(raw ?? "").replace(/[^0-9.-]/g, ""));
+      map[idx + 1] = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    });
+
+    return map;
+  }, [cardLoadData, monthNames]);
+
   logKpiDebug("[KPI] Total projects:", projects.length);
   logKpiDebug("[KPI] Filtered projects:", filteredProjects.length);
 
@@ -3356,24 +3372,32 @@ function KPIPageContent({
                   <>
                     <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                       <td style={{ padding: "6px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Leadtime Hours</td>
-                      {monthNames.map((_, idx) => (
-                        <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: "#999", fontWeight: 400, fontSize: 12 }}>
-                          —
-                        </td>
-                      ))}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#999", fontWeight: 400, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        —
+                      {monthNames.map((_, idx) => {
+                        const value = leadtimeFallbackHoursByMonth[idx + 1];
+                        const formatted = formatLeadtimeValue(value);
+                        return (
+                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#15616D" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+                            {formatted}
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                        {formatLeadtimeValue([...monthNames].map((_, idx) => leadtimeFallbackHoursByMonth[idx + 1]).reverse().find((value) => value !== undefined))}
                       </td>
                     </tr>
                     <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                       <td style={{ padding: "6px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Leadtime Months</td>
-                      {monthNames.map((_, idx) => (
-                        <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: "#999", fontWeight: 400, fontSize: 12 }}>
-                          —
-                        </td>
-                      ))}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#999", fontWeight: 400, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        —
+                      {monthNames.map((_, idx) => {
+                        const value = leadtimeFallbackHoursByMonth[idx + 1];
+                        const formatted = formatLeadtimeMonthsValue(value);
+                        return (
+                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#E06C00" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+                            {formatted}
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                        {formatLeadtimeMonthsValue([...monthNames].map((_, idx) => leadtimeFallbackHoursByMonth[idx + 1]).reverse().find((value) => value !== undefined))}
                       </td>
                     </tr>
                   </>

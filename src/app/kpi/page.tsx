@@ -2944,6 +2944,13 @@ function KPIPageContent({
                     { kpi: "Actual Hours", values: Array(12).fill("") },
                   ];
                   const managedEstimateRows = estimateRowsFromCards.length > 0 ? estimateRowsFromCards : fallbackEstimateRows;
+                  const hasManagedActualHours = managedEstimateRows.some((row) => {
+                    const normalized = (row.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
+                    return normalized === "actual hours" || normalized === "act hrs" || normalized === "act hours";
+                  });
+                  const estimateRowsToRender = hasManagedActualHours
+                    ? managedEstimateRows
+                    : [...managedEstimateRows, { kpi: "Actual Hours", values: Array(12).fill("") }];
 
                   const formatEstimateManagedValue = (kpiName: string, rawValue: string) => {
                     const trimmed = String(rawValue ?? "").trim();
@@ -2963,7 +2970,7 @@ function KPIPageContent({
                     return formatted;
                   };
 
-                  managedEstimateRows.forEach((managedRow) => {
+                  estimateRowsToRender.forEach((managedRow) => {
                     const rowColor = rowColors[rowIndex % 2];
                     const normalizedKpi = (managedRow.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
                     const isActualHoursRow = normalizedKpi === "actual hours" || normalizedKpi === "act hrs" || normalizedKpi === "act hours";

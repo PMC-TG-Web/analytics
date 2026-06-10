@@ -1897,6 +1897,22 @@ function KPIPageContent({
           return value > 0 ? value.toString() : "";
         });
       }
+
+      if (normalizeCardName(cardName) === normalizeCardName("Leadtimes by Month")) {
+        const selectedYears = yearFilter ? [yearFilter] : visibleLeadtimeYears;
+        const isMonthsRow = rowLabel.includes("month");
+
+        rowValues = monthNames.map((_, idx) => {
+          const month = idx + 1;
+          const hoursValue = selectedYears.reduce((sum, year) => sum + (leadtimeYearMonthMap[year]?.[month] || 0), 0);
+
+          if (!Number.isFinite(hoursValue) || hoursValue <= 0) return "";
+          if (isMonthsRow) {
+            return (hoursValue / 3938).toFixed(2);
+          }
+          return hoursValue.toString();
+        });
+      }
       
       // Check if this is a percentage column (contains % values)
       const isPercentage = rowValues.some((val: any) => String(val).includes("%"));

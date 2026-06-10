@@ -2876,25 +2876,6 @@ function KPIPageContent({
                     rowIndex += 1;
                   });
 
-                  const goalColor = rowColors[rowIndex % 2];
-                  rows.push(
-                    <tr key="goal" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
-                      <td style={{ padding: "4px 6px", color: goalColor, fontWeight: 700, fontSize: 13 }}>Goal</td>
-                  {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: goalColor, fontWeight: 700, fontSize: 12 }}>
-                      $6,700,000
-                    </td>
-                  ))}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: goalColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    {renderTotalWithYtd(
-                      `$${(6700000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                      `$${(6700000 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                    )}
-                  </td>
-                </tr>
-                  );
-                  rowIndex += 1;
-
                   const actHoursColor = rowColors[rowIndex % 2];
                   const allActHoursYears = Array.from(new Set<string>([
                     ...Object.keys(bidSubmittedHoursYearMonthMap),
@@ -2956,98 +2937,153 @@ function KPIPageContent({
                     };
                   });
                   const hasManualActHours = actHoursMonthValues.some(({ isManual }) => isManual);
-                  rows.push(
-                <tr key="actual-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                  <td style={{ padding: "4px 6px", color: actHoursColor, fontWeight: 700, fontSize: 13 }}>Act Hrs</td>
-                  {actHoursMonthValues.map(({ month, hours, isManual }, idx) => {
-                    const isEditing =
-                      Boolean(yearFilter) &&
-                      editingCell?.year === yearFilter &&
-                      editingCell?.month === month &&
-                      editingCell?.field === "estimatesActualHours";
+                  const estimateRowsFromCards = cardLoadData[normalizeCardName("Estimates By Month")] || [];
+                  const fallbackEstimateRows = [
+                    { kpi: "Goal", values: Array(12).fill("6,700,000") },
+                    { kpi: "Goal Hours", values: Array(12).fill("29,000") },
+                    { kpi: "Actual Hours", values: Array(12).fill("") },
+                  ];
+                  const managedEstimateRows = estimateRowsFromCards.length > 0 ? estimateRowsFromCards : fallbackEstimateRows;
 
-                    return (
-                      <td
-                        key={month}
-                        onDoubleClick={yearFilter ? () => beginEditKpiCell(yearFilter, month, "estimatesActualHours", Number(hours) || 0) : undefined}
-                        style={{
-                          padding: "4px 2px",
-                          textAlign: "center",
-                          color: hours > 0 ? actHoursColor : "#999",
-                          fontWeight: hours > 0 ? 700 : 400,
-                          fontSize: 12,
-                          cursor: yearFilter ? "pointer" : "default",
-                        }}
-                        title={yearFilter ? "Double-click to edit" : "Select a single year to edit"}
-                      >
-                        {isEditing ? (
-                          <input
-                            ref={inputRef}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={commitEditKpiCell}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") commitEditKpiCell();
-                              if (e.key === "Escape") cancelEditKpiCell();
-                            }}
-                            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                          />
-                        ) : hours > 0 && !isManual ? (
-                          <button
-                            type="button"
-                            onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${monthNames[idx]} ${yearFilter}` : `Act Hrs ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
-                            style={{ background: "transparent", border: "none", color: actHoursColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
-                          >
-                            {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </button>
-                        ) : hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
-                      </td>
-                    );
-                  })}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: actHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    {(() => {
-                      const total = actHoursMonthValues.reduce((sum, { hours }) => sum + hours, 0);
-                      const ytdTotal = actHoursMonthValues
-                        .filter(({ month }) => month <= ytdMonthCutoff)
-                        .reduce((sum, { hours }) => sum + hours, 0);
-                      return total > 0 && !hasManualActHours ? (
-                        <button
-                          type="button"
-                          onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${yearFilter} Total` : "Act Hrs Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
-                          style={{ background: "transparent", border: "none", color: actHoursColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
-                        >
-                          {renderTotalWithYtd(
-                            total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
-                            ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                          )}
-                        </button>
-                      ) : renderTotalWithYtd(
-                        total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
-                        ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  const formatEstimateManagedValue = (kpiName: string, rawValue: string) => {
+                    const trimmed = String(rawValue ?? "").trim();
+                    if (!trimmed) return "—";
+
+                    const numeric = Number(trimmed.replace(/[$,]/g, ""));
+                    if (!Number.isFinite(numeric)) return trimmed;
+
+                    const hasDecimal = trimmed.includes(".");
+                    const formatted = numeric.toLocaleString(undefined, {
+                      maximumFractionDigits: hasDecimal ? 2 : 0,
+                    });
+                    const lowerName = kpiName.toLowerCase();
+                    if (lowerName.includes("goal") && !lowerName.includes("hour")) {
+                      return `$${formatted}`;
+                    }
+                    return formatted;
+                  };
+
+                  managedEstimateRows.forEach((managedRow) => {
+                    const rowColor = rowColors[rowIndex % 2];
+                    const normalizedKpi = (managedRow.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
+                    const isActualHoursRow = normalizedKpi === "actual hours" || normalizedKpi === "act hrs" || normalizedKpi === "act hours";
+
+                    if (isActualHoursRow) {
+                      rows.push(
+                        <tr key={`managed-${managedRow.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                          <td style={{ padding: "4px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{managedRow.kpi || "Actual Hours"}</td>
+                          {actHoursMonthValues.map(({ month, hours, isManual }, idx) => {
+                            const isEditing =
+                              Boolean(yearFilter) &&
+                              editingCell?.year === yearFilter &&
+                              editingCell?.month === month &&
+                              editingCell?.field === "estimatesActualHours";
+
+                            return (
+                              <td
+                                key={month}
+                                onDoubleClick={yearFilter ? () => beginEditKpiCell(yearFilter, month, "estimatesActualHours", Number(hours) || 0) : undefined}
+                                style={{
+                                  padding: "4px 2px",
+                                  textAlign: "center",
+                                  color: hours > 0 ? rowColor : "#999",
+                                  fontWeight: hours > 0 ? 700 : 400,
+                                  fontSize: 12,
+                                  cursor: yearFilter ? "pointer" : "default",
+                                }}
+                                title={yearFilter ? "Double-click to edit" : "Select a single year to edit"}
+                              >
+                                {isEditing ? (
+                                  <input
+                                    ref={inputRef}
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onBlur={commitEditKpiCell}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") commitEditKpiCell();
+                                      if (e.key === "Escape") cancelEditKpiCell();
+                                    }}
+                                    className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                  />
+                                ) : hours > 0 && !isManual ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${monthNames[idx]} ${yearFilter}` : `Act Hrs ${monthNames[idx]} (All Years)`, bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: idx + 1, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                                    style={{ background: "transparent", border: "none", color: rowColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                  >
+                                    {hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  </button>
+                                ) : hours > 0 ? hours.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                              </td>
+                            );
+                          })}
+                          <td style={{ padding: "4px 6px", textAlign: "center", color: rowColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                            {(() => {
+                              const total = actHoursMonthValues.reduce((sum, { hours }) => sum + hours, 0);
+                              const ytdTotal = actHoursMonthValues
+                                .filter(({ month }) => month <= ytdMonthCutoff)
+                                .reduce((sum, { hours }) => sum + hours, 0);
+                              return total > 0 && !hasManualActHours ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${yearFilter} Total` : "Act Hrs Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}
+                                  style={{ background: "transparent", border: "none", color: rowColor, cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
+                                >
+                                  {renderTotalWithYtd(
+                                    total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                                    ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                                  )}
+                                </button>
+                              ) : renderTotalWithYtd(
+                                total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                                ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                              );
+                            })()}
+                          </td>
+                        </tr>
                       );
-                    })()}
-                  </td>
-                </tr>
-                  );
-                  rowIndex += 1;
+                    } else {
+                      const monthCells = monthNames.map((_, idx) => {
+                        const rawValue = managedRow.values?.[idx] || "";
+                        const numericValue = Number(String(rawValue || "").replace(/[$,\s]/g, ""));
+                        const display = formatEstimateManagedValue(managedRow.kpi || "", rawValue);
+                        return {
+                          idx,
+                          display,
+                          numericValue,
+                        };
+                      });
 
-                  const goalHoursColor = rowColors[rowIndex % 2];
-                  rows.push(
-                <tr key="goal-hours" style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
-                  <td style={{ padding: "4px 6px", color: goalHoursColor, fontWeight: 700, fontSize: 13 }}>Goal Hrs</td>
-                  {monthNames.map((_, idx) => (
-                    <td key={idx} style={{ padding: "4px 2px", textAlign: "center", color: goalHoursColor, fontWeight: 700, fontSize: 12 }}>
-                      29,000
-                    </td>
-                  ))}
-                  <td style={{ padding: "4px 6px", textAlign: "center", color: goalHoursColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                    {renderTotalWithYtd(
-                      (29000 * 12).toLocaleString(undefined, { maximumFractionDigits: 0 }),
-                      (29000 * ytdMonthCutoff).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                    )}
-                  </td>
-                </tr>
-                  );
+                      const total = monthCells.reduce((sum, cell) => sum + (Number.isFinite(cell.numericValue) ? cell.numericValue : 0), 0);
+                      const ytdTotal = monthCells
+                        .filter((cell) => (cell.idx + 1) <= ytdMonthCutoff)
+                        .reduce((sum, cell) => sum + (Number.isFinite(cell.numericValue) ? cell.numericValue : 0), 0);
+
+                      const shouldFormatAsCurrency = normalizedKpi.includes("goal") && !normalizedKpi.includes("hour");
+                      rows.push(
+                        <tr key={`managed-${managedRow.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: normalizedKpi.includes("goal") ? "#f9f9f9" : "#ffffff" }}>
+                          <td style={{ padding: "4px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{managedRow.kpi || "KPI"}</td>
+                          {monthCells.map((cell) => (
+                            <td key={cell.idx} style={{ padding: "4px 2px", textAlign: "center", color: cell.display !== "—" ? rowColor : "#999", fontWeight: cell.display !== "—" ? 700 : 400, fontSize: 12 }}>
+                              {cell.display}
+                            </td>
+                          ))}
+                          <td style={{ padding: "4px 6px", textAlign: "center", color: rowColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                            {renderTotalWithYtd(
+                              shouldFormatAsCurrency
+                                ? `$${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                : total.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                              shouldFormatAsCurrency
+                                ? `$${ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                : ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    rowIndex += 1;
+                  });
 
                   return rows;
                 })()}

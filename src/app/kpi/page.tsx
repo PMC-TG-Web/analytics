@@ -2952,6 +2952,30 @@ function KPIPageContent({
                     ? managedEstimateRows
                     : [...managedEstimateRows, { kpi: "Actual Hours", values: Array(12).fill("") }];
 
+                  // Keep Actual Hours directly above YTD % of hours when both rows are present.
+                  const orderedEstimateRows = [...estimateRowsToRender];
+                  const actualHoursIndex = orderedEstimateRows.findIndex((row) => {
+                    const normalized = (row.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
+                    return normalized === "actual hours" || normalized === "act hrs" || normalized === "act hours";
+                  });
+                  const ytdPercentHoursIndex = orderedEstimateRows.findIndex((row) => {
+                    const normalized = (row.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
+                    return normalized === "ytd % of hours" || normalized === "ytd% of hours";
+                  });
+
+                  if (actualHoursIndex >= 0 && ytdPercentHoursIndex >= 0 && actualHoursIndex !== ytdPercentHoursIndex - 1) {
+                    const [actualHoursRow] = orderedEstimateRows.splice(actualHoursIndex, 1);
+                    const targetYtdIndex = orderedEstimateRows.findIndex((row) => {
+                      const normalized = (row.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
+                      return normalized === "ytd % of hours" || normalized === "ytd% of hours";
+                    });
+                    if (targetYtdIndex >= 0) {
+                      orderedEstimateRows.splice(targetYtdIndex, 0, actualHoursRow);
+                    } else {
+                      orderedEstimateRows.push(actualHoursRow);
+                    }
+                  }
+
                   const formatEstimateManagedValue = (kpiName: string, rawValue: string) => {
                     const trimmed = String(rawValue ?? "").trim();
                     if (!trimmed) return "—";
@@ -2970,7 +2994,7 @@ function KPIPageContent({
                     return formatted;
                   };
 
-                  estimateRowsToRender.forEach((managedRow) => {
+                  orderedEstimateRows.forEach((managedRow) => {
                     const rowColor = rowColors[rowIndex % 2];
                     const normalizedKpi = (managedRow.kpi || "").toLowerCase().replace(/\s+/g, " ").trim();
                     const isActualHoursRow = normalizedKpi === "actual hours" || normalizedKpi === "act hrs" || normalizedKpi === "act hours";

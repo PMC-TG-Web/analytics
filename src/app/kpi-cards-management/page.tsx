@@ -103,6 +103,7 @@ function KPICardsManagementContent() {
         body: JSON.stringify({
           cardName: editingCard.cardName,
           rows: editingCard.rows,
+          allowRowDeletes: true,
           updatedBy: "admin",
         }),
       });

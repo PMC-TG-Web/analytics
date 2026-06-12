@@ -154,6 +154,10 @@ function hasValidSyncSecret(request: NextRequest): boolean {
   return getRequestSyncSecret(request) === expectedSecret;
 }
 
+function hasProcoreAccessTokenCookie(request: NextRequest): boolean {
+  return request.cookies.has('procore_access_token');
+}
+
 async function checkDatabasePermission(request: NextRequest, permissions: string[]): Promise<PermissionCheckResult> {
   try {
     const cookie = request.headers.get('cookie');
@@ -250,9 +254,14 @@ export async function middleware(request: NextRequest) {
     | null = null;
 
   if (isApiRoute) {
-    // Allow cron/sync-secret callers to bypass the live API gate so the scheduled
-    // sync can run regardless of the PROCORE_LIVE_API_ENABLED flag value.
-    if (isProcoreLiveApiRoutePath(pathname) && !isProcoreLiveApiEnabled() && !hasValidSyncSecret(request)) {
+    // Allow cron callers and authenticated Procore sessions to reach the targeted
+    // lookup/sync routes without enabling the global live API switch.
+    if (
+      isProcoreLiveApiRoutePath(pathname) &&
+      !isProcoreLiveApiEnabled() &&
+      !hasValidSyncSecret(request) &&
+      !hasProcoreAccessTokenCookie(request)
+    ) {
       return NextResponse.json(
         {
           success: false,

@@ -54,7 +54,7 @@ export default function ProcoreTestPage() {
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
   const [purchaseOrderContractAttachmentsText, setPurchaseOrderContractAttachmentsText] = useState('[]');
   const [purchaseOrderContractJsonText, setPurchaseOrderContractJsonText] = useState(`{
-  "accounting_method": "amount",
+    "accounting_method": "unit",
   "approval_letter_date": "2012-10-23",
   "bill_to_address": "Santa Claus Lane, Carpinteria, CA",
   "contract_date": "2012-10-23",

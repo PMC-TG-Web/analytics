@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { procoreConfig } from "@/lib/procore";
+import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -55,6 +55,9 @@ function normalizeLineItem(value: unknown): UnknownRecord | null {
   if (payload.origin_data === undefined && payload.originData !== undefined) {
     payload.origin_data = payload.originData;
   }
+  if (payload.origin_code === undefined && payload.originCode !== undefined) {
+    payload.origin_code = payload.originCode;
+  }
   if (payload.origin_id === undefined && payload.originId !== undefined) {
     payload.origin_id = payload.originId;
   }
@@ -85,13 +88,14 @@ function normalizeLineItem(value: unknown): UnknownRecord | null {
 
   const normalized: UnknownRecord = {};
 
-  const amount = readNumericOrString(payload.amount);
+  const amount = readNum(payload.amount);
   const description = readStr(payload.description);
   const extendedType = readStr(payload.extended_type);
-  const quantity = readNumericOrString(payload.quantity);
+  const quantity = readNum(payload.quantity);
+  const originCode = readStr(payload.origin_code);
   const originData = readStr(payload.origin_data);
   const uom = readStr(payload.uom);
-  const unitCost = readNumericOrString(payload.unit_cost);
+  const unitCost = readNum(payload.unit_cost);
 
   const costCodeId = readNum(payload.cost_code_id);
   const lineItemTypeId = readNum(payload.line_item_type_id);
@@ -106,6 +110,7 @@ function normalizeLineItem(value: unknown): UnknownRecord | null {
   if (extendedType) normalized.extended_type = extendedType;
   if (quantity !== undefined) normalized.quantity = quantity;
   if (lineItemTypeId !== undefined) normalized.line_item_type_id = lineItemTypeId;
+  if (originCode) normalized.origin_code = originCode;
   if (originData) normalized.origin_data = originData;
   if (originId !== undefined) normalized.origin_id = originId;
   if (taxCodeId !== undefined) normalized.tax_code_id = taxCodeId;
@@ -171,7 +176,12 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
     const cookieStore = await cookies();
 
-    const accessToken = readStr(body.accessToken) || readStr(cookieStore.get("procore_access_token")?.value);
+    const explicitToken = readStr(body.accessToken);
+    const cookieToken = readStr(cookieStore.get("procore_access_token")?.value);
+    let accessToken = explicitToken || cookieToken;
+    if (!accessToken) {
+      try { accessToken = await getClientCredentialsToken(); } catch { /* fall through to 401 */ }
+    }
     const companyId = readStr(body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId);
     const projectId = readStr(body.project_id || body.projectId);
     const purchaseOrderContractId = readStr(
@@ -208,59 +218,92 @@ export async function POST(request: Request) {
       );
     }
 
-    const payload: UnknownRecord = {
+    const legacyPayload: UnknownRecord = {
       project_id: projectId,
       line_item: lineItem,
     };
 
-    const url = `https://api.procore.com/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
+    const v2Url = `https://api.procore.com/rest/v2.0/companies/${encodeURIComponent(
+      companyId
+    )}/projects/${encodeURIComponent(projectId)}/commitment_contracts/${encodeURIComponent(
+      purchaseOrderContractId
+    )}/line_items`;
+    const v1Url = `https://api.procore.com/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
       purchaseOrderContractId
     )}/line_items`;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "Procore-Company-Id": companyId,
-      },
-      body: JSON.stringify(payload),
-    });
+    const attempts: Array<{ apiVersion: "v2" | "v1"; url: string; payload: UnknownRecord }> = [
+      { apiVersion: "v2", url: v2Url, payload: lineItem },
+      { apiVersion: "v1", url: v1Url, payload: legacyPayload },
+    ];
 
-    const rawText = await response.text();
-    let parsed: unknown = rawText;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      parsed = rawText || {};
+    let finalErrorStatus = 500;
+    let finalErrorParsed: unknown = undefined;
+    let finalErrorUrl = "";
+    let finalErrorPayload: UnknownRecord = {};
+
+    for (const attempt of attempts) {
+      const response = await fetch(attempt.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Procore-Company-Id": companyId,
+        },
+        body: JSON.stringify(attempt.payload),
+      });
+
+      const rawText = await response.text();
+      let parsed: unknown = rawText;
+      try {
+        parsed = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        parsed = rawText || {};
+      }
+
+      if (response.ok) {
+        return NextResponse.json({
+          success: true,
+          source: "purchase_order_contracts.line_items.create",
+          companyId,
+          projectId,
+          purchaseOrderContractId,
+          apiVersion: attempt.apiVersion,
+          url: attempt.url,
+          attemptedPayload: attempt.payload,
+          result: parsed,
+        });
+      }
+
+      finalErrorStatus = response.status;
+      finalErrorParsed = parsed;
+      finalErrorUrl = attempt.url;
+      finalErrorPayload = attempt.payload;
+
+      // Retry only when endpoint/version mismatch is likely.
+      if (response.status !== 404 && response.status !== 405) {
+        break;
+      }
     }
 
-    if (!response.ok) {
-      const validationHints = buildValidationHints(parsed, lineItem);
+    {
+      const validationHints = buildValidationHints(finalErrorParsed, lineItem);
       return NextResponse.json(
         {
-          error: `Create purchase order contract line item API error ${response.status}`,
-          details: typeof parsed === "string" ? parsed : undefined,
-          upstream: typeof parsed === "object" && parsed !== null ? parsed : undefined,
+          error: `Create purchase order contract line item API error ${finalErrorStatus}`,
+          details: typeof finalErrorParsed === "string" ? finalErrorParsed : undefined,
+          upstream:
+            typeof finalErrorParsed === "object" && finalErrorParsed !== null
+              ? finalErrorParsed
+              : undefined,
           validationHints,
-          attemptedPayload: payload,
-          url,
+          attemptedPayload: finalErrorPayload,
+          url: finalErrorUrl,
         },
-        { status: response.status }
+        { status: finalErrorStatus }
       );
     }
-
-    return NextResponse.json({
-      success: true,
-      source: "purchase_order_contracts.line_items.create",
-      companyId,
-      projectId,
-      purchaseOrderContractId,
-      url,
-      attemptedPayload: payload,
-      result: parsed,
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(

@@ -40,6 +40,11 @@ function getRequestSyncSecret(request: Request): string {
   return bearerMatch?.[1]?.trim() || '';
 }
 
+function hasProcoreAccessTokenCookie(request: Request): boolean {
+  const cookieHeader = request.headers.get('cookie') || '';
+  return /(?:^|;\s*)procore_access_token=/.test(cookieHeader);
+}
+
 export function hasValidProcoreSyncSecret(request: Request): boolean {
   const expectedSecret = (process.env.PROCORE_SYNC_SECRET || '').trim();
   if (!expectedSecret) return false;
@@ -52,6 +57,17 @@ export function withProcoreLiveApiBypassForSyncSecret<T>(
   operation: () => Promise<T>
 ): Promise<T> {
   if (!hasValidProcoreSyncSecret(request)) {
+    return operation();
+  }
+
+  return liveApiBypassStore.run(true, operation);
+}
+
+export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
+  request: Request,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!hasValidProcoreSyncSecret(request) && !hasProcoreAccessTokenCookie(request)) {
     return operation();
   }
 

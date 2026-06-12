@@ -40,6 +40,21 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
 }
 
 
+interface EstimateConversionResponse {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  detectedColumns?: {
+    costCodeColumn?: string;
+    itemIdColumn?: string;
+  };
+  rowsTotal?: number;
+  rowsMatched?: number;
+  rowsUnmatched?: number;
+  convertedCsv?: string;
+  unmatchedCsv?: string;
+}
+
 interface ProcoreData {
   user?: any;
   companies?: any;
@@ -196,6 +211,17 @@ function ProcoreContent() {
   const [purchaseOrderLineItemError, setPurchaseOrderLineItemError] = useState<string | null>(null);
   const [purchaseOrderLineItemResult, setPurchaseOrderLineItemResult] = useState<any>(null);
 
+  // Estimate Key Conversion
+  const [estimateConversionBusy, setEstimateConversionBusy] = useState(false);
+  const [estimateConversionError, setEstimateConversionError] = useState<string | null>(null);
+  const [estimateConversionResult, setEstimateConversionResult] = useState<EstimateConversionResponse | null>(null);
+  const [estimateCsvFileName, setEstimateCsvFileName] = useState<string>("");
+  const [estimateCsvText, setEstimateCsvText] = useState<string>("");
+  const [crosswalkCsvFileName, setCrosswalkCsvFileName] = useState<string>("");
+  const [crosswalkCsvText, setCrosswalkCsvText] = useState<string>("");
+  const [estimateCostCodeColumn, setEstimateCostCodeColumn] = useState<string>("");
+  const [estimateItemIdColumn, setEstimateItemIdColumn] = useState<string>("");
+
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
   const [directCostRowsText, setDirectCostRowsText] = useState("[]");
@@ -250,6 +276,80 @@ function ProcoreContent() {
       setError(params.get("error"));
     }
   }, []);
+
+  const handleEstimateCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setEstimateConversionError(null);
+    setEstimateConversionResult(null);
+    try {
+      const text = await file.text();
+      setEstimateCsvText(text);
+      setEstimateCsvFileName(file.name);
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      setEstimateConversionError(`Failed to read estimate CSV: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleCrosswalkCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setEstimateConversionError(null);
+    setEstimateConversionResult(null);
+    try {
+      const text = await file.text();
+      setCrosswalkCsvText(text);
+      setCrosswalkCsvFileName(file.name);
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      setEstimateConversionError(`Failed to read crosswalk CSV: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleConvertEstimateCsv = async () => {
+    if (!estimateCsvText.trim()) {
+      setEstimateConversionError("Upload an estimate CSV first.");
+      return;
+    }
+    setEstimateConversionBusy(true);
+    setEstimateConversionError(null);
+    setEstimateConversionResult(null);
+    try {
+      const response = await fetch("/api/procore/estimating/convert-estimate-crosswalk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estimateCsv: estimateCsvText,
+          crosswalkCsv: crosswalkCsvText || undefined,
+          costCodeColumn: estimateCostCodeColumn.trim() || undefined,
+          itemIdColumn: estimateItemIdColumn.trim() || undefined,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as EstimateConversionResponse;
+      if (!response.ok || !result.success) {
+        const details = result.details ? `: ${result.details}` : "";
+        throw new Error(`${result.error || "Conversion failed"}${details}`);
+      }
+      setEstimateConversionResult(result);
+      const baseName = (estimateCsvFileName || "estimate").replace(/\.csv$/i, "");
+      if (result.convertedCsv) {
+        downloadTextFile(`${baseName}_converted.csv`, result.convertedCsv, "text/csv;charset=utf-8;");
+      }
+      if (result.unmatchedCsv) {
+        downloadTextFile(`${baseName}_unmatched.csv`, result.unmatchedCsv, "text/csv;charset=utf-8;");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setEstimateConversionError(message);
+    } finally {
+      setEstimateConversionBusy(false);
+    }
+  };
 
   const handleLogin = () => {
     // Procore API access requires the dedicated Procore OAuth flow.

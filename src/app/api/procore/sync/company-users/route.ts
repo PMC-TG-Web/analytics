@@ -2,7 +2,12 @@
 // Fetches all company users from Procore and caches them in procore_company_users_live.
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import {
+  makeRequest,
+  procoreConfig,
+  getClientCredentialsToken,
+  withProcoreLiveApiBypassForAuthenticatedSession,
+} from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +35,8 @@ function displayName(user: Record<string, unknown>): string {
 }
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForAuthenticatedSession(request, async () => {
+    try {
     const body = await request.json().catch(() => ({}));
     const cookieStore = await cookies();
 
@@ -131,4 +137,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+  });
 }

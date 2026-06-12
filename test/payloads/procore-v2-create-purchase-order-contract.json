@@ -1,0 +1,23 @@
+{
+  "type": "PurchaseOrderContract",
+  "number": "PO-API-TEST-001",
+  "status": "Approved",
+  "title": "Field Daily Logs Test Contract",
+  "description": "Create Purchase Order Contract test payload for field visibility validation.",
+  "executed": false,
+  "vendor_id": "REPLACE_WITH_VALID_PROJECT_VENDOR_ID",
+  "signature_required": false,
+  "contract_date": "2026-06-12",
+  "delivery_date": "2026-06-12",
+  "issued_on_date": "2026-06-12",
+  "signed_contract_received_date": "2026-06-12",
+  "payment_terms": "Net 30",
+  "accounting_method": "amount",
+  "private": false,
+  "show_line_items_to_non_admins": true,
+  "allow_comments": true,
+  "allow_markups": true,
+  "allow_payment_applications": true,
+  "allow_payments": true,
+  "retainage_percent": "0"
+}

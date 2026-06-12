@@ -130,6 +130,123 @@ function normalizePurchaseOrderContract(value: unknown): UnknownRecord | null {
   if (payload.currency_iso_code === undefined && payload.currencyIsoCode !== undefined) {
     payload.currency_iso_code = payload.currencyIsoCode;
   }
+  if (payload.signed_contract_received_date === undefined && payload.signedContractReceivedDate !== undefined) {
+    payload.signed_contract_received_date = payload.signedContractReceivedDate;
+  }
+  if (payload.contract_start_date === undefined && payload.contractStartDate !== undefined) {
+    payload.contract_start_date = payload.contractStartDate;
+  }
+  if (
+    payload.contract_estimated_completion_date === undefined &&
+    payload.contractEstimatedCompletionDate !== undefined
+  ) {
+    payload.contract_estimated_completion_date = payload.contractEstimatedCompletionDate;
+  }
+  if (payload.actual_completion_date === undefined && payload.actualCompletionDate !== undefined) {
+    payload.actual_completion_date = payload.actualCompletionDate;
+  }
+  if (payload.signature_required === undefined && payload.signatureRequired !== undefined) {
+    payload.signature_required = payload.signatureRequired;
+  }
+  if (
+    payload.billing_schedule_of_values_status === undefined &&
+    payload.billingScheduleOfValuesStatus !== undefined
+  ) {
+    payload.billing_schedule_of_values_status = payload.billingScheduleOfValuesStatus;
+  }
+  if (payload.allow_comments === undefined && payload.allowComments !== undefined) {
+    payload.allow_comments = payload.allowComments;
+  }
+  if (payload.allow_markups === undefined && payload.allowMarkups !== undefined) {
+    payload.allow_markups = payload.allowMarkups;
+  }
+  if (
+    payload.change_order_level_of_detail === undefined &&
+    payload.changeOrderLevelOfDetail !== undefined
+  ) {
+    payload.change_order_level_of_detail = payload.changeOrderLevelOfDetail;
+  }
+  if (payload.enable_ssov === undefined && payload.enableSsov !== undefined) {
+    payload.enable_ssov = payload.enableSsov;
+  }
+  if (
+    payload.allow_change_orders_ssov === undefined &&
+    payload.allowChangeOrdersSsov !== undefined
+  ) {
+    payload.allow_change_orders_ssov = payload.allowChangeOrdersSsov;
+  }
+  if (
+    payload.allow_payment_applications === undefined &&
+    payload.allowPaymentApplications !== undefined
+  ) {
+    payload.allow_payment_applications = payload.allowPaymentApplications;
+  }
+  if (payload.allow_payments === undefined && payload.allowPayments !== undefined) {
+    payload.allow_payments = payload.allowPayments;
+  }
+  if (
+    payload.display_materials_retainage === undefined &&
+    payload.displayMaterialsRetainage !== undefined
+  ) {
+    payload.display_materials_retainage = payload.displayMaterialsRetainage;
+  }
+  if (
+    payload.display_work_retainage === undefined &&
+    payload.displayWorkRetainage !== undefined
+  ) {
+    payload.display_work_retainage = payload.displayWorkRetainage;
+  }
+  if (payload.show_cost_code_on_pdf === undefined && payload.showCostCodeOnPdf !== undefined) {
+    payload.show_cost_code_on_pdf = payload.showCostCodeOnPdf;
+  }
+  if (payload.ssr_enabled === undefined && payload.ssrEnabled !== undefined) {
+    payload.ssr_enabled = payload.ssrEnabled;
+  }
+  if (payload.bill_recipient_ids === undefined && payload.billRecipientIds !== undefined) {
+    payload.bill_recipient_ids = payload.billRecipientIds;
+  }
+  if (payload.accessor_ids === undefined && payload.accessorIds !== undefined) {
+    payload.accessor_ids = payload.accessorIds;
+  }
+  if (payload.attachment_ids === undefined && payload.attachmentIds !== undefined) {
+    payload.attachment_ids = payload.attachmentIds;
+  }
+  if (payload.drawing_revision_ids === undefined && payload.drawingRevisionIds !== undefined) {
+    payload.drawing_revision_ids = payload.drawingRevisionIds;
+  }
+  if (payload.file_version_ids === undefined && payload.fileVersionIds !== undefined) {
+    payload.file_version_ids = payload.fileVersionIds;
+  }
+  if (payload.form_ids === undefined && payload.formIds !== undefined) {
+    payload.form_ids = payload.formIds;
+  }
+  if (payload.image_ids === undefined && payload.imageIds !== undefined) {
+    payload.image_ids = payload.imageIds;
+  }
+  if (payload.upload_ids === undefined && payload.uploadIds !== undefined) {
+    payload.upload_ids = payload.uploadIds;
+  }
+  if (
+    payload.change_event_attachment_ids === undefined &&
+    payload.changeEventAttachmentIds !== undefined
+  ) {
+    payload.change_event_attachment_ids = payload.changeEventAttachmentIds;
+  }
+  if (
+    payload.request_for_quote_attachment_ids === undefined &&
+    payload.requestForQuoteAttachmentIds !== undefined
+  ) {
+    payload.request_for_quote_attachment_ids = payload.requestForQuoteAttachmentIds;
+  }
+  if (payload.show_line_items_to_non_admins === undefined && payload.showLineItemsToNonAdmins !== undefined) {
+    payload.show_line_items_to_non_admins = payload.showLineItemsToNonAdmins;
+  }
+  if (payload.type === undefined && payload.contract_type !== undefined) {
+    payload.type = payload.contract_type;
+  }
+  if (payload.type === undefined && payload.contractType !== undefined) {
+    payload.type = payload.contractType;
+  }
 
   const normalizedCustomFieldKey = Object.keys(payload).find((key) => /^custom_field_/.test(key));
   if (!normalizedCustomFieldKey) {
@@ -142,6 +259,30 @@ function normalizePurchaseOrderContract(value: unknown): UnknownRecord | null {
   }
 
   return payload;
+}
+
+function normalizeStatusToApproved(value: unknown): string {
+  const token = readStr(value).toLowerCase();
+  if (!token) return "Approved";
+  if (token === "approved") return "Approved";
+  if (token.includes("approved") && !token.includes("unapproved")) return "Approved";
+  return "Approved";
+}
+
+function enforceDailyLogSelectableDefaults(purchaseOrderContract: UnknownRecord): void {
+  const typeToken = readStr(purchaseOrderContract.type);
+  if (typeToken !== "PurchaseOrderContract" && typeToken !== "WorkOrderContract") return;
+
+  // Daily Logs contract pickers are approval/visibility sensitive.
+  purchaseOrderContract.status = normalizeStatusToApproved(purchaseOrderContract.status);
+  purchaseOrderContract.private = false;
+
+  // Daily Logs visibility requires unit-based contracts.
+  purchaseOrderContract.accounting_method = "unit";
+
+  if (purchaseOrderContract.show_line_items_to_non_admins === undefined) {
+    purchaseOrderContract.show_line_items_to_non_admins = true;
+  }
 }
 
 function appendFormValue(formData: FormData, key: string, value: unknown): void {
@@ -251,6 +392,10 @@ export async function POST(request: Request) {
     const runConfigurableValidations = readBool(
       body.run_configurable_validations ?? body.runConfigurableValidations
     );
+    const enforceDailyLogVisibility =
+      readBool(body.enforce_daily_log_visibility ?? body.enforceDailyLogVisibility) !== false;
+    const useLegacyV1 = readBool(body.useLegacyV1 ?? body.use_legacy_v1) === true;
+    const commitmentView = readStr(body.view ?? body.commitment_view ?? body.commitmentView);
 
     if (!accessToken) {
       return NextResponse.json(
@@ -279,44 +424,48 @@ export async function POST(request: Request) {
     }
 
     const attachments = normalizeAttachments(body.attachments);
+    const contractType = readStr(purchaseOrderContract.type) || "PurchaseOrderContract";
+    purchaseOrderContract.type = contractType;
 
-    const payload: UnknownRecord = {
-      project_id: projectId,
-      purchase_order_contract: purchaseOrderContract,
-    };
-
-    if (attachments) payload.attachments = attachments;
-
-    const query = new URLSearchParams();
-    if (runConfigurableValidations !== undefined) {
-      query.set("run_configurable_validations", String(runConfigurableValidations));
+    if (!useLegacyV1 && enforceDailyLogVisibility) {
+      enforceDailyLogSelectableDefaults(purchaseOrderContract);
     }
 
-    const url = `https://api.procore.com/rest/v1.0/purchase_order_contracts${query.toString() ? `?${query.toString()}` : ""}`;
-
-    const usesMultipart = Boolean(attachments?.length);
-    const requestBody = usesMultipart
-      ? (() => {
-          const formData = new FormData();
-          formData.append("project_id", projectId);
-          appendNestedFormFields(formData, "purchase_order_contract", purchaseOrderContract);
-          if (attachments) {
-            attachments.forEach((attachment, index) => {
-              appendNestedFormFields(formData, `attachments[${index}]`, attachment);
-            });
-          }
-          return formData;
-        })()
-      : JSON.stringify(payload);
+    // For v2 commitment endpoint, map attachment references to attachment_ids if needed.
+    if (attachments && purchaseOrderContract.attachment_ids === undefined) {
+      const attachmentIds = attachments.map((a) => a.reference_id);
+      if (attachmentIds.length > 0) purchaseOrderContract.attachment_ids = attachmentIds;
+    }
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
       "Procore-Company-Id": companyId,
+      "Content-Type": "application/json",
     };
 
-    if (!usesMultipart) {
-      headers["Content-Type"] = "application/json";
+    let url = "";
+    let requestBody: string;
+    const query = new URLSearchParams();
+
+    if (useLegacyV1) {
+      if (runConfigurableValidations !== undefined) {
+        query.set("run_configurable_validations", String(runConfigurableValidations));
+      }
+      url = `https://api.procore.com/rest/v1.0/purchase_order_contracts${query.toString() ? `?${query.toString()}` : ""}`;
+      const payload: UnknownRecord = {
+        project_id: projectId,
+        purchase_order_contract: purchaseOrderContract,
+      };
+      requestBody = JSON.stringify(payload);
+    } else {
+      if (commitmentView) query.set("view", commitmentView);
+      url = `https://api.procore.com/rest/v2.0/companies/${encodeURIComponent(
+        companyId
+      )}/projects/${encodeURIComponent(projectId)}/commitment_contracts${
+        query.toString() ? `?${query.toString()}` : ""
+      }`;
+      requestBody = JSON.stringify(purchaseOrderContract);
     }
 
     const response = await fetch(url, {
@@ -341,7 +490,10 @@ export async function POST(request: Request) {
           details: typeof parsed === "string" ? parsed : undefined,
           upstream: typeof parsed === "object" && parsed !== null ? parsed : undefined,
           validationHints,
-          attemptedPayload: payload,
+          attemptedPayload: useLegacyV1
+            ? { project_id: projectId, purchase_order_contract: purchaseOrderContract }
+            : purchaseOrderContract,
+          apiVersion: useLegacyV1 ? "v1" : "v2",
           url,
         },
         { status: response.status }
@@ -353,9 +505,18 @@ export async function POST(request: Request) {
       source: "purchase_order_contracts.create",
       companyId,
       projectId,
+      apiVersion: useLegacyV1 ? "v1" : "v2",
+      dailyLogVisibilityProfile: {
+        enforced: !useLegacyV1 && enforceDailyLogVisibility,
+        status: readStr(purchaseOrderContract.status),
+        private: readBool(purchaseOrderContract.private) ?? false,
+        accounting_method: readStr(purchaseOrderContract.accounting_method),
+      },
       url,
       query: Object.fromEntries(query.entries()),
-      attemptedPayload: payload,
+      attemptedPayload: useLegacyV1
+        ? { project_id: projectId, purchase_order_contract: purchaseOrderContract }
+        : purchaseOrderContract,
       result: parsed,
     });
   } catch (error) {

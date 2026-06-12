@@ -179,21 +179,30 @@ function toNullableString(value: unknown): string | null {
   return s || null;
 }
 
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = toNullableString(value);
+    if (text) return text;
+  }
+  return null;
+}
+
 function extractPayloadColumns(
   record: ProcoreTimecardTimeType,
   companyId: string | undefined,
   projectId: string
 ) {
+  const payload = asObject(record);
   return {
-    procoreId: toNullableString(record.id),
+    procoreId: toNullableString(payload.id),
     procoreCompanyId: toNullableString(companyId),
     procoreProjectId: toNullableString(projectId),
-    name: toNullableString(record.name),
-    active: typeof record.active === "boolean" ? record.active : null,
-    global: typeof record.global === "boolean" ? record.global : null,
-    procoreCreatedAt: toNullableDate(record.created_at),
-    procoreUpdatedAt: toNullableDate(record.updated_at),
-    procoreDeletedAt: toNullableDate(record.deleted_at),
+    name: firstNonEmptyString(payload.name, payload.time_type, payload.abbreviated_time_type),
+    active: typeof payload.active === "boolean" ? payload.active : null,
+    global: typeof payload.global === "boolean" ? payload.global : null,
+    procoreCreatedAt: toNullableDate(payload.created_at),
+    procoreUpdatedAt: toNullableDate(payload.updated_at),
+    procoreDeletedAt: toNullableDate(payload.deleted_at),
   };
 }
 

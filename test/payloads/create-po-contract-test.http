@@ -1,0 +1,76 @@
+# Procore v2 Create Commitment Contract
+# Run top-to-bottom in VS Code REST Client.
+
+@procoreBase = https://api.procore.com
+@clientId = {{$dotenv PROCORE_CLIENT_ID}}
+@clientSecret = {{$dotenv PROCORE_CLIENT_SECRET}}
+@companyId = {{$dotenv PROCORE_COMPANY_ID}}
+@projectId = 598134326626273
+@view = extended
+@accessToken = {{$global accessToken}}
+@refreshToken = REPLACE_REFRESH_TOKEN_IF_USING_AUTH_CODE_FLOW
+
+### 1) Get OAuth token (client credentials)
+POST {{procoreBase}}/oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials&client_id={{clientId}}&client_secret={{clientSecret}}
+
+> {%
+const token = response.body?.access_token;
+if (token) {
+  client.global.set("accessToken", token);
+  client.log("Saved accessToken to global variables.");
+}
+%}
+
+### 1a) Validate token against /me (should return 200)
+GET {{procoreBase}}/rest/v1.0/me
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 1b) Refresh OAuth token (only if you use auth code flow)
+POST {{procoreBase}}/oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&client_id={{clientId}}&client_secret={{clientSecret}}&refresh_token={{refreshToken}}
+
+> {%
+const token = response.body?.access_token;
+if (token) {
+  client.global.set("accessToken", token);
+  client.log("Saved refreshed accessToken to global variables.");
+}
+%}
+
+### 2) Create Commitment Contract (the API you requested)
+POST {{procoreBase}}/rest/v2.0/companies/{{companyId}}/projects/{{projectId}}/commitment_contracts?view={{view}}
+Authorization: Bearer {{accessToken}}
+Procore-Company-Id: {{companyId}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "type": "PurchaseOrderContract",
+  "number": "PO-API-SAFE-0011111",
+  "status": "Approved",
+  "title": "API Safe Contract11111",
+  "description": "<p>Minimal payload for reliable create testing.</p>",
+  "executed": false,
+  "vendor_id": "598134334366393",
+  "signature_required": false,
+  "private": false,
+  "accounting_method": "unit",
+  "payment_terms": "Net 30",
+  "retainage_percent": "0",
+  "show_line_items_to_non_admins": true,
+  "allow_comments": true,
+  "allow_markups": true,
+  "allow_payment_applications": true,
+  "allow_payments": true,
+  "contract_date": "2026-06-12",
+  "delivery_date": "2026-06-12",
+  "issued_on_date": "2026-06-12",
+  "signed_contract_received_date": "2026-06-12",
+  "currency_iso_code": "USD"
+}

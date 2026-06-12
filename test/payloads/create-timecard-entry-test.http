@@ -1,0 +1,126 @@
+# Timecard Entry Create Test (REST Client)
+# Run these requests top-to-bottom.
+# Requires local dev server running at http://localhost:3000 and Procore auth session OR accessToken.
+
+@baseUrl = http://localhost:3000
+@projectId = 598134326634438
+@companyId = {{$dotenv PROCORE_COMPANY_ID}}
+
+# Fill these after running the lookup requests below.
+# IMPORTANT: These IDs are PROJECT-SPECIFIC.
+# Run 2a first to auto-fill globals from an existing entry in the selected project.
+# If no entries exist yet, use 2/3/4 and copy IDs manually for this project.
+@partyId = {{$global partyId}}
+@timecardTimeTypeId = {{$global timecardTimeTypeId}}
+@costCodeId = {{$global costCodeId}}
+
+### 1) Optional diagnostic: check local Procore auth/session cookies
+# connected=false here is normal when you are not logged in through /procore in the browser.
+GET {{baseUrl}}/api/procore/auth-status
+Accept: application/json
+
+### 1a) Optional: load cached company users with explicit party_id
+# If this returns rows, you can copy party_id directly.
+POST {{baseUrl}}/api/procore/company-users
+Content-Type: application/json
+Accept: application/json
+
+{
+  "companyId": "{{companyId}}",
+  "projectId": "{{projectId}}",
+  "page": 1,
+  "perPage": 100,
+  "search": ""
+}
+
+### 2) Lookup project users (party_id source)
+# Not every returned user id is valid for timecard create.
+# Prefer IDs that already appear in existing timecard entries (see 2a).
+POST {{baseUrl}}/api/procore/rest-runner
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "path": "/rest/v1.0/projects/{{projectId}}/users",
+  "query": {
+    "company_id": "{{companyId}}",
+    "page": 1,
+    "per_page": 1000
+  }
+}
+
+### 2a) Fetch existing timecard entries (known-good ID combinations)
+# Use party/time type/cost code IDs from an existing row as the safest create baseline.
+POST {{baseUrl}}/api/procore/rest-runner
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "path": "/rest/v1.0/projects/{{projectId}}/timecard_entries",
+  "query": {
+    "page": 1,
+    "per_page": 50
+  }
+}
+
+> {%
+const rows = Array.isArray(response.body?.result) ? response.body.result : [];
+const first = rows.find((r) => r?.party?.id && r?.timecard_time_type?.id && r?.cost_code?.id);
+if (first) {
+  client.global.set("partyId", String(first.party.id));
+  client.global.set("timecardTimeTypeId", String(first.timecard_time_type.id));
+  client.global.set("costCodeId", String(first.cost_code.id));
+  client.log(`Auto-set IDs from existing entry: partyId=${first.party.id}, timecardTimeTypeId=${first.timecard_time_type.id}, costCodeId=${first.cost_code.id}`);
+} else {
+  client.log("No existing entries with full IDs found. Use requests 2/3/4 to pick IDs manually for this project.");
+}
+%}
+
+### 3) Lookup timecard time types for project
+# Use one of the returned id values as @timecardTimeTypeId.
+POST {{baseUrl}}/api/procore/rest-runner
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "path": "/rest/v1.0/timecard_time_types",
+  "query": {
+    "project_id": "{{projectId}}",
+    "page": 1,
+    "per_page": 1000
+  }
+}
+
+### 4) Lookup cost codes for project
+# Use one of the returned id values as @costCodeId.
+POST {{baseUrl}}/api/procore/rest-runner
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "path": "/rest/v1.0/cost_codes",
+  "query": {
+    "project_id": "{{projectId}}",
+    "page": 1,
+    "per_page": 1000
+  }
+}
+
+### 5) Create timecard entry (minimal safe payload)
+# If this fails with ancestry errors, the IDs do not belong to this project.
+POST {{baseUrl}}/api/procore/timecard-entries/create
+Content-Type: application/json
+
+{
+  "project_id": "{{projectId}}",
+  "companyId": "{{companyId}}",
+  "timecard_entry": {
+    "date": "2026-06-12",
+    "description": "ffggffgg",
+    "billable": false,
+    "hours": 8,
+    "party_id": {{partyId}},
+    "timecard_time_type_id": {{timecardTimeTypeId}},
+    "cost_code_id": {{costCodeId}}
+  }
+}

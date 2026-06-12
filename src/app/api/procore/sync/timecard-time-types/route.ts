@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import {
+  makeRequest,
+  procoreConfig,
+  withProcoreLiveApiBypassForAuthenticatedSession,
+} from "@/lib/procore";
 import {
   persistTimecardTimeTypes,
   type ProcoreTimecardTimeType,
@@ -100,142 +104,144 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function POST(request: Request) {
-  try {
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const cookieStore = await cookies();
-    const accessToken =
-      cookieStore.get("procore_access_token")?.value ||
-      String(body.accessToken || "").trim() ||
-      undefined;
-    const companyId = String(
-      body.companyId ||
-        cookieStore.get("procore_company_id")?.value ||
-        procoreConfig.companyId ||
-        ''
-    ).trim();
-
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          error: "Missing access token. Please authenticate via OAuth first or provide accessToken.",
-          connectUrl: "/api/auth/procore/login",
-        },
-        { status: 401 }
-      );
-    }
-
-    if (!companyId) {
-      return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
-    }
-
-    const perPage = Math.min(
-      200,
-      Math.max(1, Number.parseInt(String(body.perPage || body.per_page || "100"), 10) || 100)
-    );
-    const concurrency = Math.min(
-      8,
-      Math.max(1, Number.parseInt(String(body.concurrency || "4"), 10) || 4)
-    );
-    const maxProjects = Math.max(
-      0,
-      Number.parseInt(String(body.maxProjects || "0"), 10) || 0
-    );
-    const persist = body.persist === undefined ? true : Boolean(body.persist);
-
-    const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
-
-    const summary = {
-      success: true,
-      companyId,
-      totalProjectsChecked: projects.length,
-      projectsWithTypes: 0,
-      totalTypesFetched: 0,
-      totalTypesSaved: 0,
-      totalProjectsCreated: 0,
-      activeProjects: [] as Array<{
-        projectId: string;
-        projectNumber: string | null;
-        projectName: string;
-        typeCount: number;
-        savedCount: number;
-        skippedCount: number;
-        projectCreated: boolean;
-        linkedProjectId: string | null;
-      }>,
-      errors: [] as string[],
-    };
-
-    await mapWithConcurrency(projects, concurrency, async (project) => {
-      const projectId = String(
-        asObject(project).id ?? asObject(project).project_id ?? ""
+  return withProcoreLiveApiBypassForAuthenticatedSession(request, async () => {
+    try {
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const cookieStore = await cookies();
+      const accessToken =
+        cookieStore.get("procore_access_token")?.value ||
+        String(body.accessToken || "").trim() ||
+        undefined;
+      const companyId = String(
+        body.companyId ||
+          cookieStore.get("procore_company_id")?.value ||
+          procoreConfig.companyId ||
+          ''
       ).trim();
-      if (!projectId) return;
 
-      const projectNumber = firstText(
-        asObject(project).project_number,
-        asObject(project).number
+      if (!accessToken) {
+        return NextResponse.json(
+          {
+            error: "Missing access token. Please authenticate via OAuth first or provide accessToken.",
+            connectUrl: "/api/auth/procore/login",
+          },
+          { status: 401 }
+        );
+      }
+
+      if (!companyId) {
+        return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
+      }
+
+      const perPage = Math.min(
+        200,
+        Math.max(1, Number.parseInt(String(body.perPage || body.per_page || "100"), 10) || 100)
       );
-      const projectName = firstText(
-        asObject(project).name,
-        asObject(project).project_name,
-        `Procore Project ${projectId}`
+      const concurrency = Math.min(
+        8,
+        Math.max(1, Number.parseInt(String(body.concurrency || "4"), 10) || 4)
       );
+      const maxProjects = Math.max(
+        0,
+        Number.parseInt(String(body.maxProjects || "0"), 10) || 0
+      );
+      const persist = body.persist === undefined ? true : Boolean(body.persist);
 
-      try {
-        const records = await fetchAllTimeTypesForProject({
-          accessToken: accessToken!,
-          companyId,
-          projectId,
-          perPage,
-        });
+      const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
 
-        if (!records.length) return;
+      const summary = {
+        success: true,
+        companyId,
+        totalProjectsChecked: projects.length,
+        projectsWithTypes: 0,
+        totalTypesFetched: 0,
+        totalTypesSaved: 0,
+        totalProjectsCreated: 0,
+        activeProjects: [] as Array<{
+          projectId: string;
+          projectNumber: string | null;
+          projectName: string;
+          typeCount: number;
+          savedCount: number;
+          skippedCount: number;
+          projectCreated: boolean;
+          linkedProjectId: string | null;
+        }>,
+        errors: [] as string[],
+      };
 
-        summary.totalTypesFetched += records.length;
-        summary.projectsWithTypes += 1;
+      await mapWithConcurrency(projects, concurrency, async (project) => {
+        const projectId = String(
+          asObject(project).id ?? asObject(project).project_id ?? ""
+        ).trim();
+        if (!projectId) return;
 
-        let savedCount = 0;
-        let skippedCount = 0;
-        let projectCreated = false;
-        let linkedProjectId: string | null = null;
+        const projectNumber = firstText(
+          asObject(project).project_number,
+          asObject(project).number
+        );
+        const projectName = firstText(
+          asObject(project).name,
+          asObject(project).project_name,
+          `Procore Project ${projectId}`
+        );
 
-        if (persist) {
-          const result = await persistTimecardTimeTypes(records, {
+        try {
+          const records = await fetchAllTimeTypesForProject({
+            accessToken: accessToken!,
             companyId,
             projectId,
-            projectName,
-            projectNumber: projectNumber || undefined,
-            createProjectIfMissing: true,
+            perPage,
           });
-          savedCount = result.saved;
-          skippedCount = result.skipped;
-          projectCreated = result.projectCreated;
-          linkedProjectId = result.linkedProjectId;
-          summary.totalTypesSaved += result.saved;
-          if (projectCreated) summary.totalProjectsCreated += 1;
-        } else {
-          savedCount = records.length;
+
+          if (!records.length) return;
+
+          summary.totalTypesFetched += records.length;
+          summary.projectsWithTypes += 1;
+
+          let savedCount = 0;
+          let skippedCount = 0;
+          let projectCreated = false;
+          let linkedProjectId: string | null = null;
+
+          if (persist) {
+            const result = await persistTimecardTimeTypes(records, {
+              companyId,
+              projectId,
+              projectName,
+              projectNumber: projectNumber || undefined,
+              createProjectIfMissing: true,
+            });
+            savedCount = result.saved;
+            skippedCount = result.skipped;
+            projectCreated = result.projectCreated;
+            linkedProjectId = result.linkedProjectId;
+            summary.totalTypesSaved += result.saved;
+            if (projectCreated) summary.totalProjectsCreated += 1;
+          } else {
+            savedCount = records.length;
+          }
+
+          summary.activeProjects.push({
+            projectId,
+            projectNumber: projectNumber || null,
+            projectName,
+            typeCount: records.length,
+            savedCount,
+            skippedCount,
+            projectCreated,
+            linkedProjectId,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          summary.errors.push(`Project ${projectId} (${projectName}): ${msg}`);
         }
+      });
 
-        summary.activeProjects.push({
-          projectId,
-          projectNumber: projectNumber || null,
-          projectName,
-          typeCount: records.length,
-          savedCount,
-          skippedCount,
-          projectCreated,
-          linkedProjectId,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        summary.errors.push(`Project ${projectId} (${projectName}): ${msg}`);
-      }
-    });
-
-    return NextResponse.json(summary);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
-  }
+      return NextResponse.json(summary);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    }
+  });
 }

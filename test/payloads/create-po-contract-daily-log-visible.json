@@ -1,0 +1,17 @@
+{
+  "project_id": "598134326626273",
+  "enforce_daily_log_visibility": true,
+  "run_configurable_validations": true,
+  "purchase_order_contract": {
+    "type": "PurchaseOrderContract",
+    "number": "PO-API-DAILYLOG-001",
+    "title": "Daily Logs Field Test Contract",
+    "description": "Contract created via API for Daily Logs selectability test.",
+    "vendor_id": "REPLACE_WITH_VALID_PROJECT_VENDOR_ID",
+    "contract_date": "2026-06-12",
+    "delivery_date": "2026-06-12",
+    "issued_on_date": "2026-06-12",
+    "signed_contract_received_date": "2026-06-12",
+    "payment_terms": "Net 30"
+  }
+}

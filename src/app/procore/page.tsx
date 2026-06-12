@@ -27,8 +27,8 @@ function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
   URL.revokeObjectURL(url);
 }
 
-function downloadTextFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
+function downloadJson(filename: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -71,19 +71,30 @@ interface ProcoreData {
   error?: string;
 }
 
-interface EstimateConversionResponse {
-  success?: boolean;
-  error?: string;
-  details?: string;
-  detectedColumns?: {
-    costCodeColumn?: string;
-    itemIdColumn?: string;
-  };
-  rowsTotal?: number;
-  rowsMatched?: number;
-  rowsUnmatched?: number;
-  convertedCsv?: string;
-  unmatchedCsv?: string;
+interface CompanyUserOption {
+  id: string;
+  party_id?: string | null;
+  login: string | null;
+  name: string | null;
+  company_name: string | null;
+  payload?: Record<string, unknown> | null;
+}
+
+interface ProductivityLineItemOption {
+  line_item_id: number;
+  description: string;
+  uom: string;
+  amount: number | null;
+  quantity: number | null;
+  contract_id: string;
+  contract_type: "commitment_contract" | "work_order_contract" | "purchase_order_contract";
+  contract_title: string;
+  contract_number: string;
+  contract_status: string;
+}
+
+function getProductivityLineItemKey(item: ProductivityLineItemOption): string {
+  return `${item.contract_type}:${item.contract_id}:${item.line_item_id}`;
 }
 
 export default function ProcorePage() {
@@ -104,12 +115,30 @@ function ProcoreContent() {
   const [debugResult, setDebugResult] = useState<any>(null);
   const [productivityDebugResult, setProductivityDebugResult] = useState<any>(null);
   const [createProductivityProjectId, setCreateProductivityProjectId] = useState("");
-  const [createProductivityJson, setCreateProductivityJson] = useState('{\n  "date": "2026-06-08",\n  "line_item_id": 173890,\n  "notes": "Productivity 50% complete",\n  "quantity_delivered": "10",\n  "quantity_used": "4"\n}');
+  const [createProductivityJson, setCreateProductivityJson] = useState('{\n  "date": "2026-06-08",\n  "line_item_id": 173890,\n  "notes": "Productivity 50% complete",\n  "quantity_delivered": 10,\n  "quantity_used": 4\n}');
   const [createProductivityBusy, setCreateProductivityBusy] = useState(false);
   const [createProductivityError, setCreateProductivityError] = useState<string | null>(null);
   const [createProductivityResult, setCreateProductivityResult] = useState<any>(null);
+  const [createProductivityLineItemsBusy, setCreateProductivityLineItemsBusy] = useState(false);
+  const [createProductivityLineItemsError, setCreateProductivityLineItemsError] = useState<string | null>(null);
+  const [createProductivityLineItems, setCreateProductivityLineItems] = useState<ProductivityLineItemOption[]>([]);
+  const [createProductivitySelectedLineItemKey, setCreateProductivitySelectedLineItemKey] = useState("");
+  const [createProductivityLineItemsInfo, setCreateProductivityLineItemsInfo] = useState<string | null>(null);
+  const [createProductivityLineItemsDebug, setCreateProductivityLineItemsDebug] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [restRunnerMethod, setRestRunnerMethod] = useState("GET");
+  const [restRunnerPath, setRestRunnerPath] = useState("/rest/v1.3/companies/{company_id}/me");
+  const [restRunnerCompanyIdOverride, setRestRunnerCompanyIdOverride] = useState("");
+  const [restRunnerBodyText, setRestRunnerBodyText] = useState("{}");
+  const [restRunnerBusy, setRestRunnerBusy] = useState(false);
+  const [restRunnerError, setRestRunnerError] = useState<string | null>(null);
+  const [restRunnerResult, setRestRunnerResult] = useState<any>(null);
+  const [companyUsersBusy, setCompanyUsersBusy] = useState(false);
+  const [companyUsersError, setCompanyUsersError] = useState<string | null>(null);
+  const [companyUsersResult, setCompanyUsersResult] = useState<CompanyUserOption[]>([]);
+  const [companyUsersSearch, setCompanyUsersSearch] = useState("");
+  const [companyUsersSummary, setCompanyUsersSummary] = useState<string | null>(null);
   const [importBidBoardProjectId, setImportBidBoardProjectId] = useState("");
   const [importProposalName, setImportProposalName] = useState("Imported Estimate");
   const [importProposalId, setImportProposalId] = useState("");
@@ -118,6 +147,24 @@ function ProcoreContent() {
   const [importResult, setImportResult] = useState<any>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importWorkbookSummary, setImportWorkbookSummary] = useState<string | null>(null);
+
+  // CSV import for productivity logs
+  type CsvLogRow = {
+    date: string;
+    quantity_delivered: number | undefined;
+    notes: string | undefined;
+    _csv_contract: string;
+    _csv_line_item: string;
+    line_item_id: number | null;
+    _matched: boolean;
+    _status?: "pending" | "success" | "error";
+    _statusMessage?: string;
+  };
+  const [csvImportRows, setCsvImportRows] = useState<CsvLogRow[]>([]);
+  const [csvImportError, setCsvImportError] = useState<string | null>(null);
+  const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [csvImportSummary, setCsvImportSummary] = useState<string | null>(null);
+  const [csvImportResults, setCsvImportResults] = useState<{ success: number; failed: number } | null>(null);
   const [projectImportRowsText, setProjectImportRowsText] = useState("[]");
   const [projectImportBusy, setProjectImportBusy] = useState(false);
   const [projectImportResult, setProjectImportResult] = useState<any>(null);
@@ -163,7 +210,7 @@ function ProcoreContent() {
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
   const [purchaseOrderContractAttachmentsText, setPurchaseOrderContractAttachmentsText] = useState('[]');
   const [purchaseOrderContractJsonText, setPurchaseOrderContractJsonText] = useState(`{
-  "accounting_method": "amount",
+  "accounting_method": "unit",
   "approval_letter_date": "2012-10-23",
   "bill_to_address": "Santa Claus Lane, Carpinteria, CA",
   "contract_date": "2012-10-23",
@@ -192,16 +239,67 @@ function ProcoreContent() {
   const [purchaseOrderContractBusy, setPurchaseOrderContractBusy] = useState(false);
   const [purchaseOrderContractError, setPurchaseOrderContractError] = useState<string | null>(null);
   const [purchaseOrderContractResult, setPurchaseOrderContractResult] = useState<any>(null);
+  const [deletePurchaseOrderContractId, setDeletePurchaseOrderContractId] = useState("");
+  const [deletePurchaseOrderContractBusy, setDeletePurchaseOrderContractBusy] = useState(false);
+  const [deletePurchaseOrderContractError, setDeletePurchaseOrderContractError] = useState<string | null>(null);
+  const [deletePurchaseOrderContractResult, setDeletePurchaseOrderContractResult] = useState<any>(null);
+  type PurchaseOrderContractCsvRow = {
+    contractLabel: string;
+    vendorName: string;
+    vendorId?: string;
+    contractNumber: string;
+    contractTitle: string;
+    contractDate: string;
+    rowCount: number;
+    status: "pending" | "success" | "error";
+    statusMessage?: string;
+    payload: Record<string, unknown>;
+  };
+  const [purchaseOrderContractCsvRows, setPurchaseOrderContractCsvRows] = useState<PurchaseOrderContractCsvRow[]>([]);
+  const [purchaseOrderContractCsvBusy, setPurchaseOrderContractCsvBusy] = useState(false);
+  const [purchaseOrderContractCsvError, setPurchaseOrderContractCsvError] = useState<string | null>(null);
+  const [purchaseOrderContractCsvSummary, setPurchaseOrderContractCsvSummary] = useState<string | null>(null);
+  const [purchaseOrderContractCsvResults, setPurchaseOrderContractCsvResults] = useState<{ success: number; failed: number } | null>(null);
+  const [purchaseOrderContractCsvAllowPrivate, setPurchaseOrderContractCsvAllowPrivate] = useState(false);
+  const [purchaseOrderContractCsvAllowUnitAccounting, setPurchaseOrderContractCsvAllowUnitAccounting] = useState(false);
+  type PurchaseOrderLineItemCsvRow = {
+    projectId?: string;
+    purchaseOrderContractId?: string;
+    costCodeRaw: string;
+    costType: string;
+    mappedCostCode?: string;
+    mappedCostType?: string;
+    description: string;
+    quantity: number;
+    uom: string;
+    unitPrice: number;
+    amount: number;
+    status: "pending" | "success" | "error";
+    statusMessage?: string;
+    payload: Record<string, unknown>;
+  };
+  type TimecardCsvResolvedRow = {
+    rowNumber: number;
+    source: Record<string, unknown>;
+    payload: Record<string, unknown>;
+    resolved: boolean;
+    resolutionNotes: string[];
+    resolvedPartyName: string;
+    resolvedTimeTypeName: string;
+    resolvedCostCodeName: string;
+    status: "pending" | "success" | "error";
+    statusMessage?: string;
+  };
   const [purchaseOrderLineItemProjectId, setPurchaseOrderLineItemProjectId] = useState("66005");
   const [purchaseOrderLineItemContractId, setPurchaseOrderLineItemContractId] = useState("");
   const [purchaseOrderLineItemJsonText, setPurchaseOrderLineItemJsonText] = useState(`{
   "amount": "1000.0",
-  "budget_line_item_id": 34567,
-  "cost_code_id": 77408196,
+  "budget_line_item_id": 0,
+  "cost_code_id": 0,
   "description": "Cleanup",
   "extended_type": "manual",
   "quantity": "20.0",
-  "line_item_type_id": 5085801,
+  "line_item_type_id": 0,
   "origin_data": "AC-1234",
   "origin_id": 55555,
   "unit_cost": "50.00",
@@ -210,6 +308,48 @@ function ProcoreContent() {
   const [purchaseOrderLineItemBusy, setPurchaseOrderLineItemBusy] = useState(false);
   const [purchaseOrderLineItemError, setPurchaseOrderLineItemError] = useState<string | null>(null);
   const [purchaseOrderLineItemResult, setPurchaseOrderLineItemResult] = useState<any>(null);
+  const [purchaseOrderLineItemCsvRows, setPurchaseOrderLineItemCsvRows] = useState<PurchaseOrderLineItemCsvRow[]>([]);
+  const [purchaseOrderLineItemCsvBusy, setPurchaseOrderLineItemCsvBusy] = useState(false);
+  const [purchaseOrderLineItemCsvError, setPurchaseOrderLineItemCsvError] = useState<string | null>(null);
+  const [purchaseOrderLineItemCsvSummary, setPurchaseOrderLineItemCsvSummary] = useState<string | null>(null);
+  const [purchaseOrderLineItemCsvResults, setPurchaseOrderLineItemCsvResults] = useState<{ success: number; failed: number } | null>(null);
+  const [purchaseOrderLineItemCsvDefaultTypeId, setPurchaseOrderLineItemCsvDefaultTypeId] = useState("");
+  const [purchaseOrderLineItemCsvDefaultWbsId, setPurchaseOrderLineItemCsvDefaultWbsId] = useState("");
+  const [purchaseOrderLineItemCsvDefaultBudgetLineItemId, setPurchaseOrderLineItemCsvDefaultBudgetLineItemId] = useState("");
+  const [purchaseOrderLineItemMappingBusy, setPurchaseOrderLineItemMappingBusy] = useState(false);
+  const [purchaseOrderLineItemMappingError, setPurchaseOrderLineItemMappingError] = useState<string | null>(null);
+  const [purchaseOrderLineItemMappingSummary, setPurchaseOrderLineItemMappingSummary] = useState<string | null>(null);
+  const [purchaseOrderLineItemMappingProfileBusy, setPurchaseOrderLineItemMappingProfileBusy] = useState(false);
+  const [purchaseOrderLineItemMappingProfileError, setPurchaseOrderLineItemMappingProfileError] = useState<string | null>(null);
+  const [purchaseOrderLineItemMappingProfileSummary, setPurchaseOrderLineItemMappingProfileSummary] = useState<string | null>(null);
+  const [purchaseOrderLineItemCostCodeMap, setPurchaseOrderLineItemCostCodeMap] = useState<Record<string, string>>({});
+  const [purchaseOrderLineItemCostTypeMap, setPurchaseOrderLineItemCostTypeMap] = useState<Record<string, string>>({});
+  const [purchaseOrderLineItemCostTypeByCodeMap, setPurchaseOrderLineItemCostTypeByCodeMap] = useState<Record<string, string>>({});
+  const [purchaseOrderLineItemWbsCodeMap, setPurchaseOrderLineItemWbsCodeMap] = useState<Record<string, number>>({});
+  const [purchaseOrderLineItemRefsBusy, setPurchaseOrderLineItemRefsBusy] = useState(false);
+  const [purchaseOrderLineItemRefsError, setPurchaseOrderLineItemRefsError] = useState<string | null>(null);
+  const [purchaseOrderLineItemRefsSummary, setPurchaseOrderLineItemRefsSummary] = useState<string | null>(null);
+  const [purchaseOrderLineItemCostCodes, setPurchaseOrderLineItemCostCodes] = useState<Array<{ id: number; fullCode: string; name: string }>>([]);
+  const [purchaseOrderLineItemCostTypes, setPurchaseOrderLineItemCostTypes] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [timecardProjectId, setTimecardProjectId] = useState("598134326626273");
+  const [timecardFallbackJsonText, setTimecardFallbackJsonText] = useState(`{
+  "lunch_time": "60"
+}`);
+  const [timecardCsvRows, setTimecardCsvRows] = useState<TimecardCsvResolvedRow[]>([]);
+  const [timecardCsvBusy, setTimecardCsvBusy] = useState(false);
+  const [timecardCsvError, setTimecardCsvError] = useState<string | null>(null);
+  const [timecardCsvSummary, setTimecardCsvSummary] = useState<string | null>(null);
+  const [timecardCsvResults, setTimecardCsvResults] = useState<{ success: number; failed: number } | null>(null);
+  const [timecardSyncBusy, setTimecardSyncBusy] = useState<"all" | "users" | "types" | "codes" | null>(null);
+  const [timecardSyncMessage, setTimecardSyncMessage] = useState<string | null>(null);
+
+  // Direct Cost Line Items Sync
+  const [directCostProjectId, setDirectCostProjectId] = useState("");
+  const [directCostRowsText, setDirectCostRowsText] = useState("[]");
+  const [directCostBusy, setDirectCostBusy] = useState(false);
+  const [directCostResult, setDirectCostResult] = useState<any>(null);
+  const [directCostError, setDirectCostError] = useState<string | null>(null);
+  const [directCostWorkbookSummary, setDirectCostWorkbookSummary] = useState<string | null>(null);
 
   // Estimate Key Conversion
   const [estimateConversionBusy, setEstimateConversionBusy] = useState(false);
@@ -221,14 +361,6 @@ function ProcoreContent() {
   const [crosswalkCsvText, setCrosswalkCsvText] = useState<string>("");
   const [estimateCostCodeColumn, setEstimateCostCodeColumn] = useState<string>("");
   const [estimateItemIdColumn, setEstimateItemIdColumn] = useState<string>("");
-
-  // Direct Cost Line Items Sync
-  const [directCostProjectId, setDirectCostProjectId] = useState("");
-  const [directCostRowsText, setDirectCostRowsText] = useState("[]");
-  const [directCostBusy, setDirectCostBusy] = useState(false);
-  const [directCostResult, setDirectCostResult] = useState<any>(null);
-  const [directCostError, setDirectCostError] = useState<string | null>(null);
-  const [directCostWorkbookSummary, setDirectCostWorkbookSummary] = useState<string | null>(null);
 
   useEffect(() => {
     const checkProcoreAuth = async () => {
@@ -266,6 +398,61 @@ function ProcoreContent() {
     if (params.get("error")) {
       setError(params.get("error"));
     }
+  }, []);
+
+  const savePurchaseOrderLineItemMappingProfile = async (
+    costCodeMap: Record<string, string>,
+    costTypeMap: Record<string, string>,
+    costTypeByCodeMap: Record<string, string>
+  ) => {
+    const response = await fetch("/api/procore/po-line-item-mappings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ costCodeMap, costTypeMap, costTypeByCodeMap }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result?.error || result?.details || `Save failed (${response.status}).`);
+    }
+    return result;
+  };
+
+  const handleLoadPurchaseOrderLineItemMappingProfile = async () => {
+    setPurchaseOrderLineItemMappingProfileBusy(true);
+    setPurchaseOrderLineItemMappingProfileError(null);
+    setPurchaseOrderLineItemMappingProfileSummary(null);
+
+    try {
+      const response = await fetch("/api/procore/po-line-item-mappings", { method: "GET" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || result?.details || `Load failed (${response.status}).`);
+      }
+
+      const costCodeMap = (result?.costCodeMap || {}) as Record<string, string>;
+      const costTypeMap = (result?.costTypeMap || {}) as Record<string, string>;
+      const costTypeByCodeMap = (result?.costTypeByCodeMap || {}) as Record<string, string>;
+
+      setPurchaseOrderLineItemCostCodeMap(costCodeMap);
+      setPurchaseOrderLineItemCostTypeMap(costTypeMap);
+      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...costTypeByCodeMap, ...prev }));
+
+      if (result?.exists) {
+        setPurchaseOrderLineItemMappingProfileSummary(
+          `Loaded saved mapping profile: ${Object.keys(costCodeMap).length} cost code, ${Object.keys(costTypeMap).length} global cost type, ${Object.keys(costTypeByCodeMap).length} code-specific cost type mapping(s).`
+        );
+      } else {
+        setPurchaseOrderLineItemMappingProfileSummary("No saved mapping profile found yet.");
+      }
+    } catch (error) {
+      setPurchaseOrderLineItemMappingProfileError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPurchaseOrderLineItemMappingProfileBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void handleLoadPurchaseOrderLineItemMappingProfile();
   }, []);
 
   const handleEstimateCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -570,6 +757,277 @@ function ProcoreContent() {
     }
   };
 
+  const applyProductivityLineItemIdToJson = (lineItemId: number) => {
+    try {
+      const parsed = JSON.parse(createProductivityJson);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON must be an object.");
+      }
+      const updated = {
+        ...(parsed as Record<string, unknown>),
+        line_item_id: lineItemId,
+      };
+      setCreateProductivityJson(JSON.stringify(updated, null, 2));
+      setCreateProductivityError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCreateProductivityError(`Unable to update productivity_log JSON with line_item_id: ${message}`);
+    }
+  };
+
+  // Parse the productivity log CSV client-side
+  function parseProductivityLogCSV(content: string): CsvLogRow[] {
+    const lines = content.split("\n");
+    if (lines.length < 2) return [];
+    const headerLine = lines[0];
+    const headers = parseCsvLine(headerLine).map((h) => h.toLowerCase().trim());
+    const rows: CsvLogRow[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const values = parseCsvLine(line);
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => { row[h] = values[idx] || ""; });
+      const date = (row["date"] || "").trim();
+      const contract = (row["contract"] || "").trim();
+      const lineItem = (row["line item"] || "").trim();
+      if (!date || !contract || !lineItem) continue;
+      const qd = parseFloat(row["quantity delivered"] || "0");
+      const comments = (row["comments"] || "").trim();
+      rows.push({
+        date,
+        quantity_delivered: qd > 0 ? qd : undefined,
+        notes: comments || undefined,
+        _csv_contract: contract,
+        _csv_line_item: lineItem,
+        line_item_id: null,
+        _matched: false,
+        _status: "pending",
+      });
+    }
+    return rows;
+  }
+
+  function parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const next = line[i + 1];
+      if (char === '"') {
+        if (inQuotes && next === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  // Split CSV into records while respecting quoted multiline cells.
+  function parseCsvRecords(content: string): string[] {
+    const records: string[] = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      const next = content[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && next === '"') {
+          current += '""';
+          i++;
+        } else {
+          current += char;
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+
+      if ((char === "\n" || char === "\r") && !inQuotes) {
+        if (char === "\r" && next === "\n") i++;
+        if (current.trim()) records.push(current);
+        current = "";
+        continue;
+      }
+
+      current += char;
+    }
+
+    if (current.trim()) records.push(current);
+    return records;
+  }
+
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCsvImportError(null);
+    setCsvImportSummary(null);
+    setCsvImportResults(null);
+    setCsvImportRows([]);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      setCsvImportError("Please upload a .csv file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const rows = parseProductivityLogCSV(content);
+        if (rows.length === 0) {
+          setCsvImportError("No valid rows found. Check that the CSV has Date, Contract, and Line Item columns.");
+          return;
+        }
+        // Auto-match against loaded line items
+        const matched = autoMatchCsvRows(rows);
+        setCsvImportRows(matched);
+        const matchCount = matched.filter((r) => r._matched).length;
+        setCsvImportSummary(
+          `Loaded ${rows.length} row(s). ${matchCount} matched to Procore line items. ${rows.length - matchCount} unmatched ΓÇö load line items first or check contract names.`
+        );
+      } catch (err) {
+        setCsvImportError(err instanceof Error ? err.message : "Failed to parse CSV.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so the same file can be re-uploaded
+    e.target.value = "";
+  };
+
+  const autoMatchCsvRows = (rows: CsvLogRow[]): CsvLogRow[] => {
+    if (createProductivityLineItems.length === 0) return rows;
+    return rows.map((row) => {
+      // Try matching by contract number ("PO-001") and line item number ("#1")
+      const contractNumMatch = row._csv_contract.match(/^(\S+)/);
+      const lineItemNumMatch = row._csv_line_item.match(/^(#\d+)/);
+      const contractNum = contractNumMatch?.[1]?.toLowerCase() ?? "";
+      const lineItemNum = lineItemNumMatch?.[1]?.toLowerCase() ?? "";
+      const found = createProductivityLineItems.find((item) => {
+        const itemContractNum = (item.contract_number || "").toLowerCase();
+        const itemDesc = (item.description || "").toLowerCase();
+        const contractMatch = contractNum && itemContractNum.startsWith(contractNum);
+        const lineItemMatch = lineItemNum && itemDesc.startsWith(lineItemNum);
+        return contractMatch && lineItemMatch;
+      });
+      if (found) {
+        return { ...row, line_item_id: found.line_item_id, _matched: true };
+      }
+      return row;
+    });
+  };
+
+  const handleCsvBulkSubmit = async () => {
+    const projectId = createProductivityProjectId.trim();
+    if (!projectId) {
+      setCsvImportError("Project ID is required.");
+      return;
+    }
+    const submittable = csvImportRows.filter((r) => r._matched && r.line_item_id !== null);
+    if (submittable.length === 0) {
+      setCsvImportError("No matched rows to submit. Load approved line items first.");
+      return;
+    }
+    setCsvImportBusy(true);
+    setCsvImportError(null);
+    setCsvImportResults(null);
+    let success = 0;
+    let failed = 0;
+    const updatedRows = [...csvImportRows];
+    for (let i = 0; i < updatedRows.length; i++) {
+      const row = updatedRows[i];
+      if (!row._matched || row.line_item_id === null) continue;
+      const payload: Record<string, unknown> = {
+        date: row.date,
+        line_item_id: row.line_item_id,
+      };
+      if (row.quantity_delivered !== undefined) payload.quantity_delivered = row.quantity_delivered;
+      if (row.notes) payload.notes = row.notes;
+      try {
+        const response = await fetch("/api/procore/productivity-logs/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: projectId, productivity_log: payload }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          updatedRows[i] = { ...row, _status: "success", _statusMessage: `ID ${result?.data?.id ?? "OK"}` };
+          success++;
+        } else {
+          const msg = result?.details || result?.error || `HTTP ${response.status}`;
+          updatedRows[i] = { ...row, _status: "error", _statusMessage: msg };
+          failed++;
+        }
+      } catch (err) {
+        updatedRows[i] = { ...row, _status: "error", _statusMessage: err instanceof Error ? err.message : String(err) };
+        failed++;
+      }
+      setCsvImportRows([...updatedRows]);
+    }
+    setCsvImportBusy(false);
+    setCsvImportResults({ success, failed });
+  };
+
+  const handleLoadValidProductivityLineItems = async () => {
+    const projectId = createProductivityProjectId.trim();
+    if (!projectId) {
+      setCreateProductivityLineItemsError("Project ID is required before loading line items.");
+      return;
+    }
+
+    setCreateProductivityLineItemsBusy(true);
+    setCreateProductivityLineItemsError(null);
+    setCreateProductivityLineItemsInfo(null);
+    setCreateProductivityLineItems([]);
+    setCreateProductivitySelectedLineItemKey("");
+    setCreateProductivityLineItemsDebug(null);
+
+    try {
+      const response = await fetch(
+        `/api/procore/productivity-logs/valid-line-items?projectId=${encodeURIComponent(projectId)}`,
+        { method: "GET" }
+      );
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = result?.error
+          ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+          : `Load failed (${response.status}).`;
+        setCreateProductivityLineItemsError(message);
+        return;
+      }
+
+      const items = Array.isArray(result?.items) ? (result.items as ProductivityLineItemOption[]) : [];
+      setCreateProductivityLineItems(items);
+
+      const approvedCommitmentContracts = Number(result?.counts?.approvedCommitmentContracts ?? 0);
+      const approvedWorkOrderContracts = Number(result?.counts?.approvedWorkOrderContracts ?? 0);
+      const approvedPurchaseOrderContracts = Number(result?.counts?.approvedPurchaseOrderContracts ?? 0);
+      const statusSummary = `Found ${items.length} line item(s) from ${approvedCommitmentContracts} approved commitment, ${approvedWorkOrderContracts} approved WO, and ${approvedPurchaseOrderContracts} approved PO contract(s).`;
+      setCreateProductivityLineItemsInfo(statusSummary);
+      setCreateProductivityLineItemsDebug(result?.debug || null);
+
+      if (items.length > 0) {
+        const firstKey = getProductivityLineItemKey(items[0]);
+        setCreateProductivitySelectedLineItemKey(firstKey);
+        applyProductivityLineItemIdToJson(items[0].line_item_id);
+      } else {
+        setCreateProductivityLineItemsError(
+          "No approved contract line items were returned for this project."
+        );
+      }
+    } catch (error) {
+      setCreateProductivityLineItemsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCreateProductivityLineItemsBusy(false);
+    }
+  };
+
   const handleCreatePurchaseOrderContract = async () => {
     const projectId = purchaseOrderContractProjectId.trim();
     if (!projectId) {
@@ -631,6 +1089,1570 @@ function ProcoreContent() {
     } finally {
       setPurchaseOrderContractBusy(false);
     }
+  };
+
+  const handleDeletePurchaseOrderContract = async () => {
+    const projectId = purchaseOrderContractProjectId.trim();
+    const contractId = deletePurchaseOrderContractId.trim();
+
+    if (!projectId) {
+      setDeletePurchaseOrderContractError("Project ID is required.");
+      return;
+    }
+    if (!contractId) {
+      setDeletePurchaseOrderContractError("Commitment Contract ID is required.");
+      return;
+    }
+
+    const okToDelete = window.confirm(
+      `Delete commitment contract ${contractId} from project ${projectId}? This cannot be undone.`
+    );
+    if (!okToDelete) return;
+
+    setDeletePurchaseOrderContractBusy(true);
+    setDeletePurchaseOrderContractError(null);
+    setDeletePurchaseOrderContractResult(null);
+
+    try {
+      const response = await fetch("/api/procore/rest-runner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "DELETE",
+          path: `/rest/v2.0/companies/{company_id}/projects/${encodeURIComponent(projectId)}/commitment_contracts/${encodeURIComponent(contractId)}`,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDeletePurchaseOrderContractError(
+          result?.details
+            ? `${result?.error || "Delete failed"}: ${result.details}`
+            : result?.error || `Delete failed (${response.status}).`
+        );
+      }
+      setDeletePurchaseOrderContractResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setDeletePurchaseOrderContractError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeletePurchaseOrderContractBusy(false);
+    }
+  };
+
+  const handleRunRestCommand = async () => {
+    const path = restRunnerPath.trim();
+    if (!path) {
+      setRestRunnerError("Path is required (example: /rest/v1.3/companies/{company_id}/me).");
+      return;
+    }
+
+    const method = restRunnerMethod.toUpperCase();
+    let parsedBody: unknown = undefined;
+
+    if (method !== "GET" && method !== "DELETE") {
+      const token = restRunnerBodyText.trim();
+      if (token) {
+        try {
+          parsedBody = JSON.parse(token);
+        } catch (e) {
+          setRestRunnerError(`Invalid JSON body: ${e instanceof Error ? e.message : String(e)}`);
+          return;
+        }
+      }
+    }
+
+    setRestRunnerBusy(true);
+    setRestRunnerError(null);
+    setRestRunnerResult(null);
+
+    try {
+      const response = await fetch("/api/procore/rest-runner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method,
+          path,
+          companyId: restRunnerCompanyIdOverride.trim() || undefined,
+          body: parsedBody,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setRestRunnerError(
+          result?.details
+            ? `${result?.error || "Request failed"}: ${result.details}`
+            : result?.error || `Request failed (${response.status}).`
+        );
+      }
+      setRestRunnerResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setRestRunnerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRestRunnerBusy(false);
+    }
+  };
+
+  const handleLoadCompanyUsers = async () => {
+    setCompanyUsersBusy(true);
+    setCompanyUsersError(null);
+    setCompanyUsersSummary(null);
+
+    try {
+      const loadUsers = async () => {
+        const projectId = timecardProjectId.trim();
+        const response = await fetch("/api/procore/company-users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            page: 1,
+            perPage: 250,
+            search: companyUsersSearch.trim() || undefined,
+            projectId: projectId || undefined,
+          }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || `Load failed (${response.status}).`);
+        }
+
+        return result;
+      };
+
+      let result = await loadUsers();
+      let data = Array.isArray(result?.data) ? (result.data as CompanyUserOption[]) : [];
+
+      if (data.length === 0 && !companyUsersSearch.trim()) {
+        const syncResponse = await fetch("/api/procore/sync/company-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+        const syncResult = await syncResponse.json().catch(() => ({}));
+        if (!syncResponse.ok) {
+          throw new Error(syncResult?.details || syncResult?.error || `Sync failed (${syncResponse.status}).`);
+        }
+
+        result = await loadUsers();
+        data = Array.isArray(result?.data) ? (result.data as CompanyUserOption[]) : [];
+
+        setCompanyUsersSummary(
+          `Cache was empty. Synced company users and loaded ${data.length} user(s)${result?.syncedAt ? `; synced at ${result.syncedAt}` : ""}.`
+        );
+      } else {
+        setCompanyUsersSummary(
+          `Loaded ${data.length} user(s) from cached company users${result?.syncedAt ? `; synced at ${result.syncedAt}` : ""}.`
+        );
+      }
+
+      setCompanyUsersResult(data);
+    } catch (error) {
+      setCompanyUsersError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCompanyUsersBusy(false);
+    }
+  };
+
+  function parseShortDateToIso(value: string): string | undefined {
+    const token = value.trim();
+    const isoToken = token.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoToken) {
+      return `${isoToken[1]}-${isoToken[2]}-${isoToken[3]}`;
+    }
+    const match = token.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!match) return undefined;
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    let year = Number(match[3]);
+    if (year < 100) year += 2000;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+    return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  function parseContractLabel(value: string): { number: string; title: string } {
+    const raw = value.trim();
+    const match = raw.match(/^([A-Za-z]+-\d+)\s*-\s*(.+)$/);
+    if (!match) {
+      return {
+        number: raw || "UNSPECIFIED",
+        title: raw || "Imported Purchase Order Contract",
+      };
+    }
+    return { number: match[1].trim(), title: match[2].trim() };
+  }
+
+  function parseYesNoBoolean(value: string): boolean | undefined {
+    const token = value.trim().toLowerCase();
+    if (!token) return undefined;
+    if (["yes", "true", "y", "1"].includes(token)) return true;
+    if (["no", "false", "n", "0"].includes(token)) return false;
+    return undefined;
+  }
+
+  function mapCommitmentTypeFromCsv(value: string): string | undefined {
+    const token = value.trim().toLowerCase();
+    if (!token) return undefined;
+    if (token.includes("work order")) return "WorkOrderContract";
+    if (token.includes("purchase order")) return "PurchaseOrderContract";
+    return undefined;
+  }
+
+  function normalizeAccountingMethod(value: string): "amount" | "unit" | undefined {
+    const token = value.trim().toLowerCase();
+    if (!token) return undefined;
+    if (token === "amount") return "amount";
+    if (token === "unit") return "unit";
+    return undefined;
+  }
+
+  function parseTimecardCsvRows(content: string): Record<string, unknown>[] {
+    const lines = parseCsvRecords(content);
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const idxDate = headers.indexOf("date");
+    const idxEmployeeName = headers.indexOf("employee name");
+    const idxEmployeeId = headers.indexOf("employee id");
+    const idxProjectName = headers.indexOf("project name");
+    const idxProjectNumber = headers.indexOf("project number");
+    const idxDescription = headers.indexOf("description");
+    const idxCostCodeLongName = headers.indexOf("cost code long name");
+    const idxBillable = headers.indexOf("billable");
+    const idxHours = headers.indexOf("hours");
+    const idxTimeType = headers.indexOf("formatted time type");
+    const idxCostCodeLongNumber = headers.indexOf("cost code long number");
+    const idxCostCodeName = headers.indexOf("cost code name");
+    const idxClassification = headers.indexOf("classification");
+
+    if (idxDate < 0 || idxEmployeeName < 0 || idxHours < 0) {
+      throw new Error("CSV must contain Date, Employee Name, and Hours columns.");
+    }
+
+    const rows: Record<string, unknown>[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i]);
+      const date = idxDate >= 0 ? (values[idxDate] || "").trim() : "";
+      const employeeName = idxEmployeeName >= 0 ? (values[idxEmployeeName] || "").trim() : "";
+      const hours = idxHours >= 0 ? (values[idxHours] || "").trim() : "";
+      if (!date && !employeeName && !hours) continue;
+
+      rows.push({
+        date: parseShortDateToIso(date) || date,
+        employeeName,
+        employeeId: idxEmployeeId >= 0 ? (values[idxEmployeeId] || "").trim() : "",
+        projectName: idxProjectName >= 0 ? (values[idxProjectName] || "").trim() : "",
+        projectNumber: idxProjectNumber >= 0 ? (values[idxProjectNumber] || "").trim() : "",
+        description: idxDescription >= 0 ? (values[idxDescription] || "").trim() : "",
+        costCodeLongName: idxCostCodeLongName >= 0 ? (values[idxCostCodeLongName] || "").trim() : "",
+        billable: idxBillable >= 0 ? (values[idxBillable] || "").trim() : "",
+        hours,
+        timeTypeName: idxTimeType >= 0 ? (values[idxTimeType] || "").trim() : "",
+        costCodeLongNumber: idxCostCodeLongNumber >= 0 ? (values[idxCostCodeLongNumber] || "").trim() : "",
+        costCodeName: idxCostCodeName >= 0 ? (values[idxCostCodeName] || "").trim() : "",
+        classification: idxClassification >= 0 ? (values[idxClassification] || "").trim() : "",
+      });
+    }
+
+    return rows;
+  }
+
+  function mergeTimecardFallbackPayload(payload: Record<string, unknown>, fallback: Record<string, unknown>) {
+    const merged: Record<string, unknown> = { ...payload };
+    for (const [key, value] of Object.entries(fallback)) {
+      if (merged[key] === undefined || merged[key] === null || merged[key] === "") {
+        merged[key] = value;
+      }
+    }
+    return merged;
+  }
+
+  const handleTimecardCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const projectId = timecardProjectId.trim();
+    setTimecardCsvError(null);
+    setTimecardCsvSummary(null);
+    setTimecardCsvResults(null);
+    setTimecardCsvRows([]);
+
+    if (!projectId) {
+      setTimecardCsvError("Project ID is required before uploading a timecard CSV.");
+      e.target.value = "";
+      return;
+    }
+
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setTimecardCsvError("Please upload a .csv file.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = String(event.target?.result || "");
+        const parsedRows = parseTimecardCsvRows(content);
+        if (parsedRows.length === 0) {
+          setTimecardCsvError("No rows were parsed from the CSV.");
+          return;
+        }
+
+        setTimecardCsvBusy(true);
+        const response = await fetch("/api/procore/timecard-entries/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, rows: parsedRows }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || `Resolve failed (${response.status}).`);
+        }
+
+        const resolvedRows: TimecardCsvResolvedRow[] = Array.isArray(result?.rows)
+          ? (result.rows as Omit<TimecardCsvResolvedRow, "status">[]).map((row) => ({
+              ...row,
+              status: row.resolved ? ("pending" as const) : ("error" as const),
+              statusMessage: row.resolved ? undefined : row.resolutionNotes.join(" "),
+            }))
+          : [];
+
+        const resolvedCount = resolvedRows.filter((row) => row.resolved).length;
+        setTimecardCsvRows(resolvedRows);
+        setTimecardCsvSummary(
+          `${file.name}: prepared ${resolvedRows.length} row(s); ${resolvedCount} fully resolved, ${resolvedRows.length - resolvedCount} need attention.`
+        );
+      } catch (error) {
+        setTimecardCsvError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setTimecardCsvBusy(false);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleSyncTimecardLookups = async (kind: "all" | "users" | "types" | "codes") => {
+    const projectId = timecardProjectId.trim();
+    if ((kind === "types" || kind === "codes") && !projectId) {
+      setTimecardCsvError("Project ID is required before syncing time types or cost codes.");
+      return;
+    }
+
+    setTimecardSyncBusy(kind);
+    setTimecardSyncMessage(null);
+    setTimecardCsvError(null);
+
+    try {
+      const runSync = async (syncKind: "users" | "types" | "codes") => {
+        let response: Response;
+        if (syncKind === "users") {
+          response = await fetch("/api/procore/sync/company-users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+        } else if (syncKind === "types") {
+          response = await fetch("/api/procore/sync/timecard-time-types", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ maxProjects: 0, concurrency: 4, persist: true }),
+          });
+        } else {
+          response = await fetch("/api/procore/sync/cost-codes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, perPage: 100 }),
+          });
+        }
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || `Sync failed (${response.status}).`);
+        }
+
+        return result;
+      };
+
+      if (kind === "all") {
+        const usersResult = await runSync("users");
+        const typesResult = await runSync("types");
+        const codesResult = await runSync("codes");
+        setTimecardSyncMessage(
+          `Synced all lookup data: ${usersResult?.totalUpserted ?? 0} user(s), ${typesResult?.totalTypesSaved ?? typesResult?.totalTypesFetched ?? 0} time type(s), ${codesResult?.totalFetched ?? 0} cost code(s).`
+        );
+      } else {
+        const result = await runSync(kind);
+        if (kind === "users") {
+          setTimecardSyncMessage(`Synced company users: ${result?.totalUpserted ?? 0} upserted.`);
+        } else if (kind === "types") {
+          setTimecardSyncMessage(`Synced timecard time types: ${result?.totalTypesSaved ?? result?.totalTypesFetched ?? 0} saved across ${result?.projectsWithTypes ?? 0} project(s).`);
+        } else {
+          setTimecardSyncMessage(`Synced cost codes: ${result?.totalFetched ?? 0} fetched for project ${projectId}.`);
+        }
+      }
+    } catch (error) {
+      setTimecardCsvError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTimecardSyncBusy(null);
+    }
+  };
+
+  const handleDownloadTimecardJson = () => {
+    let fallback: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(timecardFallbackJsonText || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        fallback = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // ignore invalid fallback JSON on download; raw payloads are still useful
+    }
+
+    downloadJson(
+      "timecard-entries-converted.json",
+      timecardCsvRows.map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: mergeTimecardFallbackPayload(row.payload, fallback),
+        resolved: row.resolved,
+        resolutionNotes: row.resolutionNotes,
+      }))
+    );
+  };
+
+  const handleBulkCreateTimecardEntries = async () => {
+    const projectId = timecardProjectId.trim();
+    if (!projectId) {
+      setTimecardCsvError("Project ID is required.");
+      return;
+    }
+    if (timecardCsvRows.length === 0) {
+      setTimecardCsvError("Upload and convert a CSV first.");
+      return;
+    }
+
+    let fallback: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(timecardFallbackJsonText || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Fallback JSON must be an object.");
+      }
+      fallback = parsed as Record<string, unknown>;
+    } catch (error) {
+      setTimecardCsvError(`Invalid fallback JSON: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    setTimecardCsvBusy(true);
+    setTimecardCsvError(null);
+    setTimecardCsvResults(null);
+
+    const updatedRows = [...timecardCsvRows];
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < updatedRows.length; i++) {
+      const row = updatedRows[i];
+      const payload = mergeTimecardFallbackPayload(row.payload, fallback);
+      if (!row.resolved && (!payload.party_id || !payload.timecard_time_type_id || !payload.cost_code_id)) {
+        updatedRows[i] = {
+          ...row,
+          status: "error",
+          statusMessage: row.resolutionNotes.join(" ") || "Row is missing required resolved IDs.",
+        };
+        failed += 1;
+        setTimecardCsvRows([...updatedRows]);
+        continue;
+      }
+
+      try {
+        const response = await fetch("/api/procore/timecard-entries/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: projectId, timecard_entry: payload }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          const createdId = result?.result?.id || result?.result?.data?.id || "OK";
+          updatedRows[i] = { ...row, status: "success", statusMessage: `ID ${createdId}` };
+          success += 1;
+        } else {
+          const upstreamMessage =
+            result?.result?.error?.message ||
+            result?.result?.message ||
+            result?.result?.details ||
+            result?.result?.error ||
+            result?.rawResponseText ||
+            result?.details ||
+            result?.error;
+          const message = upstreamMessage || `Create failed (${response.status}).`;
+          updatedRows[i] = { ...row, status: "error", statusMessage: message };
+          failed += 1;
+        }
+      } catch (error) {
+        updatedRows[i] = {
+          ...row,
+          status: "error",
+          statusMessage: error instanceof Error ? error.message : String(error),
+        };
+        failed += 1;
+      }
+
+      setTimecardCsvRows([...updatedRows]);
+    }
+
+    setTimecardCsvBusy(false);
+    setTimecardCsvResults({ success, failed });
+  };
+
+  function buildPurchaseOrderContractCsvRows(content: string, fileName: string): PurchaseOrderContractCsvRow[] {
+    const lines = parseCsvRecords(content);
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const contractIndex =
+      headers.indexOf("contract") >= 0
+        ? headers.indexOf("contract")
+        : headers.indexOf("number");
+    const vendorIndex =
+      headers.indexOf("vendor") >= 0
+        ? headers.indexOf("vendor")
+        : headers.indexOf("contract company");
+    const titleIndex = headers.indexOf("title");
+    const dateIndex =
+      headers.indexOf("date") >= 0
+        ? headers.indexOf("date")
+        : headers.indexOf("signed contract received date");
+
+    if (contractIndex < 0 || dateIndex < 0) {
+      throw new Error(
+        "CSV must contain Contract+Date columns (or Number + Signed Contract Received Date aliases)."
+      );
+    }
+
+    const vendorIdIndex =
+      headers.indexOf("vendor_id") >= 0
+        ? headers.indexOf("vendor_id")
+        : headers.indexOf("vendor id");
+
+    const contractTypeIndex = headers.indexOf("contract type");
+    const statusIndex = headers.indexOf("status");
+    const executedIndex = headers.indexOf("executed");
+    const privateIndex = headers.indexOf("private");
+    const ssovStatusIndex = headers.indexOf("ssov status");
+    const descriptionIndex = headers.indexOf("description");
+    const accountingMethodIndex = headers.indexOf("accounting method");
+
+    const grouped = new Map<
+      string,
+      {
+        vendor: string;
+        vendorId?: string;
+        title: string;
+        dates: string[];
+        count: number;
+        contractType?: string;
+        status?: string;
+        executed?: boolean;
+        isPrivate?: boolean;
+        ssovStatus?: string;
+        description?: string;
+        accountingMethod?: "amount" | "unit";
+      }
+    >();
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i]);
+      const contractLabel = (values[contractIndex] || "").trim();
+      if (!contractLabel) continue;
+      const vendorName = (vendorIndex >= 0 ? values[vendorIndex] : "")?.trim() || "";
+      const vendorIdRaw = (vendorIdIndex >= 0 ? values[vendorIdIndex] : "")?.trim() || "";
+      const vendorIdParsed = /^\d+$/.test(vendorIdRaw) ? vendorIdRaw : "";
+      const titleValue = (titleIndex >= 0 ? values[titleIndex] : "")?.trim() || "";
+      const dateValue = (values[dateIndex] || "").trim();
+      const dateIso = parseShortDateToIso(dateValue);
+      const contractTypeRaw = (contractTypeIndex >= 0 ? values[contractTypeIndex] : "")?.trim() || "";
+      const mappedContractType = mapCommitmentTypeFromCsv(contractTypeRaw);
+      const statusRaw = (statusIndex >= 0 ? values[statusIndex] : "")?.trim() || "";
+      const executedRaw = (executedIndex >= 0 ? values[executedIndex] : "")?.trim() || "";
+      const privateRaw = (privateIndex >= 0 ? values[privateIndex] : "")?.trim() || "";
+      const ssovStatusRaw = (ssovStatusIndex >= 0 ? values[ssovStatusIndex] : "")?.trim() || "";
+      const descriptionRaw = (descriptionIndex >= 0 ? values[descriptionIndex] : "")?.trim() || "";
+      const accountingMethodRaw = (accountingMethodIndex >= 0 ? values[accountingMethodIndex] : "")?.trim() || "";
+      const executedValue = parseYesNoBoolean(executedRaw);
+      const privateValue = parseYesNoBoolean(privateRaw);
+      const accountingMethodValue = normalizeAccountingMethod(accountingMethodRaw);
+
+      if (!grouped.has(contractLabel)) {
+        grouped.set(contractLabel, {
+          vendor: vendorName,
+          vendorId: vendorIdParsed || undefined,
+          title: titleValue,
+          dates: [],
+          count: 0,
+          contractType: mappedContractType,
+          status: statusRaw || undefined,
+          executed: executedValue,
+          isPrivate: privateValue,
+          ssovStatus: ssovStatusRaw || undefined,
+          description: descriptionRaw || undefined,
+          accountingMethod: accountingMethodValue,
+        });
+      }
+      const group = grouped.get(contractLabel)!;
+      if (!group.vendor && vendorName) group.vendor = vendorName;
+      if (group.vendorId === undefined && vendorIdParsed) {
+        group.vendorId = vendorIdParsed;
+      }
+      if (!group.title && titleValue) group.title = titleValue;
+      if (!group.contractType && mappedContractType) group.contractType = mappedContractType;
+      if (!group.status && statusRaw) group.status = statusRaw;
+      if (group.executed === undefined && executedValue !== undefined) group.executed = executedValue;
+      if (group.isPrivate === undefined && privateValue !== undefined) group.isPrivate = privateValue;
+      if (!group.ssovStatus && ssovStatusRaw) group.ssovStatus = ssovStatusRaw;
+      if (!group.description && descriptionRaw) group.description = descriptionRaw;
+      if (!group.accountingMethod && accountingMethodValue) group.accountingMethod = accountingMethodValue;
+      if (dateIso) group.dates.push(dateIso);
+      group.count += 1;
+    }
+
+    const rows: PurchaseOrderContractCsvRow[] = [];
+    for (const [contractLabel, group] of grouped.entries()) {
+      const parsed = parseContractLabel(contractLabel);
+      const number = parsed.number;
+      const title = group.title || parsed.title;
+      const sortedDates = [...group.dates].sort();
+      const contractDate = sortedDates[0] || "";
+      const accountingMethod = purchaseOrderContractCsvAllowUnitAccounting
+        ? group.accountingMethod || "amount"
+        : "amount";
+      const isPrivate = purchaseOrderContractCsvAllowPrivate ? group.isPrivate ?? false : false;
+      rows.push({
+        contractLabel,
+        vendorName: group.vendor,
+        vendorId: group.vendorId,
+        contractNumber: number,
+        contractTitle: title,
+        contractDate,
+        rowCount: group.count,
+        status: "pending",
+        payload: {
+          type: group.contractType || "PurchaseOrderContract",
+          accounting_method: accountingMethod,
+          contract_date: contractDate,
+          delivery_date: contractDate,
+          issued_on_date: contractDate,
+          signed_contract_received_date: contractDate,
+          number,
+          title,
+          description: group.description || `Imported from CSV (${fileName}).`,
+          status: group.status || "Approved",
+          ...(group.executed !== undefined ? { executed: group.executed } : {}),
+          private: isPrivate,
+          ...(group.ssovStatus ? { billing_schedule_of_values_status: group.ssovStatus.toLowerCase() } : {}),
+          ...(group.ssovStatus ? { enable_ssov: true } : {}),
+          payment_terms: "Net 30",
+          ...(group.vendorId !== undefined ? { vendor_id: group.vendorId } : {}),
+        },
+      });
+    }
+
+    return rows.sort((a, b) => a.contractNumber.localeCompare(b.contractNumber));
+  }
+
+  const handlePurchaseOrderContractCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPurchaseOrderContractCsvError(null);
+    setPurchaseOrderContractCsvSummary(null);
+    setPurchaseOrderContractCsvResults(null);
+    setPurchaseOrderContractCsvRows([]);
+
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setPurchaseOrderContractCsvError("Please upload a .csv file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = String(event.target?.result || "");
+        const rows = buildPurchaseOrderContractCsvRows(content, file.name);
+        if (rows.length === 0) {
+          setPurchaseOrderContractCsvError("No contract rows were parsed from CSV.");
+          return;
+        }
+        setPurchaseOrderContractCsvRows(rows);
+        setPurchaseOrderContractCsvSummary(`Prepared ${rows.length} purchase order contract(s) for import.`);
+      } catch (err) {
+        setPurchaseOrderContractCsvError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleBulkCreatePurchaseOrderContractsFromCsv = async () => {
+    const projectId = purchaseOrderContractProjectId.trim();
+    if (!projectId) {
+      setPurchaseOrderContractCsvError("Project ID is required.");
+      return;
+    }
+    if (purchaseOrderContractCsvRows.length === 0) {
+      setPurchaseOrderContractCsvError("Upload a CSV first.");
+      return;
+    }
+
+    setPurchaseOrderContractCsvBusy(true);
+    setPurchaseOrderContractCsvError(null);
+    setPurchaseOrderContractCsvResults(null);
+
+    let success = 0;
+    let failed = 0;
+    const updatedRows = [...purchaseOrderContractCsvRows];
+
+    for (let i = 0; i < updatedRows.length; i++) {
+      const row = updatedRows[i];
+      try {
+        const response = await fetch("/api/procore/purchase-order-contracts/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: projectId,
+            purchase_order_contract: row.payload,
+            run_configurable_validations: purchaseOrderContractRunValidations,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          const createdId = result?.data?.id || result?.id || "OK";
+          updatedRows[i] = { ...row, status: "success", statusMessage: `ID ${createdId}` };
+          success += 1;
+        } else {
+          const msg = result?.details || result?.error || `Create failed (${response.status}).`;
+          updatedRows[i] = { ...row, status: "error", statusMessage: msg };
+          failed += 1;
+        }
+      } catch (err) {
+        updatedRows[i] = {
+          ...row,
+          status: "error",
+          statusMessage: err instanceof Error ? err.message : String(err),
+        };
+        failed += 1;
+      }
+
+      setPurchaseOrderContractCsvRows([...updatedRows]);
+    }
+
+    setPurchaseOrderContractCsvBusy(false);
+    setPurchaseOrderContractCsvResults({ success, failed });
+  };
+
+  function parseMoneyLike(value: string): number {
+    const parsed = Number(String(value || "").replace(/[$,]/g, "").trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function toPositiveNumber(value: string): number {
+    const parsed = Number(String(value || "").replace(/,/g, "").trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function normalizeMappingKey(value: string): string {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  function normalizeNumericIdToken(value: string): string {
+    const token = String(value || "").trim();
+    if (!token) return "";
+    const decommad = token.replace(/,/g, "");
+    const numericLike = decommad.match(/^(\d+)(?:\.0+)?$/);
+    if (numericLike) return numericLike[1];
+    const scientificLike = decommad.match(/^[-+]?\d+(?:\.\d+)?[eE][-+]?\d+$/);
+    if (scientificLike) {
+      const asNumber = Number(decommad);
+      if (Number.isFinite(asNumber)) {
+        // Convert scientific notation to plain integer token for Procore IDs.
+        return asNumber.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 0 });
+      }
+    }
+    return token;
+  }
+
+  function isLikelyIdToken(value: string): boolean {
+    return /^\d{8,}$/.test(String(value || "").trim());
+  }
+
+  function normalizeCostTypeCode(value: string): string {
+    const token = normalizeMappingKey(value);
+    if (!token) return "";
+    if (token === "equipment" || token === "e") return "E";
+    if (token === "labor" || token === "l") return "L";
+    if (token === "material" || token === "m") return "M";
+    if (token === "subcontractor" || token === "sub" || token === "s") return "S";
+    if (token === "other" || token === "o") return "O";
+    return token.toUpperCase();
+  }
+
+  type PurchaseOrderLineItemProjectRefs = {
+    costCodes: Array<{ id: number; fullCode: string; name: string }>;
+    costTypes: Array<{ id: number; code: string; name: string }>;
+    costTypeByCodeMap: Record<string, string>;
+    wbsCodeMap: Record<string, number>;
+  };
+
+  async function fetchPurchaseOrderLineItemReferences(projectId: string): Promise<PurchaseOrderLineItemProjectRefs> {
+    const runLookup = async (
+      path: string,
+      query: Record<string, unknown>,
+      opts?: { optional404?: boolean }
+    ) => {
+      const response = await fetch("/api/procore/rest-runner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: "GET", path, query }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (opts?.optional404 && response.status === 404) {
+          return [];
+        }
+        const details = result?.details || result?.error || `Lookup failed (${response.status}).`;
+        throw new Error(`${path}: ${details}`);
+      }
+      return Array.isArray(result?.result) ? result.result : [];
+    };
+
+    const [costCodeRows, costTypeRows, budgetLineItems, wbsCodeRows] = await Promise.all([
+      runLookup("/rest/v1.0/cost_codes", { project_id: projectId, page: 1, per_page: 1000 }),
+      runLookup("/rest/v1.0/line_item_types", { project_id: projectId, page: 1, per_page: 1000 }),
+      runLookup("/rest/v1.0/budget_line_items", { project_id: projectId, page: 1, per_page: 1000 }, { optional404: true }),
+      runLookup("/rest/v1.0/projects/" + projectId + "/wbs_codes", { page: 1, per_page: 1000 }, { optional404: true }),
+    ]);
+
+    const costCodes = costCodeRows
+      .map((row: any) => ({
+        id: Number(row?.id),
+        fullCode: String(row?.full_code || row?.code || "").trim(),
+        name: String(row?.name || "").trim(),
+      }))
+      .filter((row: any) => Number.isFinite(row.id) && row.id > 0);
+
+    const costTypes = costTypeRows
+      .map((row: any) => ({
+        id: Number(row?.id),
+        code: String(row?.code || "").trim(),
+        name: String(row?.name || "").trim(),
+      }))
+      .filter((row: any) => Number.isFinite(row.id) && row.id > 0);
+
+    const typeCodeByName: Record<string, string> = {};
+    for (const row of costTypes) {
+      const nameKey = normalizeMappingKey(row.name);
+      const codeValue = String(row.code || "").trim().toUpperCase();
+      if (nameKey && codeValue) {
+        typeCodeByName[nameKey] = codeValue;
+      }
+    }
+
+    const costTypeByCodeMap: Record<string, string> = {};
+    for (const row of budgetLineItems as any[]) {
+      const costCode = row?.cost_code || {};
+      const lineItemType = row?.line_item_type || {};
+      const typeName = String(lineItemType?.name || "").trim();
+      const typeNameKey = normalizeMappingKey(typeName);
+      const directCode = String(lineItemType?.code || "").trim().toUpperCase();
+      const mappedCode = typeNameKey ? typeCodeByName[typeNameKey] || "" : "";
+      const costTypeCode = directCode || mappedCode || normalizeCostTypeCode(typeName);
+      const fullCode = String(costCode?.full_code || costCode?.code || "").trim();
+      const costCodeId = String(costCode?.id || "").trim();
+      if (!costTypeCode) continue;
+      if (fullCode) costTypeByCodeMap[normalizeMappingKey(fullCode)] = costTypeCode;
+      if (costCodeId) costTypeByCodeMap[normalizeMappingKey(costCodeId)] = costTypeCode;
+    }
+
+    const wbsCodeMap: Record<string, number> = {};
+    for (const row of wbsCodeRows as any[]) {
+      const flatCode = String(row?.flat_code || "").trim();
+      const wbsId = Number(row?.id);
+      if (flatCode && Number.isFinite(wbsId) && wbsId > 0) {
+        wbsCodeMap[normalizeMappingKey(flatCode)] = wbsId;
+      }
+    }
+
+    return {
+      costCodes,
+      costTypes,
+      costTypeByCodeMap,
+      wbsCodeMap,
+    };
+  }
+
+  function buildPurchaseOrderLineItemPayloadFromCsvRow(
+    row: Pick<PurchaseOrderLineItemCsvRow, "costCodeRaw" | "costType" | "description" | "quantity" | "uom" | "unitPrice" | "amount">,
+    refs?: PurchaseOrderLineItemProjectRefs
+  ): { payload: Record<string, unknown>; mappedCostCode: string; mappedCostType: string } {
+    const defaultLineItemTypeId = Number(purchaseOrderLineItemCsvDefaultTypeId.trim());
+    const defaultWbsId = Number(purchaseOrderLineItemCsvDefaultWbsId.trim());
+    const defaultBudgetLineItemId = Number(purchaseOrderLineItemCsvDefaultBudgetLineItemId.trim());
+
+    const refCostCodes = refs?.costCodes || purchaseOrderLineItemCostCodes;
+    const refCostTypes = refs?.costTypes || purchaseOrderLineItemCostTypes;
+    const refTypeByCodeMap = refs?.costTypeByCodeMap || purchaseOrderLineItemCostTypeByCodeMap;
+    const refWbsMap = refs?.wbsCodeMap || purchaseOrderLineItemWbsCodeMap;
+
+    const costCodeIdByFullCode = new Map<string, number>();
+    for (const codeRow of refCostCodes) {
+      const key = normalizeMappingKey(codeRow.fullCode || String(codeRow.id));
+      if (key && Number.isFinite(codeRow.id) && codeRow.id > 0) {
+        costCodeIdByFullCode.set(key, codeRow.id);
+      }
+    }
+
+    const lineItemTypeIdByCodeOrName = new Map<string, number>();
+    for (const typeRow of refCostTypes) {
+      if (!Number.isFinite(typeRow.id) || typeRow.id <= 0) continue;
+      const codeKey = normalizeMappingKey(typeRow.code);
+      const nameKey = normalizeMappingKey(typeRow.name);
+      if (codeKey) lineItemTypeIdByCodeOrName.set(codeKey, typeRow.id);
+      if (nameKey) lineItemTypeIdByCodeOrName.set(nameKey, typeRow.id);
+    }
+
+    const mappedCostCode =
+      purchaseOrderLineItemCostCodeMap[normalizeMappingKey(row.costCodeRaw)] || row.costCodeRaw;
+    const mappedTypeByCode =
+      refTypeByCodeMap[`${normalizeMappingKey(row.costCodeRaw)}|${normalizeMappingKey(row.costType)}`] ||
+      refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
+      refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
+      "";
+    const mappedCostType =
+      mappedTypeByCode || purchaseOrderLineItemCostTypeMap[normalizeMappingKey(row.costType)] || row.costType;
+
+    const payload: Record<string, unknown> = {
+      description: row.description,
+      quantity: row.quantity,
+      uom: row.uom,
+      unit_cost: row.unitPrice,
+      amount: row.amount,
+      extended_type: "manual",
+    };
+
+    if (Number.isFinite(defaultLineItemTypeId) && defaultLineItemTypeId > 0) {
+      payload.line_item_type_id = defaultLineItemTypeId;
+    }
+    if (Number.isFinite(defaultWbsId) && defaultWbsId > 0) {
+      payload.wbs_code_id = defaultWbsId;
+    }
+    if (Number.isFinite(defaultBudgetLineItemId) && defaultBudgetLineItemId > 0) {
+      payload.budget_line_item_id = defaultBudgetLineItemId;
+    }
+
+    const numericCostCode = Number(mappedCostCode);
+    const mappedCostCodeId =
+      Number.isFinite(numericCostCode) && numericCostCode > 0
+        ? numericCostCode
+        : costCodeIdByFullCode.get(normalizeMappingKey(mappedCostCode || ""));
+
+    if (mappedCostCodeId !== undefined) {
+      payload.cost_code_id = mappedCostCodeId;
+    } else if (mappedCostCode) {
+      payload.origin_data = mappedCostCode;
+    }
+
+    if (mappedCostType) {
+      payload.origin_code = mappedCostType;
+      const mappedTypeId = lineItemTypeIdByCodeOrName.get(normalizeMappingKey(mappedCostType));
+      if (mappedTypeId && (!payload.line_item_type_id || Number(payload.line_item_type_id) <= 0)) {
+        payload.line_item_type_id = mappedTypeId;
+      }
+    }
+
+    if (!payload.wbs_code_id || Number(payload.wbs_code_id) <= 0) {
+      const effectiveCostCode = mappedCostCode || row.costCodeRaw;
+      const effectiveType = mappedCostType || row.costType;
+      if (effectiveCostCode && effectiveType) {
+        const flatKey = normalizeMappingKey(`${effectiveCostCode}.${effectiveType}`);
+        const resolvedWbsId = refWbsMap[flatKey];
+        if (resolvedWbsId) payload.wbs_code_id = resolvedWbsId;
+      }
+    }
+
+    // Secondary fallback: if exact {costCode}.{type} was not found, try matching by cost code prefix in WBS map.
+    // This handles files with generic/legacy type labels where project WBS uses a different type code.
+    if (!payload.wbs_code_id || Number(payload.wbs_code_id) <= 0) {
+      const effectiveCostCode = normalizeMappingKey(mappedCostCode || row.costCodeRaw);
+      if (effectiveCostCode) {
+        const segments = effectiveCostCode.split("-").filter(Boolean);
+        const codePrefixes: string[] = [];
+        for (let i = segments.length; i >= 2; i--) {
+          codePrefixes.push(normalizeMappingKey(segments.slice(0, i).join("-")));
+        }
+        if (!codePrefixes.includes(effectiveCostCode)) {
+          codePrefixes.unshift(effectiveCostCode);
+        }
+
+        const candidates = Object.entries(refWbsMap).filter(([flatCode]) => {
+          return codePrefixes.some((codePrefix) =>
+            flatCode.startsWith(`${codePrefix}.`) || flatCode.startsWith(`${codePrefix}-`)
+          );
+        });
+
+        if (candidates.length > 0) {
+          const preferredTypes = [
+            normalizeMappingKey(mappedCostType || ""),
+            normalizeMappingKey(row.costType || ""),
+            normalizeMappingKey(refTypeByCodeMap[effectiveCostCode] || ""),
+          ].filter(Boolean);
+
+          let selected = candidates.find(([flatCode]) => {
+            const flatParts = flatCode.split(".");
+            const suffix = flatParts.length > 1 ? flatParts[flatParts.length - 1] : "";
+            return preferredTypes.includes(normalizeMappingKey(suffix));
+          });
+
+          if (!selected) {
+            // If no preferred type matches, use the first project-valid WBS for this cost code.
+            selected = candidates[0];
+          }
+
+          const [selectedFlatCode, selectedWbsId] = selected;
+          payload.wbs_code_id = selectedWbsId;
+
+          const selectedParts = selectedFlatCode.split(".");
+          const selectedTypeCodeRaw = selectedParts.length > 1 ? selectedParts[selectedParts.length - 1] : "";
+          const selectedTypeCode = selectedTypeCodeRaw.toUpperCase();
+          if (selectedTypeCode) {
+            payload.origin_code = selectedTypeCode;
+            const selectedTypeId = lineItemTypeIdByCodeOrName.get(normalizeMappingKey(selectedTypeCode));
+            if (selectedTypeId && (!payload.line_item_type_id || Number(payload.line_item_type_id) <= 0)) {
+              payload.line_item_type_id = selectedTypeId;
+            }
+          }
+        }
+      }
+    }
+
+    return { payload, mappedCostCode, mappedCostType };
+  }
+
+  function buildPurchaseOrderLineItemCsvRows(content: string): PurchaseOrderLineItemCsvRow[] {
+    const lines = parseCsvRecords(content);
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const idxCostCode = headers.indexOf("cost code");
+    const idxCostType = headers.indexOf("cost type");
+    const idxDescription = headers.indexOf("description");
+    const idxQuantity = headers.indexOf("quantity");
+    const idxUom = headers.indexOf("uom");
+    const idxUnitPrice = headers.indexOf("unit price");
+    const idxSubtotal = headers.indexOf("subtotal override");
+    const idxProjectId = headers.findIndex((h) =>
+      ["project_id", "project id", "projectid", "procore project id"].includes(h)
+    );
+    const idxPurchaseOrderContractId = headers.findIndex((h) =>
+      [
+        "purchase_order_contract_id",
+        "purchase order contract id",
+        "purchaseordercontractid",
+        "commitment_contract_id",
+        "commitment contract id",
+      ].includes(h)
+    );
+
+    if (idxDescription < 0 || idxQuantity < 0 || idxUom < 0 || idxUnitPrice < 0) {
+      throw new Error(
+        "CSV must include Description, Quantity, UOM, and Unit Price columns."
+      );
+    }
+    if (idxProjectId < 0 || idxPurchaseOrderContractId < 0) {
+      throw new Error(
+        "CSV must include project_id and purchase_order_contract_id columns for bulk create."
+      );
+    }
+
+    const rows: PurchaseOrderLineItemCsvRow[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i]);
+      const description = (values[idxDescription] || "").trim();
+      if (!description) continue;
+
+      const quantity = toPositiveNumber(values[idxQuantity] || "");
+      const unitPrice = parseMoneyLike(values[idxUnitPrice] || "");
+      const subtotalOverride = idxSubtotal >= 0 ? parseMoneyLike(values[idxSubtotal] || "") : 0;
+      const amount = subtotalOverride > 0 ? subtotalOverride : Number((quantity * unitPrice).toFixed(2));
+      const costCodeRaw = idxCostCode >= 0 ? (values[idxCostCode] || "").trim() : "";
+      const costType = idxCostType >= 0 ? (values[idxCostType] || "").trim() : "";
+      const uom = (values[idxUom] || "").trim() || "ea";
+
+      const rowProjectId = idxProjectId >= 0 ? normalizeNumericIdToken(values[idxProjectId] || "") : "";
+      const rowPurchaseOrderContractId =
+        idxPurchaseOrderContractId >= 0 ? normalizeNumericIdToken(values[idxPurchaseOrderContractId] || "") : "";
+
+      const { payload, mappedCostCode, mappedCostType } = buildPurchaseOrderLineItemPayloadFromCsvRow({
+        costCodeRaw,
+        costType,
+        description,
+        quantity,
+        uom,
+        unitPrice,
+        amount,
+      });
+
+      rows.push({
+        projectId: rowProjectId || undefined,
+        purchaseOrderContractId: rowPurchaseOrderContractId || undefined,
+        costCodeRaw,
+        costType,
+        mappedCostCode,
+        mappedCostType,
+        description,
+        quantity,
+        uom,
+        unitPrice,
+        amount,
+        status: "pending",
+        payload,
+      });
+    }
+
+    return rows;
+  }
+
+  const handleLoadPurchaseOrderLineItemReferences = async () => {
+    const projectId = purchaseOrderLineItemProjectId.trim();
+    if (!projectId) {
+      setPurchaseOrderLineItemRefsError("Project ID is required.");
+      return;
+    }
+
+    setPurchaseOrderLineItemRefsBusy(true);
+    setPurchaseOrderLineItemRefsError(null);
+    setPurchaseOrderLineItemRefsSummary(null);
+
+    try {
+      const refs = await fetchPurchaseOrderLineItemReferences(projectId);
+
+      setPurchaseOrderLineItemCostCodes(refs.costCodes);
+      setPurchaseOrderLineItemCostTypes(refs.costTypes);
+      setPurchaseOrderLineItemWbsCodeMap(refs.wbsCodeMap);
+      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...prev, ...refs.costTypeByCodeMap }));
+
+      if (refs.costTypes[0]?.id && !purchaseOrderLineItemCsvDefaultTypeId.trim()) {
+        setPurchaseOrderLineItemCsvDefaultTypeId(String(refs.costTypes[0].id));
+      }
+
+      try {
+        const parsed = JSON.parse(purchaseOrderLineItemJsonText || "{}");
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          if (refs.costCodes[0]?.id) parsed.cost_code_id = refs.costCodes[0].id;
+          if (refs.costTypes[0]?.id) parsed.line_item_type_id = refs.costTypes[0].id;
+          setPurchaseOrderLineItemJsonText(JSON.stringify(parsed, null, 2));
+        }
+      } catch {
+        // Leave JSON untouched if it is currently invalid.
+      }
+
+      setPurchaseOrderLineItemRefsSummary(
+        `Loaded ${refs.costCodes.length} project cost code(s), ${refs.costTypes.length} cost type(s), and ${Object.keys(refs.costTypeByCodeMap).length} cost-code-to-type mapping(s) from budget line items. Updated line_item JSON with current IDs.`
+      );
+    } catch (error) {
+      setPurchaseOrderLineItemRefsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPurchaseOrderLineItemRefsBusy(false);
+    }
+  };
+
+  const handlePurchaseOrderLineItemCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPurchaseOrderLineItemCsvError(null);
+    setPurchaseOrderLineItemCsvSummary(null);
+    setPurchaseOrderLineItemCsvResults(null);
+    setPurchaseOrderLineItemCsvRows([]);
+
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setPurchaseOrderLineItemCsvError("Please upload a .csv file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = String(event.target?.result || "");
+        const rows = buildPurchaseOrderLineItemCsvRows(content);
+        if (rows.length === 0) {
+          setPurchaseOrderLineItemCsvError("No line item rows were parsed from CSV.");
+          return;
+        }
+        const groupedTargets = new Set(
+          rows.map((row) => `${row.projectId || purchaseOrderLineItemProjectId.trim()}:${row.purchaseOrderContractId || purchaseOrderLineItemContractId.trim()}`)
+        );
+        setPurchaseOrderLineItemCsvRows(rows);
+        setPurchaseOrderLineItemCsvSummary(
+          `Prepared ${rows.length} line item(s) for import across ${groupedTargets.size} project/contract target(s). Include project_id and purchase_order_contract_id columns to route rows automatically.`
+        );
+      } catch (err) {
+        setPurchaseOrderLineItemCsvError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handlePurchaseOrderLineItemMappingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPurchaseOrderLineItemMappingBusy(true);
+    setPurchaseOrderLineItemMappingError(null);
+    setPurchaseOrderLineItemMappingSummary(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      if (!workbook.SheetNames.length) {
+        throw new Error("Workbook has no sheets.");
+      }
+
+      const codeMap: Record<string, string> = {};
+      const typeMap: Record<string, string> = {};
+      const typeByCodeMap: Record<string, string> = {};
+      let scannedRowCount = 0;
+      let scannedSheetCount = 0;
+
+      const readText = (row: Record<string, unknown>, matcher: (key: string) => boolean): string => {
+        for (const [key, value] of Object.entries(row)) {
+          if (!matcher(key)) continue;
+          const token = String(value ?? "").trim();
+          if (token) return token;
+        }
+        return "";
+      };
+
+      const readTextFromNormalized = (
+        row: Record<string, unknown>,
+        matcher: (normalizedKey: string) => boolean
+      ): string => {
+        for (const [key, value] of Object.entries(row)) {
+          const normalizedKey = normalizeMappingKey(key).replace(/[^a-z0-9]+/g, " ").trim();
+          if (!matcher(normalizedKey)) continue;
+          const token = String(value ?? "").trim();
+          if (token) return token;
+        }
+        return "";
+      };
+
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (!rows.length) continue;
+        scannedSheetCount += 1;
+        scannedRowCount += rows.length;
+
+        for (const row of rows) {
+          const oldCode =
+            readText(row, (k) => /old.*cost.*code|legacy.*cost.*code|from.*cost.*code|cost.*code.*old/i.test(k)) ||
+            readText(row, (k) => /^old[_\s-]*code$/i.test(k));
+          const newCode =
+            readText(row, (k) => /new.*cost.*code|to.*cost.*code|cost.*code.*new/i.test(k)) ||
+            readText(row, (k) => /^new[_\s-]*code$/i.test(k));
+
+          const oldType =
+            readText(row, (k) => /old.*cost.*type|legacy.*cost.*type|from.*cost.*type|cost.*type.*old/i.test(k)) ||
+            readText(row, (k) => /^old[_\s-]*type$/i.test(k)) ||
+            readText(row, (k) => /old.*type.*code|legacy.*type.*code|from.*type.*code|type.*code.*old/i.test(k));
+          const newType =
+            readText(row, (k) => /new.*cost.*type|to.*cost.*type|cost.*type.*new/i.test(k)) ||
+            readText(row, (k) => /^new[_\s-]*type$/i.test(k)) ||
+            readText(row, (k) => /new.*type.*code|mapped.*type.*code|to.*type.*code|type.*code.*new/i.test(k));
+
+          const oldTypeLoose =
+            oldType ||
+            readTextFromNormalized(
+              row,
+              (k) => /(^| )old( |$)|(^| )legacy( |$)|(^| )from( |$)/.test(k) && /(^| )type( |$)|(^| )ct( |$)/.test(k)
+            );
+          const newTypeLoose =
+            newType ||
+            readTextFromNormalized(
+              row,
+              (k) => /(^| )new( |$)|(^| )to( |$)|(^| )mapped( |$)/.test(k) && /(^| )type( |$)|(^| )ct( |$)/.test(k)
+            ) ||
+            readTextFromNormalized(
+              row,
+              (k) => /(^| )new( |$)|(^| )to( |$)|(^| )mapped( |$)/.test(k) && /(^| )cost( |$)/.test(k) && /(^| )type( |$)/.test(k)
+            );
+
+          // Heuristic fallback for sheets with weak headers: detect type code tokens (e.g., L, E, CON, CP).
+          const rowTokens = Object.values(row)
+            .map((v) => String(v ?? "").trim())
+            .filter(Boolean);
+          const typeTokens = rowTokens.filter((v) => /^[A-Za-z]{1,4}$/.test(v));
+          const inferredOldType = oldTypeLoose || (typeTokens.length >= 2 ? typeTokens[0] : "");
+          const inferredNewType =
+            newTypeLoose ||
+            (typeTokens.length >= 2 ? typeTokens[typeTokens.length - 1] : typeTokens.length === 1 ? typeTokens[0] : "");
+
+          if (oldCode && newCode) {
+            codeMap[normalizeMappingKey(oldCode)] = newCode;
+          }
+          if (inferredOldType && inferredNewType) {
+            typeMap[normalizeMappingKey(inferredOldType)] = inferredNewType;
+          }
+
+          if (oldCode && inferredNewType) {
+            typeByCodeMap[normalizeMappingKey(oldCode)] = inferredNewType;
+            if (inferredOldType) {
+              typeByCodeMap[`${normalizeMappingKey(oldCode)}|${normalizeMappingKey(inferredOldType)}`] = inferredNewType;
+            }
+          }
+
+          if (newCode && inferredNewType) {
+            typeByCodeMap[normalizeMappingKey(newCode)] = inferredNewType;
+          }
+
+          // Fallback for simple 2-column cost code mapping sheets.
+          if (!oldCode && !newCode) {
+            const values = Object.values(row)
+              .map((v) => String(v ?? "").trim())
+              .filter(Boolean);
+            if (values.length >= 2) {
+              const left = values[0];
+              const right = values[1];
+              if (left && right && !codeMap[normalizeMappingKey(left)]) {
+                codeMap[normalizeMappingKey(left)] = right;
+              }
+            }
+          }
+        }
+      }
+
+      if (scannedRowCount === 0) {
+        throw new Error("No mapping rows found in workbook.");
+      }
+
+      setPurchaseOrderLineItemCostCodeMap(codeMap);
+      setPurchaseOrderLineItemCostTypeMap(typeMap);
+      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...typeByCodeMap, ...prev }));
+
+      await savePurchaseOrderLineItemMappingProfile(codeMap, typeMap, typeByCodeMap);
+
+      setPurchaseOrderLineItemMappingSummary(
+        `Loaded mapping from ${file.name} (${scannedSheetCount} sheet(s), ${scannedRowCount} row(s)): ${Object.keys(codeMap).length} cost code mapping(s), ${Object.keys(typeMap).length} global cost type mapping(s), ${Object.keys(typeByCodeMap).length} code-specific cost type mapping(s).`
+      );
+      setPurchaseOrderLineItemMappingProfileSummary(
+        `Saved mapping profile to database: ${Object.keys(codeMap).length} cost code, ${Object.keys(typeMap).length} global cost type, ${Object.keys(typeByCodeMap).length} code-specific mapping(s).`
+      );
+      setPurchaseOrderLineItemMappingProfileError(null);
+    } catch (error) {
+      setPurchaseOrderLineItemMappingError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPurchaseOrderLineItemMappingBusy(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleBulkCreatePurchaseOrderLineItemsFromCsv = async () => {
+    if (purchaseOrderLineItemCsvRows.length === 0) {
+      setPurchaseOrderLineItemCsvError("Upload a CSV first.");
+      return;
+    }
+
+    setPurchaseOrderLineItemCsvBusy(true);
+    setPurchaseOrderLineItemCsvError(null);
+    setPurchaseOrderLineItemCsvResults(null);
+
+    let success = 0;
+    let failed = 0;
+    const updatedRows = [...purchaseOrderLineItemCsvRows];
+    const projectRefsCache = new Map<string, PurchaseOrderLineItemProjectRefs>();
+
+    const invalidRowIndexes = updatedRows
+      .map((row, index) => ({
+        index,
+        normalizedProjectId: normalizeNumericIdToken(row.projectId || ""),
+        normalizedContractId: normalizeNumericIdToken(row.purchaseOrderContractId || ""),
+      }))
+      .map((x) => ({
+        ...x,
+        missingProjectId: !x.normalizedProjectId,
+        missingContractId: !x.normalizedContractId,
+        badProjectId: !!x.normalizedProjectId && !isLikelyIdToken(x.normalizedProjectId),
+        badContractId: !!x.normalizedContractId && !isLikelyIdToken(x.normalizedContractId),
+      }))
+      .filter((x) => x.missingProjectId || x.missingContractId || x.badProjectId || x.badContractId);
+
+    if (invalidRowIndexes.length > 0) {
+      for (const invalid of invalidRowIndexes) {
+        const existing = updatedRows[invalid.index];
+        const missingParts = [
+          invalid.missingProjectId ? "project_id" : "",
+          invalid.missingContractId ? "purchase_order_contract_id" : "",
+          invalid.badProjectId ? "project_id format" : "",
+          invalid.badContractId ? "purchase_order_contract_id format" : "",
+        ].filter(Boolean);
+        updatedRows[invalid.index] = {
+          ...existing,
+          projectId: invalid.normalizedProjectId || existing.projectId,
+          purchaseOrderContractId: invalid.normalizedContractId || existing.purchaseOrderContractId,
+          status: "error",
+          statusMessage: `Missing required column value(s): ${missingParts.join(", ")}.`,
+        };
+      }
+      setPurchaseOrderLineItemCsvRows([...updatedRows]);
+      setPurchaseOrderLineItemCsvBusy(false);
+      setPurchaseOrderLineItemCsvError(
+        `Bulk create stopped: ${invalidRowIndexes.length} row(s) are missing project_id and/or purchase_order_contract_id.`
+      );
+      setPurchaseOrderLineItemCsvResults({ success: 0, failed: invalidRowIndexes.length });
+      return;
+    }
+
+    const getRefsForProject = async (rowProjectId: string): Promise<PurchaseOrderLineItemProjectRefs> => {
+      const cached = projectRefsCache.get(rowProjectId);
+      if (cached) return cached;
+      const refs = await fetchPurchaseOrderLineItemReferences(rowProjectId);
+      projectRefsCache.set(rowProjectId, refs);
+      return refs;
+    };
+
+    for (let i = 0; i < updatedRows.length; i++) {
+      const row = updatedRows[i];
+      try {
+        const rowProjectId = normalizeNumericIdToken(row.projectId || "");
+        const rowPurchaseOrderContractId = normalizeNumericIdToken(row.purchaseOrderContractId || "");
+        if (!rowProjectId) {
+          updatedRows[i] = {
+            ...row,
+            status: "error",
+            statusMessage: "Missing required value: project_id.",
+          };
+          failed += 1;
+          setPurchaseOrderLineItemCsvRows([...updatedRows]);
+          continue;
+        }
+        if (!rowPurchaseOrderContractId) {
+          updatedRows[i] = {
+            ...row,
+            projectId: rowProjectId || row.projectId,
+            purchaseOrderContractId: rowPurchaseOrderContractId || row.purchaseOrderContractId,
+            status: "error",
+            statusMessage: "Missing required value: purchase_order_contract_id.",
+          };
+          failed += 1;
+          setPurchaseOrderLineItemCsvRows([...updatedRows]);
+          continue;
+        }
+        if (!isLikelyIdToken(rowProjectId) || !isLikelyIdToken(rowPurchaseOrderContractId)) {
+          updatedRows[i] = {
+            ...row,
+            projectId: rowProjectId || row.projectId,
+            purchaseOrderContractId: rowPurchaseOrderContractId || row.purchaseOrderContractId,
+            status: "error",
+            statusMessage:
+              "Invalid ID format after normalization. Ensure project_id and purchase_order_contract_id are full numeric IDs (not rounded scientific notation).",
+          };
+          failed += 1;
+          setPurchaseOrderLineItemCsvRows([...updatedRows]);
+          continue;
+        }
+
+        const refs = await getRefsForProject(rowProjectId);
+        const rebuilt = buildPurchaseOrderLineItemPayloadFromCsvRow(
+          {
+            costCodeRaw: row.costCodeRaw,
+            costType: row.costType,
+            description: row.description,
+            quantity: row.quantity,
+            uom: row.uom,
+            unitPrice: row.unitPrice,
+            amount: row.amount,
+          },
+          refs
+        );
+
+        const response = await fetch("/api/procore/purchase-order-contracts/line-items-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: rowProjectId,
+            purchase_order_contract_id: rowPurchaseOrderContractId,
+            line_item: rebuilt.payload,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          const createdId = result?.result?.id || result?.result?.data?.id || "OK";
+          updatedRows[i] = {
+            ...row,
+            projectId: rowProjectId,
+            purchaseOrderContractId: rowPurchaseOrderContractId,
+            mappedCostCode: rebuilt.mappedCostCode || row.mappedCostCode,
+            mappedCostType: rebuilt.mappedCostType || row.mappedCostType,
+            payload: rebuilt.payload,
+            status: "success",
+            statusMessage: `ID ${createdId}`,
+          };
+          success += 1;
+        } else {
+          const upstreamDetailList = Array.isArray(result?.upstream?.error?.details)
+            ? (result.upstream.error.details as Array<Record<string, unknown>>)
+            : [];
+          const upstreamDetailText = upstreamDetailList
+            .map((d) => String(d?.message || d?.reason_code || "").trim())
+            .filter(Boolean)
+            .join("; ");
+          const validationHintsText = Array.isArray(result?.validationHints)
+            ? (result.validationHints as unknown[])
+                .map((hint) => String(hint || "").trim())
+                .filter(Boolean)
+                .join("; ")
+            : "";
+
+          const msg =
+            upstreamDetailText ||
+            validationHintsText ||
+            result?.details ||
+            result?.error ||
+            `Create failed (${response.status}).`;
+
+          updatedRows[i] = {
+            ...row,
+            projectId: rowProjectId,
+            purchaseOrderContractId: rowPurchaseOrderContractId,
+            mappedCostCode: rebuilt.mappedCostCode || row.mappedCostCode,
+            mappedCostType: rebuilt.mappedCostType || row.mappedCostType,
+            payload: rebuilt.payload,
+            status: "error",
+            statusMessage: msg,
+          };
+          failed += 1;
+        }
+      } catch (err) {
+        const details = err instanceof Error ? err.message : String(err);
+        updatedRows[i] = {
+          ...row,
+          status: "error",
+          statusMessage: `Project ${row.projectId || "(missing)"}: ${details}`,
+        };
+        failed += 1;
+      }
+
+      setPurchaseOrderLineItemCsvRows([...updatedRows]);
+    }
+
+    setPurchaseOrderLineItemCsvBusy(false);
+    setPurchaseOrderLineItemCsvResults({ success, failed });
   };
 
   const handleCreatePurchaseOrderContractLineItem = async () => {
@@ -1069,7 +3091,7 @@ function ProcoreContent() {
     });
   };
 
-  // ── Step 2: Line Item Groups helpers ────────────────────────────────────────
+  // ΓöÇΓöÇ Step 2: Line Item Groups helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const parseGroupImportRows = (): Record<string, unknown>[] => {
     try {
@@ -1203,7 +3225,7 @@ function ProcoreContent() {
     }
   };
 
-  // ── Step 3: Line Items helpers ────────────────────────────────────────────
+  // ΓöÇΓöÇ Step 3: Line Items helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const parseLineItemImportRows = (): Record<string, unknown>[] => {
     try {
@@ -1404,7 +3426,7 @@ function ProcoreContent() {
     try { rows = parseLineItemImportRows(); } catch (e) { setLineItemImportError(e instanceof Error ? e.message : String(e)); return; }
     setLineItemImportError(null);
 
-    // Fetch group name→id map if any row uses group_name and IDs are provided
+    // Fetch group nameΓåÆid map if any row uses group_name and IDs are provided
     let groupNameMap: Record<string, string> = {};
     const hasGroupNames = rows.some((r) => typeof r.group_name === "string" && (r.group_name as string).trim());
     if (hasGroupNames && bidBoardProjectId && proposalId) {
@@ -1445,7 +3467,7 @@ function ProcoreContent() {
     setLineItemImportError(null);
     setLineItemImportResult(null);
     try {
-      // Resolve group names → IDs once before the loop
+      // Resolve group names ΓåÆ IDs once before the loop
       const hasGroupNames = rows.some((r) => typeof r.group_name === "string" && (r.group_name as string).trim());
       const groupNameMap = hasGroupNames ? await fetchGroupNameMap(bidBoardProjectId, proposalId) : {};
 
@@ -2477,7 +4499,7 @@ function ProcoreContent() {
             {productivityDebugResult && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-purple-500 mb-6">
                 <h2 className="text-xl font-bold text-purple-900 mb-4">
-                  🔍 Procore API Field Mapping
+                  ≡ƒöì Procore API Field Mapping
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="p-4 bg-purple-50 rounded border border-purple-200">
@@ -2541,7 +4563,7 @@ function ProcoreContent() {
             {debugResult && debugResult.results && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
                 <h2 className="text-xl font-bold text-orange-900 mb-4">
-                  🔍 Data Source Diagnostic Results
+                  ≡ƒöì Data Source Diagnostic Results
                 </h2>
                 <div className="mb-4 p-3 bg-orange-50 rounded">
                   <strong>Recommendation:</strong> {debugResult.recommendation}
@@ -2557,7 +4579,7 @@ function ProcoreContent() {
             {debugResult && debugResult.logsCount !== undefined && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
                 <h2 className="text-xl font-bold text-indigo-900 mb-4">
-                  📊 Database Status
+                  ≡ƒôè Database Status
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="bg-indigo-50 p-4 rounded">
@@ -2608,7 +4630,7 @@ function ProcoreContent() {
                 disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingDatabase}
                 className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {clearing ? "Clearing..." : "🗑️ Clear Old Data"}
+                {clearing ? "Clearing..." : "≡ƒùæ∩╕Å Clear Old Data"}
               </button>
 
               <button
@@ -2632,8 +4654,352 @@ function ProcoreContent() {
                 disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingDatabase}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {checkingDatabase ? "Checking..." : "📊 Check Database"}
+                {checkingDatabase ? "Checking..." : "≡ƒôè Check Database"}
               </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-slate-500 mb-6">
+              <h2 className="text-xl font-bold text-slate-900 mb-3">Procore REST Command Runner</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Run Procore REST endpoints using the Procore auth you already have in this app.
+                Use endpoint paths like <code className="bg-gray-100 px-1 rounded">/rest/v1.3/companies/{"{"}company_id{"}"}/me</code> or full
+                <code className="bg-gray-100 px-1 rounded ml-1">https://api.procore.com/rest/...</code> URLs.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Method</label>
+                  <select
+                    value={restRunnerMethod}
+                    onChange={(e) => setRestRunnerMethod(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Path or URL</label>
+                  <input
+                    type="text"
+                    value={restRunnerPath}
+                    onChange={(e) => setRestRunnerPath(e.target.value)}
+                    placeholder="/rest/v1.3/companies/{company_id}/me"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID Override (optional)</label>
+                <input
+                  type="text"
+                  value={restRunnerCompanyIdOverride}
+                  onChange={(e) => setRestRunnerCompanyIdOverride(e.target.value)}
+                  placeholder="Leave blank to use cookie/env company id"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">JSON Body (for POST/PUT/PATCH)</label>
+                <textarea
+                  value={restRunnerBodyText}
+                  onChange={(e) => setRestRunnerBodyText(e.target.value)}
+                  rows={10}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRunRestCommand}
+                  disabled={restRunnerBusy}
+                  className="bg-slate-700 hover:bg-slate-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {restRunnerBusy ? "Running..." : "Run REST Command"}
+                </button>
+              </div>
+
+              {restRunnerError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>REST Runner Error:</strong> {restRunnerError}
+                </div>
+              )}
+
+              {restRunnerResult && (
+                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                  {JSON.stringify(restRunnerResult, null, 2)}
+                </pre>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+              <h2 className="text-xl font-bold text-cyan-900 mb-3">Company Users Browser</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Browse cached company users after running the company-user sync. Use this to find valid Procore user IDs and names when resolving timecard <code className="bg-gray-100 px-1 rounded">party_id</code> candidates.
+              </p>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <input
+                  type="text"
+                  value={companyUsersSearch}
+                  onChange={(e) => setCompanyUsersSearch(e.target.value)}
+                  placeholder="Search by name or login"
+                  className="flex-1 min-w-[260px] border border-gray-300 rounded px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={handleLoadCompanyUsers}
+                  disabled={companyUsersBusy}
+                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {companyUsersBusy ? "Loading..." : "Load Company Users"}
+                </button>
+              </div>
+
+              {companyUsersSummary && (
+                <p className="text-xs text-cyan-800 mb-3">{companyUsersSummary}</p>
+              )}
+
+              {companyUsersError && (
+                <div className="mb-3 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {companyUsersError}
+                </div>
+              )}
+
+              {companyUsersResult.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">User ID</th>
+                        <th className="text-left px-3 py-2">Party ID</th>
+                        <th className="text-left px-3 py-2">Name</th>
+                        <th className="text-left px-3 py-2">Login</th>
+                        <th className="text-left px-3 py-2">Company</th>
+                        <th className="text-left px-3 py-2">Payload Fields</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companyUsersResult.map((user) => (
+                        <tr key={user.id} className="border-t border-gray-200">
+                          <td className="px-3 py-2 font-mono">{user.id}</td>
+                          <td className="px-3 py-2 font-mono">{user.party_id || "-"}</td>
+                          <td className="px-3 py-2">{user.name || "-"}</td>
+                          <td className="px-3 py-2">{user.login || "-"}</td>
+                          <td className="px-3 py-2">{user.company_name || "-"}</td>
+                          <td className="px-3 py-2 align-top">
+                            {user.payload && typeof user.payload === "object" ? (
+                              <details>
+                                <summary className="cursor-pointer text-cyan-800 text-xs font-semibold">
+                                  View {Object.keys(user.payload).length} field(s)
+                                </summary>
+                                <pre className="mt-2 bg-gray-50 border border-gray-200 text-gray-900 p-2 rounded overflow-auto text-xs leading-5 font-mono max-w-[520px]">
+                                  {JSON.stringify(user.payload, null, 2)}
+                                </pre>
+                              </details>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+              <h2 className="text-xl font-bold text-rose-900 mb-3">Create Timecard Entries from CSV</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload a timecard CSV, auto-resolve employee, cost code, and time type IDs from synced Procore data,
+                then create real timecard entries through <code className="bg-gray-100 px-1 rounded">/rest/v1.0/projects/{"{"}project_id{"}"}/timecard_entries</code>.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={timecardProjectId}
+                    onChange={(e) => setTimecardProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="flex items-end gap-3 pb-1">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleTimecardCsvUpload}
+                    className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={() => handleSyncTimecardLookups("all")}
+                  disabled={timecardSyncBusy !== null}
+                  className="bg-rose-700 border border-rose-700 text-white hover:bg-rose-800 disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  {timecardSyncBusy === "all" ? "Syncing All Lookup Data..." : "Sync All Lookup Data"}
+                </button>
+                <button
+                  onClick={() => handleSyncTimecardLookups("users")}
+                  disabled={timecardSyncBusy !== null}
+                  className="bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 disabled:bg-gray-100 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  {timecardSyncBusy === "users" ? "Syncing Users..." : "Sync Company Users"}
+                </button>
+                <button
+                  onClick={() => handleSyncTimecardLookups("types")}
+                  disabled={timecardSyncBusy !== null}
+                  className="bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 disabled:bg-gray-100 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  {timecardSyncBusy === "types" ? "Syncing Time Types..." : "Sync Time Types"}
+                </button>
+                <button
+                  onClick={() => handleSyncTimecardLookups("codes")}
+                  disabled={timecardSyncBusy !== null}
+                  className="bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 disabled:bg-gray-100 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  {timecardSyncBusy === "codes" ? "Syncing Cost Codes..." : "Sync Cost Codes"}
+                </button>
+              </div>
+
+              {timecardSyncMessage && (
+                <div className="mb-3 bg-rose-50 border border-rose-200 text-rose-900 px-3 py-2 rounded text-sm">
+                  {timecardSyncMessage}
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Fallback Fields JSON</label>
+                <textarea
+                  value={timecardFallbackJsonText}
+                  onChange={(e) => setTimecardFallbackJsonText(e.target.value)}
+                  rows={6}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Applied only when the CSV converter could not populate a field. Useful for values like lunch_time, location_id, or line_item_type_id.
+                </p>
+              </div>
+
+              <div className="mb-4 bg-rose-50 border border-rose-200 rounded p-4">
+                <h3 className="text-sm font-bold text-rose-900 mb-2">Required Timecard Entry Template</h3>
+                <p className="text-xs text-rose-800 mb-3">
+                  The converter is trying to produce these required fields for each row: <strong>date</strong>, <strong>hours</strong>, <strong>party_id</strong>, <strong>timecard_time_type_id</strong>, and <strong>cost_code_id</strong>.
+                </p>
+                <pre className="bg-white border border-rose-200 text-gray-900 p-3 rounded overflow-auto text-xs leading-6 font-mono">
+{`{
+  "timecard_entry": {
+    "date": "2026-06-12",
+    "hours": "7.0",
+    "party_id": 598134334614194,
+    "timecard_time_type_id": 1,
+    "cost_code_id": 12345,
+    "description": "Imported timecard entry",
+    "billable": true
+  }
+}`}
+                </pre>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handleBulkCreateTimecardEntries}
+                  disabled={timecardCsvBusy || timecardCsvRows.length === 0}
+                  className="bg-rose-600 hover:bg-rose-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {timecardCsvBusy ? "Working..." : "Create Timecard Entries"}
+                </button>
+                <button
+                  onClick={handleDownloadTimecardJson}
+                  disabled={timecardCsvRows.length === 0}
+                  className="bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 disabled:bg-gray-100 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  Download Converted JSON
+                </button>
+              </div>
+
+              {timecardCsvSummary && (
+                <p className="text-xs text-rose-800 mb-3">{timecardCsvSummary}</p>
+              )}
+
+              {timecardCsvError && (
+                <div className="mb-3 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {timecardCsvError}
+                </div>
+              )}
+
+              {timecardCsvResults && (
+                <div className="mb-3 bg-rose-50 border border-rose-200 text-rose-900 px-3 py-2 rounded text-sm">
+                  Created {timecardCsvResults.success} row(s); {timecardCsvResults.failed} failed.
+                </div>
+              )}
+
+              {timecardCsvRows.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Row</th>
+                        <th className="text-left px-3 py-2">Employee</th>
+                        <th className="text-left px-3 py-2">Date</th>
+                        <th className="text-left px-3 py-2">Hours</th>
+                        <th className="text-left px-3 py-2">Cost Code</th>
+                        <th className="text-left px-3 py-2">Time Type</th>
+                        <th className="text-left px-3 py-2">Resolution</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {timecardCsvRows.map((row) => (
+                        <tr key={row.rowNumber} className="border-t border-gray-200 align-top">
+                          <td className="px-3 py-2 font-mono">{row.rowNumber}</td>
+                          <td className="px-3 py-2">
+                            <div>{String(row.source.employeeName || "") || "-"}</div>
+                            <div className="text-xs text-gray-500">{row.resolvedPartyName || String(row.payload.party_id || "") || "unresolved"}</div>
+                          </td>
+                          <td className="px-3 py-2 font-mono">{String(row.source.date || "") || "-"}</td>
+                          <td className="px-3 py-2 font-mono">{String(row.source.hours || "") || "-"}</td>
+                          <td className="px-3 py-2">
+                            <div className="font-mono">{String(row.source.costCodeLongNumber || "") || "-"}</div>
+                            <div className="text-xs text-gray-500">{row.resolvedCostCodeName || String(row.payload.cost_code_id || "") || "unresolved"}</div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div>{String(row.source.timeTypeName || "") || "-"}</div>
+                            <div className="text-xs text-gray-500">{row.resolvedTimeTypeName || String(row.payload.timecard_time_type_id || "") || "unresolved"}</div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-700">
+                            {row.resolutionNotes.length > 0 ? row.resolutionNotes.join(" ") : "Resolved"}
+                          </td>
+                          <td className="px-3 py-2 text-xs font-semibold">
+                            <span
+                              className={
+                                row.status === "success"
+                                  ? "text-green-700"
+                                  : row.status === "error"
+                                    ? "text-red-700"
+                                    : row.resolved
+                                      ? "text-rose-800"
+                                      : "text-amber-700"
+                              }
+                            >
+                              {row.statusMessage || row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
@@ -2696,6 +5062,47 @@ function ProcoreContent() {
                 </button>
               </div>
 
+              <div className="mt-4 pt-4 border-t border-teal-200">
+                <h3 className="text-base font-bold text-teal-900 mb-2">Delete Commitment Contract</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Calls <code className="bg-gray-100 px-1 rounded">DELETE /rest/v2.0/companies/&#123;company_id&#125;/projects/&#123;project_id&#125;/commitment_contracts/&#123;commitment_contract_id&#125;</code>
+                  using your normal Procore auth/session.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Commitment Contract ID</label>
+                    <input
+                      type="text"
+                      value={deletePurchaseOrderContractId}
+                      onChange={(e) => setDeletePurchaseOrderContractId(e.target.value)}
+                      placeholder="e.g. 598134328354823"
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={handleDeletePurchaseOrderContract}
+                      disabled={deletePurchaseOrderContractBusy}
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      {deletePurchaseOrderContractBusy ? "Deleting..." : "Delete Commitment Contract"}
+                    </button>
+                  </div>
+                </div>
+
+                {deletePurchaseOrderContractError && (
+                  <div className="mt-2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                    <strong>Delete Contract Error:</strong> {deletePurchaseOrderContractError}
+                  </div>
+                )}
+
+                {deletePurchaseOrderContractResult && (
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(deletePurchaseOrderContractResult, null, 2)}
+                  </pre>
+                )}
+              </div>
+
               {purchaseOrderContractError && (
                 <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                   <strong>Create PO Contract Error:</strong> {purchaseOrderContractError}
@@ -2707,6 +5114,130 @@ function ProcoreContent() {
                   {JSON.stringify(purchaseOrderContractResult, null, 2)}
                 </pre>
               )}
+
+              <div className="mt-8 pt-6 border-t border-teal-200">
+                <h3 className="text-base font-bold text-teal-900 mb-1">Bulk Import from CSV</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload a Productivity Log-style CSV and bulk-create draft purchase order contracts grouped by the <strong>Contract</strong> column.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={purchaseOrderContractCsvAllowPrivate}
+                      onChange={(e) => setPurchaseOrderContractCsvAllowPrivate(e.target.checked)}
+                    />
+                    Honor CSV Private column (unchecked = force private false)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={purchaseOrderContractCsvAllowUnitAccounting}
+                      onChange={(e) => setPurchaseOrderContractCsvAllowUnitAccounting(e.target.checked)}
+                    />
+                    Honor CSV Accounting Method column (unchecked = force amount)
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">Upload CSV</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handlePurchaseOrderContractCsvUpload}
+                    className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  />
+                </div>
+
+                {purchaseOrderContractCsvSummary && (
+                  <p className="text-xs text-teal-800 mb-3">{purchaseOrderContractCsvSummary}</p>
+                )}
+
+                {purchaseOrderContractCsvError && (
+                  <div className="mb-3 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                    {purchaseOrderContractCsvError}
+                  </div>
+                )}
+
+                {purchaseOrderContractCsvRows.some((row) => Boolean(row.payload.private)) && (
+                  <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-900 px-3 py-2 rounded text-sm">
+                    Warning: One or more contracts are marked private and may not be visible in all daily/productivity workflows.
+                  </div>
+                )}
+
+                {purchaseOrderContractCsvRows.length > 0 && (
+                  <>
+                    <div className="overflow-x-auto border border-gray-200 rounded mb-3">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Contract #</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Title</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Vendor</th>
+                            <th className="px-2 py-1.5 text-center font-semibold text-gray-700">Rows</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Date</th>
+                            <th className="px-2 py-1.5 text-center font-semibold text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchaseOrderContractCsvRows.map((row, i) => (
+                            <tr
+                              key={`${row.contractNumber}:${i}`}
+                              className={
+                                row.status === "success"
+                                  ? "bg-green-50"
+                                  : row.status === "error"
+                                    ? "bg-red-50"
+                                    : "bg-white"
+                              }
+                            >
+                              <td className="px-2 py-1 border-t border-gray-100 font-mono">{row.contractNumber}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-sm truncate" title={row.contractTitle}>
+                                {row.contractTitle}
+                              </td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-xs truncate" title={row.vendorName}>
+                                {row.vendorName || "ΓÇö"}
+                              </td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-center">{row.rowCount}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 whitespace-nowrap">{row.contractDate || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-center">
+                                {row.status === "success" && (
+                                  <span className="text-green-700 font-semibold">Γ£ô {row.statusMessage}</span>
+                                )}
+                                {row.status === "error" && (
+                                  <span className="text-red-600" title={row.statusMessage}>Γ£ù Error</span>
+                                )}
+                                {row.status === "pending" && <span className="text-gray-500">Ready</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleBulkCreatePurchaseOrderContractsFromCsv}
+                        disabled={purchaseOrderContractCsvBusy || purchaseOrderContractCsvRows.length === 0}
+                        className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        {purchaseOrderContractCsvBusy
+                          ? "Creating..."
+                          : `Create ${purchaseOrderContractCsvRows.filter((r) => r.status === "pending").length} Contracts`}
+                      </button>
+                      {purchaseOrderContractCsvResults && (
+                        <span className="text-sm font-semibold">
+                          <span className="text-green-700">{purchaseOrderContractCsvResults.success} succeeded</span>
+                          {purchaseOrderContractCsvResults.failed > 0 && (
+                            <span className="text-red-600 ml-2">{purchaseOrderContractCsvResults.failed} failed</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
@@ -2744,6 +5275,50 @@ function ProcoreContent() {
                 </div>
               </div>
 
+              <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <button
+                    onClick={handleLoadPurchaseOrderLineItemReferences}
+                    disabled={purchaseOrderLineItemRefsBusy}
+                    className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-3 rounded text-xs"
+                  >
+                    {purchaseOrderLineItemRefsBusy ? "Loading Current Cost References..." : "Load Current Cost Codes & Cost Types"}
+                  </button>
+                  {purchaseOrderLineItemRefsSummary && (
+                    <span className="text-xs text-emerald-900">{purchaseOrderLineItemRefsSummary}</span>
+                  )}
+                </div>
+
+                {purchaseOrderLineItemRefsError && (
+                  <div className="mb-2 text-xs text-red-700">{purchaseOrderLineItemRefsError}</div>
+                )}
+
+                {(purchaseOrderLineItemCostCodes.length > 0 || purchaseOrderLineItemCostTypes.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="font-semibold text-gray-800 mb-1">Latest Project Cost Codes (first 10)</div>
+                      <div className="border border-emerald-200 bg-white rounded p-2 max-h-32 overflow-auto font-mono">
+                        {purchaseOrderLineItemCostCodes.slice(0, 10).map((row) => (
+                          <div key={`cc-${row.id}`}>
+                            {row.id} - {row.fullCode || "(no code)"} - {row.name || "(no name)"}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800 mb-1">Latest Cost Types (first 10)</div>
+                      <div className="border border-emerald-200 bg-white rounded p-2 max-h-32 overflow-auto font-mono">
+                        {purchaseOrderLineItemCostTypes.slice(0, 10).map((row) => (
+                          <div key={`ct-${row.id}`}>
+                            {row.id} - {row.code || "(no code)"} - {row.name || "(no name)"}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">line_item JSON</label>
                 <textarea
@@ -2775,6 +5350,182 @@ function ProcoreContent() {
                   {JSON.stringify(purchaseOrderLineItemResult, null, 2)}
                 </pre>
               )}
+
+              <div className="mt-8 pt-6 border-t border-emerald-200">
+                <h3 className="text-base font-bold text-emerald-900 mb-1">Bulk Import from Estimate CSV</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload estimate-format CSV with columns like <strong>Cost Code, Cost Type, Description, Quantity, UOM, Unit Price, Subtotal Override</strong>. Required columns <strong>project_id</strong> and <strong>purchase_order_contract_id</strong> let one file create line items across multiple projects/contracts in one run.
+                </p>
+
+                <div className="mb-3 p-3 rounded border border-emerald-200 bg-emerald-50">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Cost Code/Type Mapping File (.xlsx/.xls/.csv)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handlePurchaseOrderLineItemMappingUpload}
+                      className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLoadPurchaseOrderLineItemMappingProfile}
+                      disabled={purchaseOrderLineItemMappingProfileBusy}
+                      className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      {purchaseOrderLineItemMappingProfileBusy ? "Loading Saved Table..." : "Load Saved Mapping Table"}
+                    </button>
+                    {purchaseOrderLineItemMappingBusy && <span className="text-xs text-gray-700">Loading mapping...</span>}
+                  </div>
+                  {purchaseOrderLineItemMappingSummary && (
+                    <p className="mt-2 text-xs text-emerald-800">{purchaseOrderLineItemMappingSummary}</p>
+                  )}
+                  {purchaseOrderLineItemMappingProfileSummary && (
+                    <p className="mt-2 text-xs text-emerald-900">{purchaseOrderLineItemMappingProfileSummary}</p>
+                  )}
+                  {purchaseOrderLineItemMappingError && (
+                    <p className="mt-2 text-xs text-red-700">{purchaseOrderLineItemMappingError}</p>
+                  )}
+                  {purchaseOrderLineItemMappingProfileError && (
+                    <p className="mt-2 text-xs text-red-700">{purchaseOrderLineItemMappingProfileError}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Default line_item_type_id</label>
+                    <input
+                      type="text"
+                      value={purchaseOrderLineItemCsvDefaultTypeId}
+                      onChange={(e) => setPurchaseOrderLineItemCsvDefaultTypeId(e.target.value)}
+                      placeholder="e.g. 5085801"
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Default wbs_code_id</label>
+                    <input
+                      type="text"
+                      value={purchaseOrderLineItemCsvDefaultWbsId}
+                      onChange={(e) => setPurchaseOrderLineItemCsvDefaultWbsId(e.target.value)}
+                      placeholder="optional"
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Default budget_line_item_id</label>
+                    <input
+                      type="text"
+                      value={purchaseOrderLineItemCsvDefaultBudgetLineItemId}
+                      onChange={(e) => setPurchaseOrderLineItemCsvDefaultBudgetLineItemId(e.target.value)}
+                      placeholder="optional"
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">Upload CSV</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handlePurchaseOrderLineItemCsvUpload}
+                    className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  />
+                </div>
+
+                {purchaseOrderLineItemCsvSummary && (
+                  <p className="text-xs text-emerald-800 mb-3">{purchaseOrderLineItemCsvSummary}</p>
+                )}
+
+                {purchaseOrderLineItemCsvError && (
+                  <div className="mb-3 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                    {purchaseOrderLineItemCsvError}
+                  </div>
+                )}
+
+                {purchaseOrderLineItemCsvRows.length > 0 && (
+                  <>
+                    <div className="overflow-x-auto border border-gray-200 rounded mb-3">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Project ID</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">PO Contract ID</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Cost Code</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Mapped Cost Code</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Cost Type</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Mapped Cost Type</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Description</th>
+                            <th className="px-2 py-1.5 text-right font-semibold text-gray-700">Qty</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">UOM</th>
+                            <th className="px-2 py-1.5 text-right font-semibold text-gray-700">Unit Price</th>
+                            <th className="px-2 py-1.5 text-right font-semibold text-gray-700">Amount</th>
+                            <th className="px-2 py-1.5 text-center font-semibold text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchaseOrderLineItemCsvRows.map((row, i) => (
+                            <tr
+                              key={`${row.description}:${i}`}
+                              className={
+                                row.status === "success"
+                                  ? "bg-green-50"
+                                  : row.status === "error"
+                                    ? "bg-red-50"
+                                    : "bg-white"
+                              }
+                            >
+                              <td className="px-2 py-1 border-t border-gray-100 font-mono">{row.projectId || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 font-mono">{row.purchaseOrderContractId || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 font-mono">{row.costCodeRaw || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 font-mono">{row.mappedCostCode || row.costCodeRaw || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100">{row.costType || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100">{row.mappedCostType || row.costType || "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-sm truncate" title={row.description}>{row.description}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-right">{row.quantity}</td>
+                              <td className="px-2 py-1 border-t border-gray-100">{row.uom}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-right">{row.unitPrice.toFixed(2)}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-right">{row.amount.toFixed(2)}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-center">
+                                {row.status === "success" && <span className="text-green-700 font-semibold">Γ£ô {row.statusMessage}</span>}
+                                {row.status === "error" && (
+                                  <span className="text-red-600">
+                                    Γ£ù Error
+                                    {row.statusMessage && (
+                                      <div className="text-xs mt-0.5 max-w-xs break-words">{row.statusMessage}</div>
+                                    )}
+                                  </span>
+                                )}
+                                {row.status === "pending" && <span className="text-gray-500">Ready</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleBulkCreatePurchaseOrderLineItemsFromCsv}
+                        disabled={purchaseOrderLineItemCsvBusy || purchaseOrderLineItemCsvRows.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        {purchaseOrderLineItemCsvBusy
+                          ? "Creating..."
+                          : `Create ${purchaseOrderLineItemCsvRows.filter((r) => r.status === "pending").length} Line Items`}
+                      </button>
+                      {purchaseOrderLineItemCsvResults && (
+                        <span className="text-sm font-semibold">
+                          <span className="text-green-700">{purchaseOrderLineItemCsvResults.success} succeeded</span>
+                          {purchaseOrderLineItemCsvResults.failed > 0 && (
+                            <span className="text-red-600 ml-2">{purchaseOrderLineItemCsvResults.failed} failed</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
@@ -2794,7 +5545,71 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Approved Contract Line Items</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleLoadValidProductivityLineItems}
+                      disabled={createProductivityLineItemsBusy}
+                      className="bg-cyan-100 hover:bg-cyan-200 disabled:bg-gray-200 text-cyan-900 font-semibold py-2 px-3 rounded text-sm border border-cyan-300"
+                    >
+                      {createProductivityLineItemsBusy ? "Loading..." : "Load Approved Line Items"}
+                    </button>
+                    <select
+                      value={createProductivitySelectedLineItemKey}
+                      onChange={(e) => {
+                        const selectedKey = e.target.value;
+                        setCreateProductivitySelectedLineItemKey(selectedKey);
+                        const selectedItem = createProductivityLineItems.find(
+                          (item) => getProductivityLineItemKey(item) === selectedKey
+                        );
+                        if (selectedItem) {
+                          applyProductivityLineItemIdToJson(selectedItem.line_item_id);
+                        }
+                      }}
+                      disabled={createProductivityLineItemsBusy}
+                      className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="" disabled>
+                        {createProductivityLineItems.length === 0
+                          ? "Load approved line items first"
+                          : "Select line item"}
+                      </option>
+                      {createProductivityLineItems.map((item) => (
+                        <option
+                          key={getProductivityLineItemKey(item)}
+                          value={getProductivityLineItemKey(item)}
+                        >
+                          {item.line_item_id} | {item.contract_type === "commitment_contract" ? "CMT" : item.contract_type === "work_order_contract" ? "WO" : "PO"} {item.contract_number || item.contract_id} | {item.description || "No description"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Loads line items from approved commitment, Work Order, and Purchase Order contracts for this project and updates <strong>line_item_id</strong> in JSON.
+                  </p>
+                  {createProductivityLineItemsInfo && (
+                    <p className="text-xs text-cyan-800 mt-1">{createProductivityLineItemsInfo}</p>
+                  )}
+                </div>
               </div>
+
+              {createProductivityLineItemsError && (
+                <div className="mb-4 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-3 rounded text-sm">
+                  <strong>Line Item Lookup:</strong> {createProductivityLineItemsError}
+                </div>
+              )}
+
+              {createProductivityLineItemsDebug && (
+                <div className="mb-4 bg-gray-50 border border-gray-300 rounded p-4 text-sm">
+                  <details className="cursor-pointer">
+                    <summary className="font-semibold text-gray-800 mb-2">Debug: Contract Details</summary>
+                    <pre className="bg-white border border-gray-200 rounded p-3 overflow-auto text-xs leading-5 font-mono text-gray-700">
+                      {JSON.stringify(createProductivityLineItemsDebug, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">productivity_log JSON</label>
               <textarea
@@ -2824,6 +5639,108 @@ function ProcoreContent() {
                   {JSON.stringify(createProductivityResult, null, 2)}
                 </pre>
               )}
+
+              {/* CSV Bulk Import */}
+              <div className="mt-8 pt-6 border-t border-cyan-200">
+                <h3 className="text-base font-bold text-cyan-900 mb-1">Bulk Import from CSV</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload a Procore-exported Productivity Log CSV. Rows are automatically matched to loaded line items by contract number and line item number (e.g. PO-009 + #1).
+                  Load approved line items first for auto-matching to work.
+                </p>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">Upload CSV</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleCsvFileUpload}
+                    className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white"
+                  />
+                </div>
+
+                {csvImportSummary && (
+                  <p className="text-xs text-cyan-800 mb-3">{csvImportSummary}</p>
+                )}
+                {csvImportError && (
+                  <div className="mb-3 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                    {csvImportError}
+                  </div>
+                )}
+
+                {csvImportRows.length > 0 && (
+                  <>
+                    <div className="overflow-x-auto border border-gray-200 rounded mb-3">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Date</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Contract</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Line Item</th>
+                            <th className="px-2 py-1.5 text-right font-semibold text-gray-700">Qty Delivered</th>
+                            <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Notes</th>
+                            <th className="px-2 py-1.5 text-center font-semibold text-gray-700">Line Item ID</th>
+                            <th className="px-2 py-1.5 text-center font-semibold text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvImportRows.map((row, i) => (
+                            <tr key={i} className={row._status === "success" ? "bg-green-50" : row._status === "error" ? "bg-red-50" : row._matched ? "bg-white" : "bg-yellow-50"}>
+                              <td className="px-2 py-1 border-t border-gray-100 whitespace-nowrap">{row.date}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-xs truncate" title={row._csv_contract}>{row._csv_contract.split(" - ")[0]}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-xs truncate" title={row._csv_line_item}>{row._csv_line_item.substring(0, 30)}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-right">{row.quantity_delivered ?? "ΓÇö"}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 max-w-xs truncate" title={row.notes}>{row.notes || ""}</td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-center font-mono">
+                                {row._matched ? (
+                                  <span className="text-green-700">{row.line_item_id}</span>
+                                ) : (
+                                  <span className="text-yellow-700">unmatched</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-1 border-t border-gray-100 text-center">
+                                {row._status === "success" && <span className="text-green-700 font-semibold">Γ£ô {row._statusMessage}</span>}
+                                {row._status === "error" && <span className="text-red-600" title={row._statusMessage}>Γ£ù Error</span>}
+                                {row._status === "pending" && !row._matched && <span className="text-yellow-600">No match</span>}
+                                {row._status === "pending" && row._matched && <span className="text-gray-400">Ready</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={() => {
+                          const rematched = autoMatchCsvRows(csvImportRows);
+                          setCsvImportRows(rematched);
+                          const matchCount = rematched.filter((r) => r._matched).length;
+                          setCsvImportSummary(`${csvImportRows.length} row(s). ${matchCount} matched, ${csvImportRows.length - matchCount} unmatched.`);
+                        }}
+                        disabled={csvImportBusy}
+                        className="bg-gray-100 hover:bg-gray-200 disabled:bg-gray-200 text-gray-800 font-semibold py-2 px-3 rounded text-sm border border-gray-300"
+                      >
+                        Re-match
+                      </button>
+                      <button
+                        onClick={handleCsvBulkSubmit}
+                        disabled={csvImportBusy || csvImportRows.filter((r) => r._matched).length === 0}
+                        className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        {csvImportBusy
+                          ? "Submitting..."
+                          : `Submit ${csvImportRows.filter((r) => r._matched && r._status === "pending").length} Matched Rows`}
+                      </button>
+                      {csvImportResults && (
+                        <span className="text-sm font-semibold">
+                          <span className="text-green-700">{csvImportResults.success} succeeded</span>
+                          {csvImportResults.failed > 0 && <span className="text-red-600 ml-2">{csvImportResults.failed} failed</span>}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
@@ -3335,62 +6252,29 @@ function ProcoreContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Estimate CSV (.csv)</label>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleEstimateCsvUpload}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
-                  />
-                  <p className="text-xs text-amber-700 mt-2">
-                    {estimateCsvFileName ? `Loaded: ${estimateCsvFileName}` : "No estimate CSV loaded."}
-                  </p>
+                  <input type="file" accept=".csv,text/csv" onChange={handleEstimateCsvUpload} className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" />
+                  <p className="text-xs text-amber-700 mt-2">{estimateCsvFileName ? `Loaded: ${estimateCsvFileName}` : "No estimate CSV loaded."}</p>
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Crosswalk CSV (Optional)</label>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleCrosswalkCsvUpload}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
-                  />
-                  <p className="text-xs text-amber-700 mt-2">
-                    {crosswalkCsvFileName
-                      ? `Loaded: ${crosswalkCsvFileName}`
-                      : "Using server default crosswalk file if available."}
-                  </p>
+                  <input type="file" accept=".csv,text/csv" onChange={handleCrosswalkCsvUpload} className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" />
+                  <p className="text-xs text-amber-700 mt-2">{crosswalkCsvFileName ? `Loaded: ${crosswalkCsvFileName}` : "Using server default crosswalk file if available."}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Cost Code Column (Optional)</label>
-                  <input
-                    type="text"
-                    value={estimateCostCodeColumn}
-                    onChange={(e) => setEstimateCostCodeColumn(e.target.value)}
-                    placeholder="Auto-detect if blank"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                  />
+                  <input type="text" value={estimateCostCodeColumn} onChange={(e) => setEstimateCostCodeColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Item ID Column (Optional)</label>
-                  <input
-                    type="text"
-                    value={estimateItemIdColumn}
-                    onChange={(e) => setEstimateItemIdColumn(e.target.value)}
-                    placeholder="Auto-detect if blank"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                  />
+                  <input type="text" value={estimateItemIdColumn} onChange={(e) => setEstimateItemIdColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
                 </div>
               </div>
 
               <div className="flex gap-3 mb-4">
-                <button
-                  onClick={handleConvertEstimateCsv}
-                  disabled={estimateConversionBusy}
-                  className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
+                <button onClick={handleConvertEstimateCsv} disabled={estimateConversionBusy} className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm">
                   {estimateConversionBusy ? "Converting..." : "Convert + Download CSVs"}
                 </button>
               </div>
@@ -3402,13 +6286,9 @@ function ProcoreContent() {
               )}
 
               {estimateConversionResult && (
-                <div className="mt-4">
-                  <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded mb-3">
-                    <strong>Conversion Result:</strong> {estimateConversionResult.rowsMatched ?? 0} matched, {estimateConversionResult.rowsUnmatched ?? 0} unmatched, {estimateConversionResult.rowsTotal ?? 0} total.
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Detected columns: cost code <strong>{estimateConversionResult.detectedColumns?.costCodeColumn || "n/a"}</strong>, item ID <strong>{estimateConversionResult.detectedColumns?.itemIdColumn || "n/a"}</strong>.
-                  </p>
+                <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
+                  <strong>Conversion Result:</strong> {estimateConversionResult.rowsMatched ?? 0} matched, {estimateConversionResult.rowsUnmatched ?? 0} unmatched, {estimateConversionResult.rowsTotal ?? 0} total.
+                  {" "}Detected columns: cost code <strong>{estimateConversionResult.detectedColumns?.costCodeColumn || "n/a"}</strong>, item ID <strong>{estimateConversionResult.detectedColumns?.itemIdColumn || "n/a"}</strong>.
                 </div>
               )}
             </div>
@@ -3515,7 +6395,7 @@ function ProcoreContent() {
             {debugResult && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
                 <h2 className="text-xl font-bold text-orange-900 mb-4">
-                  🔍 Data Source Diagnostic Results
+                  ≡ƒöì Data Source Diagnostic Results
                 </h2>
                 <div className="mb-4 p-3 bg-orange-50 rounded">
                   <strong>Recommendation:</strong> {debugResult.recommendation}
@@ -3535,7 +6415,7 @@ function ProcoreContent() {
                     className="text-lg font-semibold mb-4 cursor-pointer hover:text-blue-600"
                     onClick={() => setSelectedSection(selectedSection === "user" ? null : "user")}
                   >
-                    👤 User Info
+                    ≡ƒæñ User Info
                   </h2>
                   {selectedSection === "user" && (
                     <div className="text-sm">
@@ -3553,7 +6433,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    🏢 Companies ({getCount(data.companies)})
+                    ≡ƒÅó Companies ({getCount(data.companies)})
                   </h2>
                   {selectedSection === "companies" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3571,7 +6451,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📋 All Projects (Merged: {getCount(data.unifiedProjects)})
+                    ≡ƒôï All Projects (Merged: {getCount(data.unifiedProjects)})
                   </h2>
                   {selectedSection === "projects" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3590,7 +6470,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    🏭 Vendors ({getCount(data.vendors)})
+                    ≡ƒÅ¡ Vendors ({getCount(data.vendors)})
                   </h2>
                   {selectedSection === "vendors" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3605,7 +6485,7 @@ function ProcoreContent() {
                     onClick={() => setSelectedSection(selectedSection === "users" ? null : "users")
                     }
                   >
-                    👥 Users ({getCount(data.users)})
+                    ≡ƒæÑ Users ({getCount(data.users)})
                   </h2>
                   {selectedSection === "users" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3623,7 +6503,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💰 Bid Board ({getCount(data.bidBoardProjects)}) / Est ({getCount(data.estimatingProjects)})
+                    ≡ƒÆ░ Bid Board ({getCount(data.bidBoardProjects)}) / Est ({getCount(data.estimatingProjects)})
                   </h2>
                   {selectedSection === "bidboard" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3644,7 +6524,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    💸 Bid Board v2.0 ({getCount(data.bidBoardV2)})
+                    ≡ƒÆ╕ Bid Board v2.0 ({getCount(data.bidBoardV2)})
                   </h2>
                   {selectedSection === "bids" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3663,7 +6543,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📑 Project Templates ({getCount(data.projectTemplates)})
+                    ≡ƒôæ Project Templates ({getCount(data.projectTemplates)})
                   </h2>
                   {selectedSection === "templates" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3681,7 +6561,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    📈 Productivity Logs (Sample from {data.productivityLogs?.length || 0} Projects)
+                    ≡ƒôê Productivity Logs (Sample from {data.productivityLogs?.length || 0} Projects)
                   </h2>
                   {selectedSection === "productivity" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -3701,7 +6581,7 @@ function ProcoreContent() {
                 {data.giantProductivity && (
                   <div className="bg-white rounded-lg shadow p-6 border-2 border-blue-500 md:col-span-2">
                     <h2 className="text-xl font-bold text-blue-900 mb-4">
-                      🏗️ Giant #6582: Specific Productivity Data (Last 90 Days)
+                      ≡ƒÅù∩╕Å Giant #6582: Specific Productivity Data (Last 90 Days)
                     </h2>
                     <div className="text-sm overflow-x-auto">
                       {data.giantProductivity.data?.length > 0 ? (

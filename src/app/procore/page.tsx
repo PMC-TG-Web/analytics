@@ -229,15 +229,6 @@ function ProcoreContent() {
   const [directCostResult, setDirectCostResult] = useState<any>(null);
   const [directCostError, setDirectCostError] = useState<string | null>(null);
   const [directCostWorkbookSummary, setDirectCostWorkbookSummary] = useState<string | null>(null);
-  const [estimateConversionBusy, setEstimateConversionBusy] = useState(false);
-  const [estimateConversionError, setEstimateConversionError] = useState<string | null>(null);
-  const [estimateConversionResult, setEstimateConversionResult] = useState<EstimateConversionResponse | null>(null);
-  const [estimateCsvFileName, setEstimateCsvFileName] = useState<string>("");
-  const [estimateCsvText, setEstimateCsvText] = useState<string>("");
-  const [crosswalkCsvFileName, setCrosswalkCsvFileName] = useState<string>("");
-  const [crosswalkCsvText, setCrosswalkCsvText] = useState<string>("");
-  const [estimateCostCodeColumn, setEstimateCostCodeColumn] = useState<string>("");
-  const [estimateItemIdColumn, setEstimateItemIdColumn] = useState<string>("");
 
   useEffect(() => {
     const checkProcoreAuth = async () => {

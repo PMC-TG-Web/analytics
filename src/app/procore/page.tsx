@@ -2060,11 +2060,14 @@ function ProcoreContent() {
           refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
           ""
         : "";
+    const rowCostTypeIsGenericOther = normalizedRowType === "o" || normalizedRowType === "other";
+    const explicitRowCostType = rowCostTypeIsGenericOther ? "" : row.costType;
     const mappedCostType =
       mappedTypeByCodeExact ||
+      mappedTypeByCodeDefault ||
       purchaseOrderLineItemCostTypeMap[normalizedRowType] ||
-      row.costType ||
-      mappedTypeByCodeDefault;
+      explicitRowCostType ||
+      row.costType;
 
     const payload: Record<string, unknown> = {
       description: row.description,

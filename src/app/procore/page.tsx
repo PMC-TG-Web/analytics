@@ -2043,7 +2043,7 @@ function ProcoreContent() {
     const mappedTypeByCodeExact =
       refTypeByCodeMap[`${normalizeMappingKey(row.costCodeRaw)}|${normalizedRowType}`] || "";
     const mappedTypeByCodeDefault =
-      !normalizedRowType
+      (!normalizedRowType || normalizedRowType === "o" || normalizedRowType === "other")
         ? refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
           refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
           ""
@@ -2187,8 +2187,16 @@ function ProcoreContent() {
 
   function sanitizeCostType(token: string, description?: string): string {
     const trimmed = String(token || "").trim();
+    const inferredFromDescription = inferCostTypeFromDescription(description || "");
+    const normalizedTrimmed = normalizeMappingKey(trimmed);
+
+    // If description clearly indicates rebar/material, override ambiguous "O" values.
+    if (inferredFromDescription && (normalizedTrimmed === "o" || normalizedTrimmed === "other")) {
+      return inferredFromDescription;
+    }
+
     if (!trimmed || isLikelyUom(trimmed)) {
-      return inferCostTypeFromDescription(description || "");
+      return inferredFromDescription;
     }
     return trimmed;
   }

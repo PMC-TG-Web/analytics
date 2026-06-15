@@ -47,7 +47,11 @@ function isApprovedStatusToken(value: unknown): boolean {
   const token = normalizeStatusToken(value);
   if (!token) return false;
   if (token === "approved") return true;
-  return token.includes("approved") && !token.includes("unapproved");
+  if (token.includes("approved") && !token.includes("unapproved")) return true;
+  // Procore PO contracts often sit in "Processing" or "Submitted" while still
+  // being valid for productivity log line items. Accept these too.
+  if (["processing", "submitted", "executed", "complete", "active", "open"].includes(token)) return true;
+  return false;
 }
 
 function getContractStatusCandidates(contract: UnknownRecord): string[] {
@@ -183,11 +187,15 @@ async function fetchApprovedContracts(
     const filteredRecords = await fetchFirstSuccessfulArray([urls[0]], accessToken, companyId);
     if (filteredRecords.length > 0) {
       const approved = approvedContracts(filteredRecords);
-      return approved.length > 0 ? approved : filteredRecords.filter((contract) => !hasContractStatus(contract));
+      // If the Approved-filter URL returned results but none matched our status check,
+      // use all of them (Procore already filtered by status server-side).
+      return approved.length > 0 ? approved : filteredRecords;
     }
 
     const unfilteredRecords = await fetchFirstSuccessfulArray([urls[1]], accessToken, companyId);
-    return approvedContracts(unfilteredRecords);
+    const approved = approvedContracts(unfilteredRecords);
+    // Fall back to all contracts if none carry a recognisable approved status label.
+    return approved.length > 0 ? approved : unfilteredRecords;
   } catch {
     // Some projects do not have both contract tools enabled.
     return [];

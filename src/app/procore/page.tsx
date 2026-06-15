@@ -915,19 +915,65 @@ function ProcoreContent() {
 
   const autoMatchCsvRows = (rows: CsvLogRow[]): CsvLogRow[] => {
     if (createProductivityLineItems.length === 0) return rows;
+
+    const normalizeLoose = (value: string): string =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9#-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const extractLineNumberTokens = (value: string): string[] => {
+      const normalized = normalizeLoose(value);
+      const tokens = new Set<string>();
+      const hashMatches = normalized.match(/#\d+/g) || [];
+      for (const token of hashMatches) tokens.add(token);
+      const numMatches = normalized.match(/\b\d+\b/g) || [];
+      for (const token of numMatches) tokens.add(`#${token}`);
+      return Array.from(tokens);
+    };
+
     return rows.map((row) => {
-      // Try matching by contract number ("PO-001") and line item number ("#1")
-      const contractNumMatch = row._csv_contract.match(/^(\S+)/);
-      const lineItemNumMatch = row._csv_line_item.match(/^(#\d+)/);
-      const contractNum = contractNumMatch?.[1]?.toLowerCase() ?? "";
-      const lineItemNum = lineItemNumMatch?.[1]?.toLowerCase() ?? "";
-      const found = createProductivityLineItems.find((item) => {
-        const itemContractNum = (item.contract_number || "").toLowerCase();
-        const itemDesc = (item.description || "").toLowerCase();
-        const contractMatch = contractNum && itemContractNum.startsWith(contractNum);
-        const lineItemMatch = lineItemNum && itemDesc.startsWith(lineItemNum);
-        return contractMatch && lineItemMatch;
-      });
+      const csvContract = normalizeLoose(row._csv_contract);
+      const csvLineItem = normalizeLoose(row._csv_line_item);
+      const csvLineNumbers = extractLineNumberTokens(row._csv_line_item);
+      const csvLineItemNumericId = Number((csvLineItem.match(/\b\d{3,}\b/) || [""])[0]);
+
+      let best: { item: ProductivityLineItemOption; score: number } | null = null;
+      for (const item of createProductivityLineItems) {
+        const contractFields = [item.contract_number, item.contract_title, item.contract_id]
+          .map((v) => normalizeLoose(String(v || "")))
+          .filter(Boolean);
+        const itemDesc = normalizeLoose(item.description || "");
+
+        const contractMatch = contractFields.some(
+          (field) =>
+            (csvContract && (field.includes(csvContract) || csvContract.includes(field))) ||
+            (csvContract && field.startsWith(csvContract))
+        );
+        if (!contractMatch) continue;
+
+        const lineIdMatch = Number.isFinite(csvLineItemNumericId) && csvLineItemNumericId > 0
+          ? item.line_item_id === csvLineItemNumericId
+          : false;
+        const lineNumberMatch = csvLineNumbers.some((token) => itemDesc.includes(token));
+        const lineTextMatch =
+          !!csvLineItem && (itemDesc.includes(csvLineItem) || csvLineItem.includes(itemDesc));
+
+        if (!lineIdMatch && !lineNumberMatch && !lineTextMatch) continue;
+
+        const score =
+          (contractMatch ? 3 : 0) +
+          (lineIdMatch ? 4 : 0) +
+          (lineNumberMatch ? 2 : 0) +
+          (lineTextMatch ? 1 : 0);
+
+        if (!best || score > best.score) {
+          best = { item, score };
+        }
+      }
+
+      const found = best?.item;
       if (found) {
         return { ...row, line_item_id: found.line_item_id, _matched: true };
       }

@@ -447,7 +447,7 @@ function ProcoreContent() {
 
       setPurchaseOrderLineItemCostCodeMap(costCodeMap);
       setPurchaseOrderLineItemCostTypeMap(costTypeMap);
-      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...costTypeByCodeMap, ...prev }));
+      setPurchaseOrderLineItemCostTypeByCodeMap(costTypeByCodeMap);
 
       if (result?.exists) {
         setPurchaseOrderLineItemMappingProfileSummary(
@@ -2017,7 +2017,10 @@ function ProcoreContent() {
 
     const refCostCodes = refs?.costCodes || purchaseOrderLineItemCostCodes;
     const refCostTypes = refs?.costTypes || purchaseOrderLineItemCostTypes;
-    const refTypeByCodeMap = refs?.costTypeByCodeMap || purchaseOrderLineItemCostTypeByCodeMap;
+    const refTypeByCodeMap: Record<string, string> = {
+      ...(refs?.costTypeByCodeMap || {}),
+      ...purchaseOrderLineItemCostTypeByCodeMap,
+    };
     const refWbsMap = refs?.wbsCodeMap || purchaseOrderLineItemWbsCodeMap;
 
     const costCodeIdByFullCode = new Map<string, number>();
@@ -2305,7 +2308,7 @@ function ProcoreContent() {
       setPurchaseOrderLineItemCostCodes(refs.costCodes);
       setPurchaseOrderLineItemCostTypes(refs.costTypes);
       setPurchaseOrderLineItemWbsCodeMap(refs.wbsCodeMap);
-      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...prev, ...refs.costTypeByCodeMap }));
+      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...refs.costTypeByCodeMap, ...prev }));
 
       if (refs.costTypes[0]?.id && !purchaseOrderLineItemCsvDefaultTypeId.trim()) {
         setPurchaseOrderLineItemCsvDefaultTypeId(String(refs.costTypes[0].id));
@@ -2413,6 +2416,25 @@ function ProcoreContent() {
         return "";
       };
 
+      const readCostCodeCell = (row: Record<string, unknown>): string =>
+        readTextFromNormalized(
+          row,
+          (k) =>
+            (/(^| )cost( |$)/.test(k) && /(^| )code( |$)/.test(k)) ||
+            /(^| )full( |$)code( |$)/.test(k) ||
+            /^code$/.test(k)
+        );
+
+      const readCostTypeCell = (row: Record<string, unknown>): string =>
+        readTextFromNormalized(
+          row,
+          (k) =>
+            (/(^| )cost( |$)/.test(k) && /(^| )type( |$)/.test(k)) ||
+            /^type$/.test(k) ||
+            /(^| )origin( |$)code( |$)/.test(k) ||
+            /(^| )line( |$)item( |$)type( |$)/.test(k)
+        );
+
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
         if (!sheet) continue;
@@ -2483,6 +2505,14 @@ function ProcoreContent() {
             typeByCodeMap[normalizeMappingKey(newCode)] = inferredNewType;
           }
 
+          // Direct mapping mode: workbook provides {cost code, cost type} pairs.
+          const directCostCode = readCostCodeCell(row);
+          const directCostTypeRaw = readCostTypeCell(row);
+          const directCostType = normalizeCostTypeCode(directCostTypeRaw);
+          if (directCostCode && directCostType) {
+            typeByCodeMap[normalizeMappingKey(directCostCode)] = directCostType;
+          }
+
           // Fallback for simple 2-column cost code mapping sheets.
           if (!oldCode && !newCode) {
             const values = Object.values(row)
@@ -2505,7 +2535,7 @@ function ProcoreContent() {
 
       setPurchaseOrderLineItemCostCodeMap(codeMap);
       setPurchaseOrderLineItemCostTypeMap(typeMap);
-      setPurchaseOrderLineItemCostTypeByCodeMap((prev) => ({ ...typeByCodeMap, ...prev }));
+      setPurchaseOrderLineItemCostTypeByCodeMap(typeByCodeMap);
 
       await savePurchaseOrderLineItemMappingProfile(codeMap, typeMap, typeByCodeMap);
 

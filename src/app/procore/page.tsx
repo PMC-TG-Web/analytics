@@ -3204,6 +3204,38 @@ function ProcoreContent() {
     return payload;
   };
 
+  const downloadBidBoardProjectTemplate = () => {
+    const headers = [
+      "name",
+      "status",
+      "description",
+      "due_date",
+      "project_number",
+      "square_footage",
+      "is_template",
+      "address_street",
+      "address_city",
+      "address_state",
+      "address_zip",
+      "address_country",
+    ];
+    const example = [
+      "Example Concrete Project",
+      "ESTIMATING",
+      "Interior slab on grade",
+      "2026-09-30",
+      "PRJ-001",
+      "5000",
+      "false",
+      "123 Main St",
+      "Philadelphia",
+      "PA",
+      "19103",
+      "US",
+    ];
+    downloadCsv("bid_board_project_template.csv", headers, [example]);
+  };
+
   const handleBidBoardProjectWorkbookUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -6031,10 +6063,19 @@ function ProcoreContent() {
               </p>
 
               <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Upload Project Workbook (.xlsx/.xls)</label>
+                <div className="flex items-center gap-3 mb-1">
+                  <label className="block text-sm font-semibold text-gray-700">Upload Project Workbook (.xlsx/.xls/.csv)</label>
+                  <button
+                    onClick={downloadBidBoardProjectTemplate}
+                    className="text-xs bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-800 font-semibold py-1 px-2 rounded"
+                    type="button"
+                  >
+                    Download Template CSV
+                  </button>
+                </div>
                 <input
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.csv"
                   onChange={handleBidBoardProjectWorkbookUpload}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
                 />

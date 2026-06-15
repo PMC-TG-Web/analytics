@@ -2142,6 +2142,22 @@ function ProcoreContent() {
     return { payload, mappedCostCode, mappedCostType };
   }
 
+  function isLikelyUom(token: string): boolean {
+    const normalized = normalizeMappingKey(token);
+    const uomPatterns = [
+      "ea", "each", "sf", "sqft", "square feet", "cy", "cubic yard", "lf", "lineal", "linear", "foot", "feet",
+      "sq", "square", "cubic", "ton", "lb", "ga", "gallon", "hr", "hour", "day", "wk", "week", "piece",
+      "box", "bundle", "roll", "sheet", "case", "pallet", "kit", "set", "pair", "lot"
+    ];
+    return uomPatterns.includes(normalized) || /^[a-z]{1,3}$/.test(normalized) && uomPatterns.some(u => u.includes(normalized));
+  }
+
+  function sanitizeCostType(token: string): string {
+    const trimmed = String(token || "").trim();
+    if (!trimmed || isLikelyUom(trimmed)) return "";
+    return trimmed;
+  }
+
   function buildPurchaseOrderLineItemCsvRows(content: string): PurchaseOrderLineItemCsvRow[] {
     const lines = parseCsvRecords(content);
     if (lines.length < 2) return [];
@@ -2189,7 +2205,7 @@ function ProcoreContent() {
       const subtotalOverride = idxSubtotal >= 0 ? parseMoneyLike(values[idxSubtotal] || "") : 0;
       const amount = subtotalOverride > 0 ? subtotalOverride : Number((quantity * unitPrice).toFixed(2));
       const costCodeRaw = idxCostCode >= 0 ? (values[idxCostCode] || "").trim() : "";
-      const costType = idxCostType >= 0 ? (values[idxCostType] || "").trim() : "";
+      const costType = sanitizeCostType(idxCostType >= 0 ? (values[idxCostType] || "") : "");
       const uom = (values[idxUom] || "").trim() || "ea";
 
       const rowProjectId = idxProjectId >= 0 ? normalizeNumericIdToken(values[idxProjectId] || "") : "";

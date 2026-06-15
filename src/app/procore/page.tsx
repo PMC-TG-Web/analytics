@@ -2144,12 +2144,14 @@ function ProcoreContent() {
 
   function isLikelyUom(token: string): boolean {
     const normalized = normalizeMappingKey(token);
-    const uomPatterns = [
-      "ea", "each", "sf", "sqft", "square feet", "cy", "cubic yard", "lf", "lineal", "linear", "foot", "feet",
-      "sq", "square", "cubic", "ton", "lb", "ga", "gallon", "hr", "hour", "day", "wk", "week", "piece",
-      "box", "bundle", "roll", "sheet", "case", "pallet", "kit", "set", "pair", "lot"
+    // Only filter out very common, unambiguous UOM patterns
+    const obviousUomPatterns = [
+      "ea", "each", "sf", "sqft", "square feet", "square foot",
+      "cy", "cubic yard", "lf", "lineal foot",
+      "ga", "gallon", "gal", "hr", "hour", "hrs",
+      "day", "week", "wk", "box", "pallet", "roll"
     ];
-    return uomPatterns.includes(normalized) || /^[a-z]{1,3}$/.test(normalized) && uomPatterns.some(u => u.includes(normalized));
+    return obviousUomPatterns.includes(normalized);
   }
 
   function sanitizeCostType(token: string): string {

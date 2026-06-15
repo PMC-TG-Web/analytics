@@ -1188,9 +1188,14 @@ function ProcoreContent() {
         setCreateProductivitySelectedLineItemKey(firstKey);
         applyProductivityLineItemIdToJson(items[0].line_item_id);
       } else {
-        setCreateProductivityLineItemsError(
-          "No approved contract line items were returned for this project."
-        );
+        const totalContracts = approvedCommitmentContracts + approvedWorkOrderContracts + approvedPurchaseOrderContracts;
+        const debug = result?.debug as Record<string, unknown> | undefined;
+        const poDetails = Array.isArray(debug?.purchaseOrderContractDetails) ? debug.purchaseOrderContractDetails as Array<{id: string; number: string; status: string}> : [];
+        const poStatuses = poDetails.map((c) => `${c.number || c.id} (${c.status || "no status"})`).join(", ");
+        const hint = totalContracts === 0
+          ? "No contracts were found for this project. Check the Project ID and ensure at least one PO contract exists."
+          : `Found ${totalContracts} contract(s) but none returned line items.${poStatuses ? ` PO contracts: ${poStatuses}.` : ""} Check that line items exist on those contracts in Procore.`;
+        setCreateProductivityLineItemsError(hint);
       }
     } catch (error) {
       setCreateProductivityLineItemsError(error instanceof Error ? error.message : String(error));

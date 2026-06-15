@@ -5445,10 +5445,10 @@ function ProcoreContent() {
                               <td className="px-2 py-1 border-t border-gray-100 whitespace-nowrap">{row.contractDate || "ΓÇö"}</td>
                               <td className="px-2 py-1 border-t border-gray-100 text-center">
                                 {row.status === "success" && (
-                                  <span className="text-green-700 font-semibold">Γ£ô {row.statusMessage}</span>
+                                  <span className="text-green-700 font-semibold">OK {row.statusMessage}</span>
                                 )}
                                 {row.status === "error" && (
-                                  <span className="text-red-600" title={row.statusMessage}>Γ£ù Error</span>
+                                  <span className="text-red-600" title={row.statusMessage}>Error</span>
                                 )}
                                 {row.status === "pending" && <span className="text-gray-500">Ready</span>}
                               </td>
@@ -5729,10 +5729,10 @@ function ProcoreContent() {
                               <td className="px-2 py-1 border-t border-gray-100 text-right">{row.unitPrice.toFixed(2)}</td>
                               <td className="px-2 py-1 border-t border-gray-100 text-right">{row.amount.toFixed(2)}</td>
                               <td className="px-2 py-1 border-t border-gray-100 text-center">
-                                {row.status === "success" && <span className="text-green-700 font-semibold">Γ£ô {row.statusMessage}</span>}
+                                {row.status === "success" && <span className="text-green-700 font-semibold">OK {row.statusMessage}</span>}
                                 {row.status === "error" && (
                                   <span className="text-red-600">
-                                    Γ£ù Error
+                                    Error
                                     {row.statusMessage && (
                                       <div className="text-xs mt-0.5 max-w-xs break-words">{row.statusMessage}</div>
                                     )}
@@ -5940,8 +5940,15 @@ function ProcoreContent() {
                                 )}
                               </td>
                               <td className="px-2 py-1 border-t border-gray-100 text-center">
-                                {row._status === "success" && <span className="text-green-700 font-semibold">Γ£ô {row._statusMessage}</span>}
-                                {row._status === "error" && <span className="text-red-600" title={row._statusMessage}>Γ£ù Error</span>}
+                                {row._status === "success" && <span className="text-green-700 font-semibold">OK {row._statusMessage}</span>}
+                                {row._status === "error" && (
+                                  <span className="text-red-600">
+                                    Error
+                                    {row._statusMessage && (
+                                      <div className="text-xs mt-0.5 max-w-xs break-words">{row._statusMessage}</div>
+                                    )}
+                                  </span>
+                                )}
                                 {row._status === "pending" && !row._matched && (
                                   <span className="text-yellow-600">
                                     No match

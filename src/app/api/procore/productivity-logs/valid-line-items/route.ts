@@ -161,12 +161,8 @@ async function fetchApprovedContracts(
       companyId
     )}/projects/${encodeURIComponent(projectId)}/commitment_contracts?page=1&per_page=100`;
 
-    try {
-      const records = await fetchFirstSuccessfulArray([commitmentUrl], accessToken, companyId);
-      return approvedContracts(records);
-    } catch {
-      return [];
-    }
+    const records = await fetchFirstSuccessfulArray([commitmentUrl], accessToken, companyId);
+    return approvedContracts(records);
   }
 
   const base = "https://api.procore.com/rest/v1.0/projects";
@@ -183,23 +179,21 @@ async function fetchApprovedContracts(
     `${base}/${project}/${path}?company_id=${company}&page=1&per_page=100`,
   ];
 
+  // Try the Approved-filtered URL first; fall back to all contracts.
+  let filteredRecords: UnknownRecord[] = [];
   try {
-    const filteredRecords = await fetchFirstSuccessfulArray([urls[0]], accessToken, companyId);
-    if (filteredRecords.length > 0) {
-      const approved = approvedContracts(filteredRecords);
-      // If the Approved-filter URL returned results but none matched our status check,
-      // use all of them (Procore already filtered by status server-side).
-      return approved.length > 0 ? approved : filteredRecords;
-    }
-
-    const unfilteredRecords = await fetchFirstSuccessfulArray([urls[1]], accessToken, companyId);
-    const approved = approvedContracts(unfilteredRecords);
-    // Fall back to all contracts if none carry a recognisable approved status label.
-    return approved.length > 0 ? approved : unfilteredRecords;
+    filteredRecords = await fetchFirstSuccessfulArray([urls[0]], accessToken, companyId);
   } catch {
-    // Some projects do not have both contract tools enabled.
-    return [];
+    // filtered endpoint not available for this contract type — try unfiltered
   }
+  if (filteredRecords.length > 0) {
+    const approved = approvedContracts(filteredRecords);
+    return approved.length > 0 ? approved : filteredRecords;
+  }
+  // Unfiltered fallback — throws on auth/network errors so caller sees them.
+  const unfilteredRecords = await fetchFirstSuccessfulArray([urls[1]], accessToken, companyId);
+  const approved = approvedContracts(unfilteredRecords);
+  return approved.length > 0 ? approved : unfilteredRecords;
 }
 
 async function fetchContractLineItems(
@@ -288,24 +282,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
     }
 
-    const commitmentContracts = await fetchApprovedContracts(
-      "commitment_contract",
-      projectId,
-      companyId,
-      accessToken
-    );
-    const workOrderContracts = await fetchApprovedContracts(
-      "work_order_contract",
-      projectId,
-      companyId,
-      accessToken
-    );
-    const purchaseOrderContracts = await fetchApprovedContracts(
-      "purchase_order_contract",
-      projectId,
-      companyId,
-      accessToken
-    );
+    const [commitmentContracts, workOrderContracts, purchaseOrderContracts] = await Promise.all([
+      fetchApprovedContracts("commitment_contract", projectId, companyId, accessToken).catch(() => [] as UnknownRecord[]),
+      fetchApprovedContracts("work_order_contract", projectId, companyId, accessToken).catch(() => [] as UnknownRecord[]),
+      fetchApprovedContracts("purchase_order_contract", projectId, companyId, accessToken),
+    ]);
 
     const allOptions: ProductivityLineItemOption[] = [];
     const allAttempts: Array<{ contractType: string; contractId: string; url: string; itemsFound?: number; error?: string }> = [];

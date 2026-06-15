@@ -933,9 +933,44 @@ function ProcoreContent() {
       return Array.from(tokens);
     };
 
+    const extractContractNumber = (value: string): string => {
+      const normalized = normalizeLoose(value);
+      const match = normalized.match(/\b(?:po|wo|co|pc)-?\d+\b/i) || normalized.match(/\b\d{3,}\b/);
+      if (!match) return "";
+      const token = String(match[0] || "").toUpperCase().replace(/\s+/g, "");
+      if (/^(PO|WO|CO|PC)-?\d+$/.test(token)) {
+        return token.includes("-") ? token : `${token.slice(0, 2)}-${token.slice(2)}`;
+      }
+      return token;
+    };
+
+    const stripLineItemPrefix = (value: string): string =>
+      normalizeLoose(value).replace(/^#\d+\s*-\s*/, "").trim();
+
+    const tokenize = (value: string): string[] =>
+      stripLineItemPrefix(value)
+        .split(" ")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 1);
+
+    const tokenOverlap = (left: string, right: string): number => {
+      const leftTokens = new Set(tokenize(left));
+      const rightTokens = new Set(tokenize(right));
+      if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+
+      let shared = 0;
+      for (const token of leftTokens) {
+        if (rightTokens.has(token)) shared += 1;
+      }
+      const denominator = Math.max(1, Math.min(leftTokens.size, rightTokens.size));
+      return shared / denominator;
+    };
+
     return rows.map((row) => {
       const csvContract = normalizeLoose(row._csv_contract);
       const csvLineItem = normalizeLoose(row._csv_line_item);
+      const csvLineItemNoPrefix = stripLineItemPrefix(row._csv_line_item);
+      const csvContractNumber = extractContractNumber(row._csv_contract);
       const csvLineNumbers = extractLineNumberTokens(row._csv_line_item);
       const csvLineItemNumericId = Number((csvLineItem.match(/\b\d{3,}\b/) || [""])[0]);
 
@@ -945,12 +980,17 @@ function ProcoreContent() {
           .map((v) => normalizeLoose(String(v || "")))
           .filter(Boolean);
         const itemDesc = normalizeLoose(item.description || "");
+        const itemDescNoPrefix = stripLineItemPrefix(item.description || "");
+        const itemContractNumber = extractContractNumber(`${item.contract_number || ""} ${item.contract_title || ""}`);
 
-        const contractMatch = contractFields.some(
+        const contractNumberMatch =
+          !!csvContractNumber && !!itemContractNumber && csvContractNumber === itemContractNumber;
+        const contractTextMatch = contractFields.some(
           (field) =>
             (csvContract && (field.includes(csvContract) || csvContract.includes(field))) ||
             (csvContract && field.startsWith(csvContract))
         );
+        const contractMatch = contractNumberMatch || contractTextMatch;
         if (!contractMatch) continue;
 
         const lineIdMatch = Number.isFinite(csvLineItemNumericId) && csvLineItemNumericId > 0
@@ -958,15 +998,19 @@ function ProcoreContent() {
           : false;
         const lineNumberMatch = csvLineNumbers.some((token) => itemDesc.includes(token));
         const lineTextMatch =
-          !!csvLineItem && (itemDesc.includes(csvLineItem) || csvLineItem.includes(itemDesc));
+          (!!csvLineItem && (itemDesc.includes(csvLineItem) || csvLineItem.includes(itemDesc))) ||
+          (!!csvLineItemNoPrefix &&
+            (itemDescNoPrefix.includes(csvLineItemNoPrefix) || csvLineItemNoPrefix.includes(itemDescNoPrefix)));
+        const lineTokenMatch = tokenOverlap(row._csv_line_item, item.description || "") >= 0.6;
 
-        if (!lineIdMatch && !lineNumberMatch && !lineTextMatch) continue;
+        if (!lineIdMatch && !lineNumberMatch && !lineTextMatch && !lineTokenMatch) continue;
 
         const score =
-          (contractMatch ? 3 : 0) +
+          (contractNumberMatch ? 5 : contractTextMatch ? 3 : 0) +
           (lineIdMatch ? 4 : 0) +
           (lineNumberMatch ? 2 : 0) +
-          (lineTextMatch ? 1 : 0);
+          (lineTextMatch ? 1 : 0) +
+          (lineTokenMatch ? 1 : 0);
 
         if (!best || score > best.score) {
           best = { item, score };

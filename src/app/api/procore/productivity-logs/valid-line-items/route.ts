@@ -102,29 +102,44 @@ function unwrapArray(value: unknown): UnknownRecord[] {
   return [];
 }
 
-async function fetchProcoreJson(url: string, accessToken: string, companyId: string): Promise<unknown> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      "Procore-Company-Id": companyId,
-    },
-  });
+async function fetchProcoreJson(url: string, accessToken: string, companyId: string, maxRetries = 3): Promise<unknown> {
+  let delay = 2000;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Procore-Company-Id": companyId,
+      },
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    const errorDetail = errorText ? ` - ${errorText}` : "";
-    throw new Error(`GET ${url} failed (${response.status})${errorDetail}`);
-  }
+    if (response.status === 429) {
+      if (attempt === maxRetries) {
+        const errorText = await response.text();
+        throw new Error(`GET ${url} failed (429) - ${errorText}`);
+      }
+      const retryAfter = Number(response.headers.get("Retry-After") || "") * 1000 || delay;
+      await new Promise((resolve) => setTimeout(resolve, retryAfter));
+      delay = Math.min(delay * 2, 15000);
+      continue;
+    }
 
-  const text = await response.text();
-  if (!text) return [];
-  try {
-    return JSON.parse(text);
-  } catch {
-    return [];
+    if (!response.ok) {
+      const errorText = await response.text();
+      const errorDetail = errorText ? ` - ${errorText}` : "";
+      throw new Error(`GET ${url} failed (${response.status})${errorDetail}`);
+    }
+
+    const text = await response.text();
+    if (!text) return [];
+    try {
+      return JSON.parse(text);
+    } catch {
+      return [];
+    }
   }
+  throw new Error(`GET ${url} exceeded max retries`);
 }
 
 async function fetchFirstSuccessfulArray(

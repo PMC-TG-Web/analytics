@@ -39,6 +39,18 @@ function downloadJson(filename: string, value: unknown) {
   URL.revokeObjectURL(url);
 }
 
+function downloadTextFile(filename: string, content: string, mimeType = "text/plain;charset=utf-8;") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 interface EstimateConversionResponse {
   success?: boolean;
@@ -2154,9 +2166,23 @@ function ProcoreContent() {
     return obviousUomPatterns.includes(normalized);
   }
 
-  function sanitizeCostType(token: string): string {
+  function inferCostTypeFromDescription(description: string): string {
+    const normalizedDescription = normalizeMappingKey(description);
+    if (!normalizedDescription) return "";
+
+    // Domain fallback: rebar line items should always map to Material.
+    if (/(^|\b)rebar(\b|$)/.test(normalizedDescription)) {
+      return "M";
+    }
+
+    return "";
+  }
+
+  function sanitizeCostType(token: string, description?: string): string {
     const trimmed = String(token || "").trim();
-    if (!trimmed || isLikelyUom(trimmed)) return "";
+    if (!trimmed || isLikelyUom(trimmed)) {
+      return inferCostTypeFromDescription(description || "");
+    }
     return trimmed;
   }
 
@@ -2207,7 +2233,10 @@ function ProcoreContent() {
       const subtotalOverride = idxSubtotal >= 0 ? parseMoneyLike(values[idxSubtotal] || "") : 0;
       const amount = subtotalOverride > 0 ? subtotalOverride : Number((quantity * unitPrice).toFixed(2));
       const costCodeRaw = idxCostCode >= 0 ? (values[idxCostCode] || "").trim() : "";
-      const costType = sanitizeCostType(idxCostType >= 0 ? (values[idxCostType] || "") : "");
+      const costType = sanitizeCostType(
+        idxCostType >= 0 ? (values[idxCostType] || "") : "",
+        description
+      );
       const uom = (values[idxUom] || "").trim() || "ea";
 
       const rowProjectId = idxProjectId >= 0 ? normalizeNumericIdToken(values[idxProjectId] || "") : "";

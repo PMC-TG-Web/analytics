@@ -975,6 +975,8 @@ function ProcoreContent() {
       const csvLineItemNumericId = Number((csvLineItem.match(/\b\d{3,}\b/) || [""])[0]);
 
       let best: { item: ProductivityLineItemOption; score: number } | null = null;
+      let contractCandidateCount = 0;
+      let bestTokenOverlapScore = 0;
       for (const item of createProductivityLineItems) {
         const contractFields = [item.contract_number, item.contract_title, item.contract_id]
           .map((v) => normalizeLoose(String(v || "")))
@@ -992,6 +994,7 @@ function ProcoreContent() {
         );
         const contractMatch = contractNumberMatch || contractTextMatch;
         if (!contractMatch) continue;
+        contractCandidateCount += 1;
 
         const lineIdMatch = Number.isFinite(csvLineItemNumericId) && csvLineItemNumericId > 0
           ? item.line_item_id === csvLineItemNumericId
@@ -1001,7 +1004,9 @@ function ProcoreContent() {
           (!!csvLineItem && (itemDesc.includes(csvLineItem) || csvLineItem.includes(itemDesc))) ||
           (!!csvLineItemNoPrefix &&
             (itemDescNoPrefix.includes(csvLineItemNoPrefix) || csvLineItemNoPrefix.includes(itemDescNoPrefix)));
-        const lineTokenMatch = tokenOverlap(row._csv_line_item, item.description || "") >= 0.6;
+        const lineTokenScore = tokenOverlap(row._csv_line_item, item.description || "");
+        if (lineTokenScore > bestTokenOverlapScore) bestTokenOverlapScore = lineTokenScore;
+        const lineTokenMatch = lineTokenScore >= 0.6;
 
         if (!lineIdMatch && !lineNumberMatch && !lineTextMatch && !lineTokenMatch) continue;
 
@@ -1019,9 +1024,26 @@ function ProcoreContent() {
 
       const found = best?.item;
       if (found) {
-        return { ...row, line_item_id: found.line_item_id, _matched: true };
+        return { ...row, line_item_id: found.line_item_id, _matched: true, _statusMessage: undefined };
       }
-      return row;
+      if (contractCandidateCount === 0) {
+        return {
+          ...row,
+          line_item_id: null,
+          _matched: false,
+          _statusMessage: "Contract not found in loaded approved contract line items.",
+        };
+      }
+      const overlapPct = Math.round(bestTokenOverlapScore * 100);
+      return {
+        ...row,
+        line_item_id: null,
+        _matched: false,
+        _statusMessage:
+          overlapPct > 0
+            ? `Contract matched, but no line item matched (best text overlap ${overlapPct}%).`
+            : "Contract matched, but no similar line item was found.",
+      };
     });
   };
 
@@ -5894,7 +5916,14 @@ function ProcoreContent() {
                               <td className="px-2 py-1 border-t border-gray-100 text-center">
                                 {row._status === "success" && <span className="text-green-700 font-semibold">Γ£ô {row._statusMessage}</span>}
                                 {row._status === "error" && <span className="text-red-600" title={row._statusMessage}>Γ£ù Error</span>}
-                                {row._status === "pending" && !row._matched && <span className="text-yellow-600">No match</span>}
+                                {row._status === "pending" && !row._matched && (
+                                  <span className="text-yellow-600">
+                                    No match
+                                    {row._statusMessage && (
+                                      <div className="text-xs mt-0.5 max-w-xs break-words text-amber-800">{row._statusMessage}</div>
+                                    )}
+                                  </span>
+                                )}
                                 {row._status === "pending" && row._matched && <span className="text-gray-400">Ready</span>}
                               </td>
                             </tr>

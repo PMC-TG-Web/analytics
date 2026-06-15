@@ -1090,6 +1090,25 @@ function ProcoreContent() {
     let success = 0;
     let failed = 0;
     const updatedRows = [...csvImportRows];
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const submitWithRetry = async (body: object, maxRetries = 3): Promise<Response> => {
+      let delay = 2000;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const resp = await fetch("/api/procore/productivity-logs/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (resp.status !== 429 || attempt === maxRetries) return resp;
+        const retryAfter = Number(resp.headers.get("Retry-After") || "") * 1000 || delay;
+        await sleep(retryAfter);
+        delay = Math.min(delay * 2, 10000);
+      }
+      throw new Error("Max retries exceeded");
+    };
+
     for (let i = 0; i < updatedRows.length; i++) {
       const row = updatedRows[i];
       if (!row._matched || row.line_item_id === null) continue;
@@ -1100,17 +1119,16 @@ function ProcoreContent() {
       if (row.quantity_delivered !== undefined) payload.quantity_delivered = row.quantity_delivered;
       if (row.notes) payload.notes = row.notes;
       try {
-        const response = await fetch("/api/procore/productivity-logs/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project_id: projectId, productivity_log: payload }),
-        });
+        const response = await submitWithRetry({ project_id: projectId, productivity_log: payload });
         const result = await response.json().catch(() => ({}));
         if (response.ok) {
           updatedRows[i] = { ...row, _status: "success", _statusMessage: `ID ${result?.data?.id ?? "OK"}` };
           success++;
         } else {
-          const msg = result?.details || result?.error || `HTTP ${response.status}`;
+          const upstreamErrors = Array.isArray(result?.upstream?.errors)
+            ? (result.upstream.errors as string[]).join("; ")
+            : "";
+          const msg = upstreamErrors || result?.details || result?.error || `HTTP ${response.status}`;
           updatedRows[i] = { ...row, _status: "error", _statusMessage: msg };
           failed++;
         }
@@ -1119,6 +1137,8 @@ function ProcoreContent() {
         failed++;
       }
       setCsvImportRows([...updatedRows]);
+      // Brief pause between rows to stay under Procore rate limits.
+      await sleep(300);
     }
     setCsvImportBusy(false);
     setCsvImportResults({ success, failed });

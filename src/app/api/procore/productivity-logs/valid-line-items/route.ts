@@ -10,6 +10,7 @@ type ProductivityLineItemOption = {
   line_item_id: number;
   description: string;
   uom: string;
+  unit_cost: number | null;
   amount: number | null;
   quantity: number | null;
   contract_id: string;
@@ -322,6 +323,7 @@ export async function GET(request: Request) {
           line_item_id: lineItemId,
           description: readStr(item.description) || readStr(item.name),
           uom: readStr(item.uom),
+          unit_cost: readNum(item.unit_cost) ?? readNum(item.unit_price) ?? null,
           amount: readNum(item.amount) ?? null,
           quantity: readNum(item.quantity) ?? null,
           contract_id: contractId,
@@ -354,6 +356,7 @@ export async function GET(request: Request) {
           line_item_id: lineItemId,
           description: readStr(item.description) || readStr(item.name),
           uom: readStr(item.uom),
+          unit_cost: readNum(item.unit_cost) ?? readNum(item.unit_price) ?? null,
           amount: readNum(item.amount) ?? null,
           quantity: readNum(item.quantity) ?? null,
           contract_id: contractId,
@@ -386,6 +389,7 @@ export async function GET(request: Request) {
           line_item_id: lineItemId,
           description: readStr(item.description) || readStr(item.name),
           uom: readStr(item.uom),
+          unit_cost: readNum(item.unit_cost) ?? readNum(item.unit_price) ?? null,
           amount: readNum(item.amount) ?? null,
           quantity: readNum(item.quantity) ?? null,
           contract_id: contractId,

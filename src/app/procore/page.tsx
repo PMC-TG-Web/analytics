@@ -97,6 +97,7 @@ interface ProductivityLineItemOption {
   line_item_id: number;
   description: string;
   uom: string;
+  unit_cost: number | null;
   amount: number | null;
   quantity: number | null;
   contract_id: string;
@@ -164,6 +165,7 @@ function ProcoreContent() {
   // CSV import for productivity logs
   type CsvLogRow = {
     date: string;
+    unit_cost: number | undefined;
     quantity_delivered: number | undefined;
     notes: string | undefined;
     _csv_contract: string;
@@ -806,9 +808,11 @@ function ProcoreContent() {
       const lineItem = (row["line item"] || "").trim();
       if (!date || !contract || !lineItem) continue;
       const qd = parseFloat(row["quantity delivered"] || "0");
+      const unitCost = parseFloat(String(row["unit cost"] || "0").replace(/[$,]/g, ""));
       const comments = (row["comments"] || "").trim();
       rows.push({
         date,
+        unit_cost: unitCost > 0 ? unitCost : undefined,
         quantity_delivered: qd > 0 ? qd : undefined,
         notes: comments || undefined,
         _csv_contract: contract,
@@ -966,6 +970,18 @@ function ProcoreContent() {
       return shared / denominator;
     };
 
+    const priceSimilarity = (left?: number | null, right?: number | null): number => {
+      if (!left || !right || left <= 0 || right <= 0) return 0;
+      const delta = Math.abs(left - right);
+      if (delta < 0.005) return 1;
+      const pct = delta / Math.max(left, right);
+      if (pct <= 0.01) return 0.95;
+      if (pct <= 0.03) return 0.8;
+      if (pct <= 0.05) return 0.6;
+      if (pct <= 0.1) return 0.3;
+      return 0;
+    };
+
     return rows.map((row) => {
       const csvContract = normalizeLoose(row._csv_contract);
       const csvLineItem = normalizeLoose(row._csv_line_item);
@@ -1007,15 +1023,25 @@ function ProcoreContent() {
         const lineTokenScore = tokenOverlap(row._csv_line_item, item.description || "");
         if (lineTokenScore > bestTokenOverlapScore) bestTokenOverlapScore = lineTokenScore;
         const lineTokenMatch = lineTokenScore >= 0.6;
+        const itemUnitCost =
+          item.unit_cost && item.unit_cost > 0
+            ? item.unit_cost
+            : item.amount && item.quantity && item.quantity > 0
+              ? item.amount / item.quantity
+              : null;
+        const unitCostScore = priceSimilarity(row.unit_cost, itemUnitCost);
+        const unitCostMatch = unitCostScore >= 0.8;
 
-        if (!lineIdMatch && !lineNumberMatch && !lineTextMatch && !lineTokenMatch) continue;
+        if (!lineIdMatch && !lineNumberMatch && !lineTextMatch && !lineTokenMatch && !unitCostMatch) continue;
 
         const score =
           (contractNumberMatch ? 5 : contractTextMatch ? 3 : 0) +
           (lineIdMatch ? 4 : 0) +
           (lineNumberMatch ? 2 : 0) +
           (lineTextMatch ? 1 : 0) +
-          (lineTokenMatch ? 1 : 0);
+          (lineTokenMatch ? 1 : 0) +
+          (unitCostMatch ? 2 : 0) +
+          unitCostScore;
 
         if (!best || score > best.score) {
           best = { item, score };

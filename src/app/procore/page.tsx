@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
+import { PROCORE_PERMANENT_COST_TYPE_BY_CODE } from "@/lib/procorePermanentCostTypeLookup";
 
 function csvCell(value: unknown): string {
   const text =
@@ -2021,6 +2022,12 @@ function ProcoreContent() {
       ...(refs?.costTypeByCodeMap || {}),
       ...purchaseOrderLineItemCostTypeByCodeMap,
     };
+    const permanentTypeByCodeMap: Record<string, string> = Object.fromEntries(
+      Object.entries(PROCORE_PERMANENT_COST_TYPE_BY_CODE).map(([code, type]) => [
+        normalizeMappingKey(code),
+        normalizeCostTypeCode(type),
+      ])
+    );
     const refWbsMap = refs?.wbsCodeMap || purchaseOrderLineItemWbsCodeMap;
 
     const costCodeIdByFullCode = new Map<string, number>();
@@ -2047,7 +2054,9 @@ function ProcoreContent() {
       refTypeByCodeMap[`${normalizeMappingKey(row.costCodeRaw)}|${normalizedRowType}`] || "";
     const mappedTypeByCodeDefault =
       (!normalizedRowType || normalizedRowType === "o" || normalizedRowType === "other")
-        ? refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
+        ? permanentTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
+          permanentTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
+          refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
           refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
           ""
         : "";

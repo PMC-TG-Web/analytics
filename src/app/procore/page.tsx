@@ -2039,13 +2039,20 @@ function ProcoreContent() {
 
     const mappedCostCode =
       purchaseOrderLineItemCostCodeMap[normalizeMappingKey(row.costCodeRaw)] || row.costCodeRaw;
-    const mappedTypeByCode =
-      refTypeByCodeMap[`${normalizeMappingKey(row.costCodeRaw)}|${normalizeMappingKey(row.costType)}`] ||
-      refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
-      refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
-      "";
+    const normalizedRowType = normalizeMappingKey(row.costType);
+    const mappedTypeByCodeExact =
+      refTypeByCodeMap[`${normalizeMappingKey(row.costCodeRaw)}|${normalizedRowType}`] || "";
+    const mappedTypeByCodeDefault =
+      !normalizedRowType
+        ? refTypeByCodeMap[normalizeMappingKey(row.costCodeRaw)] ||
+          refTypeByCodeMap[normalizeMappingKey(mappedCostCode)] ||
+          ""
+        : "";
     const mappedCostType =
-      mappedTypeByCode || purchaseOrderLineItemCostTypeMap[normalizeMappingKey(row.costType)] || row.costType;
+      mappedTypeByCodeExact ||
+      purchaseOrderLineItemCostTypeMap[normalizedRowType] ||
+      row.costType ||
+      mappedTypeByCodeDefault;
 
     const payload: Record<string, unknown> = {
       description: row.description,

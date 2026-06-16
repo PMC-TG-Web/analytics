@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 
 export async function GET() {
   try {
@@ -11,13 +12,27 @@ export async function GET() {
     const scopes = scope ? scope.split(/\s+/).filter(Boolean) : [];
     const normalizedScopes = scopes.map((entry) => entry.toLowerCase());
     const hasFullProcoreScope = normalizedScopes.includes("procore_all");
+    let hasServiceToken = false;
+    let serviceTokenError: string | null = null;
+
+    if (!accessToken && procoreConfig.clientId && procoreConfig.clientSecret) {
+      try {
+        await getClientCredentialsToken();
+        hasServiceToken = true;
+      } catch (error) {
+        serviceTokenError = error instanceof Error ? error.message : String(error);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      connected: Boolean(accessToken),
+      connected: Boolean(accessToken) || hasServiceToken,
+      authMode: accessToken ? "user_oauth" : hasServiceToken ? "client_credentials" : "none",
       hasAccessToken: Boolean(accessToken),
       hasRefreshToken: Boolean(refreshToken),
-      companyId: companyId || null,
+      hasServiceToken,
+      serviceTokenError,
+      companyId: companyId || procoreConfig.companyId || null,
       scope: scope || null,
       scopes,
       hasReadScope: hasFullProcoreScope || normalizedScopes.includes("read"),

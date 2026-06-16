@@ -5,9 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
+const DEFAULT_PROCORE_COMPANY_ID = "598134325805519";
+const DEFAULT_PROCORE_APP_ID = "598134325538667";
+
+function getProcoreAppUrl() {
+  const companyId = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || DEFAULT_PROCORE_COMPANY_ID;
+  const appId = process.env.NEXT_PUBLIC_PROCORE_APP_ID || DEFAULT_PROCORE_APP_ID;
+  return `https://us02.procore.com/${companyId}/company/apps/${appId}`;
+}
 
 export default function LogoutCompletePage() {
-  const procoreAppUrl = `https://us02.procore.com/${process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || ""}/company/apps/${process.env.NEXT_PUBLIC_PROCORE_APP_ID || ""}`;
+  const procoreAppUrl = getProcoreAppUrl();
   const [source, setSource] = useState<"embedded" | "app">("app");
   const [appReturnTo, setAppReturnTo] = useState("/");
 

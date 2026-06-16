@@ -4,15 +4,28 @@ import { useEffect } from "react";
 
 const AUTH_SIGNAL_KEY = "analytics-auth-complete";
 const AUTH_SIGNAL_CHANNEL = "analytics-auth";
+const DEFAULT_PROCORE_COMPANY_ID = "598134325805519";
+const DEFAULT_PROCORE_APP_ID = "598134325538667";
+
+function getProcoreAppUrl() {
+  const companyId = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || DEFAULT_PROCORE_COMPANY_ID;
+  const appId = process.env.NEXT_PUBLIC_PROCORE_APP_ID || DEFAULT_PROCORE_APP_ID;
+  return `https://us02.procore.com/${companyId}/company/apps/${appId}`;
+}
 
 export default function AuthCompletePage() {
-  const procoreAppUrl = `https://us02.procore.com/${process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || ""}/company/apps/${process.env.NEXT_PUBLIC_PROCORE_APP_ID || ""}`;
+  const procoreAppUrl = getProcoreAppUrl();
 
   const resolveFallbackUrl = () => {
     if (typeof window === "undefined") return procoreAppUrl;
 
     const params = new URLSearchParams(window.location.search);
     const returnTo = params.get("returnTo");
+    const fallback = params.get("fallback");
+
+    if (fallback === "procore-app") {
+      return procoreAppUrl;
+    }
 
     if (
       returnTo &&

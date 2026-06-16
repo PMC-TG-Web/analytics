@@ -142,6 +142,7 @@ function ProcoreContent() {
   const [error, setError] = useState<string | null>(null);
   const [procoreLoginBusy, setProcoreLoginBusy] = useState(false);
   const [procoreLoginFallbackUrl, setProcoreLoginFallbackUrl] = useState("");
+  const [procoreAuthMode, setProcoreAuthMode] = useState<"user_oauth" | "client_credentials" | "none">("none");
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [restRunnerMethod, setRestRunnerMethod] = useState("GET");
   const [restRunnerPath, setRestRunnerPath] = useState("/rest/v1.3/companies/{company_id}/me");
@@ -383,30 +384,35 @@ function ProcoreContent() {
     const checkProcoreAuth = async () => {
       try {
         console.log("ProcorePage: Checking auth...");
-        const response = await fetch("/api/procore/me");
+        const response = await fetch("/api/procore/auth-status", { cache: "no-store" });
         if (response.ok) {
           try {
             const data = await response.json();
-            console.log("ProcorePage: Auth OK");
-            setIsAuthenticated(true);
+            console.log("ProcorePage: Auth status", data);
+            setIsAuthenticated(Boolean(data.connected));
+            setProcoreAuthMode(data.authMode === "user_oauth" || data.authMode === "client_credentials" ? data.authMode : "none");
           } catch (e) {
             console.warn("Failed to parse auth response");
             setIsAuthenticated(false);
+            setProcoreAuthMode("none");
           }
         } else {
           console.warn("ProcorePage: Auth endpoint not available");
           // Don't set error state here to avoid showing it on initial load
           setIsAuthenticated(false);
+          setProcoreAuthMode("none");
         }
       } catch (err) {
         console.warn("Error checking Procore auth:", err);
         setIsAuthenticated(false);
+        setProcoreAuthMode("none");
       }
     };
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("status") === "authenticated") {
       setIsAuthenticated(true);
+      setProcoreAuthMode("user_oauth");
       window.history.replaceState({}, "", "/procore");
     } else {
       checkProcoreAuth();
@@ -4867,7 +4873,9 @@ function ProcoreContent() {
         ) : (
           <div>
             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
-              OK Authenticated with Procore
+              {procoreAuthMode === "client_credentials"
+                ? "Connected to Procore through the server integration"
+                : "OK Authenticated with Procore"}
             </div>
 
             {syncResult && (

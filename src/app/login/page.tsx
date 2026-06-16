@@ -166,7 +166,7 @@ function LoginContent() {
     const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 
     if (framed) {
-      const framedReturnTo = `/auth/complete?returnTo=${encodeURIComponent(returnTo)}`;
+      const framedReturnTo = `/auth/complete?returnTo=${encodeURIComponent(returnTo)}&fallback=procore-app`;
       const framedLoginUrl = `/api/auth/login?returnTo=${encodeURIComponent(framedReturnTo)}`;
       window.open(framedLoginUrl, "analytics_auth_tab");
       setStatus("Sign-in opened in a new tab. Complete login there and this page will resume automatically.");

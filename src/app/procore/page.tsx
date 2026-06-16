@@ -107,6 +107,16 @@ interface ProductivityLineItemOption {
   contract_status: string;
 }
 
+interface DrawingSetTransferRow {
+  id?: string | number | null;
+  name?: string | null;
+  date?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  drawings_count?: number | null;
+  drawingsCount?: number | null;
+}
+
 function getProductivityLineItemKey(item: ProductivityLineItemOption): string {
   return `${item.contract_type}:${item.contract_id}:${item.line_item_id}`;
 }
@@ -151,6 +161,15 @@ function ProcoreContent() {
   const [restRunnerBusy, setRestRunnerBusy] = useState(false);
   const [restRunnerError, setRestRunnerError] = useState<string | null>(null);
   const [restRunnerResult, setRestRunnerResult] = useState<any>(null);
+  const [drawingSourceCompanyId, setDrawingSourceCompanyId] = useState("598134325658789");
+  const [drawingSourceProjectId, setDrawingSourceProjectId] = useState("");
+  const [drawingTargetCompanyId, setDrawingTargetCompanyId] = useState("598134325805519");
+  const [drawingTargetProjectId, setDrawingTargetProjectId] = useState("");
+  const [drawingSets, setDrawingSets] = useState<DrawingSetTransferRow[]>([]);
+  const [selectedDrawingSetIds, setSelectedDrawingSetIds] = useState<Set<string>>(new Set());
+  const [drawingTransferBusy, setDrawingTransferBusy] = useState(false);
+  const [drawingTransferError, setDrawingTransferError] = useState<string | null>(null);
+  const [drawingTransferResult, setDrawingTransferResult] = useState<any>(null);
   const [companyUsersBusy, setCompanyUsersBusy] = useState(false);
   const [companyUsersError, setCompanyUsersError] = useState<string | null>(null);
   const [companyUsersResult, setCompanyUsersResult] = useState<CompanyUserOption[]>([]);
@@ -1401,6 +1420,141 @@ function ProcoreContent() {
       setRestRunnerError(error instanceof Error ? error.message : String(error));
     } finally {
       setRestRunnerBusy(false);
+    }
+  };
+
+  const getDrawingSetKey = (row: DrawingSetTransferRow) =>
+    String(row.id ?? row.name ?? "").trim();
+
+  const handlePullDrawingSets = async () => {
+    const sourceProjectId = drawingSourceProjectId.trim();
+    const sourceCompanyId = drawingSourceCompanyId.trim();
+
+    if (!sourceProjectId) {
+      setDrawingTransferError("Source Project ID is required.");
+      return;
+    }
+    if (!sourceCompanyId) {
+      setDrawingTransferError("Source Company ID is required.");
+      return;
+    }
+
+    setDrawingTransferBusy(true);
+    setDrawingTransferError(null);
+    setDrawingTransferResult(null);
+
+    try {
+      const params = new URLSearchParams({
+        companyId: sourceCompanyId,
+        projectId: sourceProjectId,
+        page: "1",
+        perPage: "100",
+        excludeEmptySets: "false",
+      });
+      const response = await fetch(`/api/procore/drawing-sets-transfer?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.success) {
+        throw new Error(result?.details || result?.error || `Load failed (${response.status}).`);
+      }
+
+      const rows = Array.isArray(result.data) ? result.data : [];
+      setDrawingSets(rows);
+      setSelectedDrawingSetIds(new Set(rows.map((row: DrawingSetTransferRow) => getDrawingSetKey(row)).filter(Boolean)));
+      setDrawingTransferResult({
+        message: `Loaded ${rows.length} drawing set(s) from source project.`,
+        sourceCompanyId,
+        sourceProjectId,
+      });
+    } catch (error) {
+      setDrawingTransferError(error instanceof Error ? error.message : String(error));
+      setDrawingSets([]);
+      setSelectedDrawingSetIds(new Set());
+    } finally {
+      setDrawingTransferBusy(false);
+    }
+  };
+
+  const handleToggleDrawingSet = (row: DrawingSetTransferRow) => {
+    const key = getDrawingSetKey(row);
+    if (!key) return;
+
+    setSelectedDrawingSetIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAllDrawingSets = () => {
+    const allKeys = drawingSets.map((row) => getDrawingSetKey(row)).filter(Boolean);
+    setSelectedDrawingSetIds((current) => current.size === allKeys.length ? new Set() : new Set(allKeys));
+  };
+
+  const handlePushDrawingSets = async () => {
+    const targetProjectId = drawingTargetProjectId.trim();
+    const targetCompanyId = drawingTargetCompanyId.trim();
+
+    if (!targetProjectId) {
+      setDrawingTransferError("Target Project ID is required.");
+      return;
+    }
+    if (!targetCompanyId) {
+      setDrawingTransferError("Target Company ID is required.");
+      return;
+    }
+
+    const selectedRows = drawingSets.filter((row) => selectedDrawingSetIds.has(getDrawingSetKey(row)));
+    if (!selectedRows.length) {
+      setDrawingTransferError("Select at least one drawing set to push.");
+      return;
+    }
+
+    if (!window.confirm(`Create ${selectedRows.length} drawing set(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setDrawingTransferBusy(true);
+    setDrawingTransferError(null);
+    setDrawingTransferResult(null);
+
+    try {
+      const response = await fetch("/api/procore/drawing-sets-transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetCompanyId,
+          targetProjectId,
+          drawingSets: selectedRows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            date: row.date,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+          })),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result?.details || result?.error || `Push failed (${response.status}).`);
+      }
+
+      setDrawingTransferResult(result);
+      if (!result.success) {
+        setDrawingTransferError(`${result.failed || 0} drawing set(s) failed to create. Check the result JSON below.`);
+      }
+    } catch (error) {
+      setDrawingTransferError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrawingTransferBusy(false);
     }
   };
 
@@ -5130,6 +5284,129 @@ function ProcoreContent() {
                 <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                   {JSON.stringify(restRunnerResult, null, 2)}
                 </pre>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+              <h2 className="text-xl font-bold text-emerald-900 mb-3">Drawing Sets Transfer</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Pull drawing sets from one Procore project, review them, then create matching drawing sets in the target project.
+                This creates the drawing set records only.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="rounded border border-gray-200 p-4">
+                  <h3 className="font-bold text-gray-800 mb-3">Source</h3>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingSourceCompanyId}
+                    onChange={(event) => setDrawingSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingSourceProjectId}
+                    onChange={(event) => setDrawingSourceProjectId(event.target.value)}
+                    placeholder="Source Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+
+                <div className="rounded border border-gray-200 p-4">
+                  <h3 className="font-bold text-gray-800 mb-3">Target</h3>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingTargetCompanyId}
+                    onChange={(event) => setDrawingTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingTargetProjectId}
+                    onChange={(event) => setDrawingTargetProjectId(event.target.value)}
+                    placeholder="Target Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handlePullDrawingSets}
+                  disabled={drawingTransferBusy}
+                  className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {drawingTransferBusy ? "Working..." : "Pull Drawing Sets"}
+                </button>
+                <button
+                  onClick={handlePushDrawingSets}
+                  disabled={drawingTransferBusy || drawingSets.length === 0 || selectedDrawingSetIds.size === 0}
+                  className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  Push Selected to Target
+                </button>
+                {drawingSets.length > 0 && (
+                  <button
+                    onClick={handleToggleAllDrawingSets}
+                    disabled={drawingTransferBusy}
+                    className="bg-gray-700 hover:bg-gray-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {selectedDrawingSetIds.size === drawingSets.length ? "Clear Selection" : "Select All"}
+                  </button>
+                )}
+              </div>
+
+              {drawingTransferError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingTransferError}
+                </div>
+              )}
+
+              {drawingTransferResult && (
+                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingTransferResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingSets.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Move</th>
+                        <th className="text-left px-3 py-2">Set ID</th>
+                        <th className="text-left px-3 py-2">Name</th>
+                        <th className="text-left px-3 py-2">Date</th>
+                        <th className="text-left px-3 py-2">Drawings</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingSets.map((row, index) => {
+                        const key = getDrawingSetKey(row);
+                        const drawingCount = row.drawings_count ?? row.drawingsCount ?? "-";
+                        return (
+                          <tr key={key || `${row.name || "drawing-set"}-${index}`} className="border-t border-gray-200">
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(key && selectedDrawingSetIds.has(key))}
+                                onChange={() => handleToggleDrawingSet(row)}
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                            <td className="px-3 py-2">{row.name || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{row.date || "-"}</td>
+                            <td className="px-3 py-2">{drawingCount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 

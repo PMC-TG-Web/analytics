@@ -321,6 +321,18 @@ function ProcoreContent() {
   const [proposalCsvBusy, setProposalCsvBusy] = useState(false);
   const [proposalShowError, setProposalShowError] = useState<string | null>(null);
   const [proposalShowResult, setProposalShowResult] = useState<any>(null);
+  const [cloneSourceCompanyId, setCloneSourceCompanyId] = useState("598134325658789");
+  const [cloneSourceProjectId, setCloneSourceProjectId] = useState("");
+  const [cloneSourceBidBoardProjectId, setCloneSourceBidBoardProjectId] = useState("");
+  const [cloneSourceProposalId, setCloneSourceProposalId] = useState("");
+  const [cloneTargetCompanyId, setCloneTargetCompanyId] = useState("598134325805519");
+  const [cloneTargetProjectId, setCloneTargetProjectId] = useState("");
+  const [cloneTargetBidBoardProjectId, setCloneTargetBidBoardProjectId] = useState("");
+  const [cloneTargetProposalName, setCloneTargetProposalName] = useState("Cloned Estimate");
+  const [cloneCrosswalkPath, setCloneCrosswalkPath] = useState("Codes to use.xlsx");
+  const [cloneProposalBusy, setCloneProposalBusy] = useState(false);
+  const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
+  const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -4541,6 +4553,62 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneProposal = async (dryRun: boolean) => {
+    const sourceCompanyId = cloneSourceCompanyId.trim();
+    const sourceProjectId = cloneSourceProjectId.trim();
+    const sourceBidBoardProjectId = cloneSourceBidBoardProjectId.trim();
+    const sourceProposalId = cloneSourceProposalId.trim();
+    const targetCompanyId = cloneTargetCompanyId.trim();
+    const targetProjectId = cloneTargetProjectId.trim();
+    const targetBidBoardProjectId = cloneTargetBidBoardProjectId.trim();
+    const targetProposalName = cloneTargetProposalName.trim();
+    const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
+
+    if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
+      setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create a cloned proposal in bid board project ${targetBidBoardProjectId}?`)) {
+      return;
+    }
+
+    setCloneProposalBusy(true);
+    setCloneProposalError(null);
+    setCloneProposalResult(null);
+
+    try {
+      const response = await fetch("/api/procore/estimating/clone-proposal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          sourceBidBoardProjectId: sourceBidBoardProjectId || undefined,
+          sourceProposalId,
+          targetCompanyId,
+          targetProjectId: targetProjectId || undefined,
+          targetBidBoardProjectId,
+          targetProposalName,
+          crosswalkPath,
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setCloneProposalError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setCloneProposalResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setCloneProposalError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCloneProposalBusy(false);
+    }
+  };
+
   const handleExportProposalCsv = async () => {
     setProposalCsvBusy(true);
     setProposalShowError(null);
@@ -7714,6 +7782,156 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(proposalShowResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
+              <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Estimate Proposal</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone a source proposal into a target bid board project using <code className="bg-gray-100 px-1 rounded">Codes to use.xlsx</code> to map old cost item IDs to new IDs.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={cloneSourceCompanyId ?? ""}
+                    onChange={(e) => setCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={cloneSourceProjectId ?? ""}
+                    onChange={(e) => setCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Bid Board ID</label>
+                  <input
+                    type="text"
+                    value={cloneSourceBidBoardProjectId ?? ""}
+                    onChange={(e) => setCloneSourceBidBoardProjectId(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Proposal ID</label>
+                  <input
+                    type="text"
+                    value={cloneSourceProposalId ?? ""}
+                    onChange={(e) => setCloneSourceProposalId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={cloneTargetCompanyId ?? ""}
+                    onChange={(e) => setCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={cloneTargetProjectId ?? ""}
+                    onChange={(e) => setCloneTargetProjectId(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Bid Board ID</label>
+                  <input
+                    type="text"
+                    value={cloneTargetBidBoardProjectId ?? ""}
+                    onChange={(e) => setCloneTargetBidBoardProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">New Proposal Name</label>
+                  <input
+                    type="text"
+                    value={cloneTargetProposalName ?? ""}
+                    onChange={(e) => setCloneTargetProposalName(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Crosswalk Workbook Path</label>
+                <input
+                  type="text"
+                  value={cloneCrosswalkPath ?? ""}
+                  onChange={(e) => setCloneCrosswalkPath(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneProposal(true)}
+                  disabled={cloneProposalBusy}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {cloneProposalBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneProposal(false)}
+                  disabled={cloneProposalBusy || !cloneProposalResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {cloneProposalBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {cloneProposalResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-proposal-result.json", cloneProposalResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {cloneProposalError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Clone Error:</strong> {cloneProposalError}
+                </div>
+              )}
+
+              {cloneProposalResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    cloneProposalResult.result?.readyForLiveClone || cloneProposalResult.result?.success
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Clone Result:</strong>{" "}
+                    {cloneProposalResult.result?.dryRun
+                      ? cloneProposalResult.result?.readyForLiveClone
+                        ? "Dry run is clean. Live clone is enabled."
+                        : `${cloneProposalResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                      : cloneProposalResult.result?.success
+                        ? `Live clone created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(cloneProposalResult, null, 2)}
                   </pre>
                 </div>
               )}

@@ -140,6 +140,8 @@ function ProcoreContent() {
   const [createProductivityLineItemsInfo, setCreateProductivityLineItemsInfo] = useState<string | null>(null);
   const [createProductivityLineItemsDebug, setCreateProductivityLineItemsDebug] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [procoreLoginBusy, setProcoreLoginBusy] = useState(false);
+  const [procoreLoginFallbackUrl, setProcoreLoginFallbackUrl] = useState("");
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [restRunnerMethod, setRestRunnerMethod] = useState("GET");
   const [restRunnerPath, setRestRunnerPath] = useState("/rest/v1.3/companies/{company_id}/me");
@@ -546,12 +548,36 @@ function ProcoreContent() {
 
   const handleLogin = () => {
     // Procore API access requires the dedicated Procore OAuth flow.
-    const loginUrl = "/api/auth/procore/login";
-    if (typeof window !== 'undefined' && window.self !== window.top) {
-      window.top!.location.href = loginUrl;
-      return;
+    const returnTo =
+      typeof window === "undefined"
+        ? "/procore"
+        : `${window.location.pathname}${window.location.search}`;
+    const loginUrl = `/api/auth/procore/login?returnTo=${encodeURIComponent(returnTo || "/procore")}`;
+    setError(null);
+    setProcoreLoginBusy(true);
+    setProcoreLoginFallbackUrl(loginUrl);
+
+    if (typeof window === "undefined") return;
+
+    try {
+      if (window.self !== window.top && window.top) {
+        window.top.location.assign(loginUrl);
+        return;
+      }
+    } catch (err) {
+      console.warn("Unable to redirect top window for Procore OAuth:", err);
     }
-    window.location.href = loginUrl;
+
+    try {
+      window.location.assign(loginUrl);
+    } catch (err) {
+      console.warn("Unable to redirect current window for Procore OAuth:", err);
+      const popup = window.open(loginUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        setError("Your browser blocked the Procore login redirect. Use the fallback login link below.");
+        setProcoreLoginBusy(false);
+      }
+    }
   };
 
   const handleExplore = async () => {
@@ -4813,10 +4839,24 @@ function ProcoreContent() {
             </p>
             <button
               onClick={handleLogin}
+              disabled={procoreLoginBusy}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded mb-4"
             >
-              Login with Procore
+              {procoreLoginBusy ? "Opening Procore Login..." : "Login with Procore"}
             </button>
+            {procoreLoginFallbackUrl && (
+              <div className="mt-2 text-sm text-gray-600">
+                If the Procore iframe blocks the redirect,{" "}
+                <a
+                  href={procoreLoginFallbackUrl}
+                  target="_top"
+                  className="font-semibold text-blue-700 underline"
+                >
+                  open Procore login here
+                </a>
+                .
+              </div>
+            )}
             <div className="mt-4 pt-4 border-t border-gray-100 italic text-xs text-gray-400">
                Note: This will redirect to your configured Procore Auth URL.
             </div>

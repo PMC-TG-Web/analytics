@@ -552,7 +552,10 @@ function ProcoreContent() {
       typeof window === "undefined"
         ? "/procore"
         : `${window.location.pathname}${window.location.search}`;
-    const loginUrl = `/api/auth/procore/login?returnTo=${encodeURIComponent(returnTo || "/procore")}`;
+    const loginUrl =
+      typeof window === "undefined"
+        ? `/api/auth/procore/login?returnTo=${encodeURIComponent(returnTo || "/procore")}`
+        : `${window.location.origin}/api/auth/procore/login?returnTo=${encodeURIComponent(returnTo || "/procore")}`;
     setError(null);
     setProcoreLoginBusy(true);
     setProcoreLoginFallbackUrl(loginUrl);

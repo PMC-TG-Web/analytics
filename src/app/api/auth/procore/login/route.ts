@@ -1,14 +1,13 @@
 // Initiate Procore OAuth login
 import { NextResponse } from "next/server";
-import { getAuthorizationUrl, procoreConfig } from "@/lib/procore";
+import { getAuthorizationUrl, getProcoreRedirectUri } from "@/lib/procore";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
-    const redirectUri =
-      procoreConfig.redirectUri || `${requestUrl.origin}/api/auth/procore/callback`;
+    const redirectUri = getProcoreRedirectUri(requestUrl.origin);
     const { searchParams } = new URL(request.url);
     let rawReturnTo = String(searchParams.get("returnTo") || "").trim();
     

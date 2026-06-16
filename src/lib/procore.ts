@@ -26,6 +26,37 @@ export const procoreConfig = {
   redirectUri: (process.env.NEXT_PUBLIC_REDIRECT_URI || '').trim(),
 };
 
+export function getProcoreRedirectUri(requestOrigin?: string): string {
+  const configuredRedirectUri = String(process.env.PROCORE_REDIRECT_URI || '').trim();
+  const legacyPublicRedirectUri = String(process.env.NEXT_PUBLIC_REDIRECT_URI || '').trim();
+
+  if (
+    configuredRedirectUri &&
+    /^https?:\/\//i.test(configuredRedirectUri) &&
+    (process.env.NODE_ENV !== 'production' || !/localhost|127\.0\.0\.1/i.test(configuredRedirectUri))
+  ) {
+    return configuredRedirectUri;
+  }
+
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    legacyPublicRedirectUri &&
+    /^https?:\/\//i.test(legacyPublicRedirectUri)
+  ) {
+    return legacyPublicRedirectUri;
+  }
+
+  const configuredBaseUrl = String(
+    process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL || requestOrigin || ''
+  ).trim().replace(/\/$/, '');
+
+  if (!configuredBaseUrl || !/^https?:\/\//i.test(configuredBaseUrl)) {
+    throw new Error('Missing valid app base URL for Procore OAuth redirect URI.');
+  }
+
+  return `${configuredBaseUrl}/api/auth/procore/callback`;
+}
+
 export function isProcoreLiveApiEnabled(): boolean {
   const value = String(process.env.PROCORE_LIVE_API_ENABLED || '').trim().toLowerCase();
   return value === 'true' || value === '1' || value === 'yes';

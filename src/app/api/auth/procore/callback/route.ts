@@ -1,6 +1,6 @@
 // OAuth callback handler for Procore
 import { NextResponse } from "next/server";
-import { getAccessToken, procoreConfig } from "@/lib/procore";
+import { getAccessToken, getProcoreRedirectUri } from "@/lib/procore";
 import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const redirectUri =
     redirectUriCookie && redirectUriCookie.startsWith("http")
       ? redirectUriCookie
-      : procoreConfig.redirectUri || `${requestUrl.origin}/api/auth/procore/callback`;
+      : getProcoreRedirectUri(requestUrl.origin);
   const returnToPath = returnToCookie && returnToCookie.startsWith("/") ? returnToCookie : "/procore";
 
   // Check for errors from Procore

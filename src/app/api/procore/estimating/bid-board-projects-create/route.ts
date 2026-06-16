@@ -15,6 +15,43 @@ function readString(value: unknown): string {
   return String(value || "").trim();
 }
 
+function formatExcelSerialDate(serial: number): string | null {
+  if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return null;
+
+  const date = new Date(Date.UTC(1899, 11, 30));
+  date.setUTCDate(date.getUTCDate() + Math.floor(serial));
+  return date.toISOString();
+}
+
+function normalizeUtcDateTime(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T00:00:00Z`;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+
+  return value;
+}
+
+function readDateString(value: unknown): string {
+  if (typeof value === "number") {
+    return formatExcelSerialDate(value) || "";
+  }
+
+  const text = readString(value);
+  if (!text) return "";
+
+  const numericValue = Number(text);
+  if (/^\d+(\.\d+)?$/.test(text) && Number.isFinite(numericValue)) {
+    return formatExcelSerialDate(numericValue) || text;
+  }
+
+  return normalizeUtcDateTime(text);
+}
+
 function readBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -74,6 +111,7 @@ export async function POST(request: Request) {
 
     const name = readString(body.name);
     const status = readString(body.status || "ESTIMATING");
+    const dueDate = readDateString(body.due_date || body.dueDate);
 
     if (!name) {
       return NextResponse.json(
@@ -86,7 +124,7 @@ export async function POST(request: Request) {
       name,
       status,
       ...(readString(body.description) ? { description: readString(body.description) } : {}),
-      ...(readString(body.due_date || body.dueDate) ? { due_date: readString(body.due_date || body.dueDate) } : {}),
+      ...(dueDate ? { due_date: dueDate } : {}),
       ...(readString(body.project_number || body.projectNumber)
         ? { project_number: readString(body.project_number || body.projectNumber) }
         : {}),

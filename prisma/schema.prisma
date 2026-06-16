@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
@@ -257,6 +257,9 @@ model TimecardEntry {
   updatedAt            DateTime                     @default(now()) @updatedAt @db.Timestamptz(6)
   project              Project?                     @relation(fields: [projectId], references: [id], onUpdate: NoAction, map: "fk_timecard_entry_project")
   unpackedFields       TimecardEntryUnpackedField[]
+  // idx_timecard_entry_project_costcode_covering: (procoreProjectId, costCodeFullCode) INCLUDE (hours)
+  // WHERE costCodeFullCode IS NOT NULL AND costCodeFullCode <> ''
+  // — partial covering index; INCLUDE syntax not supported in Prisma @@index; applied via migration SQL
 
   @@index([costCodeId], map: "idx_timecard_entry_cost_code_id")
   @@index([date], map: "idx_timecard_entry_date")
@@ -265,9 +268,6 @@ model TimecardEntry {
   @@index([procoreId], map: "idx_timecard_entry_procore_id")
   @@index([projectId], map: "idx_timecard_entry_project_id")
   @@index([status], map: "idx_timecard_entry_status")
-  // idx_timecard_entry_project_costcode_covering: (procoreProjectId, costCodeFullCode) INCLUDE (hours)
-  // WHERE costCodeFullCode IS NOT NULL AND costCodeFullCode <> ''
-  // — partial covering index; INCLUDE syntax not supported in Prisma @@index; applied via migration SQL
 }
 
 model TimecardTimeType {
@@ -322,6 +322,10 @@ model CommitmentContract {
   updatedAt                           DateTime                              @default(now()) @updatedAt @db.Timestamptz(6)
   project                             Project?                              @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   commitment_contract_unpacked_fields commitment_contract_unpacked_fields[]
+  // idx_commitment_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 
   @@index([jobKey])
   @@index([projectId])
@@ -329,10 +333,6 @@ model CommitmentContract {
   @@index([number])
   @@index([status])
   @@index([vendorId])
-  // idx_commitment_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
-  // INCLUDE (id, value, vendorName, status)
-  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
-  // advanced partial covering index; applied via migration SQL
 }
 
 model CommitmentChangeOrder {
@@ -422,6 +422,10 @@ model PurchaseOrderContract {
   updatedAt               DateTime                              @default(now()) @updatedAt @db.Timestamptz(6)
   project                 Project?                              @relation(fields: [projectId], references: [id], onUpdate: NoAction, map: "fk_poc_project")
   lineItemContractDetails PurchaseOrderLineItemContractDetail[]
+  // idx_purchase_order_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
+  // INCLUDE (id, value, vendorName, status)
+  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
+  // advanced partial covering index; applied via migration SQL
 
   @@index([jobKey], map: "idx_poc_job_key")
   @@index([number], map: "idx_poc_number")
@@ -429,10 +433,6 @@ model PurchaseOrderContract {
   @@index([projectId], map: "idx_poc_project_id")
   @@index([status], map: "idx_poc_status")
   @@index([vendorId], map: "idx_poc_vendor_id")
-  // idx_purchase_order_contract_company_project_covering: (procoreCompanyId, procoreProjectId)
-  // INCLUDE (id, value, vendorName, status)
-  // WHERE procoreCompanyId IS NOT NULL AND procoreProjectId IS NOT NULL
-  // advanced partial covering index; applied via migration SQL
 }
 
 model PurchaseOrderLineItemContractDetail {
@@ -959,19 +959,19 @@ model ProcoreProjectStagingUnpackedField {
 }
 
 model ProcoreWebhookHook {
-  id               String   @id @default(cuid())
-  procoreHookId    String   @unique @map("procore_hook_id")
-  scope            String
-  companyId        String   @map("company_id")
-  projectId        String?  @map("project_id")
-  namespace        String?
-  payloadVersion   String?  @map("payload_version")
-  destinationUrl   String   @map("destination_url")
-  status           String   @default("active")
-  triggerCount     Int?     @map("trigger_count")
-  lastVerifiedAt   DateTime? @map("last_verified_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String    @id @default(cuid())
+  procoreHookId  String    @unique @map("procore_hook_id")
+  scope          String
+  companyId      String    @map("company_id")
+  projectId      String?   @map("project_id")
+  namespace      String?
+  payloadVersion String?   @map("payload_version")
+  destinationUrl String    @map("destination_url")
+  status         String    @default("active")
+  triggerCount   Int?      @map("trigger_count")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([companyId], map: "idx_pwh_company_id")
   @@index([projectId], map: "idx_pwh_project_id")
@@ -981,19 +981,19 @@ model ProcoreWebhookHook {
 }
 
 model ProcoreWebhookEvent {
-  id             String               @id @default(cuid())
-  eventKey       String               @unique @map("event_key")
-  procoreEventId String?              @map("procore_event_id")
-  eventUlid      String?              @map("event_ulid")
-  companyId      String?              @map("company_id")
-  projectId      String?              @map("project_id")
-  resourceName   String?              @map("resource_name")
-  eventType      String?              @map("event_type")
-  resourceId     String?              @map("resource_id")
+  id             String                @id @default(cuid())
+  eventKey       String                @unique @map("event_key")
+  procoreEventId String?               @map("procore_event_id")
+  eventUlid      String?               @map("event_ulid")
+  companyId      String?               @map("company_id")
+  projectId      String?               @map("project_id")
+  resourceName   String?               @map("resource_name")
+  eventType      String?               @map("event_type")
+  resourceId     String?               @map("resource_id")
   payload        Json
-  receivedAt     DateTime             @default(now()) @map("received_at") @db.Timestamptz(6)
-  processedAt    DateTime?            @map("processed_at") @db.Timestamptz(6)
-  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  receivedAt     DateTime              @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt    DateTime?             @map("processed_at") @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   queueJobs      ProcoreWebhookQueue[]
 
   @@index([companyId], map: "idx_pwe_company_id")
@@ -1005,19 +1005,19 @@ model ProcoreWebhookEvent {
 }
 
 model ProcoreWebhookQueue {
-  id           String              @id @default(cuid())
-  eventId      String              @map("event_id")
-  status       String              @default("pending")
-  attempts     Int                 @default(0)
-  maxAttempts  Int                 @default(5) @map("max_attempts")
-  availableAt  DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
-  lockedAt     DateTime?           @map("locked_at") @db.Timestamptz(6)
-  lockedBy     String?             @map("locked_by")
-  processedAt  DateTime?           @map("processed_at") @db.Timestamptz(6)
-  lastError    String?             @map("last_error")
-  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  event        ProcoreWebhookEvent @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id          String              @id @default(cuid())
+  eventId     String              @map("event_id")
+  status      String              @default("pending")
+  attempts    Int                 @default(0)
+  maxAttempts Int                 @default(5) @map("max_attempts")
+  availableAt DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
+  lockedAt    DateTime?           @map("locked_at") @db.Timestamptz(6)
+  lockedBy    String?             @map("locked_by")
+  processedAt DateTime?           @map("processed_at") @db.Timestamptz(6)
+  lastError   String?             @map("last_error")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event       ProcoreWebhookEvent @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([status, availableAt], map: "idx_pwq_status_available")
   @@index([eventId], map: "idx_pwq_event_id")
@@ -1343,14 +1343,14 @@ model procore_bid_board_live {
   customer           String?
   payload            Json
   synced_at          DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([procore_project_id])
-  @@index([status])
-  @@index([synced_at(sort: Desc)])
   // idx_bid_board_company_project_synced_covering: (company_id, procore_project_id, synced_at DESC)
   // INCLUDE (bid_board_id, status, customer)
   // WHERE procore_project_id IS NOT NULL
   // advanced partial covering index; applied via migration SQL
+
+  @@index([procore_project_id])
+  @@index([status])
+  @@index([synced_at(sort: Desc)])
 }
 
 model procore_prime_contracts_live {
@@ -1791,4 +1791,176 @@ model procore_estimating_catalogs_live {
 
   @@index([company_id])
   @@index([synced_at(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW CLEAN SCHEMA (v2)
+// Primary key: company_id + procore_project_id
+// No composite string keys. No multi-hop schedule pipeline.
+// All project-linked tables join directly on procore_project_id.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Canonical project record keyed by Procore's numeric project ID.
+model PmcProject {
+  companyId        String    @default("598134325805519") @map("company_id")
+  procoreProjectId String    @map("procore_project_id") // Procore project ID e.g. "598134326634438"
+  bidBoardId       String?   @map("bid_board_id") // Procore bid board project ID
+  projectNumber    String?   @map("project_number") // e.g. "2508 - GI"
+  projectName      String    @map("project_name")
+  customer         String?
+  status           String? // Procore project status
+  bidBoardStatus   String?   @map("bid_board_status") // Procore bid board status
+  projectManager   String?   @map("project_manager")
+  estimator        String?
+  address          String?
+  city             String?
+  state            String?
+  zip              String?
+  procoreCreatedAt DateTime? @map("procore_created_at") @db.Timestamptz(6)
+  procoreUpdatedAt DateTime? @map("procore_updated_at") @db.Timestamptz(6)
+  syncedAt         DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  scopes          PmcProjectScope[]
+  scheduleEntries PmcScheduleEntry[]
+  allocations     PmcScheduleAllocation[]
+
+  @@id([companyId, procoreProjectId])
+  @@index([companyId])
+  @@index([procoreProjectId])
+  @@index([bidBoardId])
+  @@index([projectNumber])
+  @@index([customer])
+  @@index([status])
+  @@index([bidBoardStatus])
+  @@map("pmc_projects")
+}
+
+/// Canonical estimating/bid-board record keyed by Procore bid board project ID.
+/// Some estimating jobs do not have a Procore project ID yet, so they live here
+/// until Procore links them to a project.
+model PmcBidBoardProject {
+  id               String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String   @default("598134325805519") @map("company_id")
+  bidBoardId       String   @map("bid_board_id")
+  procoreProjectId String?  @map("procore_project_id")
+  projectNumber    String?  @map("project_number")
+  projectName      String   @map("project_name")
+  customer         String?
+  customerCompanyId String? @map("customer_company_id")
+  status           String?
+  statusRaw        String?  @map("status_raw")
+  payload          Json?
+  syncedAt         DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, bidBoardId])
+  @@index([companyId])
+  @@index([bidBoardId])
+  @@index([procoreProjectId])
+  @@index([projectNumber])
+  @@index([status])
+  @@index([customer])
+  @@index([customerCompanyId])
+  @@map("pmc_bid_board_projects")
+}
+
+/// Work breakdown scope for a project — replaces ProjectScope + gantt_v2_scopes.
+model PmcProjectScope {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String    @default("598134325805519") @map("company_id")
+  procoreProjectId String    @map("procore_project_id") // FK → PmcProject.procoreProjectId
+  title            String
+  startDate        DateTime? @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  hours            Decimal?  @db.Decimal(10, 2)
+  manpower         Int?
+  schedulingMode   String    @default("contiguous") @map("scheduling_mode") // "contiguous" | "specific-days"
+  selectedDays     Json?     @map("selected_days") // [{date, hours, foremanId}]
+  tasks            Json? // [{name, hours}]
+  color            String?   @db.VarChar(7)
+  notes            String?
+  predecessorId    String?   @map("predecessor_id") // FK → PmcProjectScope.id
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project         PmcProject         @relation(fields: [companyId, procoreProjectId], references: [companyId, procoreProjectId], onDelete: Cascade)
+  predecessor     PmcProjectScope?   @relation("ScopePredecessor", fields: [predecessorId], references: [id], onDelete: SetNull)
+  successors      PmcProjectScope[]  @relation("ScopePredecessor")
+  scheduleEntries PmcScheduleEntry[]
+
+  @@index([companyId, procoreProjectId])
+  @@index([procoreProjectId])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("pmc_project_scopes")
+}
+
+/// Daily schedule entries — replaces ActiveSchedule + gantt_v2_schedule_entries.
+/// One row per project + scope + date.
+model PmcScheduleEntry {
+  id               String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String   @default("598134325805519") @map("company_id")
+  procoreProjectId String   @map("procore_project_id") // FK → PmcProject.procoreProjectId
+  scopeId          String?  @map("scope_id") // FK → PmcProjectScope.id (nullable for unscoped entries)
+  date             DateTime @db.Date
+  hours            Decimal  @db.Decimal(6, 2)
+  manpower         Int?
+  foremanId        String?  @map("foreman_id") // Employee ID
+  source           String   @default("manual") // "manual" | "gantt" | "wip"
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project PmcProject       @relation(fields: [companyId, procoreProjectId], references: [companyId, procoreProjectId], onDelete: Cascade)
+  scope   PmcProjectScope? @relation(fields: [scopeId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, procoreProjectId, scopeId, date])
+  @@index([companyId, procoreProjectId])
+  @@index([procoreProjectId])
+  @@index([date])
+  @@index([scopeId])
+  @@index([source])
+  @@map("pmc_schedule_entries")
+}
+
+/// Monthly hour allocations per project (for long-term schedule view).
+model PmcScheduleAllocation {
+  id               String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String   @default("598134325805519") @map("company_id")
+  procoreProjectId String   @map("procore_project_id") // FK → PmcProject.procoreProjectId
+  month            String   @db.VarChar(7) // YYYY-MM
+  hours            Decimal  @default(0) @db.Decimal(10, 2)
+  percent          Decimal? @db.Decimal(5, 2)
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project PmcProject @relation(fields: [companyId, procoreProjectId], references: [companyId, procoreProjectId], onDelete: Cascade)
+
+  @@unique([companyId, procoreProjectId, month])
+  @@index([companyId, procoreProjectId])
+  @@index([procoreProjectId])
+  @@index([month])
+  @@map("pmc_schedule_allocations")
+}
+
+/// Sync audit log — tracks when each Procore data type was last synced per project.
+model PmcSyncLog {
+  id               String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String   @default("598134325805519") @map("company_id")
+  procoreProjectId String   @map("procore_project_id") // Procore project ID
+  dataType         String   @map("data_type") // e.g. "budget_line_items", "timecards", "productivity_logs"
+  status           String   @default("success") // "success" | "error" | "partial"
+  rowsSynced       Int      @default(0) @map("rows_synced")
+  errorMessage     String?  @map("error_message")
+  syncedAt         DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+
+  @@index([companyId, procoreProjectId])
+  @@index([procoreProjectId])
+  @@index([dataType])
+  @@index([syncedAt(sort: Desc)])
+  @@map("pmc_sync_logs")
 }

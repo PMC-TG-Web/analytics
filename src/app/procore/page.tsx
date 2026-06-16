@@ -3154,6 +3154,52 @@ function ProcoreContent() {
     return undefined;
   };
 
+  const formatExcelSerialDate = (serial: number): string | null => {
+    if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return null;
+
+    const date = new Date(Date.UTC(1899, 11, 30));
+    date.setUTCDate(date.getUTCDate() + Math.floor(serial));
+    return date.toISOString();
+  };
+
+  const normalizeUtcDateTime = (value: string): string => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return `${value}T00:00:00Z`;
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+
+    return value;
+  };
+
+  const normalizeRowDate = (row: Record<string, unknown>, keys: string[]): string => {
+    for (const key of keys) {
+      const value = row[key];
+      if (value === null || value === undefined) continue;
+
+      if (typeof value === "number") {
+        const converted = formatExcelSerialDate(value);
+        if (converted) return converted;
+      }
+
+      const text = String(value).trim();
+      if (!text) continue;
+
+      const numericValue = Number(text);
+      if (/^\d+(\.\d+)?$/.test(text) && Number.isFinite(numericValue)) {
+        const converted = formatExcelSerialDate(numericValue);
+        if (converted) return converted;
+      }
+
+      return normalizeUtcDateTime(text);
+    }
+
+    return "";
+  };
+
   const buildBidBoardProjectPayloadFromRow = (row: Record<string, unknown>) => {
     const payload: Record<string, unknown> = {
       name: getRowString(row, ["name", "Name"]),
@@ -3161,7 +3207,7 @@ function ProcoreContent() {
     };
 
     const description = getRowString(row, ["description", "Description"]);
-    const dueDate = getRowString(row, ["due_date", "dueDate", "Due Date", "due date"]);
+    const dueDate = normalizeRowDate(row, ["due_date", "dueDate", "Due Date", "due date"]);
     const projectNumber = getRowString(row, ["project_number", "projectNumber", "Project Number", "project number"]);
     const squareFootage = getRowNumber(row, ["square_footage", "squareFootage", "Square Footage", "square footage"]);
 

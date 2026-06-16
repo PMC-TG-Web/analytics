@@ -28,6 +28,56 @@ function keyFromProjectIdentity(projectNumber: unknown, projectName: unknown) {
   return `${num}__${name}`;
 }
 
+function mapPmcProjectToLegacyShape(project: {
+  companyId: string;
+  procoreProjectId: string;
+  bidBoardId: string | null;
+  projectNumber: string | null;
+  projectName: string;
+  customer: string | null;
+  status: string | null;
+  bidBoardStatus: string | null;
+  projectManager: string | null;
+  estimator: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  syncedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: project.procoreProjectId,
+    companyId: project.companyId,
+    procoreId: project.procoreProjectId,
+    procoreProjectId: project.procoreProjectId,
+    bidBoardId: project.bidBoardId,
+    projectNumber: project.projectNumber,
+    projectName: project.projectName,
+    customer: project.customer,
+    status: project.status,
+    bidBoardStatus: project.bidBoardStatus,
+    projectManager: project.projectManager,
+    estimator: project.estimator,
+    address: project.address,
+    city: project.city,
+    state: project.state,
+    zip: project.zip,
+    projectArchived: false,
+    customerSource: 'pmc_projects',
+    statusSource: 'pmc_projects',
+    customFields: {
+      source: 'pmc_projects',
+      procoreId: project.procoreProjectId,
+      bidBoardId: project.bidBoardId,
+    },
+    syncedAt: project.syncedAt,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -58,10 +108,94 @@ export async function GET(request: NextRequest) {
     const statusesParam = (searchParams.get('statuses') || searchParams.get('filters[by_status]') || '').trim();
     const includeArchived = (searchParams.get('includeArchived') || '').trim().toLowerCase() === 'true';
     const endpointOnly = (searchParams.get('endpointOnly') || '').trim().toLowerCase() === 'true';
+    const readSource = (searchParams.get('source') || searchParams.get('readSource') || '').trim().toLowerCase();
+    const usePmcProjects = readSource === 'pmc' || readSource === 'pmc_projects';
 
     const statusList = statusesParam && statusesParam.toLowerCase() !== 'all'
       ? statusesParam.split(',').map((value) => value.trim()).filter((value) => value.length > 0)
       : [];
+
+    if (usePmcProjects) {
+      const pmcWhere: Prisma.PmcProjectWhereInput = {};
+
+      if (statusList.length > 0) {
+        pmcWhere.status = { in: statusList };
+      }
+
+      if (customer) {
+        pmcWhere.customer = customer;
+      }
+
+      if (projectNumber) {
+        pmcWhere.projectNumber = projectNumber;
+      }
+
+      if (projectName) {
+        pmcWhere.projectName = projectName;
+      }
+
+      if (endpointOnly) {
+        pmcWhere.procoreProjectId = { not: '' };
+      }
+
+      if (useCursorPagination && cursor) {
+        pmcWhere.procoreProjectId = {
+          ...(typeof pmcWhere.procoreProjectId === 'object' && pmcWhere.procoreProjectId ? pmcWhere.procoreProjectId : {}),
+          gt: cursor,
+        };
+      }
+
+      const queryWhere = Object.keys(pmcWhere).length > 0 ? pmcWhere : undefined;
+      const orderBy = useCursorPagination
+        ? ({ procoreProjectId: 'asc' } as const)
+        : ({ projectName: 'asc' } as const);
+
+      let total: number | undefined;
+      const rows = includeTotal
+        ? await (async () => {
+            const [countValue, pageRows] = await Promise.all([
+              queryWhere ? prisma.pmcProject.count({ where: queryWhere }) : prisma.pmcProject.count(),
+              queryWhere
+                ? prisma.pmcProject.findMany({ where: queryWhere, orderBy, skip, take: pageSize })
+                : prisma.pmcProject.findMany({ orderBy, skip, take: pageSize }),
+            ]);
+            total = countValue;
+            return pageRows;
+          })()
+        : await (queryWhere
+            ? prisma.pmcProject.findMany({ where: queryWhere, orderBy, skip, take: pageSize + 1 })
+            : prisma.pmcProject.findMany({ orderBy, skip, take: pageSize + 1 }));
+
+      const hasNextPage = includeTotal && typeof total === 'number'
+        ? (useCursorPagination ? rows.length === pageSize : skip! + rows.length < total)
+        : rows.length > pageSize;
+
+      const pageRows = includeTotal ? rows : rows.slice(0, pageSize);
+      const data = pageRows.map(mapPmcProjectToLegacyShape);
+      const totalPages = includeTotal && typeof total === 'number'
+        ? Math.max(1, Math.ceil(total / pageSize))
+        : (hasNextPage ? page + 1 : page);
+      const nextCursor = useCursorPagination && data.length > 0
+        ? data[data.length - 1]?.procoreProjectId
+        : undefined;
+
+      const response: Record<string, any> = {
+        success: true,
+        source: 'pmc_projects',
+        count: data.length,
+        ...(typeof total === 'number' ? { total } : {}),
+        ...(useCursorPagination ? {} : { page, pageSize, totalPages, hasPreviousPage: page > 1 }),
+        hasNextPage,
+        ...(useCursorPagination && nextCursor ? { nextCursor } : {}),
+        data,
+      };
+
+      setCachedValue(cacheKey, response, PROJECTS_CACHE_TTL_MS);
+      const jsonResponse = NextResponse.json(response);
+      jsonResponse.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      jsonResponse.headers.set('X-Cache', 'MISS');
+      return jsonResponse;
+    }
 
     const where: Prisma.ProjectWhereInput = {};
 

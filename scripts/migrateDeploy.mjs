@@ -12,7 +12,10 @@ const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   try {
-    execFileSync(npxBin, ['prisma', 'migrate', 'deploy'], { stdio: 'inherit' });
+    execFileSync(npxBin, ['prisma', 'migrate', 'deploy'], {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
     process.exit(0);
   } catch (error) {
     const msg = error?.stderr?.toString() || error?.message || '';

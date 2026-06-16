@@ -26,6 +26,7 @@ const navLinks: NavLink[] = [
   { href: "/", label: "Home", page: "home" },
   { href: "/dashboard", label: "Dashboard", page: "dashboard" },
   { href: "/projects", label: "Projects", page: "projects" },
+  { href: "/procore", label: "Procore", page: "procore" },
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },

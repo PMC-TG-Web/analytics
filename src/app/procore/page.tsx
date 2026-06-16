@@ -117,6 +117,50 @@ interface DrawingSetTransferRow {
   drawingsCount?: number | null;
 }
 
+interface DrawingUploadRow {
+  id?: string | number | null;
+  file_name?: string | null;
+  filename?: string | null;
+  name?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  upload_date?: string | null;
+  drawing_set?: { id?: string | number | null; name?: string | null; date?: string | null } | null;
+  drawing_area?: { id?: string | number | null; name?: string | null } | null;
+  drawings_count?: number | null;
+  drawingsCount?: number | null;
+  uploaded_by?: { id?: string | number | null; name?: string | null; login?: string | null } | null;
+  user?: { id?: string | number | null; name?: string | null; login?: string | null } | null;
+}
+
+interface DrawingInventorySummaryRow {
+  id?: string | number | null;
+  number?: string | number | null;
+  title?: string | null;
+  drawingAreaId?: string | number | null;
+  drawingAreaName?: string | null;
+  drawingSetId?: string | number | null;
+  drawingSetName?: string | null;
+  currentRevisionId?: string | number | null;
+  revision?: string | number | null;
+  drawingDate?: string | null;
+  pdfFields?: Record<string, unknown>;
+}
+
+interface ProjectDocumentInventoryRow {
+  id?: string | number | null;
+  type?: string | null;
+  name?: string | null;
+  parentId?: string | number | null;
+  path?: string | null;
+  size?: string | number | null;
+  contentType?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  downloadFields?: Record<string, unknown>;
+}
+
 function getProductivityLineItemKey(item: ProductivityLineItemOption): string {
   return `${item.contract_type}:${item.contract_id}:${item.line_item_id}`;
 }
@@ -170,6 +214,41 @@ function ProcoreContent() {
   const [drawingTransferBusy, setDrawingTransferBusy] = useState(false);
   const [drawingTransferError, setDrawingTransferError] = useState<string | null>(null);
   const [drawingTransferResult, setDrawingTransferResult] = useState<any>(null);
+  const [drawingLookupCompanyId, setDrawingLookupCompanyId] = useState("598134325658789");
+  const [drawingLookupProjectId, setDrawingLookupProjectId] = useState("");
+  const [drawingMigrationTargetCompanyId, setDrawingMigrationTargetCompanyId] = useState("598134325805519");
+  const [drawingMigrationTargetProjectId, setDrawingMigrationTargetProjectId] = useState("");
+  const [drawingMigrationTargetSetName, setDrawingMigrationTargetSetName] = useState("Migrated Drawings");
+  const [drawingMigrationTargetDisciplineName, setDrawingMigrationTargetDisciplineName] = useState("General");
+  const [drawingLookupView, setDrawingLookupView] = useState("");
+  const [drawingInventoryMaxPages, setDrawingInventoryMaxPages] = useState("10");
+  const [drawingLookupBusy, setDrawingLookupBusy] = useState(false);
+  const [drawingLookupError, setDrawingLookupError] = useState<string | null>(null);
+  const [drawingLookupRows, setDrawingLookupRows] = useState<DrawingUploadRow[]>([]);
+  const [drawingInventorySummaryRows, setDrawingInventorySummaryRows] = useState<DrawingInventorySummaryRow[]>([]);
+  const [drawingLookupResult, setDrawingLookupResult] = useState<any>(null);
+  const [documentInventoryBusy, setDocumentInventoryBusy] = useState(false);
+  const [documentInventoryError, setDocumentInventoryError] = useState<string | null>(null);
+  const [documentInventoryResult, setDocumentInventoryResult] = useState<any>(null);
+  const [documentInventoryRows, setDocumentInventoryRows] = useState<ProjectDocumentInventoryRow[]>([]);
+  const [drawingMigrationDryRunBusy, setDrawingMigrationDryRunBusy] = useState<string | null>(null);
+  const [drawingMigrationDryRunError, setDrawingMigrationDryRunError] = useState<string | null>(null);
+  const [drawingMigrationDryRunResult, setDrawingMigrationDryRunResult] = useState<any>(null);
+  const [drawingMigrationCreateBusy, setDrawingMigrationCreateBusy] = useState<string | null>(null);
+  const [drawingMigrationCreateError, setDrawingMigrationCreateError] = useState<string | null>(null);
+  const [drawingMigrationCreateResult, setDrawingMigrationCreateResult] = useState<any>(null);
+  const [estimatingPlansCompanyId, setEstimatingPlansCompanyId] = useState("598134325805519");
+  const [estimatingPlansProjectId, setEstimatingPlansProjectId] = useState("598134326626273");
+  const [estimatingPlansProposalId, setEstimatingPlansProposalId] = useState("4109731");
+  const [estimatingPlansBidBoardProjectId, setEstimatingPlansBidBoardProjectId] = useState("562949955854696");
+  const [estimatingPlansUserId, setEstimatingPlansUserId] = useState("14134125");
+  const [estimatingPlansProbeBusy, setEstimatingPlansProbeBusy] = useState(false);
+  const [estimatingPlansProbeError, setEstimatingPlansProbeError] = useState<string | null>(null);
+  const [estimatingPlansProbeResult, setEstimatingPlansProbeResult] = useState<any>(null);
+  const [estimatingPlansUploadBusy, setEstimatingPlansUploadBusy] = useState<string | null>(null);
+  const [estimatingPlansUploadError, setEstimatingPlansUploadError] = useState<string | null>(null);
+  const [estimatingPlansUploadResult, setEstimatingPlansUploadResult] = useState<any>(null);
+  const [estimatingPlansUploadStatusByKey, setEstimatingPlansUploadStatusByKey] = useState<Record<string, string>>({});
   const [companyUsersBusy, setCompanyUsersBusy] = useState(false);
   const [companyUsersError, setCompanyUsersError] = useState<string | null>(null);
   const [companyUsersResult, setCompanyUsersResult] = useState<CompanyUserOption[]>([]);
@@ -1555,6 +1634,357 @@ function ProcoreContent() {
       setDrawingTransferError(error instanceof Error ? error.message : String(error));
     } finally {
       setDrawingTransferBusy(false);
+    }
+  };
+
+  const getDrawingUploadFileName = (row: DrawingUploadRow) =>
+    String(row.file_name ?? row.filename ?? row.name ?? "-");
+
+  const getDrawingUploadSetName = (row: DrawingUploadRow) => {
+    const set = row.drawing_set;
+    if (!set) return "-";
+    return [set.name, set.date].filter(Boolean).join(" | ") || String(set.id ?? "-");
+  };
+
+  const getDrawingUploadAreaName = (row: DrawingUploadRow) =>
+    row.drawing_area?.name || String(row.drawing_area?.id ?? "-");
+
+  const getDrawingUploadUserName = (row: DrawingUploadRow) => {
+    const user = row.uploaded_by ?? row.user;
+    return user?.name || user?.login || String(user?.id ?? "-");
+  };
+
+  const handlePullDrawingsInventory = async () => {
+    const companyId = drawingLookupCompanyId.trim();
+    const projectId = drawingLookupProjectId.trim();
+
+    if (!companyId) {
+      setDrawingLookupError("Company ID is required.");
+      return;
+    }
+    if (!projectId) {
+      setDrawingLookupError("Project ID is required.");
+      return;
+    }
+
+    setDrawingLookupBusy(true);
+    setDrawingLookupError(null);
+    setDrawingLookupResult(null);
+    setDrawingLookupRows([]);
+    setDrawingInventorySummaryRows([]);
+
+    try {
+      const params = new URLSearchParams({
+        companyId,
+        projectId,
+        page: "1",
+        perPage: "100",
+        maxPages: drawingInventoryMaxPages.trim() || "10",
+        includeDrawings: "true",
+        includeUploads: "true",
+      });
+      if (drawingLookupView.trim()) params.set("view", drawingLookupView.trim());
+
+      const response = await fetch(`/api/procore/drawings-inventory?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.success) {
+        throw new Error(result?.details || result?.error || `Load failed (${response.status}).`);
+      }
+
+      setDrawingLookupRows(Array.isArray(result.drawingUploads) ? result.drawingUploads : []);
+      setDrawingInventorySummaryRows(Array.isArray(result.drawingsSummary) ? result.drawingsSummary : []);
+      setDrawingLookupResult(result);
+    } catch (error) {
+      setDrawingLookupError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrawingLookupBusy(false);
+    }
+  };
+
+  const handleDownloadDrawingInventoryCsv = () => {
+    downloadCsv(
+      "procore-drawings-inventory.csv",
+      ["id", "number", "title", "drawing_area", "drawing_set", "revision", "drawing_date", "pdf_fields"],
+      drawingInventorySummaryRows.map((row) => [
+        row.id ?? "",
+        row.number ?? "",
+        row.title ?? "",
+        [row.drawingAreaId, row.drawingAreaName].filter(Boolean).join(" | "),
+        [row.drawingSetId, row.drawingSetName].filter(Boolean).join(" | "),
+        row.revision ?? "",
+        row.drawingDate ?? "",
+        row.pdfFields && Object.keys(row.pdfFields).length > 0 ? JSON.stringify(row.pdfFields) : "",
+      ])
+    );
+  };
+
+  const getDrawingMigrationPdfUrl = (row: DrawingInventorySummaryRow) => {
+    const fields = row.pdfFields || {};
+    const value =
+      fields["current_revision.pdf_url"] ||
+      fields.pdf_url ||
+      fields.download_url ||
+      fields.url;
+    return typeof value === "string" ? value : "";
+  };
+
+  const handleDrawingMigrationDryRun = async (row: DrawingInventorySummaryRow) => {
+    const sourceCompanyId = drawingLookupCompanyId.trim();
+    const sourceProjectId = drawingLookupProjectId.trim();
+    const targetCompanyId = drawingMigrationTargetCompanyId.trim();
+    const targetProjectId = drawingMigrationTargetProjectId.trim();
+    const pdfUrl = getDrawingMigrationPdfUrl(row);
+
+    if (!sourceCompanyId || !sourceProjectId) {
+      setDrawingMigrationDryRunError("Pull source inventory first so source company/project are set.");
+      return;
+    }
+    if (!targetCompanyId) {
+      setDrawingMigrationDryRunError("Target Company ID is required.");
+      return;
+    }
+    if (!targetProjectId) {
+      setDrawingMigrationDryRunError("Target Project ID is required.");
+      return;
+    }
+    if (sourceCompanyId === targetCompanyId && sourceProjectId === targetProjectId) {
+      setDrawingMigrationDryRunError(
+        "Source and target are the same project. Use a different real Procore project ID, or use Bid Project Documents for bid-board projects."
+      );
+      return;
+    }
+    if (!pdfUrl) {
+      setDrawingMigrationDryRunError("Selected drawing does not include a PDF URL.");
+      return;
+    }
+
+    const busyKey = String(row.id ?? row.number ?? "drawing");
+    setDrawingMigrationDryRunBusy(busyKey);
+    setDrawingMigrationDryRunError(null);
+    setDrawingMigrationDryRunResult(null);
+
+    try {
+      const response = await fetch("/api/procore/drawings-migration/dry-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          targetDrawingSetName: drawingMigrationTargetSetName.trim() || "Migrated Drawings",
+          drawing: row,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.success) {
+        throw new Error(result?.details || result?.error || `Dry run failed (${response.status}).`);
+      }
+
+      setDrawingMigrationDryRunResult(result);
+    } catch (error) {
+      setDrawingMigrationDryRunError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrawingMigrationDryRunBusy(null);
+    }
+  };
+
+  const handleDrawingMigrationCreateOne = async (row: DrawingInventorySummaryRow) => {
+    const sourceCompanyId = drawingLookupCompanyId.trim();
+    const sourceProjectId = drawingLookupProjectId.trim();
+    const targetCompanyId = drawingMigrationTargetCompanyId.trim();
+    const targetProjectId = drawingMigrationTargetProjectId.trim();
+    const pdfUrl = getDrawingMigrationPdfUrl(row);
+
+    if (!sourceCompanyId || !sourceProjectId) {
+      setDrawingMigrationCreateError("Pull source inventory first so source company/project are set.");
+      return;
+    }
+    if (!targetCompanyId) {
+      setDrawingMigrationCreateError("Target Company ID is required.");
+      return;
+    }
+    if (!targetProjectId) {
+      setDrawingMigrationCreateError("Target Project ID is required.");
+      return;
+    }
+    if (sourceCompanyId === targetCompanyId && sourceProjectId === targetProjectId) {
+      setDrawingMigrationCreateError(
+        "Source and target are the same project. This button only copies into a different real Procore project. Use Bid Project Documents for bid-board projects."
+      );
+      return;
+    }
+    if (!pdfUrl) {
+      setDrawingMigrationCreateError("Selected drawing does not include a PDF URL.");
+      return;
+    }
+
+    const label = `${row.number || row.id || "selected drawing"}${row.title ? ` - ${row.title}` : ""}`;
+    if (!window.confirm(`Create one target drawing in project ${targetProjectId} for ${label}?`)) {
+      return;
+    }
+
+    const busyKey = String(row.id ?? row.number ?? "drawing");
+    setDrawingMigrationCreateBusy(busyKey);
+    setDrawingMigrationCreateError(null);
+    setDrawingMigrationCreateResult(null);
+
+    try {
+      const response = await fetch("/api/procore/drawings-migration/create-one", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          targetDrawingSetName: drawingMigrationTargetSetName.trim() || "Migrated Drawings",
+          targetDisciplineName: drawingMigrationTargetDisciplineName.trim() || "General",
+          drawing: row,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.success) {
+        setDrawingMigrationCreateResult(result);
+        throw new Error(result?.details || result?.error || `Create failed (${response.status}).`);
+      }
+
+      setDrawingMigrationCreateResult(result);
+    } catch (error) {
+      setDrawingMigrationCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrawingMigrationCreateBusy(null);
+    }
+  };
+
+  const handleDownloadDrawingLookupCsv = () => {
+    downloadCsv(
+      "procore-drawing-uploads.csv",
+      ["id", "file_name", "status", "drawing_set", "drawing_area", "drawings_count", "uploaded_by", "created_at", "updated_at"],
+      drawingLookupRows.map((row) => [
+        row.id ?? "",
+        getDrawingUploadFileName(row),
+        row.status ?? "",
+        getDrawingUploadSetName(row),
+        getDrawingUploadAreaName(row),
+        row.drawings_count ?? row.drawingsCount ?? "",
+        getDrawingUploadUserName(row),
+        row.created_at ?? row.upload_date ?? "",
+        row.updated_at ?? "",
+      ])
+    );
+  };
+
+  const handleProbeEstimatingPlans = async () => {
+    const companyId = estimatingPlansCompanyId.trim();
+    const projectId = estimatingPlansProjectId.trim();
+    const proposalId = estimatingPlansProposalId.trim();
+    const bidBoardProjectId = estimatingPlansBidBoardProjectId.trim();
+
+    if (!companyId || !projectId || !proposalId) {
+      setEstimatingPlansProbeError("Company ID, Project ID, and Proposal ID are required.");
+      return;
+    }
+
+    setEstimatingPlansProbeBusy(true);
+    setEstimatingPlansProbeError(null);
+    setEstimatingPlansProbeResult(null);
+
+    try {
+      const response = await fetch("/api/procore/estimating/plans-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, projectId, proposalId, bidBoardProjectId: bidBoardProjectId || undefined }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.success) {
+        setEstimatingPlansProbeResult(result);
+        throw new Error(result?.details || result?.error || `Probe failed (${response.status}).`);
+      }
+
+      setEstimatingPlansProbeResult(result);
+    } catch (error) {
+      setEstimatingPlansProbeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setEstimatingPlansProbeBusy(false);
+    }
+  };
+
+  const handleEstimatingPlansUploadExperiment = async (row: DrawingInventorySummaryRow) => {
+    const companyId = estimatingPlansCompanyId.trim();
+    const bidBoardProjectId = estimatingPlansBidBoardProjectId.trim();
+    const projectId = estimatingPlansProjectId.trim();
+    const userId = estimatingPlansUserId.trim();
+    const pdfUrl = getDrawingMigrationPdfUrl(row);
+
+    if (!companyId || !bidBoardProjectId || !projectId || !userId) {
+      setEstimatingPlansUploadError("Company ID, Project ID, Bid Board Project ID, and User ID are required.");
+      return;
+    }
+    if (!pdfUrl) {
+      setEstimatingPlansUploadError("Selected drawing does not include a PDF URL.");
+      return;
+    }
+
+    const label = `${row.number || row.id || "selected drawing"}${row.title ? ` - ${row.title}` : ""}`;
+    if (!window.confirm(`Experimentally upload ${label} into Estimating Plans for bid board project ${bidBoardProjectId}?`)) {
+      return;
+    }
+
+    const busyKey = String(row.id ?? row.number ?? "drawing");
+    setEstimatingPlansUploadBusy(busyKey);
+    setEstimatingPlansUploadError(null);
+    setEstimatingPlansUploadResult(null);
+    setEstimatingPlansUploadStatusByKey((current) => ({
+      ...current,
+      [busyKey]: "Uploading PDF to Procore company storage...",
+    }));
+
+    try {
+      const response = await fetch("/api/procore/estimating/plans-upload-experiment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId,
+          bidBoardProjectId,
+          projectId,
+          userId,
+          drawing: row,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setEstimatingPlansUploadResult(result);
+
+      if (!response.ok || !result.success) {
+        setEstimatingPlansUploadStatusByKey((current) => ({
+          ...current,
+          [busyKey]: `Failed: ${result?.details || result?.error || `HTTP ${response.status}`}`,
+        }));
+        throw new Error(result?.details || result?.error || `Upload experiment failed (${response.status}).`);
+      }
+
+      const pollResults = Array.isArray(result?.pollResults) ? result.pollResults : [];
+      const confirmed = pollResults.some((entry: any) => entry?.ok && entry?.summary?.planCount !== undefined);
+      const s3Status = result?.s3Upload?.status ? `S3 ${result.s3Upload.status}` : "S3 uploaded";
+      const uploadId = result?.upload?.id ? `Upload ${result.upload.id}` : "Upload complete";
+      const coopStatus = result?.coopAttach?.status ? `Coop ${result.coopAttach.status}` : "Coop attempted";
+      setEstimatingPlansUploadStatusByKey((current) => ({
+        ...current,
+        [busyKey]: confirmed
+          ? `${uploadId}. ${s3Status}. ${coopStatus}. legacyPlan poll returned data.`
+          : `${uploadId}. ${s3Status}. ${coopStatus}. Not confirmed in Estimating yet; see result JSON.`,
+      }));
+    } catch (error) {
+      setEstimatingPlansUploadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setEstimatingPlansUploadBusy(null);
     }
   };
 
@@ -5220,7 +5650,7 @@ function ProcoreContent() {
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Method</label>
                   <select
-                    value={restRunnerMethod}
+                    value={restRunnerMethod ?? ""}
                     onChange={(e) => setRestRunnerMethod(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   >
@@ -5235,7 +5665,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Path or URL</label>
                   <input
                     type="text"
-                    value={restRunnerPath}
+                    value={restRunnerPath ?? ""}
                     onChange={(e) => setRestRunnerPath(e.target.value)}
                     placeholder="/rest/v1.3/companies/{company_id}/me"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5247,7 +5677,7 @@ function ProcoreContent() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID Override (optional)</label>
                 <input
                   type="text"
-                  value={restRunnerCompanyIdOverride}
+                  value={restRunnerCompanyIdOverride ?? ""}
                   onChange={(e) => setRestRunnerCompanyIdOverride(e.target.value)}
                   placeholder="Leave blank to use cookie/env company id"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5257,7 +5687,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">JSON Body (for POST/PUT/PATCH)</label>
                 <textarea
-                  value={restRunnerBodyText}
+                  value={restRunnerBodyText ?? ""}
                   onChange={(e) => setRestRunnerBodyText(e.target.value)}
                   rows={10}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -5300,14 +5730,14 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
                   <input
                     type="text"
-                    value={drawingSourceCompanyId}
+                    value={drawingSourceCompanyId ?? ""}
                     onChange={(event) => setDrawingSourceCompanyId(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
                   />
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={drawingSourceProjectId}
+                    value={drawingSourceProjectId ?? ""}
                     onChange={(event) => setDrawingSourceProjectId(event.target.value)}
                     placeholder="Source Procore project_id"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5319,14 +5749,14 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
                   <input
                     type="text"
-                    value={drawingTargetCompanyId}
+                    value={drawingTargetCompanyId ?? ""}
                     onChange={(event) => setDrawingTargetCompanyId(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
                   />
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={drawingTargetProjectId}
+                    value={drawingTargetProjectId ?? ""}
                     onChange={(event) => setDrawingTargetProjectId(event.target.value)}
                     placeholder="Target Procore project_id"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5410,6 +5840,437 @@ function ProcoreContent() {
               )}
             </div>
 
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
+              <h2 className="text-xl font-bold text-amber-900 mb-3">Drawings Migration Inventory</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Pull drawing areas, drawing sets, drawing uploads, and drawings from the old Procore project. This is read-only.
+              </p>
+
+              <h3 className="font-bold text-gray-800 mb-3">Source</h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingLookupCompanyId ?? ""}
+                    onChange={(event) => setDrawingLookupCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingLookupProjectId ?? ""}
+                    onChange={(event) => setDrawingLookupProjectId(event.target.value)}
+                    placeholder="Old Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages per Endpoint</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={drawingInventoryMaxPages ?? ""}
+                    onChange={(event) => setDrawingInventoryMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">View</label>
+                  <input
+                    type="text"
+                    value={drawingLookupView ?? ""}
+                    onChange={(event) => setDrawingLookupView(event.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <h3 className="font-bold text-gray-800 mb-3">Target Project Drawing Tool Only</h3>
+              <p className="text-xs text-amber-900 mb-3">
+                These buttons require a real Procore project_id with the Drawings tool enabled. Do not enter a bid_board_project_id here.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingMigrationTargetCompanyId ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Procore Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingMigrationTargetProjectId ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetProjectId(event.target.value)}
+                    placeholder="Not a bid_board_project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Drawing Set Name</label>
+                  <input
+                    type="text"
+                    value={drawingMigrationTargetSetName ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetSetName(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Discipline</label>
+                  <input
+                    type="text"
+                    value={drawingMigrationTargetDisciplineName ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetDisciplineName(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handlePullDrawingsInventory}
+                  disabled={drawingLookupBusy}
+                  className="bg-amber-700 hover:bg-amber-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {drawingLookupBusy ? "Loading..." : "Pull Drawings Inventory"}
+                </button>
+                {drawingLookupResult && (
+                  <>
+                    {drawingInventorySummaryRows.length > 0 && (
+                      <button
+                        onClick={handleDownloadDrawingInventoryCsv}
+                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        Download Drawings CSV
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDownloadDrawingLookupCsv}
+                      disabled={drawingLookupRows.length === 0}
+                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Download Uploads CSV
+                    </button>
+                    <button
+                      onClick={() => downloadJson("procore-drawings-inventory.json", drawingLookupResult)}
+                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Download JSON
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {drawingLookupError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingLookupError}
+                </div>
+              )}
+
+              {drawingMigrationDryRunError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingMigrationDryRunError}
+                </div>
+              )}
+
+              {drawingMigrationCreateError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingMigrationCreateError}
+                </div>
+              )}
+
+              {drawingMigrationDryRunResult && (
+                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingMigrationDryRunResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingMigrationCreateResult && (
+                <pre className="mb-4 bg-green-50 border border-green-300 text-green-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingMigrationCreateResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingLookupResult && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Areas</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingAreas ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Sets</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingSets ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Uploads</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingUploads ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Drawings</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawings ?? 0}</div>
+                  </div>
+                </div>
+              )}
+
+              {drawingInventorySummaryRows.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Actions</th>
+                        <th className="text-left px-3 py-2">Drawing ID</th>
+                        <th className="text-left px-3 py-2">Number</th>
+                        <th className="text-left px-3 py-2">Title</th>
+                        <th className="text-left px-3 py-2">Area</th>
+                        <th className="text-left px-3 py-2">Set</th>
+                        <th className="text-left px-3 py-2">Revision</th>
+                        <th className="text-left px-3 py-2">PDF Fields</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingInventorySummaryRows.slice(0, 250).map((row, index) => (
+                        <tr key={String(row.id ?? `${row.number ?? "drawing"}-${index}`)} className="border-t border-gray-200">
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleDrawingMigrationDryRun(row)}
+                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-orange-700 hover:bg-orange-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {drawingMigrationDryRunBusy === String(row.id ?? row.number ?? "drawing") ? "Testing..." : "Test PDF"}
+                              </button>
+                              <button
+                                onClick={() => handleDrawingMigrationCreateOne(row)}
+                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {drawingMigrationCreateBusy === String(row.id ?? row.number ?? "drawing") ? "Creating..." : "Create in Project Tool"}
+                              </button>
+                              <button
+                                onClick={() => handleEstimatingPlansUploadExperiment(row)}
+                                disabled={estimatingPlansUploadBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {estimatingPlansUploadBusy === String(row.id ?? row.number ?? "drawing") ? "Uploading..." : "Upload to Estimating"}
+                              </button>
+                            </div>
+                            {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")] && (
+                              <div className="mt-2 max-w-[260px] text-xs leading-4 text-sky-900">
+                                {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")]}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.number ?? "-"}</td>
+                          <td className="px-3 py-2">{row.title ?? "-"}</td>
+                          <td className="px-3 py-2">{[row.drawingAreaId, row.drawingAreaName].filter(Boolean).join(" | ") || "-"}</td>
+                          <td className="px-3 py-2">{[row.drawingSetId, row.drawingSetName].filter(Boolean).join(" | ") || "-"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.revision ?? "-"}</td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {row.pdfFields && Object.keys(row.pdfFields).length > 0 ? JSON.stringify(row.pdfFields) : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {drawingLookupRows.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Upload ID</th>
+                        <th className="text-left px-3 py-2">File</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Drawing Set</th>
+                        <th className="text-left px-3 py-2">Drawing Area</th>
+                        <th className="text-left px-3 py-2">Drawings</th>
+                        <th className="text-left px-3 py-2">Uploaded By</th>
+                        <th className="text-left px-3 py-2">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingLookupRows.map((row, index) => (
+                        <tr key={String(row.id ?? `${getDrawingUploadFileName(row)}-${index}`)} className="border-t border-gray-200">
+                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadFileName(row)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.status ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadSetName(row)}</td>
+                          <td className="px-3 py-2">{getDrawingUploadAreaName(row)}</td>
+                          <td className="px-3 py-2">{row.drawings_count ?? row.drawingsCount ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadUserName(row)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.created_at ?? row.upload_date ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {drawingLookupResult && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw response JSON</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(drawingLookupResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-600 mb-6">
+              <h2 className="text-xl font-bold text-sky-900 mb-3">Estimating Plans Probe</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Probe the Estimating Documents/Plans surface for the selected proposal. This is read-only and does not upload files.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansCompanyId ?? ""}
+                    onChange={(event) => setEstimatingPlansCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansProjectId ?? ""}
+                    onChange={(event) => setEstimatingPlansProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansProposalId ?? ""}
+                    onChange={(event) => setEstimatingPlansProposalId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansBidBoardProjectId ?? ""}
+                    onChange={(event) => setEstimatingPlansBidBoardProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">User ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansUserId ?? ""}
+                    onChange={(event) => setEstimatingPlansUserId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handleProbeEstimatingPlans}
+                  disabled={estimatingPlansProbeBusy}
+                  className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {estimatingPlansProbeBusy ? "Probing..." : "Probe Estimating Plans"}
+                </button>
+                {estimatingPlansProbeResult && (
+                  <button
+                    onClick={() => downloadJson("procore-estimating-plans-probe.json", estimatingPlansProbeResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download JSON
+                  </button>
+                )}
+              </div>
+
+              {estimatingPlansProbeError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {estimatingPlansProbeError}
+                </div>
+              )}
+
+              {estimatingPlansUploadError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {estimatingPlansUploadError}
+                </div>
+              )}
+
+              {estimatingPlansUploadResult && (
+                <details className="mb-4" open>
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Estimating upload experiment result</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(estimatingPlansUploadResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+
+              {estimatingPlansProbeResult?.targetHints && (
+                <div className="mb-4 bg-sky-50 border border-sky-200 rounded p-3 text-sm text-sky-950">
+                  <div><strong>Found:</strong> {String(estimatingPlansProbeResult.targetHints.planLikeEndpointFound)}</div>
+                  <div><strong>Path:</strong> <code className="font-mono">{estimatingPlansProbeResult.targetHints.planLikePath || "-"}</code></div>
+                  <div className="mt-1">{estimatingPlansProbeResult.targetHints.nextStep}</div>
+                </div>
+              )}
+
+              {estimatingPlansProbeResult?.hostAttempts?.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Host</th>
+                        <th className="text-left px-3 py-2">Path</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Rows</th>
+                        <th className="text-left px-3 py-2">Matched Keys</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estimatingPlansProbeResult.hostAttempts.flatMap((hostAttempt: any) =>
+                        (hostAttempt.endpointAttempts || []).map((attempt: any, index: number) => (
+                          <tr key={`${hostAttempt.host}-${attempt.path}-${index}`} className="border-t border-gray-200">
+                            <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{hostAttempt.host}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{attempt.path}</td>
+                            <td className={`px-3 py-2 font-mono whitespace-nowrap ${attempt.ok ? "text-green-700" : "text-red-700"}`}>
+                              {attempt.status}
+                            </td>
+                            <td className="px-3 py-2">{attempt.summary?.rowCount ?? "-"}</td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {(attempt.summary?.matchedKeys || []).slice(0, 14).join(", ") || "-"}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {estimatingPlansProbeResult && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw probe JSON</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(estimatingPlansProbeResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
               <h2 className="text-xl font-bold text-cyan-900 mb-3">Company Users Browser</h2>
               <p className="text-sm text-gray-600 mb-4">
@@ -5419,7 +6280,7 @@ function ProcoreContent() {
               <div className="flex flex-wrap gap-3 mb-4">
                 <input
                   type="text"
-                  value={companyUsersSearch}
+                  value={companyUsersSearch ?? ""}
                   onChange={(e) => setCompanyUsersSearch(e.target.value)}
                   placeholder="Search by name or login"
                   className="flex-1 min-w-[260px] border border-gray-300 rounded px-3 py-2 text-sm"
@@ -5498,7 +6359,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={timecardProjectId}
+                    value={timecardProjectId ?? ""}
                     onChange={(e) => setTimecardProjectId(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
@@ -5553,7 +6414,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Fallback Fields JSON</label>
                 <textarea
-                  value={timecardFallbackJsonText}
+                  value={timecardFallbackJsonText ?? ""}
                   onChange={(e) => setTimecardFallbackJsonText(e.target.value)}
                   rows={6}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -5687,7 +6548,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={purchaseOrderContractProjectId}
+                    value={purchaseOrderContractProjectId ?? ""}
                     onChange={(e) => setPurchaseOrderContractProjectId(e.target.value)}
                     placeholder="e.g. 66005"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5708,7 +6569,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Attachments JSON Array</label>
                 <textarea
-                  value={purchaseOrderContractAttachmentsText}
+                  value={purchaseOrderContractAttachmentsText ?? ""}
                   onChange={(e) => setPurchaseOrderContractAttachmentsText(e.target.value)}
                   rows={3}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -5718,7 +6579,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">purchase_order_contract JSON</label>
                 <textarea
-                  value={purchaseOrderContractJsonText}
+                  value={purchaseOrderContractJsonText ?? ""}
                   onChange={(e) => setPurchaseOrderContractJsonText(e.target.value)}
                   rows={16}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -5746,7 +6607,7 @@ function ProcoreContent() {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Commitment Contract ID</label>
                     <input
                       type="text"
-                      value={deletePurchaseOrderContractId}
+                      value={deletePurchaseOrderContractId ?? ""}
                       onChange={(e) => setDeletePurchaseOrderContractId(e.target.value)}
                       placeholder="e.g. 598134328354823"
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5930,7 +6791,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={purchaseOrderLineItemProjectId}
+                    value={purchaseOrderLineItemProjectId ?? ""}
                     onChange={(e) => setPurchaseOrderLineItemProjectId(e.target.value)}
                     placeholder="e.g. 66005"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5940,7 +6801,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Purchase Order Contract ID</label>
                   <input
                     type="text"
-                    value={purchaseOrderLineItemContractId}
+                    value={purchaseOrderLineItemContractId ?? ""}
                     onChange={(e) => setPurchaseOrderLineItemContractId(e.target.value)}
                     placeholder="e.g. 123456789"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -5995,7 +6856,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">line_item JSON</label>
                 <textarea
-                  value={purchaseOrderLineItemJsonText}
+                  value={purchaseOrderLineItemJsonText ?? ""}
                   onChange={(e) => setPurchaseOrderLineItemJsonText(e.target.value)}
                   rows={14}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -6068,7 +6929,7 @@ function ProcoreContent() {
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Default line_item_type_id</label>
                     <input
                       type="text"
-                      value={purchaseOrderLineItemCsvDefaultTypeId}
+                      value={purchaseOrderLineItemCsvDefaultTypeId ?? ""}
                       onChange={(e) => setPurchaseOrderLineItemCsvDefaultTypeId(e.target.value)}
                       placeholder="e.g. 5085801"
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -6078,7 +6939,7 @@ function ProcoreContent() {
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Default wbs_code_id</label>
                     <input
                       type="text"
-                      value={purchaseOrderLineItemCsvDefaultWbsId}
+                      value={purchaseOrderLineItemCsvDefaultWbsId ?? ""}
                       onChange={(e) => setPurchaseOrderLineItemCsvDefaultWbsId(e.target.value)}
                       placeholder="optional"
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -6088,7 +6949,7 @@ function ProcoreContent() {
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Default budget_line_item_id</label>
                     <input
                       type="text"
-                      value={purchaseOrderLineItemCsvDefaultBudgetLineItemId}
+                      value={purchaseOrderLineItemCsvDefaultBudgetLineItemId ?? ""}
                       onChange={(e) => setPurchaseOrderLineItemCsvDefaultBudgetLineItemId(e.target.value)}
                       placeholder="optional"
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
@@ -6212,7 +7073,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={createProductivityProjectId}
+                    value={createProductivityProjectId ?? ""}
                     onChange={(e) => setCreateProductivityProjectId(e.target.value)}
                     placeholder="e.g. 598134326278124"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6229,7 +7090,7 @@ function ProcoreContent() {
                       {createProductivityLineItemsBusy ? "Loading..." : "Load Approved Line Items"}
                     </button>
                     <select
-                      value={createProductivitySelectedLineItemKey}
+                      value={createProductivitySelectedLineItemKey ?? ""}
                       onChange={(e) => {
                         const selectedKey = e.target.value;
                         setCreateProductivitySelectedLineItemKey(selectedKey);
@@ -6286,7 +7147,7 @@ function ProcoreContent() {
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">productivity_log JSON</label>
               <textarea
-                value={createProductivityJson}
+                value={createProductivityJson ?? ""}
                 onChange={(e) => setCreateProductivityJson(e.target.value)}
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
               />
@@ -6460,7 +7321,7 @@ function ProcoreContent() {
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">Project Rows JSON</label>
               <textarea
-                value={projectImportRowsText}
+                value={projectImportRowsText ?? ""}
                 onChange={(e) => setProjectImportRowsText(e.target.value)}
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Bid Board Template Example","status":"ESTIMATING","is_template":true}]'
@@ -6519,7 +7380,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
                   <input
                     type="text"
-                    value={groupImportBidBoardProjectId}
+                    value={groupImportBidBoardProjectId ?? ""}
                     onChange={(e) => setGroupImportBidBoardProjectId(e.target.value)}
                     placeholder="e.g. 562949955815658"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6529,7 +7390,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
                   <input
                     type="text"
-                    value={groupImportProposalId}
+                    value={groupImportProposalId ?? ""}
                     onChange={(e) => setGroupImportProposalId(e.target.value)}
                     placeholder="e.g. 123456"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6552,7 +7413,7 @@ function ProcoreContent() {
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">Group Rows JSON</label>
               <textarea
-                value={groupImportRowsText}
+                value={groupImportRowsText ?? ""}
                 onChange={(e) => setGroupImportRowsText(e.target.value)}
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Concrete - Sidewalk","multiplier":1,"unit_material_cost":45,"material_margin":0.1}]'
@@ -6621,7 +7482,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
                   <input
                     type="text"
-                    value={lineItemImportBidBoardProjectId}
+                    value={lineItemImportBidBoardProjectId ?? ""}
                     onChange={(e) => setLineItemImportBidBoardProjectId(e.target.value)}
                     placeholder="e.g. 562949955815658"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6631,7 +7492,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
                   <input
                     type="text"
-                    value={lineItemImportProposalId}
+                    value={lineItemImportProposalId ?? ""}
                     onChange={(e) => setLineItemImportProposalId(e.target.value)}
                     placeholder="e.g. 123456"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6654,7 +7515,7 @@ function ProcoreContent() {
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">Line Item Rows JSON</label>
               <textarea
-                value={lineItemImportRowsText}
+                value={lineItemImportRowsText ?? ""}
                 onChange={(e) => setLineItemImportRowsText(e.target.value)}
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"name":"Concrete - 4000 PSI","ci_type":"PART","ci_unit":"CY","ci_unit_cost":155}]'
@@ -6666,7 +7527,7 @@ function ProcoreContent() {
                   Sends a single payload directly to <code className="bg-emerald-100 px-1 rounded">/api/procore/estimating/proposal-line-items-create</code>.
                 </p>
                 <textarea
-                  value={singleLineItemJson}
+                  value={singleLineItemJson ?? ""}
                   onChange={(e) => setSingleLineItemJson(e.target.value)}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-40"
                 />
@@ -6789,7 +7650,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
                   <input
                     type="text"
-                    value={proposalShowProjectId}
+                    value={proposalShowProjectId ?? ""}
                     onChange={(e) => setProposalShowProjectId(e.target.value)}
                     placeholder="e.g. 598134326278124"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6799,7 +7660,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
                   <input
                     type="text"
-                    value={proposalShowBidBoardProjectId}
+                    value={proposalShowBidBoardProjectId ?? ""}
                     onChange={(e) => setProposalShowBidBoardProjectId(e.target.value)}
                     placeholder="Optional fallback if project-scoped pull is empty"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6809,7 +7670,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
                   <input
                     type="text"
-                    value={proposalShowProposalId}
+                    value={proposalShowProposalId ?? ""}
                     onChange={(e) => setProposalShowProposalId(e.target.value)}
                     placeholder="e.g. 123456"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6869,7 +7730,7 @@ function ProcoreContent() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Procore Project ID</label>
                 <input
                   type="text"
-                  value={directCostProjectId}
+                  value={directCostProjectId ?? ""}
                   onChange={(e) => setDirectCostProjectId(e.target.value)}
                   placeholder="e.g. 123456"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -6895,7 +7756,7 @@ function ProcoreContent() {
                   Supported fields per row: <code className="bg-gray-100 px-1 rounded">id</code> (required), <code className="bg-gray-100 px-1 rounded">amount</code>, <code className="bg-gray-100 px-1 rounded">direct_cost_id</code>, <code className="bg-gray-100 px-1 rounded">cost_code_id</code>, <code className="bg-gray-100 px-1 rounded">wbs_code_id</code>, <code className="bg-gray-100 px-1 rounded">description</code>, <code className="bg-gray-100 px-1 rounded">extended_type</code>, <code className="bg-gray-100 px-1 rounded">quantity</code>, <code className="bg-gray-100 px-1 rounded">unit_cost</code>, <code className="bg-gray-100 px-1 rounded">uom</code>, <code className="bg-gray-100 px-1 rounded">line_item_type_id</code>, <code className="bg-gray-100 px-1 rounded">tax_code_id</code>, <code className="bg-gray-100 px-1 rounded">origin_data</code>, <code className="bg-gray-100 px-1 rounded">origin_id</code>.
                 </p>
                 <textarea
-                  value={directCostRowsText}
+                  value={directCostRowsText ?? ""}
                   onChange={(e) => setDirectCostRowsText(e.target.value)}
                   rows={8}
                   className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
@@ -6961,11 +7822,11 @@ function ProcoreContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Cost Code Column (Optional)</label>
-                  <input type="text" value={estimateCostCodeColumn} onChange={(e) => setEstimateCostCodeColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+                  <input type="text" value={estimateCostCodeColumn ?? ""} onChange={(e) => setEstimateCostCodeColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Item ID Column (Optional)</label>
-                  <input type="text" value={estimateItemIdColumn} onChange={(e) => setEstimateItemIdColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+                  <input type="text" value={estimateItemIdColumn ?? ""} onChange={(e) => setEstimateItemIdColumn(e.target.value)} placeholder="Auto-detect if blank" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
                 </div>
               </div>
 
@@ -7000,7 +7861,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
                   <input
                     type="text"
-                    value={importBidBoardProjectId}
+                    value={importBidBoardProjectId ?? ""}
                     onChange={(e) => setImportBidBoardProjectId(e.target.value)}
                     placeholder="e.g. 11403839"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -7011,7 +7872,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Existing Proposal ID (Optional)</label>
                   <input
                     type="text"
-                    value={importProposalId}
+                    value={importProposalId ?? ""}
                     onChange={(e) => setImportProposalId(e.target.value)}
                     placeholder="Leave blank to create a proposal"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -7022,7 +7883,7 @@ function ProcoreContent() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">New Proposal Name</label>
                   <input
                     type="text"
-                    value={importProposalName}
+                    value={importProposalName ?? ""}
                     onChange={(e) => setImportProposalName(e.target.value)}
                     placeholder="Imported Estimate"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -7046,7 +7907,7 @@ function ProcoreContent() {
 
               <label className="block text-sm font-semibold text-gray-700 mb-1">Workbook Rows JSON</label>
               <textarea
-                value={importRowsText}
+                value={importRowsText ?? ""}
                 onChange={(e) => setImportRowsText(e.target.value)}
                 className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white h-48"
                 placeholder='[{"Cost item":"Division A","Cost Code":"03-100","Quantity":1}]'

@@ -71,30 +71,50 @@ async function procoreJson(params: {
   companyId: string;
   method?: string;
   body?: unknown;
+  maxRetries?: number;
 }) {
-  const response = await fetch(`${BASE_URL}${params.path}`, {
-    method: params.method || "GET",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      ...(params.body ? { "Content-Type": "application/json" } : {}),
-      "Procore-Company-Id": params.companyId,
-    },
-    ...(params.body ? { body: JSON.stringify(params.body) } : {}),
-    cache: "no-store",
-  });
-  const text = await response.text();
+  const method = params.method || "GET";
+  const maxRetries = params.maxRetries ?? (method === "GET" ? 1 : 5);
+  let response: Response;
+  let text = "";
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    response = await fetch(`${BASE_URL}${params.path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        ...(params.body ? { "Content-Type": "application/json" } : {}),
+        "Procore-Company-Id": params.companyId,
+      },
+      ...(params.body ? { body: JSON.stringify(params.body) } : {}),
+      cache: "no-store",
+    });
+    text = await response.text();
+    if (response.status !== 429 || attempt >= maxRetries) break;
+    const retryAfter = Number(response.headers.get("retry-after"));
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : 2500 + attempt * 2500;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  // TypeScript cannot see that the loop always assigns response.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const finalResponse = response!;
   let payload: unknown = text;
   try {
     payload = text ? JSON.parse(text) : null;
   } catch {
     // Keep text response.
   }
-  if (!response.ok) {
+  if (!finalResponse.ok) {
     const message = typeof payload === "string" ? payload : JSON.stringify(payload);
-    throw new Error(`Procore ${params.method || "GET"} ${params.path} failed (${response.status}): ${message}`);
+    throw new Error(`Procore ${method} ${params.path} failed (${finalResponse.status}): ${message}`);
   }
   return payload;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] {
@@ -646,6 +666,7 @@ export async function POST(request: Request) {
     const groupIdMap = new Map<string, string>();
     const createdGroups: UnknownRecord[] = [];
     for (const group of groupPayloads) {
+      if (createdGroups.length > 0) await sleep(350);
       const payload = await procoreJson({
         accessToken,
         companyId: targetCompanyId,
@@ -665,6 +686,7 @@ export async function POST(request: Request) {
     const failedLineItems: UnknownRecord[] = [];
     for (const entry of mappedLineItems) {
       if (!isRecord(entry.mapping)) continue;
+      if (createdLineItems.length > 0) await sleep(750);
       const payload = buildLineItemPayload({ lineItem: entry.lineItem, mapping: entry.mapping, groupIdMap });
       try {
         const created = await procoreJson({

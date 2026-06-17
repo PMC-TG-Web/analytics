@@ -344,6 +344,7 @@ function ProcoreContent() {
   const [cloneProposalBusy, setCloneProposalBusy] = useState(false);
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
+  const [cloneProposalContinuation, setCloneProposalContinuation] = useState<Record<string, unknown> | null>(null);
   const [commitmentCloneSourceCompanyId, setCommitmentCloneSourceCompanyId] = useState("598134325658789");
   const [commitmentCloneSourceProjectId, setCommitmentCloneSourceProjectId] = useState("");
   const [commitmentCloneTargetCompanyId, setCommitmentCloneTargetCompanyId] = useState("598134325805519");
@@ -4672,7 +4673,7 @@ function ProcoreContent() {
     setCloneMappingOverrides((current) => current.filter((_, rowIndex) => rowIndex !== index));
   };
 
-  const handleCloneProposal = async (dryRun: boolean) => {
+  const handleCloneProposal = async (dryRun: boolean, continuation?: Record<string, unknown>) => {
     const sourceCompanyId = cloneSourceCompanyId.trim();
     const sourceProjectId = cloneSourceProjectId.trim();
     const sourceBidBoardProjectId = cloneSourceBidBoardProjectId.trim();
@@ -4687,13 +4688,14 @@ function ProcoreContent() {
       setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
       return;
     }
-    if (!dryRun && !window.confirm(`Create a cloned proposal in bid board project ${targetBidBoardProjectId}?`)) {
+    if (!dryRun && !continuation && !window.confirm(`Create a cloned proposal in bid board project ${targetBidBoardProjectId}?`)) {
       return;
     }
 
     setCloneProposalBusy(true);
     setCloneProposalError(null);
-    setCloneProposalResult(null);
+    if (!continuation) setCloneProposalResult(null);
+    if (!continuation) setCloneProposalContinuation(null);
 
     try {
       const response = await fetch("/api/procore/estimating/clone-proposal", {
@@ -4719,6 +4721,7 @@ function ProcoreContent() {
               newCostCode: row.newCostCode?.trim() || undefined,
               costCodeType: row.costCodeType?.trim() || undefined,
             })),
+          ...(continuation || {}),
           dryRun,
         }),
       });
@@ -4731,6 +4734,7 @@ function ProcoreContent() {
         );
       }
       setCloneProposalResult({ status: response.status, ok: response.ok, result });
+      setCloneProposalContinuation(result?.batch?.continueRequest || null);
     } catch (err) {
       setCloneProposalError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -8316,6 +8320,15 @@ function ProcoreContent() {
                 >
                   {cloneProposalBusy ? "Working..." : "Run Live Clone"}
                 </button>
+                {cloneProposalContinuation && (
+                  <button
+                    onClick={() => handleCloneProposal(false, cloneProposalContinuation)}
+                    disabled={cloneProposalBusy}
+                    className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {cloneProposalBusy ? "Working..." : "Continue Live Clone"}
+                  </button>
+                )}
                 {cloneProposalResult && (
                   <button
                     onClick={() => downloadJson("procore-clone-proposal-result.json", cloneProposalResult)}
@@ -8345,7 +8358,9 @@ function ProcoreContent() {
                         ? "Dry run is clean. Live clone is enabled."
                         : `${cloneProposalResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
                       : cloneProposalResult.result?.success
-                        ? `Live clone created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        ? cloneProposalResult.result?.batch?.hasMoreLineItems
+                          ? `Batch created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s). Continue clone is available.`
+                          : `Live clone created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s).`
                         : "Live clone finished with errors."}
                   </div>
                   {Array.isArray(cloneProposalResult.result?.missingMappings) && cloneProposalResult.result.missingMappings.length > 0 && (

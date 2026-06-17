@@ -117,6 +117,26 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function readInt(value: unknown, fallback: number): number {
+  const parsed = readNum(value);
+  if (parsed === undefined) return fallback;
+  return Math.trunc(parsed);
+}
+
+function mapFromObject(value: unknown): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!isRecord(value)) return map;
+  for (const [key, entry] of Object.entries(value)) {
+    const mapped = readStr(entry);
+    if (key && mapped) map.set(key, mapped);
+  }
+  return map;
+}
+
+function objectFromMap(map: Map<string, string>): Record<string, string> {
+  return Object.fromEntries(map.entries());
+}
+
 function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] {
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) return [];
@@ -496,6 +516,10 @@ export async function POST(request: Request) {
     const targetProposalName = readStr(body.targetProposalName || body.newProposalName);
     const dryRun = body.dryRun !== false;
     const allowPartial = body.allowPartial === true;
+    const targetProposalIdFromBody = readStr(body.targetProposalId || body.createdProposalId);
+    const lineItemOffset = Math.max(0, readInt(body.lineItemOffset, 0));
+    const lineItemLimit = Math.min(25, Math.max(1, readInt(body.lineItemLimit, 20)));
+    const continuationGroupIdMap = mapFromObject(body.groupIdMap);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const requestedCrosswalkPath = readStr(body.crosswalkPath || DEFAULT_CROSSWALK_PATH);
     const crosswalkPath = path.isAbsolute(requestedCrosswalkPath)
@@ -680,17 +704,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const createdProposalPayload = await procoreJson({
-      accessToken,
-      companyId: targetCompanyId,
-      method: "POST",
-      path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
-        targetBidBoardProjectId
-      )}/proposals`,
-      body: proposalPayload,
-    });
-    const createdProposal = isRecord(unwrapData(createdProposalPayload)) ? (unwrapData(createdProposalPayload) as UnknownRecord) : {};
-    const createdProposalId = readStr(createdProposal.id || createdProposal.proposal_id);
+    let createdProposalPayload: unknown = null;
+    let createdProposal: UnknownRecord = {};
+    let createdProposalId = targetProposalIdFromBody;
+    if (!createdProposalId) {
+      createdProposalPayload = await procoreJson({
+        accessToken,
+        companyId: targetCompanyId,
+        method: "POST",
+        path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
+          targetBidBoardProjectId
+        )}/proposals`,
+        body: proposalPayload,
+      });
+      createdProposal = isRecord(unwrapData(createdProposalPayload)) ? (unwrapData(createdProposalPayload) as UnknownRecord) : {};
+      createdProposalId = readStr(createdProposal.id || createdProposal.proposal_id);
+    } else {
+      createdProposalPayload = { resumed: true, id: createdProposalId };
+      createdProposal = { id: createdProposalId };
+    }
     if (!createdProposalId) {
       return NextResponse.json(
         { error: "Created proposal response did not include an id.", createdProposalPayload },
@@ -698,28 +730,32 @@ export async function POST(request: Request) {
       );
     }
 
-    const groupIdMap = new Map<string, string>();
+    const groupIdMap = new Map<string, string>(continuationGroupIdMap);
     const createdGroups: UnknownRecord[] = [];
-    for (const group of groupPayloads) {
-      if (createdGroups.length > 0) await sleep(350);
-      const payload = await procoreJson({
-        accessToken,
-        companyId: targetCompanyId,
-        method: "POST",
-        path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
-          targetBidBoardProjectId
-        )}/proposals/${encodeURIComponent(createdProposalId)}/line_item_groups`,
-        body: group.payload,
-      });
-      const created = isRecord(unwrapData(payload)) ? (unwrapData(payload) as UnknownRecord) : {};
-      const createdGroupId = readStr(created.id || created.group_id || created.line_item_group_id);
-      if (group.oldGroupId && createdGroupId) groupIdMap.set(group.oldGroupId, createdGroupId);
-      createdGroups.push({ oldGroupId: group.oldGroupId, newGroupId: createdGroupId, payload });
+    if (!targetProposalIdFromBody) {
+      for (const group of groupPayloads) {
+        if (createdGroups.length > 0) await sleep(350);
+        const payload = await procoreJson({
+          accessToken,
+          companyId: targetCompanyId,
+          method: "POST",
+          path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
+            targetBidBoardProjectId
+          )}/proposals/${encodeURIComponent(createdProposalId)}/line_item_groups`,
+          body: group.payload,
+        });
+        const created = isRecord(unwrapData(payload)) ? (unwrapData(payload) as UnknownRecord) : {};
+        const createdGroupId = readStr(created.id || created.group_id || created.line_item_group_id);
+        if (group.oldGroupId && createdGroupId) groupIdMap.set(group.oldGroupId, createdGroupId);
+        createdGroups.push({ oldGroupId: group.oldGroupId, newGroupId: createdGroupId, payload });
+      }
     }
 
+    const cloneableLineItems = mappedLineItems.filter((entry) => isRecord(entry.mapping));
+    const batchLineItems = cloneableLineItems.slice(lineItemOffset, lineItemOffset + lineItemLimit);
     const createdLineItems: UnknownRecord[] = [];
     const failedLineItems: UnknownRecord[] = [];
-    for (const entry of mappedLineItems) {
+    for (const entry of batchLineItems) {
       if (!isRecord(entry.mapping)) continue;
       if (createdLineItems.length > 0) await sleep(750);
       const payload = buildLineItemPayload({ lineItem: entry.lineItem, mapping: entry.mapping, groupIdMap });
@@ -750,11 +786,29 @@ export async function POST(request: Request) {
         if (!allowPartial) break;
       }
     }
+    const nextLineItemOffset = lineItemOffset + batchLineItems.length;
+    const hasMoreLineItems = nextLineItemOffset < cloneableLineItems.length;
+    const continueRequest = hasMoreLineItems
+      ? {
+          targetProposalId: createdProposalId,
+          groupIdMap: objectFromMap(groupIdMap),
+          lineItemOffset: nextLineItemOffset,
+          lineItemLimit,
+        }
+      : null;
 
     return NextResponse.json({
       success: failedLineItems.length === 0,
       dryRun: false,
       tokenSource,
+      batch: {
+        lineItemOffset,
+        lineItemLimit,
+        attemptedLineItems: batchLineItems.length,
+        nextLineItemOffset,
+        hasMoreLineItems,
+        continueRequest,
+      },
       source: {
         companyId: sourceCompanyId,
         projectId: sourceProjectId,
@@ -771,6 +825,7 @@ export async function POST(request: Request) {
         sourceGroups: sourceGroupRecords.length,
         createdGroups: createdGroups.length,
         sourceLineItems: sourceLineItemRecords.length,
+        cloneableLineItems: cloneableLineItems.length,
         createdLineItems: createdLineItems.length,
         failedLineItems: failedLineItems.length,
         skippedMissingMappings: missingMappings.length,

@@ -367,6 +367,8 @@ function ProcoreContent() {
   const [commitmentCloneError, setCommitmentCloneError] = useState<string | null>(null);
   const [commitmentCloneResult, setCommitmentCloneResult] = useState<any>(null);
   const [commitmentCloneMappingRows, setCommitmentCloneMappingRows] = useState<Array<Record<string, string>>>([]);
+  const [commitmentVendorLookupMap, setCommitmentVendorLookupMap] = useState<Record<string, string>>({});
+  const [commitmentVendorLookupSummary, setCommitmentVendorLookupSummary] = useState<string | null>(null);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -4820,6 +4822,70 @@ function ProcoreContent() {
     return "";
   };
 
+  const parseCommitmentVendorCsvLine = (line: string): string[] => {
+    const cells: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      const next = line[index + 1];
+      if (char === '"' && inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        cells.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current);
+    return cells.map((cell) => cell.trim().replace(/^\uFEFF/, ""));
+  };
+
+  const handleCommitmentVendorLookupUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) throw new Error("CSV has no data rows.");
+      const headers = parseCommitmentVendorCsvLine(lines[0]).map((header) => header.trim().toLowerCase());
+      const oldIndex = headers.indexOf("old_vendor_id");
+      const newIndex = headers.indexOf("new_vendor_id");
+      const companyIndex = headers.indexOf("company");
+      if (oldIndex < 0 || newIndex < 0) {
+        throw new Error("CSV must include old_vendor_id and new_vendor_id columns.");
+      }
+      const lookup: Record<string, string> = {};
+      const names: Record<string, string> = {};
+      for (const line of lines.slice(1)) {
+        const cells = parseCommitmentVendorCsvLine(line);
+        const oldId = String(cells[oldIndex] || "").trim();
+        const newId = String(cells[newIndex] || "").trim();
+        if (!oldId || !newId) continue;
+        lookup[oldId] = newId;
+        if (companyIndex >= 0) names[oldId] = String(cells[companyIndex] || "").trim();
+      }
+      setCommitmentVendorLookupMap(lookup);
+      setCommitmentVendorLookupSummary(`${file.name}: loaded ${Object.keys(lookup).length} vendor mapping(s).`);
+      setCommitmentCloneMappingRows((current) =>
+        current.map((row) =>
+          row.field === "vendor_id" && row.oldId && lookup[row.oldId]
+            ? { ...row, newId: lookup[row.oldId], vendorName: row.vendorName || names[row.oldId] || "" }
+            : row
+        )
+      );
+    } catch (err) {
+      setCommitmentVendorLookupSummary(null);
+      setCommitmentCloneError(`Failed to load vendor lookup CSV: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const loadCommitmentMissingMappings = () => {
     const missing = Array.isArray(commitmentCloneResult?.result?.missingMappings)
       ? commitmentCloneResult.result.missingMappings
@@ -4830,7 +4896,9 @@ function ProcoreContent() {
         field: String(row.field || ""),
         mapName: commitmentMapNameForField(String(row.field || "")),
         oldId: String(row.oldId || ""),
-        newId: "",
+        newId: String(row.field || "") === "vendor_id" && row.oldId && commitmentVendorLookupMap[String(row.oldId)]
+          ? commitmentVendorLookupMap[String(row.oldId)]
+          : "",
         contractNumber: String(row.contractNumber || ""),
         contractTitle: String(row.contractTitle || ""),
         vendorName: String(row.vendorName || ""),
@@ -8584,6 +8652,22 @@ function ProcoreContent() {
                   rows={10}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
                 />
+              </div>
+
+              <div className="mb-4 bg-cyan-50 border border-cyan-200 rounded p-3">
+                <label className="block text-sm font-semibold text-cyan-900 mb-1">Vendor Lookup CSV</label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCommitmentVendorLookupUpload}
+                  className="w-full border border-cyan-200 rounded px-3 py-2 text-sm bg-white"
+                />
+                <p className="text-xs text-cyan-800 mt-2">
+                  Upload a CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. Vendor rows in the mapping table will auto-fill.
+                </p>
+                {commitmentVendorLookupSummary && (
+                  <p className="text-xs text-cyan-900 font-semibold mt-2">{commitmentVendorLookupSummary}</p>
+                )}
               </div>
 
               <div className="mb-4 border border-cyan-100 rounded overflow-hidden">

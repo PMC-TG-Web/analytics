@@ -451,6 +451,11 @@ function buildLineItemPayload(params: {
 
   copyPricingField(payload, "ci_item_margin", lineItem.ci_item_margin, lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
   copyPricingField(payload, "ci_labor_margin", lineItem.ci_labor_margin, lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
+  copyPricingField(payload, "item_margin", lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
+  copyPricingField(payload, "labor_margin", lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
+  copyPricingField(costItemPayload, "item_margin", lineItem.ci_item_margin, lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
+  copyPricingField(costItemPayload, "labor_margin", lineItem.ci_labor_margin, lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
+  copyPricingField(costItemPayload, "material_margin", lineItem.material_margin, lineItem.materialMargin, sourceCostItem.material_margin, sourceCostItem.item_margin);
 
   return payload;
 }
@@ -732,6 +737,7 @@ export async function POST(request: Request) {
           oldLineItemId: readStr(entry.lineItem.id || entry.lineItem.line_item_id),
           oldCostItemId: entry.oldCostItemId,
           newCostItemId: isRecord(entry.mapping.new) ? readStr(entry.mapping.new.ItemId) : null,
+          attemptedPayload: payload,
           created,
         });
       } catch (error) {

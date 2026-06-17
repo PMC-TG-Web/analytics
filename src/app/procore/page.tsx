@@ -366,6 +366,7 @@ function ProcoreContent() {
   const [commitmentCloneBusy, setCommitmentCloneBusy] = useState(false);
   const [commitmentCloneError, setCommitmentCloneError] = useState<string | null>(null);
   const [commitmentCloneResult, setCommitmentCloneResult] = useState<any>(null);
+  const [commitmentCloneMappingRows, setCommitmentCloneMappingRows] = useState<Array<Record<string, string>>>([]);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -4808,6 +4809,78 @@ function ProcoreContent() {
     }
   };
 
+  const commitmentMapNameForField = (field: string): string => {
+    const normalized = String(field || "").trim();
+    if (normalized === "vendor_id") return "vendorIdMap";
+    if (normalized === "budget_line_item_id") return "budgetLineItemIdMap";
+    if (normalized === "wbs_code_id") return "wbsCodeIdMap";
+    if (normalized === "cost_code_id") return "costCodeIdMap";
+    if (normalized === "line_item_type_id") return "lineItemTypeIdMap";
+    if (normalized === "tax_code_id") return "taxCodeIdMap";
+    return "";
+  };
+
+  const loadCommitmentMissingMappings = () => {
+    const missing = Array.isArray(commitmentCloneResult?.result?.missingMappings)
+      ? commitmentCloneResult.result.missingMappings
+      : [];
+    setCommitmentCloneMappingRows(
+      missing.map((row: any, index: number) => ({
+        rowKey: `${row.field || "field"}:${row.oldId || "old"}:${index}`,
+        field: String(row.field || ""),
+        mapName: commitmentMapNameForField(String(row.field || "")),
+        oldId: String(row.oldId || ""),
+        newId: "",
+        contractNumber: String(row.contractNumber || ""),
+        contractTitle: String(row.contractTitle || ""),
+        vendorName: String(row.vendorName || ""),
+        lineItemId: String(row.lineItemId || ""),
+        description: String(row.description || ""),
+      }))
+    );
+  };
+
+  const updateCommitmentMappingRow = (index: number, key: string, value: string) => {
+    setCommitmentCloneMappingRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row))
+    );
+  };
+
+  const applyCommitmentMappingRows = () => {
+    let maps: Record<string, Record<string, string>> = {};
+    try {
+      maps = commitmentCloneMapsText.trim() ? JSON.parse(commitmentCloneMapsText) : {};
+    } catch (err) {
+      setCommitmentCloneError(`Mapping JSON is invalid: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    const skipped: string[] = [];
+    for (const row of commitmentCloneMappingRows) {
+      const mapName = row.mapName || commitmentMapNameForField(row.field || "");
+      const oldId = String(row.oldId || "").trim();
+      const newId = String(row.newId || "").trim();
+      if (!mapName || !oldId || !newId) {
+        if (oldId || newId) skipped.push(`${row.field || "unknown"}:${oldId || "missing-old"}`);
+        continue;
+      }
+      if (!maps[mapName] || typeof maps[mapName] !== "object" || Array.isArray(maps[mapName])) {
+        maps[mapName] = {};
+      }
+      maps[mapName][oldId] = newId;
+    }
+
+    setCommitmentCloneMapsText(JSON.stringify({
+      vendorIdMap: maps.vendorIdMap || {},
+      budgetLineItemIdMap: maps.budgetLineItemIdMap || {},
+      wbsCodeIdMap: maps.wbsCodeIdMap || {},
+      costCodeIdMap: maps.costCodeIdMap || {},
+      lineItemTypeIdMap: maps.lineItemTypeIdMap || {},
+      taxCodeIdMap: maps.taxCodeIdMap || {},
+    }, null, 2));
+    setCommitmentCloneError(skipped.length ? `Skipped ${skipped.length} incomplete mapping row(s).` : null);
+  };
+
   const handleExportProposalCsv = async () => {
     setProposalCsvBusy(true);
     setProposalShowError(null);
@@ -8511,6 +8584,79 @@ function ProcoreContent() {
                   rows={10}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
                 />
+              </div>
+
+              <div className="mb-4 border border-cyan-100 rounded overflow-hidden">
+                <div className="bg-cyan-50 px-3 py-2 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-cyan-900">Editable Missing ID Mappings</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={loadCommitmentMissingMappings}
+                      disabled={!Array.isArray(commitmentCloneResult?.result?.missingMappings) || commitmentCloneResult.result.missingMappings.length === 0}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Load Missing Rows
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyCommitmentMappingRows}
+                      disabled={commitmentCloneMappingRows.length === 0}
+                      className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Apply To Mapping JSON
+                    </button>
+                  </div>
+                </div>
+                {commitmentCloneMappingRows.length === 0 ? (
+                  <div className="p-3 text-sm text-gray-600">
+                    Run a dry-run with missing mappings, then load them here.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-2 py-2">Field</th>
+                          <th className="text-left px-2 py-2">Old ID</th>
+                          <th className="text-left px-2 py-2">New ID</th>
+                          <th className="text-left px-2 py-2">Contract</th>
+                          <th className="text-left px-2 py-2">Vendor</th>
+                          <th className="text-left px-2 py-2">Line Item</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {commitmentCloneMappingRows.map((row, index) => (
+                          <tr key={row.rowKey || `${row.field}-${row.oldId}-${index}`} className="border-t border-gray-100 align-top">
+                            <td className="px-2 py-2">
+                              <div className="font-mono">{row.field || "-"}</div>
+                              <div className="text-gray-500">{row.mapName || "unsupported"}</div>
+                            </td>
+                            <td className="px-2 py-2 font-mono">{row.oldId || "-"}</td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.newId ?? ""}
+                                onChange={(e) => updateCommitmentMappingRow(index, "newId", e.target.value)}
+                                className="w-36 border border-gray-300 rounded px-2 py-1 font-mono"
+                                placeholder="Target ID"
+                              />
+                            </td>
+                            <td className="px-2 py-2 min-w-44">
+                              <div className="font-semibold">{row.contractNumber || "-"}</div>
+                              <div className="text-gray-600">{row.contractTitle || "-"}</div>
+                            </td>
+                            <td className="px-2 py-2 min-w-36">{row.vendorName || "-"}</td>
+                            <td className="px-2 py-2 min-w-56">
+                              <div className="font-mono">{row.lineItemId || "-"}</div>
+                              <div className="text-gray-600">{row.description || "-"}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-3">

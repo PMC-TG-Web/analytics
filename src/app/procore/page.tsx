@@ -330,6 +330,9 @@ function ProcoreContent() {
   const [cloneTargetBidBoardProjectId, setCloneTargetBidBoardProjectId] = useState("");
   const [cloneTargetProposalName, setCloneTargetProposalName] = useState("Cloned Estimate");
   const [cloneCrosswalkPath, setCloneCrosswalkPath] = useState("Codes to use.xlsx");
+  const [cloneCrosswalkWorkbookBase64, setCloneCrosswalkWorkbookBase64] = useState("");
+  const [cloneCrosswalkWorkbookName, setCloneCrosswalkWorkbookName] = useState("");
+  const [cloneMappingOverrides, setCloneMappingOverrides] = useState<Array<Record<string, string>>>([]);
   const [cloneProposalBusy, setCloneProposalBusy] = useState(false);
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
@@ -4553,6 +4556,43 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneCrosswalkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const buffer = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    setCloneCrosswalkWorkbookBase64(window.btoa(binary));
+    setCloneCrosswalkWorkbookName(file.name);
+  };
+
+  const updateCloneMappingOverride = (index: number, key: string, value: string) => {
+    setCloneMappingOverrides((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row))
+    );
+  };
+
+  const addCloneMappingOverride = (seed?: Record<string, unknown>) => {
+    setCloneMappingOverrides((current) => [
+      ...current,
+      {
+        oldItemId: String(seed?.oldCostItemId ?? seed?.oldItemId ?? ""),
+        oldName: String(seed?.name ?? ""),
+        newItemId: "",
+        newName: "",
+        newCostCode: "",
+        costCodeType: "",
+      },
+    ]);
+  };
+
+  const removeCloneMappingOverride = (index: number) => {
+    setCloneMappingOverrides((current) => current.filter((_, rowIndex) => rowIndex !== index));
+  };
+
   const handleCloneProposal = async (dryRun: boolean) => {
     const sourceCompanyId = cloneSourceCompanyId.trim();
     const sourceProjectId = cloneSourceProjectId.trim();
@@ -4590,6 +4630,16 @@ function ProcoreContent() {
           targetBidBoardProjectId,
           targetProposalName,
           crosswalkPath,
+          crosswalkWorkbookBase64: cloneCrosswalkWorkbookBase64 || undefined,
+          mappingOverrides: cloneMappingOverrides
+            .filter((row) => row.oldItemId?.trim() && row.newItemId?.trim())
+            .map((row) => ({
+              oldItemId: row.oldItemId.trim(),
+              newItemId: row.newItemId.trim(),
+              newName: row.newName?.trim() || undefined,
+              newCostCode: row.newCostCode?.trim() || undefined,
+              costCodeType: row.costCodeType?.trim() || undefined,
+            })),
           dryRun,
         }),
       });
@@ -7881,6 +7931,116 @@ function ProcoreContent() {
                   onChange={(e) => setCloneCrosswalkPath(e.target.value)}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                 />
+                <div className="mt-3">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleCloneCrosswalkUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-indigo-700 mt-2">
+                    {cloneCrosswalkWorkbookName
+                      ? `Using uploaded workbook: ${cloneCrosswalkWorkbookName}`
+                      : "Optional: upload the crosswalk workbook here to avoid relying on a server file path."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-4 border border-indigo-100 rounded overflow-hidden">
+                <div className="bg-indigo-50 px-3 py-2 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-indigo-900">Manual Mapping Overrides</h3>
+                  <button
+                    type="button"
+                    onClick={() => addCloneMappingOverride()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded text-xs"
+                  >
+                    Add Row
+                  </button>
+                </div>
+                {cloneMappingOverrides.length === 0 ? (
+                  <div className="p-3 text-sm text-gray-600">
+                    Run a dry-run, then add/fill rows only for missing mappings.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-2 py-2">Old Item ID</th>
+                          <th className="text-left px-2 py-2">Old Name</th>
+                          <th className="text-left px-2 py-2">New Item ID</th>
+                          <th className="text-left px-2 py-2">New Name</th>
+                          <th className="text-left px-2 py-2">New Cost Code</th>
+                          <th className="text-left px-2 py-2">Type</th>
+                          <th className="text-left px-2 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cloneMappingOverrides.map((row, index) => (
+                          <tr key={`${row.oldItemId || "new"}-${index}`} className="border-t border-gray-100">
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.oldItemId ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "oldItemId", e.target.value)}
+                                className="w-28 border border-gray-300 rounded px-2 py-1 font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.oldName ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "oldName", e.target.value)}
+                                className="w-44 border border-gray-300 rounded px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.newItemId ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "newItemId", e.target.value)}
+                                className="w-28 border border-gray-300 rounded px-2 py-1 font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.newName ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "newName", e.target.value)}
+                                className="w-44 border border-gray-300 rounded px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.newCostCode ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "newCostCode", e.target.value)}
+                                className="w-32 border border-gray-300 rounded px-2 py-1 font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.costCodeType ?? ""}
+                                onChange={(e) => updateCloneMappingOverride(index, "costCodeType", e.target.value)}
+                                className="w-16 border border-gray-300 rounded px-2 py-1 font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <button
+                                type="button"
+                                onClick={() => removeCloneMappingOverride(index)}
+                                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-2 rounded text-xs"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -7930,6 +8090,26 @@ function ProcoreContent() {
                         ? `Live clone created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s).`
                         : "Live clone finished with errors."}
                   </div>
+                  {Array.isArray(cloneProposalResult.result?.missingMappings) && cloneProposalResult.result.missingMappings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCloneMappingOverrides(
+                          cloneProposalResult.result.missingMappings.map((row: any) => ({
+                            oldItemId: String(row.oldCostItemId ?? row.oldItemId ?? ""),
+                            oldName: String(row.name ?? row.oldCostItem?.name ?? ""),
+                            newItemId: "",
+                            newName: "",
+                            newCostCode: "",
+                            costCodeType: "",
+                          }))
+                        )
+                      }
+                      className="mb-3 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Load Missing Mappings Into Editable Table
+                    </button>
+                  )}
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(cloneProposalResult, null, 2)}
                   </pre>

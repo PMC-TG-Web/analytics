@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -99,8 +99,7 @@ function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] 
   return XLSX.utils.sheet_to_json(sheet, { defval: "" }) as UnknownRecord[];
 }
 
-function buildCrosswalk(crosswalkPath: string) {
-  const workbook = XLSX.readFile(crosswalkPath);
+function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   const uniqueOld = readSheet(workbook, "Unique_old_codes");
   const uniqueNew = readSheet(workbook, "Unique_New_codes");
   const nonUniqueOld = readSheet(workbook, "Non_unique_old_codes");
@@ -173,6 +172,46 @@ function buildCrosswalk(crosswalkPath: string) {
       crosswalkIssues: issues.length,
     },
   };
+}
+
+function buildCrosswalk(crosswalkPath: string) {
+  return buildCrosswalkFromWorkbook(XLSX.read(readFileSync(crosswalkPath), { type: "buffer" }));
+}
+
+function buildCrosswalkFromBase64(base64: string) {
+  return buildCrosswalkFromWorkbook(XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" }));
+}
+
+function applyMappingOverrides(
+  crosswalk: ReturnType<typeof buildCrosswalk>,
+  overrides: unknown
+) {
+  const rows = Array.isArray(overrides) ? overrides : [];
+  let applied = 0;
+  const skipped: UnknownRecord[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const oldItemId = readStr(row.oldItemId || row.old_item_id || row.sourceItemId || row.source_item_id);
+    const newItemId = readStr(row.newItemId || row.new_item_id || row.targetItemId || row.target_item_id);
+    if (!oldItemId || !newItemId) {
+      skipped.push({ row, issue: "missing_old_or_new_item_id" });
+      continue;
+    }
+    crosswalk.byOldItemId.set(oldItemId, {
+      old: { ItemId: oldItemId },
+      new: {
+        ItemId: newItemId,
+        Name: readStr(row.newName || row.name),
+        "Cost Code": readStr(row.newCostCode || row.costCode || row.cost_code),
+        "Cost Name": readStr(row.newCostName || row.costName || row.cost_name),
+        "Cost code type": readStr(row.costCodeType || row.cost_code_type),
+        Description: readStr(row.newDescription || row.description),
+      },
+      strategy: "manual_override",
+    });
+    applied += 1;
+  }
+  return { applied, skipped };
 }
 
 function lineItemOldCostItemId(lineItem: UnknownRecord): string {
@@ -286,6 +325,7 @@ export async function POST(request: Request) {
     const targetProposalName = readStr(body.targetProposalName || body.newProposalName);
     const dryRun = body.dryRun !== false;
     const allowPartial = body.allowPartial === true;
+    const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const requestedCrosswalkPath = readStr(body.crosswalkPath || DEFAULT_CROSSWALK_PATH);
     const crosswalkPath = path.isAbsolute(requestedCrosswalkPath)
       ? requestedCrosswalkPath
@@ -300,11 +340,14 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!existsSync(crosswalkPath)) {
+    if (!crosswalkWorkbookBase64 && !existsSync(crosswalkPath)) {
       return NextResponse.json({ error: "Crosswalk workbook not found.", crosswalkPath }, { status: 400 });
     }
 
-    const crosswalk = buildCrosswalk(crosswalkPath);
+    const crosswalk = crosswalkWorkbookBase64
+      ? buildCrosswalkFromBase64(crosswalkWorkbookBase64)
+      : buildCrosswalk(crosswalkPath);
+    const mappingOverrides = applyMappingOverrides(crosswalk, body.mappingOverrides);
     const sourceProposalPayload = await procoreJson({
       accessToken,
       companyId: sourceCompanyId,
@@ -425,6 +468,7 @@ export async function POST(request: Request) {
           missingMappings: missingMappings.length,
         },
         crosswalk: crosswalk.summary,
+        mappingOverrides,
         crosswalkIssues: crosswalk.issues.slice(0, 25),
         missingMappings: missingMappings.slice(0, 50),
         groupPreview: groupPayloads.slice(0, 10),
@@ -449,7 +493,7 @@ export async function POST(request: Request) {
           counts: {
             sourceGroups: sourceGroupRecords.length,
             sourceLineItems: sourceLineItemRecords.length,
-            mappedLineItems: mappedLineItems.length - missingMappings.length,
+          mappedLineItems: mappedLineItems.length - missingMappings.length,
             missingMappings: missingMappings.length,
           },
         },
@@ -549,6 +593,7 @@ export async function POST(request: Request) {
         failedLineItems: failedLineItems.length,
         skippedMissingMappings: missingMappings.length,
       },
+      mappingOverrides,
       proposal: createdProposalPayload,
       createdGroups,
       createdLineItems,

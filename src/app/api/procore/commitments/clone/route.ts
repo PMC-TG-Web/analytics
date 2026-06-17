@@ -438,6 +438,20 @@ function budgetLineCostCode(item: UnknownRecord) {
   return readStr(item.cost_code_string ?? wbsCode.flat_code ?? wbsCode.code ?? costCode.code ?? costCode.name ?? item.cost_code);
 }
 
+function budgetLineFlatCode(item: UnknownRecord) {
+  const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
+  return readStr(wbsCode.flat_code ?? item.flat_code ?? item.cost_code_string);
+}
+
+function costCodeBaseKey(value: unknown) {
+  return normCode(value).split(".")[0];
+}
+
+function flatCodeSuffix(value: unknown) {
+  const parts = normCode(value).split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+}
+
 function budgetLineCostType(item: UnknownRecord) {
   const lineItemType = isRecord(item.line_item_type) ? item.line_item_type : {};
   const costType = isRecord(item.cost_type) ? item.cost_type : {};
@@ -456,25 +470,38 @@ function budgetLineCostType(item: UnknownRecord) {
 function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCodeAndType = new Map<string, UnknownRecord[]>();
   const byCode = new Map<string, UnknownRecord[]>();
+  const byFlatCode = new Map<string, UnknownRecord>();
   for (const item of items) {
     const wbsCodeId = budgetLineWbsId(item);
-    const costCode = normCode(budgetLineCostCode(item));
+    const flatCode = normCode(budgetLineFlatCode(item));
+    const costCode = costCodeBaseKey(budgetLineCostCode(item) || flatCode);
     if (!wbsCodeId || !costCode) continue;
-    const costType = normCode(budgetLineCostType(item));
-    const normalized = { item, wbsCodeId, costCode: budgetLineCostCode(item), costType: budgetLineCostType(item) };
+    const costType = normCode(budgetLineCostType(item)) || flatCodeSuffix(flatCode);
+    const normalized = {
+      item,
+      wbsCodeId,
+      costCode: budgetLineCostCode(item),
+      flatCode: budgetLineFlatCode(item),
+      costType: budgetLineCostType(item) || flatCodeSuffix(flatCode),
+    };
     byCode.set(costCode, [...(byCode.get(costCode) || []), normalized]);
+    if (flatCode && !byFlatCode.has(flatCode)) byFlatCode.set(flatCode, normalized);
     if (costType) {
       const key = `${costCode}|${costType}`;
       byCodeAndType.set(key, [...(byCodeAndType.get(key) || []), normalized]);
     }
   }
-  return { byCodeAndType, byCode };
+  return { byCodeAndType, byCode, byFlatCode };
 }
 
 function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeof buildTargetWbsIndex>) {
   const costCode = normCode(newRow["Cost Code"]);
   const costType = normCode(newRow["Cost code type"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
+  const exactFlatMatch = costType ? targetIndex.byFlatCode.get(`${costCode}.${costType}`) : undefined;
+  if (exactFlatMatch) {
+    return { wbsCodeId: readStr(exactFlatMatch.wbsCodeId), issue: "", matchCount: 1, strategy: "flat_code_exact" };
+  }
   const typedMatches = costType ? targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [] : [];
   if (typedMatches.length === 1) {
     return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
@@ -486,6 +513,31 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
   if (codeMatches.length === 1) {
     return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
   }
+
+  const segments = costCode.split("-").filter(Boolean);
+  const codePrefixes: string[] = [];
+  for (let index = segments.length; index >= 2; index -= 1) {
+    codePrefixes.push(segments.slice(0, index).join("-"));
+  }
+  if (!codePrefixes.includes(costCode)) codePrefixes.unshift(costCode);
+
+  const prefixCandidates = [...targetIndex.byFlatCode.entries()].filter(([flatCode]) =>
+    codePrefixes.some((prefix) => flatCode.startsWith(`${prefix}.`) || flatCode.startsWith(`${prefix}-`))
+  );
+  if (prefixCandidates.length > 0) {
+    const preferredTypes = [costType].filter(Boolean);
+    const selected =
+      prefixCandidates.find(([flatCode]) => preferredTypes.includes(flatCodeSuffix(flatCode))) ||
+      prefixCandidates[0];
+    return {
+      wbsCodeId: readStr(selected[1].wbsCodeId),
+      issue: "",
+      matchCount: prefixCandidates.length,
+      strategy: "cost_code_prefix_fallback",
+      selectedFlatCode: selected[0],
+    };
+  }
+
   return {
     wbsCodeId: "",
     issue: codeMatches.length === 0 ? "missing_target_wbs_code" : "ambiguous_target_wbs_code",

@@ -65,6 +65,33 @@ function itemIdentityKey(row: UnknownRecord): string {
   return [row.Name, row.Description].map(norm).join("|");
 }
 
+function tokenSet(value: unknown) {
+  return new Set(
+    norm(value)
+      .replace(/[^a-z0-9#./"'-]+/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 1)
+  );
+}
+
+function tokenOverlapScore(left: unknown, right: unknown) {
+  const leftTokens = tokenSet(left);
+  const rightTokens = tokenSet(right);
+  if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+  let shared = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) shared += 1;
+  }
+  return shared / Math.max(1, Math.min(leftTokens.size, rightTokens.size));
+}
+
+function dimensionTokens(value: unknown) {
+  const normalized = norm(value);
+  const matches = normalized.match(/\d+(?:\/\d+)?(?=\s*(?:"|'|x|\b))/g) || [];
+  return new Set(matches);
+}
+
 function unwrapData(value: unknown): unknown {
   if (isRecord(value) && isRecord(value.data)) return value.data;
   return value;
@@ -321,6 +348,7 @@ function scoreCommitmentMapping(
   const oldCostName = norm(mapping.old["Cost Name"]);
   const base = norm(baseName);
   const full = norm(description);
+  const oldSearchText = `${mapping.old.Name || ""} ${mapping.old.Description || ""} ${mapping.old["Cost Name"] || ""}`;
   const suffixNorm = norm(suffix);
   const sourceCostCode = normCode(sourceLineItemCostCode(lineItem));
   const oldCostCode = normCode(mapping.old["Cost Code"]);
@@ -331,6 +359,19 @@ function scoreCommitmentMapping(
   else if (oldName && full.startsWith(`${oldName} -`)) score += 14;
   else if (oldName && full.includes(oldName)) score += 8;
   if (oldDescription && oldDescription === full) score += 6;
+  const overlap = Math.max(tokenOverlapScore(description, oldSearchText), tokenOverlapScore(baseName, oldSearchText));
+  if (overlap >= 0.75) score += 12;
+  else if (overlap >= 0.6) score += 7;
+  const lineDims = dimensionTokens(description);
+  const oldDims = dimensionTokens(oldSearchText);
+  if (lineDims.size > 0) {
+    let sharedDims = 0;
+    for (const dim of lineDims) {
+      if (oldDims.has(dim)) sharedDims += 1;
+    }
+    if (sharedDims === lineDims.size) score += 6;
+    else if (sharedDims > 0) score += 2;
+  }
   if (sourceCostCode && oldCostCode && sourceCostCode === oldCostCode) score += 12;
 
   if (suffixNorm) {
@@ -669,6 +710,13 @@ function stripContractPayload(source: UnknownRecord) {
     "payments",
     "payment_applications",
     "requisitions",
+    "base",
+    "base_id",
+    "base_type",
+    "base_ancestry",
+    "ancestry",
+    "root",
+    "root_id",
     "change_orders",
     "potential_change_orders",
     "commitment_change_orders",
@@ -931,6 +979,38 @@ async function createContract(params: {
   return unwrapData(response.payload);
 }
 
+async function addVendorToProject(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  vendorId: string;
+}) {
+  const paths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/vendors/${encodeURIComponent(params.vendorId)}/actions/add?view=normal`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/vendors/${encodeURIComponent(params.vendorId)}/actions/add?view=normal`,
+  ];
+  const attempts: UnknownRecord[] = [];
+
+  for (const path of paths) {
+    const response = await procoreJson({
+      path,
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      method: "POST",
+      allowStatuses: [400, 404, 405, 409, 422],
+    });
+    attempts.push({ path, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { ok: true, path, status: response.status, response: response.payload, attempts };
+
+    const text = safeJson(response.payload).toLowerCase();
+    if (response.status === 409 || (response.status === 422 && /already|exists|added/.test(text))) {
+      return { ok: true, alreadyAdded: true, path, status: response.status, response: response.payload, attempts };
+    }
+  }
+
+  return { ok: false, attempts };
+}
+
 async function createLineItem(params: {
   accessToken: string;
   companyId: string;
@@ -1135,8 +1215,37 @@ export async function POST(request: Request) {
 
     const createdContracts: UnknownRecord[] = [];
     const errors: UnknownRecord[] = [];
+    const projectVendorAdds: UnknownRecord[] = [];
     for (const entry of plan) {
       try {
+        const targetVendorId = readStr((entry.contractPayload as UnknownRecord)?.vendor_id);
+        if (targetVendorId) {
+          const addResult = await addVendorToProject({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            vendorId: targetVendorId,
+          });
+          projectVendorAdds.push({
+            sourceContractId: entry.sourceContractId,
+            sourceNumber: entry.number,
+            vendorId: targetVendorId,
+            ...addResult,
+          });
+          if (!addResult.ok) {
+            errors.push({
+              sourceContractId: entry.sourceContractId,
+              sourceNumber: entry.number,
+              sourceTitle: entry.title,
+              error: `Failed to add vendor ${targetVendorId} to target project ${targetProjectId}.`,
+              projectVendorAdd: addResult,
+              attemptedPayload: entry.contractPayload,
+            });
+            continue;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+
         const created = await createContract({
           accessToken,
           companyId: targetCompanyId,
@@ -1212,6 +1321,7 @@ export async function POST(request: Request) {
         errors: errors.length,
       },
       crosswalkAutoMappings,
+      projectVendorAdds,
       createdContracts,
       errors,
       plan,

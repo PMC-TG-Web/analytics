@@ -4870,6 +4870,18 @@ function ProcoreContent() {
     return cells.map((cell) => cell.trim().replace(/^\uFEFF/, ""));
   };
 
+  const normalizeCommitmentVendorCsvId = (value: string, label: string): string => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    if (/[eE][+-]?\d+/.test(trimmed)) {
+      throw new Error(`${label} contains scientific notation (${trimmed}). Export/upload the original CSV with full Procore IDs.`);
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error(`${label} must be a full numeric Procore ID, got "${trimmed}".`);
+    }
+    return trimmed;
+  };
+
   const handleCommitmentVendorLookupUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4888,8 +4900,8 @@ function ProcoreContent() {
       const names: Record<string, string> = {};
       for (const line of lines.slice(1)) {
         const cells = parseCommitmentVendorCsvLine(line);
-        const oldId = String(cells[oldIndex] || "").trim();
-        const newId = String(cells[newIndex] || "").trim();
+        const oldId = normalizeCommitmentVendorCsvId(String(cells[oldIndex] || ""), "old_vendor_id");
+        const newId = normalizeCommitmentVendorCsvId(String(cells[newIndex] || ""), "new_vendor_id");
         if (!oldId || !newId) continue;
         lookup[oldId] = newId;
         if (companyIndex >= 0) names[oldId] = String(cells[companyIndex] || "").trim();

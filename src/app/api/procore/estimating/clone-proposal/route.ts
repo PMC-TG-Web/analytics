@@ -44,7 +44,7 @@ function norm(value: unknown): string {
 }
 
 function nonUniqueKey(row: UnknownRecord): string {
-  return [row.Name, row["Cost Code"], row["Cost Name"], row.Description].map(norm).join("|");
+  return [row.Name, row.Description, row["Cost Name"]].map(norm).join("|");
 }
 
 function unwrapData(value: unknown): unknown {

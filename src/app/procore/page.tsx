@@ -4789,6 +4789,10 @@ function ProcoreContent() {
       setCommitmentCloneError(`Mapping JSON is invalid: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
+    maps.vendorIdMap = {
+      ...(typeof maps.vendorIdMap === "object" && maps.vendorIdMap && !Array.isArray(maps.vendorIdMap) ? maps.vendorIdMap as Record<string, unknown> : {}),
+      ...commitmentVendorLookupMap,
+    };
 
     setCommitmentCloneBusy(true);
     setCommitmentCloneError(null);

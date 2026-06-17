@@ -315,15 +315,52 @@ function buildProposalPayload(sourceProposal: UnknownRecord, targetProposalName:
   };
 }
 
-function buildGroupPayload(group: UnknownRecord): UnknownRecord {
-  const payload: UnknownRecord = { name: readStr(group.name) || "Imported Group" };
-  const notes = readStr(group.notes);
-  const multiplier = readNum(group.multiplier);
-  if (notes) payload.notes = notes;
-  if (multiplier !== undefined) payload.multiplier = multiplier;
-  if (isRecord(group.pricing_override)) {
-    payload.pricing_override = group.pricing_override;
+const CREATE_OMIT_KEYS = new Set([
+  "id",
+  "line_item_id",
+  "lineItemId",
+  "line_item_group_id",
+  "lineItemGroupId",
+  "group_id",
+  "groupId",
+  "proposal_id",
+  "proposalId",
+  "bid_board_project_id",
+  "bidBoardProjectId",
+  "project_id",
+  "projectId",
+  "company_id",
+  "companyId",
+  "created_at",
+  "createdAt",
+  "updated_at",
+  "updatedAt",
+  "deleted_at",
+  "deletedAt",
+  "synced_at",
+  "syncedAt",
+  "url",
+  "links",
+  "_links",
+]);
+
+function cloneForCreate(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneForCreate);
+  if (!isRecord(value)) return value;
+
+  const next: UnknownRecord = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (CREATE_OMIT_KEYS.has(key)) continue;
+    if (nestedValue === null || nestedValue === undefined) continue;
+    next[key] = cloneForCreate(nestedValue);
   }
+  return next;
+}
+
+function buildGroupPayload(group: UnknownRecord): UnknownRecord {
+  const cloned = cloneForCreate(group);
+  const payload = isRecord(cloned) ? cloned : {};
+  payload.name = readStr(payload.name || group.name) || "Imported Group";
   return payload;
 }
 
@@ -336,70 +373,31 @@ function buildLineItemPayload(params: {
   const newRow = isRecord(mapping.new) ? mapping.new : {};
   const oldGroupId = lineItemGroupId(lineItem);
   const sourceCostItem = isRecord(lineItem.cost_item) ? lineItem.cost_item : {};
-  const costItemPayload: UnknownRecord = {
-    id: readStr(newRow.ItemId),
-    name: readStr(newRow.Name),
-    description: readStr(newRow.Description),
-    type: readStr(sourceCostItem.type || sourceCostItem.item_type || "Custom"),
-    ...(readStr(sourceCostItem.unit) ? { unit: readStr(sourceCostItem.unit) } : {}),
-  };
+  const cloned = cloneForCreate(lineItem);
+  const payload = isRecord(cloned) ? cloned : {};
+  const clonedCostItem = cloneForCreate(sourceCostItem);
+  const costItemPayload = isRecord(clonedCostItem) ? clonedCostItem : {};
+  const newItemId = readStr(newRow.ItemId);
 
-  const costItemNumericFields = [
-    "unit_cost",
-    "unit_labor",
-    "unit_labor_cost",
-    "unit_labor_rate",
-    "delivery_unit",
-    "waste",
-    "material_waste",
-    "item_margin",
-    "material_margin",
-    "labor_margin",
-  ];
-  for (const fieldName of costItemNumericFields) {
-    const value = readNum(sourceCostItem[fieldName]);
-    if (value !== undefined) costItemPayload[fieldName] = value;
-  }
-  const laborTimeUnit = readStr(sourceCostItem.labor_time_unit);
-  if (laborTimeUnit) costItemPayload.labor_time_unit = laborTimeUnit;
-  if (typeof sourceCostItem.is_untaxed === "boolean") costItemPayload.is_untaxed = sourceCostItem.is_untaxed;
+  payload.name = readStr(payload.name || lineItem.name || sourceCostItem.name || newRow.Name) || "Imported Line Item";
+  costItemPayload.id = newItemId;
+  costItemPayload.based_on_item_id = newItemId;
+  costItemPayload.name = readStr(costItemPayload.name || sourceCostItem.name || newRow.Name);
+  costItemPayload.description = readStr(costItemPayload.description || sourceCostItem.description || newRow.Description);
+  costItemPayload.type = readStr(costItemPayload.type || sourceCostItem.type || sourceCostItem.item_type || "Custom");
+  payload.cost_item = costItemPayload;
 
-  const payload: UnknownRecord = {
-    name: readStr(lineItem.name || sourceCostItem.name || newRow.Name) || "Imported Line Item",
-    cost_item: costItemPayload,
-    cost_code: {
-      code: readStr(newRow["Cost Code"]),
-      ...(readStr(newRow["Cost Name"]) ? { name: readStr(newRow["Cost Name"]) } : {}),
-    },
+  const clonedCostCode = isRecord(payload.cost_code) ? payload.cost_code : {};
+  const newCostCode = readStr(newRow["Cost Code"]);
+  const newCostName = readStr(newRow["Cost Name"]);
+  payload.cost_code = {
+    ...clonedCostCode,
+    ...(newCostCode ? { code: newCostCode } : {}),
+    ...(newCostName ? { name: newCostName } : {}),
   };
 
   const mappedGroupId = oldGroupId ? groupIdMap.get(oldGroupId) : "";
   if (mappedGroupId) payload.group_id = mappedGroupId;
-
-  const tag = readStr(lineItem.tag);
-  const laborFactor = readNum(lineItem.labor_factor ?? lineItem.laborFactor);
-  const count = readNum(lineItem.count ?? lineItem.quantity ?? lineItem.qty);
-  const itemCost = readNum(lineItem.item_cost ?? lineItem.itemCost);
-  const laborCost = readNum(lineItem.labor_cost ?? lineItem.laborCost);
-  const lineItemNumericFields = [
-    ["unit_material_cost", "unitMaterialCost"],
-    ["material_margin", "materialMargin"],
-    ["unit_labor", "unitLabor"],
-    ["unit_labor_rate", "unitLaborRate"],
-    ["unit_labor_cost", "unitLaborCost"],
-    ["labor_margin", "laborMargin"],
-  ] as const;
-
-  if (tag) payload.tag = tag;
-  if (laborFactor !== undefined) payload.labor_factor = laborFactor;
-  if (count !== undefined) payload.count = count;
-  if (itemCost !== undefined) payload.item_cost = itemCost;
-  if (laborCost !== undefined) payload.labor_cost = laborCost;
-  for (const [snake, camel] of lineItemNumericFields) {
-    const value = readNum(lineItem[snake] ?? lineItem[camel]);
-    if (value !== undefined) payload[snake] = value;
-  }
-  if (isRecord(lineItem.pricing_override)) payload.pricing_override = lineItem.pricing_override;
 
   const costCodeType = readStr(newRow["Cost code type"]);
   if (costCodeType) payload.cost_code_type = costCodeType;

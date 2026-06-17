@@ -237,11 +237,40 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
 }
 
 function buildCrosswalk(crosswalkPath: string) {
-  return buildCrosswalkFromWorkbook(XLSX.read(readFileSync(crosswalkPath), { type: "buffer" }));
+  return applyBuiltInCrosswalkFallbacks(buildCrosswalkFromWorkbook(XLSX.read(readFileSync(crosswalkPath), { type: "buffer" })));
 }
 
 function buildCrosswalkFromBase64(base64: string) {
-  return buildCrosswalkFromWorkbook(XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" }));
+  return applyBuiltInCrosswalkFallbacks(buildCrosswalkFromWorkbook(XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" })));
+}
+
+function applyBuiltInCrosswalkFallbacks(crosswalk: ReturnType<typeof buildCrosswalkFromWorkbook>) {
+  const oldItemId = "38975960";
+  if (!crosswalk.byOldItemId.has(oldItemId)) {
+    const mapping = {
+      old: {
+        ItemId: oldItemId,
+        Name: "V-Seal 102 5 gal",
+        "Cost Code": "03-300-40-40",
+        "Cost Name": "Concrete Exterior Sealers",
+        Description: "V-Seal 102 5 gal / 250 Sq Ft. per Gal. ",
+      },
+      new: {
+        ItemId: "51482273",
+        Name: "V-Seal 102 5 gal",
+        "Cost Code": "03-300-40-40",
+        "Cost code type": "M",
+        "Cost Name": "Concrete Exterior Sealers",
+        Description: "V-Seal 102 5 gal / 250 Sq Ft. per Gal. ",
+      },
+      strategy: "built_in_v_seal_fallback",
+    };
+    crosswalk.byOldItemId.set(oldItemId, mapping);
+    const key = nonUniqueKey(mapping.old);
+    crosswalk.byOldNonUniqueKey.set(key, [mapping]);
+    crosswalk.summary.mappedOldItemIds = crosswalk.byOldItemId.size;
+  }
+  return crosswalk;
 }
 
 function applyMappingOverrides(

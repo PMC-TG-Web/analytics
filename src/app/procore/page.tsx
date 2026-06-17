@@ -286,6 +286,14 @@ function ProcoreContent() {
   const [projectImportResult, setProjectImportResult] = useState<any>(null);
   const [projectImportError, setProjectImportError] = useState<string | null>(null);
   const [projectImportWorkbookSummary, setProjectImportWorkbookSummary] = useState<string | null>(null);
+  const [bidBoardCloneSourceCompanyId, setBidBoardCloneSourceCompanyId] = useState("598134325658789");
+  const [bidBoardCloneSourceProjectId, setBidBoardCloneSourceProjectId] = useState("");
+  const [bidBoardCloneTargetCompanyId, setBidBoardCloneTargetCompanyId] = useState("598134325805519");
+  const [bidBoardCloneOverrideName, setBidBoardCloneOverrideName] = useState("");
+  const [bidBoardCloneOverrideStatus, setBidBoardCloneOverrideStatus] = useState("ESTIMATING");
+  const [bidBoardCloneBusy, setBidBoardCloneBusy] = useState(false);
+  const [bidBoardCloneError, setBidBoardCloneError] = useState<string | null>(null);
+  const [bidBoardCloneResult, setBidBoardCloneResult] = useState<any>(null);
 
   // Step 2: Line Item Groups import state
   const [groupImportBidBoardProjectId, setGroupImportBidBoardProjectId] = useState("");
@@ -4091,6 +4099,56 @@ function ProcoreContent() {
     });
   };
 
+  const handleCloneBidBoardProjectFromProject = async (dryRun: boolean) => {
+    const sourceCompanyId = bidBoardCloneSourceCompanyId.trim();
+    const sourceProjectId = bidBoardCloneSourceProjectId.trim();
+    const targetCompanyId = bidBoardCloneTargetCompanyId.trim();
+    const overrideName = bidBoardCloneOverrideName.trim();
+    const overrideStatus = bidBoardCloneOverrideStatus.trim();
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId) {
+      setBidBoardCloneError("Source company, source project_id, and target company are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create a new Bid Board project from source project ${sourceProjectId}?`)) {
+      return;
+    }
+
+    setBidBoardCloneBusy(true);
+    setBidBoardCloneError(null);
+    setBidBoardCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/estimating/clone-bid-board-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          dryRun,
+          overrides: {
+            ...(overrideName ? { name: overrideName } : {}),
+            ...(overrideStatus ? { status: overrideStatus } : {}),
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setBidBoardCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Bid Board project import ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setBidBoardCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setBidBoardCloneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBidBoardCloneBusy(false);
+    }
+  };
+
   // ΓöÇΓöÇ Step 2: Line Item Groups helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const parseGroupImportRows = (): Record<string, unknown>[] => {
@@ -7566,6 +7624,119 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(projectImportResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+              <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Bid Board From Existing Project</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter an old Procore project_id, dry-run the generated Bid Board project payload, then create it in the target company.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={bidBoardCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setBidBoardCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Procore Project ID</label>
+                  <input
+                    type="text"
+                    value={bidBoardCloneSourceProjectId ?? ""}
+                    onChange={(e) => setBidBoardCloneSourceProjectId(e.target.value)}
+                    placeholder="Old project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={bidBoardCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setBidBoardCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Override Bid Board Name</label>
+                  <input
+                    type="text"
+                    value={bidBoardCloneOverrideName ?? ""}
+                    onChange={(e) => setBidBoardCloneOverrideName(e.target.value)}
+                    placeholder="Optional; defaults to source project name"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
+                  <input
+                    type="text"
+                    value={bidBoardCloneOverrideStatus ?? ""}
+                    onChange={(e) => setBidBoardCloneOverrideStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneBidBoardProjectFromProject(true)}
+                  disabled={bidBoardCloneBusy}
+                  className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {bidBoardCloneBusy ? "Working..." : "Dry Run From Project"}
+                </button>
+                <button
+                  onClick={() => handleCloneBidBoardProjectFromProject(false)}
+                  disabled={bidBoardCloneBusy || !bidBoardCloneResult?.result?.readyForLiveImport}
+                  className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {bidBoardCloneBusy ? "Creating..." : "Create Bid Board Project"}
+                </button>
+                {bidBoardCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-bid-board-from-project-result.json", bidBoardCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {bidBoardCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Bid Board Import Error:</strong> {bidBoardCloneError}
+                </div>
+              )}
+
+              {bidBoardCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    bidBoardCloneResult.result?.readyForLiveImport || bidBoardCloneResult.result?.success
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Bid Board Import Result:</strong>{" "}
+                    {bidBoardCloneResult.result?.dryRun
+                      ? bidBoardCloneResult.result?.readyForLiveImport
+                        ? "Dry run is clean. Live create is enabled."
+                        : "Dry run needs attention before live create."
+                      : bidBoardCloneResult.result?.success
+                        ? `Created Bid Board project ${bidBoardCloneResult.result?.created?.bidBoardProjectId ?? ""}.`
+                        : "Live create failed."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(bidBoardCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

@@ -4817,10 +4817,15 @@ function ProcoreContent() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.success === false) {
+        const firstNestedError = Array.isArray(result?.errors) && result.errors.length > 0
+          ? String(result.errors[0]?.error || result.errors[0]?.message || JSON.stringify(result.errors[0]))
+          : "";
         setCommitmentCloneError(
           result?.error
             ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
-            : `Commitment clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+            : firstNestedError
+              ? `Commitment clone ${dryRun ? "dry-run" : "live run"} finished with errors: ${firstNestedError}`
+              : `Commitment clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
         );
       }
       setCommitmentCloneResult({ status: response.status, ok: response.ok, result });

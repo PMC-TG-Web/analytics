@@ -1196,6 +1196,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: errors.length === 0,
       dryRun: false,
+      error: errors.length > 0 ? "Commitment clone finished with errors." : undefined,
+      details: errors.length > 0 ? readStr(errors[0].error) : undefined,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
       target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus },

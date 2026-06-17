@@ -120,6 +120,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   }
 
   const byOldItemId = new Map<string, UnknownRecord>();
+  const byOldUniqueCostCode = new Map<string, UnknownRecord[]>();
+  const byOldNonUniqueKey = new Map<string, UnknownRecord[]>();
   const issues: UnknownRecord[] = [];
 
   for (const oldRow of uniqueOld) {
@@ -128,7 +130,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     const matches = newUniqueByCostCode.get(costCode) || [];
     if (!oldItemId) continue;
     if (matches.length === 1) {
-      byOldItemId.set(oldItemId, { old: oldRow, new: matches[0], strategy: "unique_cost_code" });
+      const mapping = { old: oldRow, new: matches[0], strategy: "unique_cost_code" };
+      byOldItemId.set(oldItemId, mapping);
+      byOldUniqueCostCode.set(costCode, [...(byOldUniqueCostCode.get(costCode) || []), mapping]);
     } else {
       issues.push({
         strategy: "unique_cost_code",
@@ -146,7 +150,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     const matches = newNonUniqueByKey.get(key) || [];
     if (!oldItemId) continue;
     if (matches.length === 1) {
-      byOldItemId.set(oldItemId, { old: oldRow, new: matches[0], strategy: "non_unique_composite" });
+      const mapping = { old: oldRow, new: matches[0], strategy: "non_unique_composite" };
+      byOldItemId.set(oldItemId, mapping);
+      byOldNonUniqueKey.set(key, [...(byOldNonUniqueKey.get(key) || []), mapping]);
     } else {
       issues.push({
         strategy: "non_unique_composite",
@@ -162,6 +168,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
 
   return {
     byOldItemId,
+    byOldUniqueCostCode,
+    byOldNonUniqueKey,
     issues,
     summary: {
       uniqueOld: uniqueOld.length,
@@ -217,6 +225,59 @@ function applyMappingOverrides(
 function lineItemOldCostItemId(lineItem: UnknownRecord): string {
   const costItem = isRecord(lineItem.cost_item) ? lineItem.cost_item : {};
   return readStr(costItem.id || costItem.item_id || lineItem.cost_item_id || lineItem.item_id);
+}
+
+function readCostCodeValue(value: unknown): string {
+  if (isRecord(value)) {
+    return readStr(value.code || value.name || value.value);
+  }
+  return readStr(value);
+}
+
+function lineItemOldCrosswalkRow(lineItem: UnknownRecord): UnknownRecord {
+  const costItem = isRecord(lineItem.cost_item) ? lineItem.cost_item : {};
+  const costCode = isRecord(lineItem.cost_code) ? lineItem.cost_code : {};
+  return {
+    Name: readStr(costItem.name || lineItem.name),
+    "Cost Code": readCostCodeValue(lineItem.cost_code || lineItem.costCode || lineItem.cost_code_code),
+    "Cost Name": readStr(costCode.name || lineItem.cost_code_name || lineItem.costName),
+    Description: readStr(costItem.description || lineItem.description),
+  };
+}
+
+function resolveLineItemMapping(
+  lineItem: UnknownRecord,
+  crosswalk: ReturnType<typeof buildCrosswalk>
+) {
+  const oldCostItemId = lineItemOldCostItemId(lineItem);
+  if (oldCostItemId) {
+    const byId = crosswalk.byOldItemId.get(oldCostItemId);
+    if (byId) return { mapping: byId, strategy: "old_item_id", oldCostItemId };
+  }
+
+  const oldRow = lineItemOldCrosswalkRow(lineItem);
+  const compositeKey = nonUniqueKey(oldRow);
+  const nonUniqueMatches = crosswalk.byOldNonUniqueKey.get(compositeKey) || [];
+  if (nonUniqueMatches.length === 1) {
+    return { mapping: nonUniqueMatches[0], strategy: "line_item_composite", oldCostItemId, compositeKey };
+  }
+
+  const costCode = norm(oldRow["Cost Code"]);
+  const uniqueMatches = crosswalk.byOldUniqueCostCode.get(costCode) || [];
+  if (uniqueMatches.length === 1) {
+    return { mapping: uniqueMatches[0], strategy: "line_item_unique_cost_code", oldCostItemId, costCode };
+  }
+
+  return {
+    mapping: null,
+    strategy: "missing",
+    oldCostItemId,
+    compositeKey,
+    costCode,
+    nonUniqueMatchCount: nonUniqueMatches.length,
+    uniqueMatchCount: uniqueMatches.length,
+    inferredOldRow: oldRow,
+  };
 }
 
 function lineItemGroupId(lineItem: UnknownRecord): string {
@@ -424,19 +485,26 @@ export async function POST(request: Request) {
 
     const missingMappings: UnknownRecord[] = [];
     const mappedLineItems = sourceLineItemRecords.map((lineItem, index) => {
-      const oldCostItemId = lineItemOldCostItemId(lineItem);
-      const mapping = oldCostItemId ? crosswalk.byOldItemId.get(oldCostItemId) : undefined;
+      const resolved = resolveLineItemMapping(lineItem, crosswalk);
+      const oldCostItemId = resolved.oldCostItemId;
+      const mapping = resolved.mapping;
       if (!mapping) {
         missingMappings.push({
           index,
           lineItemId: readStr(lineItem.id || lineItem.line_item_id),
           name: readStr(lineItem.name),
           oldCostItemId,
+          matchStrategy: resolved.strategy,
+          compositeKey: resolved.compositeKey,
+          costCode: resolved.costCode,
+          nonUniqueMatchCount: resolved.nonUniqueMatchCount,
+          uniqueMatchCount: resolved.uniqueMatchCount,
+          inferredOldRow: resolved.inferredOldRow,
           oldCostItem: isRecord(lineItem.cost_item) ? lineItem.cost_item : null,
           oldCostCode: isRecord(lineItem.cost_code) ? lineItem.cost_code : null,
         });
       }
-      return { lineItem, oldCostItemId, mapping: mapping || null };
+      return { lineItem, oldCostItemId, mapping: mapping || null, matchStrategy: resolved.strategy };
     });
 
     const readyForLiveClone = missingMappings.length === 0;
@@ -474,7 +542,7 @@ export async function POST(request: Request) {
         groupPreview: groupPayloads.slice(0, 10),
         lineItemPreview: mappedLineItems.slice(0, 10).map((entry) => ({
           oldCostItemId: entry.oldCostItemId,
-          strategy: isRecord(entry.mapping) ? entry.mapping.strategy : null,
+          strategy: entry.matchStrategy,
           oldName: readStr(entry.lineItem.name),
           newItemId: isRecord(entry.mapping) && isRecord(entry.mapping.new) ? readStr(entry.mapping.new.ItemId) : null,
           newName: isRecord(entry.mapping) && isRecord(entry.mapping.new) ? readStr(entry.mapping.new.Name) : null,

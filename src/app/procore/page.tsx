@@ -336,6 +336,27 @@ function ProcoreContent() {
   const [cloneProposalBusy, setCloneProposalBusy] = useState(false);
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
+  const [commitmentCloneSourceCompanyId, setCommitmentCloneSourceCompanyId] = useState("598134325658789");
+  const [commitmentCloneSourceProjectId, setCommitmentCloneSourceProjectId] = useState("");
+  const [commitmentCloneTargetCompanyId, setCommitmentCloneTargetCompanyId] = useState("598134325805519");
+  const [commitmentCloneTargetProjectId, setCommitmentCloneTargetProjectId] = useState("");
+  const [commitmentCloneIdsText, setCommitmentCloneIdsText] = useState("");
+  const [commitmentCloneSourceMode, setCommitmentCloneSourceMode] = useState("all");
+  const [commitmentCloneTargetStatus, setCommitmentCloneTargetStatus] = useState("Draft");
+  const [commitmentClonePreserveStatus, setCommitmentClonePreserveStatus] = useState(false);
+  const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
+  const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
+  const [commitmentCloneMapsText, setCommitmentCloneMapsText] = useState(`{
+  "vendorIdMap": {},
+  "budgetLineItemIdMap": {},
+  "wbsCodeIdMap": {},
+  "costCodeIdMap": {},
+  "lineItemTypeIdMap": {},
+  "taxCodeIdMap": {}
+}`);
+  const [commitmentCloneBusy, setCommitmentCloneBusy] = useState(false);
+  const [commitmentCloneError, setCommitmentCloneError] = useState<string | null>(null);
+  const [commitmentCloneResult, setCommitmentCloneResult] = useState<any>(null);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -4659,6 +4680,72 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneCommitments = async (dryRun: boolean) => {
+    const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
+    const sourceProjectId = commitmentCloneSourceProjectId.trim();
+    const targetCompanyId = commitmentCloneTargetCompanyId.trim();
+    const targetProjectId = commitmentCloneTargetProjectId.trim();
+    const targetStatus = commitmentCloneTargetStatus.trim() || "Draft";
+    const commitmentIds = commitmentCloneIdsText
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setCommitmentCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned commitment(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    let maps: Record<string, unknown> = {};
+    try {
+      maps = commitmentCloneMapsText.trim() ? JSON.parse(commitmentCloneMapsText) : {};
+    } catch (err) {
+      setCommitmentCloneError(`Mapping JSON is invalid: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    setCommitmentCloneBusy(true);
+    setCommitmentCloneError(null);
+    setCommitmentCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/commitments/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          sourceMode: commitmentCloneSourceMode,
+          targetStatus,
+          preserveStatus: commitmentClonePreserveStatus,
+          cloneLineItems: commitmentCloneLineItems,
+          allowUnmappedIds: commitmentCloneAllowUnmappedIds,
+          commitmentIds,
+          dryRun,
+          ...maps,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setCommitmentCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Commitment clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setCommitmentCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setCommitmentCloneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCommitmentCloneBusy(false);
+    }
+  };
+
   const handleExportProposalCsv = async () => {
     setProposalCsvBusy(true);
     setProposalShowError(null);
@@ -8112,6 +8199,183 @@ function ProcoreContent() {
                   )}
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(cloneProposalResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+              <h2 className="text-xl font-bold text-cyan-900 mb-3">Clone Commitments</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone commitment contract headers and line items from one Procore project to another. Dry-run first to expose vendor, WBS, budget, cost code, cost type, and tax code ID mappings.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setCommitmentCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneSourceProjectId ?? ""}
+                    onChange={(e) => setCommitmentCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setCommitmentCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneTargetProjectId ?? ""}
+                    onChange={(e) => setCommitmentCloneTargetProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Endpoint</label>
+                  <select
+                    value={commitmentCloneSourceMode}
+                    onChange={(e) => setCommitmentCloneSourceMode(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="all">All available</option>
+                    <option value="commitment_contracts">Commitment contracts v2</option>
+                    <option value="purchase_order_contracts">Purchase order contracts v1</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneTargetStatus ?? ""}
+                    onChange={(e) => setCommitmentCloneTargetStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={commitmentClonePreserveStatus}
+                      onChange={(e) => setCommitmentClonePreserveStatus(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Preserve source status
+                  </label>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={commitmentCloneLineItems}
+                      onChange={(e) => setCommitmentCloneLineItems(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Clone line items
+                  </label>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Commitment IDs</label>
+                <input
+                  type="text"
+                  value={commitmentCloneIdsText ?? ""}
+                  onChange={(e) => setCommitmentCloneIdsText(e.target.value)}
+                  placeholder="Optional: comma or space-separated source commitment IDs"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
+
+              <div className="mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                  <label className="block text-sm font-semibold text-gray-700">ID Mapping JSON</label>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+                    <input
+                      type="checkbox"
+                      checked={commitmentCloneAllowUnmappedIds}
+                      onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Allow unmapped IDs
+                  </label>
+                </div>
+                <textarea
+                  value={commitmentCloneMapsText ?? ""}
+                  onChange={(e) => setCommitmentCloneMapsText(e.target.value)}
+                  rows={10}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneCommitments(true)}
+                  disabled={commitmentCloneBusy}
+                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {commitmentCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneCommitments(false)}
+                  disabled={commitmentCloneBusy || !commitmentCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {commitmentCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {commitmentCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-commitments-result.json", commitmentCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {commitmentCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Commitment Clone Error:</strong> {commitmentCloneError}
+                </div>
+              )}
+
+              {commitmentCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    commitmentCloneResult.result?.readyForLiveClone || commitmentCloneResult.result?.success
+                      ? "bg-cyan-50 border-cyan-200 text-cyan-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Commitment Clone Result:</strong>{" "}
+                    {commitmentCloneResult.result?.dryRun
+                      ? commitmentCloneResult.result?.readyForLiveClone
+                        ? "Dry run is clean. Live clone is enabled."
+                        : `${commitmentCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                      : commitmentCloneResult.result?.success
+                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(commitmentCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

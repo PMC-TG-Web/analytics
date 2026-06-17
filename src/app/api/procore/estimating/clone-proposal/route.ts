@@ -47,6 +47,10 @@ function nonUniqueKey(row: UnknownRecord): string {
   return [row.Name, row.Description, row["Cost Name"]].map(norm).join("|");
 }
 
+function itemIdentityKey(row: UnknownRecord): string {
+  return [row.Name, row.Description].map(norm).join("|");
+}
+
 function unwrapData(value: unknown): unknown {
   if (isRecord(value) && isRecord(value.data)) return value.data;
   return value;
@@ -121,18 +125,27 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
 
   const byOldItemId = new Map<string, UnknownRecord>();
   const byOldUniqueCostCode = new Map<string, UnknownRecord[]>();
+  const byOldUniqueIdentity = new Map<string, UnknownRecord[]>();
   const byOldNonUniqueKey = new Map<string, UnknownRecord[]>();
   const issues: UnknownRecord[] = [];
+  const newUniqueByIdentity = new Map<string, UnknownRecord[]>();
+  for (const row of uniqueNew) {
+    const key = itemIdentityKey(row);
+    if (!key.replace(/\|/g, "")) continue;
+    newUniqueByIdentity.set(key, [...(newUniqueByIdentity.get(key) || []), row]);
+  }
 
   for (const oldRow of uniqueOld) {
     const oldItemId = readStr(oldRow.ItemId);
     const costCode = norm(oldRow["Cost Code"]);
-    const matches = newUniqueByCostCode.get(costCode) || [];
+    const identityKey = itemIdentityKey(oldRow);
+    const matches = costCode ? newUniqueByCostCode.get(costCode) || [] : newUniqueByIdentity.get(identityKey) || [];
     if (!oldItemId) continue;
     if (matches.length === 1) {
-      const mapping = { old: oldRow, new: matches[0], strategy: "unique_cost_code" };
+      const mapping = { old: oldRow, new: matches[0], strategy: costCode ? "unique_cost_code" : "unique_identity" };
       byOldItemId.set(oldItemId, mapping);
-      byOldUniqueCostCode.set(costCode, [...(byOldUniqueCostCode.get(costCode) || []), mapping]);
+      if (costCode) byOldUniqueCostCode.set(costCode, [...(byOldUniqueCostCode.get(costCode) || []), mapping]);
+      byOldUniqueIdentity.set(identityKey, [...(byOldUniqueIdentity.get(identityKey) || []), mapping]);
     } else {
       issues.push({
         strategy: "unique_cost_code",
@@ -169,6 +182,7 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   return {
     byOldItemId,
     byOldUniqueCostCode,
+    byOldUniqueIdentity,
     byOldNonUniqueKey,
     issues,
     summary: {
@@ -224,7 +238,9 @@ function applyMappingOverrides(
 
 function lineItemOldCostItemId(lineItem: UnknownRecord): string {
   const costItem = isRecord(lineItem.cost_item) ? lineItem.cost_item : {};
-  return readStr(costItem.id || costItem.item_id || lineItem.cost_item_id || lineItem.item_id);
+  const directId = readStr(costItem.id || costItem.item_id || lineItem.cost_item_id || lineItem.item_id);
+  if (directId && directId !== "0") return directId;
+  return readStr(costItem.based_on_item_id || costItem.basedOnItemId);
 }
 
 function readCostCodeValue(value: unknown): string {
@@ -268,6 +284,12 @@ function resolveLineItemMapping(
     return { mapping: uniqueMatches[0], strategy: "line_item_unique_cost_code", oldCostItemId, costCode };
   }
 
+  const identityKey = itemIdentityKey(oldRow);
+  const uniqueIdentityMatches = crosswalk.byOldUniqueIdentity.get(identityKey) || [];
+  if (uniqueIdentityMatches.length === 1) {
+    return { mapping: uniqueIdentityMatches[0], strategy: "line_item_unique_identity", oldCostItemId, identityKey };
+  }
+
   return {
     mapping: null,
     strategy: "missing",
@@ -276,6 +298,7 @@ function resolveLineItemMapping(
     costCode,
     nonUniqueMatchCount: nonUniqueMatches.length,
     uniqueMatchCount: uniqueMatches.length,
+    uniqueIdentityMatchCount: uniqueIdentityMatches.length,
     inferredOldRow: oldRow,
   };
 }
@@ -499,6 +522,7 @@ export async function POST(request: Request) {
           costCode: resolved.costCode,
           nonUniqueMatchCount: resolved.nonUniqueMatchCount,
           uniqueMatchCount: resolved.uniqueMatchCount,
+          uniqueIdentityMatchCount: resolved.uniqueIdentityMatchCount,
           inferredOldRow: resolved.inferredOldRow,
           oldCostItem: isRecord(lineItem.cost_item) ? lineItem.cost_item : null,
           oldCostCode: isRecord(lineItem.cost_code) ? lineItem.cost_code : null,

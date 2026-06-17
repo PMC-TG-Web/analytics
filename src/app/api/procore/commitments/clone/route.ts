@@ -350,6 +350,12 @@ function scoreCommitmentMapping(
   const full = norm(description);
   const oldSearchText = `${mapping.old.Name || ""} ${mapping.old.Description || ""} ${mapping.old["Cost Name"] || ""}`;
   const suffixNorm = norm(suffix);
+  const contractContext = norm(
+    lineItem._sourceContractTitle ??
+      lineItem._sourceContractNumber ??
+      lineItem.contract_title ??
+      lineItem.contractTitle
+  );
   const sourceCostCode = normCode(sourceLineItemCostCode(lineItem));
   const oldCostCode = normCode(mapping.old["Cost Code"]);
 
@@ -385,6 +391,31 @@ function scoreCommitmentMapping(
     }
   }
 
+  const context = `${suffixNorm} ${contractContext}`;
+  if (context.trim()) {
+    const wantsFoundation = /foundation|footing|spread footing|stem wall/.test(context);
+    const wantsWall = /\bwall\b|vertical/.test(context);
+    const wantsSog = /\bsog\b|slab|interior floor|floor/.test(context);
+    const wantsSite = /\bsite\b|sidewalk|patio|porch|landing|turndown|exterior/.test(context);
+
+    if (wantsFoundation) {
+      if (/foundation/.test(oldCostName)) score += 10;
+      if (/wall|sog|site/.test(oldCostName)) score -= 5;
+    }
+    if (wantsWall) {
+      if (/\bwall\b/.test(oldCostName)) score += 10;
+      if (/foundation|sog|site/.test(oldCostName)) score -= 5;
+    }
+    if (wantsSog) {
+      if (/\bsog\b|slab/.test(oldCostName)) score += 10;
+      if (/foundation|wall|site/.test(oldCostName)) score -= 5;
+    }
+    if (wantsSite) {
+      if (/\bsite\b/.test(oldCostName)) score += 10;
+      if (/foundation|wall|sog/.test(oldCostName)) score -= 5;
+    }
+  }
+
   return score;
 }
 
@@ -403,6 +434,23 @@ function resolveCommitmentCrosswalkMapping(
   const best = scored.filter((entry) => entry.score === bestScore);
   if (best.length === 1) {
     return { mapping: best[0].mapping, issue: "", matchCount: 1, score: bestScore };
+  }
+  const equivalentTargetKeys = new Set(
+    best.map((entry) =>
+      [
+        normCode(entry.mapping.new["Cost Code"]),
+        norm(entry.mapping.new["Cost code type"]),
+      ].join("|")
+    )
+  );
+  if (equivalentTargetKeys.size === 1) {
+    return {
+      mapping: best[0].mapping,
+      issue: "",
+      matchCount: best.length,
+      score: bestScore,
+      strategy: "deduped_equivalent_workbook_match",
+    };
   }
   return {
     mapping: null,
@@ -777,6 +825,16 @@ function buildContractPayload(params: {
   if (mappedVendorId !== undefined) payload.vendor_id = mappedVendorId;
   else delete payload.vendor_id;
 
+  const sourceContractId = readNum(params.source.id);
+  if (sourceContractId !== undefined) {
+    payload.origin_id = sourceContractId;
+    payload.origin_data = JSON.stringify({
+      source: "pmc_commitment_clone",
+      sourceContractId: readStr(params.source.id),
+      sourceContractNumber: readStr(params.source.number),
+    });
+  }
+
   return payload;
 }
 
@@ -845,6 +903,17 @@ function buildLineItemPayload(params: {
     delete payload[item.objectField];
     if (mapped !== undefined) payload[item.payloadField] = mapped;
     else delete payload[item.payloadField];
+  }
+
+  const sourceLineItemId = readNum(params.source.id);
+  if (sourceLineItemId !== undefined) {
+    payload.origin_id = sourceLineItemId;
+    payload.origin_data = JSON.stringify({
+      source: "pmc_commitment_clone",
+      sourceLineItemId: readStr(params.source.id),
+      sourceContractId: readStr(params.sourceContract.id),
+      sourceContractNumber: readStr(params.sourceContract.number),
+    });
   }
 
   return payload;
@@ -982,6 +1051,53 @@ async function createContract(params: {
   return unwrapData(response.payload);
 }
 
+function contractMatchKeys(contract: UnknownRecord) {
+  const number = norm(contract.number);
+  const title = norm(contract.title);
+  const sourceId = readStr(contract.origin_id || contract.originId);
+  const sourceData = readStr(contract.origin_data || contract.originData);
+  const ids = new Set<string>();
+  if (sourceId) ids.add(`source:${sourceId}`);
+  for (const match of sourceData.match(/\d{6,}/g) || []) ids.add(`source:${match}`);
+  if (number && title) ids.add(`number_title:${number}|${title}`);
+  if (number) ids.add(`number:${number}`);
+  return ids;
+}
+
+async function fetchTargetContractsForDuplicateCheck(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  maxPages: number;
+}) {
+  const result = await fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    maxPages: params.maxPages,
+    arrayKeys: ["data", "commitment_contracts"],
+    pathForPage: (page) =>
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_contracts?page=${page}&per_page=100`,
+  });
+  return result.records;
+}
+
+function findExistingTargetContract(sourceContract: UnknownRecord, targetContracts: UnknownRecord[]) {
+  const sourceKeys = contractMatchKeys({
+    number: sourceContract.number,
+    title: sourceContract.title,
+    origin_id: sourceContract.id,
+  });
+  for (const target of targetContracts) {
+    const targetKeys = contractMatchKeys(target);
+    for (const key of sourceKeys) {
+      if (targetKeys.has(key)) return target;
+    }
+  }
+  return null;
+}
+
 async function addVendorToProject(params: {
   accessToken: string;
   companyId: string;
@@ -1031,6 +1147,32 @@ async function createLineItem(params: {
     body: params.payload,
   });
   return unwrapData(response.payload);
+}
+
+function lineItemMatchKeys(lineItem: UnknownRecord) {
+  const ids = new Set<string>();
+  const id = readStr(lineItem.origin_id || lineItem.originId);
+  const originData = readStr(lineItem.origin_data || lineItem.originData);
+  const description = norm(lineItem.description ?? lineItem.title ?? lineItem.name);
+  if (id) ids.add(`source:${id}`);
+  for (const match of originData.match(/\d{6,}/g) || []) ids.add(`source:${match}`);
+  if (description) ids.add(`description:${description}`);
+  return ids;
+}
+
+function findExistingTargetLineItem(sourceLine: UnknownRecord, targetLines: UnknownRecord[]) {
+  const sourceKeys = lineItemMatchKeys({
+    id: sourceLine.sourceLineItemId,
+    origin_id: sourceLine.sourceLineItemId,
+    description: sourceLine.description,
+  });
+  for (const target of targetLines) {
+    const targetKeys = lineItemMatchKeys(target);
+    for (const key of sourceKeys) {
+      if (targetKeys.has(key)) return target;
+    }
+  }
+  return null;
 }
 
 function buildIdMap(value: unknown): Record<string, string> {
@@ -1121,7 +1263,16 @@ export async function POST(request: Request) {
         accessToken,
         targetCompanyId,
         targetProjectId,
-        sourceLineItems: [...lineItemsByContractId.values()].flatMap((lineFetch) => lineFetch.records),
+        sourceLineItems: selectedContracts.flatMap((contract) => {
+          const contractId = readStr(contract.id);
+          const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[] };
+          return lineFetch.records.map((lineItem) => ({
+            ...lineItem,
+            _sourceContractId: contractId,
+            _sourceContractNumber: readStr(contract.number),
+            _sourceContractTitle: readStr(contract.title),
+          }));
+        }),
         maps,
         crosswalkPath,
         crosswalkWorkbookBase64,
@@ -1218,13 +1369,31 @@ export async function POST(request: Request) {
       );
     }
 
+    const targetContracts = await fetchTargetContractsForDuplicateCheck({
+      accessToken,
+      companyId: targetCompanyId,
+      projectId: targetProjectId,
+      maxPages,
+    }).catch(() => [] as UnknownRecord[]);
+
     const createdContracts: UnknownRecord[] = [];
+    const reusedContracts: UnknownRecord[] = [];
     const errors: UnknownRecord[] = [];
     const projectVendorAdds: UnknownRecord[] = [];
     for (const entry of plan) {
       try {
+        const existingTarget = findExistingTargetContract(
+          {
+            id: entry.sourceContractId,
+            number: entry.number,
+            title: entry.title,
+          },
+          targetContracts
+        );
+        const existingTargetId = existingTarget ? readStr(existingTarget.id) : "";
+
         const targetVendorId = readStr((entry.contractPayload as UnknownRecord)?.vendor_id);
-        if (targetVendorId) {
+        if (targetVendorId && !existingTargetId) {
           const addResult = await addVendorToProject({
             accessToken,
             companyId: targetCompanyId,
@@ -1251,19 +1420,39 @@ export async function POST(request: Request) {
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
 
-        const created = await createContract({
-          accessToken,
-          companyId: targetCompanyId,
-          projectId: targetProjectId,
-          payload: entry.contractPayload as UnknownRecord,
-        });
+        const created = existingTargetId
+          ? existingTarget
+          : await createContract({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              payload: entry.contractPayload as UnknownRecord,
+            });
         const createdRecord = isRecord(created) ? created : {};
-        const createdContractId = readStr(createdRecord.id);
+        const createdContractId = existingTargetId || readStr(createdRecord.id);
         const createdLineItems: UnknownRecord[] = [];
+        const reusedLineItems: UnknownRecord[] = [];
+        const existingTargetLines = existingTargetId && cloneLineItems
+          ? await fetchLineItems({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              contractId: existingTargetId,
+              maxPages,
+            }).then((result) => result.records).catch(() => [] as UnknownRecord[])
+          : [];
 
         if (cloneLineItems && createdContractId && Array.isArray(entry.lineItems)) {
           for (const line of entry.lineItems as UnknownRecord[]) {
             try {
+              const existingLine = findExistingTargetLineItem(line, existingTargetLines);
+              if (existingLine) {
+                reusedLineItems.push({
+                  sourceLineItemId: line.sourceLineItemId,
+                  result: existingLine,
+                });
+                continue;
+              }
               const createdLineItem = await createLineItem({
                 accessToken,
                 companyId: targetCompanyId,
@@ -1287,14 +1476,18 @@ export async function POST(request: Request) {
           }
         }
 
-        createdContracts.push({
+        const contractResult = {
           sourceContractId: entry.sourceContractId,
           sourceNumber: entry.number,
           sourceTitle: entry.title,
           createdContractId,
+          reusedExistingContract: Boolean(existingTargetId),
           result: created,
           createdLineItems,
-        });
+          reusedLineItems,
+        };
+        if (existingTargetId) reusedContracts.push(contractResult);
+        else createdContracts.push(contractResult);
         await new Promise((resolve) => setTimeout(resolve, 700));
       } catch (error) {
         errors.push({
@@ -1319,7 +1512,11 @@ export async function POST(request: Request) {
         sourceContracts: selectedContracts.length,
         sourceLineItems,
         createdContracts: createdContracts.length,
+        reusedContracts: reusedContracts.length,
         createdLineItems: createdContracts.reduce((sum, contract) => {
+          const lines = Array.isArray(contract.createdLineItems) ? contract.createdLineItems.length : 0;
+          return sum + lines;
+        }, 0) + reusedContracts.reduce((sum, contract) => {
           const lines = Array.isArray(contract.createdLineItems) ? contract.createdLineItems.length : 0;
           return sum + lines;
         }, 0),
@@ -1328,6 +1525,7 @@ export async function POST(request: Request) {
       crosswalkAutoMappings,
       projectVendorAdds,
       createdContracts,
+      reusedContracts,
       errors,
       plan,
     });

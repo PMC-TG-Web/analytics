@@ -510,6 +510,23 @@ function ProcoreContent() {
   const [timecardCsvResults, setTimecardCsvResults] = useState<{ success: number; failed: number } | null>(null);
   const [timecardSyncBusy, setTimecardSyncBusy] = useState<"all" | "users" | "types" | "codes" | null>(null);
   const [timecardSyncMessage, setTimecardSyncMessage] = useState<string | null>(null);
+  const [dailyCloneSourceCompanyId, setDailyCloneSourceCompanyId] = useState("598134325658789");
+  const [dailyCloneSourceProjectId, setDailyCloneSourceProjectId] = useState("");
+  const [dailyCloneTargetCompanyId, setDailyCloneTargetCompanyId] = useState("598134325805519");
+  const [dailyCloneTargetProjectId, setDailyCloneTargetProjectId] = useState("");
+  const [dailyCloneStartDate, setDailyCloneStartDate] = useState("");
+  const [dailyCloneEndDate, setDailyCloneEndDate] = useState("");
+  const [dailyCloneDefaultTimeTypeId, setDailyCloneDefaultTimeTypeId] = useState("");
+  const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
+  const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
+  const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);
+  const [dailyCloneIncludeTimecards, setDailyCloneIncludeTimecards] = useState(true);
+  const [dailyCloneBusy, setDailyCloneBusy] = useState(false);
+  const [dailyCloneError, setDailyCloneError] = useState<string | null>(null);
+  const [dailyCloneResult, setDailyCloneResult] = useState<any>(null);
+  const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
+  const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
+  const [dailyCloneCommitmentsResult, setDailyCloneCommitmentsResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -2453,6 +2470,117 @@ function ProcoreContent() {
 
     setTimecardCsvBusy(false);
     setTimecardCsvResults({ success, failed });
+  };
+
+  const runDailyActivityClone = async (dryRun: boolean) => {
+    setDailyCloneBusy(true);
+    setDailyCloneError(null);
+    setDailyCloneResult(null);
+
+    try {
+      let timecardTimeTypeMap: Record<string, string> = {};
+      let partyMap: Record<string, string> = {};
+      try {
+        const parsed = JSON.parse(dailyCloneTimeTypeMapText || "{}");
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Time type map must be a JSON object.");
+        }
+        timecardTimeTypeMap = parsed;
+        const parsedPartyMap = JSON.parse(dailyClonePartyMapText || "{}");
+        if (!parsedPartyMap || typeof parsedPartyMap !== "object" || Array.isArray(parsedPartyMap)) {
+          throw new Error("Party/user map must be a JSON object.");
+        }
+        partyMap = parsedPartyMap;
+      } catch (error) {
+        setDailyCloneError(error instanceof Error ? error.message : String(error));
+        setDailyCloneBusy(false);
+        return;
+      }
+
+      const response = await fetch("/api/procore/daily-activity/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId: dailyCloneSourceCompanyId.trim(),
+          sourceProjectId: dailyCloneSourceProjectId.trim(),
+          targetCompanyId: dailyCloneTargetCompanyId.trim(),
+          targetProjectId: dailyCloneTargetProjectId.trim(),
+          startDate: dailyCloneStartDate.trim(),
+          endDate: dailyCloneEndDate.trim() || dailyCloneStartDate.trim(),
+          includeProductivity: dailyCloneIncludeProductivity,
+          includeTimecards: dailyCloneIncludeTimecards,
+          defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
+          timecardTimeTypeMap,
+          partyMap,
+          dryRun,
+          maxPages: 25,
+          createLimit: 100,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setDailyCloneResult({ status: response.status, ok: response.ok, result });
+      if (!response.ok) {
+        setDailyCloneError(result?.details || result?.error || `Daily clone failed (${response.status}).`);
+      }
+    } catch (error) {
+      setDailyCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDailyCloneBusy(false);
+    }
+  };
+
+  const cloneMissingDailyCommitments = async () => {
+    const missingContracts = Array.isArray(dailyCloneResult?.result?.diagnostics?.productivity?.missingSourceContracts)
+      ? dailyCloneResult.result.diagnostics.productivity.missingSourceContracts
+      : [];
+    const commitmentIds = Array.from(
+      new Set(
+        missingContracts
+          .map((row: any) => String(row?.sourceContractId || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (commitmentIds.length === 0) {
+      setDailyCloneCommitmentsError("No sourceContractId values were found in the daily clone diagnostics. Run Dry Run Clone again first.");
+      return;
+    }
+
+    setDailyCloneCommitmentsBusy(true);
+    setDailyCloneCommitmentsError(null);
+    setDailyCloneCommitmentsResult(null);
+
+    try {
+      const response = await fetch("/api/procore/commitments/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId: dailyCloneSourceCompanyId.trim(),
+          sourceProjectId: dailyCloneSourceProjectId.trim(),
+          targetCompanyId: dailyCloneTargetCompanyId.trim(),
+          targetProjectId: dailyCloneTargetProjectId.trim(),
+          commitmentIds,
+          sourceMode: "all",
+          cloneLineItems: true,
+          dryRun: false,
+          targetStatus: "Approved",
+          preserveStatus: false,
+          allowUnmappedIds: false,
+          crosswalkPath: commitmentCloneCrosswalkPath || "Codes to use.xlsx",
+          crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
+          targetVendorIdOverride: commitmentCloneTargetVendorIdOverride || "598134335120254",
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setDailyCloneCommitmentsResult({ status: response.status, ok: response.ok, commitmentIds, result });
+      if (!response.ok || result?.success === false) {
+        setDailyCloneCommitmentsError(result?.details || result?.error || `Missing commitment clone failed (${response.status}).`);
+      }
+    } catch (error) {
+      setDailyCloneCommitmentsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDailyCloneCommitmentsBusy(false);
+    }
   };
 
   function buildPurchaseOrderContractCsvRows(content: string, fileName: string): PurchaseOrderContractCsvRow[] {
@@ -6796,6 +6924,199 @@ function ProcoreContent() {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
+              <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Daily Productivity and Timecards</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Pull daily productivity logs and timecard entries from an old Procore project, map them to the target project, then dry-run or live-create the mapped rows.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={dailyCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setDailyCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={dailyCloneSourceProjectId ?? ""}
+                    onChange={(e) => setDailyCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={dailyCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setDailyCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={dailyCloneTargetProjectId ?? ""}
+                    onChange={(e) => setDailyCloneTargetProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={dailyCloneStartDate ?? ""}
+                    onChange={(e) => setDailyCloneStartDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={dailyCloneEndDate ?? ""}
+                    onChange={(e) => setDailyCloneEndDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Default Time Type ID</label>
+                  <input
+                    type="text"
+                    value={dailyCloneDefaultTimeTypeId ?? ""}
+                    onChange={(e) => setDailyCloneDefaultTimeTypeId(e.target.value)}
+                    placeholder="optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 pt-7">
+                  <input
+                    type="checkbox"
+                    checked={dailyCloneIncludeProductivity}
+                    onChange={(e) => setDailyCloneIncludeProductivity(e.target.checked)}
+                  />
+                  Productivity
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 pt-7">
+                  <input
+                    type="checkbox"
+                    checked={dailyCloneIncludeTimecards}
+                    onChange={(e) => setDailyCloneIncludeTimecards(e.target.checked)}
+                  />
+                  Timecards
+                </label>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Time Type ID Map</label>
+                <textarea
+                  value={dailyCloneTimeTypeMapText}
+                  onChange={(e) => setDailyCloneTimeTypeMapText(e.target.value)}
+                  rows={4}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Map old source time type IDs or names to target time type IDs, for example {"{"}"Travel":"598134327876773"{"}"}.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Party/User ID Map</label>
+                <textarea
+                  value={dailyClonePartyMapText}
+                  onChange={(e) => setDailyClonePartyMapText(e.target.value)}
+                  rows={4}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Map old source party IDs or names to target Procore user IDs, for example {"{"}"Lee Zook":"13531193"{"}"}.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={() => runDailyActivityClone(true)}
+                  disabled={dailyCloneBusy}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {dailyCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => runDailyActivityClone(false)}
+                  disabled={dailyCloneBusy}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {dailyCloneBusy ? "Working..." : "Live Clone Ready Rows"}
+                </button>
+                {dailyCloneResult && (
+                  <button
+                    onClick={() => downloadJson("daily-productivity-timecards-clone.json", dailyCloneResult)}
+                    className="bg-white border border-indigo-300 text-indigo-800 hover:bg-indigo-50 font-semibold py-2 px-4 rounded text-sm"
+                  >
+                    Download JSON
+                  </button>
+                )}
+                {dailyCloneResult?.result?.diagnostics?.productivity?.missingSourceContracts?.length > 0 && (
+                  <button
+                    onClick={cloneMissingDailyCommitments}
+                    disabled={dailyCloneCommitmentsBusy}
+                    className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {dailyCloneCommitmentsBusy ? "Importing..." : "Import Missing Contracts/Lines"}
+                  </button>
+                )}
+              </div>
+
+              {dailyCloneError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {dailyCloneError}
+                </div>
+              )}
+
+              {dailyCloneCommitmentsError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {dailyCloneCommitmentsError}
+                </div>
+              )}
+
+              {dailyCloneCommitmentsResult && (
+                <details className="mb-4" open>
+                  <summary className="cursor-pointer text-sm font-semibold text-emerald-800">Missing contracts/lines import result</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(dailyCloneCommitmentsResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+
+              {dailyCloneResult?.result?.counts && (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+                  {Object.entries(dailyCloneResult.result.counts).map(([key, value]) => (
+                    <div key={key} className="border border-indigo-200 bg-indigo-50 rounded p-3">
+                      <div className="text-[11px] uppercase text-indigo-800 font-semibold">{key}</div>
+                      <div className="text-xl font-bold text-indigo-950">{String(value)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {dailyCloneResult && (
+                <details open>
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Daily clone result JSON</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(dailyCloneResult, null, 2)}
+                  </pre>
+                </details>
               )}
             </div>
 

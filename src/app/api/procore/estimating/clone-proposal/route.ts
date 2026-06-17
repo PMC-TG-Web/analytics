@@ -449,6 +449,9 @@ function buildLineItemPayload(params: {
     payload.pricing_override = pricingOverride;
   }
 
+  copyPricingField(payload, "ci_item_margin", lineItem.ci_item_margin, lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
+  copyPricingField(payload, "ci_labor_margin", lineItem.ci_labor_margin, lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
+
   return payload;
 }
 

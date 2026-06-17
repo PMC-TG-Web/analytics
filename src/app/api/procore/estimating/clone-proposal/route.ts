@@ -384,6 +384,16 @@ function buildGroupPayload(group: UnknownRecord): UnknownRecord {
   return payload;
 }
 
+function copyPricingField(target: UnknownRecord, key: string, ...sources: unknown[]) {
+  for (const source of sources) {
+    const value = readNum(source);
+    if (value !== undefined) {
+      target[key] = value;
+      return;
+    }
+  }
+}
+
 function buildLineItemPayload(params: {
   lineItem: UnknownRecord;
   mapping: UnknownRecord;
@@ -421,6 +431,23 @@ function buildLineItemPayload(params: {
 
   const costCodeType = readStr(newRow["Cost code type"]);
   if (costCodeType) payload.cost_code_type = costCodeType;
+
+  const existingPricingOverride = isRecord(payload.pricing_override) ? payload.pricing_override : {};
+  const pricingOverride: UnknownRecord = { ...existingPricingOverride };
+  copyPricingField(pricingOverride, "unit_material_cost", lineItem.unit_material_cost, lineItem.unitMaterialCost, sourceCostItem.unit_cost);
+  copyPricingField(pricingOverride, "material_margin", lineItem.material_margin, lineItem.materialMargin, sourceCostItem.material_margin, sourceCostItem.item_margin);
+  copyPricingField(pricingOverride, "item_margin", lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
+  copyPricingField(pricingOverride, "unit_labor", lineItem.unit_labor, lineItem.unitLabor, sourceCostItem.unit_labor);
+  copyPricingField(pricingOverride, "labor_factor", lineItem.labor_factor, lineItem.laborFactor);
+  copyPricingField(pricingOverride, "unit_labor_rate", lineItem.unit_labor_rate, lineItem.unitLaborRate, sourceCostItem.unit_labor_rate);
+  copyPricingField(pricingOverride, "unit_labor_cost", lineItem.unit_labor_cost, lineItem.unitLaborCost, sourceCostItem.unit_labor_cost);
+  copyPricingField(pricingOverride, "labor_margin", lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
+  if (typeof sourceCostItem.is_untaxed === "boolean" && typeof pricingOverride.is_untaxed !== "boolean") {
+    pricingOverride.is_untaxed = sourceCostItem.is_untaxed;
+  }
+  if (Object.keys(pricingOverride).length > 0) {
+    payload.pricing_override = pricingOverride;
+  }
 
   return payload;
 }

@@ -355,6 +355,9 @@ function ProcoreContent() {
   const [commitmentClonePreserveStatus, setCommitmentClonePreserveStatus] = useState(false);
   const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
   const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
+  const [commitmentCloneCrosswalkPath, setCommitmentCloneCrosswalkPath] = useState("Codes to use.xlsx");
+  const [commitmentCloneCrosswalkWorkbookBase64, setCommitmentCloneCrosswalkWorkbookBase64] = useState("");
+  const [commitmentCloneCrosswalkWorkbookName, setCommitmentCloneCrosswalkWorkbookName] = useState("");
   const [commitmentCloneMapsText, setCommitmentCloneMapsText] = useState(`{
   "vendorIdMap": {},
   "budgetLineItemIdMap": {},
@@ -4652,6 +4655,20 @@ function ProcoreContent() {
     setCloneCrosswalkWorkbookName(file.name);
   };
 
+  const handleCommitmentCloneCrosswalkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const buffer = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    setCommitmentCloneCrosswalkWorkbookBase64(window.btoa(binary));
+    setCommitmentCloneCrosswalkWorkbookName(file.name);
+    event.target.value = "";
+  };
+
   const updateCloneMappingOverride = (index: number, key: string, value: string) => {
     setCloneMappingOverrides((current) =>
       current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row))
@@ -4751,6 +4768,7 @@ function ProcoreContent() {
     const targetCompanyId = commitmentCloneTargetCompanyId.trim();
     const targetProjectId = commitmentCloneTargetProjectId.trim();
     const targetStatus = commitmentCloneTargetStatus.trim() || "Draft";
+    const crosswalkPath = commitmentCloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const commitmentIds = commitmentCloneIdsText
       .split(/[\s,]+/)
       .map((value) => value.trim())
@@ -4791,6 +4809,8 @@ function ProcoreContent() {
           cloneLineItems: commitmentCloneLineItems,
           allowUnmappedIds: commitmentCloneAllowUnmappedIds,
           commitmentIds,
+          crosswalkPath,
+          crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
           dryRun,
           ...maps,
         }),
@@ -8631,6 +8651,29 @@ function ProcoreContent() {
                   placeholder="Optional: comma or space-separated source commitment IDs"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                 />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Codes Crosswalk Workbook Path</label>
+                <input
+                  type="text"
+                  value={commitmentCloneCrosswalkPath ?? ""}
+                  onChange={(e) => setCommitmentCloneCrosswalkPath(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+                <div className="mt-3">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleCommitmentCloneCrosswalkUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-cyan-800 mt-2">
+                    {commitmentCloneCrosswalkWorkbookName
+                      ? `Using uploaded workbook: ${commitmentCloneCrosswalkWorkbookName}`
+                      : "Optional: upload Codes to use.xlsx here. The dry-run will use it to auto-map WBS IDs by target cost code and type."}
+                  </p>
+                </div>
               </div>
 
               <div className="mb-4">

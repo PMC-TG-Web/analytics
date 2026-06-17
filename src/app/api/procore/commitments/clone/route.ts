@@ -1,10 +1,14 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 
 type UnknownRecord = Record<string, unknown>;
 
 const BASE_URL = "https://api.procore.com";
+const DEFAULT_CROSSWALK_PATH = "Codes to use.xlsx";
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,6 +47,22 @@ function readBool(value: unknown, fallback = false): boolean {
     if (["false", "0", "no", "n"].includes(normalized)) return false;
   }
   return fallback;
+}
+
+function norm(value: unknown): string {
+  return readStr(value).replace(/\s+/g, " ").toLowerCase();
+}
+
+function normCode(value: unknown): string {
+  return readStr(value).replace(/\s+/g, "").toLowerCase();
+}
+
+function nonUniqueKey(row: UnknownRecord): string {
+  return [row.Name, row.Description, row["Cost Name"]].map(norm).join("|");
+}
+
+function itemIdentityKey(row: UnknownRecord): string {
+  return [row.Name, row.Description].map(norm).join("|");
 }
 
 function unwrapData(value: unknown): unknown {
@@ -144,6 +164,416 @@ async function fetchPaged(params: {
   }
 
   return { records, errors };
+}
+
+function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" }) as UnknownRecord[];
+}
+
+function buildCommitmentCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
+  const uniqueOld = readSheet(workbook, "Unique_old_codes");
+  const uniqueNew = readSheet(workbook, "Unique_New_codes");
+  const nonUniqueOld = readSheet(workbook, "Non_unique_old_codes");
+  const nonUniqueNew = readSheet(workbook, "non_unique_new_codes");
+
+  const newUniqueByCostCode = new Map<string, UnknownRecord[]>();
+  for (const row of uniqueNew) {
+    const key = normCode(row["Cost Code"]);
+    if (!key) continue;
+    newUniqueByCostCode.set(key, [...(newUniqueByCostCode.get(key) || []), row]);
+  }
+
+  const newUniqueByIdentity = new Map<string, UnknownRecord[]>();
+  for (const row of uniqueNew) {
+    const key = itemIdentityKey(row);
+    if (!key.replace(/\|/g, "")) continue;
+    newUniqueByIdentity.set(key, [...(newUniqueByIdentity.get(key) || []), row]);
+  }
+
+  const newNonUniqueByKey = new Map<string, UnknownRecord[]>();
+  for (const row of nonUniqueNew) {
+    const key = nonUniqueKey(row);
+    if (!key.replace(/\|/g, "")) continue;
+    newNonUniqueByKey.set(key, [...(newNonUniqueByKey.get(key) || []), row]);
+  }
+
+  const mappings: Array<{ old: UnknownRecord; new: UnknownRecord; strategy: string }> = [];
+  const issues: UnknownRecord[] = [];
+
+  for (const oldRow of uniqueOld) {
+    const oldItemId = readStr(oldRow.ItemId);
+    const costCode = normCode(oldRow["Cost Code"]);
+    const identityKey = itemIdentityKey(oldRow);
+    const matches = costCode ? newUniqueByCostCode.get(costCode) || [] : newUniqueByIdentity.get(identityKey) || [];
+    if (!oldItemId) continue;
+    if (matches.length === 1) {
+      mappings.push({ old: oldRow, new: matches[0], strategy: costCode ? "unique_cost_code" : "unique_identity" });
+    } else {
+      issues.push({
+        strategy: "unique_cost_code",
+        oldItemId,
+        costCode: oldRow["Cost Code"],
+        issue: matches.length === 0 ? "missing_new_cost_code" : "ambiguous_new_cost_code",
+        matchCount: matches.length,
+      });
+    }
+  }
+
+  for (const oldRow of nonUniqueOld) {
+    const oldItemId = readStr(oldRow.ItemId);
+    const key = nonUniqueKey(oldRow);
+    const matches = newNonUniqueByKey.get(key) || [];
+    if (!oldItemId) continue;
+    if (matches.length === 1) {
+      mappings.push({ old: oldRow, new: matches[0], strategy: "non_unique_composite" });
+    } else {
+      issues.push({
+        strategy: "non_unique_composite",
+        oldItemId,
+        key,
+        name: oldRow.Name,
+        costCode: oldRow["Cost Code"],
+        issue: matches.length === 0 ? "missing_new_composite_key" : "ambiguous_new_composite_key",
+        matchCount: matches.length,
+      });
+    }
+  }
+
+  if (!mappings.some((mapping) => readStr(mapping.old.ItemId) === "38975960")) {
+    mappings.push({
+      old: {
+        ItemId: "38975960",
+        Name: "V-Seal 102 5 gal",
+        "Cost Code": "03-300-40-40",
+        "Cost Name": "Concrete Exterior Sealers",
+        Description: "V-Seal 102 5 gal / 250 Sq Ft. per Gal. ",
+      },
+      new: {
+        ItemId: "51482273",
+        Name: "V-Seal 102 5 gal",
+        "Cost Code": "03-300-40-40",
+        "Cost code type": "M",
+        "Cost Name": "Concrete Exterior Sealers",
+        Description: "V-Seal 102 5 gal / 250 Sq Ft. per Gal. ",
+      },
+      strategy: "built_in_v_seal_fallback",
+    });
+  }
+
+  return {
+    mappings,
+    issues,
+    summary: {
+      uniqueOld: uniqueOld.length,
+      uniqueNew: uniqueNew.length,
+      nonUniqueOld: nonUniqueOld.length,
+      nonUniqueNew: nonUniqueNew.length,
+      mappedOldItemIds: mappings.length,
+      crosswalkIssues: issues.length,
+    },
+  };
+}
+
+function buildCommitmentCrosswalk(crosswalkPath: string) {
+  return buildCommitmentCrosswalkFromWorkbook(XLSX.read(readFileSync(crosswalkPath), { type: "buffer" }));
+}
+
+function buildCommitmentCrosswalkFromBase64(base64: string) {
+  return buildCommitmentCrosswalkFromWorkbook(XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" }));
+}
+
+function sourceLineItemWbsId(lineItem: UnknownRecord) {
+  return readStr(lineItem.wbs_code_id ?? (isRecord(lineItem.wbs_code) ? lineItem.wbs_code.id : ""));
+}
+
+function sourceLineItemCostCode(lineItem: UnknownRecord) {
+  const wbsCode = isRecord(lineItem.wbs_code) ? lineItem.wbs_code : {};
+  const costCode = isRecord(lineItem.cost_code) ? lineItem.cost_code : {};
+  return readStr(
+    lineItem.cost_code_string ??
+      wbsCode.flat_code ??
+      wbsCode.code ??
+      costCode.code ??
+      costCode.name ??
+      lineItem.cost_code
+  );
+}
+
+function commitmentDescriptionParts(lineItem: UnknownRecord) {
+  const description = readStr(lineItem.description ?? lineItem.title ?? lineItem.name);
+  const [base, ...suffixParts] = description.split(/\s+-\s+/);
+  return {
+    description,
+    baseName: readStr(base) || description,
+    suffix: suffixParts.join(" - ").trim(),
+  };
+}
+
+function scoreCommitmentMapping(
+  mapping: { old: UnknownRecord; new: UnknownRecord; strategy: string },
+  lineItem: UnknownRecord
+) {
+  const { description, baseName, suffix } = commitmentDescriptionParts(lineItem);
+  const oldName = norm(mapping.old.Name);
+  const oldDescription = norm(mapping.old.Description);
+  const oldCostName = norm(mapping.old["Cost Name"]);
+  const base = norm(baseName);
+  const full = norm(description);
+  const suffixNorm = norm(suffix);
+  const sourceCostCode = normCode(sourceLineItemCostCode(lineItem));
+  const oldCostCode = normCode(mapping.old["Cost Code"]);
+
+  let score = 0;
+  if (oldName && oldName === base) score += 20;
+  else if (oldName && oldName === full) score += 18;
+  else if (oldName && full.startsWith(`${oldName} -`)) score += 14;
+  else if (oldName && full.includes(oldName)) score += 8;
+  if (oldDescription && oldDescription === full) score += 6;
+  if (sourceCostCode && oldCostCode && sourceCostCode === oldCostCode) score += 12;
+
+  if (suffixNorm) {
+    if (suffixNorm.includes("sog") || suffixNorm.includes("slab")) {
+      if (oldName.includes("slab on grade") || oldCostName.includes("sog")) score += 5;
+      if (oldCostName.includes("site") && !oldName.includes("site")) score -= 4;
+    }
+    if (suffixNorm.includes("site")) {
+      if (oldName.includes("site") || oldCostName.includes("site")) score += 5;
+      if (oldCostName.includes("sog") && !oldName.includes("slab on grade")) score -= 4;
+    }
+  }
+
+  return score;
+}
+
+function resolveCommitmentCrosswalkMapping(
+  lineItem: UnknownRecord,
+  crosswalk: ReturnType<typeof buildCommitmentCrosswalkFromWorkbook>
+) {
+  const scored = crosswalk.mappings
+    .map((mapping) => ({ mapping, score: scoreCommitmentMapping(mapping, lineItem) }))
+    .filter((entry) => entry.score >= 14)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length === 0) {
+    return { mapping: null, issue: "missing_workbook_match", matchCount: 0 };
+  }
+  const bestScore = scored[0].score;
+  const best = scored.filter((entry) => entry.score === bestScore);
+  if (best.length === 1) {
+    return { mapping: best[0].mapping, issue: "", matchCount: 1, score: bestScore };
+  }
+  return {
+    mapping: null,
+    issue: "ambiguous_workbook_match",
+    matchCount: best.length,
+    candidates: best.slice(0, 8).map((entry) => ({
+      score: entry.score,
+      oldName: entry.mapping.old.Name,
+      oldCostCode: entry.mapping.old["Cost Code"],
+      oldCostName: entry.mapping.old["Cost Name"],
+      newCostCode: entry.mapping.new["Cost Code"],
+      newCostType: entry.mapping.new["Cost code type"],
+    })),
+  };
+}
+
+async function fetchProjectBudgetLineItems(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  maxPages: number;
+}) {
+  const records: UnknownRecord[] = [];
+  const errors: UnknownRecord[] = [];
+  const encodedProjectId = encodeURIComponent(params.projectId);
+
+  for (let page = 1; page <= params.maxPages; page += 1) {
+    const query = new URLSearchParams({
+      project_id: params.projectId,
+      page: String(page),
+      per_page: "100",
+    });
+    const endpoints = [
+      `/rest/v1.1/budget_line_items?${query.toString()}`,
+      `/rest/v1.0/budget_line_items?${query.toString()}`,
+      `/rest/v1.1/projects/${encodedProjectId}/budget_line_items?page=${page}&per_page=100`,
+      `/rest/v1.0/projects/${encodedProjectId}/budget_line_items?page=${page}&per_page=100`,
+    ];
+
+    let pageRecords: UnknownRecord[] = [];
+    let pageOk = false;
+    for (const endpoint of endpoints) {
+      const response = await procoreJson({
+        path: endpoint,
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        allowStatuses: [400, 403, 404, 405],
+      });
+      if (!response.ok) {
+        errors.push({ path: endpoint, status: response.status, response: response.payload });
+        continue;
+      }
+      pageRecords = asArray(response.payload, ["data", "budget_line_items"]).filter(isRecord);
+      pageOk = true;
+      break;
+    }
+
+    if (!pageOk || pageRecords.length === 0) break;
+    records.push(...pageRecords);
+    if (pageRecords.length < 100) break;
+  }
+
+  return { records, errors };
+}
+
+function budgetLineWbsId(item: UnknownRecord) {
+  const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
+  return readStr(wbsCode.id ?? item.wbs_code_id ?? item.id ?? item.budget_line_item_id);
+}
+
+function budgetLineCostCode(item: UnknownRecord) {
+  const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
+  const costCode = isRecord(item.cost_code) ? item.cost_code : {};
+  return readStr(item.cost_code_string ?? wbsCode.flat_code ?? wbsCode.code ?? costCode.code ?? costCode.name ?? item.cost_code);
+}
+
+function budgetLineCostType(item: UnknownRecord) {
+  const lineItemType = isRecord(item.line_item_type) ? item.line_item_type : {};
+  const costType = isRecord(item.cost_type) ? item.cost_type : {};
+  return readStr(
+    lineItemType.code ??
+      lineItemType.abbreviation ??
+      lineItemType.name ??
+      costType.code ??
+      costType.abbreviation ??
+      costType.name ??
+      item.line_item_type ??
+      item.cost_type
+  );
+}
+
+function buildTargetWbsIndex(items: UnknownRecord[]) {
+  const byCodeAndType = new Map<string, UnknownRecord[]>();
+  const byCode = new Map<string, UnknownRecord[]>();
+  for (const item of items) {
+    const wbsCodeId = budgetLineWbsId(item);
+    const costCode = normCode(budgetLineCostCode(item));
+    if (!wbsCodeId || !costCode) continue;
+    const costType = normCode(budgetLineCostType(item));
+    const normalized = { item, wbsCodeId, costCode: budgetLineCostCode(item), costType: budgetLineCostType(item) };
+    byCode.set(costCode, [...(byCode.get(costCode) || []), normalized]);
+    if (costType) {
+      const key = `${costCode}|${costType}`;
+      byCodeAndType.set(key, [...(byCodeAndType.get(key) || []), normalized]);
+    }
+  }
+  return { byCodeAndType, byCode };
+}
+
+function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeof buildTargetWbsIndex>) {
+  const costCode = normCode(newRow["Cost Code"]);
+  const costType = normCode(newRow["Cost code type"]);
+  if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
+  const typedMatches = costType ? targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [] : [];
+  if (typedMatches.length === 1) {
+    return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
+  }
+  if (typedMatches.length > 1) {
+    return { wbsCodeId: "", issue: "ambiguous_target_wbs_code_type", matchCount: typedMatches.length, matches: typedMatches.slice(0, 8) };
+  }
+  const codeMatches = targetIndex.byCode.get(costCode) || [];
+  if (codeMatches.length === 1) {
+    return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
+  }
+  return {
+    wbsCodeId: "",
+    issue: codeMatches.length === 0 ? "missing_target_wbs_code" : "ambiguous_target_wbs_code",
+    matchCount: codeMatches.length,
+    matches: codeMatches.slice(0, 8),
+  };
+}
+
+async function applyCommitmentCrosswalkWbsMappings(params: {
+  accessToken: string;
+  targetCompanyId: string;
+  targetProjectId: string;
+  sourceLineItems: UnknownRecord[];
+  maps: Record<string, Record<string, string>>;
+  crosswalkPath: string;
+  crosswalkWorkbookBase64: string;
+  maxPages: number;
+}) {
+  const summary: UnknownRecord = {
+    enabled: false,
+    source: "",
+    applied: 0,
+    skippedExisting: 0,
+    issues: [] as UnknownRecord[],
+    crosswalk: null,
+    targetBudgetLineItems: 0,
+  };
+
+  let crosswalk: ReturnType<typeof buildCommitmentCrosswalkFromWorkbook> | null = null;
+  if (params.crosswalkWorkbookBase64) {
+    crosswalk = buildCommitmentCrosswalkFromBase64(params.crosswalkWorkbookBase64);
+    summary.source = "uploaded_workbook";
+  } else if (params.crosswalkPath && existsSync(params.crosswalkPath)) {
+    crosswalk = buildCommitmentCrosswalk(params.crosswalkPath);
+    summary.source = params.crosswalkPath;
+  }
+  if (!crosswalk) return summary;
+
+  summary.enabled = true;
+  summary.crosswalk = crosswalk.summary;
+  const targetBudget = await fetchProjectBudgetLineItems({
+    accessToken: params.accessToken,
+    companyId: params.targetCompanyId,
+    projectId: params.targetProjectId,
+    maxPages: params.maxPages,
+  });
+  summary.targetBudgetLineItems = targetBudget.records.length;
+  if (targetBudget.errors.length) summary.targetBudgetWarnings = targetBudget.errors.slice(0, 12);
+  const targetIndex = buildTargetWbsIndex(targetBudget.records);
+
+  for (const lineItem of params.sourceLineItems) {
+    const oldWbsId = sourceLineItemWbsId(lineItem);
+    if (!oldWbsId) continue;
+    if (params.maps.wbsCodeIdMap[oldWbsId]) {
+      summary.skippedExisting = Number(summary.skippedExisting) + 1;
+      continue;
+    }
+    const workbookMatch = resolveCommitmentCrosswalkMapping(lineItem, crosswalk);
+    if (!workbookMatch.mapping) {
+      (summary.issues as UnknownRecord[]).push({
+        oldWbsId,
+        lineItemId: readStr(lineItem.id),
+        description: readStr(lineItem.description ?? lineItem.title),
+        issue: workbookMatch.issue,
+        matchCount: workbookMatch.matchCount,
+        candidates: workbookMatch.candidates,
+      });
+      continue;
+    }
+    const targetWbs = resolveTargetWbsId(workbookMatch.mapping.new, targetIndex);
+    if (!targetWbs.wbsCodeId) {
+      (summary.issues as UnknownRecord[]).push({
+        oldWbsId,
+        lineItemId: readStr(lineItem.id),
+        description: readStr(lineItem.description ?? lineItem.title),
+        issue: targetWbs.issue,
+        matchCount: targetWbs.matchCount,
+        newCostCode: workbookMatch.mapping.new["Cost Code"],
+        newCostType: workbookMatch.mapping.new["Cost code type"],
+        matches: targetWbs.matches,
+      });
+      continue;
+    }
+    params.maps.wbsCodeIdMap[oldWbsId] = targetWbs.wbsCodeId;
+    summary.applied = Number(summary.applied) + 1;
+  }
+
+  return summary;
 }
 
 function mapId(
@@ -495,6 +925,11 @@ export async function POST(request: Request) {
     const sourceMode = readStr(body.sourceMode) || "all";
     const maxPages = Math.min(50, Math.max(1, readNum(body.maxPages) || 5));
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
+    const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
+    const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
+    const crosswalkPath = path.isAbsolute(rawCrosswalkPath)
+      ? rawCrosswalkPath
+      : path.resolve(process.cwd(), rawCrosswalkPath);
     const requestedCommitmentIds = new Set(
       asArray(body.commitmentIds)
         .map(readStr)
@@ -534,13 +969,33 @@ export async function POST(request: Request) {
     const plan: UnknownRecord[] = [];
     const missingMappings: UnknownRecord[] = [];
     let sourceLineItems = 0;
+    const lineItemsByContractId = new Map<string, { records: UnknownRecord[]; errors: UnknownRecord[] }>();
 
     for (const contract of selectedContracts) {
       const contractId = readStr(contract.id);
       const lineFetch = cloneLineItems && contractId
         ? await fetchLineItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, contractId, maxPages })
         : { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
+      lineItemsByContractId.set(contractId, lineFetch);
       sourceLineItems += lineFetch.records.length;
+    }
+
+    const crosswalkAutoMappings = requireMappedIds && cloneLineItems
+      ? await applyCommitmentCrosswalkWbsMappings({
+        accessToken,
+        targetCompanyId,
+        targetProjectId,
+        sourceLineItems: [...lineItemsByContractId.values()].flatMap((lineFetch) => lineFetch.records),
+        maps,
+        crosswalkPath,
+        crosswalkWorkbookBase64,
+        maxPages,
+      })
+      : { enabled: false, source: "", applied: 0, skippedExisting: 0, issues: [] as UnknownRecord[] };
+
+    for (const contract of selectedContracts) {
+      const contractId = readStr(contract.id);
+      const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       const contractIssues: UnknownRecord[] = [];
       const contractPayload = buildContractPayload({
         source: contract,
@@ -603,6 +1058,7 @@ export async function POST(request: Request) {
           missingMappings: missingMappings.length,
         },
         maps: Object.fromEntries(Object.entries(maps).map(([key, value]) => [key, Object.keys(value).length])),
+        crosswalkAutoMappings,
         missingMappings,
         sourceFetchWarnings: sourceFetch.errors,
         plan,
@@ -617,6 +1073,7 @@ export async function POST(request: Request) {
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
           counts: { sourceContracts: selectedContracts.length, sourceLineItems, missingMappings: missingMappings.length },
+          crosswalkAutoMappings,
           missingMappings,
           plan,
         },
@@ -700,6 +1157,7 @@ export async function POST(request: Request) {
         }, 0),
         errors: errors.length,
       },
+      crosswalkAutoMappings,
       createdContracts,
       errors,
       plan,

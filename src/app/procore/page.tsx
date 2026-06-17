@@ -349,6 +349,7 @@ function ProcoreContent() {
   const [commitmentCloneSourceProjectId, setCommitmentCloneSourceProjectId] = useState("");
   const [commitmentCloneTargetCompanyId, setCommitmentCloneTargetCompanyId] = useState("598134325805519");
   const [commitmentCloneTargetProjectId, setCommitmentCloneTargetProjectId] = useState("");
+  const [commitmentCloneTargetVendorIdOverride, setCommitmentCloneTargetVendorIdOverride] = useState("598134335120254");
   const [commitmentCloneIdsText, setCommitmentCloneIdsText] = useState("");
   const [commitmentCloneSourceMode, setCommitmentCloneSourceMode] = useState("all");
   const [commitmentCloneTargetStatus, setCommitmentCloneTargetStatus] = useState("Draft");
@@ -4767,6 +4768,7 @@ function ProcoreContent() {
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
     const targetCompanyId = commitmentCloneTargetCompanyId.trim();
     const targetProjectId = commitmentCloneTargetProjectId.trim();
+    const targetVendorIdOverride = commitmentCloneTargetVendorIdOverride.trim();
     const targetStatus = commitmentCloneTargetStatus.trim() || "Draft";
     const crosswalkPath = commitmentCloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const commitmentIds = commitmentCloneIdsText
@@ -4815,6 +4817,7 @@ function ProcoreContent() {
           commitmentIds,
           crosswalkPath,
           crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
+          targetVendorIdOverride: targetVendorIdOverride || undefined,
           dryRun,
           ...maps,
         }),
@@ -8614,6 +8617,22 @@ function ProcoreContent() {
                     onChange={(e) => setCommitmentCloneTargetProjectId(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Vendor ID Override</label>
+                  <input
+                    type="text"
+                    value={commitmentCloneTargetVendorIdOverride ?? ""}
+                    onChange={(e) => setCommitmentCloneTargetVendorIdOverride(e.target.value)}
+                    placeholder="Optional: force all cloned commitments to one target vendor"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="text-xs text-cyan-800 mt-1">
+                    If set, every cloned commitment uses this target project vendor instead of per-source vendor mappings.
+                  </p>
                 </div>
               </div>
 

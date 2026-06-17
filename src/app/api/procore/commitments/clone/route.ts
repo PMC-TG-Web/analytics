@@ -747,6 +747,7 @@ function buildContractPayload(params: {
   targetStatus: string;
   preserveStatus: boolean;
   vendorIdMap: Record<string, string>;
+  targetVendorIdOverride: string;
   issues: UnknownRecord[];
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
@@ -765,10 +766,12 @@ function buildContractPayload(params: {
   payload.status = params.preserveStatus ? readStr(params.source.status) || params.targetStatus : params.targetStatus;
   if (!readStr(payload.status)) payload.status = "Draft";
 
-  const mappedVendorId = mapId(sourceVendorId, params.vendorIdMap, "vendor_id", params.issues, context, {
-    required: params.requireMappedIds && readStr(payload.status).toLowerCase() !== "draft",
-    allowUnmappedIds: params.allowUnmappedIds,
-  });
+  const mappedVendorId = params.targetVendorIdOverride
+    ? readNum(params.targetVendorIdOverride) ?? params.targetVendorIdOverride
+    : mapId(sourceVendorId, params.vendorIdMap, "vendor_id", params.issues, context, {
+      required: params.requireMappedIds && readStr(payload.status).toLowerCase() !== "draft",
+      allowUnmappedIds: params.allowUnmappedIds,
+    });
   delete payload.vendor;
   delete payload.vendor_name;
   if (mappedVendorId !== undefined) payload.vendor_id = mappedVendorId;
@@ -1062,6 +1065,7 @@ export async function POST(request: Request) {
     const crosswalkPath = path.isAbsolute(rawCrosswalkPath)
       ? rawCrosswalkPath
       : path.resolve(process.cwd(), rawCrosswalkPath);
+    const targetVendorIdOverride = readStr(body.targetVendorIdOverride);
     const requestedCommitmentIds = new Set(
       asArray(body.commitmentIds)
         .map(readStr)
@@ -1134,6 +1138,7 @@ export async function POST(request: Request) {
         targetStatus,
         preserveStatus,
         vendorIdMap: maps.vendorIdMap,
+        targetVendorIdOverride,
         issues: contractIssues,
         requireMappedIds,
         allowUnmappedIds,
@@ -1183,7 +1188,7 @@ export async function POST(request: Request) {
         tokenSource,
         readyForLiveClone,
         source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
-        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus },
+        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
         counts: {
           sourceContracts: selectedContracts.length,
           sourceLineItems,
@@ -1309,7 +1314,7 @@ export async function POST(request: Request) {
       details: errors.length > 0 ? readStr(errors[0].error) : undefined,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
-      target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus },
+      target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
       counts: {
         sourceContracts: selectedContracts.length,
         sourceLineItems,

@@ -336,16 +336,37 @@ function buildLineItemPayload(params: {
   const newRow = isRecord(mapping.new) ? mapping.new : {};
   const oldGroupId = lineItemGroupId(lineItem);
   const sourceCostItem = isRecord(lineItem.cost_item) ? lineItem.cost_item : {};
+  const costItemPayload: UnknownRecord = {
+    id: readStr(newRow.ItemId),
+    name: readStr(newRow.Name),
+    description: readStr(newRow.Description),
+    type: readStr(sourceCostItem.type || sourceCostItem.item_type || "Custom"),
+    ...(readStr(sourceCostItem.unit) ? { unit: readStr(sourceCostItem.unit) } : {}),
+  };
+
+  const costItemNumericFields = [
+    "unit_cost",
+    "unit_labor",
+    "unit_labor_cost",
+    "unit_labor_rate",
+    "delivery_unit",
+    "waste",
+    "material_waste",
+    "item_margin",
+    "material_margin",
+    "labor_margin",
+  ];
+  for (const fieldName of costItemNumericFields) {
+    const value = readNum(sourceCostItem[fieldName]);
+    if (value !== undefined) costItemPayload[fieldName] = value;
+  }
+  const laborTimeUnit = readStr(sourceCostItem.labor_time_unit);
+  if (laborTimeUnit) costItemPayload.labor_time_unit = laborTimeUnit;
+  if (typeof sourceCostItem.is_untaxed === "boolean") costItemPayload.is_untaxed = sourceCostItem.is_untaxed;
 
   const payload: UnknownRecord = {
     name: readStr(lineItem.name || sourceCostItem.name || newRow.Name) || "Imported Line Item",
-    cost_item: {
-      id: readStr(newRow.ItemId),
-      name: readStr(newRow.Name),
-      description: readStr(newRow.Description),
-      type: readStr(sourceCostItem.type || sourceCostItem.item_type || "Custom"),
-      ...(readStr(sourceCostItem.unit) ? { unit: readStr(sourceCostItem.unit) } : {}),
-    },
+    cost_item: costItemPayload,
     cost_code: {
       code: readStr(newRow["Cost Code"]),
       ...(readStr(newRow["Cost Name"]) ? { name: readStr(newRow["Cost Name"]) } : {}),
@@ -360,12 +381,25 @@ function buildLineItemPayload(params: {
   const count = readNum(lineItem.count ?? lineItem.quantity ?? lineItem.qty);
   const itemCost = readNum(lineItem.item_cost ?? lineItem.itemCost);
   const laborCost = readNum(lineItem.labor_cost ?? lineItem.laborCost);
+  const lineItemNumericFields = [
+    ["unit_material_cost", "unitMaterialCost"],
+    ["material_margin", "materialMargin"],
+    ["unit_labor", "unitLabor"],
+    ["unit_labor_rate", "unitLaborRate"],
+    ["unit_labor_cost", "unitLaborCost"],
+    ["labor_margin", "laborMargin"],
+  ] as const;
 
   if (tag) payload.tag = tag;
   if (laborFactor !== undefined) payload.labor_factor = laborFactor;
   if (count !== undefined) payload.count = count;
   if (itemCost !== undefined) payload.item_cost = itemCost;
   if (laborCost !== undefined) payload.labor_cost = laborCost;
+  for (const [snake, camel] of lineItemNumericFields) {
+    const value = readNum(lineItem[snake] ?? lineItem[camel]);
+    if (value !== undefined) payload[snake] = value;
+  }
+  if (isRecord(lineItem.pricing_override)) payload.pricing_override = lineItem.pricing_override;
 
   const costCodeType = readStr(newRow["Cost code type"]);
   if (costCodeType) payload.cost_code_type = costCodeType;

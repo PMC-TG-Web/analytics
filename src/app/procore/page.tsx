@@ -383,6 +383,9 @@ function ProcoreContent() {
   const [primeClonePreserveStatus, setPrimeClonePreserveStatus] = useState(false);
   const [primeCloneLineItems, setPrimeCloneLineItems] = useState(true);
   const [primeCloneAllowUnmappedIds, setPrimeCloneAllowUnmappedIds] = useState(false);
+  const [primeCloneCrosswalkPath, setPrimeCloneCrosswalkPath] = useState("Codes to use.xlsx");
+  const [primeCloneCrosswalkWorkbookBase64, setPrimeCloneCrosswalkWorkbookBase64] = useState("");
+  const [primeCloneCrosswalkWorkbookName, setPrimeCloneCrosswalkWorkbookName] = useState("");
   const [primeCloneMapsText, setPrimeCloneMapsText] = useState(`{
   "wbsCodeIdMap": {},
   "costCodeIdMap": {},
@@ -4862,6 +4865,20 @@ function ProcoreContent() {
     event.target.value = "";
   };
 
+  const handlePrimeCloneCrosswalkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const buffer = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    setPrimeCloneCrosswalkWorkbookBase64(window.btoa(binary));
+    setPrimeCloneCrosswalkWorkbookName(file.name);
+    event.target.value = "";
+  };
+
   const updateCloneMappingOverride = (index: number, key: string, value: string) => {
     setCloneMappingOverrides((current) =>
       current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row))
@@ -5043,6 +5060,7 @@ function ProcoreContent() {
     const targetCompanyId = primeCloneTargetCompanyId.trim();
     const targetProjectId = primeCloneTargetProjectId.trim();
     const targetStatus = primeCloneTargetStatus.trim() || "Draft";
+    const crosswalkPath = primeCloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const primeContractIds = primeCloneIdsText
       .split(/[\s,]+/)
       .map((value) => value.trim())
@@ -5082,6 +5100,8 @@ function ProcoreContent() {
           cloneLineItems: primeCloneLineItems,
           allowUnmappedIds: primeCloneAllowUnmappedIds,
           primeContractIds,
+          crosswalkPath,
+          crosswalkWorkbookBase64: primeCloneCrosswalkWorkbookBase64 || undefined,
           dryRun,
           ...maps,
         }),
@@ -9504,6 +9524,29 @@ function ProcoreContent() {
                   placeholder="Optional: comma or space-separated source prime contract IDs"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                 />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Codes Crosswalk Workbook Path</label>
+                <input
+                  type="text"
+                  value={primeCloneCrosswalkPath ?? ""}
+                  onChange={(e) => setPrimeCloneCrosswalkPath(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+                <div className="mt-3">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handlePrimeCloneCrosswalkUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-violet-800 mt-2">
+                    {primeCloneCrosswalkWorkbookName
+                      ? `Using uploaded workbook: ${primeCloneCrosswalkWorkbookName}`
+                      : "Optional: upload Codes to use.xlsx here. The dry-run will use it to auto-map prime contract WBS IDs by target cost code and type."}
+                  </p>
+                </div>
               </div>
 
               <div className="mb-4">

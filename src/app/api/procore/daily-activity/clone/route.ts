@@ -20,6 +20,10 @@ type ProductivityTargetLineItem = {
 type TargetLookups = {
   productivityLineItems: ProductivityTargetLineItem[];
   timeTypes: UnknownRecord[];
+  peopleById: Map<string, UnknownRecord>;
+  peopleByName: Map<string, UnknownRecord>;
+  peopleByUserId: Map<string, UnknownRecord>;
+  peopleByContactId: Map<string, UnknownRecord>;
   usersByName: Map<string, UnknownRecord>;
   usersByLogin: Map<string, UnknownRecord>;
   timeTypesByName: Map<string, UnknownRecord>;
@@ -239,12 +243,14 @@ function getNestedId(value: unknown): number | undefined {
 function getTargetPartyId(value: unknown): number | undefined {
   if (!isRecord(value)) return readNum(value);
   return readNum(
-    value.contact_id ||
+    value.id ||
+      value.person_id ||
+      value.personId ||
+      value.contact_id ||
       value.contactId ||
       value.party_id ||
       value.partyId ||
-      firstRecord(value.party)?.id ||
-      value.id
+      firstRecord(value.party)?.id
   );
 }
 
@@ -342,6 +348,16 @@ function targetContractSourceIds(contract: UnknownRecord): string[] {
     for (const match of matches) ids.add(match);
   }
   return Array.from(ids);
+}
+
+function resolveTargetPersonId(lookups: TargetLookups, value: unknown): number | undefined {
+  const raw = readStr(value);
+  if (!raw) return undefined;
+  const person =
+    lookups.peopleById.get(raw) ||
+    lookups.peopleByContactId.get(raw) ||
+    lookups.peopleByUserId.get(raw);
+  return getTargetPartyId(person) ?? readNum(value);
 }
 
 function productivityCandidateTargets(params: {
@@ -582,12 +598,17 @@ async function fetchTargetLookups(params: {
   companyId: string;
   projectId: string;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, users, timeTypes, costCodes] = await Promise.all([
+  const [productivityLineItems, users, people, timeTypes, costCodes] = await Promise.all([
     fetchTargetProductivityLineItems(params),
     procoreFetch({
       accessToken: params.accessToken,
       companyId: params.companyId,
       path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
+    }).then(unwrapArray).catch(() => []),
+    procoreFetch({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/people?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
     }).then(unwrapArray).catch(() => []),
     procoreFetch({
       accessToken: params.accessToken,
@@ -610,6 +631,21 @@ async function fetchTargetLookups(params: {
     if (login && !usersByLogin.has(login)) usersByLogin.set(login, user);
   }
 
+  const peopleById = new Map<string, UnknownRecord>();
+  const peopleByName = new Map<string, UnknownRecord>();
+  const peopleByUserId = new Map<string, UnknownRecord>();
+  const peopleByContactId = new Map<string, UnknownRecord>();
+  for (const person of people) {
+    const id = readStr(person.id);
+    const name = normalizeKey(person.name || `${readStr(person.first_name)} ${readStr(person.last_name)}`);
+    const userId = readStr(person.user_id || person.userId);
+    const contactId = readStr(person.contact_id || person.contactId);
+    if (id) peopleById.set(id, person);
+    if (name && !peopleByName.has(name)) peopleByName.set(name, person);
+    if (userId) peopleByUserId.set(userId, person);
+    if (contactId) peopleByContactId.set(contactId, person);
+  }
+
   const timeTypesByName = new Map<string, UnknownRecord>();
   for (const timeType of timeTypes) {
     const name = normalizeKey(timeType.name || timeType.time_type || timeType.abbreviated_time_type);
@@ -625,7 +661,19 @@ async function fetchTargetLookups(params: {
     if (name && !costCodesByName.has(name)) costCodesByName.set(name, costCode);
   }
 
-  return { productivityLineItems, timeTypes, usersByName, usersByLogin, timeTypesByName, costCodesByFullCode, costCodesByName };
+  return {
+    productivityLineItems,
+    timeTypes,
+    peopleById,
+    peopleByName,
+    peopleByUserId,
+    peopleByContactId,
+    usersByName,
+    usersByLogin,
+    timeTypesByName,
+    costCodesByFullCode,
+    costCodesByName,
+  };
 }
 
 function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
@@ -790,13 +838,15 @@ function mapTimecardEntry(
   const timeType = sourceTimeTypeFromEntry(entry);
   const costCode = sourceCostCodeFromEntry(entry);
 
-  const mappedPartyId =
+  const mappedPartyValue =
     readNum(partyMap[party.id]) ??
     readNum(partyMap[party.name]) ??
     readNum(partyMap[normalizeKey(party.name)]) ??
     readNum(partyMap[party.login]) ??
     readNum(partyMap[normalizeKey(party.login)]);
+  const mappedPartyId = resolveTargetPersonId(lookups, mappedPartyValue);
   const targetUser =
+    lookups.peopleByName.get(normalizeKey(party.name)) ||
     lookups.usersByLogin.get(normalizeKey(party.login)) ||
     lookups.usersByName.get(normalizeKey(party.name));
   const targetTimeType = lookups.timeTypesByName.get(normalizeKey(timeType.name));

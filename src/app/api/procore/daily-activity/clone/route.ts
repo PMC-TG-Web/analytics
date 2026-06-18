@@ -1200,6 +1200,21 @@ async function createTimecardEntry(params: {
   });
 }
 
+async function addCompanyUserToProject(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  userId: number;
+}) {
+  return procoreFetch({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users/${encodeURIComponent(String(params.userId))}/actions/add`,
+    method: "POST",
+    body: { user: {} },
+  });
+}
+
 function retryDelayMsFromError(message: string) {
   const retryAfterMatch = message.match(/"retry_after"\s*:\s*(\d+)/i);
   const retryAfterSeconds = retryAfterMatch ? Number.parseInt(retryAfterMatch[1], 10) : 0;
@@ -1289,6 +1304,7 @@ export async function POST(request: Request) {
 
     const createResults: UnknownRecord[] = [];
     if (!dryRun) {
+      const addedProjectUserIds = new Set<number>();
       for (const row of productivity.filter((item) => item.mapped).slice(createOffset, createOffset + createLimit)) {
         try {
           const result = await retryProcoreCreate(() =>
@@ -1303,6 +1319,20 @@ export async function POST(request: Request) {
 
       for (const row of timecards.filter((item) => item.mapped && !item.existingTargetTimecard).slice(createOffset, createOffset + createLimit)) {
         try {
+          const targetParty = isRecord(row.targetParty) ? row.targetParty : null;
+          const shouldAddProjectUser = readStr(targetParty?.source) === "company_user";
+          const partyId = readNum(row.payload.party_id);
+          if (shouldAddProjectUser && partyId !== undefined && !addedProjectUserIds.has(partyId)) {
+            await retryProcoreCreate(() =>
+              addCompanyUserToProject({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, userId: partyId })
+            ).catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (!/already|taken|exists|has already/i.test(message)) throw error;
+              return null;
+            });
+            addedProjectUserIds.add(partyId);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
           const result = await retryProcoreCreate(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );

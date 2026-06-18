@@ -23,6 +23,45 @@ function readNum(value: unknown): number | undefined {
   return undefined;
 }
 
+function collectIds(value: unknown, out = new Set<number>()): Set<number> {
+  const direct = readNum(value);
+  if (direct !== undefined) {
+    out.add(Math.trunc(direct));
+    return out;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectIds(item, out);
+    return out;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return out;
+    try {
+      collectIds(JSON.parse(trimmed), out);
+      return out;
+    } catch {
+      for (const match of trimmed.match(/\d{6,}/g) || []) collectIds(match, out);
+      return out;
+    }
+  }
+
+  if (isRecord(value)) {
+    if (value.ok === true && isRecord(value.result)) {
+      collectIds(value.result.id || (isRecord(value.result.data) ? value.result.data.id : undefined), out);
+    }
+    collectIds(value.id, out);
+    collectIds(value.ids, out);
+    collectIds(value.timecardIds, out);
+    collectIds(value.timecardEntryIds, out);
+    collectIds(value.createResults, out);
+    return out;
+  }
+
+  return out;
+}
+
 function unwrapArray(value: unknown): UnknownRecord[] {
   if (Array.isArray(value)) return value.filter((item): item is UnknownRecord => isRecord(item));
   if (isRecord(value)) {
@@ -196,6 +235,7 @@ export async function POST(request: Request) {
     const dryRun = body.dryRun !== false;
     const maxPages = Math.max(1, Math.min(100, Math.trunc(readNum(body.maxPages) || 25)));
     const batchSize = Math.max(1, Math.min(100, Math.trunc(readNum(body.batchSize) || 100)));
+    const explicitIds = Array.from(collectIds(body.ids || body.timecardIds || body.timecardEntryIds || body.idsText || body.resultJson));
 
     if (!companyId || !projectId || !startDate || !endDate) {
       return NextResponse.json(
@@ -212,21 +252,22 @@ export async function POST(request: Request) {
     }
 
     const { accessToken, tokenSource } = await resolveAccessToken();
-    const directTimecards = await fetchPagedTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
-    const timesheetTimecards = await fetchPagedTimesheetTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
+    const directTimecards = explicitIds.length
+      ? { rows: [] as UnknownRecord[], rawRows: 0 }
+      : await fetchPagedTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
+    const timesheetTimecards = explicitIds.length
+      ? { rows: [] as UnknownRecord[], rawTimesheets: 0, rawNestedTimecards: 0 }
+      : await fetchPagedTimesheetTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
     const byId = new Map<string, UnknownRecord>();
     for (const row of [...directTimecards.rows, ...timesheetTimecards.rows]) {
       const id = readStr(row.id);
       if (id && !byId.has(id)) byId.set(id, row);
     }
     const timecards = Array.from(byId.values());
-    const ids = Array.from(
-      new Set(
-        timecards
-          .map((row) => readNum(row.id))
-          .filter((id): id is number => id !== undefined)
-      )
-    );
+    const discoveredIds = timecards
+      .map((row) => readNum(row.id))
+      .filter((id): id is number => id !== undefined);
+    const ids = Array.from(new Set(explicitIds.length ? explicitIds : discoveredIds));
 
     const deleteResults: UnknownRecord[] = [];
     if (!dryRun && ids.length > 0) {
@@ -260,6 +301,7 @@ export async function POST(request: Request) {
       counts: {
         found: timecards.length,
         ids: ids.length,
+        explicitIds: explicitIds.length,
         directTimecardRows: directTimecards.rows.length,
         rawDirectTimecardRows: directTimecards.rawRows,
         timesheetTimecardRows: timesheetTimecards.rows.length,

@@ -528,6 +528,7 @@ function ProcoreContent() {
   const [dailyDeleteBusy, setDailyDeleteBusy] = useState(false);
   const [dailyDeleteError, setDailyDeleteError] = useState<string | null>(null);
   const [dailyDeleteResult, setDailyDeleteResult] = useState<any>(null);
+  const [dailyDeleteIdsText, setDailyDeleteIdsText] = useState("");
   const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
   const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
   const [dailyCloneCommitmentsResult, setDailyCloneCommitmentsResult] = useState<any>(null);
@@ -2558,6 +2559,7 @@ function ProcoreContent() {
           dryRun,
           maxPages: 25,
           batchSize: 100,
+          idsText: dailyDeleteIdsText.trim() || undefined,
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -7096,6 +7098,21 @@ function ProcoreContent() {
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   Map old source party IDs or names to target Procore user IDs, for example {"{"}"Lee Zook":"13531193"{"}"}.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Delete Timecard IDs or Clone Result JSON</label>
+                <textarea
+                  value={dailyDeleteIdsText}
+                  onChange={(e) => setDailyDeleteIdsText(e.target.value)}
+                  rows={3}
+                  className="w-full border border-amber-300 rounded px-3 py-2 text-xs font-mono"
+                  spellCheck={false}
+                  placeholder="Optional: paste created timecard IDs, or paste a downloaded daily clone JSON result."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Optional fallback when Procore project listing returns zero. Preview counts these IDs before delete.
                 </p>
               </div>
 

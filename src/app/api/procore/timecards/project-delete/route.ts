@@ -102,6 +102,7 @@ async function fetchPagedTimecards(params: {
   maxPages: number;
 }) {
   const out: UnknownRecord[] = [];
+  let rawRows = 0;
   for (let page = 1; page <= params.maxPages; page += 1) {
     const query = new URLSearchParams({
       company_id: params.companyId,
@@ -113,16 +114,68 @@ async function fetchPagedTimecards(params: {
       companyId: params.companyId,
       path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?${query.toString()}`,
     });
+    const rawPageRows = unwrapArray(payload);
+    rawRows += rawPageRows.length;
     const rows = unwrapArray(payload).filter((row) => {
       const rowDate = normalizeDate(row.date);
       return rowDate && rowDate >= params.startDate && rowDate <= params.endDate;
     });
     out.push(...rows);
 
-    const rawPageRows = unwrapArray(payload);
     if (rawPageRows.length < 100) break;
   }
-  return out;
+  return { rows: out, rawRows };
+}
+
+function timecardRowsFromTimesheet(timesheet: UnknownRecord): UnknownRecord[] {
+  const nested = unwrapArray(timesheet.timecard_entries || timesheet.timecardEntries);
+  const timesheetId = timesheet.id;
+  const timesheetDate = timesheet.date;
+  return nested.map((entry) => ({
+    ...entry,
+    _timesheet_id: timesheetId,
+    _timesheet_date: timesheetDate,
+  }));
+}
+
+async function fetchPagedTimesheetTimecards(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  startDate: string;
+  endDate: string;
+  maxPages: number;
+}) {
+  const out: UnknownRecord[] = [];
+  let rawTimesheets = 0;
+  let rawNestedTimecards = 0;
+  for (let page = 1; page <= params.maxPages; page += 1) {
+    const query = new URLSearchParams({
+      company_id: params.companyId,
+      page: String(page),
+      per_page: "100",
+    });
+    const payload = await procoreFetch({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timesheets?${query.toString()}`,
+    });
+    const timesheets = unwrapArray(payload);
+    rawTimesheets += timesheets.length;
+
+    for (const timesheet of timesheets) {
+      const entries = timecardRowsFromTimesheet(timesheet);
+      rawNestedTimecards += entries.length;
+      for (const entry of entries) {
+        const rowDate = normalizeDate(entry.date || entry._timesheet_date);
+        if (rowDate && rowDate >= params.startDate && rowDate <= params.endDate) out.push(entry);
+      }
+    }
+
+    if (timesheets.length < 100) break;
+  }
+
+  return { rows: out, rawTimesheets, rawNestedTimecards };
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -159,7 +212,14 @@ export async function POST(request: Request) {
     }
 
     const { accessToken, tokenSource } = await resolveAccessToken();
-    const timecards = await fetchPagedTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
+    const directTimecards = await fetchPagedTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
+    const timesheetTimecards = await fetchPagedTimesheetTimecards({ accessToken, companyId, projectId, startDate, endDate, maxPages });
+    const byId = new Map<string, UnknownRecord>();
+    for (const row of [...directTimecards.rows, ...timesheetTimecards.rows]) {
+      const id = readStr(row.id);
+      if (id && !byId.has(id)) byId.set(id, row);
+    }
+    const timecards = Array.from(byId.values());
     const ids = Array.from(
       new Set(
         timecards
@@ -200,6 +260,11 @@ export async function POST(request: Request) {
       counts: {
         found: timecards.length,
         ids: ids.length,
+        directTimecardRows: directTimecards.rows.length,
+        rawDirectTimecardRows: directTimecards.rawRows,
+        timesheetTimecardRows: timesheetTimecards.rows.length,
+        rawTimesheets: timesheetTimecards.rawTimesheets,
+        rawNestedTimesheetTimecards: timesheetTimecards.rawNestedTimecards,
         deletedBatches: deleteResults.filter((row) => row.ok === true).length,
         failedBatches: deleteResults.filter((row) => row.ok === false).length,
       },
@@ -208,6 +273,8 @@ export async function POST(request: Request) {
         id: row.id,
         date: row.date,
         hours: row.hours,
+        source: row._timesheet_id ? "timesheets" : "timecard_entries",
+        timesheet_id: row._timesheet_id,
         party: row.party,
         timecard_time_type: row.timecard_time_type,
         cost_code: row.cost_code,

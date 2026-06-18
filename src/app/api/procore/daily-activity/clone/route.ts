@@ -236,6 +236,18 @@ function getNestedId(value: unknown): number | undefined {
   return readNum(value);
 }
 
+function getTargetPartyId(value: unknown): number | undefined {
+  if (!isRecord(value)) return readNum(value);
+  return readNum(
+    value.contact_id ||
+      value.contactId ||
+      value.party_id ||
+      value.partyId ||
+      firstRecord(value.party)?.id ||
+      value.id
+  );
+}
+
 function getNestedName(value: unknown): string {
   if (isRecord(value)) return readStr(value.name);
   return readStr(value);
@@ -805,7 +817,7 @@ function mapTimecardEntry(
     lunch_time: readNum(entry.lunch_time),
     time_in: readStr(entry.time_in),
     time_out: readStr(entry.time_out),
-    party_id: getNestedId(targetUser) ?? mappedPartyId,
+    party_id: mappedPartyId ?? getTargetPartyId(targetUser),
     timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
   };
@@ -942,6 +954,17 @@ async function createTimecardEntry(params: {
   });
 }
 
+async function retryOnceOnRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("(429)")) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+    return operation();
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
@@ -1000,22 +1023,26 @@ export async function POST(request: Request) {
     if (!dryRun && missingMappings.length === 0) {
       for (const row of productivity.filter((item) => item.mapped).slice(0, createLimit)) {
         try {
-          const result = await createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload });
+          const result = await retryOnceOnRateLimit(() =>
+            createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
+          );
           createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
           createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: false, error: error instanceof Error ? error.message : String(error), payload: row.payload });
         }
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       for (const row of timecards.filter((item) => item.mapped).slice(0, createLimit)) {
         try {
-          const result = await createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload });
+          const result = await retryOnceOnRateLimit(() =>
+            createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
+          );
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: false, error: error instanceof Error ? error.message : String(error), payload: row.payload });
         }
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
 

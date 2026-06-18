@@ -307,6 +307,15 @@ function sourceCostCodeFromEntry(entry: UnknownRecord) {
   };
 }
 
+function fallbackTimeTypeForSource(sourceName: unknown, lookups: TargetLookups) {
+  const sourceKey = normalizeKey(sourceName);
+  if (!["travel", "shop"].includes(sourceKey)) return undefined;
+  return (
+    lookups.timeTypesByName.get("regular time") ||
+    lookups.timeTypes.find((timeType) => normalizeKey(timeType.abbreviated_time_type) === "reg")
+  );
+}
+
 function sourceClassificationFromEntry(entry: UnknownRecord) {
   const nested = firstRecord(
     entry.work_classification,
@@ -1000,6 +1009,7 @@ function mapTimecardEntry(
     readNum(timecardTimeTypeMap[timeType.id]) ??
     readNum(timecardTimeTypeMap[timeType.name]) ??
     readNum(timecardTimeTypeMap[normalizeKey(timeType.name)]);
+  const fallbackTimeType = fallbackTimeTypeForSource(timeType.name, lookups);
   const onlyTargetTimeType = lookups.timeTypes.length === 1 ? lookups.timeTypes[0] : undefined;
   const targetCostCode =
     lookups.costCodesByFullCode.get(readStr(costCode.fullCode)) ||
@@ -1027,7 +1037,7 @@ function mapTimecardEntry(
     time_in: readStr(entry.time_in),
     time_out: readStr(entry.time_out),
     party_id: partyId,
-    timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
+    timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? getNestedId(fallbackTimeType) ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
     work_classification_id: targetClassificationId,
   };
@@ -1048,8 +1058,8 @@ function mapTimecardEntry(
     targetParty: targetPerson || (partyId !== undefined ? { id: partyId, mapped: true, source: mappedPartyValue !== undefined ? "map" : "company_user" } : null),
     targetUser: targetUser || null,
     sourceTimeType: timeType,
-    targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),
-    targetTimeType: targetTimeType || (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || onlyTargetTimeType || null,
+    targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || Boolean(fallbackTimeType) || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),
+    targetTimeType: targetTimeType || (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || fallbackTimeType || onlyTargetTimeType || null,
     sourceCostCode: costCode,
     sourceClassification: classification,
     targetClassificationFallbackUsed: !targetClassification && mappedClassificationId !== undefined,

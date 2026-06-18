@@ -877,10 +877,50 @@ function buildPrimeContractPayload(params: {
   source: UnknownRecord;
   targetStatus: string;
   preserveStatus: boolean;
+  maps: Record<string, Record<string, string>>;
+  issues: UnknownRecord[];
+  targetContractorIdOverride: string;
+  requireMappedIds: boolean;
+  allowUnmappedIds: boolean;
 }) {
   const payload = stripPrimeContractPayload(params.source);
+  const contractor = isRecord(params.source.contractor) ? params.source.contractor : {};
+  const ownerClient = isRecord(params.source.vendor) ? params.source.vendor : {};
+  const context = {
+    primeContractId: readStr(params.source.id),
+    primeContractNumber: readStr(params.source.number),
+    primeContractTitle: readStr(params.source.title),
+    contractorName: readStr(contractor.name ?? contractor.company),
+    ownerClientName: readStr(ownerClient.name ?? ownerClient.company),
+  };
+
   payload.status = params.preserveStatus ? readStr(params.source.status) || params.targetStatus : params.targetStatus;
   if (!readStr(payload.status)) payload.status = "Draft";
+
+  const sourceContractorId = readStr(params.source.contractor_id ?? contractor.id);
+  const contractorId = params.targetContractorIdOverride
+    ? readNum(params.targetContractorIdOverride) ?? params.targetContractorIdOverride
+    : mapId(sourceContractorId, params.maps.contractorIdMap || {}, "contractor_id", params.issues, context, {
+      required: params.requireMappedIds,
+      allowUnmappedIds: params.allowUnmappedIds,
+    });
+
+  const sourceOwnerClientId = readStr(params.source.vendor_id ?? ownerClient.id);
+  const ownerClientMap = {
+    ...(params.maps.vendorIdMap || {}),
+    ...(params.maps.ownerClientIdMap || {}),
+  };
+  const ownerClientId = mapId(sourceOwnerClientId, ownerClientMap, "vendor_id", params.issues, context, {
+    required: params.requireMappedIds,
+    allowUnmappedIds: params.allowUnmappedIds,
+  });
+
+  delete payload.contractor;
+  delete payload.vendor;
+  if (contractorId !== undefined) payload.contractor_id = contractorId;
+  else delete payload.contractor_id;
+  if (ownerClientId !== undefined) payload.vendor_id = ownerClientId;
+  else delete payload.vendor_id;
 
   const sourceContractId = readNum(params.source.id);
   if (sourceContractId !== undefined) {
@@ -1036,6 +1076,38 @@ async function syncPrimeLineItems(params: {
   return unwrapData(response.payload);
 }
 
+async function addVendorToProject(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  vendorId: string;
+}) {
+  const paths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/vendors/${encodeURIComponent(params.vendorId)}/actions/add?view=normal`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/vendors/${encodeURIComponent(params.vendorId)}/actions/add?view=normal`,
+  ];
+  const attempts: UnknownRecord[] = [];
+
+  for (const path of paths) {
+    const response = await procoreJson({
+      path,
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      method: "POST",
+      allowStatuses: [400, 404, 405, 409, 422],
+    });
+    attempts.push({ path, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { ok: true, path, status: response.status, response: response.payload, attempts };
+
+    const text = safeJson(response.payload).toLowerCase();
+    if (response.status === 409 || (response.status === 422 && /already|exists|added/.test(text))) {
+      return { ok: true, alreadyAdded: true, path, status: response.status, response: response.payload, attempts };
+    }
+  }
+
+  return { ok: false, attempts };
+}
+
 function contractMatchKeys(contract: UnknownRecord) {
   const number = norm(contract.number);
   const title = norm(contract.title);
@@ -1105,6 +1177,7 @@ export async function POST(request: Request) {
     const targetStatus = readStr(body.targetStatus) || "Draft";
     const maxPages = Math.min(50, Math.max(1, readNum(body.maxPages) || 5));
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
+    const targetContractorIdOverride = readStr(body.targetContractorIdOverride) || "598134335120254";
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
     const crosswalkPath = path.isAbsolute(rawCrosswalkPath)
@@ -1121,6 +1194,9 @@ export async function POST(request: Request) {
 
     const requireMappedIds = sourceCompanyId !== targetCompanyId || sourceProjectId !== targetProjectId;
     const maps = {
+      ownerClientIdMap: buildIdMap(body.ownerClientIdMap),
+      vendorIdMap: buildIdMap(body.vendorIdMap),
+      contractorIdMap: buildIdMap(body.contractorIdMap),
       wbsCodeIdMap: buildIdMap(body.wbsCodeIdMap),
       costCodeIdMap: buildIdMap(body.costCodeIdMap),
       lineItemTypeIdMap: buildIdMap(body.lineItemTypeIdMap),
@@ -1177,7 +1253,17 @@ export async function POST(request: Request) {
     for (const contract of selectedContracts) {
       const contractId = readStr(contract.id);
       const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
-      const contractPayload = buildPrimeContractPayload({ source: contract, targetStatus, preserveStatus });
+      const contractIssues: UnknownRecord[] = [];
+      const contractPayload = buildPrimeContractPayload({
+        source: contract,
+        targetStatus,
+        preserveStatus,
+        maps,
+        issues: contractIssues,
+        targetContractorIdOverride,
+        requireMappedIds,
+        allowUnmappedIds,
+      });
       const lineItemPlans = lineFetch.records.map((lineItem) => {
         const lineIssues: UnknownRecord[] = [];
         const payload = buildPrimeLineItemPayload({
@@ -1196,6 +1282,7 @@ export async function POST(request: Request) {
           issues: lineIssues,
         };
       });
+      missingMappings.push(...contractIssues);
 
       plan.push({
         sourcePrimeContractId: contractId,
@@ -1206,6 +1293,7 @@ export async function POST(request: Request) {
         contractPayload,
         lineItems: lineItemPlans,
         fetchWarnings: lineFetch.errors.slice(0, 6),
+        issues: contractIssues,
       });
     }
 
@@ -1218,7 +1306,7 @@ export async function POST(request: Request) {
         tokenSource,
         readyForLiveClone,
         source: { companyId: sourceCompanyId, projectId: sourceProjectId },
-        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus },
+        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetContractorIdOverride },
         counts: {
           sourceContracts: selectedContracts.length,
           sourceLineItems,
@@ -1258,6 +1346,7 @@ export async function POST(request: Request) {
     const createdContracts: UnknownRecord[] = [];
     const reusedContracts: UnknownRecord[] = [];
     const errors: UnknownRecord[] = [];
+    const projectVendorAdds: UnknownRecord[] = [];
 
     for (const entry of plan) {
       try {
@@ -1270,6 +1359,42 @@ export async function POST(request: Request) {
           targetFetch.records
         );
         const existingTargetId = existingTarget ? readStr(existingTarget.id) : "";
+
+        if (!existingTargetId && isRecord(entry.contractPayload)) {
+          const vendorIdsToAdd = [
+            readStr(entry.contractPayload.contractor_id),
+            readStr(entry.contractPayload.vendor_id),
+          ].filter(Boolean);
+          for (const vendorId of [...new Set(vendorIdsToAdd)]) {
+            const addResult = await addVendorToProject({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              vendorId,
+            });
+            projectVendorAdds.push({
+              sourcePrimeContractId: entry.sourcePrimeContractId,
+              sourceNumber: entry.number,
+              vendorId,
+              ...addResult,
+            });
+            if (!addResult.ok) {
+              errors.push({
+                sourcePrimeContractId: entry.sourcePrimeContractId,
+                sourceNumber: entry.number,
+                sourceTitle: entry.title,
+                error: `Failed to add vendor ${vendorId} to target project ${targetProjectId}.`,
+                projectVendorAdd: addResult,
+                attemptedPayload: entry.contractPayload,
+              });
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+        if (errors.some((error) => error.sourcePrimeContractId === entry.sourcePrimeContractId)) {
+          continue;
+        }
+
         const createResult = existingTargetId
           ? { result: existingTarget, attempts: [] as UnknownRecord[] }
           : await createPrimeContract({
@@ -1348,7 +1473,7 @@ export async function POST(request: Request) {
       details: errors.length > 0 ? readStr(errors[0].error) : undefined,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
-      target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus },
+      target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetContractorIdOverride },
       counts: {
         sourceContracts: selectedContracts.length,
         sourceLineItems,
@@ -1361,6 +1486,7 @@ export async function POST(request: Request) {
         errors: errors.length,
       },
       crosswalkAutoMappings,
+      projectVendorAdds,
       createdContracts,
       reusedContracts,
       errors,

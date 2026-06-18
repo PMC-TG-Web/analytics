@@ -380,6 +380,7 @@ function ProcoreContent() {
   const [primeCloneTargetProjectId, setPrimeCloneTargetProjectId] = useState("");
   const [primeCloneIdsText, setPrimeCloneIdsText] = useState("");
   const [primeCloneTargetStatus, setPrimeCloneTargetStatus] = useState("Draft");
+  const [primeCloneTargetContractorIdOverride, setPrimeCloneTargetContractorIdOverride] = useState("598134335120254");
   const [primeClonePreserveStatus, setPrimeClonePreserveStatus] = useState(false);
   const [primeCloneLineItems, setPrimeCloneLineItems] = useState(true);
   const [primeCloneAllowUnmappedIds, setPrimeCloneAllowUnmappedIds] = useState(false);
@@ -387,6 +388,9 @@ function ProcoreContent() {
   const [primeCloneCrosswalkWorkbookBase64, setPrimeCloneCrosswalkWorkbookBase64] = useState("");
   const [primeCloneCrosswalkWorkbookName, setPrimeCloneCrosswalkWorkbookName] = useState("");
   const [primeCloneMapsText, setPrimeCloneMapsText] = useState(`{
+  "ownerClientIdMap": {},
+  "vendorIdMap": {},
+  "contractorIdMap": {},
   "wbsCodeIdMap": {},
   "costCodeIdMap": {},
   "lineItemTypeIdMap": {},
@@ -395,6 +399,8 @@ function ProcoreContent() {
   const [primeCloneBusy, setPrimeCloneBusy] = useState(false);
   const [primeCloneError, setPrimeCloneError] = useState<string | null>(null);
   const [primeCloneResult, setPrimeCloneResult] = useState<any>(null);
+  const [primeOwnerClientLookupMap, setPrimeOwnerClientLookupMap] = useState<Record<string, string>>({});
+  const [primeOwnerClientLookupSummary, setPrimeOwnerClientLookupSummary] = useState<string | null>(null);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -5060,6 +5066,7 @@ function ProcoreContent() {
     const targetCompanyId = primeCloneTargetCompanyId.trim();
     const targetProjectId = primeCloneTargetProjectId.trim();
     const targetStatus = primeCloneTargetStatus.trim() || "Draft";
+    const targetContractorIdOverride = primeCloneTargetContractorIdOverride.trim();
     const crosswalkPath = primeCloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const primeContractIds = primeCloneIdsText
       .split(/[\s,]+/)
@@ -5081,6 +5088,10 @@ function ProcoreContent() {
       setPrimeCloneError(`Mapping JSON is invalid: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
+    maps.ownerClientIdMap = {
+      ...(typeof maps.ownerClientIdMap === "object" && maps.ownerClientIdMap && !Array.isArray(maps.ownerClientIdMap) ? maps.ownerClientIdMap as Record<string, unknown> : {}),
+      ...primeOwnerClientLookupMap,
+    };
 
     setPrimeCloneBusy(true);
     setPrimeCloneError(null);
@@ -5096,6 +5107,7 @@ function ProcoreContent() {
           targetCompanyId,
           targetProjectId,
           targetStatus,
+          targetContractorIdOverride: targetContractorIdOverride || undefined,
           preserveStatus: primeClonePreserveStatus,
           cloneLineItems: primeCloneLineItems,
           allowUnmappedIds: primeCloneAllowUnmappedIds,
@@ -5209,6 +5221,49 @@ function ProcoreContent() {
     } catch (err) {
       setCommitmentVendorLookupSummary(null);
       setCommitmentCloneError(`Failed to load vendor lookup CSV: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handlePrimeOwnerClientLookupUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) throw new Error("CSV has no data rows.");
+      const headers = parseCommitmentVendorCsvLine(lines[0]).map((header) => header.trim().toLowerCase());
+      const oldIndex = headers.indexOf("old_vendor_id");
+      const newIndex = headers.indexOf("new_vendor_id");
+      if (oldIndex < 0 || newIndex < 0) {
+        throw new Error("CSV must include old_vendor_id and new_vendor_id columns.");
+      }
+      const lookup: Record<string, string> = {};
+      for (const line of lines.slice(1)) {
+        const cells = parseCommitmentVendorCsvLine(line);
+        const oldId = normalizeCommitmentVendorCsvId(String(cells[oldIndex] || ""), "old_vendor_id");
+        const newId = normalizeCommitmentVendorCsvId(String(cells[newIndex] || ""), "new_vendor_id");
+        if (!oldId || !newId) continue;
+        lookup[oldId] = newId;
+      }
+      setPrimeOwnerClientLookupMap(lookup);
+      setPrimeOwnerClientLookupSummary(`${file.name}: loaded ${Object.keys(lookup).length} owner/client mapping(s).`);
+      setPrimeCloneMapsText((current) => {
+        try {
+          const parsed = current.trim() ? JSON.parse(current) : {};
+          const existing =
+            typeof parsed.ownerClientIdMap === "object" && parsed.ownerClientIdMap && !Array.isArray(parsed.ownerClientIdMap)
+              ? parsed.ownerClientIdMap
+              : {};
+          return JSON.stringify({ ...parsed, ownerClientIdMap: { ...existing, ...lookup } }, null, 2);
+        } catch {
+          return current;
+        }
+      });
+    } catch (err) {
+      setPrimeOwnerClientLookupSummary(null);
+      setPrimeCloneError(`Failed to load owner/client lookup CSV: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       event.target.value = "";
     }
@@ -9470,7 +9525,7 @@ function ProcoreContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
                   <input
@@ -9479,6 +9534,16 @@ function ProcoreContent() {
                     onChange={(e) => setPrimeCloneTargetStatus(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contractor ID Override</label>
+                  <input
+                    type="text"
+                    value={primeCloneTargetContractorIdOverride ?? ""}
+                    onChange={(e) => setPrimeCloneTargetContractorIdOverride(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="text-xs text-violet-800 mt-1">Paradise Masonry, LLC target vendor ID.</p>
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -9551,6 +9616,21 @@ function ProcoreContent() {
 
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">ID Mapping JSON</label>
+                <div className="mb-3 bg-violet-50 border border-violet-200 rounded p-3">
+                  <label className="block text-sm font-semibold text-violet-900 mb-1">Owner/Client Lookup CSV</label>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handlePrimeOwnerClientLookupUpload}
+                    className="w-full border border-violet-200 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-violet-800 mt-2">
+                    Upload the Company Directory CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. This fills <code className="bg-white px-1 rounded">ownerClientIdMap</code>.
+                  </p>
+                  {primeOwnerClientLookupSummary && (
+                    <p className="text-xs text-violet-900 font-semibold mt-2">{primeOwnerClientLookupSummary}</p>
+                  )}
+                </div>
                 <textarea
                   value={primeCloneMapsText ?? ""}
                   onChange={(e) => setPrimeCloneMapsText(e.target.value)}

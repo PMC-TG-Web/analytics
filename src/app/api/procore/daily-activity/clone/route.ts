@@ -31,6 +31,8 @@ type TargetLookups = {
   workClassifications: UnknownRecord[];
   workClassificationsById: Map<string, UnknownRecord>;
   workClassificationsByName: Map<string, UnknownRecord>;
+  workClassificationsByCompactName: Map<string, UnknownRecord>;
+  workClassificationsByAbbreviation: Map<string, UnknownRecord>;
   costCodesByFullCode: Map<string, UnknownRecord>;
   costCodesByName: Map<string, UnknownRecord>;
 };
@@ -57,6 +59,10 @@ function readNum(value: unknown): number | undefined {
 
 function normalizeKey(value: unknown): string {
   return readStr(value).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function compactKey(value: unknown): string {
+  return normalizeKey(value).replace(/[^a-z0-9]+/g, "");
 }
 
 function normalizeDescriptionKey(value: unknown): string {
@@ -331,6 +337,14 @@ function sourceClassificationFromEntry(entry: UnknownRecord) {
         entry.classification ||
         entry.classification_type ||
         entry.classificationType
+    ),
+    abbreviation: readStr(
+      nested?.abbreviation ||
+        nested?.abbr ||
+        entry.work_classification_abbreviation ||
+        entry.workClassificationAbbreviation ||
+        entry.classification_abbreviation ||
+        entry.classificationAbbreviation
     ),
   };
 }
@@ -750,6 +764,8 @@ async function fetchTargetLookups(params: {
 
   const workClassificationsById = new Map<string, UnknownRecord>();
   const workClassificationsByName = new Map<string, UnknownRecord>();
+  const workClassificationsByCompactName = new Map<string, UnknownRecord>();
+  const workClassificationsByAbbreviation = new Map<string, UnknownRecord>();
   for (const classification of workClassifications) {
     const id = readStr(classification.id);
     const name = normalizeKey(
@@ -759,8 +775,12 @@ async function fetchTargetLookups(params: {
         classification.work_classification ||
         classification.label
     );
+    const compactName = compactKey(name);
+    const abbreviation = normalizeKey(classification.abbreviation || classification.abbr);
     if (id) workClassificationsById.set(id, classification);
     if (name && !workClassificationsByName.has(name)) workClassificationsByName.set(name, classification);
+    if (compactName && !workClassificationsByCompactName.has(compactName)) workClassificationsByCompactName.set(compactName, classification);
+    if (abbreviation && !workClassificationsByAbbreviation.has(abbreviation)) workClassificationsByAbbreviation.set(abbreviation, classification);
   }
 
   const costCodesByFullCode = new Map<string, UnknownRecord>();
@@ -788,6 +808,8 @@ async function fetchTargetLookups(params: {
     workClassifications,
     workClassificationsById,
     workClassificationsByName,
+    workClassificationsByCompactName,
+    workClassificationsByAbbreviation,
     costCodesByFullCode,
     costCodesByName,
   };
@@ -984,7 +1006,9 @@ function mapTimecardEntry(
   const targetClassification =
     (mappedClassificationId !== undefined ? lookups.workClassificationsById.get(String(mappedClassificationId)) : undefined) ||
     (classification.id ? lookups.workClassificationsById.get(classification.id) : undefined) ||
-    lookups.workClassificationsByName.get(normalizeKey(classification.name));
+    lookups.workClassificationsByName.get(normalizeKey(classification.name)) ||
+    lookups.workClassificationsByCompactName.get(compactKey(classification.name)) ||
+    lookups.workClassificationsByAbbreviation.get(normalizeKey(classification.abbreviation));
   const targetClassificationId = getNestedId(targetClassification) ?? mappedClassificationId;
 
   const payload: UnknownRecord = {

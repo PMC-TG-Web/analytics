@@ -374,6 +374,24 @@ function ProcoreContent() {
   const [commitmentCloneMappingRows, setCommitmentCloneMappingRows] = useState<Array<Record<string, string>>>([]);
   const [commitmentVendorLookupMap, setCommitmentVendorLookupMap] = useState<Record<string, string>>({});
   const [commitmentVendorLookupSummary, setCommitmentVendorLookupSummary] = useState<string | null>(null);
+  const [primeCloneSourceCompanyId, setPrimeCloneSourceCompanyId] = useState("598134325658789");
+  const [primeCloneSourceProjectId, setPrimeCloneSourceProjectId] = useState("");
+  const [primeCloneTargetCompanyId, setPrimeCloneTargetCompanyId] = useState("598134325805519");
+  const [primeCloneTargetProjectId, setPrimeCloneTargetProjectId] = useState("");
+  const [primeCloneIdsText, setPrimeCloneIdsText] = useState("");
+  const [primeCloneTargetStatus, setPrimeCloneTargetStatus] = useState("Draft");
+  const [primeClonePreserveStatus, setPrimeClonePreserveStatus] = useState(false);
+  const [primeCloneLineItems, setPrimeCloneLineItems] = useState(true);
+  const [primeCloneAllowUnmappedIds, setPrimeCloneAllowUnmappedIds] = useState(false);
+  const [primeCloneMapsText, setPrimeCloneMapsText] = useState(`{
+  "wbsCodeIdMap": {},
+  "costCodeIdMap": {},
+  "lineItemTypeIdMap": {},
+  "taxCodeIdMap": {}
+}`);
+  const [primeCloneBusy, setPrimeCloneBusy] = useState(false);
+  const [primeCloneError, setPrimeCloneError] = useState<string | null>(null);
+  const [primeCloneResult, setPrimeCloneResult] = useState<any>(null);
 
   const [purchaseOrderContractProjectId, setPurchaseOrderContractProjectId] = useState("66005");
   const [purchaseOrderContractRunValidations, setPurchaseOrderContractRunValidations] = useState(false);
@@ -5019,6 +5037,76 @@ function ProcoreContent() {
     }
   };
 
+  const handleClonePrimeContracts = async (dryRun: boolean) => {
+    const sourceCompanyId = primeCloneSourceCompanyId.trim();
+    const sourceProjectId = primeCloneSourceProjectId.trim();
+    const targetCompanyId = primeCloneTargetCompanyId.trim();
+    const targetProjectId = primeCloneTargetProjectId.trim();
+    const targetStatus = primeCloneTargetStatus.trim() || "Draft";
+    const primeContractIds = primeCloneIdsText
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setPrimeCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned prime contract(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    let maps: Record<string, unknown> = {};
+    try {
+      maps = primeCloneMapsText.trim() ? JSON.parse(primeCloneMapsText) : {};
+    } catch (err) {
+      setPrimeCloneError(`Mapping JSON is invalid: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    setPrimeCloneBusy(true);
+    setPrimeCloneError(null);
+    setPrimeCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/prime-contracts/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          targetStatus,
+          preserveStatus: primeClonePreserveStatus,
+          cloneLineItems: primeCloneLineItems,
+          allowUnmappedIds: primeCloneAllowUnmappedIds,
+          primeContractIds,
+          dryRun,
+          ...maps,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        const firstNestedError = Array.isArray(result?.errors) && result.errors.length > 0
+          ? String(result.errors[0]?.error || result.errors[0]?.message || JSON.stringify(result.errors[0]))
+          : "";
+        setPrimeCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstNestedError
+              ? `Prime contract clone ${dryRun ? "dry-run" : "live run"} finished with errors: ${firstNestedError}`
+              : `Prime contract clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setPrimeCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setPrimeCloneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPrimeCloneBusy(false);
+    }
+  };
+
   const commitmentMapNameForField = (field: string): string => {
     const normalized = String(field || "").trim();
     if (normalized === "vendor_id") return "vendorIdMap";
@@ -9312,6 +9400,171 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(commitmentCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6">
+              <h2 className="text-xl font-bold text-violet-900 mb-3">Clone Prime Contracts</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone prime contract headers and line items from one Procore project to another. Dry-run first to expose WBS, cost code, cost type, and tax code ID mappings.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setPrimeCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneSourceProjectId ?? ""}
+                    onChange={(e) => setPrimeCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setPrimeCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneTargetProjectId ?? ""}
+                    onChange={(e) => setPrimeCloneTargetProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
+                  <input
+                    type="text"
+                    value={primeCloneTargetStatus ?? ""}
+                    onChange={(e) => setPrimeCloneTargetStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={primeClonePreserveStatus}
+                      onChange={(e) => setPrimeClonePreserveStatus(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Preserve source status
+                  </label>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={primeCloneLineItems}
+                      onChange={(e) => setPrimeCloneLineItems(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Clone line items
+                  </label>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+                    <input
+                      type="checkbox"
+                      checked={primeCloneAllowUnmappedIds}
+                      onChange={(e) => setPrimeCloneAllowUnmappedIds(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Allow unmapped IDs
+                  </label>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Prime Contract IDs</label>
+                <input
+                  type="text"
+                  value={primeCloneIdsText ?? ""}
+                  onChange={(e) => setPrimeCloneIdsText(e.target.value)}
+                  placeholder="Optional: comma or space-separated source prime contract IDs"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">ID Mapping JSON</label>
+                <textarea
+                  value={primeCloneMapsText ?? ""}
+                  onChange={(e) => setPrimeCloneMapsText(e.target.value)}
+                  rows={8}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleClonePrimeContracts(true)}
+                  disabled={primeCloneBusy}
+                  className="bg-violet-700 hover:bg-violet-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {primeCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleClonePrimeContracts(false)}
+                  disabled={primeCloneBusy || !primeCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {primeCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {primeCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-prime-contracts-result.json", primeCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {primeCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Prime Contract Clone Error:</strong> {primeCloneError}
+                </div>
+              )}
+
+              {primeCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    primeCloneResult.result?.readyForLiveClone || primeCloneResult.result?.success
+                      ? "bg-violet-50 border-violet-200 text-violet-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Prime Contract Clone Result:</strong>{" "}
+                    {primeCloneResult.result?.dryRun
+                      ? primeCloneResult.result?.readyForLiveClone
+                        ? "Dry run is clean. Live clone is enabled."
+                        : `${primeCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                      : primeCloneResult.result?.success
+                        ? `Live clone created ${primeCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and synced ${primeCloneResult.result?.counts?.syncedLineItems ?? 0} line item(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(primeCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

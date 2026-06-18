@@ -832,7 +832,7 @@ function extractSourceId(record: UnknownRecord, field: string, objectField: stri
 }
 
 function stripPrimeContractPayload(source: UnknownRecord) {
-  const payload: UnknownRecord = { ...source };
+  const payload: UnknownRecord = sanitizePrimeContractPayload(source);
   const readonlyKeys = [
     "id",
     "created_at",
@@ -857,6 +857,7 @@ function stripPrimeContractPayload(source: UnknownRecord) {
     "current_user_permissions",
     "created_by",
     "updated_by",
+    "custom_fields",
     "origin_id",
     "origin_code",
     "origin_data",
@@ -871,6 +872,34 @@ function stripPrimeContractPayload(source: UnknownRecord) {
   ];
   for (const key of readonlyKeys) delete payload[key];
   return payload;
+}
+
+function sanitizePrimeContractPayload(value: unknown): UnknownRecord {
+  if (!isRecord(value)) return {};
+  const payload: UnknownRecord = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (shouldDropPrimeContractKey(key)) continue;
+    if (Array.isArray(entry)) {
+      payload[key] = entry.map((item) => (isRecord(item) ? sanitizePrimeContractPayload(item) : item));
+    } else if (isRecord(entry)) {
+      payload[key] = sanitizePrimeContractPayload(entry);
+    } else {
+      payload[key] = entry;
+    }
+  }
+  return payload;
+}
+
+function shouldDropPrimeContractKey(key: string) {
+  const normalized = key.trim().toLowerCase();
+  return (
+    normalized.includes("qbo") ||
+    normalized === "erp_status" ||
+    normalized === "erp_integrated" ||
+    normalized === "synced_to_erp" ||
+    normalized.endsWith("_integration_id") ||
+    normalized.includes("integration_status")
+  );
 }
 
 function buildPrimeContractPayload(params: {

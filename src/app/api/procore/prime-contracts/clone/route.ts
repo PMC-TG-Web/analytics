@@ -208,7 +208,7 @@ async function fetchPrimeContracts(params: {
     maxPages: params.maxPages,
     arrayKeys: ["data", "prime_contracts"],
     pathForPage: (page) =>
-      `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+      `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(params.projectId)}&view=extended&page=${page}&per_page=100`,
   });
 }
 
@@ -268,6 +268,155 @@ async function fetchPrimeLineItems(params: {
   }
 
   return { records, errors };
+}
+
+async function fetchProject(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  const response = await procoreJson({
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}?company_id=${encodeURIComponent(params.companyId)}&view=extended`,
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    allowStatuses: [400, 404],
+  });
+  return isRecord(response.payload) ? response.payload : {};
+}
+
+async function fetchProjectConfigurableFieldSets(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  const response = await procoreJson({
+    path: `/rest/v1.0/projects/${encodeURIComponent(
+      params.projectId
+    )}/configurable_field_sets?page=1&per_page=300&include_lov_entries=true&include_default_configurable_field_sets=true`,
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    allowStatuses: [400, 404],
+  });
+  return asArray(response.payload, ["data", "configurable_field_sets"]).filter(isRecord);
+}
+
+function fieldSetClassName(fieldSet: UnknownRecord) {
+  return readStr(fieldSet.class_name ?? fieldSet.host_type ?? fieldSet.type);
+}
+
+function fieldSetFields(fieldSet: UnknownRecord) {
+  if (isRecord(fieldSet.fields)) return Object.values(fieldSet.fields).filter(isRecord);
+  return asArray(fieldSet.configurable_fields).filter(isRecord);
+}
+
+function normalizeLabel(value: unknown) {
+  return norm(value).replace(/&/g, "and").replace(/\s+/g, " ");
+}
+
+function customFieldKey(value: unknown) {
+  const text = readStr(value);
+  if (!text) return "";
+  return text.startsWith("custom_field_") ? text : `custom_field_${text}`;
+}
+
+function buildCustomFieldLabelIndex(fieldSets: UnknownRecord[], hostClassName: string) {
+  const index = new Map<string, UnknownRecord>();
+  for (const fieldSet of fieldSets) {
+    if (!fieldSetClassName(fieldSet).includes(hostClassName)) continue;
+    for (const field of fieldSetFields(fieldSet)) {
+      const label = normalizeLabel(field.label ?? field.name);
+      const name = customFieldKey(field.name ?? field.custom_field_definition_id);
+      if (!label || !name) continue;
+      index.set(label, {
+        ...field,
+        name,
+        label: field.label ?? field.name,
+        data_type: field.data_type ?? field.field_type ?? field.type,
+      });
+    }
+  }
+  return index;
+}
+
+function customFieldValue(customFields: unknown, field: UnknownRecord | undefined) {
+  if (!isRecord(customFields) || !field) return undefined;
+  const keys = [
+    customFieldKey(field.name),
+    customFieldKey(field.custom_field_definition_id),
+    customFieldKey(field.id),
+  ].filter(Boolean);
+  for (const key of keys) {
+    const entry = customFields[key];
+    if (isRecord(entry) && "value" in entry) return entry.value;
+  }
+  return undefined;
+}
+
+function normalizeCustomFieldValue(value: unknown, targetField: UnknownRecord) {
+  if (value === undefined) return undefined;
+  const dataType = norm(targetField.data_type ?? targetField.field_type ?? targetField.type);
+  if (value === null) return null;
+  if (dataType.includes("decimal") || dataType.includes("number")) {
+    const numeric = readNum(value);
+    return numeric === undefined ? value : numeric;
+  }
+  if (dataType.includes("string") || dataType.includes("text")) {
+    return typeof value === "string" ? value : String(value);
+  }
+  return value;
+}
+
+function buildPrimeCustomFields(params: {
+  sourceContract: UnknownRecord;
+  sourceProject: UnknownRecord;
+  sourcePrimeIndex: Map<string, UnknownRecord>;
+  sourceProjectIndex: Map<string, UnknownRecord>;
+  targetPrimeIndex: Map<string, UnknownRecord>;
+}) {
+  const labels = [
+    "T&M Agreed Hourly Rate",
+    "Payment Terms (Net days)",
+    "Lost By %",
+    "Reason for Loss",
+  ];
+  const customFields: UnknownRecord = {};
+  const mappings: UnknownRecord[] = [];
+
+  for (const label of labels) {
+    const key = normalizeLabel(label);
+    const sourcePrimeField = params.sourcePrimeIndex.get(key);
+    const sourceProjectField = params.sourceProjectIndex.get(key);
+    const targetField = params.targetPrimeIndex.get(key);
+    if (!targetField) {
+      mappings.push({ label, mapped: false, issue: "missing_target_prime_custom_field" });
+      continue;
+    }
+    const rawValue =
+      customFieldValue(params.sourceContract.custom_fields, sourcePrimeField) ??
+      customFieldValue(params.sourceProject.custom_fields, sourceProjectField);
+    if (rawValue === undefined) {
+      mappings.push({ label, mapped: false, targetField: targetField.name, issue: "missing_source_value" });
+      continue;
+    }
+    const value = normalizeCustomFieldValue(rawValue, targetField);
+    if (value === null || value === "") {
+      mappings.push({ label, mapped: false, targetField: targetField.name, issue: "blank_source_value" });
+      continue;
+    }
+    customFields[readStr(targetField.name)] = {
+      data_type: readStr(targetField.data_type),
+      value,
+    };
+    mappings.push({
+      label,
+      mapped: true,
+      targetField: targetField.name,
+      sourceField: sourcePrimeField?.name ?? sourceProjectField?.name ?? null,
+      value,
+    });
+  }
+
+  return { customFields, mappings };
 }
 
 function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] {
@@ -911,6 +1060,7 @@ function buildPrimeContractPayload(params: {
   targetContractorIdOverride: string;
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
+  customFields?: UnknownRecord;
 }) {
   const payload = stripPrimeContractPayload(params.source);
   const contractor = isRecord(params.source.contractor) ? params.source.contractor : {};
@@ -950,6 +1100,9 @@ function buildPrimeContractPayload(params: {
   else delete payload.contractor_id;
   if (ownerClientId !== undefined) payload.vendor_id = ownerClientId;
   else delete payload.vendor_id;
+  if (params.customFields && Object.keys(params.customFields).length > 0) {
+    payload.custom_fields = params.customFields;
+  }
 
   const sourceContractId = readNum(params.source.id);
   if (sourceContractId !== undefined) {
@@ -1243,6 +1396,19 @@ export async function POST(request: Request) {
       return requestedPrimeContractIds.has(readStr(contract.id));
     });
 
+    const sourceProject = await fetchProject({
+      accessToken,
+      companyId: sourceCompanyId,
+      projectId: sourceProjectId,
+    }).catch(() => ({} as UnknownRecord));
+    const [sourceFieldSets, targetFieldSets] = await Promise.all([
+      fetchProjectConfigurableFieldSets({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId }).catch(() => [] as UnknownRecord[]),
+      fetchProjectConfigurableFieldSets({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }).catch(() => [] as UnknownRecord[]),
+    ]);
+    const sourcePrimeCustomFieldIndex = buildCustomFieldLabelIndex(sourceFieldSets, "PrimeContract");
+    const sourceProjectCustomFieldIndex = buildCustomFieldLabelIndex(sourceFieldSets, "Project");
+    const targetPrimeCustomFieldIndex = buildCustomFieldLabelIndex(targetFieldSets, "PrimeContract");
+
     const plan: UnknownRecord[] = [];
     const missingMappings: UnknownRecord[] = [];
     let sourceLineItems = 0;
@@ -1283,6 +1449,13 @@ export async function POST(request: Request) {
       const contractId = readStr(contract.id);
       const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       const contractIssues: UnknownRecord[] = [];
+      const customFieldMapping = buildPrimeCustomFields({
+        sourceContract: contract,
+        sourceProject,
+        sourcePrimeIndex: sourcePrimeCustomFieldIndex,
+        sourceProjectIndex: sourceProjectCustomFieldIndex,
+        targetPrimeIndex: targetPrimeCustomFieldIndex,
+      });
       const contractPayload = buildPrimeContractPayload({
         source: contract,
         targetStatus,
@@ -1292,6 +1465,7 @@ export async function POST(request: Request) {
         targetContractorIdOverride,
         requireMappedIds,
         allowUnmappedIds,
+        customFields: customFieldMapping.customFields,
       });
       const lineItemPlans = lineFetch.records.map((lineItem) => {
         const lineIssues: UnknownRecord[] = [];
@@ -1320,6 +1494,7 @@ export async function POST(request: Request) {
         status: readStr(contract.status),
         lineItemCount: lineFetch.records.length,
         contractPayload,
+        customFieldMappings: customFieldMapping.mappings,
         lineItems: lineItemPlans,
         fetchWarnings: lineFetch.errors.slice(0, 6),
         issues: contractIssues,

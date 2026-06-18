@@ -517,6 +517,7 @@ function ProcoreContent() {
   const [dailyCloneStartDate, setDailyCloneStartDate] = useState("");
   const [dailyCloneEndDate, setDailyCloneEndDate] = useState("");
   const [dailyCloneDefaultTimeTypeId, setDailyCloneDefaultTimeTypeId] = useState("");
+  const [dailyCloneCreateOffset, setDailyCloneCreateOffset] = useState("0");
   const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
   const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
   const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);
@@ -2510,6 +2511,7 @@ function ProcoreContent() {
           includeProductivity: dailyCloneIncludeProductivity,
           includeTimecards: dailyCloneIncludeTimecards,
           defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
+          createOffset: dailyCloneCreateOffset.trim() || undefined,
           timecardTimeTypeMap,
           partyMap,
           dryRun,
@@ -6995,6 +6997,18 @@ function ProcoreContent() {
                     value={dailyCloneDefaultTimeTypeId ?? ""}
                     onChange={(e) => setDailyCloneDefaultTimeTypeId(e.target.value)}
                     placeholder="optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={dailyCloneCreateOffset ?? ""}
+                    onChange={(e) => setDailyCloneCreateOffset(e.target.value)}
+                    placeholder="0"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>

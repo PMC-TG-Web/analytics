@@ -19,6 +19,7 @@ type ProductivityTargetLineItem = {
 
 type TargetLookups = {
   productivityLineItems: ProductivityTargetLineItem[];
+  existingTimecardKeys: Set<string>;
   timeTypes: UnknownRecord[];
   peopleById: Map<string, UnknownRecord>;
   peopleByName: Map<string, UnknownRecord>;
@@ -357,7 +358,34 @@ function resolveTargetPersonId(lookups: TargetLookups, value: unknown): number |
     lookups.peopleById.get(raw) ||
     lookups.peopleByContactId.get(raw) ||
     lookups.peopleByUserId.get(raw);
-  return getTargetPartyId(person) ?? readNum(value);
+  return getTargetPartyId(person);
+}
+
+function timecardPayloadKey(payload: UnknownRecord) {
+  const hours = readNum(payload.hours);
+  return [
+    normalizeDate(payload.date),
+    readStr(payload.party_id),
+    readStr(payload.timecard_time_type_id),
+    readStr(payload.cost_code_id),
+    readStr(payload.time_in),
+    readStr(payload.time_out),
+    hours === undefined ? "" : String(hours),
+    typeof payload.billable === "boolean" ? String(payload.billable) : "",
+  ].join("|");
+}
+
+function timecardEntryKey(entry: UnknownRecord) {
+  return timecardPayloadKey({
+    date: entry.date,
+    party_id: entry.party_id || firstRecord(entry.party)?.id,
+    timecard_time_type_id: entry.timecard_time_type_id || firstRecord(entry.timecard_time_type)?.id,
+    cost_code_id: entry.cost_code_id || firstRecord(entry.cost_code)?.id,
+    time_in: entry.time_in,
+    time_out: entry.time_out,
+    hours: entry.hours,
+    billable: entry.billable,
+  });
 }
 
 function productivityCandidateTargets(params: {
@@ -598,8 +626,15 @@ async function fetchTargetLookups(params: {
   companyId: string;
   projectId: string;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, users, people, timeTypes, costCodes] = await Promise.all([
+  const [productivityLineItems, existingTimecards, users, people, timeTypes, costCodes] = await Promise.all([
     fetchTargetProductivityLineItems(params),
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      maxPages: 25,
+      pathForPage: (page) =>
+        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?company_id=${encodeURIComponent(params.companyId)}&page=${page}&per_page=100`,
+    }).catch(() => []),
     procoreFetch({
       accessToken: params.accessToken,
       companyId: params.companyId,
@@ -661,8 +696,11 @@ async function fetchTargetLookups(params: {
     if (name && !costCodesByName.has(name)) costCodesByName.set(name, costCode);
   }
 
+  const existingTimecardKeys = new Set(existingTimecards.map(timecardEntryKey).filter(Boolean));
+
   return {
     productivityLineItems,
+    existingTimecardKeys,
     timeTypes,
     peopleById,
     peopleByName,
@@ -845,8 +883,8 @@ function mapTimecardEntry(
     readNum(partyMap[party.login]) ??
     readNum(partyMap[normalizeKey(party.login)]);
   const mappedPartyId = resolveTargetPersonId(lookups, mappedPartyValue);
+  const targetPerson = lookups.peopleByName.get(normalizeKey(party.name));
   const targetUser =
-    lookups.peopleByName.get(normalizeKey(party.name)) ||
     lookups.usersByLogin.get(normalizeKey(party.login)) ||
     lookups.usersByName.get(normalizeKey(party.name));
   const targetTimeType = lookups.timeTypesByName.get(normalizeKey(timeType.name));
@@ -867,11 +905,12 @@ function mapTimecardEntry(
     lunch_time: readNum(entry.lunch_time),
     time_in: readStr(entry.time_in),
     time_out: readStr(entry.time_out),
-    party_id: mappedPartyId ?? getTargetPartyId(targetUser),
+    party_id: mappedPartyId ?? getTargetPartyId(targetPerson),
     timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined || payload[key] === "" ? delete payload[key] : undefined);
+  const existingTargetTimecard = Boolean(payload.party_id && lookups.existingTimecardKeys.has(timecardPayloadKey(payload)));
 
   const issues = [
     payload.party_id ? "" : "missing_target_party",
@@ -882,13 +921,15 @@ function mapTimecardEntry(
   return {
     sourceId: readStr(entry.id),
     sourceParty: party,
-    targetPartyFallbackUsed: !targetUser && mappedPartyId !== undefined,
-    targetParty: targetUser || (mappedPartyId !== undefined ? { id: mappedPartyId, mapped: true } : null),
+    targetPartyFallbackUsed: !targetPerson && mappedPartyId !== undefined,
+    targetParty: targetPerson || (mappedPartyId !== undefined ? { id: mappedPartyId, mapped: true } : null),
+    targetUser: targetUser || null,
     sourceTimeType: timeType,
     targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),
     targetTimeType: targetTimeType || (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || onlyTargetTimeType || null,
     sourceCostCode: costCode,
     mapped: issues.length === 0,
+    existingTargetTimecard,
     payload,
     issues,
   };
@@ -1039,6 +1080,7 @@ export async function POST(request: Request) {
     const includeProductivity = body.includeProductivity !== false;
     const includeTimecards = body.includeTimecards !== false;
     const maxPages = Math.max(1, Math.min(100, Math.trunc(readNum(body.maxPages) || 10)));
+    const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
     const createLimit = Math.max(1, Math.min(500, Math.trunc(readNum(body.createLimit) || 100)));
     const defaultTimecardTimeTypeId = readNum(body.defaultTimecardTimeTypeId);
     const timecardTimeTypeMap = isRecord(body.timecardTimeTypeMap) ? body.timecardTimeTypeMap : {};
@@ -1070,8 +1112,8 @@ export async function POST(request: Request) {
     ];
 
     const createResults: UnknownRecord[] = [];
-    if (!dryRun && missingMappings.length === 0) {
-      for (const row of productivity.filter((item) => item.mapped).slice(0, createLimit)) {
+    if (!dryRun) {
+      for (const row of productivity.filter((item) => item.mapped).slice(createOffset, createOffset + createLimit)) {
         try {
           const result = await retryOnceOnRateLimit(() =>
             createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
@@ -1083,7 +1125,7 @@ export async function POST(request: Request) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      for (const row of timecards.filter((item) => item.mapped).slice(0, createLimit)) {
+      for (const row of timecards.filter((item) => item.mapped && !item.existingTargetTimecard).slice(createOffset, createOffset + createLimit)) {
         try {
           const result = await retryOnceOnRateLimit(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
@@ -1115,7 +1157,12 @@ export async function POST(request: Request) {
         targetProductivityLineItems: targetLookups.productivityLineItems.length,
         mappedProductivity: productivity.filter((row) => row.mapped).length,
         mappedTimecards: timecards.filter((row) => row.mapped).length,
+        creatableProductivity: productivity.filter((row) => row.mapped).length,
+        creatableTimecards: timecards.filter((row) => row.mapped && !row.existingTargetTimecard).length,
+        skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
         missingMappings: missingMappings.length,
+        createOffset,
+        createLimit,
         created: createResults.filter((row) => row.ok === true).length,
         failed: errors.length,
       },

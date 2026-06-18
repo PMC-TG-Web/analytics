@@ -337,6 +337,7 @@ function ProcoreContent() {
   const [cloneTargetProjectId, setCloneTargetProjectId] = useState("");
   const [cloneTargetBidBoardProjectId, setCloneTargetBidBoardProjectId] = useState("");
   const [cloneTargetProposalName, setCloneTargetProposalName] = useState("Cloned Estimate");
+  const [cloneTargetProposalType, setCloneTargetProposalType] = useState("SOURCE");
   const [cloneCrosswalkPath, setCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [cloneCrosswalkWorkbookBase64, setCloneCrosswalkWorkbookBase64] = useState("");
   const [cloneCrosswalkWorkbookName, setCloneCrosswalkWorkbookName] = useState("");
@@ -4876,6 +4877,7 @@ function ProcoreContent() {
     const targetProjectId = cloneTargetProjectId.trim();
     const targetBidBoardProjectId = cloneTargetBidBoardProjectId.trim();
     const targetProposalName = cloneTargetProposalName.trim();
+    const targetProposalType = cloneTargetProposalType.trim() || "SOURCE";
     const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
 
     if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
@@ -4904,6 +4906,7 @@ function ProcoreContent() {
           targetProjectId: targetProjectId || undefined,
           targetBidBoardProjectId,
           targetProposalName,
+          targetProposalType,
           crosswalkPath,
           crosswalkWorkbookBase64: cloneCrosswalkWorkbookBase64 || undefined,
           mappingOverrides: cloneMappingOverrides
@@ -8707,9 +8710,9 @@ function ProcoreContent() {
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
-              <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Estimate Proposal</h2>
+              <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Estimate or Change Order</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Clone a source proposal into a target bid board project using <code className="bg-gray-100 px-1 rounded">Codes to use.xlsx</code> to map old cost item IDs to new IDs.
+                Clone a source estimate or estimating change order into a target bid board project using <code className="bg-gray-100 px-1 rounded">Codes to use.xlsx</code> to map old cost item IDs to new IDs.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
@@ -8789,6 +8792,18 @@ function ProcoreContent() {
                     onChange={(e) => setCloneTargetProposalName(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">New Proposal Type</label>
+                  <select
+                    value={cloneTargetProposalType}
+                    onChange={(e) => setCloneTargetProposalType(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  >
+                    <option value="SOURCE">Use Source Type</option>
+                    <option value="ESTIMATE">Estimate</option>
+                    <option value="CHANGE_ORDER">Change Order</option>
+                  </select>
                 </div>
               </div>
 

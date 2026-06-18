@@ -376,10 +376,13 @@ function lineItemGroupId(lineItem: UnknownRecord): string {
   return readStr(lineItem.group_id || lineItem.groupId || lineItem.line_item_group_id);
 }
 
-function buildProposalPayload(sourceProposal: UnknownRecord, targetProposalName: string): UnknownRecord {
+function buildProposalPayload(sourceProposal: UnknownRecord, targetProposalName: string, targetProposalType: string): UnknownRecord {
   const description = readStr(sourceProposal.description);
+  const sourceType = readStr(sourceProposal.type || sourceProposal.proposal_type || sourceProposal.estimate_type);
+  const type = targetProposalType && targetProposalType !== "SOURCE" ? targetProposalType : sourceType;
   return {
     name: targetProposalName || `${readStr(sourceProposal.name || sourceProposal.title) || "Cloned Proposal"} (Cloned)`,
+    ...(type ? { type } : {}),
     ...(description ? { description } : {}),
   };
 }
@@ -543,6 +546,7 @@ export async function POST(request: Request) {
     const targetBidBoardProjectId = readStr(body.targetBidBoardProjectId || body.targetBidBoardId);
     const targetProjectId = readStr(body.targetProjectId || body.procoreProjectId);
     const targetProposalName = readStr(body.targetProposalName || body.newProposalName);
+    const targetProposalType = readStr(body.targetProposalType || body.proposalType || "SOURCE").toUpperCase();
     const dryRun = body.dryRun !== false;
     const allowPartial = body.allowPartial === true;
     const targetProposalIdFromBody = readStr(body.targetProposalId || body.createdProposalId);
@@ -672,7 +676,7 @@ export async function POST(request: Request) {
     });
 
     const readyForLiveClone = missingMappings.length === 0;
-    const proposalPayload = buildProposalPayload(sourceProposal, targetProposalName);
+    const proposalPayload = buildProposalPayload(sourceProposal, targetProposalName, targetProposalType);
 
     if (dryRun) {
       return NextResponse.json({
@@ -686,6 +690,7 @@ export async function POST(request: Request) {
           bidBoardProjectId: sourceBidBoardProjectId || null,
           proposalId: sourceProposalId,
           proposalName: readStr(sourceProposal.name || sourceProposal.title),
+          proposalType: readStr(sourceProposal.type || sourceProposal.proposal_type || sourceProposal.estimate_type) || null,
         },
         target: {
           companyId: targetCompanyId,

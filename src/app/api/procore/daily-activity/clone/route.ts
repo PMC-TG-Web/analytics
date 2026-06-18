@@ -700,7 +700,7 @@ async function fetchTargetLookups(params: {
   companyId: string;
   projectId: string;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, existingTimecards, users, people, timeTypes, workClassifications, costCodes] = await Promise.all([
+  const [productivityLineItems, existingTimecards, users, companyUsers, people, timeTypes, workClassifications, costCodes] = await Promise.all([
     fetchTargetProductivityLineItems(params),
     fetchPaged({
       accessToken: params.accessToken,
@@ -713,6 +713,11 @@ async function fetchTargetLookups(params: {
       accessToken: params.accessToken,
       companyId: params.companyId,
       path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
+    }).then(unwrapArray).catch(() => []),
+    procoreFetch({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `/rest/v1.0/companies/${encodeURIComponent(params.companyId)}/users?page=1&per_page=1000`,
     }).then(unwrapArray).catch(() => []),
     procoreFetch({
       accessToken: params.accessToken,
@@ -734,9 +739,9 @@ async function fetchTargetLookups(params: {
 
   const usersByName = new Map<string, UnknownRecord>();
   const usersByLogin = new Map<string, UnknownRecord>();
-  for (const user of users) {
+  for (const user of [...users, ...companyUsers]) {
     const name = normalizeKey(user.name);
-    const login = normalizeKey(user.login);
+    const login = normalizeKey(user.login || user.email_address || user.email);
     if (name && !usersByName.has(name)) usersByName.set(name, user);
     if (login && !usersByLogin.has(login)) usersByLogin.set(login, user);
   }
@@ -1010,6 +1015,8 @@ function mapTimecardEntry(
     lookups.workClassificationsByCompactName.get(compactKey(classification.name)) ||
     lookups.workClassificationsByAbbreviation.get(normalizeKey(classification.abbreviation));
   const targetClassificationId = getNestedId(targetClassification) ?? mappedClassificationId;
+  const targetUserId = getTargetPartyId(targetUser);
+  const partyId = mappedPartyId ?? mappedPartyValue ?? getTargetPartyId(targetPerson) ?? targetUserId;
 
   const payload: UnknownRecord = {
     date: normalizeDate(entry.date || entry.log_date),
@@ -1019,7 +1026,7 @@ function mapTimecardEntry(
     lunch_time: readNum(entry.lunch_time),
     time_in: readStr(entry.time_in),
     time_out: readStr(entry.time_out),
-    party_id: mappedPartyId ?? getTargetPartyId(targetPerson),
+    party_id: partyId,
     timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
     work_classification_id: targetClassificationId,
@@ -1037,8 +1044,8 @@ function mapTimecardEntry(
   return {
     sourceId: readStr(entry.id),
     sourceParty: party,
-    targetPartyFallbackUsed: !targetPerson && mappedPartyId !== undefined,
-    targetParty: targetPerson || (mappedPartyId !== undefined ? { id: mappedPartyId, mapped: true } : null),
+    targetPartyFallbackUsed: !targetPerson && partyId !== undefined,
+    targetParty: targetPerson || (partyId !== undefined ? { id: partyId, mapped: true, source: mappedPartyValue !== undefined ? "map" : "company_user" } : null),
     targetUser: targetUser || null,
     sourceTimeType: timeType,
     targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),

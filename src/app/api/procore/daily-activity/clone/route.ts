@@ -1183,15 +1183,33 @@ async function createTimecardEntry(params: {
   });
 }
 
-async function retryOnceOnRateLimit<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("(429)")) throw error;
-    await new Promise((resolve) => setTimeout(resolve, 15000));
-    return operation();
+function retryDelayMsFromError(message: string) {
+  const retryAfterMatch = message.match(/"retry_after"\s*:\s*(\d+)/i);
+  const retryAfterSeconds = retryAfterMatch ? Number.parseInt(retryAfterMatch[1], 10) : 0;
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1000, 20000);
   }
+  return 15000;
+}
+
+function isRetryableProcoreCreateError(message: string) {
+  return /\((429|502|503|504)\)/.test(message) || /"retryable"\s*:\s*true/i.test(message);
+}
+
+async function retryProcoreCreate<T>(operation: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt >= maxAttempts || !isRetryableProcoreCreateError(message)) throw error;
+      const delayMs = retryDelayMsFromError(message);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 export async function POST(request: Request) {
@@ -1256,7 +1274,7 @@ export async function POST(request: Request) {
     if (!dryRun) {
       for (const row of productivity.filter((item) => item.mapped).slice(createOffset, createOffset + createLimit)) {
         try {
-          const result = await retryOnceOnRateLimit(() =>
+          const result = await retryProcoreCreate(() =>
             createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
           createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: true, result });
@@ -1268,7 +1286,7 @@ export async function POST(request: Request) {
 
       for (const row of timecards.filter((item) => item.mapped && !item.existingTargetTimecard).slice(createOffset, createOffset + createLimit)) {
         try {
-          const result = await retryOnceOnRateLimit(() =>
+          const result = await retryProcoreCreate(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: true, result });

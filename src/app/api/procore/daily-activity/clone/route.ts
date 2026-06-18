@@ -28,6 +28,9 @@ type TargetLookups = {
   usersByName: Map<string, UnknownRecord>;
   usersByLogin: Map<string, UnknownRecord>;
   timeTypesByName: Map<string, UnknownRecord>;
+  workClassifications: UnknownRecord[];
+  workClassificationsById: Map<string, UnknownRecord>;
+  workClassificationsByName: Map<string, UnknownRecord>;
   costCodesByFullCode: Map<string, UnknownRecord>;
   costCodesByName: Map<string, UnknownRecord>;
 };
@@ -298,6 +301,40 @@ function sourceCostCodeFromEntry(entry: UnknownRecord) {
   };
 }
 
+function sourceClassificationFromEntry(entry: UnknownRecord) {
+  const nested = firstRecord(
+    entry.work_classification,
+    entry.workClassification,
+    entry.classification,
+    entry.classification_type,
+    entry.classificationType
+  );
+  return {
+    id: readStr(
+      nested?.id ||
+        entry.work_classification_id ||
+        entry.workClassificationId ||
+        entry.classification_id ||
+        entry.classificationId ||
+        entry.classification_type_id ||
+        entry.classificationTypeId
+    ),
+    name: readStr(
+      nested?.name ||
+        nested?.classification ||
+        nested?.classification_type ||
+        nested?.label ||
+        entry.work_classification_name ||
+        entry.workClassificationName ||
+        entry.classification_name ||
+        entry.classificationName ||
+        entry.classification ||
+        entry.classification_type ||
+        entry.classificationType
+    ),
+  };
+}
+
 function lineNumberFromDescription(value: unknown): number | null {
   const text = readStr(value);
   const match = text.match(/#\s*(\d+)/);
@@ -520,6 +557,29 @@ async function fetchSourceTimecards(params: {
   });
 }
 
+async function fetchWorkClassifications(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  const paths = [
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_classifications?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
+    `/rest/v1.0/companies/${encodeURIComponent(params.companyId)}/work_classifications?page=1&per_page=1000`,
+    `/rest/v1.0/work_classifications?company_id=${encodeURIComponent(params.companyId)}&project_id=${encodeURIComponent(params.projectId)}&page=1&per_page=1000`,
+    `/rest/v1.0/work_classifications?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
+  ];
+
+  for (const path of paths) {
+    const rows = await procoreFetch({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path,
+    }).then(unwrapArray).catch(() => []);
+    if (rows.length > 0) return rows;
+  }
+  return [];
+}
+
 function isApprovedContract(contract: UnknownRecord) {
   const approved = contract.approved;
   if (typeof approved === "boolean") return approved;
@@ -626,7 +686,7 @@ async function fetchTargetLookups(params: {
   companyId: string;
   projectId: string;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, existingTimecards, users, people, timeTypes, costCodes] = await Promise.all([
+  const [productivityLineItems, existingTimecards, users, people, timeTypes, workClassifications, costCodes] = await Promise.all([
     fetchTargetProductivityLineItems(params),
     fetchPaged({
       accessToken: params.accessToken,
@@ -650,6 +710,7 @@ async function fetchTargetLookups(params: {
       companyId: params.companyId,
       path: `/rest/v1.0/timecard_time_types?project_id=${encodeURIComponent(params.projectId)}&page=1&per_page=1000`,
     }).then(unwrapArray).catch(() => []),
+    fetchWorkClassifications(params),
     procoreFetch({
       accessToken: params.accessToken,
       companyId: params.companyId,
@@ -687,6 +748,21 @@ async function fetchTargetLookups(params: {
     if (name && !timeTypesByName.has(name)) timeTypesByName.set(name, timeType);
   }
 
+  const workClassificationsById = new Map<string, UnknownRecord>();
+  const workClassificationsByName = new Map<string, UnknownRecord>();
+  for (const classification of workClassifications) {
+    const id = readStr(classification.id);
+    const name = normalizeKey(
+      classification.name ||
+        classification.classification ||
+        classification.classification_type ||
+        classification.work_classification ||
+        classification.label
+    );
+    if (id) workClassificationsById.set(id, classification);
+    if (name && !workClassificationsByName.has(name)) workClassificationsByName.set(name, classification);
+  }
+
   const costCodesByFullCode = new Map<string, UnknownRecord>();
   const costCodesByName = new Map<string, UnknownRecord>();
   for (const costCode of costCodes) {
@@ -709,6 +785,9 @@ async function fetchTargetLookups(params: {
     usersByName,
     usersByLogin,
     timeTypesByName,
+    workClassifications,
+    workClassificationsById,
+    workClassificationsByName,
     costCodesByFullCode,
     costCodesByName,
   };
@@ -870,11 +949,13 @@ function mapTimecardEntry(
   lookups: TargetLookups,
   defaultTimecardTimeTypeId?: number,
   timecardTimeTypeMap: Record<string, unknown> = {},
-  partyMap: Record<string, unknown> = {}
+  partyMap: Record<string, unknown> = {},
+  timecardClassificationMap: Record<string, unknown> = {}
 ) {
   const party = sourcePartyFromEntry(entry);
   const timeType = sourceTimeTypeFromEntry(entry);
   const costCode = sourceCostCodeFromEntry(entry);
+  const classification = sourceClassificationFromEntry(entry);
 
   const mappedPartyValue =
     readNum(partyMap[party.id]) ??
@@ -896,6 +977,15 @@ function mapTimecardEntry(
   const targetCostCode =
     lookups.costCodesByFullCode.get(readStr(costCode.fullCode)) ||
     lookups.costCodesByName.get(normalizeKey(costCode.name));
+  const mappedClassificationId =
+    readNum(timecardClassificationMap[classification.id]) ??
+    readNum(timecardClassificationMap[classification.name]) ??
+    readNum(timecardClassificationMap[normalizeKey(classification.name)]);
+  const targetClassification =
+    (mappedClassificationId !== undefined ? lookups.workClassificationsById.get(String(mappedClassificationId)) : undefined) ||
+    (classification.id ? lookups.workClassificationsById.get(classification.id) : undefined) ||
+    lookups.workClassificationsByName.get(normalizeKey(classification.name));
+  const targetClassificationId = getNestedId(targetClassification) ?? mappedClassificationId;
 
   const payload: UnknownRecord = {
     date: normalizeDate(entry.date || entry.log_date),
@@ -908,6 +998,7 @@ function mapTimecardEntry(
     party_id: mappedPartyId ?? getTargetPartyId(targetPerson),
     timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
+    work_classification_id: targetClassificationId,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined || payload[key] === "" ? delete payload[key] : undefined);
   const existingTargetTimecard = Boolean(payload.party_id && lookups.existingTimecardKeys.has(timecardPayloadKey(payload)));
@@ -916,6 +1007,7 @@ function mapTimecardEntry(
     payload.party_id ? "" : "missing_target_party",
     payload.timecard_time_type_id ? "" : "missing_target_time_type",
     payload.cost_code_id ? "" : "missing_target_cost_code",
+    classification.id || classification.name ? (payload.work_classification_id ? "" : "missing_target_classification") : "",
   ].filter(Boolean);
 
   return {
@@ -928,6 +1020,9 @@ function mapTimecardEntry(
     targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),
     targetTimeType: targetTimeType || (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || onlyTargetTimeType || null,
     sourceCostCode: costCode,
+    sourceClassification: classification,
+    targetClassificationFallbackUsed: !targetClassification && mappedClassificationId !== undefined,
+    targetClassification: targetClassification || (mappedClassificationId !== undefined ? { id: mappedClassificationId, mapped: true } : null),
     mapped: issues.length === 0,
     existingTargetTimecard,
     payload,
@@ -987,6 +1082,7 @@ function productivityDiagnostics(productivity: ReturnType<typeof mapProductivity
 function timecardDiagnostics(timecards: ReturnType<typeof mapTimecardEntry>[], lookups: TargetLookups) {
   const missingTimeTypes = new Map<string, { id: string; name: string; rows: number }>();
   const missingParties = new Map<string, { id: string; name: string; login: string; rows: number }>();
+  const missingClassifications = new Map<string, { id: string; name: string; rows: number }>();
   for (const row of timecards) {
     if (row.issues.includes("missing_target_time_type")) {
       const key = `${row.sourceTimeType.id}||${row.sourceTimeType.name}`;
@@ -1000,17 +1096,35 @@ function timecardDiagnostics(timecards: ReturnType<typeof mapTimecardEntry>[], l
       existing.rows += 1;
       missingParties.set(key, existing);
     }
+    if (row.issues.includes("missing_target_classification")) {
+      const key = `${row.sourceClassification.id}||${row.sourceClassification.name}`;
+      const existing = missingClassifications.get(key) || { id: row.sourceClassification.id, name: row.sourceClassification.name, rows: 0 };
+      existing.rows += 1;
+      missingClassifications.set(key, existing);
+    }
   }
 
   return {
     missingSourceTimeTypes: Array.from(missingTimeTypes.values()),
     missingSourceParties: Array.from(missingParties.values()),
+    missingSourceClassifications: Array.from(missingClassifications.values()),
     availableTargetTimeTypes: lookups.timeTypes.map((timeType) => ({
       id: readStr(timeType.id),
       name: readStr(timeType.name || timeType.time_type || timeType.abbreviated_time_type),
       timeType: readStr(timeType.time_type),
       abbreviatedTimeType: readStr(timeType.abbreviated_time_type),
       keys: Object.keys(timeType).slice(0, 20),
+    })),
+    availableTargetClassifications: lookups.workClassifications.map((classification) => ({
+      id: readStr(classification.id),
+      name: readStr(
+        classification.name ||
+          classification.classification ||
+          classification.classification_type ||
+          classification.work_classification ||
+          classification.label
+      ),
+      keys: Object.keys(classification).slice(0, 20),
     })),
   };
 }
@@ -1085,6 +1199,7 @@ export async function POST(request: Request) {
     const defaultTimecardTimeTypeId = readNum(body.defaultTimecardTimeTypeId);
     const timecardTimeTypeMap = isRecord(body.timecardTimeTypeMap) ? body.timecardTimeTypeMap : {};
     const partyMap = isRecord(body.partyMap) ? body.partyMap : {};
+    const timecardClassificationMap = isRecord(body.timecardClassificationMap) ? body.timecardClassificationMap : {};
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId || !startDate || !endDate) {
       return NextResponse.json(
@@ -1104,7 +1219,9 @@ export async function POST(request: Request) {
     ]);
 
     const productivity = sourceProductivity.map((log) => mapProductivityLog(log, targetLookups));
-    const timecards = sourceTimecards.map((entry) => mapTimecardEntry(entry, targetLookups, defaultTimecardTimeTypeId, timecardTimeTypeMap, partyMap));
+    const timecards = sourceTimecards.map((entry) =>
+      mapTimecardEntry(entry, targetLookups, defaultTimecardTimeTypeId, timecardTimeTypeMap, partyMap, timecardClassificationMap)
+    );
 
     const missingMappings = [
       ...productivity.filter((row) => !row.mapped).map((row) => ({ type: "productivity_line_item", ...row })),
@@ -1150,6 +1267,7 @@ export async function POST(request: Request) {
         defaultTimecardTimeTypeId: defaultTimecardTimeTypeId ?? null,
         timecardTimeTypeMap,
         partyMap,
+        timecardClassificationMap,
       },
       counts: {
         sourceProductivity: sourceProductivity.length,
@@ -1191,8 +1309,10 @@ export async function POST(request: Request) {
           party: sourcePartyFromEntry(entry),
           timeType: sourceTimeTypeFromEntry(entry),
           costCode: sourceCostCodeFromEntry(entry),
+          classification: sourceClassificationFromEntry(entry),
         })),
         targetTimeTypes: targetLookups.timeTypes,
+        targetClassifications: targetLookups.workClassifications,
       },
       nextStep: dryRun
         ? "Review missingMappings. If readyForLiveClone is true, rerun with dryRun=false."

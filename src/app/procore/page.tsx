@@ -548,6 +548,7 @@ function ProcoreContent() {
   const [dailyCloneCreateOffset, setDailyCloneCreateOffset] = useState("0");
   const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
   const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
+  const [dailyCloneClassificationMapText, setDailyCloneClassificationMapText] = useState("{}");
   const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);
   const [dailyCloneIncludeTimecards, setDailyCloneIncludeTimecards] = useState(true);
   const [dailyCloneBusy, setDailyCloneBusy] = useState(false);
@@ -2513,6 +2514,7 @@ function ProcoreContent() {
     try {
       let timecardTimeTypeMap: Record<string, string> = {};
       let partyMap: Record<string, string> = {};
+      let timecardClassificationMap: Record<string, string> = {};
       try {
         const parsed = JSON.parse(dailyCloneTimeTypeMapText || "{}");
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -2524,6 +2526,11 @@ function ProcoreContent() {
           throw new Error("Party/user map must be a JSON object.");
         }
         partyMap = parsedPartyMap;
+        const parsedClassificationMap = JSON.parse(dailyCloneClassificationMapText || "{}");
+        if (!parsedClassificationMap || typeof parsedClassificationMap !== "object" || Array.isArray(parsedClassificationMap)) {
+          throw new Error("Classification map must be a JSON object.");
+        }
+        timecardClassificationMap = parsedClassificationMap;
       } catch (error) {
         setDailyCloneError(error instanceof Error ? error.message : String(error));
         setDailyCloneBusy(false);
@@ -2546,6 +2553,7 @@ function ProcoreContent() {
           createOffset: dailyCloneCreateOffset.trim() || undefined,
           timecardTimeTypeMap,
           partyMap,
+          timecardClassificationMap,
           dryRun,
           maxPages: 25,
           createLimit: 100,
@@ -7264,6 +7272,20 @@ function ProcoreContent() {
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   Map old source party IDs or names to target Procore user IDs, for example {"{"}"Lee Zook":"13531193"{"}"}.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Classification ID Map</label>
+                <textarea
+                  value={dailyCloneClassificationMapText}
+                  onChange={(e) => setDailyCloneClassificationMapText(e.target.value)}
+                  rows={4}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Map old source classification IDs or names to target work classification IDs. Auto-match by name is attempted first.
                 </p>
               </div>
 

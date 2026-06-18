@@ -525,6 +525,9 @@ function ProcoreContent() {
   const [dailyCloneBusy, setDailyCloneBusy] = useState(false);
   const [dailyCloneError, setDailyCloneError] = useState<string | null>(null);
   const [dailyCloneResult, setDailyCloneResult] = useState<any>(null);
+  const [dailyDeleteBusy, setDailyDeleteBusy] = useState(false);
+  const [dailyDeleteError, setDailyDeleteError] = useState<string | null>(null);
+  const [dailyDeleteResult, setDailyDeleteResult] = useState<any>(null);
   const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
   const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
   const [dailyCloneCommitmentsResult, setDailyCloneCommitmentsResult] = useState<any>(null);
@@ -2528,6 +2531,44 @@ function ProcoreContent() {
       setDailyCloneError(error instanceof Error ? error.message : String(error));
     } finally {
       setDailyCloneBusy(false);
+    }
+  };
+
+  const runDailyTimecardsProjectDelete = async (dryRun: boolean) => {
+    if (!dryRun) {
+      const confirmed = window.confirm(
+        "Delete the target project's timecards for this date range? This permanently removes the matching timecard entries."
+      );
+      if (!confirmed) return;
+    }
+
+    setDailyDeleteBusy(true);
+    setDailyDeleteError(null);
+    setDailyDeleteResult(null);
+
+    try {
+      const response = await fetch("/api/procore/timecards/project-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: dailyCloneTargetCompanyId.trim(),
+          projectId: dailyCloneTargetProjectId.trim(),
+          startDate: dailyCloneStartDate.trim(),
+          endDate: dailyCloneEndDate.trim() || dailyCloneStartDate.trim(),
+          dryRun,
+          maxPages: 25,
+          batchSize: 100,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setDailyDeleteResult({ status: response.status, ok: response.ok, result });
+      if (!response.ok || result?.success === false) {
+        setDailyDeleteError(result?.details || result?.error || `Project timecard delete failed (${response.status}).`);
+      }
+    } catch (error) {
+      setDailyDeleteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDailyDeleteBusy(false);
     }
   };
 
@@ -7081,6 +7122,20 @@ function ProcoreContent() {
                     Download JSON
                   </button>
                 )}
+                <button
+                  onClick={() => runDailyTimecardsProjectDelete(true)}
+                  disabled={dailyDeleteBusy}
+                  className="bg-white border border-amber-400 text-amber-800 hover:bg-amber-50 disabled:bg-gray-100 disabled:text-gray-400 font-semibold py-2 px-4 rounded text-sm"
+                >
+                  {dailyDeleteBusy ? "Checking..." : "Preview Target Timecards"}
+                </button>
+                <button
+                  onClick={() => runDailyTimecardsProjectDelete(false)}
+                  disabled={dailyDeleteBusy}
+                  className="bg-amber-700 hover:bg-amber-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {dailyDeleteBusy ? "Deleting..." : "Delete Target Timecards"}
+                </button>
                 {dailyCloneResult?.result?.diagnostics?.productivity?.missingSourceContracts?.length > 0 && (
                   <button
                     onClick={cloneMissingDailyCommitments}
@@ -7102,6 +7157,21 @@ function ProcoreContent() {
                 <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
                   {dailyCloneCommitmentsError}
                 </div>
+              )}
+
+              {dailyDeleteError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {dailyDeleteError}
+                </div>
+              )}
+
+              {dailyDeleteResult && (
+                <details className="mb-4" open>
+                  <summary className="cursor-pointer text-sm font-semibold text-amber-800">Target timecards delete result</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(dailyDeleteResult, null, 2)}
+                  </pre>
+                </details>
               )}
 
               {dailyCloneCommitmentsResult && (

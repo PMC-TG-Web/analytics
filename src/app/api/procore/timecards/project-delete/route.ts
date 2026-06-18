@@ -225,6 +225,21 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+async function withRateLimitRetry<T>(operation: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const status = isRecord(error) ? readNum(error.status) : undefined;
+      if (status !== 429 || attempt === maxAttempts) break;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 5000));
+    }
+  }
+  throw lastError;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -271,25 +286,49 @@ export async function POST(request: Request) {
 
     const deleteResults: UnknownRecord[] = [];
     if (!dryRun && ids.length > 0) {
-      for (const idsBatch of chunk(ids, batchSize)) {
-        try {
-          const result = await procoreFetch({
-            accessToken,
-            companyId,
-            path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/timesheets`,
-            method: "DELETE",
-            body: { ids: idsBatch },
-          });
-          deleteResults.push({ ok: true, ids: idsBatch, result });
-        } catch (error) {
-          deleteResults.push({
-            ok: false,
-            ids: idsBatch,
-            error: error instanceof Error ? error.message : String(error),
-            details: isRecord(error) ? error.payload : undefined,
-          });
+      if (explicitIds.length > 0) {
+        for (const id of ids) {
+          try {
+            const result = await withRateLimitRetry(() =>
+              procoreFetch({
+                accessToken,
+                companyId,
+                path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/timecard_entries/${encodeURIComponent(String(id))}?company_id=${encodeURIComponent(companyId)}`,
+                method: "DELETE",
+              })
+            );
+            deleteResults.push({ ok: true, id, result });
+          } catch (error) {
+            deleteResults.push({
+              ok: false,
+              id,
+              error: error instanceof Error ? error.message : String(error),
+              details: isRecord(error) ? error.payload : undefined,
+            });
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      } else {
+        for (const idsBatch of chunk(ids, batchSize)) {
+          try {
+            const result = await procoreFetch({
+              accessToken,
+              companyId,
+              path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/timesheets`,
+              method: "DELETE",
+              body: { ids: idsBatch },
+            });
+            deleteResults.push({ ok: true, ids: idsBatch, result });
+          } catch (error) {
+            deleteResults.push({
+              ok: false,
+              ids: idsBatch,
+              error: error instanceof Error ? error.message : String(error),
+              details: isRecord(error) ? error.payload : undefined,
+            });
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       }
     }
 
@@ -309,6 +348,8 @@ export async function POST(request: Request) {
         rawNestedTimesheetTimecards: timesheetTimecards.rawNestedTimecards,
         deletedBatches: deleteResults.filter((row) => row.ok === true).length,
         failedBatches: deleteResults.filter((row) => row.ok === false).length,
+        deletedEntries: deleteResults.filter((row) => row.ok === true && row.id !== undefined).length,
+        failedEntries: deleteResults.filter((row) => row.ok === false && row.id !== undefined).length,
       },
       ids,
       preview: timecards.slice(0, 25).map((row) => ({
@@ -324,7 +365,7 @@ export async function POST(request: Request) {
       deleteResults,
       nextStep: dryRun
         ? "Review ids/preview. Rerun with dryRun=false to delete these project timecard entries through the project timesheets endpoint."
-        : "Delete run completed. Review failedBatches/deleteResults.",
+        : "Delete run completed. Review failedBatches/failedEntries/deleteResults.",
     });
   } catch (error) {
     return NextResponse.json(

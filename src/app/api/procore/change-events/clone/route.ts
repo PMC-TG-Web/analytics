@@ -311,6 +311,34 @@ async function fetchChangeEventStatuses(params: {
   });
 }
 
+async function fetchChangeEventTypes(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.1/change_events/change_types?project_id=${encodeURIComponent(params.projectId)}`,
+    keys: ["change_types", "change_event_types"],
+    maxPages: 5,
+  });
+}
+
+async function fetchChangeReasons(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/change_order_change_reasons?project_id=${encodeURIComponent(params.projectId)}`,
+    keys: ["change_order_change_reasons", "reasons"],
+    maxPages: 5,
+  });
+}
+
 function statusKey(status: UnknownRecord) {
   return normalize(status.mapped_to_status || status.name);
 }
@@ -327,6 +355,25 @@ function resolveTargetStatus(sourceStatusValue: unknown, targetStatuses: Unknown
     targetStatuses.find((status) => statusKey(status) === "open") ||
     targetStatuses[0];
   return target ? { id: readNum(target.id) || readStr(target.id) } : { name: "Open", mapped_to_status: "open" };
+}
+
+function resolveTargetChangeType(sourceTypeValue: unknown, targetTypes: UnknownRecord[]) {
+  if (!isRecord(sourceTypeValue)) return undefined;
+  const sourceName = normalize(sourceTypeValue.name || sourceTypeValue.change_type);
+  if (!sourceName) return undefined;
+  const target =
+    targetTypes.find((type) => normalize(type.name || type.change_type) === sourceName) ||
+    targetTypes.find((type) => normalize(type.name || type.change_type) === "tbd") ||
+    targetTypes[0];
+  return target ? { id: readNum(target.id) || readStr(target.id) } : undefined;
+}
+
+function resolveTargetChangeReason(sourceReasonValue: unknown, targetReasons: UnknownRecord[]) {
+  if (!isRecord(sourceReasonValue)) return undefined;
+  const sourceName = normalize(sourceReasonValue.change_reason || sourceReasonValue.name);
+  if (!sourceName) return undefined;
+  const target = targetReasons.find((reason) => normalize(reason.change_reason || reason.name) === sourceName);
+  return target ? { id: readNum(target.id) || readStr(target.id) } : undefined;
 }
 
 function buildBudgetCodeIndexes(budgetLineItems: UnknownRecord[]) {
@@ -475,11 +522,16 @@ function resolveBudgetCode(params: {
 function buildChangeItemPayload(item: UnknownRecord, targetBudgetCodeId: string) {
   const costImpact = getEstimateImpact(nestedRecord(item, "cost_impact"));
   const revenueImpact = getEstimateImpact(nestedRecord(item, "revenue_impact"));
+  const sourceOfRevenueRom = readStr(nestedRecord(item, "revenue_impact").source_of_revenue_rom);
   return compactPayload({
     description: readStr(item.description),
     budget_code: targetBudgetCodeId ? { id: Number(targetBudgetCodeId) || targetBudgetCodeId } : undefined,
     cost_impact: costImpact ? { estimate: costImpact } : undefined,
-    revenue_impact: revenueImpact ? { estimate: revenueImpact } : undefined,
+    revenue_impact: revenueImpact
+      ? { estimate: revenueImpact, source_of_revenue_rom: sourceOfRevenueRom || undefined }
+      : sourceOfRevenueRom
+        ? { source_of_revenue_rom: sourceOfRevenueRom }
+        : undefined,
   });
 }
 
@@ -488,6 +540,8 @@ function buildChangeEventPayload(params: {
   changeItems: UnknownRecord[];
   preserveNumber: boolean;
   status: UnknownRecord;
+  changeType?: UnknownRecord;
+  changeReason?: UnknownRecord;
 }) {
   return compactPayload({
     project_id: readNum(params.event.project_id),
@@ -496,6 +550,9 @@ function buildChangeEventPayload(params: {
     description: readStr(params.event.description),
     scope: readStr(params.event.scope),
     status: params.status,
+    change_type: params.changeType,
+    change_reason: params.changeReason,
+    source_of_revenue_rom: readStr(params.event.source_of_revenue_rom),
     comments_enabled: typeof params.event.comments_enabled === "boolean" ? params.event.comments_enabled : undefined,
     change_items: params.changeItems,
   });
@@ -556,10 +613,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const [sourceEventsRaw, targetBudgetLineItems, targetStatuses] = await Promise.all([
+    const [sourceEventsRaw, targetBudgetLineItems, targetStatuses, targetTypes, targetReasons] = await Promise.all([
       fetchChangeEvents({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
       fetchBudgetLineItems({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages: 50 }),
       fetchChangeEventStatuses({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
+      fetchChangeEventTypes({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
+      fetchChangeReasons({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
     ]);
     const sourceEvents = changeEventIds.size
       ? sourceEventsRaw.filter((event) => changeEventIds.has(readStr(event.id)) || changeEventIds.has(readStr(event.number)))
@@ -631,10 +690,14 @@ export async function POST(request: Request) {
       });
       const validItems = itemPlans.filter((item) => isRecord(item.payload)).map((item) => item.payload as UnknownRecord);
       const targetStatus = resolveTargetStatus(event.status, targetStatuses);
+      const targetChangeType = resolveTargetChangeType(event.change_type, targetTypes);
+      const targetChangeReason = resolveTargetChangeReason(event.change_reason, targetReasons);
       return {
         sourceId: readStr(event.id),
         sourceNumber: readStr(event.number),
         title: readStr(event.title),
+        sourceChangeType: isRecord(event.change_type) ? readStr(event.change_type.name || event.change_type.change_type) : "",
+        sourceChangeReason: isRecord(event.change_reason) ? readStr(event.change_reason.change_reason || event.change_reason.name) : "",
         lineItemCount: sourceItems.length,
         mappedLineItemCount: itemPlans.filter((item) => readStr(item.targetBudgetCodeId)).length,
         skipped: {
@@ -646,7 +709,14 @@ export async function POST(request: Request) {
           customFields: isRecord(event.custom_fields) ? Object.keys(event.custom_fields) : [],
         },
         lineItems: itemPlans,
-        payload: buildChangeEventPayload({ event, changeItems: validItems, preserveNumber, status: targetStatus }),
+        payload: buildChangeEventPayload({
+          event,
+          changeItems: validItems,
+          preserveNumber,
+          status: targetStatus,
+          changeType: targetChangeType,
+          changeReason: targetChangeReason,
+        }),
       };
     });
 
@@ -707,6 +777,8 @@ export async function POST(request: Request) {
         unmappedLineItemsAllowed: allowUnmappedLineItems ? missingMappings.length : 0,
         targetBudgetLineItems: targetBudgetLineItems.length,
         targetStatuses: targetStatuses.length,
+        targetChangeTypes: targetTypes.length,
+        targetChangeReasons: targetReasons.length,
         missingMappings: missingMappings.length,
         createOffset,
         createLimit,

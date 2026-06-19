@@ -561,6 +561,16 @@ function ProcoreContent() {
   const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
   const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
   const [dailyCloneCommitmentsResult, setDailyCloneCommitmentsResult] = useState<any>(null);
+  const [correspondenceCloneSourceCompanyId, setCorrespondenceCloneSourceCompanyId] = useState("598134325658789");
+  const [correspondenceCloneSourceProjectId, setCorrespondenceCloneSourceProjectId] = useState("");
+  const [correspondenceCloneTargetCompanyId, setCorrespondenceCloneTargetCompanyId] = useState("598134325805519");
+  const [correspondenceCloneTargetProjectId, setCorrespondenceCloneTargetProjectId] = useState("");
+  const [correspondenceCloneToolTitle, setCorrespondenceCloneToolTitle] = useState("Change Request");
+  const [correspondenceCloneToolId, setCorrespondenceCloneToolId] = useState("");
+  const [correspondenceCloneCreateOffset, setCorrespondenceCloneCreateOffset] = useState("0");
+  const [correspondenceCloneBusy, setCorrespondenceCloneBusy] = useState(false);
+  const [correspondenceCloneError, setCorrespondenceCloneError] = useState<string | null>(null);
+  const [correspondenceCloneResult, setCorrespondenceCloneResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -4988,6 +4998,59 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneCorrespondences = async (dryRun: boolean) => {
+    const sourceCompanyId = correspondenceCloneSourceCompanyId.trim();
+    const sourceProjectId = correspondenceCloneSourceProjectId.trim();
+    const targetCompanyId = correspondenceCloneTargetCompanyId.trim();
+    const targetProjectId = correspondenceCloneTargetProjectId.trim();
+    const sourceGenericToolId = correspondenceCloneToolId.trim();
+    const genericToolTitle = correspondenceCloneToolTitle.trim();
+    const createOffset = correspondenceCloneCreateOffset.trim() || "0";
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setCorrespondenceCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned correspondences in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setCorrespondenceCloneBusy(true);
+    setCorrespondenceCloneError(null);
+    setCorrespondenceCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/correspondences/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          sourceGenericToolId: sourceGenericToolId || undefined,
+          genericToolTitle: genericToolTitle || undefined,
+          createOffset,
+          createLimit: 25,
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setCorrespondenceCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Correspondence clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setCorrespondenceCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setCorrespondenceCloneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCorrespondenceCloneBusy(false);
+    }
+  };
+
   const handleCloneCommitments = async (dryRun: boolean) => {
     const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
@@ -7067,6 +7130,139 @@ function ProcoreContent() {
                     {JSON.stringify(estimatingPlansProbeResult, null, 2)}
                   </pre>
                 </details>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+              <h2 className="text-xl font-bold text-sky-900 mb-3">Clone Correspondences</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone correspondence generic tool items from one Procore project to another. Version one clones the item header/body fields and reports skipped attachments, people fields, and custom fields for review.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setCorrespondenceCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneSourceProjectId ?? ""}
+                    onChange={(e) => setCorrespondenceCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setCorrespondenceCloneTargetCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneTargetProjectId ?? ""}
+                    onChange={(e) => setCorrespondenceCloneTargetProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Tool Title</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneToolTitle ?? ""}
+                    onChange={(e) => setCorrespondenceCloneToolTitle(e.target.value)}
+                    placeholder="Change Request"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Generic Tool ID</label>
+                  <input
+                    type="text"
+                    value={correspondenceCloneToolId ?? ""}
+                    onChange={(e) => setCorrespondenceCloneToolId(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={correspondenceCloneCreateOffset ?? ""}
+                    onChange={(e) => setCorrespondenceCloneCreateOffset(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneCorrespondences(true)}
+                  disabled={correspondenceCloneBusy}
+                  className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {correspondenceCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneCorrespondences(false)}
+                  disabled={correspondenceCloneBusy || !correspondenceCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {correspondenceCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {correspondenceCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-correspondences-result.json", correspondenceCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {correspondenceCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Correspondence Clone Error:</strong> {correspondenceCloneError}
+                </div>
+              )}
+
+              {correspondenceCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    correspondenceCloneResult.result?.readyForLiveClone || correspondenceCloneResult.result?.success
+                      ? "bg-sky-50 border-sky-200 text-sky-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Correspondence Clone Result:</strong>{" "}
+                    {correspondenceCloneResult.result?.dryRun
+                      ? correspondenceCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${correspondenceCloneResult.result?.counts?.sourceItems ?? 0} item(s). Live clone is enabled.`
+                        : `${correspondenceCloneResult.result?.counts?.missingTools ?? 0} missing target tool(s).`
+                      : correspondenceCloneResult.result?.success
+                        ? `Live clone created ${correspondenceCloneResult.result?.counts?.created ?? 0} item(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(correspondenceCloneResult, null, 2)}
+                  </pre>
+                </div>
               )}
             </div>
 

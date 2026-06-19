@@ -339,6 +339,34 @@ async function fetchChangeReasons(params: {
   });
 }
 
+async function fetchGenericTools(params: { accessToken: string; companyId: string }) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/companies/${encodeURIComponent(params.companyId)}/generic_tools`,
+    keys: ["generic_tools"],
+    maxPages: 10,
+  });
+}
+
+async function fetchGenericToolItems(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  genericToolId: string;
+  maxPages: number;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/generic_tools/${encodeURIComponent(
+      params.genericToolId
+    )}/generic_tool_items`,
+    keys: ["generic_tool_items", "items"],
+    maxPages: params.maxPages,
+  });
+}
+
 function statusKey(status: UnknownRecord) {
   return normalize(status.mapped_to_status || status.name);
 }
@@ -374,6 +402,132 @@ function resolveTargetChangeReason(sourceReasonValue: unknown, targetReasons: Un
   if (!sourceName) return undefined;
   const target = targetReasons.find((reason) => normalize(reason.change_reason || reason.name) === sourceName);
   return target ? { id: readNum(target.id) || readStr(target.id) } : undefined;
+}
+
+function toolKey(tool: UnknownRecord) {
+  return `${normalize(tool.title)}|${normalize(tool.abbreviation)}`;
+}
+
+function resolveTargetTool(sourceTool: UnknownRecord, targetTools: UnknownRecord[]) {
+  const sourceId = readStr(sourceTool.id);
+  const sourceTitle = normalize(sourceTool.title);
+  const sourceAbbreviation = normalize(sourceTool.abbreviation);
+  return (
+    targetTools.find((tool) => readStr(tool.id) === sourceId) ||
+    targetTools.find((tool) => toolKey(tool) === toolKey(sourceTool)) ||
+    targetTools.find((tool) => normalize(tool.title) === sourceTitle && sourceTitle) ||
+    targetTools.find((tool) => normalize(tool.abbreviation) === sourceAbbreviation && sourceAbbreviation)
+  );
+}
+
+function genericToolIdFromOrigin(origin: UnknownRecord) {
+  const url = readStr(origin.web_page_url);
+  const match = url.match(/[?&]tool_id=(\d+)/);
+  return match?.[1] || "";
+}
+
+function itemMatchKeys(item: UnknownRecord) {
+  const title = normalize(item.title);
+  const position = normalize(item.position || item.unformatted_position);
+  return {
+    title,
+    titlePosition: title && position ? `${title}|${position}` : "",
+  };
+}
+
+async function buildEventOriginMap(params: {
+  accessToken: string;
+  sourceCompanyId: string;
+  sourceProjectId: string;
+  targetCompanyId: string;
+  targetProjectId: string;
+  sourceEvents: UnknownRecord[];
+  maxPages: number;
+}) {
+  const sourceOrigins = params.sourceEvents
+    .map((event) => nestedRecord(event, "event_origin"))
+    .filter((origin) => readStr(origin.origin_id) && readStr(origin.origin_type) === "generic_tools");
+  const sourceToolIds = [...new Set(sourceOrigins.map(genericToolIdFromOrigin).filter(Boolean))];
+  const originBySourceId = new Map<string, UnknownRecord>();
+  const issues: UnknownRecord[] = [];
+
+  if (sourceToolIds.length === 0) {
+    return { originBySourceId, issues, sourceToolIds, targetToolIds: [] };
+  }
+
+  const [sourceTools, targetTools] = await Promise.all([
+    fetchGenericTools({ accessToken: params.accessToken, companyId: params.sourceCompanyId }),
+    fetchGenericTools({ accessToken: params.accessToken, companyId: params.targetCompanyId }),
+  ]);
+  const targetToolIds: string[] = [];
+
+  for (const sourceToolId of sourceToolIds) {
+    const sourceTool = sourceTools.find((tool) => readStr(tool.id) === sourceToolId);
+    if (!sourceTool) {
+      issues.push({ type: "event_origin", sourceGenericToolId: sourceToolId, issue: "source_generic_tool_missing" });
+      continue;
+    }
+    const targetTool = resolveTargetTool(sourceTool, targetTools);
+    const targetToolId = readStr(targetTool?.id);
+    if (!targetToolId) {
+      issues.push({
+        type: "event_origin",
+        sourceGenericToolId: sourceToolId,
+        sourceToolTitle: readStr(sourceTool.title),
+        issue: "target_generic_tool_missing",
+      });
+      continue;
+    }
+    targetToolIds.push(targetToolId);
+
+    const [sourceItems, targetItems] = await Promise.all([
+      fetchGenericToolItems({
+        accessToken: params.accessToken,
+        companyId: params.sourceCompanyId,
+        projectId: params.sourceProjectId,
+        genericToolId: sourceToolId,
+        maxPages: params.maxPages,
+      }),
+      fetchGenericToolItems({
+        accessToken: params.accessToken,
+        companyId: params.targetCompanyId,
+        projectId: params.targetProjectId,
+        genericToolId: targetToolId,
+        maxPages: params.maxPages,
+      }),
+    ]);
+
+    const targetByTitlePosition = new Map<string, UnknownRecord[]>();
+    const targetByTitle = new Map<string, UnknownRecord[]>();
+    for (const targetItem of targetItems) {
+      const keys = itemMatchKeys(targetItem);
+      if (keys.titlePosition) targetByTitlePosition.set(keys.titlePosition, [...(targetByTitlePosition.get(keys.titlePosition) || []), targetItem]);
+      if (keys.title) targetByTitle.set(keys.title, [...(targetByTitle.get(keys.title) || []), targetItem]);
+    }
+
+    for (const sourceItem of sourceItems) {
+      const sourceItemId = readStr(sourceItem.id);
+      if (!sourceItemId) continue;
+      const keys = itemMatchKeys(sourceItem);
+      const matches = (keys.titlePosition ? targetByTitlePosition.get(keys.titlePosition) : undefined) || (keys.title ? targetByTitle.get(keys.title) : undefined) || [];
+      if (matches.length === 1) {
+        originBySourceId.set(sourceItemId, {
+          origin_id: readNum(matches[0].id) || readStr(matches[0].id),
+          origin_type: "generic_tools",
+        });
+      } else if (sourceOrigins.some((origin) => readStr(origin.origin_id) === sourceItemId)) {
+        issues.push({
+          type: "event_origin",
+          sourceOriginId: sourceItemId,
+          sourceTitle: readStr(sourceItem.title),
+          issue: matches.length === 0 ? "target_origin_item_missing" : "target_origin_item_ambiguous",
+          matchCount: matches.length,
+        });
+      }
+    }
+  }
+
+  return { originBySourceId, issues, sourceToolIds, targetToolIds };
 }
 
 function buildBudgetCodeIndexes(budgetLineItems: UnknownRecord[]) {
@@ -543,6 +697,7 @@ function buildChangeEventPayload(params: {
   status: UnknownRecord;
   changeType?: UnknownRecord;
   changeReason?: UnknownRecord;
+  eventOrigin?: UnknownRecord;
 }) {
   return compactPayload({
     number: params.preserveNumber ? offsetChangeEventNumber(params.event.number, params.numberOffset) : undefined,
@@ -552,6 +707,7 @@ function buildChangeEventPayload(params: {
     status: params.status,
     change_type: params.changeType,
     change_reason: params.changeReason,
+    event_origin: params.eventOrigin,
     source_of_revenue_rom: readStr(params.event.source_of_revenue_rom),
     comments_enabled: typeof params.event.comments_enabled === "boolean" ? params.event.comments_enabled : undefined,
     change_items: params.changeItems,
@@ -668,8 +824,31 @@ export async function POST(request: Request) {
       workbookCrosswalk.warning = "Crosswalk workbook not found.";
     }
 
+    const eventOriginMap = await buildEventOriginMap({
+      accessToken,
+      sourceCompanyId,
+      sourceProjectId,
+      targetCompanyId,
+      targetProjectId,
+      sourceEvents,
+      maxPages,
+    });
     const missingMappings: UnknownRecord[] = [];
     const plan = sourceEvents.map((event) => {
+      const sourceOrigin = nestedRecord(event, "event_origin");
+      const sourceOriginId = readStr(sourceOrigin.origin_id);
+      const targetOrigin = sourceOriginId ? eventOriginMap.originBySourceId.get(sourceOriginId) : undefined;
+      if (sourceOriginId && !targetOrigin) {
+        missingMappings.push({
+          type: "change_event_origin",
+          sourceChangeEventId: readStr(event.id),
+          sourceChangeEventNumber: readStr(event.number),
+          sourceOriginId,
+          sourceOriginType: readStr(sourceOrigin.origin_type),
+          sourceOriginDisplayName: readStr(sourceOrigin.display_name),
+          issue: readStr(sourceOrigin.origin_type) === "generic_tools" ? "target_origin_not_mapped" : "unsupported_origin_type",
+        });
+      }
       const sourceItems = cloneLineItems ? asArray(event.change_items) : [];
       const itemPlans = sourceItems.map((item) => {
         const sourceBudgetCode = nestedRecord(item, "budget_code");
@@ -719,6 +898,14 @@ export async function POST(request: Request) {
         title: readStr(event.title),
         sourceChangeType: isRecord(event.change_type) ? readStr(event.change_type.name || event.change_type.change_type) : "",
         sourceChangeReason: isRecord(event.change_reason) ? readStr(event.change_reason.change_reason || event.change_reason.name) : "",
+        sourceOrigin: sourceOriginId
+          ? {
+              id: sourceOriginId,
+              type: readStr(sourceOrigin.origin_type),
+              displayName: readStr(sourceOrigin.display_name),
+            }
+          : null,
+        targetOrigin: targetOrigin || null,
         lineItemCount: sourceItems.length,
         mappedLineItemCount: itemPlans.filter((item) => readStr(item.targetBudgetCodeId)).length,
         skipped: {
@@ -738,11 +925,12 @@ export async function POST(request: Request) {
           status: targetStatus,
           changeType: targetChangeType,
           changeReason: targetChangeReason,
+          eventOrigin: targetOrigin,
         }),
       };
     });
 
-    const blockers = allowUnmappedLineItems ? [] : missingMappings;
+    const blockers = missingMappings.filter((mapping) => mapping.type !== "change_event_line_item_budget_code" || !allowUnmappedLineItems);
     const createResults: UnknownRecord[] = [];
     if (!dryRun && blockers.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
@@ -821,6 +1009,12 @@ export async function POST(request: Request) {
       target: { companyId: targetCompanyId, projectId: targetProjectId },
       options: { cloneLineItems, preserveNumber, numberOffset, allowUnmappedLineItems },
       workbookCrosswalk,
+      eventOriginMapping: {
+        sourceGenericToolIds: eventOriginMap.sourceToolIds,
+        targetGenericToolIds: eventOriginMap.targetToolIds,
+        mappedOrigins: eventOriginMap.originBySourceId.size,
+        issues: eventOriginMap.issues,
+      },
       counts: {
         sourceChangeEvents: sourceEvents.length,
         sourceLineItems: plan.reduce((sum, entry) => sum + (readNum(entry.lineItemCount) || 0), 0),

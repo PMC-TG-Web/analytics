@@ -253,6 +253,7 @@ function buildSubmittalPayload(params: {
   numberOffset: number;
   preserveStatus: boolean;
   typeIdMap: Record<string, string>;
+  statusIdMap: Record<string, string>;
   responsibleContractorIdMap: Record<string, string>;
   submittalManagerIdMap: Record<string, string>;
   defaultResponsibleContractorId: string;
@@ -264,9 +265,11 @@ function buildSubmittalPayload(params: {
   const submittalManager = nestedRecord(source, "submittal_manager");
   const status = nestedRecord(source, "status");
   const sourceTypeId = readStr(type.id);
+  const sourceStatusId = readStr(status.id);
   const sourceResponsibleContractorId = readStr(responsibleContractor.id);
   const sourceSubmittalManagerId = readStr(submittalManager.id);
   const mappedTypeId = readStr(params.typeIdMap[sourceTypeId] || params.typeIdMap[readStr(type.name)]);
+  const mappedStatusId = readStr(params.statusIdMap[sourceStatusId] || params.statusIdMap[readStr(status.name)] || params.statusIdMap[readStr(status.status)]);
   const mappedResponsibleContractorId = readStr(
     params.responsibleContractorIdMap[sourceResponsibleContractorId] ||
       params.responsibleContractorIdMap[readStr(responsibleContractor.name)] ||
@@ -302,7 +305,7 @@ function buildSubmittalPayload(params: {
     submittal_package_id: readNum(params.targetPackageId) || readStr(params.targetPackageId),
     responsible_contractor_id: readNum(mappedResponsibleContractorId),
     submittal_manager_id: readNum(mappedSubmittalManagerId),
-    status_id: params.preserveStatus ? readNum(status.id) : undefined,
+    status_id: params.preserveStatus ? readNum(mappedStatusId) : undefined,
   });
 }
 
@@ -356,6 +359,7 @@ export async function POST(request: Request) {
     const cloneSubmittals = readBool(body.cloneSubmittals, true);
     const submittalIds = new Set(parseIds(body.submittalIds || body.ids));
     const typeIdMap = buildStringMap(body.typeIdMap);
+    const statusIdMap = buildStringMap(body.statusIdMap);
     const responsibleContractorIdMap = buildStringMap(body.responsibleContractorIdMap);
     const submittalManagerIdMap = buildStringMap(body.submittalManagerIdMap);
     const defaultResponsibleContractorId = readStr(body.defaultResponsibleContractorId);
@@ -428,6 +432,7 @@ export async function POST(request: Request) {
           numberOffset,
           preserveStatus,
           typeIdMap,
+          statusIdMap,
           responsibleContractorIdMap,
           submittalManagerIdMap,
           defaultResponsibleContractorId,
@@ -442,6 +447,10 @@ export async function POST(request: Request) {
           location: nestedRecord(submittal, "location"),
           costCode: nestedRecord(submittal, "cost_code"),
           type: typeIdMap[readStr(nestedRecord(submittal, "type").id)] ? null : nestedRecord(submittal, "type"),
+          status:
+            !preserveStatus || statusIdMap[readStr(nestedRecord(submittal, "status").id)] || statusIdMap[readStr(nestedRecord(submittal, "status").name)]
+              ? null
+              : nestedRecord(submittal, "status"),
           responsibleContractor:
             responsibleContractorIdMap[readStr(nestedRecord(submittal, "responsible_contractor").id)] || defaultResponsibleContractorId
               ? null
@@ -535,6 +544,7 @@ export async function POST(request: Request) {
         createOffset,
         createLimit,
         mappedTypes: Object.keys(typeIdMap).length,
+        mappedStatuses: Object.keys(statusIdMap).length,
         mappedResponsibleContractors: Object.keys(responsibleContractorIdMap).length,
         mappedSubmittalManagers: Object.keys(submittalManagerIdMap).length,
         defaultResponsibleContractorId: defaultResponsibleContractorId || null,

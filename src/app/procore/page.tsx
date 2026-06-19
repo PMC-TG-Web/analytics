@@ -580,6 +580,7 @@ function ProcoreContent() {
   const [submittalCloneNumberOffset, setSubmittalCloneNumberOffset] = useState("0");
   const [submittalCloneMapsText, setSubmittalCloneMapsText] = useState(`{
   "typeIdMap": {},
+  "statusIdMap": {},
   "responsibleContractorIdMap": {},
   "submittalManagerIdMap": {},
   "defaultResponsibleContractorId": "598134335120254",
@@ -5154,6 +5155,7 @@ function ProcoreContent() {
           preserveStatus: submittalClonePreserveStatus,
           numberOffset: submittalCloneNumberOffset.trim() || "0",
           typeIdMap: maps.typeIdMap || {},
+          statusIdMap: maps.statusIdMap || {},
           responsibleContractorIdMap: maps.responsibleContractorIdMap || {},
           submittalManagerIdMap: maps.submittalManagerIdMap || {},
           defaultResponsibleContractorId: maps.defaultResponsibleContractorId || undefined,

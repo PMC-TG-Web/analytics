@@ -474,12 +474,18 @@ async function createChangeEvent(params: {
   projectId: string;
   payload: UnknownRecord;
 }) {
-  const payload = { ...params.payload, project_id: Number(params.projectId) || params.projectId };
+  const projectId = Number(params.projectId) || params.projectId;
+  const companyId = Number(params.companyId) || params.companyId;
+  const query = new URLSearchParams({
+    project_id: params.projectId,
+    company_id: params.companyId,
+  });
+  const payload = { ...params.payload, project_id: projectId, company_id: companyId };
   return procoreJson({
     accessToken: params.accessToken,
     companyId: params.companyId,
     method: "POST",
-    path: "/rest/v1.1/change_events",
+    path: `/rest/v1.1/change_events?${query.toString()}`,
     body: { change_event: payload },
   });
 }

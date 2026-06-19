@@ -599,7 +599,7 @@ function ProcoreContent() {
   const [imageCloneTargetProjectId, setImageCloneTargetProjectId] = useState("");
   const [imageCloneIdsText, setImageCloneIdsText] = useState("");
   const [imageCloneCreateOffset, setImageCloneCreateOffset] = useState("0");
-  const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("1");
+  const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("");
   const [imageCloneMaxPages, setImageCloneMaxPages] = useState("10");
   const [imageCloneCategories, setImageCloneCategories] = useState(true);
   const [imageCloneBusy, setImageCloneBusy] = useState(false);
@@ -5230,7 +5230,7 @@ function ProcoreContent() {
           imageIds,
           cloneCategories: imageCloneCategories,
           createOffset: imageCloneCreateOffset.trim() || "0",
-          createLimit: imageCloneCreateLimit.trim() || "1",
+          createLimit: imageCloneCreateLimit.trim() || undefined,
           maxPages: imageCloneMaxPages.trim() || "10",
           dryRun,
         }),
@@ -7866,6 +7866,7 @@ function ProcoreContent() {
                     step="1"
                     value={imageCloneCreateLimit ?? ""}
                     onChange={(event) => setImageCloneCreateLimit(event.target.value)}
+                    placeholder="Optional"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>

@@ -7544,7 +7544,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
                   <input
                     type="checkbox"
-                    checked={changeEventCloneLineItems}
+                    checked={Boolean(changeEventCloneLineItems)}
                     onChange={(event) => setChangeEventCloneLineItems(event.target.checked)}
                   />
                   Clone line items
@@ -7552,7 +7552,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
                   <input
                     type="checkbox"
-                    checked={changeEventClonePreserveNumber}
+                    checked={Boolean(changeEventClonePreserveNumber)}
                     onChange={(event) => setChangeEventClonePreserveNumber(event.target.checked)}
                   />
                   Preserve numbers
@@ -7560,7 +7560,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
                   <input
                     type="checkbox"
-                    checked={changeEventCloneAllowUnmappedLineItems}
+                    checked={Boolean(changeEventCloneAllowUnmappedLineItems)}
                     onChange={(event) => setChangeEventCloneAllowUnmappedLineItems(event.target.checked)}
                   />
                   Allow unmapped lines
@@ -7724,7 +7724,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
                   <input
                     type="checkbox"
-                    checked={timeMaterialClonePreserveNumber}
+                    checked={Boolean(timeMaterialClonePreserveNumber)}
                     onChange={(event) => setTimeMaterialClonePreserveNumber(event.target.checked)}
                   />
                   Preserve numbers
@@ -7947,7 +7947,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 pt-7">
                   <input
                     type="checkbox"
-                    checked={dailyCloneIncludeProductivity}
+                    checked={Boolean(dailyCloneIncludeProductivity)}
                     onChange={(e) => setDailyCloneIncludeProductivity(e.target.checked)}
                   />
                   Productivity
@@ -7955,7 +7955,7 @@ function ProcoreContent() {
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 pt-7">
                   <input
                     type="checkbox"
-                    checked={dailyCloneIncludeTimecards}
+                    checked={Boolean(dailyCloneIncludeTimecards)}
                     onChange={(e) => setDailyCloneIncludeTimecards(e.target.checked)}
                   />
                   Timecards
@@ -7965,7 +7965,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Time Type ID Map</label>
                 <textarea
-                  value={dailyCloneTimeTypeMapText}
+                  value={dailyCloneTimeTypeMapText ?? ""}
                   onChange={(e) => setDailyCloneTimeTypeMapText(e.target.value)}
                   rows={4}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
@@ -7979,7 +7979,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Party/User ID Map</label>
                 <textarea
-                  value={dailyClonePartyMapText}
+                  value={dailyClonePartyMapText ?? ""}
                   onChange={(e) => setDailyClonePartyMapText(e.target.value)}
                   rows={4}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
@@ -7993,7 +7993,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Classification ID Map</label>
                 <textarea
-                  value={dailyCloneClassificationMapText}
+                  value={dailyCloneClassificationMapText ?? ""}
                   onChange={(e) => setDailyCloneClassificationMapText(e.target.value)}
                   rows={4}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
@@ -8007,7 +8007,7 @@ function ProcoreContent() {
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Delete Timecard IDs or Clone Result JSON</label>
                 <textarea
-                  value={dailyDeleteIdsText}
+                  value={dailyDeleteIdsText ?? ""}
                   onChange={(e) => setDailyDeleteIdsText(e.target.value)}
                   rows={3}
                   className="w-full border border-amber-300 rounded px-3 py-2 text-xs font-mono"
@@ -8335,7 +8335,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={purchaseOrderContractRunValidations}
+                      checked={Boolean(purchaseOrderContractRunValidations)}
                       onChange={(e) => setPurchaseOrderContractRunValidations(e.target.checked)}
                     />
                     Run configurable validations
@@ -8436,7 +8436,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
-                      checked={purchaseOrderContractCsvAllowPrivate}
+                      checked={Boolean(purchaseOrderContractCsvAllowPrivate)}
                       onChange={(e) => setPurchaseOrderContractCsvAllowPrivate(e.target.checked)}
                     />
                     Honor CSV Private column (unchecked = force private false)
@@ -8444,7 +8444,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
-                      checked={purchaseOrderContractCsvAllowUnitAccounting}
+                      checked={Boolean(purchaseOrderContractCsvAllowUnitAccounting)}
                       onChange={(e) => setPurchaseOrderContractCsvAllowUnitAccounting(e.target.checked)}
                     />
                     Honor CSV Accounting Method column (unchecked = force amount)
@@ -9696,7 +9696,7 @@ function ProcoreContent() {
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">New Proposal Type</label>
                   <select
-                    value={cloneTargetProposalType}
+                    value={cloneTargetProposalType ?? ""}
                     onChange={(e) => setCloneTargetProposalType(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   >
@@ -9977,7 +9977,7 @@ function ProcoreContent() {
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Source Endpoint</label>
                   <select
-                    value={commitmentCloneSourceMode}
+                    value={commitmentCloneSourceMode ?? ""}
                     onChange={(e) => setCommitmentCloneSourceMode(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
                   >
@@ -9999,7 +9999,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={commitmentClonePreserveStatus}
+                      checked={Boolean(commitmentClonePreserveStatus)}
                       onChange={(e) => setCommitmentClonePreserveStatus(e.target.checked)}
                       className="h-4 w-4"
                     />
@@ -10010,7 +10010,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={commitmentCloneLineItems}
+                      checked={Boolean(commitmentCloneLineItems)}
                       onChange={(e) => setCommitmentCloneLineItems(e.target.checked)}
                       className="h-4 w-4"
                     />
@@ -10059,7 +10059,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-xs font-semibold text-amber-800">
                     <input
                       type="checkbox"
-                      checked={commitmentCloneAllowUnmappedIds}
+                      checked={Boolean(commitmentCloneAllowUnmappedIds)}
                       onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
                       className="h-4 w-4"
                     />
@@ -10286,7 +10286,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={primeClonePreserveStatus}
+                      checked={Boolean(primeClonePreserveStatus)}
                       onChange={(e) => setPrimeClonePreserveStatus(e.target.checked)}
                       className="h-4 w-4"
                     />
@@ -10297,7 +10297,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={primeCloneLineItems}
+                      checked={Boolean(primeCloneLineItems)}
                       onChange={(e) => setPrimeCloneLineItems(e.target.checked)}
                       className="h-4 w-4"
                     />
@@ -10308,7 +10308,7 @@ function ProcoreContent() {
                   <label className="flex items-center gap-2 text-sm font-semibold text-amber-800">
                     <input
                       type="checkbox"
-                      checked={primeCloneAllowUnmappedIds}
+                      checked={Boolean(primeCloneAllowUnmappedIds)}
                       onChange={(e) => setPrimeCloneAllowUnmappedIds(e.target.checked)}
                       className="h-4 w-4"
                     />

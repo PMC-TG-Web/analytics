@@ -168,6 +168,22 @@ async function fetchTimeAndMaterialEntries(params: {
   });
 }
 
+async function fetchMaterials(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  timeAndMaterialEntryId: string;
+  maxPages: number;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/materials?time_and_material_entry_id=${encodeURIComponent(params.timeAndMaterialEntryId)}`,
+    keys: ["materials"],
+    maxPages: params.maxPages,
+  });
+}
+
 async function fetchChangeEvents(params: {
   accessToken: string;
   companyId: string;
@@ -267,6 +283,16 @@ function buildTimeAndMaterialPayload(params: {
   });
 }
 
+function buildMaterialPayload(material: UnknownRecord, targetTimeAndMaterialEntryId?: string | number) {
+  return compactPayload({
+    name: readStr(material.name),
+    description: readStr(material.description),
+    quantity: readNum(material.quantity),
+    uom: readStr(material.uom),
+    time_and_material_entry_id: readNum(targetTimeAndMaterialEntryId) || readStr(targetTimeAndMaterialEntryId),
+  });
+}
+
 function buildSignatureClonePlan(entry: UnknownRecord) {
   return [
     { field: "company_signature_id", partyField: "company_signee_party_id", signature: nestedRecord(entry, "company_signature"), party: nestedRecord(entry, "company_signee_party") },
@@ -344,6 +370,21 @@ async function createTimeAndMaterialEntry(params: {
   });
 }
 
+async function createMaterial(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  payload: UnknownRecord;
+}) {
+  return procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    method: "POST",
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/materials`,
+    body: { material: params.payload },
+  });
+}
+
 async function createTimeAndMaterialSignature(params: {
   accessToken: string;
   companyId: string;
@@ -415,6 +456,20 @@ async function createTimeAndMaterialEntryWithFallback(params: {
   throw new Error(readStr(last?.error) || "T&M create failed.");
 }
 
+function responseId(value: unknown): string {
+  if (isRecord(value)) {
+    const direct = readStr(value.id);
+    if (direct) return direct;
+    const data = nestedRecord(value, "data");
+    const dataId = readStr(data.id);
+    if (dataId) return dataId;
+    const entry = nestedRecord(value, "time_and_material_entry");
+    const entryId = readStr(entry.id);
+    if (entryId) return entryId;
+  }
+  return "";
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
@@ -450,14 +505,31 @@ export async function POST(request: Request) {
       ? sourceEntriesRaw.filter((entry) => timeAndMaterialIds.has(readStr(entry.id)) || timeAndMaterialIds.has(readStr(entry.number)))
       : sourceEntriesRaw;
 
+    const sourceMaterialsByEntryId: Record<string, UnknownRecord[]> = {};
+    await Promise.all(
+      sourceEntries.map(async (entry) => {
+        const sourceId = readStr(entry.id);
+        if (!sourceId) return;
+        sourceMaterialsByEntryId[sourceId] = await fetchMaterials({
+          accessToken,
+          companyId: sourceCompanyId,
+          projectId: sourceProjectId,
+          timeAndMaterialEntryId: sourceId,
+          maxPages,
+        });
+      })
+    );
+
     const missingMappings: UnknownRecord[] = [];
     const plan = sourceEntries.map((entry) => {
       const targetChangeEvent = resolveTargetChangeEvent(entry, targetEvents, numberOffset);
       const targetStatus = resolveTargetStatus(nestedRecord(entry, "change_event_status"), targetStatuses);
+      const sourceId = readStr(entry.id);
+      const sourceMaterials = sourceMaterialsByEntryId[sourceId] || [];
       if (readStr(nestedRecord(entry, "change_event").id) && !targetChangeEvent) {
         missingMappings.push({
           type: "time_and_material_change_event",
-          sourceId: readStr(entry.id),
+          sourceId,
           sourceNumber: readStr(entry.number),
           sourceChangeEvent: nestedRecord(entry, "change_event"),
           issue: "target_change_event_missing",
@@ -482,7 +554,7 @@ export async function POST(request: Request) {
         numberOffset,
       });
       return {
-        sourceId: readStr(entry.id),
+        sourceId,
         sourceNumber: readStr(entry.number),
         targetNumber: preserveNumber ? offsetNumber(entry.number, numberOffset) : "",
         description: readStr(entry.description),
@@ -492,6 +564,15 @@ export async function POST(request: Request) {
         sourceStatus: readStr(entry.status),
         sourceChangeEventStatus: nestedRecord(entry, "change_event_status"),
         targetStatus,
+        materials: sourceMaterials.map((material) => ({
+          sourceId: readStr(material.id),
+          name: readStr(material.name),
+          description: readStr(material.description),
+          quantity: readNum(material.quantity),
+          uom: readStr(material.uom),
+          skippedCustomFields: isRecord(material.custom_fields) ? Object.keys(material.custom_fields) : [],
+          payloadDraft: buildMaterialPayload(material),
+        })),
         signatureClonePlan: buildSignatureClonePlan(entry),
         skipped: {
           companySignature: readStr(nestedRecord(entry, "company_signature").signature_text) ? null : nestedRecord(entry, "company_signature"),
@@ -534,7 +615,33 @@ export async function POST(request: Request) {
             projectId: targetProjectId,
             payload,
           });
-          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: true, signatureResults, ...created });
+          const createdEntryId = responseId(created.created);
+          const materialResults: UnknownRecord[] = [];
+          for (const material of asArray(entry.materials)) {
+            const materialPayload = buildMaterialPayload(material, createdEntryId);
+            if (!createdEntryId) {
+              materialResults.push({ sourceId: material.sourceId, ok: false, skipped: true, error: "Created T&M entry response did not include an id.", attemptedPayload: materialPayload });
+              continue;
+            }
+            try {
+              const createdMaterial = await createMaterial({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                payload: materialPayload,
+              });
+              materialResults.push({ sourceId: material.sourceId, ok: true, created: createdMaterial, payload: materialPayload });
+            } catch (error) {
+              materialResults.push({
+                sourceId: material.sourceId,
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+                attemptedPayload: materialPayload,
+              });
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: materialResults.every((result) => result.ok !== false), signatureResults, materialResults, ...created });
         } catch (error) {
           createResults.push({
             sourceId: entry.sourceId,
@@ -560,6 +667,7 @@ export async function POST(request: Request) {
         sourceEntries: sourceEntries.length,
         targetChangeEvents: targetEvents.length,
         targetStatuses: targetStatuses.length,
+        sourceMaterials: Object.values(sourceMaterialsByEntryId).reduce((sum, rows) => sum + rows.length, 0),
         missingMappings: missingMappings.length,
         created: createResults.filter((result) => result.ok === true).length,
         failed: failed.length,

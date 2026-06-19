@@ -598,8 +598,9 @@ export async function POST(request: Request) {
     const targetProjectId = readStr(body.targetProjectId);
     const dryRun = body.dryRun !== false;
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
-    const requestedCreateLimit = Math.max(1, Math.min(50, Math.trunc(readNum(body.createLimit) || 10)));
-    const createLimit = dryRun ? requestedCreateLimit : Math.min(1, requestedCreateLimit);
+    const hasCreateLimit = readStr(body.createLimit).length > 0;
+    const requestedCreateLimit = Math.max(1, Math.min(50, Math.trunc(readNum(body.createLimit) || 1)));
+    const createLimit = dryRun ? requestedCreateLimit : Math.min(hasCreateLimit ? requestedCreateLimit : 1, 10);
     const maxPages = Math.max(1, Math.min(50, Math.trunc(readNum(body.maxPages) || 10)));
     const cloneCategories = readBool(body.cloneCategories, true);
     const tryDirectFileFallbacks = readBool(body.tryDirectFileFallbacks, false);

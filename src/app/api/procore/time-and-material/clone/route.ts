@@ -249,9 +249,11 @@ function buildTimeAndMaterialPayload(params: {
   numberOffset: number;
 }) {
   const orderedById = readStr(params.orderedByIdMap[readStr(params.entry.ordered_by_id)] || params.defaultOrderedById);
+  const description = readStr(params.entry.description) || "Cloned T&M Entry";
   return compactPayload({
     number: params.preserveNumber ? readNum(offsetNumber(params.entry.number, params.numberOffset)) || offsetNumber(params.entry.number, params.numberOffset) : undefined,
-    description: readStr(params.entry.description) || "Cloned T&M Entry",
+    name: description,
+    description,
     work_performed_on_date: readStr(params.entry.work_performed_on_date),
     reference_number: readStr(params.entry.reference_number),
     notes: readStr(params.entry.notes),
@@ -262,6 +264,45 @@ function buildTimeAndMaterialPayload(params: {
     ordered_by_id: readNum(orderedById) || undefined,
     change_event_id: readNum(params.targetChangeEvent?.id),
     change_event_status_id: readNum(params.targetStatus?.id),
+  });
+}
+
+function withoutKeys(payload: UnknownRecord, keys: string[]) {
+  const out = { ...payload };
+  for (const key of keys) delete out[key];
+  return out;
+}
+
+function timeAndMaterialCreatePayloads(payload: UnknownRecord) {
+  const attempts = [
+    { name: "full", payload },
+    {
+      name: "without_state_fields",
+      payload: withoutKeys(payload, ["status", "open", "change_event_status_id"]),
+    },
+    {
+      name: "without_change_event",
+      payload: withoutKeys(payload, ["status", "open", "change_event_status_id", "change_event_id"]),
+    },
+    {
+      name: "minimal",
+      payload: compactPayload({
+        name: payload.name,
+        description: payload.description,
+        number: payload.number,
+        work_performed_on_date: payload.work_performed_on_date,
+        private: payload.private,
+        reference_number: payload.reference_number,
+      }),
+    },
+  ];
+
+  const seen = new Set<string>();
+  return attempts.filter((attempt) => {
+    const key = JSON.stringify(attempt.payload);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 
@@ -278,6 +319,27 @@ async function createTimeAndMaterialEntry(params: {
     path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/time_and_material_entries`,
     body: { time_and_material_entry: params.payload },
   });
+}
+
+async function createTimeAndMaterialEntryWithFallback(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  payload: UnknownRecord;
+}) {
+  const attempts: UnknownRecord[] = [];
+  for (const attempt of timeAndMaterialCreatePayloads(params.payload)) {
+    try {
+      const created = await createTimeAndMaterialEntry({ ...params, payload: attempt.payload });
+      return { created, successfulAttempt: attempt.name, successfulPayload: attempt.payload, attempts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      attempts.push({ name: attempt.name, ok: false, error: message, payload: attempt.payload });
+      if (!/\(500\)|Internal Server Error/i.test(message)) break;
+    }
+  }
+  const last = attempts[attempts.length - 1];
+  throw new Error(readStr(last?.error) || "T&M create failed.");
 }
 
 export async function POST(request: Request) {
@@ -371,13 +433,13 @@ export async function POST(request: Request) {
     if (!dryRun && missingMappings.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
         try {
-          const created = await createTimeAndMaterialEntry({
+          const created = await createTimeAndMaterialEntryWithFallback({
             accessToken,
             companyId: targetCompanyId,
             projectId: targetProjectId,
             payload: isRecord(entry.payload) ? entry.payload : {},
           });
-          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: true, created });
+          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: true, ...created });
         } catch (error) {
           createResults.push({
             sourceId: entry.sourceId,

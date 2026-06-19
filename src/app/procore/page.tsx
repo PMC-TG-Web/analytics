@@ -5125,9 +5125,14 @@ function ProcoreContent() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.success === false) {
+        const firstCreateError = Array.isArray(result?.createResults)
+          ? result.createResults.find((entry: any) => entry?.ok === false)?.error
+          : "";
         setChangeEventCloneError(
           result?.error
             ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstCreateError
+              ? `Change event clone create error: ${firstCreateError}`
             : `Change event clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
         );
       }

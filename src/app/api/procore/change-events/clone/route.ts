@@ -634,8 +634,17 @@ export async function POST(request: Request) {
     }
 
     const failed = createResults.filter((result) => result.ok === false);
+    const firstFailure = failed.find(isRecord);
+    const topLevelError = blockers.length
+      ? "Change event clone blocked by missing line-item budget code mappings."
+      : failed.length
+        ? "Change event clone finished with create errors."
+        : undefined;
+    const topLevelDetails = firstFailure ? readStr(firstFailure.error) : undefined;
     return NextResponse.json({
       success: dryRun ? true : blockers.length === 0 && failed.length === 0,
+      error: topLevelError,
+      details: topLevelDetails,
       dryRun,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
@@ -666,6 +675,7 @@ export async function POST(request: Request) {
       missingMappings,
       plan: plan.slice(0, 200),
       createResults,
+      failedCreateResults: failed,
       nextStep: dryRun
         ? blockers.length
           ? "Resolve missingMappings or set allowUnmappedLineItems=true to try creating unmapped lines without budget_code."

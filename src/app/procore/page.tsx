@@ -5236,7 +5236,7 @@ function ProcoreContent() {
         }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) {
+      if (!response.ok || result?.error) {
         const firstCreateError = Array.isArray(result?.failedCreateResults)
           ? result.failedCreateResults.find((entry: any) => entry?.ok === false)?.error
           : "";
@@ -7939,7 +7939,7 @@ function ProcoreContent() {
                         ? `Stopped before timeout. Continue with create offset ${imageCloneResult.result?.nextCreateOffset ?? 0}.`
                       : imageCloneResult.result?.success
                         ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
-                        : "Live batch finished with errors."}
+                        : `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s), with ${imageCloneResult.result?.counts?.failedImages ?? 0} failed.`}
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(imageCloneResult, null, 2)}

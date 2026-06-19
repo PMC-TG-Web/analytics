@@ -592,6 +592,19 @@ function ProcoreContent() {
   const [changeEventCloneBusy, setChangeEventCloneBusy] = useState(false);
   const [changeEventCloneError, setChangeEventCloneError] = useState<string | null>(null);
   const [changeEventCloneResult, setChangeEventCloneResult] = useState<any>(null);
+  const [timeMaterialCloneSourceCompanyId, setTimeMaterialCloneSourceCompanyId] = useState("598134325658789");
+  const [timeMaterialCloneSourceProjectId, setTimeMaterialCloneSourceProjectId] = useState("");
+  const [timeMaterialCloneTargetCompanyId, setTimeMaterialCloneTargetCompanyId] = useState("598134325805519");
+  const [timeMaterialCloneTargetProjectId, setTimeMaterialCloneTargetProjectId] = useState("");
+  const [timeMaterialCloneIdsText, setTimeMaterialCloneIdsText] = useState("");
+  const [timeMaterialCloneCreateOffset, setTimeMaterialCloneCreateOffset] = useState("0");
+  const [timeMaterialCloneNumberOffset, setTimeMaterialCloneNumberOffset] = useState("0");
+  const [timeMaterialClonePreserveNumber, setTimeMaterialClonePreserveNumber] = useState(false);
+  const [timeMaterialCloneOrderedByMapText, setTimeMaterialCloneOrderedByMapText] = useState("{}");
+  const [timeMaterialCloneDefaultOrderedById, setTimeMaterialCloneDefaultOrderedById] = useState("");
+  const [timeMaterialCloneBusy, setTimeMaterialCloneBusy] = useState(false);
+  const [timeMaterialCloneError, setTimeMaterialCloneError] = useState<string | null>(null);
+  const [timeMaterialCloneResult, setTimeMaterialCloneResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -5146,6 +5159,76 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneTimeAndMaterial = async (dryRun: boolean) => {
+    const sourceCompanyId = timeMaterialCloneSourceCompanyId.trim();
+    const sourceProjectId = timeMaterialCloneSourceProjectId.trim();
+    const targetCompanyId = timeMaterialCloneTargetCompanyId.trim();
+    const targetProjectId = timeMaterialCloneTargetProjectId.trim();
+    const createOffset = timeMaterialCloneCreateOffset.trim() || "0";
+    const timeAndMaterialIds = timeMaterialCloneIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    let orderedByIdMap: any = {};
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setTimeMaterialCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    try {
+      orderedByIdMap = timeMaterialCloneOrderedByMapText.trim() ? JSON.parse(timeMaterialCloneOrderedByMapText) : {};
+    } catch (error) {
+      setTimeMaterialCloneError(`Ordered By map JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned T&M entries in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setTimeMaterialCloneBusy(true);
+    setTimeMaterialCloneError(null);
+    setTimeMaterialCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/time-and-material/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          timeAndMaterialIds,
+          createOffset,
+          createLimit: 25,
+          preserveNumber: timeMaterialClonePreserveNumber,
+          numberOffset: timeMaterialCloneNumberOffset.trim() || "0",
+          orderedByIdMap,
+          defaultOrderedById: timeMaterialCloneDefaultOrderedById.trim() || undefined,
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        const firstCreateError = Array.isArray(result?.createResults)
+          ? result.createResults.find((entry: any) => entry?.ok === false)?.error
+          : "";
+        setTimeMaterialCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstCreateError
+              ? `T&M clone create error: ${firstCreateError}`
+              : `T&M clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setTimeMaterialCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setTimeMaterialCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTimeMaterialCloneBusy(false);
+    }
+  };
+
   const handleCloneCommitments = async (dryRun: boolean) => {
     const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
@@ -7533,6 +7616,170 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(changeEventCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
+              <h2 className="text-xl font-bold text-orange-900 mb-3">Clone Time and Material</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone T&amp;M ticket headers from one Procore project to another and link them to the cloned target Change Event. Signatures, attachments, and custom fields are reported for review.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={timeMaterialCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setTimeMaterialCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={timeMaterialCloneSourceProjectId ?? ""}
+                    onChange={(event) => setTimeMaterialCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={timeMaterialCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setTimeMaterialCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={timeMaterialCloneTargetProjectId ?? ""}
+                    onChange={(event) => setTimeMaterialCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">T&amp;M Entry IDs or Numbers</label>
+                  <textarea
+                    value={timeMaterialCloneIdsText ?? ""}
+                    onChange={(event) => setTimeMaterialCloneIdsText(event.target.value)}
+                    placeholder="Optional: comma or line separated. Blank clones all fetched entries."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Ordered By ID Map</label>
+                  <textarea
+                    value={timeMaterialCloneOrderedByMapText ?? ""}
+                    onChange={(event) => setTimeMaterialCloneOrderedByMapText(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Optional old ordered_by_id to target user ID map, for example {"{"}\"8306536\":\"14134125\"{"}"}.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={timeMaterialCloneCreateOffset ?? ""}
+                    onChange={(event) => setTimeMaterialCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number Offset</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={timeMaterialCloneNumberOffset ?? ""}
+                    onChange={(event) => setTimeMaterialCloneNumberOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Default Ordered By ID</label>
+                  <input
+                    type="text"
+                    value={timeMaterialCloneDefaultOrderedById ?? ""}
+                    onChange={(event) => setTimeMaterialCloneDefaultOrderedById(event.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
+                  <input
+                    type="checkbox"
+                    checked={timeMaterialClonePreserveNumber}
+                    onChange={(event) => setTimeMaterialClonePreserveNumber(event.target.checked)}
+                  />
+                  Preserve numbers
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneTimeAndMaterial(true)}
+                  disabled={timeMaterialCloneBusy}
+                  className="bg-orange-700 hover:bg-orange-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {timeMaterialCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneTimeAndMaterial(false)}
+                  disabled={timeMaterialCloneBusy || !timeMaterialCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {timeMaterialCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {timeMaterialCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-time-and-material-result.json", timeMaterialCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {timeMaterialCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>T&amp;M Clone Error:</strong> {timeMaterialCloneError}
+                </div>
+              )}
+
+              {timeMaterialCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    timeMaterialCloneResult.result?.readyForLiveClone || timeMaterialCloneResult.result?.success
+                      ? "bg-orange-50 border-orange-200 text-orange-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>T&amp;M Clone Result:</strong>{" "}
+                    {timeMaterialCloneResult.result?.dryRun
+                      ? timeMaterialCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${timeMaterialCloneResult.result?.counts?.sourceEntries ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.sourceEntries === 1 ? "y" : "ies"}.`
+                        : `${timeMaterialCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : timeMaterialCloneResult.result?.success
+                        ? `Live clone created ${timeMaterialCloneResult.result?.counts?.created ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.created === 1 ? "y" : "ies"}.`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(timeMaterialCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

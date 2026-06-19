@@ -9,10 +9,10 @@ type UnknownRecord = Record<string, unknown>;
 
 class ImageCreateAttemptError extends Error {
   uploadId: string;
-  s3Status: number;
+  s3Status: number | null;
   attempts: UnknownRecord[];
 
-  constructor(message: string, uploadId: string, s3Status: number, attempts: UnknownRecord[]) {
+  constructor(message: string, uploadId: string, s3Status: number | null, attempts: UnknownRecord[]) {
     super(message);
     this.name = "ImageCreateAttemptError";
     this.uploadId = uploadId;
@@ -209,6 +209,7 @@ async function createImageCategory(params: {
 async function createCompanyUpload(params: {
   accessToken: string;
   companyId: string;
+  projectId?: string;
   filename: string;
   contentType: string;
   bytes: Buffer;
@@ -253,6 +254,66 @@ async function createCompanyUpload(params: {
   const s3Response = await fetch(url, { method: "PUT", headers: putHeaders, body: new Uint8Array(params.bytes), cache: "no-store" });
   const s3Text = await s3Response.text().catch(() => "");
   if (!s3Response.ok) throw new Error(`S3 image upload failed (${s3Response.status}): ${s3Text.slice(0, 500)}`);
+  return { uploadId, uploadResponse: payload, s3Status: s3Response.status };
+}
+
+async function createProjectUpload(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  filename: string;
+  contentType: string;
+  bytes: Buffer;
+}) {
+  const md5Hex = createHash("md5").update(params.bytes).digest("hex");
+  const sha256Hex = createHash("sha256").update(params.bytes).digest("hex");
+  const form = new FormData();
+  form.set("response_filename", params.filename);
+  form.set("response_content_type", params.contentType);
+  form.set("attachment_content_disposition", "false");
+  form.set("size", String(params.bytes.byteLength));
+  form.set("segments", JSON.stringify([{ size: params.bytes.byteLength, sha256: sha256Hex, md5: md5Hex }]));
+
+  const response = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/uploads`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      Accept: "application/json",
+      "Procore-Company-Id": params.companyId,
+    },
+    body: form,
+    cache: "no-store",
+  });
+  const text = await response.text();
+  let payload: unknown = text;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    // Keep text.
+  }
+  if (!response.ok || !isRecord(payload)) {
+    throw new Error(`Create project upload failed (${response.status}): ${typeof payload === "string" ? payload : JSON.stringify(payload)}`);
+  }
+
+  const uploadId = readStr(payload.uuid || payload.id);
+  const directUrl = readStr(payload.url || payload.upload_url);
+  const directHeaders = isRecord(payload.headers) ? payload.headers : {};
+  const segments = rowsFromPayload(payload.segments);
+  const segment = segments[0] || {};
+  const segmentUrl = readStr(segment.url || segment.upload_url);
+  const segmentHeaders = isRecord(segment.headers) ? segment.headers : {};
+  const uploadUrl = segmentUrl || directUrl;
+  const uploadHeaders = Object.keys(segmentHeaders).length ? segmentHeaders : directHeaders;
+
+  if (!uploadId) throw new Error(`Project upload response did not include uuid/id: ${JSON.stringify(payload).slice(0, 1000)}`);
+  if (!uploadUrl) return { uploadId, uploadResponse: payload, s3Status: null };
+
+  const putHeaders = new Headers();
+  for (const [key, value] of Object.entries(uploadHeaders)) putHeaders.set(key, readStr(value));
+  if (!putHeaders.has("Content-Type")) putHeaders.set("Content-Type", params.contentType);
+  const s3Response = await fetch(uploadUrl, { method: "PUT", headers: putHeaders, body: new Uint8Array(params.bytes), cache: "no-store" });
+  const s3Text = await s3Response.text().catch(() => "");
+  if (!s3Response.ok) throw new Error(`Project upload PUT failed (${s3Response.status}): ${s3Text.slice(0, 500)}`);
   return { uploadId, uploadResponse: payload, s3Status: s3Response.status };
 }
 
@@ -475,7 +536,7 @@ export async function POST(request: Request) {
             if (!downloadResponse.ok) throw new Error(`Source image download failed (${downloadResponse.status}).`);
             const bytes = Buffer.from(await downloadResponse.arrayBuffer());
             const contentType = contentTypeForFileName(filename, downloadResponse.headers.get("content-type") || "");
-            const upload = await createCompanyUpload({ accessToken, companyId: targetCompanyId, filename, contentType, bytes });
+            const upload = await createProjectUpload({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, filename, contentType, bytes });
             const payload = imagePayload(image, readStr(targetCategory?.id));
             const attempts: UnknownRecord[] = [];
             let created: unknown = null;

@@ -10,13 +10,15 @@ type UnknownRecord = Record<string, unknown>;
 class ImageCreateAttemptError extends Error {
   uploadId: string;
   s3Status: number | null;
+  upload: UnknownRecord | null;
   attempts: UnknownRecord[];
 
-  constructor(message: string, uploadId: string, s3Status: number | null, attempts: UnknownRecord[]) {
+  constructor(message: string, uploadId: string, s3Status: number | null, upload: UnknownRecord | null, attempts: UnknownRecord[]) {
     super(message);
     this.name = "ImageCreateAttemptError";
     this.uploadId = uploadId;
     this.s3Status = s3Status;
+    this.upload = upload;
     this.attempts = attempts;
   }
 }
@@ -450,6 +452,58 @@ async function createImage(params: {
   return payload;
 }
 
+async function createImageWithDirectFile(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  imageName: string;
+  image: UnknownRecord;
+  bytes: Buffer;
+  contentType: string;
+  style: "json_image_with_data_field" | "rails_image_fields";
+}) {
+  const form = new FormData();
+  form.set("image_name", params.imageName);
+
+  if (params.style === "rails_image_fields") {
+    for (const [key, value] of Object.entries(params.image)) {
+      if (Array.isArray(value)) {
+        for (const item of value) form.append(`image[${key}][]`, readStr(item));
+      } else {
+        form.set(`image[${key}]`, readStr(value));
+      }
+    }
+    form.set("image[data]", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
+  } else {
+    form.set("image", JSON.stringify(params.image));
+    form.set("image[data]", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
+  }
+
+  const response = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/images?project_id=${encodeURIComponent(params.projectId)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      Accept: "application/json",
+      "Procore-Company-Id": params.companyId,
+    },
+    body: form,
+    cache: "no-store",
+  });
+
+  const text = await response.text();
+  let payload: unknown = text;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    // Keep text response.
+  }
+  if (!response.ok) {
+    const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+    throw new Error(`Procore POST /rest/v1.0/images?project_id=${params.projectId} failed (${response.status}): ${message}`);
+  }
+  return payload;
+}
+
 function categoryPayload(category: UnknownRecord) {
   return compactPayload({
     name: readStr(category.name) || "Unclassified",
@@ -657,8 +711,35 @@ export async function POST(request: Request) {
               }
             }
             if (!created) {
+              const directPayloads = imageCreatePayloadAttempts(payload).slice(-2);
+              for (const attempt of directPayloads) {
+                for (const style of ["json_image_with_data_field", "rails_image_fields"] as const) {
+                  try {
+                    created = await createImageWithDirectFile({
+                      accessToken,
+                      companyId: targetCompanyId,
+                      projectId: targetProjectId,
+                      imageName: filename,
+                      image: attempt.image,
+                      bytes,
+                      contentType,
+                      style,
+                    });
+                    successfulAttempt = `${attempt.name}_${style}`;
+                    successfulPayload = attempt.image;
+                    break;
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    attempts.push({ name: `${attempt.name}_${style}`, ok: false, error: message, payload: attempt.image });
+                    if (!/\(500\)|Internal Server Error|Image data was not found/i.test(message)) break;
+                  }
+                }
+                if (created) break;
+              }
+            }
+            if (!created) {
               const last = attempts[attempts.length - 1];
-              throw new ImageCreateAttemptError(readStr(last?.error) || "Image create failed after upload.", upload.uploadId, upload.s3Status, attempts);
+              throw new ImageCreateAttemptError(readStr(last?.error) || "Image create failed after upload.", upload.uploadId, upload.s3Status, upload as UnknownRecord, attempts);
             }
             createResults.push({
               sourceId: readStr(image.id),
@@ -666,6 +747,7 @@ export async function POST(request: Request) {
               ok: true,
               uploadId: upload.uploadId,
               s3Status: upload.s3Status,
+              upload,
               successfulAttempt,
               attempts,
               created,
@@ -679,6 +761,7 @@ export async function POST(request: Request) {
               error: error instanceof Error ? error.message : String(error),
               uploadId: error instanceof ImageCreateAttemptError ? error.uploadId : undefined,
               s3Status: error instanceof ImageCreateAttemptError ? error.s3Status : undefined,
+              upload: error instanceof ImageCreateAttemptError ? error.upload : undefined,
               attempts: error instanceof ImageCreateAttemptError ? error.attempts : undefined,
             });
           }

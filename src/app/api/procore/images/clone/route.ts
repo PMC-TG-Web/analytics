@@ -267,32 +267,78 @@ async function createProjectUpload(params: {
 }) {
   const md5Hex = createHash("md5").update(params.bytes).digest("hex");
   const sha256Hex = createHash("sha256").update(params.bytes).digest("hex");
-  const form = new FormData();
-  form.set("response_filename", params.filename);
-  form.set("response_content_type", params.contentType);
-  form.set("attachment_content_disposition", "false");
-  form.set("size", String(params.bytes.byteLength));
-  form.set("segments", JSON.stringify([{ size: params.bytes.byteLength, sha256: sha256Hex, md5: md5Hex }]));
+  const segmentDigest = { size: params.bytes.byteLength, sha256: sha256Hex, md5: md5Hex };
 
-  const response = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/uploads`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      "Procore-Company-Id": params.companyId,
+  const baseForm = () => {
+    const form = new FormData();
+    form.set("response_filename", params.filename);
+    form.set("response_content_type", params.contentType);
+    form.set("attachment_content_disposition", "false");
+    form.set("size", String(params.bytes.byteLength));
+    return form;
+  };
+
+  const uploadFormVariants = [
+    {
+      name: "indexed_segment_fields",
+      form: () => {
+        const form = baseForm();
+        form.set("segments[0][size]", String(segmentDigest.size));
+        form.set("segments[0][sha256]", segmentDigest.sha256);
+        form.set("segments[0][md5]", segmentDigest.md5);
+        return form;
+      },
     },
-    body: form,
-    cache: "no-store",
-  });
-  const text = await response.text();
-  let payload: unknown = text;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    // Keep text.
+    {
+      name: "array_segment_fields",
+      form: () => {
+        const form = baseForm();
+        form.set("segments[][size]", String(segmentDigest.size));
+        form.set("segments[][sha256]", segmentDigest.sha256);
+        form.set("segments[][md5]", segmentDigest.md5);
+        return form;
+      },
+    },
+    {
+      name: "json_segments",
+      form: () => {
+        const form = baseForm();
+        form.set("segments", JSON.stringify([segmentDigest]));
+        return form;
+      },
+    },
+  ];
+
+  let payload: unknown = null;
+  let lastFailure = "";
+  let usedUploadFormVariant = "";
+  for (const variant of uploadFormVariants) {
+    const response = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/uploads`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        "Procore-Company-Id": params.companyId,
+      },
+      body: variant.form(),
+      cache: "no-store",
+    });
+    const text = await response.text();
+    payload = text;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      // Keep text.
+    }
+    if (response.ok && isRecord(payload)) {
+      usedUploadFormVariant = variant.name;
+      break;
+    }
+    lastFailure = `Create project upload failed (${response.status}) using ${variant.name}: ${typeof payload === "string" ? payload : JSON.stringify(payload)}`;
   }
-  if (!response.ok || !isRecord(payload)) {
-    throw new Error(`Create project upload failed (${response.status}): ${typeof payload === "string" ? payload : JSON.stringify(payload)}`);
+
+  if (!isRecord(payload) || !usedUploadFormVariant) {
+    throw new Error(lastFailure || "Create project upload failed.");
   }
 
   const uploadId = readStr(payload.uuid || payload.id);
@@ -306,7 +352,7 @@ async function createProjectUpload(params: {
   const uploadHeaders = Object.keys(segmentHeaders).length ? segmentHeaders : directHeaders;
 
   if (!uploadId) throw new Error(`Project upload response did not include uuid/id: ${JSON.stringify(payload).slice(0, 1000)}`);
-  if (!uploadUrl) return { uploadId, uploadResponse: payload, s3Status: null };
+  if (!uploadUrl) return { uploadId, uploadResponse: payload, uploadFormVariant: usedUploadFormVariant, s3Status: null };
 
   const putHeaders = new Headers();
   for (const [key, value] of Object.entries(uploadHeaders)) putHeaders.set(key, readStr(value));
@@ -314,7 +360,7 @@ async function createProjectUpload(params: {
   const s3Response = await fetch(uploadUrl, { method: "PUT", headers: putHeaders, body: new Uint8Array(params.bytes), cache: "no-store" });
   const s3Text = await s3Response.text().catch(() => "");
   if (!s3Response.ok) throw new Error(`Project upload PUT failed (${s3Response.status}): ${s3Text.slice(0, 500)}`);
-  return { uploadId, uploadResponse: payload, s3Status: s3Response.status };
+  return { uploadId, uploadResponse: payload, uploadFormVariant: usedUploadFormVariant, s3Status: s3Response.status };
 }
 
 async function createImage(params: {

@@ -544,7 +544,6 @@ function buildChangeEventPayload(params: {
   changeReason?: UnknownRecord;
 }) {
   return compactPayload({
-    project_id: readNum(params.event.project_id),
     number: params.preserveNumber ? readStr(params.event.number) : undefined,
     title: readStr(params.event.title) || "Untitled Change Event",
     description: readStr(params.event.description),
@@ -578,6 +577,11 @@ async function createChangeEvent(params: {
     path: `/rest/v1.1/change_events?${query.toString()}`,
     body: { change_event: payload },
   });
+}
+
+function isNumberTakenError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /number/i.test(message) && /already been taken/i.test(message);
 }
 
 export async function POST(request: Request) {
@@ -751,6 +755,25 @@ export async function POST(request: Request) {
           });
           createResults.push({ sourceId: entry.sourceId, ok: true, created });
         } catch (error) {
+          if (preserveNumber && isNumberTakenError(error)) {
+            const refreshedTargetEvents = await fetchChangeEvents({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              maxPages: 50,
+            });
+            const existingTarget = refreshedTargetEvents.find((event) => readStr(event.number) === readStr(entry.sourceNumber));
+            createResults.push({
+              sourceId: entry.sourceId,
+              sourceNumber: entry.sourceNumber,
+              ok: true,
+              reused: true,
+              targetId: readStr(existingTarget?.id),
+              warning: "Procore reported this number already exists; treated as reused.",
+              originalError: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+          }
           createResults.push({
             sourceId: entry.sourceId,
             ok: false,

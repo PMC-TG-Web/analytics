@@ -250,17 +250,34 @@ async function createImage(params: {
   imageName: string;
   image: UnknownRecord;
 }) {
-  return procoreJson({
-    accessToken: params.accessToken,
-    companyId: params.companyId,
+  const form = new FormData();
+  form.set("image", JSON.stringify(params.image));
+  form.set("image_name", params.imageName);
+  form.set("upload_uuid", params.uploadUuid);
+
+  const response = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/images?project_id=${encodeURIComponent(params.projectId)}`, {
     method: "POST",
-    path: `/rest/v1.0/images?project_id=${encodeURIComponent(params.projectId)}`,
-    body: {
-      upload_uuid: params.uploadUuid,
-      image_name: params.imageName,
-      image: params.image,
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      Accept: "application/json",
+      "Procore-Company-Id": params.companyId,
     },
+    body: form,
+    cache: "no-store",
   });
+
+  const text = await response.text();
+  let payload: unknown = text;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    // Keep text response.
+  }
+  if (!response.ok) {
+    const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+    throw new Error(`Procore POST /rest/v1.0/images?project_id=${params.projectId} failed (${response.status}): ${message}`);
+  }
+  return payload;
 }
 
 function categoryPayload(category: UnknownRecord) {

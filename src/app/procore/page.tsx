@@ -237,6 +237,12 @@ function ProcoreContent() {
   const [drawingMigrationCreateBusy, setDrawingMigrationCreateBusy] = useState<string | null>(null);
   const [drawingMigrationCreateError, setDrawingMigrationCreateError] = useState<string | null>(null);
   const [drawingMigrationCreateResult, setDrawingMigrationCreateResult] = useState<any>(null);
+  const [drawingMigrationBatchOffset, setDrawingMigrationBatchOffset] = useState("0");
+  const [drawingMigrationBatchLimit, setDrawingMigrationBatchLimit] = useState("2");
+  const [drawingMigrationBatchDelayMs, setDrawingMigrationBatchDelayMs] = useState("1500");
+  const [drawingMigrationMaxAutoBatches, setDrawingMigrationMaxAutoBatches] = useState("50");
+  const [drawingMigrationAutoContinue, setDrawingMigrationAutoContinue] = useState(true);
+  const [drawingMigrationUseSourceSets, setDrawingMigrationUseSourceSets] = useState(true);
   const [estimatingPlansCompanyId, setEstimatingPlansCompanyId] = useState("598134325805519");
   const [estimatingPlansProjectId, setEstimatingPlansProjectId] = useState("598134326626273");
   const [estimatingPlansProposalId, setEstimatingPlansProposalId] = useState("4109731");
@@ -2040,6 +2046,134 @@ function ProcoreContent() {
       }
 
       setDrawingMigrationCreateResult(result);
+    } catch (error) {
+      setDrawingMigrationCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrawingMigrationCreateBusy(null);
+    }
+  };
+
+  const handleDrawingMigrationCreateBatch = async () => {
+    const sourceCompanyId = drawingLookupCompanyId.trim();
+    const sourceProjectId = drawingLookupProjectId.trim();
+    const targetCompanyId = drawingMigrationTargetCompanyId.trim();
+    const targetProjectId = drawingMigrationTargetProjectId.trim();
+    const offset = Math.max(0, Number.parseInt(drawingMigrationBatchOffset.trim() || "0", 10) || 0);
+    const limit = Math.max(1, Math.min(10, Number.parseInt(drawingMigrationBatchLimit.trim() || "2", 10) || 2));
+    const delayMs = Math.max(0, Math.min(10000, Number.parseInt(drawingMigrationBatchDelayMs.trim() || "1500", 10) || 1500));
+    const maxAutoBatches = Math.max(1, Math.min(500, Number.parseInt(drawingMigrationMaxAutoBatches.trim() || "50", 10) || 50));
+    const eligibleRows = drawingInventorySummaryRows.filter((row) => Boolean(getDrawingMigrationPdfUrl(row)));
+
+    if (!sourceCompanyId || !sourceProjectId) {
+      setDrawingMigrationCreateError("Pull source inventory first so source company/project are set.");
+      return;
+    }
+    if (!targetCompanyId || !targetProjectId) {
+      setDrawingMigrationCreateError("Target company/project are required.");
+      return;
+    }
+    if (sourceCompanyId === targetCompanyId && sourceProjectId === targetProjectId) {
+      setDrawingMigrationCreateError("Source and target are the same project. Use a different real Procore project ID.");
+      return;
+    }
+    if (eligibleRows.length === 0) {
+      setDrawingMigrationCreateError("No inventory rows include a PDF URL.");
+      return;
+    }
+    if (!window.confirm(`Create drawing batch into target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setDrawingMigrationCreateBusy("batch");
+    setDrawingMigrationCreateError(null);
+    setDrawingMigrationCreateResult(null);
+
+    const batchResults: any[] = [];
+    let currentOffset = offset;
+    let created = 0;
+    let failed = 0;
+    let attempted = 0;
+
+    try {
+      for (let batchIndex = 0; batchIndex < (drawingMigrationAutoContinue ? maxAutoBatches : 1); batchIndex += 1) {
+        const rows = eligibleRows.slice(currentOffset, currentOffset + limit);
+        if (rows.length === 0) break;
+
+        const rowResults: any[] = [];
+        for (const row of rows) {
+          const targetDrawingSetName = drawingMigrationUseSourceSets && row.drawingSetName
+            ? String(row.drawingSetName)
+            : drawingMigrationTargetSetName.trim() || "Migrated Drawings";
+          const label = `${row.number || row.id || "drawing"}${row.title ? ` - ${row.title}` : ""}`;
+
+          try {
+            const response = await fetch("/api/procore/drawings-migration/create-one", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sourceCompanyId,
+                sourceProjectId,
+                targetCompanyId,
+                targetProjectId,
+                targetDrawingSetName,
+                targetDisciplineName: drawingMigrationTargetDisciplineName.trim() || "General",
+                drawing: row,
+              }),
+            });
+            const result = await response.json().catch(() => ({}));
+            attempted += 1;
+            if (!response.ok || !result.success) {
+              failed += 1;
+              rowResults.push({ label, sourceId: row.id, ok: false, status: response.status, result });
+            } else {
+              created += 1;
+              rowResults.push({ label, sourceId: row.id, ok: true, status: response.status, result });
+            }
+          } catch (error) {
+            attempted += 1;
+            failed += 1;
+            rowResults.push({ label, sourceId: row.id, ok: false, error: error instanceof Error ? error.message : String(error) });
+          }
+
+          setDrawingMigrationCreateResult({
+            success: failed === 0,
+            autoContinue: drawingMigrationAutoContinue,
+            counts: { eligible: eligibleRows.length, attempted, created, failed },
+            nextCreateOffset: currentOffset + rowResults.length,
+            batchResults: [...batchResults, { batchIndex: batchIndex + 1, createOffset: currentOffset, rowResults }],
+          });
+
+          if (failed > 0) break;
+          if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        batchResults.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, rowResults });
+        const nextOffset = currentOffset + rowResults.length;
+        setDrawingMigrationBatchOffset(String(nextOffset));
+
+        if (!drawingMigrationAutoContinue || failed > 0 || nextOffset >= eligibleRows.length || rowResults.length === 0) {
+          currentOffset = nextOffset;
+          break;
+        }
+        currentOffset = nextOffset;
+      }
+
+      setDrawingMigrationCreateResult({
+        success: failed === 0,
+        autoContinue: drawingMigrationAutoContinue,
+        counts: { eligible: eligibleRows.length, attempted, created, failed },
+        nextCreateOffset: currentOffset,
+        batchResults,
+        nextStep:
+          failed > 0
+            ? "Batch stopped on the first failed drawing. Review the failed row before continuing."
+            : currentOffset >= eligibleRows.length
+              ? "Drawing batch clone complete."
+              : `Continue with createOffset=${currentOffset}.`,
+      });
+      if (failed > 0) {
+        setDrawingMigrationCreateError(`${failed} drawing(s) failed. Check the result JSON below.`);
+      }
     } catch (error) {
       setDrawingMigrationCreateError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -7224,6 +7358,76 @@ function ProcoreContent() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={drawingMigrationBatchOffset ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    step="1"
+                    value={drawingMigrationBatchLimit ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay (ms)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="250"
+                    value={drawingMigrationBatchDelayMs ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchDelayMs(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={drawingMigrationMaxAutoBatches ?? ""}
+                    onChange={(event) => setDrawingMigrationMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(drawingMigrationAutoContinue)}
+                      onChange={(event) => setDrawingMigrationAutoContinue(event.target.checked)}
+                    />
+                    Auto continue
+                  </label>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(drawingMigrationUseSourceSets)}
+                      onChange={(event) => setDrawingMigrationUseSourceSets(event.target.checked)}
+                    />
+                    Source sets
+                  </label>
+                </div>
+              </div>
+
               <div className="flex flex-wrap gap-3 mb-4">
                 <button
                   onClick={handlePullDrawingsInventory}
@@ -7255,6 +7459,25 @@ function ProcoreContent() {
                     >
                       Download JSON
                     </button>
+                    <button
+                      onClick={handleDrawingMigrationCreateBatch}
+                      disabled={
+                        drawingMigrationCreateBusy !== null ||
+                        drawingMigrationDryRunBusy !== null ||
+                        drawingInventorySummaryRows.length === 0
+                      }
+                      className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      {drawingMigrationCreateBusy === "batch" ? "Creating Batch..." : "Run Drawing Batch"}
+                    </button>
+                    {drawingMigrationCreateResult && (
+                      <button
+                        onClick={() => downloadJson("procore-drawings-batch-result.json", drawingMigrationCreateResult)}
+                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        Download Batch Result
+                      </button>
+                    )}
                   </>
                 )}
               </div>

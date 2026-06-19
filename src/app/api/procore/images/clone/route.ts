@@ -589,6 +589,7 @@ function resolveCategory(sourceCategory: UnknownRecord, targetCategories: Unknow
 
 export async function POST(request: Request) {
   try {
+    const startedAt = Date.now();
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
     const { accessToken, tokenSource } = await getToken(body.accessToken);
     const sourceCompanyId = readStr(body.sourceCompanyId || body.companyId);
@@ -597,9 +598,13 @@ export async function POST(request: Request) {
     const targetProjectId = readStr(body.targetProjectId);
     const dryRun = body.dryRun !== false;
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
-    const createLimit = Math.max(1, Math.min(50, Math.trunc(readNum(body.createLimit) || 10)));
+    const requestedCreateLimit = Math.max(1, Math.min(50, Math.trunc(readNum(body.createLimit) || 10)));
+    const createLimit = dryRun ? requestedCreateLimit : Math.min(1, requestedCreateLimit);
     const maxPages = Math.max(1, Math.min(50, Math.trunc(readNum(body.maxPages) || 10)));
     const cloneCategories = readBool(body.cloneCategories, true);
+    const tryDirectFileFallbacks = readBool(body.tryDirectFileFallbacks, false);
+    const maxRuntimeMs = Math.max(5_000, Math.min(25_000, Math.trunc(readNum(body.maxRuntimeMs) || 20_000)));
+    const deadline = startedAt + maxRuntimeMs;
     const imageIds = new Set(parseIds(body.imageIds || body.ids));
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
@@ -670,10 +675,15 @@ export async function POST(request: Request) {
 
     const categoryCreateResults: UnknownRecord[] = [];
     const createResults: UnknownRecord[] = [];
+    let stoppedEarly = false;
     if (!dryRun && missingMappings.length === 0) {
       const createdCategories: UnknownRecord[] = [...plannedCategories];
       if (cloneCategories) {
         for (const category of categoryPlan) {
+          if (Date.now() > deadline) {
+            stoppedEarly = true;
+            break;
+          }
           const existing = resolveCategory({ name: category.name }, targetCategories, createdCategories);
           if (existing) {
             categoryCreateResults.push({ sourceId: category.sourceId, ok: true, reused: true, targetId: readStr(existing.id), payload: category.payload });
@@ -694,6 +704,10 @@ export async function POST(request: Request) {
 
       if (categoryCreateResults.every((result) => result.ok !== false)) {
         for (const image of sourceImages.slice(createOffset, createOffset + createLimit)) {
+          if (Date.now() > deadline) {
+            stoppedEarly = true;
+            break;
+          }
           const filename = readStr(image.filename) || `image-${readStr(image.id)}.jpg`;
           const sourceCategory = categoryById.get(readStr(image.image_category_id)) || { name: readStr(image.image_category_name), id: readStr(image.image_category_id) };
           const targetCategory = resolveCategory(sourceCategory, targetCategories, createdCategories) || unclassifiedTarget;
@@ -750,7 +764,7 @@ export async function POST(request: Request) {
                 }
               }
             }
-            if (!created) {
+            if (!created && tryDirectFileFallbacks && Date.now() < deadline) {
               const directPayloads = imageCreatePayloadAttempts(payload).slice(-2);
               for (const attempt of directPayloads) {
                 for (const style of ["json_image_with_image_data_field", "rails_image_fields", "json_image_with_data_field", "json_image_with_file_field"] as const) {
@@ -811,13 +825,15 @@ export async function POST(request: Request) {
 
     const failedCategories = categoryCreateResults.filter((result) => result.ok === false);
     const failedImages = createResults.filter((result) => result.ok === false);
+    const attemptedImages = createResults.length;
+    const nextCreateOffset = createOffset + attemptedImages;
     return NextResponse.json({
-      success: dryRun ? true : failedCategories.length === 0 && failedImages.length === 0,
+      success: dryRun ? true : !stoppedEarly && failedCategories.length === 0 && failedImages.length === 0,
       dryRun,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
       target: { companyId: targetCompanyId, projectId: targetProjectId },
-      options: { cloneCategories, createOffset, createLimit, maxPages },
+      options: { cloneCategories, createOffset, requestedCreateLimit, createLimit, maxPages, tryDirectFileFallbacks, maxRuntimeMs },
       counts: {
         sourceCategories: sourceCategories.length,
         targetCategories: targetCategories.length,
@@ -828,8 +844,11 @@ export async function POST(request: Request) {
         createdImages: createResults.filter((result) => result.ok === true).length,
         failedCategories: failedCategories.length,
         failedImages: failedImages.length,
+        attemptedImages,
       },
       readyForLiveClone: missingMappings.length === 0,
+      stoppedEarly,
+      nextCreateOffset,
       missingMappings,
       categoryPlan,
       imagePlan: imagePlan.slice(0, 200),
@@ -838,6 +857,8 @@ export async function POST(request: Request) {
       failedCreateResults: [...failedCategories, ...failedImages],
       nextStep: dryRun
         ? "Review image/category plan. Live clone uploads images in batches using createOffset/createLimit."
+        : stoppedEarly
+          ? `Stopped before timeout. Continue with createOffset=${nextCreateOffset}.`
         : failedCategories.length || failedImages.length
           ? "Image clone finished with create errors."
           : "Image clone batch complete.",

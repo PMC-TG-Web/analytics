@@ -599,7 +599,7 @@ function ProcoreContent() {
   const [imageCloneTargetProjectId, setImageCloneTargetProjectId] = useState("");
   const [imageCloneIdsText, setImageCloneIdsText] = useState("");
   const [imageCloneCreateOffset, setImageCloneCreateOffset] = useState("0");
-  const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("10");
+  const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("1");
   const [imageCloneMaxPages, setImageCloneMaxPages] = useState("10");
   const [imageCloneCategories, setImageCloneCategories] = useState(true);
   const [imageCloneBusy, setImageCloneBusy] = useState(false);
@@ -5230,7 +5230,7 @@ function ProcoreContent() {
           imageIds,
           cloneCategories: imageCloneCategories,
           createOffset: imageCloneCreateOffset.trim() || "0",
-          createLimit: imageCloneCreateLimit.trim() || "10",
+          createLimit: imageCloneCreateLimit.trim() || "1",
           maxPages: imageCloneMaxPages.trim() || "10",
           dryRun,
         }),
@@ -7934,6 +7934,8 @@ function ProcoreContent() {
                       ? imageCloneResult.result?.readyForLiveClone
                         ? `Dry run found ${imageCloneResult.result?.counts?.sourceImages ?? 0} image(s) and ${imageCloneResult.result?.counts?.sourceCategories ?? 0} album(s). Live batch is enabled.`
                         : `${imageCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : imageCloneResult.result?.stoppedEarly
+                        ? `Stopped before timeout. Continue with create offset ${imageCloneResult.result?.nextCreateOffset ?? 0}.`
                       : imageCloneResult.result?.success
                         ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
                         : "Live batch finished with errors."}

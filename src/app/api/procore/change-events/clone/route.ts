@@ -58,6 +58,14 @@ function normCode(value: unknown): string {
   return readStr(value).replace(/\s+/g, "").toLowerCase();
 }
 
+function wordTokens(value: unknown) {
+  return normalize(value)
+    .replace(/[^a-z0-9#./"'-]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/ing$/, "").trim())
+    .filter((token) => token.length > 2);
+}
+
 function buildStringMap(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const out: Record<string, string> = {};
@@ -96,6 +104,7 @@ function buildWorkbookFlatCodeMapFromWorkbook(workbook: XLSX.WorkBook) {
   }
 
   const flatCodeMap: Record<string, string> = {};
+  const descriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }> = [];
   const issues: UnknownRecord[] = [];
   for (const [oldCostCode, oldCount] of oldCostCodeCounts.entries()) {
     const newRows = newRowsByCostCode.get(oldCostCode) || [];
@@ -112,6 +121,12 @@ function buildWorkbookFlatCodeMapFromWorkbook(workbook: XLSX.WorkBook) {
       const targetFlatCode = [...targetFlatCodes][0];
       flatCodeMap[oldCostCode] = targetFlatCode;
       flatCodeMap[oldCostCode.toUpperCase()] = targetFlatCode;
+      for (const oldRow of allOld.filter((row) => normCode(row["Cost Code"]) === oldCostCode)) {
+        for (const keyValue of [oldRow.Name, oldRow.Description]) {
+          const key = normalize(keyValue);
+          if (key) descriptionMappings.push({ key, targetFlatCode, oldName: readStr(oldRow.Name), oldCostCode: readStr(oldRow["Cost Code"]) });
+        }
+      }
     } else if (oldCount === 1 && targetFlatCodes.size === 0) {
       issues.push({ oldCostCode, issue: "missing_new_workbook_cost_code", matchCount: 0 });
     } else if (targetFlatCodes.size > 1) {
@@ -121,6 +136,7 @@ function buildWorkbookFlatCodeMapFromWorkbook(workbook: XLSX.WorkBook) {
 
   return {
     flatCodeMap,
+    descriptionMappings,
     issues,
     summary: {
       uniqueOld: uniqueOld.length,
@@ -128,6 +144,7 @@ function buildWorkbookFlatCodeMapFromWorkbook(workbook: XLSX.WorkBook) {
       nonUniqueOld: nonUniqueOld.length,
       nonUniqueNew: nonUniqueNew.length,
       mappedCostCodes: Object.keys(flatCodeMap).length,
+      descriptionMappings: descriptionMappings.length,
       crosswalkIssues: issues.length,
     },
   };
@@ -307,12 +324,53 @@ function mappedFlatCode(sourceFlatCode: string, lineItemTypeCodeMap: Record<stri
   return mappedType ? `${costCode}.${mappedType}` : sourceFlatCode;
 }
 
+function resolveDescriptionWorkbookMapping(
+  description: unknown,
+  mappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }>
+) {
+  const normalized = normalize(description);
+  if (!normalized) return null;
+  const exact = mappings.filter((mapping) => mapping.key === normalized);
+  if (exact.length === 1) return { ...exact[0], strategy: "workbook_description_exact" };
+
+  const descriptionTokens = new Set(wordTokens(description));
+  if (descriptionTokens.size === 0) return null;
+  const scored = mappings
+    .map((mapping) => {
+      const mappingTokens = new Set(wordTokens(mapping.key));
+      let score = 0;
+      for (const token of descriptionTokens) {
+        if (mappingTokens.has(token)) score += 1;
+      }
+      if (mapping.key.includes(normalized) || normalized.includes(mapping.key)) score += 2;
+      return { mapping, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (scored.length === 0) return null;
+  const bestScore = scored[0].score;
+  const best = scored.filter((entry) => entry.score === bestScore);
+  const targetFlatCodes = new Set(best.map((entry) => entry.mapping.targetFlatCode));
+  if (targetFlatCodes.size === 1) {
+    return { ...best[0].mapping, strategy: "workbook_description_token" };
+  }
+  return {
+    targetFlatCode: "",
+    oldName: "",
+    oldCostCode: "",
+    strategy: "workbook_description_ambiguous",
+    candidates: best.slice(0, 8).map((entry) => entry.mapping),
+  };
+}
+
 function resolveBudgetCode(params: {
   sourceBudgetCode: UnknownRecord;
+  description: string;
   targetIndex: ReturnType<typeof buildBudgetCodeIndexes>;
   budgetCodeIdMap: Record<string, string>;
   flatCodeMap: Record<string, string>;
   workbookFlatCodeMap: Record<string, string>;
+  workbookDescriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }>;
   lineItemTypeCodeMap: Record<string, string>;
 }) {
   const sourceId = readStr(params.sourceBudgetCode.id);
@@ -332,7 +390,39 @@ function resolveBudgetCode(params: {
   if (workbookMapped) {
     const matches = params.targetIndex.byFlatCode.get(normalize(workbookMapped)) || [];
     if (matches.length === 1) return { id: readStr(matches[0].id), strategy: "workbook_cost_code_type" };
-    if (matches.length > 1) return { id: "", issue: "workbook_flat_code_ambiguous", matchCount: matches.length };
+    if (matches.length > 1) return { id: "", issue: "workbook_flat_code_ambiguous", matchCount: matches.length, mappedFlatCode: workbookMapped };
+    return { id: "", issue: "workbook_target_budget_code_missing", matchCount: 0, mappedFlatCode: workbookMapped };
+  }
+  if (!sourceFlatCode) {
+    const descriptionMapping = resolveDescriptionWorkbookMapping(params.description, params.workbookDescriptionMappings);
+    if (descriptionMapping?.targetFlatCode) {
+      const matches = params.targetIndex.byFlatCode.get(normalize(descriptionMapping.targetFlatCode)) || [];
+      if (matches.length === 1) return { id: readStr(matches[0].id), strategy: descriptionMapping.strategy };
+      if (matches.length > 1) {
+        return {
+          id: "",
+          issue: "workbook_description_target_ambiguous",
+          matchCount: matches.length,
+          mappedFlatCode: descriptionMapping.targetFlatCode,
+          workbookMatch: { oldName: descriptionMapping.oldName, oldCostCode: descriptionMapping.oldCostCode },
+        };
+      }
+      return {
+        id: "",
+        issue: "workbook_description_target_missing",
+        matchCount: 0,
+        mappedFlatCode: descriptionMapping.targetFlatCode,
+        workbookMatch: { oldName: descriptionMapping.oldName, oldCostCode: descriptionMapping.oldCostCode },
+      };
+    }
+    if (descriptionMapping?.strategy === "workbook_description_ambiguous") {
+      return {
+        id: "",
+        issue: "workbook_description_ambiguous",
+        matchCount: Array.isArray(descriptionMapping.candidates) ? descriptionMapping.candidates.length : 0,
+        candidates: descriptionMapping.candidates,
+      };
+    }
   }
   const targetFlatCode = mappedFlatCode(sourceFlatCode, params.lineItemTypeCodeMap);
   const flatMatches = params.targetIndex.byFlatCode.get(normalize(targetFlatCode)) || [];
@@ -436,10 +526,12 @@ export async function POST(request: Request) {
       : sourceEventsRaw;
     const targetBudgetIndex = buildBudgetCodeIndexes(targetBudgetLineItems);
     let workbookFlatCodeMap: Record<string, string> = {};
+    let workbookDescriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }> = [];
     const workbookCrosswalk: UnknownRecord = { enabled: false, source: "", summary: null, issues: [] };
     if (crosswalkWorkbookBase64) {
       const built = buildWorkbookFlatCodeMapFromBase64(crosswalkWorkbookBase64);
       workbookFlatCodeMap = built.flatCodeMap;
+      workbookDescriptionMappings = built.descriptionMappings;
       workbookCrosswalk.enabled = true;
       workbookCrosswalk.source = "uploaded_workbook";
       workbookCrosswalk.summary = built.summary;
@@ -447,6 +539,7 @@ export async function POST(request: Request) {
     } else if (crosswalkPath && existsSync(crosswalkPath)) {
       const built = buildWorkbookFlatCodeMap(crosswalkPath);
       workbookFlatCodeMap = built.flatCodeMap;
+      workbookDescriptionMappings = built.descriptionMappings;
       workbookCrosswalk.enabled = true;
       workbookCrosswalk.source = crosswalkPath;
       workbookCrosswalk.summary = built.summary;
@@ -463,10 +556,12 @@ export async function POST(request: Request) {
         const sourceBudgetCode = nestedRecord(item, "budget_code");
         const mapping = resolveBudgetCode({
           sourceBudgetCode,
+          description: readStr(item.description),
           targetIndex: targetBudgetIndex,
           budgetCodeIdMap,
           flatCodeMap,
           workbookFlatCodeMap,
+          workbookDescriptionMappings,
           lineItemTypeCodeMap,
         });
         if (!mapping.id) {
@@ -480,6 +575,9 @@ export async function POST(request: Request) {
             sourceFlatCode: readStr(sourceBudgetCode.flat_code),
             issue: mapping.issue || "missing_budget_code_mapping",
             matchCount: mapping.matchCount || 0,
+            mappedFlatCode: mapping.mappedFlatCode,
+            workbookMatch: mapping.workbookMatch,
+            candidates: mapping.candidates,
           });
         }
         return {

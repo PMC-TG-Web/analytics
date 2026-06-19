@@ -571,6 +571,27 @@ function ProcoreContent() {
   const [correspondenceCloneBusy, setCorrespondenceCloneBusy] = useState(false);
   const [correspondenceCloneError, setCorrespondenceCloneError] = useState<string | null>(null);
   const [correspondenceCloneResult, setCorrespondenceCloneResult] = useState<any>(null);
+  const [submittalCloneSourceCompanyId, setSubmittalCloneSourceCompanyId] = useState("598134325658789");
+  const [submittalCloneSourceProjectId, setSubmittalCloneSourceProjectId] = useState("");
+  const [submittalCloneTargetCompanyId, setSubmittalCloneTargetCompanyId] = useState("598134325805519");
+  const [submittalCloneTargetProjectId, setSubmittalCloneTargetProjectId] = useState("");
+  const [submittalCloneIdsText, setSubmittalCloneIdsText] = useState("");
+  const [submittalCloneCreateOffset, setSubmittalCloneCreateOffset] = useState("0");
+  const [submittalCloneNumberOffset, setSubmittalCloneNumberOffset] = useState("0");
+  const [submittalCloneMapsText, setSubmittalCloneMapsText] = useState(`{
+  "typeIdMap": {},
+  "responsibleContractorIdMap": {},
+  "submittalManagerIdMap": {},
+  "defaultResponsibleContractorId": "598134335120254",
+  "defaultSubmittalManagerId": ""
+}`);
+  const [submittalClonePackages, setSubmittalClonePackages] = useState(true);
+  const [submittalCloneSubmittals, setSubmittalCloneSubmittals] = useState(true);
+  const [submittalClonePreserveNumber, setSubmittalClonePreserveNumber] = useState(true);
+  const [submittalClonePreserveStatus, setSubmittalClonePreserveStatus] = useState(false);
+  const [submittalCloneBusy, setSubmittalCloneBusy] = useState(false);
+  const [submittalCloneError, setSubmittalCloneError] = useState<string | null>(null);
+  const [submittalCloneResult, setSubmittalCloneResult] = useState<any>(null);
   const [changeEventCloneSourceCompanyId, setChangeEventCloneSourceCompanyId] = useState("598134325658789");
   const [changeEventCloneSourceProjectId, setChangeEventCloneSourceProjectId] = useState("");
   const [changeEventCloneTargetCompanyId, setChangeEventCloneTargetCompanyId] = useState("598134325805519");
@@ -5085,6 +5106,82 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneSubmittals = async (dryRun: boolean) => {
+    const sourceCompanyId = submittalCloneSourceCompanyId.trim();
+    const sourceProjectId = submittalCloneSourceProjectId.trim();
+    const targetCompanyId = submittalCloneTargetCompanyId.trim();
+    const targetProjectId = submittalCloneTargetProjectId.trim();
+    const createOffset = submittalCloneCreateOffset.trim() || "0";
+    const submittalIds = submittalCloneIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    let maps: any = {};
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setSubmittalCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    try {
+      maps = submittalCloneMapsText.trim() ? JSON.parse(submittalCloneMapsText) : {};
+    } catch (error) {
+      setSubmittalCloneError(`Mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned submittal package(s)/submittal(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setSubmittalCloneBusy(true);
+    setSubmittalCloneError(null);
+    setSubmittalCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/submittals/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          submittalIds,
+          createOffset,
+          createLimit: 25,
+          clonePackages: submittalClonePackages,
+          cloneSubmittals: submittalCloneSubmittals,
+          preserveNumber: submittalClonePreserveNumber,
+          preserveStatus: submittalClonePreserveStatus,
+          numberOffset: submittalCloneNumberOffset.trim() || "0",
+          typeIdMap: maps.typeIdMap || {},
+          responsibleContractorIdMap: maps.responsibleContractorIdMap || {},
+          submittalManagerIdMap: maps.submittalManagerIdMap || {},
+          defaultResponsibleContractorId: maps.defaultResponsibleContractorId || undefined,
+          defaultSubmittalManagerId: maps.defaultSubmittalManagerId || undefined,
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        const firstCreateError = Array.isArray(result?.failedCreateResults)
+          ? result.failedCreateResults.find((entry: any) => entry?.ok === false)?.error
+          : "";
+        setSubmittalCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstCreateError
+              ? `Submittal clone create error: ${firstCreateError}`
+              : `Submittal clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setSubmittalCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setSubmittalCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSubmittalCloneBusy(false);
+    }
+  };
+
   const handleCloneChangeEvents = async (dryRun: boolean) => {
     const sourceCompanyId = changeEventCloneSourceCompanyId.trim();
     const sourceProjectId = changeEventCloneSourceProjectId.trim();
@@ -7439,6 +7536,182 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(correspondenceCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+              <h2 className="text-xl font-bold text-cyan-900 mb-3">Clone Submittals</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Submittal Packages and Submittals from one Procore project to another. Dry-run first to review skipped approvers, attachments, distribution members, and custom fields.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={submittalCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setSubmittalCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={submittalCloneSourceProjectId ?? ""}
+                    onChange={(event) => setSubmittalCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={submittalCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setSubmittalCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={submittalCloneTargetProjectId ?? ""}
+                    onChange={(event) => setSubmittalCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Submittal IDs or Numbers</label>
+                  <textarea
+                    value={submittalCloneIdsText ?? ""}
+                    onChange={(event) => setSubmittalCloneIdsText(event.target.value)}
+                    placeholder="Optional: comma or line separated. Blank clones all fetched submittals."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={submittalCloneCreateOffset ?? ""}
+                    onChange={(event) => setSubmittalCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number Offset</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={submittalCloneNumberOffset ?? ""}
+                    onChange={(event) => setSubmittalCloneNumberOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="space-y-3 pt-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(submittalClonePackages)}
+                      onChange={(event) => setSubmittalClonePackages(event.target.checked)}
+                    />
+                    Clone packages
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(submittalCloneSubmittals)}
+                      onChange={(event) => setSubmittalCloneSubmittals(event.target.checked)}
+                    />
+                    Clone submittals
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(submittalClonePreserveNumber)}
+                      onChange={(event) => setSubmittalClonePreserveNumber(event.target.checked)}
+                    />
+                    Preserve numbers
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(submittalClonePreserveStatus)}
+                      onChange={(event) => setSubmittalClonePreserveStatus(event.target.checked)}
+                    />
+                    Preserve status IDs
+                  </label>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Mapping JSON</label>
+                <textarea
+                  value={submittalCloneMapsText ?? ""}
+                  onChange={(event) => setSubmittalCloneMapsText(event.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-32"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Map old type/contractor/manager IDs to target IDs. The default responsible contractor is Paradise Masonry in the new company.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneSubmittals(true)}
+                  disabled={submittalCloneBusy}
+                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {submittalCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneSubmittals(false)}
+                  disabled={submittalCloneBusy || !submittalCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {submittalCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {submittalCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-submittals-result.json", submittalCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {submittalCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Submittal Clone Error:</strong> {submittalCloneError}
+                </div>
+              )}
+
+              {submittalCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    submittalCloneResult.result?.readyForLiveClone || submittalCloneResult.result?.success
+                      ? "bg-cyan-50 border-cyan-200 text-cyan-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Submittal Clone Result:</strong>{" "}
+                    {submittalCloneResult.result?.dryRun
+                      ? submittalCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${submittalCloneResult.result?.counts?.sourcePackages ?? 0} package(s) and ${submittalCloneResult.result?.counts?.sourceSubmittals ?? 0} submittal(s). Live clone is enabled.`
+                        : `${submittalCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : submittalCloneResult.result?.success
+                        ? `Live clone created ${submittalCloneResult.result?.counts?.createdPackages ?? 0} package(s) and ${submittalCloneResult.result?.counts?.createdSubmittals ?? 0} submittal(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(submittalCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

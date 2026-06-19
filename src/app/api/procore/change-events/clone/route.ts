@@ -539,12 +539,13 @@ function buildChangeEventPayload(params: {
   event: UnknownRecord;
   changeItems: UnknownRecord[];
   preserveNumber: boolean;
+  numberOffset: number;
   status: UnknownRecord;
   changeType?: UnknownRecord;
   changeReason?: UnknownRecord;
 }) {
   return compactPayload({
-    number: params.preserveNumber ? readStr(params.event.number) : undefined,
+    number: params.preserveNumber ? offsetChangeEventNumber(params.event.number, params.numberOffset) : undefined,
     title: readStr(params.event.title) || "Untitled Change Event",
     description: readStr(params.event.description),
     scope: readStr(params.event.scope),
@@ -584,6 +585,14 @@ function isNumberTakenError(error: unknown) {
   return /number/i.test(message) && /already been taken/i.test(message);
 }
 
+function offsetChangeEventNumber(value: unknown, offset: number) {
+  const text = readStr(value);
+  if (!text || !offset) return text;
+  if (!/^\d+$/.test(text)) return text;
+  const next = String(Number(text) + offset);
+  return next.padStart(text.length, "0");
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
@@ -596,6 +605,7 @@ export async function POST(request: Request) {
     const dryRun = body.dryRun !== false;
     const cloneLineItems = readBool(body.cloneLineItems, true);
     const preserveNumber = readBool(body.preserveNumber, false);
+    const numberOffset = Math.trunc(readNum(body.numberOffset) || 0);
     const allowUnmappedLineItems = readBool(body.allowUnmappedLineItems, false);
     const changeEventIds = new Set(parseIds(body.changeEventIds || body.ids));
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
@@ -705,6 +715,7 @@ export async function POST(request: Request) {
       return {
         sourceId: readStr(event.id),
         sourceNumber: readStr(event.number),
+        targetNumber: preserveNumber ? offsetChangeEventNumber(event.number, numberOffset) : "",
         title: readStr(event.title),
         sourceChangeType: isRecord(event.change_type) ? readStr(event.change_type.name || event.change_type.change_type) : "",
         sourceChangeReason: isRecord(event.change_reason) ? readStr(event.change_reason.change_reason || event.change_reason.name) : "",
@@ -723,6 +734,7 @@ export async function POST(request: Request) {
           event,
           changeItems: validItems,
           preserveNumber,
+          numberOffset,
           status: targetStatus,
           changeType: targetChangeType,
           changeReason: targetChangeReason,
@@ -735,11 +747,13 @@ export async function POST(request: Request) {
     if (!dryRun && blockers.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
         try {
-          const existingTarget = preserveNumber ? targetByNumber.get(readStr(entry.sourceNumber)) : undefined;
+          const targetNumber = readStr(entry.targetNumber || entry.sourceNumber);
+          const existingTarget = preserveNumber ? targetByNumber.get(targetNumber) : undefined;
           if (existingTarget) {
             createResults.push({
               sourceId: entry.sourceId,
               sourceNumber: entry.sourceNumber,
+              targetNumber,
               ok: true,
               reused: true,
               targetId: readStr(existingTarget.id),
@@ -762,17 +776,21 @@ export async function POST(request: Request) {
               projectId: targetProjectId,
               maxPages: 50,
             });
-            const existingTarget = refreshedTargetEvents.find((event) => readStr(event.number) === readStr(entry.sourceNumber));
-            createResults.push({
-              sourceId: entry.sourceId,
-              sourceNumber: entry.sourceNumber,
-              ok: true,
-              reused: true,
-              targetId: readStr(existingTarget?.id),
-              warning: "Procore reported this number already exists; treated as reused.",
-              originalError: error instanceof Error ? error.message : String(error),
-            });
-            continue;
+            const targetNumber = readStr(entry.targetNumber || entry.sourceNumber);
+            const existingTarget = refreshedTargetEvents.find((event) => readStr(event.number) === targetNumber);
+            if (existingTarget) {
+              createResults.push({
+                sourceId: entry.sourceId,
+                sourceNumber: entry.sourceNumber,
+                targetNumber,
+                ok: true,
+                reused: true,
+                targetId: readStr(existingTarget.id),
+                warning: "Procore reported this number already exists; treated as reused.",
+                originalError: error instanceof Error ? error.message : String(error),
+              });
+              continue;
+            }
           }
           createResults.push({
             sourceId: entry.sourceId,
@@ -801,7 +819,7 @@ export async function POST(request: Request) {
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
       target: { companyId: targetCompanyId, projectId: targetProjectId },
-      options: { cloneLineItems, preserveNumber, allowUnmappedLineItems },
+      options: { cloneLineItems, preserveNumber, numberOffset, allowUnmappedLineItems },
       workbookCrosswalk,
       counts: {
         sourceChangeEvents: sourceEvents.length,

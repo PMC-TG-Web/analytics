@@ -577,6 +577,7 @@ function ProcoreContent() {
   const [changeEventCloneTargetProjectId, setChangeEventCloneTargetProjectId] = useState("");
   const [changeEventCloneIdsText, setChangeEventCloneIdsText] = useState("");
   const [changeEventCloneCreateOffset, setChangeEventCloneCreateOffset] = useState("0");
+  const [changeEventCloneNumberOffset, setChangeEventCloneNumberOffset] = useState("0");
   const [changeEventCloneCrosswalkPath, setChangeEventCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [changeEventCloneLineItems, setChangeEventCloneLineItems] = useState(true);
   const [changeEventClonePreserveNumber, setChangeEventClonePreserveNumber] = useState(false);
@@ -5115,6 +5116,7 @@ function ProcoreContent() {
           createLimit: 25,
           cloneLineItems: changeEventCloneLineItems,
           preserveNumber: changeEventClonePreserveNumber,
+          numberOffset: changeEventCloneNumberOffset.trim() || "0",
           allowUnmappedLineItems: changeEventCloneAllowUnmappedLineItems,
           crosswalkPath: changeEventCloneCrosswalkPath.trim() || undefined,
           budgetCodeIdMap: maps.budgetCodeIdMap || {},
@@ -7434,7 +7436,7 @@ function ProcoreContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
                   <input
@@ -7443,6 +7445,16 @@ function ProcoreContent() {
                     step="1"
                     value={changeEventCloneCreateOffset ?? ""}
                     onChange={(event) => setChangeEventCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number Offset</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={changeEventCloneNumberOffset ?? ""}
+                    onChange={(event) => setChangeEventCloneNumberOffset(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>

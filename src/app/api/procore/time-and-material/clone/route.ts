@@ -267,6 +267,29 @@ function buildTimeAndMaterialPayload(params: {
   });
 }
 
+function buildSignatureClonePlan(entry: UnknownRecord) {
+  return [
+    { field: "company_signature_id", partyField: "company_signee_party_id", signature: nestedRecord(entry, "company_signature"), party: nestedRecord(entry, "company_signee_party") },
+    { field: "customer_signature_id", partyField: "customer_signee_party_id", signature: nestedRecord(entry, "customer_signature"), party: nestedRecord(entry, "customer_signee_party") },
+  ]
+    .filter((item) => readStr(item.signature.id))
+    .map((item) => {
+      const signatureText = readStr(item.signature.signature_text);
+      return {
+        sourceSignatureId: readStr(item.signature.id),
+        field: item.field,
+        partyField: item.partyField,
+        sourcePartyId: readStr(item.party.id),
+        sourcePartyName: readStr(item.party.name),
+        sourceFileName: readStr(item.signature.file_name),
+        sourceUrl: readStr(item.signature.url),
+        signatureText,
+        cloneable: Boolean(signatureText),
+        issue: signatureText ? null : "source_signature_is_image_file; text signature endpoint cannot recreate this without the image upload/capture payload",
+      };
+    });
+}
+
 function withoutKeys(payload: UnknownRecord, keys: string[]) {
   const out = { ...payload };
   for (const key of keys) delete out[key];
@@ -319,6 +342,56 @@ async function createTimeAndMaterialEntry(params: {
     path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/time_and_material_entries`,
     body: { time_and_material_entry: params.payload },
   });
+}
+
+async function createTimeAndMaterialSignature(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  payload: UnknownRecord;
+}) {
+  return procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    method: "POST",
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/time_and_material_entries/signatures`,
+    body: { signature: params.payload },
+  });
+}
+
+async function createTimeAndMaterialSignatureWithFallback(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  sourceSignature: UnknownRecord;
+}) {
+  const signatureText = readStr(params.sourceSignature.signatureText);
+  if (!signatureText) return null;
+  const payload = compactPayload({
+    signature_text: signatureText,
+    file_name: readStr(params.sourceSignature.sourceFileName),
+  });
+  const attempts = [
+    { name: "signature", body: { signature: payload } },
+    { name: "time_and_material_signature", body: { time_and_material_signature: payload } },
+    { name: "raw", body: payload },
+  ];
+  const errors: UnknownRecord[] = [];
+  for (const attempt of attempts) {
+    try {
+      const response = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        method: "POST",
+        path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/time_and_material_entries/signatures`,
+        body: attempt.body,
+      });
+      return { ok: true, successfulAttempt: attempt.name, payload: attempt.body, created: response };
+    } catch (error) {
+      errors.push({ name: attempt.name, payload: attempt.body, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { ok: false, errors };
 }
 
 async function createTimeAndMaterialEntryWithFallback(params: {
@@ -419,9 +492,10 @@ export async function POST(request: Request) {
         sourceStatus: readStr(entry.status),
         sourceChangeEventStatus: nestedRecord(entry, "change_event_status"),
         targetStatus,
+        signatureClonePlan: buildSignatureClonePlan(entry),
         skipped: {
-          companySignature: nestedRecord(entry, "company_signature"),
-          customerSignature: nestedRecord(entry, "customer_signature"),
+          companySignature: readStr(nestedRecord(entry, "company_signature").signature_text) ? null : nestedRecord(entry, "company_signature"),
+          customerSignature: readStr(nestedRecord(entry, "customer_signature").signature_text) ? null : nestedRecord(entry, "customer_signature"),
           attachments: nestedArray(entry, "time_and_material_entry_attachments"),
           customFields: isRecord(entry.custom_fields) ? Object.keys(entry.custom_fields) : [],
         },
@@ -433,13 +507,34 @@ export async function POST(request: Request) {
     if (!dryRun && missingMappings.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
         try {
+          const signatureResults: UnknownRecord[] = [];
+          const payload = isRecord(entry.payload) ? { ...entry.payload } : {};
+          for (const signaturePlan of asArray(entry.signatureClonePlan)) {
+            if (!signaturePlan.cloneable) {
+              signatureResults.push({ ...signaturePlan, ok: false, skipped: true, issue: readStr(signaturePlan.issue) });
+              continue;
+            }
+            const signatureResult = await createTimeAndMaterialSignatureWithFallback({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              sourceSignature: signaturePlan,
+            });
+            signatureResults.push({ ...signaturePlan, ...signatureResult });
+            if (signatureResult?.ok && isRecord(signatureResult.created)) {
+              const createdId = readNum(signatureResult.created.id) || readStr(signatureResult.created.id);
+              if (createdId) payload[readStr(signaturePlan.field)] = createdId;
+              const partyId = readNum(signaturePlan.sourcePartyId);
+              if (partyId) payload[readStr(signaturePlan.partyField)] = partyId;
+            }
+          }
           const created = await createTimeAndMaterialEntryWithFallback({
             accessToken,
             companyId: targetCompanyId,
             projectId: targetProjectId,
-            payload: isRecord(entry.payload) ? entry.payload : {},
+            payload,
           });
-          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: true, ...created });
+          createResults.push({ sourceId: entry.sourceId, sourceNumber: entry.sourceNumber, ok: true, signatureResults, ...created });
         } catch (error) {
           createResults.push({
             sourceId: entry.sourceId,

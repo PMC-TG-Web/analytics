@@ -571,6 +571,25 @@ function ProcoreContent() {
   const [correspondenceCloneBusy, setCorrespondenceCloneBusy] = useState(false);
   const [correspondenceCloneError, setCorrespondenceCloneError] = useState<string | null>(null);
   const [correspondenceCloneResult, setCorrespondenceCloneResult] = useState<any>(null);
+  const [changeEventCloneSourceCompanyId, setChangeEventCloneSourceCompanyId] = useState("598134325658789");
+  const [changeEventCloneSourceProjectId, setChangeEventCloneSourceProjectId] = useState("");
+  const [changeEventCloneTargetCompanyId, setChangeEventCloneTargetCompanyId] = useState("598134325805519");
+  const [changeEventCloneTargetProjectId, setChangeEventCloneTargetProjectId] = useState("");
+  const [changeEventCloneIdsText, setChangeEventCloneIdsText] = useState("");
+  const [changeEventCloneCreateOffset, setChangeEventCloneCreateOffset] = useState("0");
+  const [changeEventCloneLineItems, setChangeEventCloneLineItems] = useState(true);
+  const [changeEventClonePreserveNumber, setChangeEventClonePreserveNumber] = useState(false);
+  const [changeEventCloneAllowUnmappedLineItems, setChangeEventCloneAllowUnmappedLineItems] = useState(false);
+  const [changeEventCloneMapsText, setChangeEventCloneMapsText] = useState(`{
+  "budgetCodeIdMap": {},
+  "flatCodeMap": {},
+  "lineItemTypeCodeMap": {
+    "O": "L"
+  }
+}`);
+  const [changeEventCloneBusy, setChangeEventCloneBusy] = useState(false);
+  const [changeEventCloneError, setChangeEventCloneError] = useState<string | null>(null);
+  const [changeEventCloneResult, setChangeEventCloneResult] = useState<any>(null);
 
   // Direct Cost Line Items Sync
   const [directCostProjectId, setDirectCostProjectId] = useState("");
@@ -5051,6 +5070,73 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneChangeEvents = async (dryRun: boolean) => {
+    const sourceCompanyId = changeEventCloneSourceCompanyId.trim();
+    const sourceProjectId = changeEventCloneSourceProjectId.trim();
+    const targetCompanyId = changeEventCloneTargetCompanyId.trim();
+    const targetProjectId = changeEventCloneTargetProjectId.trim();
+    const createOffset = changeEventCloneCreateOffset.trim() || "0";
+    const changeEventIds = changeEventCloneIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    let maps: any = {};
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setChangeEventCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    try {
+      maps = changeEventCloneMapsText.trim() ? JSON.parse(changeEventCloneMapsText) : {};
+    } catch (error) {
+      setChangeEventCloneError(`Mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!dryRun && !window.confirm(`Create cloned change event(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setChangeEventCloneBusy(true);
+    setChangeEventCloneError(null);
+    setChangeEventCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/change-events/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          changeEventIds,
+          createOffset,
+          createLimit: 25,
+          cloneLineItems: changeEventCloneLineItems,
+          preserveNumber: changeEventClonePreserveNumber,
+          allowUnmappedLineItems: changeEventCloneAllowUnmappedLineItems,
+          budgetCodeIdMap: maps.budgetCodeIdMap || {},
+          flatCodeMap: maps.flatCodeMap || {},
+          lineItemTypeCodeMap: maps.lineItemTypeCodeMap || {},
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setChangeEventCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Change event clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setChangeEventCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setChangeEventCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChangeEventCloneBusy(false);
+    }
+  };
+
   const handleCloneCommitments = async (dryRun: boolean) => {
     const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
@@ -7261,6 +7347,166 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(correspondenceCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+              <h2 className="text-xl font-bold text-rose-900 mb-3">Clone Change Events</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Change Event headers and mapped line items from one Procore project to another. Dry-run first to confirm the target WBS budget code mappings.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={changeEventCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setChangeEventCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={changeEventCloneSourceProjectId ?? ""}
+                    onChange={(event) => setChangeEventCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={changeEventCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setChangeEventCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={changeEventCloneTargetProjectId ?? ""}
+                    onChange={(event) => setChangeEventCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Change Event IDs or Numbers</label>
+                  <textarea
+                    value={changeEventCloneIdsText ?? ""}
+                    onChange={(event) => setChangeEventCloneIdsText(event.target.value)}
+                    placeholder="Optional: comma or line separated. Blank clones all fetched events."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Mapping JSON</label>
+                  <textarea
+                    value={changeEventCloneMapsText ?? ""}
+                    onChange={(event) => setChangeEventCloneMapsText(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use budgetCodeIdMap for old budget code ID to target WBS ID, flatCodeMap for old flat code to target flat code, or lineItemTypeCodeMap like {"{"}\"O\":\"L\"{"}"}.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={changeEventCloneCreateOffset ?? ""}
+                    onChange={(event) => setChangeEventCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
+                  <input
+                    type="checkbox"
+                    checked={changeEventCloneLineItems}
+                    onChange={(event) => setChangeEventCloneLineItems(event.target.checked)}
+                  />
+                  Clone line items
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
+                  <input
+                    type="checkbox"
+                    checked={changeEventClonePreserveNumber}
+                    onChange={(event) => setChangeEventClonePreserveNumber(event.target.checked)}
+                  />
+                  Preserve numbers
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
+                  <input
+                    type="checkbox"
+                    checked={changeEventCloneAllowUnmappedLineItems}
+                    onChange={(event) => setChangeEventCloneAllowUnmappedLineItems(event.target.checked)}
+                  />
+                  Allow unmapped lines
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneChangeEvents(true)}
+                  disabled={changeEventCloneBusy}
+                  className="bg-rose-700 hover:bg-rose-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {changeEventCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneChangeEvents(false)}
+                  disabled={changeEventCloneBusy || !changeEventCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {changeEventCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {changeEventCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-change-events-result.json", changeEventCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {changeEventCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Change Event Clone Error:</strong> {changeEventCloneError}
+                </div>
+              )}
+
+              {changeEventCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    changeEventCloneResult.result?.readyForLiveClone || changeEventCloneResult.result?.success
+                      ? "bg-rose-50 border-rose-200 text-rose-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Change Event Clone Result:</strong>{" "}
+                    {changeEventCloneResult.result?.dryRun
+                      ? changeEventCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${changeEventCloneResult.result?.counts?.sourceChangeEvents ?? 0} event(s) and mapped ${changeEventCloneResult.result?.counts?.mappedLineItems ?? 0} line item(s).`
+                        : `${changeEventCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : changeEventCloneResult.result?.success
+                        ? `Live clone created ${changeEventCloneResult.result?.counts?.created ?? 0} event(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(changeEventCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

@@ -533,6 +533,85 @@ async function fetchPaged(params: {
   return rows;
 }
 
+async function resolveBidBoardProjectId(params: {
+  accessToken: string;
+  companyId: string;
+  candidateId: string;
+}) {
+  const attempts: UnknownRecord[] = [];
+  const showPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/estimating/bid_board_projects/${encodeURIComponent(
+    params.candidateId
+  )}`;
+
+  try {
+    const showPayload = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: showPath,
+      maxRetries: 0,
+    });
+    const showRecord = isRecord(unwrapData(showPayload)) ? (unwrapData(showPayload) as UnknownRecord) : {};
+    const id = readStr(showRecord.id || showRecord.bid_board_project_id || showRecord.bidBoardProjectId);
+    attempts.push({ strategy: "show_bid_board_project", path: showPath, ok: true, id: id || null });
+    if (id) {
+      return {
+        bidBoardProjectId: id,
+        inputId: params.candidateId,
+        resolvedBy: id === params.candidateId ? "bid_board_project_id" : "bid_board_project_show",
+        projectId: readStr(showRecord.project_id || showRecord.projectId) || null,
+        record: showRecord,
+        attempts,
+      };
+    }
+  } catch (error) {
+    attempts.push({
+      strategy: "show_bid_board_project",
+      path: showPath,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  for (let page = 1; page <= 20; page += 1) {
+    const listPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/estimating/bid_board_projects?page=${page}&per_page=200`;
+    const payload = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: listPath,
+    });
+    const rows = asArray(payload, ["data", "projects", "bid_board_projects"]).filter(isRecord);
+    attempts.push({ strategy: "list_bid_board_projects", path: listPath, ok: true, count: rows.length });
+    const match = rows.find((row) => {
+      const id = readStr(row.id || row.bid_board_project_id || row.bidBoardProjectId);
+      const projectId = readStr(row.project_id || row.projectId);
+      return id === params.candidateId || projectId === params.candidateId;
+    });
+    if (match) {
+      const id = readStr(match.id || match.bid_board_project_id || match.bidBoardProjectId);
+      if (id) {
+        return {
+          bidBoardProjectId: id,
+          inputId: params.candidateId,
+          resolvedBy: id === params.candidateId ? "bid_board_project_id_from_list" : "project_id_lookup",
+          projectId: readStr(match.project_id || match.projectId) || null,
+          record: match,
+          attempts,
+        };
+      }
+    }
+    if (rows.length < 200) break;
+  }
+
+  return {
+    bidBoardProjectId: params.candidateId,
+    inputId: params.candidateId,
+    resolvedBy: "unresolved",
+    projectId: null,
+    record: null,
+    attempts,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
@@ -543,7 +622,7 @@ export async function POST(request: Request) {
     const sourceBidBoardProjectId = readStr(body.sourceBidBoardProjectId || body.sourceBidBoardId || body.bidBoardProjectId);
     const sourceProposalId = readStr(body.sourceProposalId || body.proposalId);
     const targetCompanyId = readStr(body.targetCompanyId || sourceCompanyId);
-    const targetBidBoardProjectId = readStr(body.targetBidBoardProjectId || body.targetBidBoardId);
+    const targetBidBoardProjectIdInput = readStr(body.targetBidBoardProjectId || body.targetBidBoardId);
     const targetProjectId = readStr(body.targetProjectId || body.procoreProjectId);
     const targetProposalName = readStr(body.targetProposalName || body.newProposalName);
     const targetProposalType = readStr(body.targetProposalType || body.proposalType || "SOURCE").toUpperCase();
@@ -559,7 +638,7 @@ export async function POST(request: Request) {
       ? requestedCrosswalkPath
       : path.join(process.cwd(), requestedCrosswalkPath);
 
-    if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
+    if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectIdInput) {
       return NextResponse.json(
         {
           error:
@@ -576,6 +655,12 @@ export async function POST(request: Request) {
       ? buildCrosswalkFromBase64(crosswalkWorkbookBase64)
       : buildCrosswalk(crosswalkPath);
     const mappingOverrides = applyMappingOverrides(crosswalk, body.mappingOverrides);
+    const targetBidBoardResolution = await resolveBidBoardProjectId({
+      accessToken,
+      companyId: targetCompanyId,
+      candidateId: targetBidBoardProjectIdInput,
+    });
+    const targetBidBoardProjectId = targetBidBoardResolution.bidBoardProjectId;
     const sourceProposalPayload = await procoreJson({
       accessToken,
       companyId: sourceCompanyId,
@@ -695,6 +780,8 @@ export async function POST(request: Request) {
         target: {
           companyId: targetCompanyId,
           bidBoardProjectId: targetBidBoardProjectId,
+          bidBoardProjectInputId: targetBidBoardProjectIdInput,
+          bidBoardProjectResolvedBy: targetBidBoardResolution.resolvedBy,
           projectId: targetProjectId || null,
           proposalPayload,
         },
@@ -718,6 +805,7 @@ export async function POST(request: Request) {
           newCostCode: isRecord(entry.mapping) && isRecord(entry.mapping.new) ? readStr(entry.mapping.new["Cost Code"]) : null,
         })),
         fetchAttempts,
+        targetBidBoardResolution,
       });
     }
 
@@ -852,6 +940,8 @@ export async function POST(request: Request) {
       target: {
         companyId: targetCompanyId,
         bidBoardProjectId: targetBidBoardProjectId,
+        bidBoardProjectInputId: targetBidBoardProjectIdInput,
+        bidBoardProjectResolvedBy: targetBidBoardResolution.resolvedBy,
         projectId: targetProjectId || null,
         proposalId: createdProposalId,
       },
@@ -870,6 +960,7 @@ export async function POST(request: Request) {
       createdLineItems,
       failedLineItems,
       missingMappings,
+      targetBidBoardResolution,
     });
   } catch (error) {
     return NextResponse.json(

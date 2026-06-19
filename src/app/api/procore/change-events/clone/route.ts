@@ -585,7 +585,8 @@ export async function POST(request: Request) {
           sourceFlatCode: readStr(sourceBudgetCode.flat_code),
           targetBudgetCodeId: mapping.id,
           matchStrategy: mapping.strategy || null,
-          payload: mapping.id ? buildChangeItemPayload(item, mapping.id) : null,
+          unmappedBudgetCodeAllowed: !mapping.id && allowUnmappedLineItems,
+          payload: mapping.id || allowUnmappedLineItems ? buildChangeItemPayload(item, mapping.id) : null,
         };
       });
       const validItems = itemPlans.filter((item) => isRecord(item.payload)).map((item) => item.payload as UnknownRecord);
@@ -594,7 +595,7 @@ export async function POST(request: Request) {
         sourceNumber: readStr(event.number),
         title: readStr(event.title),
         lineItemCount: sourceItems.length,
-        mappedLineItemCount: validItems.length,
+        mappedLineItemCount: itemPlans.filter((item) => readStr(item.targetBudgetCodeId)).length,
         skipped: {
           attachments: nestedArray(event, "attachments").map((attachment) => ({
             id: readStr(attachment.id),
@@ -645,6 +646,15 @@ export async function POST(request: Request) {
         sourceChangeEvents: sourceEvents.length,
         sourceLineItems: plan.reduce((sum, entry) => sum + (readNum(entry.lineItemCount) || 0), 0),
         mappedLineItems: plan.reduce((sum, entry) => sum + (readNum(entry.mappedLineItemCount) || 0), 0),
+        creatableLineItems: plan.reduce(
+          (sum, entry) =>
+            sum +
+            (Array.isArray(entry.lineItems)
+              ? entry.lineItems.filter((item) => isRecord(item) && isRecord(item.payload)).length
+              : 0),
+          0
+        ),
+        unmappedLineItemsAllowed: allowUnmappedLineItems ? missingMappings.length : 0,
         targetBudgetLineItems: targetBudgetLineItems.length,
         missingMappings: missingMappings.length,
         createOffset,
@@ -658,7 +668,7 @@ export async function POST(request: Request) {
       createResults,
       nextStep: dryRun
         ? blockers.length
-          ? "Resolve missingMappings or set allowUnmappedLineItems=true to clone headers and mapped lines only."
+          ? "Resolve missingMappings or set allowUnmappedLineItems=true to try creating unmapped lines without budget_code."
           : "Review plan. If ready, rerun live."
         : blockers.length
           ? "Live clone blocked by missing line-item budget code mappings."

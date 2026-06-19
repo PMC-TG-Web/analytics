@@ -7,6 +7,20 @@ export const dynamic = "force-dynamic";
 
 type UnknownRecord = Record<string, unknown>;
 
+class ImageCreateAttemptError extends Error {
+  uploadId: string;
+  s3Status: number;
+  attempts: UnknownRecord[];
+
+  constructor(message: string, uploadId: string, s3Status: number, attempts: UnknownRecord[]) {
+    super(message);
+    this.name = "ImageCreateAttemptError";
+    this.uploadId = uploadId;
+    this.s3Status = s3Status;
+    this.attempts = attempts;
+  }
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -302,6 +316,44 @@ function imagePayload(image: UnknownRecord, targetCategoryId: string) {
   });
 }
 
+function withoutKeys(payload: UnknownRecord, keys: string[]) {
+  const out = { ...payload };
+  for (const key of keys) delete out[key];
+  return out;
+}
+
+function imageCreatePayloadAttempts(payload: UnknownRecord) {
+  const attempts = [
+    { name: "full", image: payload },
+    { name: "without_daily_log", image: withoutKeys(payload, ["daily_log_segment_id", "log_date"]) },
+    { name: "without_location_trade_log", image: withoutKeys(payload, ["location_id", "trade_ids", "daily_log_segment_id", "log_date"]) },
+    {
+      name: "minimal_category",
+      image: compactPayload({
+        private: payload.private,
+        source: payload.source,
+        image_category_id: payload.image_category_id,
+        description: payload.description,
+      }),
+    },
+    {
+      name: "minimal_no_source",
+      image: compactPayload({
+        private: payload.private,
+        image_category_id: payload.image_category_id,
+        description: payload.description,
+      }),
+    },
+  ];
+  const seen = new Set<string>();
+  return attempts.filter((attempt) => {
+    const key = JSON.stringify(attempt.image);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function resolveCategory(sourceCategory: UnknownRecord, targetCategories: UnknownRecord[], createdCategories: UnknownRecord[]) {
   const candidates = [...createdCategories, ...targetCategories];
   const sourceName = normalize(sourceCategory.name);
@@ -425,17 +477,54 @@ export async function POST(request: Request) {
             const contentType = contentTypeForFileName(filename, downloadResponse.headers.get("content-type") || "");
             const upload = await createCompanyUpload({ accessToken, companyId: targetCompanyId, filename, contentType, bytes });
             const payload = imagePayload(image, readStr(targetCategory?.id));
-            const created = await createImage({
-              accessToken,
-              companyId: targetCompanyId,
-              projectId: targetProjectId,
-              uploadUuid: upload.uploadId,
-              imageName: filename,
-              image: payload,
+            const attempts: UnknownRecord[] = [];
+            let created: unknown = null;
+            let successfulAttempt = "";
+            let successfulPayload: UnknownRecord | null = null;
+            for (const attempt of imageCreatePayloadAttempts(payload)) {
+              try {
+                created = await createImage({
+                  accessToken,
+                  companyId: targetCompanyId,
+                  projectId: targetProjectId,
+                  uploadUuid: upload.uploadId,
+                  imageName: filename,
+                  image: attempt.image,
+                });
+                successfulAttempt = attempt.name;
+                successfulPayload = attempt.image;
+                break;
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                attempts.push({ name: attempt.name, ok: false, error: message, payload: attempt.image });
+                if (!/\(500\)|Internal Server Error/i.test(message)) break;
+              }
+            }
+            if (!created) {
+              const last = attempts[attempts.length - 1];
+              throw new ImageCreateAttemptError(readStr(last?.error) || "Image create failed after upload.", upload.uploadId, upload.s3Status, attempts);
+            }
+            createResults.push({
+              sourceId: readStr(image.id),
+              filename,
+              ok: true,
+              uploadId: upload.uploadId,
+              s3Status: upload.s3Status,
+              successfulAttempt,
+              attempts,
+              created,
+              payload: successfulPayload,
             });
-            createResults.push({ sourceId: readStr(image.id), filename, ok: true, uploadId: upload.uploadId, s3Status: upload.s3Status, created, payload });
           } catch (error) {
-            createResults.push({ sourceId: readStr(image.id), filename, ok: false, error: error instanceof Error ? error.message : String(error) });
+            createResults.push({
+              sourceId: readStr(image.id),
+              filename,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+              uploadId: error instanceof ImageCreateAttemptError ? error.uploadId : undefined,
+              s3Status: error instanceof ImageCreateAttemptError ? error.s3Status : undefined,
+              attempts: error instanceof ImageCreateAttemptError ? error.attempts : undefined,
+            });
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }

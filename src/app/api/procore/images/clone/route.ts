@@ -421,9 +421,20 @@ async function createImage(params: {
   uploadUuid: string;
   imageName: string;
   image: UnknownRecord;
+  style?: "json_image" | "rails_image_fields";
 }) {
   const form = new FormData();
-  form.set("image", JSON.stringify(params.image));
+  if (params.style === "rails_image_fields") {
+    for (const [key, value] of Object.entries(params.image)) {
+      if (Array.isArray(value)) {
+        for (const item of value) form.append(`image[${key}][]`, readStr(item));
+      } else {
+        form.set(`image[${key}]`, readStr(value));
+      }
+    }
+  } else {
+    form.set("image", JSON.stringify(params.image));
+  }
   form.set("image_name", params.imageName);
   form.set("upload_uuid", params.uploadUuid);
 
@@ -460,7 +471,7 @@ async function createImageWithDirectFile(params: {
   image: UnknownRecord;
   bytes: Buffer;
   contentType: string;
-  style: "json_image_with_data_field" | "rails_image_fields";
+  style: "json_image_with_image_data_field" | "json_image_with_data_field" | "json_image_with_file_field" | "rails_image_fields";
 }) {
   const form = new FormData();
   form.set("image_name", params.imageName);
@@ -474,6 +485,12 @@ async function createImageWithDirectFile(params: {
       }
     }
     form.set("image[data]", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
+  } else if (params.style === "json_image_with_data_field") {
+    form.set("image", JSON.stringify(params.image));
+    form.set("data", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
+  } else if (params.style === "json_image_with_file_field") {
+    form.set("image", JSON.stringify(params.image));
+    form.set("file", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
   } else {
     form.set("image", JSON.stringify(params.image));
     form.set("image[data]", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.imageName);
@@ -700,6 +717,7 @@ export async function POST(request: Request) {
                   uploadUuid: upload.uploadId,
                   imageName: filename,
                   image: attempt.image,
+                  style: "json_image",
                 });
                 successfulAttempt = attempt.name;
                 successfulPayload = attempt.image;
@@ -711,9 +729,31 @@ export async function POST(request: Request) {
               }
             }
             if (!created) {
+              const uploadUuidPayloads = imageCreatePayloadAttempts(payload).slice(-2);
+              for (const attempt of uploadUuidPayloads) {
+                try {
+                  created = await createImage({
+                    accessToken,
+                    companyId: targetCompanyId,
+                    projectId: targetProjectId,
+                    uploadUuid: upload.uploadId,
+                    imageName: filename,
+                    image: attempt.image,
+                    style: "rails_image_fields",
+                  });
+                  successfulAttempt = `${attempt.name}_rails_upload_uuid`;
+                  successfulPayload = attempt.image;
+                  break;
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  attempts.push({ name: `${attempt.name}_rails_upload_uuid`, ok: false, error: message, payload: attempt.image });
+                }
+              }
+            }
+            if (!created) {
               const directPayloads = imageCreatePayloadAttempts(payload).slice(-2);
               for (const attempt of directPayloads) {
-                for (const style of ["json_image_with_data_field", "rails_image_fields"] as const) {
+                for (const style of ["json_image_with_image_data_field", "rails_image_fields", "json_image_with_data_field", "json_image_with_file_field"] as const) {
                   try {
                     created = await createImageWithDirectFile({
                       accessToken,
@@ -731,7 +771,6 @@ export async function POST(request: Request) {
                   } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     attempts.push({ name: `${attempt.name}_${style}`, ok: false, error: message, payload: attempt.image });
-                    if (!/\(500\)|Internal Server Error|Image data was not found/i.test(message)) break;
                   }
                 }
                 if (created) break;

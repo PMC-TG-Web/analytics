@@ -593,6 +593,18 @@ function ProcoreContent() {
   const [submittalCloneBusy, setSubmittalCloneBusy] = useState(false);
   const [submittalCloneError, setSubmittalCloneError] = useState<string | null>(null);
   const [submittalCloneResult, setSubmittalCloneResult] = useState<any>(null);
+  const [imageCloneSourceCompanyId, setImageCloneSourceCompanyId] = useState("598134325658789");
+  const [imageCloneSourceProjectId, setImageCloneSourceProjectId] = useState("");
+  const [imageCloneTargetCompanyId, setImageCloneTargetCompanyId] = useState("598134325805519");
+  const [imageCloneTargetProjectId, setImageCloneTargetProjectId] = useState("");
+  const [imageCloneIdsText, setImageCloneIdsText] = useState("");
+  const [imageCloneCreateOffset, setImageCloneCreateOffset] = useState("0");
+  const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("10");
+  const [imageCloneMaxPages, setImageCloneMaxPages] = useState("10");
+  const [imageCloneCategories, setImageCloneCategories] = useState(true);
+  const [imageCloneBusy, setImageCloneBusy] = useState(false);
+  const [imageCloneError, setImageCloneError] = useState<string | null>(null);
+  const [imageCloneResult, setImageCloneResult] = useState<any>(null);
   const [changeEventCloneSourceCompanyId, setChangeEventCloneSourceCompanyId] = useState("598134325658789");
   const [changeEventCloneSourceProjectId, setChangeEventCloneSourceProjectId] = useState("");
   const [changeEventCloneTargetCompanyId, setChangeEventCloneTargetCompanyId] = useState("598134325805519");
@@ -5184,6 +5196,66 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneImages = async (dryRun: boolean) => {
+    const sourceCompanyId = imageCloneSourceCompanyId.trim();
+    const sourceProjectId = imageCloneSourceProjectId.trim();
+    const targetCompanyId = imageCloneTargetCompanyId.trim();
+    const targetProjectId = imageCloneTargetProjectId.trim();
+    const imageIds = imageCloneIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setImageCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    if (!dryRun && !window.confirm(`Clone photo batch into target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setImageCloneBusy(true);
+    setImageCloneError(null);
+    setImageCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/images/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          imageIds,
+          cloneCategories: imageCloneCategories,
+          createOffset: imageCloneCreateOffset.trim() || "0",
+          createLimit: imageCloneCreateLimit.trim() || "10",
+          maxPages: imageCloneMaxPages.trim() || "10",
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        const firstCreateError = Array.isArray(result?.failedCreateResults)
+          ? result.failedCreateResults.find((entry: any) => entry?.ok === false)?.error
+          : "";
+        setImageCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstCreateError
+              ? `Image clone create error: ${firstCreateError}`
+              : `Image clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setImageCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setImageCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setImageCloneBusy(false);
+    }
+  };
+
   const handleCloneChangeEvents = async (dryRun: boolean) => {
     const sourceCompanyId = changeEventCloneSourceCompanyId.trim();
     const sourceProjectId = changeEventCloneSourceProjectId.trim();
@@ -7714,6 +7786,160 @@ function ProcoreContent() {
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
                     {JSON.stringify(submittalCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-fuchsia-500 mb-6">
+              <h2 className="text-xl font-bold text-fuchsia-900 mb-3">Clone Photos</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Procore photo albums and images from one project to another. Live clone uploads image files in batches.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setImageCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneSourceProjectId ?? ""}
+                    onChange={(event) => setImageCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setImageCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneTargetProjectId ?? ""}
+                    onChange={(event) => setImageCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Image IDs or Filenames</label>
+                  <textarea
+                    value={imageCloneIdsText ?? ""}
+                    onChange={(event) => setImageCloneIdsText(event.target.value)}
+                    placeholder="Optional. Blank clones all fetched images."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={imageCloneCreateOffset ?? ""}
+                    onChange={(event) => setImageCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={imageCloneCreateLimit ?? ""}
+                    onChange={(event) => setImageCloneCreateLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={imageCloneMaxPages ?? ""}
+                    onChange={(event) => setImageCloneMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(imageCloneCategories)}
+                      onChange={(event) => setImageCloneCategories(event.target.checked)}
+                    />
+                    Clone albums
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneImages(true)}
+                  disabled={imageCloneBusy}
+                  className="bg-fuchsia-700 hover:bg-fuchsia-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {imageCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneImages(false)}
+                  disabled={imageCloneBusy || !imageCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {imageCloneBusy ? "Working..." : "Run Live Batch"}
+                </button>
+                {imageCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-images-result.json", imageCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {imageCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Image Clone Error:</strong> {imageCloneError}
+                </div>
+              )}
+
+              {imageCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    imageCloneResult.result?.readyForLiveClone || imageCloneResult.result?.success
+                      ? "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Image Clone Result:</strong>{" "}
+                    {imageCloneResult.result?.dryRun
+                      ? imageCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${imageCloneResult.result?.counts?.sourceImages ?? 0} image(s) and ${imageCloneResult.result?.counts?.sourceCategories ?? 0} album(s). Live batch is enabled.`
+                        : `${imageCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : imageCloneResult.result?.success
+                        ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
+                        : "Live batch finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(imageCloneResult, null, 2)}
                   </pre>
                 </div>
               )}

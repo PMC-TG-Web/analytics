@@ -297,6 +297,38 @@ async function fetchBudgetLineItems(params: {
   });
 }
 
+async function fetchChangeEventStatuses(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.1/change_events/statuses?project_id=${encodeURIComponent(params.projectId)}`,
+    keys: ["statuses", "change_event_statuses"],
+    maxPages: 5,
+  });
+}
+
+function statusKey(status: UnknownRecord) {
+  return normalize(status.mapped_to_status || status.name);
+}
+
+function resolveTargetStatus(sourceStatusValue: unknown, targetStatuses: UnknownRecord[]) {
+  const sourceStatus = isRecord(sourceStatusValue)
+    ? sourceStatusValue
+    : { name: readStr(sourceStatusValue), mapped_to_status: readStr(sourceStatusValue) };
+  const sourceMapped = statusKey(sourceStatus) || "open";
+  const sourceName = normalize(sourceStatus.name) || sourceMapped;
+  const target =
+    targetStatuses.find((status) => statusKey(status) === sourceMapped) ||
+    targetStatuses.find((status) => normalize(status.name) === sourceName) ||
+    targetStatuses.find((status) => statusKey(status) === "open") ||
+    targetStatuses[0];
+  return target ? { id: readNum(target.id) || readStr(target.id) } : { name: "Open", mapped_to_status: "open" };
+}
+
 function buildBudgetCodeIndexes(budgetLineItems: UnknownRecord[]) {
   const byFlatCode = new Map<string, UnknownRecord[]>();
   const byCostCode = new Map<string, UnknownRecord[]>();
@@ -455,15 +487,15 @@ function buildChangeEventPayload(params: {
   event: UnknownRecord;
   changeItems: UnknownRecord[];
   preserveNumber: boolean;
+  status: UnknownRecord;
 }) {
-  const status = readStr(params.event.status) || "open";
   return compactPayload({
     project_id: readNum(params.event.project_id),
     number: params.preserveNumber ? readStr(params.event.number) : undefined,
     title: readStr(params.event.title) || "Untitled Change Event",
     description: readStr(params.event.description),
     scope: readStr(params.event.scope),
-    status,
+    status: params.status,
     comments_enabled: typeof params.event.comments_enabled === "boolean" ? params.event.comments_enabled : undefined,
     change_items: params.changeItems,
   });
@@ -524,9 +556,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const [sourceEventsRaw, targetBudgetLineItems] = await Promise.all([
+    const [sourceEventsRaw, targetBudgetLineItems, targetStatuses] = await Promise.all([
       fetchChangeEvents({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
       fetchBudgetLineItems({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages: 50 }),
+      fetchChangeEventStatuses({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
     ]);
     const sourceEvents = changeEventIds.size
       ? sourceEventsRaw.filter((event) => changeEventIds.has(readStr(event.id)) || changeEventIds.has(readStr(event.number)))
@@ -597,6 +630,7 @@ export async function POST(request: Request) {
         };
       });
       const validItems = itemPlans.filter((item) => isRecord(item.payload)).map((item) => item.payload as UnknownRecord);
+      const targetStatus = resolveTargetStatus(event.status, targetStatuses);
       return {
         sourceId: readStr(event.id),
         sourceNumber: readStr(event.number),
@@ -612,7 +646,7 @@ export async function POST(request: Request) {
           customFields: isRecord(event.custom_fields) ? Object.keys(event.custom_fields) : [],
         },
         lineItems: itemPlans,
-        payload: buildChangeEventPayload({ event, changeItems: validItems, preserveNumber }),
+        payload: buildChangeEventPayload({ event, changeItems: validItems, preserveNumber, status: targetStatus }),
       };
     });
 
@@ -672,6 +706,7 @@ export async function POST(request: Request) {
         ),
         unmappedLineItemsAllowed: allowUnmappedLineItems ? missingMappings.length : 0,
         targetBudgetLineItems: targetBudgetLineItems.length,
+        targetStatuses: targetStatuses.length,
         missingMappings: missingMappings.length,
         createOffset,
         createLimit,

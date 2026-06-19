@@ -601,6 +601,8 @@ function ProcoreContent() {
   const [imageCloneCreateOffset, setImageCloneCreateOffset] = useState("0");
   const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("");
   const [imageCloneUploadDelayMs, setImageCloneUploadDelayMs] = useState("1000");
+  const [imageCloneAutoContinue, setImageCloneAutoContinue] = useState(true);
+  const [imageCloneMaxAutoBatches, setImageCloneMaxAutoBatches] = useState("50");
   const [imageCloneMaxPages, setImageCloneMaxPages] = useState("10");
   const [imageCloneCategories, setImageCloneCategories] = useState(true);
   const [imageCloneBusy, setImageCloneBusy] = useState(false);
@@ -5220,37 +5222,112 @@ function ProcoreContent() {
     setImageCloneResult(null);
 
     try {
-      const response = await fetch("/api/procore/images/clone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const maxAutoBatches = Math.max(1, Math.min(500, Number.parseInt(imageCloneMaxAutoBatches || "50", 10) || 50));
+      const batchResults: any[] = [];
+      let currentOffset = Number.parseInt(imageCloneCreateOffset.trim() || "0", 10) || 0;
+      let totalCreated = 0;
+      let totalFailed = 0;
+      let totalAttempted = 0;
+      let lastStatus = 0;
+      let lastOk = false;
+      let lastResult: any = null;
+
+      for (let batchIndex = 0; batchIndex < (dryRun || !imageCloneAutoContinue ? 1 : maxAutoBatches); batchIndex += 1) {
+        const response = await fetch("/api/procore/images/clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
           sourceCompanyId,
           sourceProjectId,
           targetCompanyId,
           targetProjectId,
           imageIds,
           cloneCategories: imageCloneCategories,
-          createOffset: imageCloneCreateOffset.trim() || "0",
+          createOffset: String(currentOffset),
           createLimit: imageCloneCreateLimit.trim() || undefined,
           uploadDelayMs: imageCloneUploadDelayMs.trim() || "1000",
           maxPages: imageCloneMaxPages.trim() || "10",
           dryRun,
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.error) {
-        const firstCreateError = Array.isArray(result?.failedCreateResults)
-          ? result.failedCreateResults.find((entry: any) => entry?.ok === false)?.error
-          : "";
-        setImageCloneError(
-          result?.error
-            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
-            : firstCreateError
-              ? `Image clone create error: ${firstCreateError}`
-              : `Image clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
-        );
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        lastStatus = response.status;
+        lastOk = response.ok;
+        lastResult = result;
+
+        const counts = result?.counts || {};
+        totalCreated += Number(counts.createdImages || 0);
+        totalFailed += Number(counts.failedImages || 0);
+        totalAttempted += Number(counts.attemptedImages || 0);
+        batchResults.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, status: response.status, ok: response.ok, result });
+
+        const aggregateResult = {
+          ...result,
+          autoContinue: !dryRun && imageCloneAutoContinue,
+          autoBatchCount: batchResults.length,
+          batchResults,
+          counts: {
+            ...counts,
+            createdImages: totalCreated,
+            failedImages: totalFailed,
+            attemptedImages: totalAttempted,
+          },
+        };
+        setImageCloneResult({ status: response.status, ok: response.ok, result: aggregateResult });
+
+        if (!response.ok || result?.error) {
+          const firstCreateError = Array.isArray(result?.failedCreateResults)
+            ? result.failedCreateResults.find((entry: any) => entry?.ok === false)?.error
+            : "";
+          setImageCloneError(
+            result?.error
+              ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+              : firstCreateError
+                ? `Image clone create error: ${firstCreateError}`
+                : `Image clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+          );
+          break;
+        }
+
+        const nextOffset = Number(result?.nextCreateOffset || currentOffset);
+        const sourceImages = Number(result?.counts?.sourceImages || 0);
+        const failedImages = Number(result?.counts?.failedImages || 0);
+        const attemptedImages = Number(result?.counts?.attemptedImages || 0);
+        setImageCloneCreateOffset(String(nextOffset));
+
+        if (
+          dryRun ||
+          !imageCloneAutoContinue ||
+          failedImages > 0 ||
+          attemptedImages === 0 ||
+          nextOffset <= currentOffset ||
+          (sourceImages > 0 && nextOffset >= sourceImages)
+        ) {
+          break;
+        }
+
+        currentOffset = nextOffset;
+        await new Promise((resolve) => setTimeout(resolve, 750));
       }
-      setImageCloneResult({ status: response.status, ok: response.ok, result });
+
+      if (lastResult) {
+        setImageCloneResult({
+          status: lastStatus,
+          ok: lastOk,
+          result: {
+            ...lastResult,
+            autoContinue: !dryRun && imageCloneAutoContinue,
+            autoBatchCount: batchResults.length,
+            batchResults,
+            counts: {
+              ...(lastResult.counts || {}),
+              createdImages: totalCreated,
+              failedImages: totalFailed,
+              attemptedImages: totalAttempted,
+            },
+          },
+        });
+      }
     } catch (error) {
       setImageCloneError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -7885,6 +7962,18 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={imageCloneMaxAutoBatches ?? ""}
+                    onChange={(event) => setImageCloneMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
                   <input
                     type="number"
@@ -7902,6 +7991,14 @@ function ProcoreContent() {
                       onChange={(event) => setImageCloneCategories(event.target.checked)}
                     />
                     Clone albums
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-3">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(imageCloneAutoContinue)}
+                      onChange={(event) => setImageCloneAutoContinue(event.target.checked)}
+                    />
+                    Auto continue batches
                   </label>
                 </div>
               </div>

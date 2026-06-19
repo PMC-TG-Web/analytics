@@ -613,8 +613,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const [sourceEventsRaw, targetBudgetLineItems, targetStatuses, targetTypes, targetReasons] = await Promise.all([
+    const [sourceEventsRaw, targetEventsRaw, targetBudgetLineItems, targetStatuses, targetTypes, targetReasons] = await Promise.all([
       fetchChangeEvents({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
+      fetchChangeEvents({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages: 50 }),
       fetchBudgetLineItems({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages: 50 }),
       fetchChangeEventStatuses({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
       fetchChangeEventTypes({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
@@ -623,6 +624,11 @@ export async function POST(request: Request) {
     const sourceEvents = changeEventIds.size
       ? sourceEventsRaw.filter((event) => changeEventIds.has(readStr(event.id)) || changeEventIds.has(readStr(event.number)))
       : sourceEventsRaw;
+    const targetByNumber = new Map<string, UnknownRecord>();
+    for (const event of targetEventsRaw) {
+      const number = readStr(event.number);
+      if (number) targetByNumber.set(number, event);
+    }
     const targetBudgetIndex = buildBudgetCodeIndexes(targetBudgetLineItems);
     let workbookFlatCodeMap: Record<string, string> = {};
     let workbookDescriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }> = [];
@@ -725,6 +731,18 @@ export async function POST(request: Request) {
     if (!dryRun && blockers.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
         try {
+          const existingTarget = preserveNumber ? targetByNumber.get(readStr(entry.sourceNumber)) : undefined;
+          if (existingTarget) {
+            createResults.push({
+              sourceId: entry.sourceId,
+              sourceNumber: entry.sourceNumber,
+              ok: true,
+              reused: true,
+              targetId: readStr(existingTarget.id),
+              message: "Target change event number already exists; reused existing event.",
+            });
+            continue;
+          }
           const created = await createChangeEvent({
             accessToken,
             companyId: targetCompanyId,
@@ -776,6 +794,7 @@ export async function POST(request: Request) {
         ),
         unmappedLineItemsAllowed: allowUnmappedLineItems ? missingMappings.length : 0,
         targetBudgetLineItems: targetBudgetLineItems.length,
+        existingTargetChangeEvents: targetEventsRaw.length,
         targetStatuses: targetStatuses.length,
         targetChangeTypes: targetTypes.length,
         targetChangeReasons: targetReasons.length,
@@ -783,6 +802,7 @@ export async function POST(request: Request) {
         createOffset,
         createLimit,
         created: createResults.filter((result) => result.ok === true).length,
+        reused: createResults.filter((result) => result.ok === true && result.reused === true).length,
         failed: failed.length,
       },
       readyForLiveClone: blockers.length === 0,

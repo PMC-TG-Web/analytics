@@ -600,6 +600,7 @@ function ProcoreContent() {
   const [imageCloneIdsText, setImageCloneIdsText] = useState("");
   const [imageCloneCreateOffset, setImageCloneCreateOffset] = useState("0");
   const [imageCloneCreateLimit, setImageCloneCreateLimit] = useState("");
+  const [imageCloneUploadDelayMs, setImageCloneUploadDelayMs] = useState("1000");
   const [imageCloneMaxPages, setImageCloneMaxPages] = useState("10");
   const [imageCloneCategories, setImageCloneCategories] = useState(true);
   const [imageCloneBusy, setImageCloneBusy] = useState(false);
@@ -5231,6 +5232,7 @@ function ProcoreContent() {
           cloneCategories: imageCloneCategories,
           createOffset: imageCloneCreateOffset.trim() || "0",
           createLimit: imageCloneCreateLimit.trim() || undefined,
+          uploadDelayMs: imageCloneUploadDelayMs.trim() || "1000",
           maxPages: imageCloneMaxPages.trim() || "10",
           dryRun,
         }),
@@ -7867,6 +7869,18 @@ function ProcoreContent() {
                     value={imageCloneCreateLimit ?? ""}
                     onChange={(event) => setImageCloneCreateLimit(event.target.value)}
                     placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay Between Uploads (ms)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="250"
+                    value={imageCloneUploadDelayMs ?? ""}
+                    onChange={(event) => setImageCloneUploadDelayMs(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>

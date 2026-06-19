@@ -587,6 +587,10 @@ function resolveCategory(sourceCategory: UnknownRecord, targetCategories: Unknow
   return candidates.find((category) => normalize(category.name) === sourceName && sourceName);
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(request: Request) {
   try {
     const startedAt = Date.now();
@@ -605,6 +609,7 @@ export async function POST(request: Request) {
     const cloneCategories = readBool(body.cloneCategories, true);
     const tryDirectFileFallbacks = readBool(body.tryDirectFileFallbacks, false);
     const maxRuntimeMs = Math.max(5_000, Math.min(25_000, Math.trunc(readNum(body.maxRuntimeMs) || 20_000)));
+    const uploadDelayMs = dryRun ? 0 : Math.max(0, Math.min(10_000, Math.trunc(readNum(body.uploadDelayMs) || 1_000)));
     const deadline = startedAt + maxRuntimeMs;
     const imageIds = new Set(parseIds(body.imageIds || body.ids));
 
@@ -699,12 +704,14 @@ export async function POST(request: Request) {
           } catch (error) {
             categoryCreateResults.push({ sourceId: category.sourceId, ok: false, error: error instanceof Error ? error.message : String(error), attemptedPayload: category.payload });
           }
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          await sleep(Math.min(300, uploadDelayMs));
         }
       }
 
       if (categoryCreateResults.every((result) => result.ok !== false)) {
-        for (const image of sourceImages.slice(createOffset, createOffset + createLimit)) {
+        const batch = sourceImages.slice(createOffset, createOffset + createLimit);
+        for (let index = 0; index < batch.length; index += 1) {
+          const image = batch[index];
           if (Date.now() > deadline) {
             stoppedEarly = true;
             break;
@@ -819,7 +826,13 @@ export async function POST(request: Request) {
               attempts: error instanceof ImageCreateAttemptError ? error.attempts : undefined,
             });
           }
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (uploadDelayMs > 0 && index < batch.length - 1) {
+            if (Date.now() + uploadDelayMs > deadline) {
+              stoppedEarly = true;
+              break;
+            }
+            await sleep(uploadDelayMs);
+          }
         }
       }
     }
@@ -834,7 +847,7 @@ export async function POST(request: Request) {
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
       target: { companyId: targetCompanyId, projectId: targetProjectId },
-      options: { cloneCategories, createOffset, requestedCreateLimit, createLimit, maxPages, tryDirectFileFallbacks, maxRuntimeMs },
+      options: { cloneCategories, createOffset, requestedCreateLimit, createLimit, maxPages, tryDirectFileFallbacks, maxRuntimeMs, uploadDelayMs },
       counts: {
         sourceCategories: sourceCategories.length,
         targetCategories: targetCategories.length,

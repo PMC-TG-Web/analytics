@@ -456,13 +456,14 @@ function buildChangeEventPayload(params: {
   changeItems: UnknownRecord[];
   preserveNumber: boolean;
 }) {
+  const status = readStr(params.event.status) || "open";
   return compactPayload({
     project_id: readNum(params.event.project_id),
     number: params.preserveNumber ? readStr(params.event.number) : undefined,
     title: readStr(params.event.title) || "Untitled Change Event",
     description: readStr(params.event.description),
     scope: readStr(params.event.scope),
-    status: readStr(params.event.status),
+    status,
     comments_enabled: typeof params.event.comments_enabled === "boolean" ? params.event.comments_enabled : undefined,
     change_items: params.changeItems,
   });

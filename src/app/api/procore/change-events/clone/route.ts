@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 
 export const dynamic = "force-dynamic";
 
 type UnknownRecord = Record<string, unknown>;
+const DEFAULT_CROSSWALK_PATH = "Codes to use.xlsx";
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,6 +54,10 @@ function normalize(value: unknown): string {
   return readStr(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function normCode(value: unknown): string {
+  return readStr(value).replace(/\s+/g, "").toLowerCase();
+}
+
 function buildStringMap(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const out: Record<string, string> = {};
@@ -59,6 +67,78 @@ function buildStringMap(value: unknown): Record<string, string> {
     if (normalizedKey && normalizedValue) out[normalizedKey] = normalizedValue;
   }
   return out;
+}
+
+function readSheet(workbook: XLSX.WorkBook, sheetName: string): UnknownRecord[] {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" }) as UnknownRecord[];
+}
+
+function buildWorkbookFlatCodeMapFromWorkbook(workbook: XLSX.WorkBook) {
+  const uniqueOld = readSheet(workbook, "Unique_old_codes");
+  const uniqueNew = readSheet(workbook, "Unique_New_codes");
+  const nonUniqueOld = readSheet(workbook, "Non_unique_old_codes");
+  const nonUniqueNew = readSheet(workbook, "non_unique_new_codes");
+  const allOld = [...uniqueOld, ...nonUniqueOld];
+  const allNew = [...uniqueNew, ...nonUniqueNew];
+
+  const oldCostCodeCounts = new Map<string, number>();
+  for (const row of allOld) {
+    const key = normCode(row["Cost Code"]);
+    if (key) oldCostCodeCounts.set(key, (oldCostCodeCounts.get(key) || 0) + 1);
+  }
+
+  const newRowsByCostCode = new Map<string, UnknownRecord[]>();
+  for (const row of allNew) {
+    const key = normCode(row["Cost Code"]);
+    if (key) newRowsByCostCode.set(key, [...(newRowsByCostCode.get(key) || []), row]);
+  }
+
+  const flatCodeMap: Record<string, string> = {};
+  const issues: UnknownRecord[] = [];
+  for (const [oldCostCode, oldCount] of oldCostCodeCounts.entries()) {
+    const newRows = newRowsByCostCode.get(oldCostCode) || [];
+    const targetFlatCodes = new Set(
+      newRows
+        .map((row) => {
+          const costCode = readStr(row["Cost Code"]);
+          const costType = readStr(row["Cost code type"]);
+          return costCode && costType ? `${costCode}.${costType}` : "";
+        })
+        .filter(Boolean)
+    );
+    if (targetFlatCodes.size === 1) {
+      const targetFlatCode = [...targetFlatCodes][0];
+      flatCodeMap[oldCostCode] = targetFlatCode;
+      flatCodeMap[oldCostCode.toUpperCase()] = targetFlatCode;
+    } else if (oldCount === 1 && targetFlatCodes.size === 0) {
+      issues.push({ oldCostCode, issue: "missing_new_workbook_cost_code", matchCount: 0 });
+    } else if (targetFlatCodes.size > 1) {
+      issues.push({ oldCostCode, issue: "ambiguous_new_workbook_cost_type", matchCount: targetFlatCodes.size, candidates: [...targetFlatCodes] });
+    }
+  }
+
+  return {
+    flatCodeMap,
+    issues,
+    summary: {
+      uniqueOld: uniqueOld.length,
+      uniqueNew: uniqueNew.length,
+      nonUniqueOld: nonUniqueOld.length,
+      nonUniqueNew: nonUniqueNew.length,
+      mappedCostCodes: Object.keys(flatCodeMap).length,
+      crosswalkIssues: issues.length,
+    },
+  };
+}
+
+function buildWorkbookFlatCodeMap(crosswalkPath: string) {
+  return buildWorkbookFlatCodeMapFromWorkbook(XLSX.read(readFileSync(crosswalkPath), { type: "buffer" }));
+}
+
+function buildWorkbookFlatCodeMapFromBase64(base64: string) {
+  return buildWorkbookFlatCodeMapFromWorkbook(XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" }));
 }
 
 function parseIds(value: unknown): string[] {
@@ -232,6 +312,7 @@ function resolveBudgetCode(params: {
   targetIndex: ReturnType<typeof buildBudgetCodeIndexes>;
   budgetCodeIdMap: Record<string, string>;
   flatCodeMap: Record<string, string>;
+  workbookFlatCodeMap: Record<string, string>;
   lineItemTypeCodeMap: Record<string, string>;
 }) {
   const sourceId = readStr(params.sourceBudgetCode.id);
@@ -246,12 +327,19 @@ function resolveBudgetCode(params: {
     if (/^\d+$/.test(mapped)) return { id: mapped, strategy: "flat_code_map_to_id" };
     return { id: "", issue: matches.length === 0 ? "mapped_flat_code_not_found" : "mapped_flat_code_ambiguous", matchCount: matches.length };
   }
+  const sourceCostCode = sourceFlatCode.split(".")[0] || sourceFlatCode;
+  const workbookMapped = params.workbookFlatCodeMap[normCode(sourceCostCode)] || params.workbookFlatCodeMap[sourceCostCode];
+  if (workbookMapped) {
+    const matches = params.targetIndex.byFlatCode.get(normalize(workbookMapped)) || [];
+    if (matches.length === 1) return { id: readStr(matches[0].id), strategy: "workbook_cost_code_type" };
+    if (matches.length > 1) return { id: "", issue: "workbook_flat_code_ambiguous", matchCount: matches.length };
+  }
   const targetFlatCode = mappedFlatCode(sourceFlatCode, params.lineItemTypeCodeMap);
   const flatMatches = params.targetIndex.byFlatCode.get(normalize(targetFlatCode)) || [];
   if (flatMatches.length === 1) return { id: readStr(flatMatches[0].id), strategy: targetFlatCode === sourceFlatCode ? "flat_code_exact" : "line_item_type_code_map" };
   if (flatMatches.length > 1) return { id: "", issue: "target_flat_code_ambiguous", matchCount: flatMatches.length };
 
-  const costCode = sourceFlatCode.split(".")[0] || sourceFlatCode;
+  const costCode = sourceCostCode;
   const costMatches = params.targetIndex.byCostCode.get(normalize(costCode)) || [];
   if (costMatches.length === 1) return { id: readStr(costMatches[0].id), strategy: "unique_cost_code_fallback" };
   return {
@@ -326,6 +414,11 @@ export async function POST(request: Request) {
     const budgetCodeIdMap = buildStringMap(body.budgetCodeIdMap);
     const flatCodeMap = buildStringMap(body.flatCodeMap);
     const lineItemTypeCodeMap = buildStringMap(body.lineItemTypeCodeMap);
+    const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
+    const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
+    const crosswalkPath = path.isAbsolute(rawCrosswalkPath)
+      ? rawCrosswalkPath
+      : path.join(process.cwd(), rawCrosswalkPath);
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
       return NextResponse.json(
@@ -342,6 +435,26 @@ export async function POST(request: Request) {
       ? sourceEventsRaw.filter((event) => changeEventIds.has(readStr(event.id)) || changeEventIds.has(readStr(event.number)))
       : sourceEventsRaw;
     const targetBudgetIndex = buildBudgetCodeIndexes(targetBudgetLineItems);
+    let workbookFlatCodeMap: Record<string, string> = {};
+    const workbookCrosswalk: UnknownRecord = { enabled: false, source: "", summary: null, issues: [] };
+    if (crosswalkWorkbookBase64) {
+      const built = buildWorkbookFlatCodeMapFromBase64(crosswalkWorkbookBase64);
+      workbookFlatCodeMap = built.flatCodeMap;
+      workbookCrosswalk.enabled = true;
+      workbookCrosswalk.source = "uploaded_workbook";
+      workbookCrosswalk.summary = built.summary;
+      workbookCrosswalk.issues = built.issues.slice(0, 50);
+    } else if (crosswalkPath && existsSync(crosswalkPath)) {
+      const built = buildWorkbookFlatCodeMap(crosswalkPath);
+      workbookFlatCodeMap = built.flatCodeMap;
+      workbookCrosswalk.enabled = true;
+      workbookCrosswalk.source = crosswalkPath;
+      workbookCrosswalk.summary = built.summary;
+      workbookCrosswalk.issues = built.issues.slice(0, 50);
+    } else {
+      workbookCrosswalk.source = crosswalkPath;
+      workbookCrosswalk.warning = "Crosswalk workbook not found.";
+    }
 
     const missingMappings: UnknownRecord[] = [];
     const plan = sourceEvents.map((event) => {
@@ -353,6 +466,7 @@ export async function POST(request: Request) {
           targetIndex: targetBudgetIndex,
           budgetCodeIdMap,
           flatCodeMap,
+          workbookFlatCodeMap,
           lineItemTypeCodeMap,
         });
         if (!mapping.id) {
@@ -428,6 +542,7 @@ export async function POST(request: Request) {
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
       target: { companyId: targetCompanyId, projectId: targetProjectId },
       options: { cloneLineItems, preserveNumber, allowUnmappedLineItems },
+      workbookCrosswalk,
       counts: {
         sourceChangeEvents: sourceEvents.length,
         sourceLineItems: plan.reduce((sum, entry) => sum + (readNum(entry.lineItemCount) || 0), 0),

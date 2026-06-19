@@ -577,6 +577,7 @@ function ProcoreContent() {
   const [changeEventCloneTargetProjectId, setChangeEventCloneTargetProjectId] = useState("");
   const [changeEventCloneIdsText, setChangeEventCloneIdsText] = useState("");
   const [changeEventCloneCreateOffset, setChangeEventCloneCreateOffset] = useState("0");
+  const [changeEventCloneCrosswalkPath, setChangeEventCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [changeEventCloneLineItems, setChangeEventCloneLineItems] = useState(true);
   const [changeEventClonePreserveNumber, setChangeEventClonePreserveNumber] = useState(false);
   const [changeEventCloneAllowUnmappedLineItems, setChangeEventCloneAllowUnmappedLineItems] = useState(false);
@@ -5115,6 +5116,7 @@ function ProcoreContent() {
           cloneLineItems: changeEventCloneLineItems,
           preserveNumber: changeEventClonePreserveNumber,
           allowUnmappedLineItems: changeEventCloneAllowUnmappedLineItems,
+          crosswalkPath: changeEventCloneCrosswalkPath.trim() || undefined,
           budgetCodeIdMap: maps.budgetCodeIdMap || {},
           flatCodeMap: maps.flatCodeMap || {},
           lineItemTypeCodeMap: maps.lineItemTypeCodeMap || {},
@@ -7408,6 +7410,13 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Crosswalk Workbook Path</label>
+                  <input
+                    type="text"
+                    value={changeEventCloneCrosswalkPath ?? ""}
+                    onChange={(event) => setChangeEventCloneCrosswalkPath(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Mapping JSON</label>
                   <textarea
                     value={changeEventCloneMapsText ?? ""}

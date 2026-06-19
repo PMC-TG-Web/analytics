@@ -348,19 +348,68 @@ async function createProjectUpload(params: {
   const segment = segments[0] || {};
   const segmentUrl = readStr(segment.url || segment.upload_url);
   const segmentHeaders = isRecord(segment.headers) ? segment.headers : {};
+  const segmentFields = isRecord(segment.fields) ? segment.fields : {};
+  const directFields = isRecord(payload.fields) ? payload.fields : {};
   const uploadUrl = segmentUrl || directUrl;
   const uploadHeaders = Object.keys(segmentHeaders).length ? segmentHeaders : directHeaders;
+  const uploadFields = Object.keys(segmentFields).length ? segmentFields : directFields;
 
   if (!uploadId) throw new Error(`Project upload response did not include uuid/id: ${JSON.stringify(payload).slice(0, 1000)}`);
   if (!uploadUrl) return { uploadId, uploadResponse: payload, uploadFormVariant: usedUploadFormVariant, s3Status: null };
 
-  const putHeaders = new Headers();
-  for (const [key, value] of Object.entries(uploadHeaders)) putHeaders.set(key, readStr(value));
-  if (!putHeaders.has("Content-Type")) putHeaders.set("Content-Type", params.contentType);
-  const s3Response = await fetch(uploadUrl, { method: "PUT", headers: putHeaders, body: new Uint8Array(params.bytes), cache: "no-store" });
+  let s3Response: Response;
+  if (Object.keys(uploadFields).length > 0) {
+    const storageForm = new FormData();
+    for (const [key, value] of Object.entries(uploadFields)) storageForm.set(key, readStr(value));
+    storageForm.set("file", new Blob([new Uint8Array(params.bytes)], { type: params.contentType }), params.filename);
+    s3Response = await fetch(uploadUrl, { method: "POST", body: storageForm, cache: "no-store" });
+  } else {
+    const putHeaders = new Headers();
+    for (const [key, value] of Object.entries(uploadHeaders)) putHeaders.set(key, readStr(value));
+    if (!putHeaders.has("Content-Type")) putHeaders.set("Content-Type", params.contentType);
+    s3Response = await fetch(uploadUrl, { method: "PUT", headers: putHeaders, body: new Uint8Array(params.bytes), cache: "no-store" });
+  }
   const s3Text = await s3Response.text().catch(() => "");
   if (!s3Response.ok) throw new Error(`Project upload PUT failed (${s3Response.status}): ${s3Text.slice(0, 500)}`);
-  return { uploadId, uploadResponse: payload, uploadFormVariant: usedUploadFormVariant, s3Status: s3Response.status };
+  const etag = readStr(s3Response.headers.get("etag")).replace(/^"|"$/g, "");
+
+  let completionStatus: number | null = null;
+  let completionResponse: unknown = null;
+  if (etag) {
+    const completion = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/uploads/${encodeURIComponent(uploadId)}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Procore-Company-Id": params.companyId,
+      },
+      body: JSON.stringify({ segments: [{ ...segmentDigest, etag }] }),
+      cache: "no-store",
+    });
+    completionStatus = completion.status;
+    const completionText = await completion.text();
+    completionResponse = completionText;
+    try {
+      completionResponse = completionText ? JSON.parse(completionText) : null;
+    } catch {
+      // Keep text response.
+    }
+    if (!completion.ok) {
+      throw new Error(`Complete project upload failed (${completion.status}): ${typeof completionResponse === "string" ? completionResponse : JSON.stringify(completionResponse)}`);
+    }
+  }
+
+  return {
+    uploadId,
+    uploadResponse: payload,
+    uploadFormVariant: usedUploadFormVariant,
+    uploadTransport: Object.keys(uploadFields).length > 0 ? "multipart_post" : "put",
+    s3Status: s3Response.status,
+    etag,
+    completionStatus,
+    completionResponse,
+  };
 }
 
 async function createImage(params: {

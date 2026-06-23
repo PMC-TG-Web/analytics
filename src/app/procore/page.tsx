@@ -54,6 +54,29 @@ function downloadTextFile(filename: string, content: string, mimeType = "text/pl
   URL.revokeObjectURL(url);
 }
 
+function CollapsibleJson({
+  value,
+  label = "Result JSON",
+  defaultOpen = false,
+  className = "",
+}: {
+  value: unknown;
+  label?: string;
+  defaultOpen?: boolean;
+  className?: string;
+}) {
+  return (
+    <details className={`mt-3 rounded border border-gray-300 bg-gray-50 ${className}`} {...(defaultOpen ? { open: true } : {})}>
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-800">
+        {label}
+      </summary>
+      <pre className="max-h-[480px] overflow-auto border-t border-gray-300 bg-white p-4 text-xs leading-5 text-gray-900 font-mono">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
 
 interface EstimateConversionResponse {
   success?: boolean;
@@ -6922,9 +6945,7 @@ function ProcoreContent() {
     }
 
     return (
-      <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm">
-        {JSON.stringify(sectionData, null, 2)}
-      </pre>
+      <CollapsibleJson value={sectionData} />
     );
   };
 
@@ -7023,9 +7044,7 @@ function ProcoreContent() {
                           </div>
                           <details>
                             <summary className="cursor-pointer font-semibold">View Full Sample</summary>
-                            <pre className="mt-2 bg-white p-2 rounded text-xs border border-purple-200 overflow-auto max-h-64">
-                              {JSON.stringify(productivityDebugResult.employeeObjectSample, null, 2)}
-                            </pre>
+                            <CollapsibleJson value={productivityDebugResult.employeeObjectSample} />
                           </details>
                         </>
                       ) : (
@@ -7044,9 +7063,7 @@ function ProcoreContent() {
                           </div>
                           <details>
                             <summary className="cursor-pointer font-semibold">View Full Sample</summary>
-                            <pre className="mt-2 bg-white p-2 rounded text-xs border border-purple-200 overflow-auto max-h-64">
-                              {JSON.stringify(productivityDebugResult.timecardObjectSample, null, 2)}
-                            </pre>
+                            <CollapsibleJson value={productivityDebugResult.timecardObjectSample} />
                           </details>
                         </>
                       ) : (
@@ -7080,9 +7097,7 @@ function ProcoreContent() {
                   <strong>Recommendation:</strong> {debugResult.recommendation}
                 </div>
                 <div className="text-sm overflow-x-auto">
-                  <pre className="bg-gray-100 p-4 rounded text-xs">
-                    {JSON.stringify(debugResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={debugResult} />
                 </div>
               </div>
             )}
@@ -7106,16 +7121,14 @@ function ProcoreContent() {
                     <div className="text-2xl font-bold text-indigo-900">{debugResult.totalHours.toFixed(1)}</div>
                   </div>
                 </div>
-                <div className="text-sm overflow-x-auto">
-                  <pre className="bg-gray-100 p-4 rounded text-xs">
-                    {JSON.stringify({
-                      message: debugResult.message,
-                      byProject: debugResult.byProject,
-                      sampleLogs: debugResult.sampleLogs,
-                      firstSummary: debugResult.firstSummary
-                    }, null, 2)}
-                  </pre>
-                </div>
+                <CollapsibleJson
+                  value={{
+                    message: debugResult.message,
+                    byProject: debugResult.byProject,
+                    sampleLogs: debugResult.sampleLogs,
+                    firstSummary: debugResult.firstSummary,
+                  }}
+                />
               </div>
             )}
 
@@ -7243,9 +7256,7 @@ function ProcoreContent() {
               )}
 
               {restRunnerResult && (
-                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                  {JSON.stringify(restRunnerResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={restRunnerResult} />
               )}
             </div>
 
@@ -7330,9 +7341,7 @@ function ProcoreContent() {
               )}
 
               {drawingTransferResult && (
-                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingTransferResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={drawingTransferResult} />
               )}
 
               {drawingSets.length > 0 && (
@@ -7611,15 +7620,11 @@ function ProcoreContent() {
               )}
 
               {drawingMigrationDryRunResult && (
-                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingMigrationDryRunResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={drawingMigrationDryRunResult} />
               )}
 
               {drawingMigrationCreateResult && (
-                <pre className="mb-4 bg-green-50 border border-green-300 text-green-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingMigrationCreateResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={drawingMigrationCreateResult} />
               )}
 
               {drawingLookupResult && (
@@ -7743,9 +7748,7 @@ function ProcoreContent() {
               {drawingLookupResult && (
                 <details className="mt-4">
                   <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw response JSON</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(drawingLookupResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={drawingLookupResult} />
                 </details>
               )}
             </div>
@@ -7838,9 +7841,7 @@ function ProcoreContent() {
               {estimatingPlansUploadResult && (
                 <details className="mb-4" open>
                   <summary className="cursor-pointer text-sm font-semibold text-gray-700">Estimating upload experiment result</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(estimatingPlansUploadResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={estimatingPlansUploadResult} />
                 </details>
               )}
 
@@ -7888,9 +7889,7 @@ function ProcoreContent() {
               {estimatingPlansProbeResult && (
                 <details className="mt-4">
                   <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw probe JSON</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(estimatingPlansProbeResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={estimatingPlansProbeResult} />
                 </details>
               )}
             </div>
@@ -8022,9 +8021,7 @@ function ProcoreContent() {
                         ? `Live clone created ${correspondenceCloneResult.result?.counts?.created ?? 0} item(s).`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(correspondenceCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={correspondenceCloneResult} />
                 </div>
               )}
             </div>
@@ -8198,9 +8195,7 @@ function ProcoreContent() {
                         ? `Live clone created ${submittalCloneResult.result?.counts?.createdPackages ?? 0} package(s) and ${submittalCloneResult.result?.counts?.createdSubmittals ?? 0} submittal(s).`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(submittalCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={submittalCloneResult} />
                 </div>
               )}
             </div>
@@ -8387,9 +8382,7 @@ function ProcoreContent() {
                         ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
                         : `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s), with ${imageCloneResult.result?.counts?.failedImages ?? 0} failed.`}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(imageCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={imageCloneResult} />
                 </div>
               )}
             </div>
@@ -8564,9 +8557,7 @@ function ProcoreContent() {
                         ? `Live clone created ${changeEventCloneResult.result?.counts?.created ?? 0} event(s).`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(changeEventCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={changeEventCloneResult} />
                 </div>
               )}
             </div>
@@ -8728,9 +8719,7 @@ function ProcoreContent() {
                         ? `Live clone created ${timeMaterialCloneResult.result?.counts?.created ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.created === 1 ? "y" : "ies"}.`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(timeMaterialCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={timeMaterialCloneResult} />
                 </div>
               )}
             </div>
@@ -8796,9 +8785,7 @@ function ProcoreContent() {
                                 <summary className="cursor-pointer text-cyan-800 text-xs font-semibold">
                                   View {Object.keys(user.payload).length} field(s)
                                 </summary>
-                                <pre className="mt-2 bg-gray-50 border border-gray-200 text-gray-900 p-2 rounded overflow-auto text-xs leading-5 font-mono max-w-[520px]">
-                                  {JSON.stringify(user.payload, null, 2)}
-                                </pre>
+                                <CollapsibleJson value={user.payload} />
                               </details>
                             ) : (
                               <span className="text-xs text-gray-500">-</span>
@@ -9040,18 +9027,14 @@ function ProcoreContent() {
               {dailyDeleteResult && (
                 <details className="mb-4" open>
                   <summary className="cursor-pointer text-sm font-semibold text-amber-800">Target timecards delete result</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(dailyDeleteResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={dailyDeleteResult} />
                 </details>
               )}
 
               {dailyCloneCommitmentsResult && (
                 <details className="mb-4" open>
                   <summary className="cursor-pointer text-sm font-semibold text-emerald-800">Missing contracts/lines import result</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(dailyCloneCommitmentsResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={dailyCloneCommitmentsResult} />
                 </details>
               )}
 
@@ -9069,9 +9052,7 @@ function ProcoreContent() {
               {dailyCloneResult && (
                 <details open>
                   <summary className="cursor-pointer text-sm font-semibold text-gray-700">Daily clone result JSON</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(dailyCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={dailyCloneResult} />
                 </details>
               )}
             </div>
@@ -9363,9 +9344,7 @@ function ProcoreContent() {
                 )}
 
                 {deletePurchaseOrderContractResult && (
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(deletePurchaseOrderContractResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={deletePurchaseOrderContractResult} />
                 )}
               </div>
 
@@ -9376,9 +9355,7 @@ function ProcoreContent() {
               )}
 
               {purchaseOrderContractResult && (
-                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                  {JSON.stringify(purchaseOrderContractResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={purchaseOrderContractResult} />
               )}
 
               <div className="mt-8 pt-6 border-t border-teal-200">
@@ -9614,9 +9591,7 @@ function ProcoreContent() {
               )}
 
               {purchaseOrderLineItemResult && (
-                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                  {JSON.stringify(purchaseOrderLineItemResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={purchaseOrderLineItemResult} />
               )}
 
               <div className="mt-8 pt-6 border-t border-emerald-200">
@@ -9874,9 +9849,7 @@ function ProcoreContent() {
                 <div className="mb-4 bg-gray-50 border border-gray-300 rounded p-4 text-sm">
                   <details className="cursor-pointer">
                     <summary className="font-semibold text-gray-800 mb-2">Debug: Contract Details</summary>
-                    <pre className="bg-white border border-gray-200 rounded p-3 overflow-auto text-xs leading-5 font-mono text-gray-700">
-                      {JSON.stringify(createProductivityLineItemsDebug, null, 2)}
-                    </pre>
+                    <CollapsibleJson value={createProductivityLineItemsDebug} />
                   </details>
                 </div>
               )}
@@ -9905,9 +9878,7 @@ function ProcoreContent() {
               )}
 
               {createProductivityResult && (
-                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                  {JSON.stringify(createProductivityResult, null, 2)}
-                </pre>
+                <CollapsibleJson value={createProductivityResult} />
               )}
 
               {/* CSV Bulk Import */}
@@ -10096,9 +10067,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${projectImportResult.attempted}, Valid ${projectImportResult.valid}, Invalid ${projectImportResult.invalid}`
                       : `Attempted ${projectImportResult.attempted}, Created ${projectImportResult.created}, Failed ${projectImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(projectImportResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={projectImportResult} />
                 </div>
               )}
             </div>
@@ -10210,9 +10179,7 @@ function ProcoreContent() {
                         ? `Created Bid Board project ${bidBoardCloneResult.result?.created?.bidBoardProjectId ?? ""}.`
                         : "Live create failed."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(bidBoardCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={bidBoardCloneResult} />
                 </div>
               )}
             </div>
@@ -10303,9 +10270,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${groupImportResult.attempted}, Valid ${groupImportResult.valid}, Invalid ${groupImportResult.invalid}`
                       : `Attempted ${groupImportResult.attempted}, Created ${groupImportResult.created}, Failed ${groupImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(groupImportResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={groupImportResult} />
                 </div>
               )}
             </div>
@@ -10401,9 +10366,7 @@ function ProcoreContent() {
                   </div>
                 )}
                 {singleLineItemResult && (
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(singleLineItemResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={singleLineItemResult} />
                 )}
               </div>
 
@@ -10452,9 +10415,7 @@ function ProcoreContent() {
                       ? `Dry-run preview ready. Attempted ${lineItemImportResult.attempted}, Valid ${lineItemImportResult.valid}, Invalid ${lineItemImportResult.invalid}`
                       : `Attempted ${lineItemImportResult.attempted}, Created ${lineItemImportResult.created}, Failed ${lineItemImportResult.failed}`}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(lineItemImportResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={lineItemImportResult} />
                 </div>
               )}
 
@@ -10469,9 +10430,7 @@ function ProcoreContent() {
                   <div className="bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded mb-3">
                     <strong>Pulled Line Item Payloads:</strong> Found {lineItemPayloadPullResult.count} line item(s).
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(lineItemPayloadPullResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={lineItemPayloadPullResult} />
                 </div>
               )}
 
@@ -10487,9 +10446,7 @@ function ProcoreContent() {
                     <strong>Import Groups + Layers Result:</strong> Attempted {lineItemImportViaImportResult.attemptedGroupCount} group(s)
                     {typeof lineItemImportViaImportResult.attemptedLayerCount === "number" ? ` and ${lineItemImportViaImportResult.attemptedLayerCount} layer(s)` : ""}.
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(lineItemImportViaImportResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={lineItemImportViaImportResult} />
                 </div>
               )}
             </div>
@@ -10569,9 +10526,7 @@ function ProcoreContent() {
                       ? `${proposalShowResult.result.lineItems.length} line item(s) ready for export.`
                       : "Pull with a Bid Board Project ID to populate line items for export."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(proposalShowResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={proposalShowResult} />
                 </div>
               )}
             </div>
@@ -10898,9 +10853,7 @@ function ProcoreContent() {
                       Load Missing Mappings Into Editable Table
                     </button>
                   )}
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(cloneProposalResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={cloneProposalResult} />
                 </div>
               )}
             </div>
@@ -11203,9 +11156,7 @@ function ProcoreContent() {
                         ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s).`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(commitmentCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={commitmentCloneResult} />
                 </div>
               )}
             </div>
@@ -11416,9 +11367,7 @@ function ProcoreContent() {
                         ? `Live clone created ${primeCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and synced ${primeCloneResult.result?.counts?.syncedLineItems ?? 0} line item(s).`
                         : "Live clone finished with errors."}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(primeCloneResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={primeCloneResult} />
                 </div>
               )}
             </div>
@@ -11498,9 +11447,7 @@ function ProcoreContent() {
                       : <><strong>Sync failed.</strong> See details below.</>
                     }
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(directCostResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={directCostResult} />
                 </div>
               )}
             </div>
@@ -11652,9 +11599,7 @@ function ProcoreContent() {
                   <div className="bg-teal-50 border border-teal-200 text-teal-900 px-4 py-3 rounded mb-3">
                     <strong>Import Result:</strong> {importResult.mode === "dry-run" ? "Dry-run preview ready" : "Live import finished"}
                   </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(importResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={importResult} />
                 </div>
               )}
             </div>
@@ -11669,9 +11614,7 @@ function ProcoreContent() {
                   <strong>Recommendation:</strong> {debugResult.recommendation}
                 </div>
                 <div className="text-sm overflow-x-auto">
-                  <pre className="bg-gray-100 p-4 rounded text-xs">
-                    {JSON.stringify(debugResult, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={debugResult} />
                 </div>
               </div>
             )}
@@ -11874,9 +11817,7 @@ function ProcoreContent() {
                   <summary className="cursor-pointer font-semibold hover:text-blue-600">
                     Click to expand
                   </summary>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono mt-4">
-                    {JSON.stringify(data, null, 2)}
-                  </pre>
+                  <CollapsibleJson value={data} />
                 </details>
               </div>
             )}

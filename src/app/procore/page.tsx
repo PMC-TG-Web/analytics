@@ -5152,6 +5152,18 @@ function ProcoreContent() {
       return;
     }
 
+    const formatCloneProposalFailure = (status: number, result: any) => {
+      if (status === 504) {
+        return dryRun
+          ? "Estimating clone dry-run timed out (504). The request did not finish in time."
+          : "Estimating clone live run timed out (504). The request did not finish in time; the server may still be processing it."
+      }
+
+      return result?.error
+        ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+        : `Clone ${dryRun ? "dry-run" : "live run"} failed (${status}).`;
+    };
+
     setCloneProposalBusy(true);
     setCloneProposalError(null);
     if (!continuation) setCloneProposalResult(null);
@@ -5188,11 +5200,7 @@ function ProcoreContent() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.success === false) {
-        setCloneProposalError(
-          result?.error
-            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
-            : `Clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
-        );
+        setCloneProposalError(formatCloneProposalFailure(response.status, result));
       }
       setCloneProposalResult({ status: response.status, ok: response.ok, result });
       setCloneProposalContinuation(result?.batch?.continueRequest || null);

@@ -9904,7 +9904,7 @@ function ProcoreContent() {
                   </>
                 )}
               </div>
-            </div>
+            </div>}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Bid Board Project Import (Step 1)</h2>

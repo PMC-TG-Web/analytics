@@ -171,13 +171,33 @@ async function findOrCreateDrawingArea({
   const match = areas.find((area) => readStr(field(area, "name")).toLowerCase() === name.toLowerCase());
   if (match) return { created: false, area: match };
 
-  const created = await procoreFetch({
-    path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/drawing_areas`,
-    method: "POST",
-    companyId,
-    accessToken,
-    body: { drawing_area: { name } },
-  });
+  const path = `/rest/v1.0/projects/${encodeURIComponent(projectId)}/drawing_areas`;
+  let created: unknown;
+  try {
+    created = await procoreFetch({
+      path,
+      method: "POST",
+      companyId,
+      accessToken,
+      body: { drawing_area: { name } },
+    });
+  } catch (error) {
+    const details = field(error, "details");
+    const nameErrors = field(field(details, "errors"), "name");
+    const wrappedNameWasIgnored =
+      Array.isArray(nameErrors) && nameErrors.some((entry) => readStr(entry).toLowerCase().includes("blank"));
+
+    if (!wrappedNameWasIgnored) throw error;
+
+    created = await procoreFetch({
+      path,
+      method: "POST",
+      companyId,
+      accessToken,
+      body: { name },
+    });
+  }
+
   return { created: true, area: created as UnknownRecord };
 }
 

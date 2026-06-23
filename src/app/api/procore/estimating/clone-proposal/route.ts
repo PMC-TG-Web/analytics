@@ -9,6 +9,7 @@ type UnknownRecord = Record<string, unknown>;
 
 const BASE_URL = "https://api.procore.com";
 const DEFAULT_CROSSWALK_PATH = "Codes to use.xlsx";
+const PROCORE_PAGE_SIZE = 100;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
@@ -524,11 +525,11 @@ async function fetchPaged(params: {
     const payload = await procoreJson({
       accessToken: params.accessToken,
       companyId: params.companyId,
-      path: `${params.path}${separator}page=${page}&per_page=200`,
+      path: `${params.path}${separator}page=${page}&per_page=${PROCORE_PAGE_SIZE}`,
     });
     const items = asArray(payload, params.arrayKeys);
     rows.push(...items);
-    if (items.length < 200) break;
+    if (items.length < PROCORE_PAGE_SIZE) break;
   }
   return rows;
 }
@@ -573,7 +574,7 @@ async function resolveBidBoardProjectId(params: {
   }
 
   for (let page = 1; page <= 20; page += 1) {
-    const listPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/estimating/bid_board_projects?page=${page}&per_page=200`;
+    const listPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/estimating/bid_board_projects?page=${page}&per_page=${PROCORE_PAGE_SIZE}`;
     const payload = await procoreJson({
       accessToken: params.accessToken,
       companyId: params.companyId,
@@ -599,7 +600,7 @@ async function resolveBidBoardProjectId(params: {
         };
       }
     }
-    if (rows.length < 200) break;
+    if (rows.length < PROCORE_PAGE_SIZE) break;
   }
 
   return {

@@ -10769,7 +10769,7 @@ function ProcoreContent() {
                   <input
                     type="number"
                     min="1"
-                    max="500"
+                    max="5000"
                     step="1"
                     value={cloneProposalMaxAutoBatches ?? ""}
                     onChange={(event) => setCloneProposalMaxAutoBatches(event.target.value)}

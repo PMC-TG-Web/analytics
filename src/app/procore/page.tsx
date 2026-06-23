@@ -11290,8 +11290,9 @@ function ProcoreContent() {
               )}
             </div>
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
-              <h2 className="text-xl font-bold text-rose-900 mb-3">Direct Cost Line Items Sync</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+                <h2 className="text-xl font-bold text-rose-900 mb-3">Direct Cost Line Items Sync</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Sync (PATCH) direct cost line items to Procore using the <code className="bg-gray-100 px-1 rounded">direct_costs/line_items/sync</code> v1.0 endpoint.
                 Upload an Excel file or paste a JSON array of update objects. Each row must include an <code className="bg-gray-100 px-1 rounded">id</code>.

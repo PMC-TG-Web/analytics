@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
 import { PROCORE_PERMANENT_COST_TYPE_BY_CODE } from "@/lib/procorePermanentCostTypeLookup";
 
+const CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY = "procore.cloneProposal.continuation";
+
 function csvCell(value: unknown): string {
   const text =
     value === null || value === undefined
@@ -767,6 +769,36 @@ function ProcoreContent() {
   useEffect(() => {
     void handleLoadPurchaseOrderLineItemMappingProfile();
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setCloneProposalContinuation(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // Ignore invalid or unavailable local storage.
+    }
+  }, []);
+
+  const setCloneProposalContinuationState = (value: Record<string, unknown> | null) => {
+    setCloneProposalContinuation(value);
+    try {
+      if (value) {
+        window.localStorage.setItem(CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY, JSON.stringify(value));
+      } else {
+        window.localStorage.removeItem(CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
+  const effectiveCloneProposalContinuation = (
+    cloneProposalContinuation || cloneProposalResult?.result?.batch?.continueRequest || null
+  ) as Record<string, unknown> | null;
 
   const handleEstimateCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -5171,7 +5203,7 @@ function ProcoreContent() {
     setCloneProposalBusy(true);
     setCloneProposalError(null);
     if (!continuation) setCloneProposalResult(null);
-    if (!continuation) setCloneProposalContinuation(null);
+    if (!continuation) setCloneProposalContinuationState(null);
 
     try {
       const batchResults: any[] = [];
@@ -5237,7 +5269,7 @@ function ProcoreContent() {
           },
         };
         setCloneProposalResult({ status: response.status, ok: response.ok, result: aggregateResult });
-        setCloneProposalContinuation(result?.batch?.continueRequest || null);
+        setCloneProposalContinuationState(result?.batch?.continueRequest || null);
 
         if (!response.ok || result?.success === false) {
           setCloneProposalError(formatCloneProposalFailure(response.status, result));
@@ -10803,9 +10835,9 @@ function ProcoreContent() {
                 >
                   {cloneProposalBusy ? "Working..." : "Run Live Clone"}
                 </button>
-                {cloneProposalContinuation && (
+                {effectiveCloneProposalContinuation && (
                   <button
-                    onClick={() => handleCloneProposal(false, cloneProposalContinuation)}
+                    onClick={() => handleCloneProposal(false, effectiveCloneProposalContinuation)}
                     disabled={cloneProposalBusy}
                     className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                   >

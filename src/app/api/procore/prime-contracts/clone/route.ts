@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -761,6 +762,50 @@ async function fetchProjectBudgetLineItems(params: {
   return { records, errors };
 }
 
+async function fetchStoredBudgetLineItems(params: {
+  companyId: string;
+  projectId: string;
+}) {
+  const rows = await prisma.$queryRawUnsafe<UnknownRecord[]>(
+    `
+      SELECT
+        budget_line_item_id,
+        name,
+        cost_code,
+        cost_code_description,
+        wbs_code_id,
+        line_item_type,
+        payload
+      FROM budgetlineitems
+      WHERE company_id = $1
+        AND project_id = $2
+        AND wbs_code_id IS NOT NULL
+    `,
+    params.companyId,
+    params.projectId
+  );
+
+  return rows.map((row) => {
+    const payload = isRecord(row.payload) ? row.payload : {};
+    return {
+      ...payload,
+      id: row.budget_line_item_id,
+      budget_line_item_id: row.budget_line_item_id,
+      name: row.name,
+      cost_code_string: row.cost_code,
+      line_item_type: row.line_item_type,
+      wbs_code_id: row.wbs_code_id,
+      wbs_code: {
+        ...(isRecord(payload.wbs_code) ? payload.wbs_code : {}),
+        id: row.wbs_code_id,
+        flat_code: row.cost_code && row.line_item_type ? `${row.cost_code}.${row.line_item_type}` : row.cost_code,
+        code: row.cost_code,
+        description: row.cost_code_description,
+      },
+    };
+  });
+}
+
 function budgetLineWbsId(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
   return readStr(wbsCode.id ?? item.wbs_code_id ?? item.id ?? item.budget_line_item_id);
@@ -908,7 +953,19 @@ async function applyCrosswalkWbsMappings(params: {
   });
   summary.targetBudgetLineItems = targetBudget.records.length;
   if (targetBudget.errors.length) summary.targetBudgetWarnings = targetBudget.errors.slice(0, 12);
-  const targetIndex = buildTargetWbsIndex(targetBudget.records);
+  const storedTargetBudget = targetBudget.records.length === 0
+    ? await fetchStoredBudgetLineItems({
+        companyId: params.targetCompanyId,
+        projectId: params.targetProjectId,
+      })
+    : [];
+  if (storedTargetBudget.length > 0) {
+    summary.targetBudgetLineItems = storedTargetBudget.length;
+    summary.targetBudgetSource = "local_synced_budgetlineitems";
+  } else {
+    summary.targetBudgetSource = "procore_api";
+  }
+  const targetIndex = buildTargetWbsIndex(targetBudget.records.length ? targetBudget.records : storedTargetBudget);
 
   for (const lineItem of params.sourceLineItems) {
     const oldWbsId = sourceLineItemWbsId(lineItem);

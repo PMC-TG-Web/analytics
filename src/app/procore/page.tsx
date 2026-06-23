@@ -7062,376 +7062,734 @@ function ProcoreContent() {
               </button>
             </div>
 
-                      onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    Allow unmapped IDs
-                  </label>
-                </div>
-                <textarea
-                  value={commitmentCloneMapsText ?? ""}
-                  onChange={(e) => setCommitmentCloneMapsText(e.target.value)}
-                  rows={10}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
-                />
-              </div>
+            <div className="flex flex-col">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-slate-500 mb-6 order-12">
+              <h2 className="text-xl font-bold text-slate-900 mb-3">Procore REST Command Runner</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Run Procore REST endpoints using the Procore auth you already have in this app.
+                Use endpoint paths like <code className="bg-gray-100 px-1 rounded">/rest/v1.3/companies/{"{"}company_id{"}"}/me</code> or full
+                <code className="bg-gray-100 px-1 rounded ml-1">https://api.procore.com/rest/...</code> URLs.
+              </p>
 
-              <div className="mb-4 bg-cyan-50 border border-cyan-200 rounded p-3">
-                <label className="block text-sm font-semibold text-cyan-900 mb-1">Vendor Lookup CSV</label>
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={handleCommitmentVendorLookupUpload}
-                  className="w-full border border-cyan-200 rounded px-3 py-2 text-sm bg-white"
-                />
-                <p className="text-xs text-cyan-800 mt-2">
-                  Upload a CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. Vendor rows in the mapping table will auto-fill.
-                </p>
-                {commitmentVendorLookupSummary && (
-                  <p className="text-xs text-cyan-900 font-semibold mt-2">{commitmentVendorLookupSummary}</p>
-                )}
-              </div>
-
-              <div className="mb-4 border border-cyan-100 rounded overflow-hidden">
-                <div className="bg-cyan-50 px-3 py-2 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-sm font-bold text-cyan-900">Editable Missing ID Mappings</h3>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={loadCommitmentMissingMappings}
-                      disabled={!Array.isArray(commitmentCloneResult?.result?.missingMappings) || commitmentCloneResult.result.missingMappings.length === 0}
-                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
-                    >
-                      Load Missing Rows
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyCommitmentMappingRows}
-                      disabled={commitmentCloneMappingRows.length === 0}
-                      className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
-                    >
-                      Apply To Mapping JSON
-                    </button>
-                  </div>
-                </div>
-                {commitmentCloneMappingRows.length === 0 ? (
-                  <div className="p-3 text-sm text-gray-600">
-                    Run a dry-run with missing mappings, then load them here.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left px-2 py-2">Field</th>
-                          <th className="text-left px-2 py-2">Old ID</th>
-                          <th className="text-left px-2 py-2">New ID</th>
-                          <th className="text-left px-2 py-2">Contract</th>
-                          <th className="text-left px-2 py-2">Vendor</th>
-                          <th className="text-left px-2 py-2">Line Item</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {commitmentCloneMappingRows.map((row, index) => (
-                          <tr key={row.rowKey || `${row.field}-${row.oldId}-${index}`} className="border-t border-gray-100 align-top">
-                            <td className="px-2 py-2">
-                              <div className="font-mono">{row.field || "-"}</div>
-                              <div className="text-gray-500">{row.mapName || "unsupported"}</div>
-                            </td>
-                            <td className="px-2 py-2 font-mono">{row.oldId || "-"}</td>
-                            <td className="px-2 py-2">
-                              <input
-                                type="text"
-                                value={row.newId ?? ""}
-                                onChange={(e) => updateCommitmentMappingRow(index, "newId", e.target.value)}
-                                className="w-36 border border-gray-300 rounded px-2 py-1 font-mono"
-                                placeholder="Target ID"
-                              />
-                            </td>
-                            <td className="px-2 py-2 min-w-44">
-                              <div className="font-semibold">{row.contractNumber || "-"}</div>
-                              <div className="text-gray-600">{row.contractTitle || "-"}</div>
-                            </td>
-                            <td className="px-2 py-2 min-w-36">{row.vendorName || "-"}</td>
-                            <td className="px-2 py-2 min-w-56">
-                              <div className="font-mono">{row.lineItemId || "-"}</div>
-                              <div className="text-gray-600">{row.description || "-"}</div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => handleCloneCommitments(true)}
-                  disabled={commitmentCloneBusy}
-                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {commitmentCloneBusy ? "Working..." : "Dry Run Clone"}
-                </button>
-                <button
-                  onClick={() => handleCloneCommitments(false)}
-                  disabled={commitmentCloneBusy || !commitmentCloneResult?.result?.readyForLiveClone}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {commitmentCloneBusy ? "Working..." : "Run Live Clone"}
-                </button>
-                {commitmentCloneResult && (
-                  <button
-                    onClick={() => downloadJson("procore-clone-commitments-result.json", commitmentCloneResult)}
-                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Method</label>
+                  <select
+                    value={restRunnerMethod ?? ""}
+                    onChange={(e) => setRestRunnerMethod(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   >
-                    Download Result JSON
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Path or URL</label>
+                  <input
+                    type="text"
+                    value={restRunnerPath ?? ""}
+                    onChange={(e) => setRestRunnerPath(e.target.value)}
+                    placeholder="/rest/v1.3/companies/{company_id}/me"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID Override (optional)</label>
+                <input
+                  type="text"
+                  value={restRunnerCompanyIdOverride ?? ""}
+                  onChange={(e) => setRestRunnerCompanyIdOverride(e.target.value)}
+                  placeholder="Leave blank to use cookie/env company id"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">JSON Body (for POST/PUT/PATCH)</label>
+                <textarea
+                  value={restRunnerBodyText ?? ""}
+                  onChange={(e) => setRestRunnerBodyText(e.target.value)}
+                  rows={10}
+                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRunRestCommand}
+                  disabled={restRunnerBusy}
+                  className="bg-slate-700 hover:bg-slate-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {restRunnerBusy ? "Running..." : "Run REST Command"}
+                </button>
+              </div>
+
+              {restRunnerError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>REST Runner Error:</strong> {restRunnerError}
+                </div>
+              )}
+
+              {restRunnerResult && (
+                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                  {JSON.stringify(restRunnerResult, null, 2)}
+                </pre>
+              )}
+            </div>
+
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+                <h2 className="text-xl font-bold text-emerald-900 mb-3">Drawing Sets Transfer</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Pull drawing sets from one Procore project, review them, then create matching drawing sets in the target project.
+                  This creates the drawing set records only.
+                </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="rounded border border-gray-200 p-4">
+                  <h3 className="font-bold text-gray-800 mb-3">Source</h3>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingSourceCompanyId ?? ""}
+                    onChange={(event) => setDrawingSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingSourceProjectId ?? ""}
+                    onChange={(event) => setDrawingSourceProjectId(event.target.value)}
+                    placeholder="Source Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+
+                <div className="rounded border border-gray-200 p-4">
+                  <h3 className="font-bold text-gray-800 mb-3">Target</h3>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingTargetCompanyId ?? ""}
+                    onChange={(event) => setDrawingTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingTargetProjectId ?? ""}
+                    onChange={(event) => setDrawingTargetProjectId(event.target.value)}
+                    placeholder="Target Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handlePullDrawingSets}
+                  disabled={drawingTransferBusy}
+                  className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {drawingTransferBusy ? "Working..." : "Pull Drawing Sets"}
+                </button>
+                <button
+                  onClick={handlePushDrawingSets}
+                  disabled={drawingTransferBusy || drawingSets.length === 0 || selectedDrawingSetIds.size === 0}
+                  className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  Push Selected to Target
+                </button>
+                {drawingSets.length > 0 && (
+                  <button
+                    onClick={handleToggleAllDrawingSets}
+                    disabled={drawingTransferBusy}
+                    className="bg-gray-700 hover:bg-gray-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {selectedDrawingSetIds.size === drawingSets.length ? "Clear Selection" : "Select All"}
                   </button>
                 )}
               </div>
 
-              {commitmentCloneError && (
-                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                  <strong>Commitment Clone Error:</strong> {commitmentCloneError}
+              {drawingTransferError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingTransferError}
                 </div>
               )}
 
-              {commitmentCloneResult && (
-                <div className="mt-4">
-                  <div className={`px-4 py-3 rounded mb-3 border ${
-                    commitmentCloneResult.result?.readyForLiveClone || commitmentCloneResult.result?.success
-                      ? "bg-cyan-50 border-cyan-200 text-cyan-900"
-                      : "bg-amber-50 border-amber-200 text-amber-900"
-                  }`}>
-                    <strong>Commitment Clone Result:</strong>{" "}
-                    {commitmentCloneResult.result?.dryRun
-                      ? commitmentCloneResult.result?.readyForLiveClone
-                        ? "Dry run is clean. Live clone is enabled."
-                        : `${commitmentCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
-                      : commitmentCloneResult.result?.success
-                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s).`
-                        : "Live clone finished with errors."}
-                  </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(commitmentCloneResult, null, 2)}
-                  </pre>
+              {drawingTransferResult && (
+                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingTransferResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingSets.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Move</th>
+                        <th className="text-left px-3 py-2">Set ID</th>
+                        <th className="text-left px-3 py-2">Name</th>
+                        <th className="text-left px-3 py-2">Date</th>
+                        <th className="text-left px-3 py-2">Drawings</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingSets.map((row, index) => {
+                        const key = getDrawingSetKey(row);
+                        const drawingCount = row.drawings_count ?? row.drawingsCount ?? "-";
+                        return (
+                          <tr key={key || `${row.name || "drawing-set"}-${index}`} className="border-t border-gray-200">
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(key && selectedDrawingSetIds.has(key))}
+                                onChange={() => handleToggleDrawingSet(row)}
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                            <td className="px-3 py-2">{row.name || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{row.date || "-"}</td>
+                            <td className="px-3 py-2">{drawingCount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
+            )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6">
-              <h2 className="text-xl font-bold text-violet-900 mb-3">Clone Prime Contracts</h2>
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6 order-11">
+              <h2 className="text-xl font-bold text-amber-900 mb-3">Drawings Migration Inventory</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Clone prime contract headers and line items from one Procore project to another. Dry-run first to expose WBS, cost code, cost type, and tax code ID mappings.
+                Pull drawing areas, drawing sets, drawing uploads, and drawings from the old Procore project. This is read-only.
               </p>
 
+              <h3 className="font-bold text-gray-800 mb-3">Source</h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
+                  <input
+                    type="text"
+                    value={drawingLookupCompanyId ?? ""}
+                    onChange={(event) => setDrawingLookupCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={drawingLookupProjectId ?? ""}
+                    onChange={(event) => setDrawingLookupProjectId(event.target.value)}
+                    placeholder="Old Procore project_id"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages per Endpoint</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={drawingInventoryMaxPages ?? ""}
+                    onChange={(event) => setDrawingInventoryMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">View</label>
+                  <input
+                    type="text"
+                    value={drawingLookupView ?? ""}
+                    onChange={(event) => setDrawingLookupView(event.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <h3 className="font-bold text-gray-800 mb-3">Target Project Drawing Tool Only</h3>
+              <p className="text-xs text-amber-900 mb-3">
+                These buttons require a real Procore project_id with the Drawings tool enabled. Do not enter a bid_board_project_id here.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
-                  <input
-                    type="text"
-                    value={primeCloneSourceCompanyId ?? ""}
-                    onChange={(e) => setPrimeCloneSourceCompanyId(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
-                  <input
-                    type="text"
-                    value={primeCloneSourceProjectId ?? ""}
-                    onChange={(e) => setPrimeCloneSourceProjectId(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
                   <input
                     type="text"
-                    value={primeCloneTargetCompanyId ?? ""}
-                    onChange={(e) => setPrimeCloneTargetCompanyId(e.target.value)}
+                    value={drawingMigrationTargetCompanyId ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetCompanyId(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Procore Project ID</label>
                   <input
                     type="text"
-                    value={primeCloneTargetProjectId ?? ""}
-                    onChange={(e) => setPrimeCloneTargetProjectId(e.target.value)}
+                    value={drawingMigrationTargetProjectId ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetProjectId(event.target.value)}
+                    placeholder="Not a bid_board_project_id"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Drawing Set Name</label>
                   <input
                     type="text"
-                    value={primeCloneTargetStatus ?? ""}
-                    onChange={(e) => setPrimeCloneTargetStatus(e.target.value)}
+                    value={drawingMigrationTargetSetName ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetSetName(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contractor ID Override</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Discipline</label>
                   <input
                     type="text"
-                    value={primeCloneTargetContractorIdOverride ?? ""}
-                    onChange={(e) => setPrimeCloneTargetContractorIdOverride(e.target.value)}
+                    value={drawingMigrationTargetDisciplineName ?? ""}
+                    onChange={(event) => setDrawingMigrationTargetDisciplineName(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={drawingMigrationBatchOffset ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchOffset(event.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
-                  <p className="text-xs text-violet-800 mt-1">Paradise Masonry, LLC target vendor ID.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    step="1"
+                    value={drawingMigrationBatchLimit ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay (ms)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="250"
+                    value={drawingMigrationBatchDelayMs ?? ""}
+                    onChange={(event) => setDrawingMigrationBatchDelayMs(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={drawingMigrationMaxAutoBatches ?? ""}
+                    onChange={(event) => setDrawingMigrationMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={Boolean(primeClonePreserveStatus)}
-                      onChange={(e) => setPrimeClonePreserveStatus(e.target.checked)}
-                      className="h-4 w-4"
+                      checked={Boolean(drawingMigrationAutoContinue)}
+                      onChange={(event) => setDrawingMigrationAutoContinue(event.target.checked)}
                     />
-                    Preserve source status
+                    Auto continue
                   </label>
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={Boolean(primeCloneLineItems)}
-                      onChange={(e) => setPrimeCloneLineItems(e.target.checked)}
-                      className="h-4 w-4"
+                      checked={Boolean(drawingMigrationUseSourceSets)}
+                      onChange={(event) => setDrawingMigrationUseSourceSets(event.target.checked)}
                     />
-                    Clone line items
-                  </label>
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(primeCloneAllowUnmappedIds)}
-                      onChange={(e) => setPrimeCloneAllowUnmappedIds(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    Allow unmapped IDs
+                    Source sets
                   </label>
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Prime Contract IDs</label>
-                <input
-                  type="text"
-                  value={primeCloneIdsText ?? ""}
-                  onChange={(e) => setPrimeCloneIdsText(e.target.value)}
-                  placeholder="Optional: comma or space-separated source prime contract IDs"
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                />
+              <div className="flex flex-wrap gap-3 mb-4">
+                <button
+                  onClick={handlePullDrawingsInventory}
+                  disabled={drawingLookupBusy}
+                  className="bg-amber-700 hover:bg-amber-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {drawingLookupBusy ? "Loading..." : "Pull Drawings Inventory"}
+                </button>
+                {drawingLookupResult && (
+                  <>
+                    {drawingInventorySummaryRows.length > 0 && (
+                      <button
+                        onClick={handleDownloadDrawingInventoryCsv}
+                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        Download Drawings CSV
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDownloadDrawingLookupCsv}
+                      disabled={drawingLookupRows.length === 0}
+                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Download Uploads CSV
+                    </button>
+                    <button
+                      onClick={() => downloadJson("procore-drawings-inventory.json", drawingLookupResult)}
+                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Download JSON
+                    </button>
+                    <button
+                      onClick={handleDrawingMigrationCreateBatch}
+                      disabled={
+                        drawingMigrationCreateBusy !== null ||
+                        drawingMigrationDryRunBusy !== null ||
+                        drawingInventorySummaryRows.length === 0
+                      }
+                      className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      {drawingMigrationCreateBusy === "batch" ? "Creating Batch..." : "Run Drawing Batch"}
+                    </button>
+                    {drawingMigrationCreateResult && (
+                      <button
+                        onClick={() => downloadJson("procore-drawings-batch-result.json", drawingMigrationCreateResult)}
+                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        Download Batch Result
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Codes Crosswalk Workbook Path</label>
-                <input
-                  type="text"
-                  value={primeCloneCrosswalkPath ?? ""}
-                  onChange={(e) => setPrimeCloneCrosswalkPath(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                />
-                <div className="mt-3">
+              {drawingLookupError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingLookupError}
+                </div>
+              )}
+
+              {drawingMigrationDryRunError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingMigrationDryRunError}
+                </div>
+              )}
+
+              {drawingMigrationCreateError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {drawingMigrationCreateError}
+                </div>
+              )}
+
+              {drawingMigrationDryRunResult && (
+                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingMigrationDryRunResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingMigrationCreateResult && (
+                <pre className="mb-4 bg-green-50 border border-green-300 text-green-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                  {JSON.stringify(drawingMigrationCreateResult, null, 2)}
+                </pre>
+              )}
+
+              {drawingLookupResult && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Areas</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingAreas ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Sets</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingSets ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Uploads</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingUploads ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">Drawings</div>
+                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawings ?? 0}</div>
+                  </div>
+                </div>
+              )}
+
+              {drawingInventorySummaryRows.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Actions</th>
+                        <th className="text-left px-3 py-2">Drawing ID</th>
+                        <th className="text-left px-3 py-2">Number</th>
+                        <th className="text-left px-3 py-2">Title</th>
+                        <th className="text-left px-3 py-2">Area</th>
+                        <th className="text-left px-3 py-2">Set</th>
+                        <th className="text-left px-3 py-2">Revision</th>
+                        <th className="text-left px-3 py-2">PDF Fields</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingInventorySummaryRows.slice(0, 250).map((row, index) => (
+                        <tr key={String(row.id ?? `${row.number ?? "drawing"}-${index}`)} className="border-t border-gray-200">
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleDrawingMigrationDryRun(row)}
+                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-orange-700 hover:bg-orange-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {drawingMigrationDryRunBusy === String(row.id ?? row.number ?? "drawing") ? "Testing..." : "Test PDF"}
+                              </button>
+                              <button
+                                onClick={() => handleDrawingMigrationCreateOne(row)}
+                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {drawingMigrationCreateBusy === String(row.id ?? row.number ?? "drawing") ? "Creating..." : "Create in Project Tool"}
+                              </button>
+                              <button
+                                onClick={() => handleEstimatingPlansUploadExperiment(row)}
+                                disabled={estimatingPlansUploadBusy !== null || !getDrawingMigrationPdfUrl(row)}
+                                className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
+                              >
+                                {estimatingPlansUploadBusy === String(row.id ?? row.number ?? "drawing") ? "Uploading..." : "Upload to Estimating"}
+                              </button>
+                            </div>
+                            {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")] && (
+                              <div className="mt-2 max-w-[260px] text-xs leading-4 text-sky-900">
+                                {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")]}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.number ?? "-"}</td>
+                          <td className="px-3 py-2">{row.title ?? "-"}</td>
+                          <td className="px-3 py-2">{[row.drawingAreaId, row.drawingAreaName].filter(Boolean).join(" | ") || "-"}</td>
+                          <td className="px-3 py-2">{[row.drawingSetId, row.drawingSetName].filter(Boolean).join(" | ") || "-"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.revision ?? "-"}</td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {row.pdfFields && Object.keys(row.pdfFields).length > 0 ? JSON.stringify(row.pdfFields) : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {drawingLookupRows.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Upload ID</th>
+                        <th className="text-left px-3 py-2">File</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Drawing Set</th>
+                        <th className="text-left px-3 py-2">Drawing Area</th>
+                        <th className="text-left px-3 py-2">Drawings</th>
+                        <th className="text-left px-3 py-2">Uploaded By</th>
+                        <th className="text-left px-3 py-2">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drawingLookupRows.map((row, index) => (
+                        <tr key={String(row.id ?? `${getDrawingUploadFileName(row)}-${index}`)} className="border-t border-gray-200">
+                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadFileName(row)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.status ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadSetName(row)}</td>
+                          <td className="px-3 py-2">{getDrawingUploadAreaName(row)}</td>
+                          <td className="px-3 py-2">{row.drawings_count ?? row.drawingsCount ?? "-"}</td>
+                          <td className="px-3 py-2">{getDrawingUploadUserName(row)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{row.created_at ?? row.upload_date ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {drawingLookupResult && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw response JSON</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(drawingLookupResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-600 mb-6">
+                <h2 className="text-xl font-bold text-sky-900 mb-3">Estimating Plans Probe</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Probe the Estimating Documents/Plans surface for the selected proposal. This is read-only and does not upload files.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
                   <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handlePrimeCloneCrosswalkUpload}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    type="text"
+                    value={estimatingPlansCompanyId ?? ""}
+                    onChange={(event) => setEstimatingPlansCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
-                  <p className="text-xs text-violet-800 mt-2">
-                    {primeCloneCrosswalkWorkbookName
-                      ? `Using uploaded workbook: ${primeCloneCrosswalkWorkbookName}`
-                      : "Optional: upload Codes to use.xlsx here. The dry-run will use it to auto-map prime contract WBS IDs by target cost code and type."}
-                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansProjectId ?? ""}
+                    onChange={(event) => setEstimatingPlansProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansProposalId ?? ""}
+                    onChange={(event) => setEstimatingPlansProposalId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansBidBoardProjectId ?? ""}
+                    onChange={(event) => setEstimatingPlansBidBoardProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">User ID</label>
+                  <input
+                    type="text"
+                    value={estimatingPlansUserId ?? ""}
+                    onChange={(event) => setEstimatingPlansUserId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">ID Mapping JSON</label>
-                <div className="mb-3 bg-violet-50 border border-violet-200 rounded p-3">
-                  <label className="block text-sm font-semibold text-violet-900 mb-1">Owner/Client Lookup CSV</label>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handlePrimeOwnerClientLookupUpload}
-                    className="w-full border border-violet-200 rounded px-3 py-2 text-sm bg-white"
-                  />
-                  <p className="text-xs text-violet-800 mt-2">
-                    Upload the Company Directory CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. This fills <code className="bg-white px-1 rounded">ownerClientIdMap</code>.
-                  </p>
-                  {primeOwnerClientLookupSummary && (
-                    <p className="text-xs text-violet-900 font-semibold mt-2">{primeOwnerClientLookupSummary}</p>
-                  )}
-                </div>
-                <textarea
-                  value={primeCloneMapsText ?? ""}
-                  onChange={(e) => setPrimeCloneMapsText(e.target.value)}
-                  rows={8}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-3 mb-4">
                 <button
-                  onClick={() => handleClonePrimeContracts(true)}
-                  disabled={primeCloneBusy}
-                  className="bg-violet-700 hover:bg-violet-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  onClick={handleProbeEstimatingPlans}
+                  disabled={estimatingPlansProbeBusy}
+                  className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {primeCloneBusy ? "Working..." : "Dry Run Clone"}
+                  {estimatingPlansProbeBusy ? "Probing..." : "Probe Estimating Plans"}
                 </button>
-                <button
-                  onClick={() => handleClonePrimeContracts(false)}
-                  disabled={primeCloneBusy || !primeCloneResult?.result?.readyForLiveClone}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {primeCloneBusy ? "Working..." : "Run Live Clone"}
-                </button>
-                {primeCloneResult && (
+                {estimatingPlansProbeResult && (
                   <button
-                    onClick={() => downloadJson("procore-clone-prime-contracts-result.json", primeCloneResult)}
+                    onClick={() => downloadJson("procore-estimating-plans-probe.json", estimatingPlansProbeResult)}
                     className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
                   >
-                    Download Result JSON
+                    Download JSON
                   </button>
                 )}
               </div>
 
-              {primeCloneError && (
-                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                  <strong>Prime Contract Clone Error:</strong> {primeCloneError}
+              {estimatingPlansProbeError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {estimatingPlansProbeError}
                 </div>
               )}
 
-              {primeCloneResult && (
-                <div className="mt-4">
-                  <div className={`px-4 py-3 rounded mb-3 border ${
-                    primeCloneResult.result?.readyForLiveClone || primeCloneResult.result?.success
-                      ? "bg-violet-50 border-violet-200 text-violet-900"
-                      : "bg-amber-50 border-amber-200 text-amber-900"
-                  }`}>
-                    <strong>Prime Contract Clone Result:</strong>{" "}
-                    {primeCloneResult.result?.dryRun
-                      ? primeCloneResult.result?.readyForLiveClone
-                        ? "Dry run is clean. Live clone is enabled."
-                        : `${primeCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
-                      : primeCloneResult.result?.success
-                        ? `Live clone created ${primeCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and synced ${primeCloneResult.result?.counts?.syncedLineItems ?? 0} line item(s).`
-                        : "Live clone finished with errors."}
-                  </div>
-                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(primeCloneResult, null, 2)}
-                  </pre>
+              {estimatingPlansUploadError && (
+                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
+                  {estimatingPlansUploadError}
                 </div>
               )}
+
+              {estimatingPlansUploadResult && (
+                <details className="mb-4" open>
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Estimating upload experiment result</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(estimatingPlansUploadResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+
+              {estimatingPlansProbeResult?.targetHints && (
+                <div className="mb-4 bg-sky-50 border border-sky-200 rounded p-3 text-sm text-sky-950">
+                  <div><strong>Found:</strong> {String(estimatingPlansProbeResult.targetHints.planLikeEndpointFound)}</div>
+                  <div><strong>Path:</strong> <code className="font-mono">{estimatingPlansProbeResult.targetHints.planLikePath || "-"}</code></div>
+                  <div className="mt-1">{estimatingPlansProbeResult.targetHints.nextStep}</div>
+                </div>
+              )}
+
+              {estimatingPlansProbeResult?.hostAttempts?.length > 0 && (
+                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Host</th>
+                        <th className="text-left px-3 py-2">Path</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Rows</th>
+                        <th className="text-left px-3 py-2">Matched Keys</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estimatingPlansProbeResult.hostAttempts.flatMap((hostAttempt: any) =>
+                        (hostAttempt.endpointAttempts || []).map((attempt: any, index: number) => (
+                          <tr key={`${hostAttempt.host}-${attempt.path}-${index}`} className="border-t border-gray-200">
+                            <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{hostAttempt.host}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{attempt.path}</td>
+                            <td className={`px-3 py-2 font-mono whitespace-nowrap ${attempt.ok ? "text-green-700" : "text-red-700"}`}>
+                              {attempt.status}
+                            </td>
+                            <td className="px-3 py-2">{attempt.summary?.rowCount ?? "-"}</td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {(attempt.summary?.matchedKeys || []).slice(0, 14).join(", ") || "-"}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {estimatingPlansProbeResult && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw probe JSON</summary>
+                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
+                    {JSON.stringify(estimatingPlansProbeResult, null, 2)}
+                  </pre>
+                </details>
+              )}
             </div>
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+            )}
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6 order-4">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Clone Correspondences</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone correspondence generic tool items from one Procore project to another. Version one clones the item header/body fields and reports skipped attachments, people fields, and custom fields for review.
@@ -7564,7 +7922,7 @@ function ProcoreContent() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6 order-5">
               <h2 className="text-xl font-bold text-cyan-900 mb-3">Clone Submittals</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone Submittal Packages and Submittals from one Procore project to another. Dry-run first to review skipped approvers, attachments, distribution members, and custom fields.
@@ -7740,7 +8098,196 @@ function ProcoreContent() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-fuchsia-500 mb-6 order-10">
+              <h2 className="text-xl font-bold text-fuchsia-900 mb-3">Clone Photos</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Procore photo albums and images from one project to another. Live clone uploads image files in batches.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setImageCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneSourceProjectId ?? ""}
+                    onChange={(event) => setImageCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setImageCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={imageCloneTargetProjectId ?? ""}
+                    onChange={(event) => setImageCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Image IDs or Filenames</label>
+                  <textarea
+                    value={imageCloneIdsText ?? ""}
+                    onChange={(event) => setImageCloneIdsText(event.target.value)}
+                    placeholder="Optional. Blank clones all fetched images."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={imageCloneCreateOffset ?? ""}
+                    onChange={(event) => setImageCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={imageCloneCreateLimit ?? ""}
+                    onChange={(event) => setImageCloneCreateLimit(event.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay Between Uploads (ms)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="250"
+                    value={imageCloneUploadDelayMs ?? ""}
+                    onChange={(event) => setImageCloneUploadDelayMs(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={imageCloneMaxAutoBatches ?? ""}
+                    onChange={(event) => setImageCloneMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={imageCloneMaxPages ?? ""}
+                    onChange={(event) => setImageCloneMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(imageCloneCategories)}
+                      onChange={(event) => setImageCloneCategories(event.target.checked)}
+                    />
+                    Clone albums
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-3">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(imageCloneAutoContinue)}
+                      onChange={(event) => setImageCloneAutoContinue(event.target.checked)}
+                    />
+                    Auto continue batches
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneImages(true)}
+                  disabled={imageCloneBusy}
+                  className="bg-fuchsia-700 hover:bg-fuchsia-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {imageCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneImages(false)}
+                  disabled={imageCloneBusy || !imageCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {imageCloneBusy ? "Working..." : "Run Live Batch"}
+                </button>
+                {imageCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-images-result.json", imageCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {imageCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Image Clone Error:</strong> {imageCloneError}
+                </div>
+              )}
+
+              {imageCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    imageCloneResult.result?.readyForLiveClone || imageCloneResult.result?.success
+                      ? "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Image Clone Result:</strong>{" "}
+                    {imageCloneResult.result?.dryRun
+                      ? imageCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${imageCloneResult.result?.counts?.sourceImages ?? 0} image(s) and ${imageCloneResult.result?.counts?.sourceCategories ?? 0} album(s). Live batch is enabled.`
+                        : `${imageCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : imageCloneResult.result?.stoppedEarly
+                        ? `Stopped before timeout. Continue with create offset ${imageCloneResult.result?.nextCreateOffset ?? 0}.`
+                      : imageCloneResult.result?.success
+                        ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
+                        : `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s), with ${imageCloneResult.result?.counts?.failedImages ?? 0} failed.`}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(imageCloneResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6 order-6">
               <h2 className="text-xl font-bold text-rose-900 mb-3">Clone Change Events</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone Change Event headers and mapped line items from one Procore project to another. Dry-run first to confirm the target WBS budget code mappings.
@@ -7917,7 +8464,7 @@ function ProcoreContent() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6 order-7">
               <h2 className="text-xl font-bold text-orange-900 mb-3">Clone Time and Material</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone T&amp;M ticket headers from one Procore project to another and link them to the cloned target Change Event. Signatures, attachments, and custom fields are reported for review.
@@ -8159,7 +8706,7 @@ function ProcoreContent() {
             </div>
             )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6 order-9">
               <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Daily Productivity and Timecards</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Pull daily productivity logs and timecard entries from an old Procore project, map them to the target project, then dry-run or live-create the mapped rows.
@@ -9374,7 +9921,7 @@ function ProcoreContent() {
             </div>
             )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6 order-1">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Bid Board Project Import (Step 1)</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Upload a Bid Board project workbook, review the JSON rows, then create one Procore Bid Board project per row.
@@ -9923,7 +10470,7 @@ function ProcoreContent() {
             </div>
             )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6 order-2">
               <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Estimate or Change Order</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone a source estimate or estimating change order into a target bid board project using <code className="bg-gray-100 px-1 rounded">Codes to use.xlsx</code> to map old cost item IDs to new IDs.
@@ -10226,7 +10773,7 @@ function ProcoreContent() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6 order-8">
               <h2 className="text-xl font-bold text-cyan-900 mb-3">Clone Commitments</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone commitment contract headers and line items from one Procore project to another. Dry-run first to expose vendor, WBS, budget, cost code, cost type, and tax code ID mappings.
@@ -10374,157 +10921,127 @@ function ProcoreContent() {
                     <input
                       type="checkbox"
                       checked={Boolean(commitmentCloneAllowUnmappedIds)}
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-fuchsia-500 mb-6">
-              <h2 className="text-xl font-bold text-fuchsia-900 mb-3">Clone Photos</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Clone Procore photo albums and images from one project to another. Live clone uploads image files in batches.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
-                  <input
-                    type="text"
-                    value={imageCloneSourceCompanyId ?? ""}
-                    onChange={(event) => setImageCloneSourceCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
+                      onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Allow unmapped IDs
+                  </label>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
-                  <input
-                    type="text"
-                    value={imageCloneSourceProjectId ?? ""}
-                    onChange={(event) => setImageCloneSourceProjectId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
-                  <input
-                    type="text"
-                    value={imageCloneTargetCompanyId ?? ""}
-                    onChange={(event) => setImageCloneTargetCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
-                  <input
-                    type="text"
-                    value={imageCloneTargetProjectId ?? ""}
-                    onChange={(event) => setImageCloneTargetProjectId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
+                <textarea
+                  value={commitmentCloneMapsText ?? ""}
+                  onChange={(e) => setCommitmentCloneMapsText(e.target.value)}
+                  rows={10}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
+                />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Image IDs or Filenames</label>
-                  <textarea
-                    value={imageCloneIdsText ?? ""}
-                    onChange={(event) => setImageCloneIdsText(event.target.value)}
-                    placeholder="Optional. Blank clones all fetched images."
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
-                  />
+              <div className="mb-4 bg-cyan-50 border border-cyan-200 rounded p-3">
+                <label className="block text-sm font-semibold text-cyan-900 mb-1">Vendor Lookup CSV</label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCommitmentVendorLookupUpload}
+                  className="w-full border border-cyan-200 rounded px-3 py-2 text-sm bg-white"
+                />
+                <p className="text-xs text-cyan-800 mt-2">
+                  Upload a CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. Vendor rows in the mapping table will auto-fill.
+                </p>
+                {commitmentVendorLookupSummary && (
+                  <p className="text-xs text-cyan-900 font-semibold mt-2">{commitmentVendorLookupSummary}</p>
+                )}
+              </div>
+
+              <div className="mb-4 border border-cyan-100 rounded overflow-hidden">
+                <div className="bg-cyan-50 px-3 py-2 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-cyan-900">Editable Missing ID Mappings</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={loadCommitmentMissingMappings}
+                      disabled={!Array.isArray(commitmentCloneResult?.result?.missingMappings) || commitmentCloneResult.result.missingMappings.length === 0}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Load Missing Rows
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyCommitmentMappingRows}
+                      disabled={commitmentCloneMappingRows.length === 0}
+                      className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Apply To Mapping JSON
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={imageCloneCreateOffset ?? ""}
-                    onChange={(event) => setImageCloneCreateOffset(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    step="1"
-                    value={imageCloneCreateLimit ?? ""}
-                    onChange={(event) => setImageCloneCreateLimit(event.target.value)}
-                    placeholder="Optional"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay Between Uploads (ms)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10000"
-                    step="250"
-                    value={imageCloneUploadDelayMs ?? ""}
-                    onChange={(event) => setImageCloneUploadDelayMs(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    step="1"
-                    value={imageCloneMaxAutoBatches ?? ""}
-                    onChange={(event) => setImageCloneMaxAutoBatches(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    step="1"
-                    value={imageCloneMaxPages ?? ""}
-                    onChange={(event) => setImageCloneMaxPages(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
-                  />
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(imageCloneCategories)}
-                      onChange={(event) => setImageCloneCategories(event.target.checked)}
-                    />
-                    Clone albums
-                  </label>
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-3">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(imageCloneAutoContinue)}
-                      onChange={(event) => setImageCloneAutoContinue(event.target.checked)}
-                    />
-                    Auto continue batches
-                  </label>
-                </div>
+                {commitmentCloneMappingRows.length === 0 ? (
+                  <div className="p-3 text-sm text-gray-600">
+                    Run a dry-run with missing mappings, then load them here.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-2 py-2">Field</th>
+                          <th className="text-left px-2 py-2">Old ID</th>
+                          <th className="text-left px-2 py-2">New ID</th>
+                          <th className="text-left px-2 py-2">Contract</th>
+                          <th className="text-left px-2 py-2">Vendor</th>
+                          <th className="text-left px-2 py-2">Line Item</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {commitmentCloneMappingRows.map((row, index) => (
+                          <tr key={row.rowKey || `${row.field}-${row.oldId}-${index}`} className="border-t border-gray-100 align-top">
+                            <td className="px-2 py-2">
+                              <div className="font-mono">{row.field || "-"}</div>
+                              <div className="text-gray-500">{row.mapName || "unsupported"}</div>
+                            </td>
+                            <td className="px-2 py-2 font-mono">{row.oldId || "-"}</td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                value={row.newId ?? ""}
+                                onChange={(e) => updateCommitmentMappingRow(index, "newId", e.target.value)}
+                                className="w-36 border border-gray-300 rounded px-2 py-1 font-mono"
+                                placeholder="Target ID"
+                              />
+                            </td>
+                            <td className="px-2 py-2 min-w-44">
+                              <div className="font-semibold">{row.contractNumber || "-"}</div>
+                              <div className="text-gray-600">{row.contractTitle || "-"}</div>
+                            </td>
+                            <td className="px-2 py-2 min-w-36">{row.vendorName || "-"}</td>
+                            <td className="px-2 py-2 min-w-56">
+                              <div className="font-mono">{row.lineItemId || "-"}</div>
+                              <div className="text-gray-600">{row.description || "-"}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => handleCloneImages(true)}
-                  disabled={imageCloneBusy}
-                  className="bg-fuchsia-700 hover:bg-fuchsia-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  onClick={() => handleCloneCommitments(true)}
+                  disabled={commitmentCloneBusy}
+                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {imageCloneBusy ? "Working..." : "Dry Run Clone"}
+                  {commitmentCloneBusy ? "Working..." : "Dry Run Clone"}
                 </button>
                 <button
-                  onClick={() => handleCloneImages(false)}
-                  disabled={imageCloneBusy || !imageCloneResult?.result?.readyForLiveClone}
+                  onClick={() => handleCloneCommitments(false)}
+                  disabled={commitmentCloneBusy || !commitmentCloneResult?.result?.readyForLiveClone}
                   className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {imageCloneBusy ? "Working..." : "Run Live Batch"}
+                  {commitmentCloneBusy ? "Working..." : "Run Live Clone"}
                 </button>
-                {imageCloneResult && (
+                {commitmentCloneResult && (
                   <button
-                    onClick={() => downloadJson("procore-clone-images-result.json", imageCloneResult)}
+                    onClick={() => downloadJson("procore-clone-commitments-result.json", commitmentCloneResult)}
                     className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
                   >
                     Download Result JSON
@@ -10532,763 +11049,248 @@ function ProcoreContent() {
                 )}
               </div>
 
-              {imageCloneError && (
+              {commitmentCloneError && (
                 <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                  <strong>Image Clone Error:</strong> {imageCloneError}
+                  <strong>Commitment Clone Error:</strong> {commitmentCloneError}
                 </div>
               )}
 
-              {imageCloneResult && (
+              {commitmentCloneResult && (
                 <div className="mt-4">
                   <div className={`px-4 py-3 rounded mb-3 border ${
-                    imageCloneResult.result?.readyForLiveClone || imageCloneResult.result?.success
-                      ? "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-900"
+                    commitmentCloneResult.result?.readyForLiveClone || commitmentCloneResult.result?.success
+                      ? "bg-cyan-50 border-cyan-200 text-cyan-900"
                       : "bg-amber-50 border-amber-200 text-amber-900"
                   }`}>
-                    <strong>Image Clone Result:</strong>{" "}
-                    {imageCloneResult.result?.dryRun
-                      ? imageCloneResult.result?.readyForLiveClone
-                        ? `Dry run found ${imageCloneResult.result?.counts?.sourceImages ?? 0} image(s) and ${imageCloneResult.result?.counts?.sourceCategories ?? 0} album(s). Live batch is enabled.`
-                        : `${imageCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
-                      : imageCloneResult.result?.stoppedEarly
-                        ? `Stopped before timeout. Continue with create offset ${imageCloneResult.result?.nextCreateOffset ?? 0}.`
-                      : imageCloneResult.result?.success
-                        ? `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s).`
-                        : `Live batch created ${imageCloneResult.result?.counts?.createdImages ?? 0} image(s), with ${imageCloneResult.result?.counts?.failedImages ?? 0} failed.`}
+                    <strong>Commitment Clone Result:</strong>{" "}
+                    {commitmentCloneResult.result?.dryRun
+                      ? commitmentCloneResult.result?.readyForLiveClone
+                        ? "Dry run is clean. Live clone is enabled."
+                        : `${commitmentCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                      : commitmentCloneResult.result?.success
+                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        : "Live clone finished with errors."}
                   </div>
                   <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                    {JSON.stringify(imageCloneResult, null, 2)}
+                    {JSON.stringify(commitmentCloneResult, null, 2)}
                   </pre>
                 </div>
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
-              <h2 className="text-xl font-bold text-amber-900 mb-3">Drawings Migration Inventory</h2>
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6 order-3">
+              <h2 className="text-xl font-bold text-violet-900 mb-3">Clone Prime Contracts</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Pull drawing areas, drawing sets, drawing uploads, and drawings from the old Procore project. This is read-only.
+                Clone prime contract headers and line items from one Procore project to another. Dry-run first to expose WBS, cost code, cost type, and tax code ID mappings.
               </p>
 
-              <h3 className="font-bold text-gray-800 mb-3">Source</h3>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
-                  <input
-                    type="text"
-                    value={drawingLookupCompanyId ?? ""}
-                    onChange={(event) => setDrawingLookupCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    value={drawingLookupProjectId ?? ""}
-                    onChange={(event) => setDrawingLookupProjectId(event.target.value)}
-                    placeholder="Old Procore project_id"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages per Endpoint</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={drawingInventoryMaxPages ?? ""}
-                    onChange={(event) => setDrawingInventoryMaxPages(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">View</label>
-                  <input
-                    type="text"
-                    value={drawingLookupView ?? ""}
-                    onChange={(event) => setDrawingLookupView(event.target.value)}
-                    placeholder="Optional"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-              </div>
-
-              <h3 className="font-bold text-gray-800 mb-3">Target Project Drawing Tool Only</h3>
-              <p className="text-xs text-amber-900 mb-3">
-                These buttons require a real Procore project_id with the Drawings tool enabled. Do not enter a bid_board_project_id here.
-              </p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneSourceCompanyId ?? ""}
+                    onChange={(e) => setPrimeCloneSourceCompanyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={primeCloneSourceProjectId ?? ""}
+                    onChange={(e) => setPrimeCloneSourceProjectId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
                   <input
                     type="text"
-                    value={drawingMigrationTargetCompanyId ?? ""}
-                    onChange={(event) => setDrawingMigrationTargetCompanyId(event.target.value)}
+                    value={primeCloneTargetCompanyId ?? ""}
+                    onChange={(e) => setPrimeCloneTargetCompanyId(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Procore Project ID</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
                   <input
                     type="text"
-                    value={drawingMigrationTargetProjectId ?? ""}
-                    onChange={(event) => setDrawingMigrationTargetProjectId(event.target.value)}
-                    placeholder="Not a bid_board_project_id"
+                    value={primeCloneTargetProjectId ?? ""}
+                    onChange={(e) => setPrimeCloneTargetProjectId(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Drawing Set Name</label>
-                  <input
-                    type="text"
-                    value={drawingMigrationTargetSetName ?? ""}
-                    onChange={(event) => setDrawingMigrationTargetSetName(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Discipline</label>
-                  <input
-                    type="text"
-                    value={drawingMigrationTargetDisciplineName ?? ""}
-                    onChange={(event) => setDrawingMigrationTargetDisciplineName(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Offset</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Status</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={drawingMigrationBatchOffset ?? ""}
-                    onChange={(event) => setDrawingMigrationBatchOffset(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    type="text"
+                    value={primeCloneTargetStatus ?? ""}
+                    onChange={(e) => setPrimeCloneTargetStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch Limit</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contractor ID Override</label>
                   <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="1"
-                    value={drawingMigrationBatchLimit ?? ""}
-                    onChange={(event) => setDrawingMigrationBatchLimit(event.target.value)}
+                    type="text"
+                    value={primeCloneTargetContractorIdOverride ?? ""}
+                    onChange={(e) => setPrimeCloneTargetContractorIdOverride(e.target.value)}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Delay (ms)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10000"
-                    step="250"
-                    value={drawingMigrationBatchDelayMs ?? ""}
-                    onChange={(event) => setDrawingMigrationBatchDelayMs(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    step="1"
-                    value={drawingMigrationMaxAutoBatches ?? ""}
-                    onChange={(event) => setDrawingMigrationMaxAutoBatches(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
+                  <p className="text-xs text-violet-800 mt-1">Paradise Masonry, LLC target vendor ID.</p>
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={Boolean(drawingMigrationAutoContinue)}
-                      onChange={(event) => setDrawingMigrationAutoContinue(event.target.checked)}
+                      checked={Boolean(primeClonePreserveStatus)}
+                      onChange={(e) => setPrimeClonePreserveStatus(e.target.checked)}
+                      className="h-4 w-4"
                     />
-                    Auto continue
+                    Preserve source status
                   </label>
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <input
                       type="checkbox"
-                      checked={Boolean(drawingMigrationUseSourceSets)}
-                      onChange={(event) => setDrawingMigrationUseSourceSets(event.target.checked)}
+                      checked={Boolean(primeCloneLineItems)}
+                      onChange={(e) => setPrimeCloneLineItems(e.target.checked)}
+                      className="h-4 w-4"
                     />
-                    Source sets
+                    Clone line items
                   </label>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 mb-4">
-                <button
-                  onClick={handlePullDrawingsInventory}
-                  disabled={drawingLookupBusy}
-                  className="bg-amber-700 hover:bg-amber-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {drawingLookupBusy ? "Loading..." : "Pull Drawings Inventory"}
-                </button>
-                {drawingLookupResult && (
-                  <>
-                    {drawingInventorySummaryRows.length > 0 && (
-                      <button
-                        onClick={handleDownloadDrawingInventoryCsv}
-                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
-                      >
-                        Download Drawings CSV
-                      </button>
-                    )}
-                    <button
-                      onClick={handleDownloadDrawingLookupCsv}
-                      disabled={drawingLookupRows.length === 0}
-                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
-                    >
-                      Download Uploads CSV
-                    </button>
-                    <button
-                      onClick={() => downloadJson("procore-drawings-inventory.json", drawingLookupResult)}
-                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
-                    >
-                      Download JSON
-                    </button>
-                    <button
-                      onClick={handleDrawingMigrationCreateBatch}
-                      disabled={
-                        drawingMigrationCreateBusy !== null ||
-                        drawingMigrationDryRunBusy !== null ||
-                        drawingInventorySummaryRows.length === 0
-                      }
-                      className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                    >
-                      {drawingMigrationCreateBusy === "batch" ? "Creating Batch..." : "Run Drawing Batch"}
-                    </button>
-                    {drawingMigrationCreateResult && (
-                      <button
-                        onClick={() => downloadJson("procore-drawings-batch-result.json", drawingMigrationCreateResult)}
-                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
-                      >
-                        Download Batch Result
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {drawingLookupError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {drawingLookupError}
-                </div>
-              )}
-
-              {drawingMigrationDryRunError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {drawingMigrationDryRunError}
-                </div>
-              )}
-
-              {drawingMigrationCreateError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {drawingMigrationCreateError}
-                </div>
-              )}
-
-              {drawingMigrationDryRunResult && (
-                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingMigrationDryRunResult, null, 2)}
-                </pre>
-              )}
-
-              {drawingMigrationCreateResult && (
-                <pre className="mb-4 bg-green-50 border border-green-300 text-green-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingMigrationCreateResult, null, 2)}
-                </pre>
-              )}
-
-              {drawingLookupResult && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs font-semibold text-amber-900">Areas</div>
-                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingAreas ?? 0}</div>
-                  </div>
-                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs font-semibold text-amber-900">Sets</div>
-                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingSets ?? 0}</div>
-                  </div>
-                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs font-semibold text-amber-900">Uploads</div>
-                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawingUploads ?? 0}</div>
-                  </div>
-                  <div className="rounded border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs font-semibold text-amber-900">Drawings</div>
-                    <div className="text-2xl font-bold text-amber-950">{drawingLookupResult.counts?.drawings ?? 0}</div>
-                  </div>
-                </div>
-              )}
-
-              {drawingInventorySummaryRows.length > 0 && (
-                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2">Actions</th>
-                        <th className="text-left px-3 py-2">Drawing ID</th>
-                        <th className="text-left px-3 py-2">Number</th>
-                        <th className="text-left px-3 py-2">Title</th>
-                        <th className="text-left px-3 py-2">Area</th>
-                        <th className="text-left px-3 py-2">Set</th>
-                        <th className="text-left px-3 py-2">Revision</th>
-                        <th className="text-left px-3 py-2">PDF Fields</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {drawingInventorySummaryRows.slice(0, 250).map((row, index) => (
-                        <tr key={String(row.id ?? `${row.number ?? "drawing"}-${index}`)} className="border-t border-gray-200">
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => handleDrawingMigrationDryRun(row)}
-                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
-                                className="bg-orange-700 hover:bg-orange-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
-                              >
-                                {drawingMigrationDryRunBusy === String(row.id ?? row.number ?? "drawing") ? "Testing..." : "Test PDF"}
-                              </button>
-                              <button
-                                onClick={() => handleDrawingMigrationCreateOne(row)}
-                                disabled={drawingMigrationDryRunBusy !== null || drawingMigrationCreateBusy !== null || !getDrawingMigrationPdfUrl(row)}
-                                className="bg-red-700 hover:bg-red-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
-                              >
-                                {drawingMigrationCreateBusy === String(row.id ?? row.number ?? "drawing") ? "Creating..." : "Create in Project Tool"}
-                              </button>
-                              <button
-                                onClick={() => handleEstimatingPlansUploadExperiment(row)}
-                                disabled={estimatingPlansUploadBusy !== null || !getDrawingMigrationPdfUrl(row)}
-                                className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-1 px-3 rounded text-xs whitespace-nowrap"
-                              >
-                                {estimatingPlansUploadBusy === String(row.id ?? row.number ?? "drawing") ? "Uploading..." : "Upload to Estimating"}
-                              </button>
-                            </div>
-                            {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")] && (
-                              <div className="mt-2 max-w-[260px] text-xs leading-4 text-sky-900">
-                                {estimatingPlansUploadStatusByKey[String(row.id ?? row.number ?? "drawing")]}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{row.number ?? "-"}</td>
-                          <td className="px-3 py-2">{row.title ?? "-"}</td>
-                          <td className="px-3 py-2">{[row.drawingAreaId, row.drawingAreaName].filter(Boolean).join(" | ") || "-"}</td>
-                          <td className="px-3 py-2">{[row.drawingSetId, row.drawingSetName].filter(Boolean).join(" | ") || "-"}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{row.revision ?? "-"}</td>
-                          <td className="px-3 py-2 font-mono text-xs">
-                            {row.pdfFields && Object.keys(row.pdfFields).length > 0 ? JSON.stringify(row.pdfFields) : "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {drawingLookupRows.length > 0 && (
-                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2">Upload ID</th>
-                        <th className="text-left px-3 py-2">File</th>
-                        <th className="text-left px-3 py-2">Status</th>
-                        <th className="text-left px-3 py-2">Drawing Set</th>
-                        <th className="text-left px-3 py-2">Drawing Area</th>
-                        <th className="text-left px-3 py-2">Drawings</th>
-                        <th className="text-left px-3 py-2">Uploaded By</th>
-                        <th className="text-left px-3 py-2">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {drawingLookupRows.map((row, index) => (
-                        <tr key={String(row.id ?? `${getDrawingUploadFileName(row)}-${index}`)} className="border-t border-gray-200">
-                          <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
-                          <td className="px-3 py-2">{getDrawingUploadFileName(row)}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{row.status ?? "-"}</td>
-                          <td className="px-3 py-2">{getDrawingUploadSetName(row)}</td>
-                          <td className="px-3 py-2">{getDrawingUploadAreaName(row)}</td>
-                          <td className="px-3 py-2">{row.drawings_count ?? row.drawingsCount ?? "-"}</td>
-                          <td className="px-3 py-2">{getDrawingUploadUserName(row)}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{row.created_at ?? row.upload_date ?? "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {drawingLookupResult && (
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw response JSON</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(drawingLookupResult, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </div>
-
-            {false && (
-              <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-600 mb-6">
-                <h2 className="text-xl font-bold text-sky-900 mb-3">Estimating Plans Probe</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Probe the Estimating Documents/Plans surface for the selected proposal. This is read-only and does not upload files.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
-                  <input
-                    type="text"
-                    value={estimatingPlansCompanyId ?? ""}
-                    onChange={(event) => setEstimatingPlansCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    value={estimatingPlansProjectId ?? ""}
-                    onChange={(event) => setEstimatingPlansProjectId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Proposal ID</label>
-                  <input
-                    type="text"
-                    value={estimatingPlansProposalId ?? ""}
-                    onChange={(event) => setEstimatingPlansProposalId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Bid Board Project ID</label>
-                  <input
-                    type="text"
-                    value={estimatingPlansBidBoardProjectId ?? ""}
-                    onChange={(event) => setEstimatingPlansBidBoardProjectId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">User ID</label>
-                  <input
-                    type="text"
-                    value={estimatingPlansUserId ?? ""}
-                    onChange={(event) => setEstimatingPlansUserId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 mb-4">
-                <button
-                  onClick={handleProbeEstimatingPlans}
-                  disabled={estimatingPlansProbeBusy}
-                  className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {estimatingPlansProbeBusy ? "Probing..." : "Probe Estimating Plans"}
-                </button>
-                {estimatingPlansProbeResult && (
-                  <button
-                    onClick={() => downloadJson("procore-estimating-plans-probe.json", estimatingPlansProbeResult)}
-                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
-                  >
-                    Download JSON
-                  </button>
-                )}
-              </div>
-
-              {estimatingPlansProbeError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {estimatingPlansProbeError}
-                </div>
-              )}
-
-              {estimatingPlansUploadError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {estimatingPlansUploadError}
-                </div>
-              )}
-
-              {estimatingPlansUploadResult && (
-                <details className="mb-4" open>
-                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Estimating upload experiment result</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(estimatingPlansUploadResult, null, 2)}
-                  </pre>
-                </details>
-              )}
-
-              {estimatingPlansProbeResult?.targetHints && (
-                <div className="mb-4 bg-sky-50 border border-sky-200 rounded p-3 text-sm text-sky-950">
-                  <div><strong>Found:</strong> {String(estimatingPlansProbeResult.targetHints.planLikeEndpointFound)}</div>
-                  <div><strong>Path:</strong> <code className="font-mono">{estimatingPlansProbeResult.targetHints.planLikePath || "-"}</code></div>
-                  <div className="mt-1">{estimatingPlansProbeResult.targetHints.nextStep}</div>
-                </div>
-              )}
-
-              {estimatingPlansProbeResult?.hostAttempts?.length > 0 && (
-                <div className="overflow-x-auto border border-gray-200 rounded mb-4">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2">Host</th>
-                        <th className="text-left px-3 py-2">Path</th>
-                        <th className="text-left px-3 py-2">Status</th>
-                        <th className="text-left px-3 py-2">Rows</th>
-                        <th className="text-left px-3 py-2">Matched Keys</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {estimatingPlansProbeResult.hostAttempts.flatMap((hostAttempt: any) =>
-                        (hostAttempt.endpointAttempts || []).map((attempt: any, index: number) => (
-                          <tr key={`${hostAttempt.host}-${attempt.path}-${index}`} className="border-t border-gray-200">
-                            <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{hostAttempt.host}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{attempt.path}</td>
-                            <td className={`px-3 py-2 font-mono whitespace-nowrap ${attempt.ok ? "text-green-700" : "text-red-700"}`}>
-                              {attempt.status}
-                            </td>
-                            <td className="px-3 py-2">{attempt.summary?.rowCount ?? "-"}</td>
-                            <td className="px-3 py-2 font-mono text-xs">
-                              {(attempt.summary?.matchedKeys || []).slice(0, 14).join(", ") || "-"}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {estimatingPlansProbeResult && (
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm font-semibold text-gray-700">Raw probe JSON</summary>
-                  <pre className="mt-3 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                    {JSON.stringify(estimatingPlansProbeResult, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </div>
-            )}
-
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-slate-500 mb-6">
-              <h2 className="text-xl font-bold text-slate-900 mb-3">Procore REST Command Runner</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Run Procore REST endpoints using the Procore auth you already have in this app.
-                Use endpoint paths like <code className="bg-gray-100 px-1 rounded">/rest/v1.3/companies/{"{"}company_id{"}"}/me</code> or full
-                <code className="bg-gray-100 px-1 rounded ml-1">https://api.procore.com/rest/...</code> URLs.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Method</label>
-                  <select
-                    value={restRunnerMethod ?? ""}
-                    onChange={(e) => setRestRunnerMethod(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                  >
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                    <option value="PUT">PUT</option>
-                    <option value="PATCH">PATCH</option>
-                    <option value="DELETE">DELETE</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Path or URL</label>
-                  <input
-                    type="text"
-                    value={restRunnerPath ?? ""}
-                    onChange={(e) => setRestRunnerPath(e.target.value)}
-                    placeholder="/rest/v1.3/companies/{company_id}/me"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(primeCloneAllowUnmappedIds)}
+                      onChange={(e) => setPrimeCloneAllowUnmappedIds(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Allow unmapped IDs
+                  </label>
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID Override (optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Prime Contract IDs</label>
                 <input
                   type="text"
-                  value={restRunnerCompanyIdOverride ?? ""}
-                  onChange={(e) => setRestRunnerCompanyIdOverride(e.target.value)}
-                  placeholder="Leave blank to use cookie/env company id"
+                  value={primeCloneIdsText ?? ""}
+                  onChange={(e) => setPrimeCloneIdsText(e.target.value)}
+                  placeholder="Optional: comma or space-separated source prime contract IDs"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                 />
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">JSON Body (for POST/PUT/PATCH)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Codes Crosswalk Workbook Path</label>
+                <input
+                  type="text"
+                  value={primeCloneCrosswalkPath ?? ""}
+                  onChange={(e) => setPrimeCloneCrosswalkPath(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+                <div className="mt-3">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handlePrimeCloneCrosswalkUpload}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-violet-800 mt-2">
+                    {primeCloneCrosswalkWorkbookName
+                      ? `Using uploaded workbook: ${primeCloneCrosswalkWorkbookName}`
+                      : "Optional: upload Codes to use.xlsx here. The dry-run will use it to auto-map prime contract WBS IDs by target cost code and type."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">ID Mapping JSON</label>
+                <div className="mb-3 bg-violet-50 border border-violet-200 rounded p-3">
+                  <label className="block text-sm font-semibold text-violet-900 mb-1">Owner/Client Lookup CSV</label>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handlePrimeOwnerClientLookupUpload}
+                    className="w-full border border-violet-200 rounded px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-violet-800 mt-2">
+                    Upload the Company Directory CSV with <code className="bg-white px-1 rounded">old_vendor_id</code> and <code className="bg-white px-1 rounded">new_vendor_id</code>. This fills <code className="bg-white px-1 rounded">ownerClientIdMap</code>.
+                  </p>
+                  {primeOwnerClientLookupSummary && (
+                    <p className="text-xs text-violet-900 font-semibold mt-2">{primeOwnerClientLookupSummary}</p>
+                  )}
+                </div>
                 <textarea
-                  value={restRunnerBodyText ?? ""}
-                  onChange={(e) => setRestRunnerBodyText(e.target.value)}
-                  rows={10}
-                  className="w-full border border-gray-400 rounded px-3 py-2 text-sm leading-6 font-mono text-gray-900 bg-white"
+                  value={primeCloneMapsText ?? ""}
+                  onChange={(e) => setPrimeCloneMapsText(e.target.value)}
+                  rows={8}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
                 />
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={handleRunRestCommand}
-                  disabled={restRunnerBusy}
-                  className="bg-slate-700 hover:bg-slate-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  onClick={() => handleClonePrimeContracts(true)}
+                  disabled={primeCloneBusy}
+                  className="bg-violet-700 hover:bg-violet-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {restRunnerBusy ? "Running..." : "Run REST Command"}
-                </button>
-              </div>
-
-              {restRunnerError && (
-                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                  <strong>REST Runner Error:</strong> {restRunnerError}
-                </div>
-              )}
-
-              {restRunnerResult && (
-                <pre className="mt-4 bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
-                  {JSON.stringify(restRunnerResult, null, 2)}
-                </pre>
-              )}
-            </div>
-
-            {false && (
-              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
-                <h2 className="text-xl font-bold text-emerald-900 mb-3">Drawing Sets Transfer</h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  Pull drawing sets from one Procore project, review them, then create matching drawing sets in the target project.
-                  This creates the drawing set records only.
-                </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="rounded border border-gray-200 p-4">
-                  <h3 className="font-bold text-gray-800 mb-3">Source</h3>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
-                  <input
-                    type="text"
-                    value={drawingSourceCompanyId ?? ""}
-                    onChange={(event) => setDrawingSourceCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
-                  />
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    value={drawingSourceProjectId ?? ""}
-                    onChange={(event) => setDrawingSourceProjectId(event.target.value)}
-                    placeholder="Source Procore project_id"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-
-                <div className="rounded border border-gray-200 p-4">
-                  <h3 className="font-bold text-gray-800 mb-3">Target</h3>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Company ID</label>
-                  <input
-                    type="text"
-                    value={drawingTargetCompanyId ?? ""}
-                    onChange={(event) => setDrawingTargetCompanyId(event.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
-                  />
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    value={drawingTargetProjectId ?? ""}
-                    onChange={(event) => setDrawingTargetProjectId(event.target.value)}
-                    placeholder="Target Procore project_id"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 mb-4">
-                <button
-                  onClick={handlePullDrawingSets}
-                  disabled={drawingTransferBusy}
-                  className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
-                >
-                  {drawingTransferBusy ? "Working..." : "Pull Drawing Sets"}
+                  {primeCloneBusy ? "Working..." : "Dry Run Clone"}
                 </button>
                 <button
-                  onClick={handlePushDrawingSets}
-                  disabled={drawingTransferBusy || drawingSets.length === 0 || selectedDrawingSetIds.size === 0}
-                  className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  onClick={() => handleClonePrimeContracts(false)}
+                  disabled={primeCloneBusy || !primeCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  Push Selected to Target
+                  {primeCloneBusy ? "Working..." : "Run Live Clone"}
                 </button>
-                {drawingSets.length > 0 && (
+                {primeCloneResult && (
                   <button
-                    onClick={handleToggleAllDrawingSets}
-                    disabled={drawingTransferBusy}
-                    className="bg-gray-700 hover:bg-gray-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    onClick={() => downloadJson("procore-clone-prime-contracts-result.json", primeCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
                   >
-                    {selectedDrawingSetIds.size === drawingSets.length ? "Clear Selection" : "Select All"}
+                    Download Result JSON
                   </button>
                 )}
               </div>
 
-              {drawingTransferError && (
-                <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
-                  {drawingTransferError}
+              {primeCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Prime Contract Clone Error:</strong> {primeCloneError}
                 </div>
               )}
 
-              {drawingTransferResult && (
-                <pre className="mb-4 bg-gray-50 border border-gray-300 text-gray-900 p-3 rounded overflow-auto text-xs leading-5 font-mono">
-                  {JSON.stringify(drawingTransferResult, null, 2)}
-                </pre>
-              )}
-
-              {drawingSets.length > 0 && (
-                <div className="overflow-x-auto border border-gray-200 rounded">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2">Move</th>
-                        <th className="text-left px-3 py-2">Set ID</th>
-                        <th className="text-left px-3 py-2">Name</th>
-                        <th className="text-left px-3 py-2">Date</th>
-                        <th className="text-left px-3 py-2">Drawings</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {drawingSets.map((row, index) => {
-                        const key = getDrawingSetKey(row);
-                        const drawingCount = row.drawings_count ?? row.drawingsCount ?? "-";
-                        return (
-                          <tr key={key || `${row.name || "drawing-set"}-${index}`} className="border-t border-gray-200">
-                            <td className="px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(key && selectedDrawingSetIds.has(key))}
-                                onChange={() => handleToggleDrawingSet(row)}
-                              />
-                            </td>
-                            <td className="px-3 py-2 font-mono whitespace-nowrap">{row.id ?? "-"}</td>
-                            <td className="px-3 py-2">{row.name || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">{row.date || "-"}</td>
-                            <td className="px-3 py-2">{drawingCount}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {primeCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    primeCloneResult.result?.readyForLiveClone || primeCloneResult.result?.success
+                      ? "bg-violet-50 border-violet-200 text-violet-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Prime Contract Clone Result:</strong>{" "}
+                    {primeCloneResult.result?.dryRun
+                      ? primeCloneResult.result?.readyForLiveClone
+                        ? "Dry run is clean. Live clone is enabled."
+                        : `${primeCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                      : primeCloneResult.result?.success
+                        ? `Live clone created ${primeCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and synced ${primeCloneResult.result?.counts?.syncedLineItems ?? 0} line item(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <pre className="bg-gray-50 border border-gray-300 text-gray-900 p-4 rounded overflow-auto text-sm leading-6 font-mono">
+                    {JSON.stringify(primeCloneResult, null, 2)}
+                  </pre>
                 </div>
               )}
             </div>
-            )}
-
+            </div>
 
             {false && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">

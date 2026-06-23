@@ -5146,7 +5146,7 @@ function ProcoreContent() {
     const targetProposalType = cloneTargetProposalType.trim() || "SOURCE";
     const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const lineItemLimit = dryRun ? 20 : 5;
-    const maxAutoBatches = Math.max(1, Math.min(500, Number.parseInt(cloneProposalMaxAutoBatches.trim() || "50", 10) || 50));
+    const maxAutoBatches = Math.max(1, Math.min(5000, Number.parseInt(cloneProposalMaxAutoBatches.trim() || "50", 10) || 50));
 
     if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
       setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
@@ -7477,7 +7477,7 @@ function ProcoreContent() {
                   <input
                     type="number"
                     min="1"
-                    max="500"
+                    max="5000"
                     step="1"
                     value={drawingMigrationMaxAutoBatches ?? ""}
                     onChange={(event) => setDrawingMigrationMaxAutoBatches(event.target.value)}

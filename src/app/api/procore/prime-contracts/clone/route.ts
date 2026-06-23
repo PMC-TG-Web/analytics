@@ -568,6 +568,12 @@ function builtInPrimeWbsFallback(oldWbsId: string) {
       "Cost Name": "Site Concrete Material",
       Name: "Site Concrete",
     },
+    "598136262951653": {
+      "Cost Code": "03-300-30-20",
+      "Cost code type": "Con",
+      "Cost Name": "Site Concrete Material",
+      Name: "Site Concrete",
+    },
   };
   return fallbacks[oldWbsId] || null;
 }

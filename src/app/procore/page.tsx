@@ -7141,12 +7141,13 @@ function ProcoreContent() {
               )}
             </div>
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
-              <h2 className="text-xl font-bold text-emerald-900 mb-3">Drawing Sets Transfer</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Pull drawing sets from one Procore project, review them, then create matching drawing sets in the target project.
-                This creates the drawing set records only.
-              </p>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+                <h2 className="text-xl font-bold text-emerald-900 mb-3">Drawing Sets Transfer</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Pull drawing sets from one Procore project, review them, then create matching drawing sets in the target project.
+                  This creates the drawing set records only.
+                </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="rounded border border-gray-200 p-4">
@@ -7262,7 +7263,8 @@ function ProcoreContent() {
                   </table>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
               <h2 className="text-xl font-bold text-amber-900 mb-3">Drawings Migration Inventory</h2>
@@ -7640,8 +7642,9 @@ function ProcoreContent() {
               )}
             </div>
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-600 mb-6">
-              <h2 className="text-xl font-bold text-sky-900 mb-3">Estimating Plans Probe</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-600 mb-6">
+                <h2 className="text-xl font-bold text-sky-900 mb-3">Estimating Plans Probe</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Probe the Estimating Documents/Plans surface for the selected proposal. This is read-only and does not upload files.
               </p>
@@ -7782,7 +7785,8 @@ function ProcoreContent() {
                   </pre>
                 </details>
               )}
-            </div>}
+            </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Clone Correspondences</h2>
@@ -8623,8 +8627,9 @@ function ProcoreContent() {
               )}
             </div>
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
-              <h2 className="text-xl font-bold text-cyan-900 mb-3">Company Users Browser</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+                <h2 className="text-xl font-bold text-cyan-900 mb-3">Company Users Browser</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Browse cached company users after running the company-user sync. Use this to find valid Procore user IDs and names when resolving timecard <code className="bg-gray-100 px-1 rounded">party_id</code> candidates.
               </p>
@@ -8697,7 +8702,8 @@ function ProcoreContent() {
                   </table>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
               <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Daily Productivity and Timecards</h2>
@@ -8962,8 +8968,9 @@ function ProcoreContent() {
               )}
             </div>
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
-              <h2 className="text-xl font-bold text-rose-900 mb-3">Create Timecard Entries from CSV</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-rose-500 mb-6">
+                <h2 className="text-xl font-bold text-rose-900 mb-3">Create Timecard Entries from CSV</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Upload a timecard CSV, auto-resolve employee, cost code, and time type IDs from synced Procore data,
                 then create real timecard entries through <code className="bg-gray-100 px-1 rounded">/rest/v1.0/projects/{"{"}project_id{"}"}/timecard_entries</code>.
@@ -9149,10 +9156,12 @@ function ProcoreContent() {
                   </table>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
-              <h2 className="text-xl font-bold text-teal-900 mb-3">Create Purchase Order Contract</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
+                <h2 className="text-xl font-bold text-teal-900 mb-3">Create Purchase Order Contract</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Create a Procore purchase order contract through <code className="bg-gray-100 px-1 rounded">/api/procore/purchase-order-contracts/create</code>.
                 Paste the contract JSON and optionally supply attachments as a JSON array.
@@ -9387,10 +9396,12 @@ function ProcoreContent() {
                   </>
                 )}
               </div>
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
-              <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Purchase Order Contract Line Item</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+                <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Purchase Order Contract Line Item</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Create a line item on an existing purchase order contract through <code className="bg-gray-100 px-1 rounded">/api/procore/purchase-order-contracts/line-items-create</code>.
               </p>
@@ -9675,9 +9686,11 @@ function ProcoreContent() {
                   </>
                 )}
               </div>
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6">
               <h2 className="text-xl font-bold text-cyan-900 mb-3">Create Productivity Log</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Create a single Procore productivity log directly via API. The <strong>line_item_id</strong> must come from an approved contract.
@@ -9904,7 +9917,8 @@ function ProcoreContent() {
                   </>
                 )}
               </div>
-            </div>}
+            </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Bid Board Project Import (Step 1)</h2>
@@ -9979,10 +9993,12 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
-              <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Bid Board From Existing Project</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+                <h2 className="text-xl font-bold text-emerald-900 mb-3">Create Bid Board From Existing Project</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Enter an old Procore project_id, dry-run the generated Bid Board project payload, then create it in the target company.
               </p>
@@ -10092,10 +10108,12 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6">
-              <h2 className="text-xl font-bold text-violet-900 mb-3">Line Item Groups Import (Step 2)</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6">
+                <h2 className="text-xl font-bold text-violet-900 mb-3">Line Item Groups Import (Step 2)</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Upload the groups template, enter the Bid Board Project ID and Proposal ID, then create line item groups.{" "}
                 <a href="/templates/procore-line-item-groups-template.xlsx" className="text-violet-700 underline text-xs" download>
@@ -10365,9 +10383,11 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6">
               <h2 className="text-xl font-bold text-sky-900 mb-3">Estimate Pull (Full Proposal Show)</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Pull the full proposal payload from <code className="bg-gray-100 px-1 rounded">/rest/v2.0/companies/&#123;company_id&#125;/projects/&#123;project_id&#125;/estimating/proposals/&#123;proposal_id&#125;</code>.
@@ -10445,7 +10465,8 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
               <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone Estimate or Change Order</h2>
@@ -11346,9 +11367,11 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-amber-500 mb-6">
               <h2 className="text-xl font-bold text-amber-900 mb-3">Estimate Key Conversion (Old -&gt; New)</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Convert an old estimate CSV to new Cost Code + ItemId values using the catalog crosswalk.
@@ -11397,9 +11420,11 @@ function ProcoreContent() {
                   {" "}Detected columns: cost code <strong>{estimateConversionResult.detectedColumns?.costCodeColumn || "n/a"}</strong>, item ID <strong>{estimateConversionResult.detectedColumns?.itemIdColumn || "n/a"}</strong>.
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
-            {false && <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6">
               <h2 className="text-xl font-bold text-teal-900 mb-3">Estimate Workbook Import</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Upload an Excel workbook or paste rows JSON, run a dry-run preview, then run live import to create proposal, groups, and line items.
@@ -11496,7 +11521,8 @@ function ProcoreContent() {
                   </pre>
                 </div>
               )}
-            </div>}
+            </div>
+            )}
 
             {debugResult && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">

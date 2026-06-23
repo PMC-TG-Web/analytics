@@ -9994,7 +9994,6 @@ function ProcoreContent() {
                 </div>
               )}
             </div>
-            )}
 
             {false && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">

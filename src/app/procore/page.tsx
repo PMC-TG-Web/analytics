@@ -5143,6 +5143,7 @@ function ProcoreContent() {
     const targetProposalName = cloneTargetProposalName.trim();
     const targetProposalType = cloneTargetProposalType.trim() || "SOURCE";
     const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
+    const lineItemLimit = dryRun ? 20 : 5;
 
     if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
       setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
@@ -5194,6 +5195,7 @@ function ProcoreContent() {
               newCostCode: row.newCostCode?.trim() || undefined,
               costCodeType: row.costCodeType?.trim() || undefined,
             })),
+          lineItemLimit,
           ...(continuation || {}),
           dryRun,
         }),

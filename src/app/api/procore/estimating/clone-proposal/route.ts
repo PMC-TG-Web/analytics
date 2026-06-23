@@ -630,7 +630,7 @@ export async function POST(request: Request) {
     const allowPartial = body.allowPartial === true;
     const targetProposalIdFromBody = readStr(body.targetProposalId || body.createdProposalId);
     const lineItemOffset = Math.max(0, readInt(body.lineItemOffset, 0));
-    const lineItemLimit = Math.min(25, Math.max(1, readInt(body.lineItemLimit, 20)));
+    const lineItemLimit = Math.min(25, Math.max(1, readInt(body.lineItemLimit, 5)));
     const continuationGroupIdMap = mapFromObject(body.groupIdMap);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const requestedCrosswalkPath = readStr(body.crosswalkPath || DEFAULT_CROSSWALK_PATH);

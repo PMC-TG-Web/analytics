@@ -10201,9 +10201,11 @@ function ProcoreContent() {
                 </div>
               )}
             </div>
+            )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
-              <h2 className="text-xl font-bold text-emerald-900 mb-3">Line Items Import (Step 3)</h2>
+            {false && (
+              <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6">
+                <h2 className="text-xl font-bold text-emerald-900 mb-3">Line Items Import (Step 3)</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Upload the line items template, enter the Bid Board Project ID and Proposal ID, then create individual line items.{" "}
                 <a href="/templates/procore-line-items-template.xlsx" className="text-emerald-700 underline text-xs" download>

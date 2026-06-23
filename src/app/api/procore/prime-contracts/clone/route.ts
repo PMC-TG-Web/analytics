@@ -554,6 +554,24 @@ function sourceLineItemCostCode(lineItem: UnknownRecord) {
   );
 }
 
+function builtInPrimeWbsFallback(oldWbsId: string) {
+  const fallbacks: Record<string, UnknownRecord> = {
+    "598135308469708": {
+      "Cost Code": "03-300-20-20",
+      "Cost code type": "Con",
+      "Cost Name": "SOG Concrete Material",
+      Name: "Slab On Grade Concrete",
+    },
+    "598135308469711": {
+      "Cost Code": "03-300-30-20",
+      "Cost code type": "Con",
+      "Cost Name": "Site Concrete Material",
+      Name: "Site Concrete",
+    },
+  };
+  return fallbacks[oldWbsId] || null;
+}
+
 function descriptionParts(lineItem: UnknownRecord) {
   const description = readStr(lineItem.description ?? lineItem.title ?? lineItem.name);
   const [base, ...suffixParts] = description.split(/\s+-\s+/);
@@ -908,6 +926,35 @@ async function applyCrosswalkWbsMappings(params: {
         summary.applied = Number(summary.applied) + 1;
         continue;
       }
+    }
+
+    const builtInFallback = builtInPrimeWbsFallback(oldWbsId);
+    if (builtInFallback) {
+      const fallbackTargetWbs = resolveTargetWbsId(builtInFallback, targetIndex);
+      if (fallbackTargetWbs.wbsCodeId) {
+        params.maps.wbsCodeIdMap[oldWbsId] = fallbackTargetWbs.wbsCodeId;
+        summary.applied = Number(summary.applied) + 1;
+        (summary.issues as UnknownRecord[]).push({
+          oldWbsId,
+          lineItemId: readStr(lineItem.id),
+          description: readStr(lineItem.description ?? lineItem.title),
+          issue: "built_in_prime_wbs_fallback_applied",
+          newCostCode: builtInFallback["Cost Code"],
+          newCostType: builtInFallback["Cost code type"],
+          targetWbsId: fallbackTargetWbs.wbsCodeId,
+        });
+        continue;
+      }
+      (summary.issues as UnknownRecord[]).push({
+        oldWbsId,
+        lineItemId: readStr(lineItem.id),
+        description: readStr(lineItem.description ?? lineItem.title),
+        issue: fallbackTargetWbs.issue || "built_in_prime_wbs_fallback_target_missing",
+        matchCount: fallbackTargetWbs.matchCount,
+        newCostCode: builtInFallback["Cost Code"],
+        newCostType: builtInFallback["Cost code type"],
+        matches: fallbackTargetWbs.matches,
+      });
     }
 
     const workbookMatch = resolveCrosswalkMapping(lineItem, crosswalk);

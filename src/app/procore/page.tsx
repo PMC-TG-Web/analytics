@@ -6978,7 +6978,7 @@ function ProcoreContent() {
             {productivityDebugResult && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-purple-500 mb-6">
                 <h2 className="text-xl font-bold text-purple-900 mb-4">
-                  ≡ƒöì Procore API Field Mapping
+                  Procore API Field Mapping
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="p-4 bg-purple-50 rounded border border-purple-200">
@@ -7042,7 +7042,7 @@ function ProcoreContent() {
             {debugResult && debugResult.results && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-orange-500 mb-6">
                 <h2 className="text-xl font-bold text-orange-900 mb-4">
-                  ≡ƒöì Data Source Diagnostic Results
+                  Data Source Diagnostic Results
                 </h2>
                 <div className="mb-4 p-3 bg-orange-50 rounded">
                   <strong>Recommendation:</strong> {debugResult.recommendation}
@@ -7058,7 +7058,7 @@ function ProcoreContent() {
             {debugResult && debugResult.logsCount !== undefined && (
               <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6">
                 <h2 className="text-xl font-bold text-indigo-900 mb-4">
-                  ≡ƒôè Database Status
+                  Database Status
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="bg-indigo-50 p-4 rounded">
@@ -7109,7 +7109,7 @@ function ProcoreContent() {
                 disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingDatabase}
                 className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {clearing ? "Clearing..." : "≡ƒùæ∩╕Å Clear Old Data"}
+                {clearing ? "Clearing..." : "Clear Old Data"}
               </button>
 
               <button
@@ -7133,7 +7133,7 @@ function ProcoreContent() {
                 disabled={loading || syncing || syncingProductivity || debugging || clearing || checkingDatabase}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
               >
-                {checkingDatabase ? "Checking..." : "≡ƒôè Check Database"}
+                {checkingDatabase ? "Checking..." : "Check Database"}
               </button>
             </div>
 
@@ -11651,7 +11651,7 @@ function ProcoreContent() {
                     className="text-lg font-semibold mb-4 cursor-pointer hover:text-blue-600"
                     onClick={() => setSelectedSection(selectedSection === "user" ? null : "user")}
                   >
-                    ≡ƒæñ User Info
+                    User Info
                   </h2>
                   {selectedSection === "user" && (
                     <div className="text-sm">
@@ -11669,7 +11669,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒÅó Companies ({getCount(data.companies)})
+                    Companies ({getCount(data.companies)})
                   </h2>
                   {selectedSection === "companies" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11687,7 +11687,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒôï All Projects (Merged: {getCount(data.unifiedProjects)})
+                    All Projects (Merged: {getCount(data.unifiedProjects)})
                   </h2>
                   {selectedSection === "projects" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11706,7 +11706,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒÅ¡ Vendors ({getCount(data.vendors)})
+                    Vendors ({getCount(data.vendors)})
                   </h2>
                   {selectedSection === "vendors" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11721,7 +11721,7 @@ function ProcoreContent() {
                     onClick={() => setSelectedSection(selectedSection === "users" ? null : "users")
                     }
                   >
-                    ≡ƒæÑ Users ({getCount(data.users)})
+                    Users ({getCount(data.users)})
                   </h2>
                   {selectedSection === "users" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11739,7 +11739,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒÆ░ Bid Board ({getCount(data.bidBoardProjects)}) / Est ({getCount(data.estimatingProjects)})
+                    Bid Board ({getCount(data.bidBoardProjects)}) / Est ({getCount(data.estimatingProjects)})
                   </h2>
                   {selectedSection === "bidboard" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11760,7 +11760,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒÆ╕ Bid Board v2.0 ({getCount(data.bidBoardV2)})
+                    Bid Board v2.0 ({getCount(data.bidBoardV2)})
                   </h2>
                   {selectedSection === "bids" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11779,7 +11779,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒôæ Project Templates ({getCount(data.projectTemplates)})
+                    Project Templates ({getCount(data.projectTemplates)})
                   </h2>
                   {selectedSection === "templates" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11797,7 +11797,7 @@ function ProcoreContent() {
                       )
                     }
                   >
-                    ≡ƒôê Productivity Logs (Sample from {data.productivityLogs?.length || 0} Projects)
+                    Productivity Logs (Sample from {data.productivityLogs?.length || 0} Projects)
                   </h2>
                   {selectedSection === "productivity" && (
                     <div className="text-sm max-h-96 overflow-y-auto">
@@ -11817,7 +11817,7 @@ function ProcoreContent() {
                 {data.giantProductivity && (
                   <div className="bg-white rounded-lg shadow p-6 border-2 border-blue-500 md:col-span-2">
                     <h2 className="text-xl font-bold text-blue-900 mb-4">
-                      ≡ƒÅù∩╕Å Giant #6582: Specific Productivity Data (Last 90 Days)
+                      Giant #6582: Specific Productivity Data (Last 90 Days)
                     </h2>
                     <div className="text-sm overflow-x-auto">
                       {data.giantProductivity.data?.length > 0 ? (

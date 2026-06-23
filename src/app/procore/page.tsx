@@ -352,6 +352,8 @@ function ProcoreContent() {
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
   const [cloneProposalContinuation, setCloneProposalContinuation] = useState<Record<string, unknown> | null>(null);
+  const [cloneProposalAutoContinue, setCloneProposalAutoContinue] = useState(true);
+  const [cloneProposalMaxAutoBatches, setCloneProposalMaxAutoBatches] = useState("50");
   const [commitmentCloneSourceCompanyId, setCommitmentCloneSourceCompanyId] = useState("598134325658789");
   const [commitmentCloneSourceProjectId, setCommitmentCloneSourceProjectId] = useState("");
   const [commitmentCloneTargetCompanyId, setCommitmentCloneTargetCompanyId] = useState("598134325805519");
@@ -5144,6 +5146,7 @@ function ProcoreContent() {
     const targetProposalType = cloneTargetProposalType.trim() || "SOURCE";
     const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const lineItemLimit = dryRun ? 20 : 5;
+    const maxAutoBatches = Math.max(1, Math.min(500, Number.parseInt(cloneProposalMaxAutoBatches.trim() || "50", 10) || 50));
 
     if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
       setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
@@ -5171,41 +5174,103 @@ function ProcoreContent() {
     if (!continuation) setCloneProposalContinuation(null);
 
     try {
-      const response = await fetch("/api/procore/estimating/clone-proposal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceCompanyId,
-          sourceProjectId,
-          sourceBidBoardProjectId: sourceBidBoardProjectId || undefined,
-          sourceProposalId,
-          targetCompanyId,
-          targetProjectId: targetProjectId || undefined,
-          targetBidBoardProjectId,
-          targetProposalName,
-          targetProposalType,
-          crosswalkPath,
-          crosswalkWorkbookBase64: cloneCrosswalkWorkbookBase64 || undefined,
-          mappingOverrides: cloneMappingOverrides
-            .filter((row) => row.oldItemId?.trim() && row.newItemId?.trim())
-            .map((row) => ({
-              oldItemId: row.oldItemId.trim(),
-              newItemId: row.newItemId.trim(),
-              newName: row.newName?.trim() || undefined,
-              newCostCode: row.newCostCode?.trim() || undefined,
-              costCodeType: row.costCodeType?.trim() || undefined,
-            })),
-          lineItemLimit,
-          ...(continuation || {}),
-          dryRun,
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) {
-        setCloneProposalError(formatCloneProposalFailure(response.status, result));
+      const batchResults: any[] = [];
+      let currentContinuation = continuation || null;
+      let lastStatus = 0;
+      let lastOk = false;
+      let lastResult: any = null;
+      let totalCreated = 0;
+      let totalFailed = 0;
+      let totalAttempted = 0;
+
+      for (let batchIndex = 0; batchIndex < (dryRun || !cloneProposalAutoContinue ? 1 : maxAutoBatches); batchIndex += 1) {
+        const response = await fetch("/api/procore/estimating/clone-proposal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceCompanyId,
+            sourceProjectId,
+            sourceBidBoardProjectId: sourceBidBoardProjectId || undefined,
+            sourceProposalId,
+            targetCompanyId,
+            targetProjectId: targetProjectId || undefined,
+            targetBidBoardProjectId,
+            targetProposalName,
+            targetProposalType,
+            crosswalkPath,
+            crosswalkWorkbookBase64: cloneCrosswalkWorkbookBase64 || undefined,
+            mappingOverrides: cloneMappingOverrides
+              .filter((row) => row.oldItemId?.trim() && row.newItemId?.trim())
+              .map((row) => ({
+                oldItemId: row.oldItemId.trim(),
+                newItemId: row.newItemId.trim(),
+                newName: row.newName?.trim() || undefined,
+                newCostCode: row.newCostCode?.trim() || undefined,
+                costCodeType: row.costCodeType?.trim() || undefined,
+              })),
+            lineItemLimit,
+            ...(currentContinuation || {}),
+            dryRun,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        lastStatus = response.status;
+        lastOk = response.ok;
+        lastResult = result;
+
+        const counts = result?.counts || {};
+        totalCreated += Number(counts.createdLineItems || 0);
+        totalFailed += Number(counts.failedLineItems || 0);
+        totalAttempted += Number(counts.attemptedLineItems || 0);
+        batchResults.push({ batchIndex: batchIndex + 1, continuation: Boolean(currentContinuation), status: response.status, ok: response.ok, result });
+
+        const aggregateResult = {
+          ...result,
+          autoContinue: !dryRun && cloneProposalAutoContinue,
+          autoBatchCount: batchResults.length,
+          batchResults,
+          counts: {
+            ...counts,
+            createdLineItems: totalCreated,
+            failedLineItems: totalFailed,
+            attemptedLineItems: totalAttempted,
+          },
+        };
+        setCloneProposalResult({ status: response.status, ok: response.ok, result: aggregateResult });
+        setCloneProposalContinuation(result?.batch?.continueRequest || null);
+
+        if (!response.ok || result?.success === false) {
+          setCloneProposalError(formatCloneProposalFailure(response.status, result));
+          break;
+        }
+
+        const nextContinuation = result?.batch?.continueRequest || null;
+        if (dryRun || !cloneProposalAutoContinue || !nextContinuation) {
+          break;
+        }
+
+        currentContinuation = nextContinuation;
+        await new Promise((resolve) => setTimeout(resolve, 750));
       }
-      setCloneProposalResult({ status: response.status, ok: response.ok, result });
-      setCloneProposalContinuation(result?.batch?.continueRequest || null);
+
+      if (lastResult) {
+        setCloneProposalResult({
+          status: lastStatus,
+          ok: lastOk,
+          result: {
+            ...lastResult,
+            autoContinue: !dryRun && cloneProposalAutoContinue,
+            autoBatchCount: batchResults.length,
+            batchResults,
+            counts: {
+              ...(lastResult.counts || {}),
+              createdLineItems: totalCreated,
+              failedLineItems: totalFailed,
+              attemptedLineItems: totalAttempted,
+            },
+          },
+        });
+      }
     } catch (err) {
       setCloneProposalError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -10696,6 +10761,31 @@ function ProcoreContent() {
                     </table>
                   </div>
                 )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={cloneProposalMaxAutoBatches ?? ""}
+                    onChange={(event) => setCloneProposalMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(cloneProposalAutoContinue)}
+                      onChange={(event) => setCloneProposalAutoContinue(event.target.checked)}
+                    />
+                    Auto continue batches
+                  </label>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-3">

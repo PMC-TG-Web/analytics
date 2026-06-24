@@ -662,6 +662,8 @@ function ProcoreContent() {
   const [changeEventCloneBusy, setChangeEventCloneBusy] = useState(false);
   const [changeEventCloneError, setChangeEventCloneError] = useState<string | null>(null);
   const [changeEventCloneResult, setChangeEventCloneResult] = useState<any>(null);
+  const [changeEventMissingMappingRows, setChangeEventMissingMappingRows] = useState<Array<Record<string, string>>>([]);
+  const [changeEventMappingModalOpen, setChangeEventMappingModalOpen] = useState(false);
   const [timeMaterialCloneSourceCompanyId, setTimeMaterialCloneSourceCompanyId] = useState("598134325658789");
   const [timeMaterialCloneSourceProjectId, setTimeMaterialCloneSourceProjectId] = useState("");
   const [timeMaterialCloneTargetCompanyId, setTimeMaterialCloneTargetCompanyId] = useState("598134325805519");
@@ -5673,6 +5675,82 @@ function ProcoreContent() {
     }
   };
 
+  const loadChangeEventMissingMappings = () => {
+    const missing = Array.isArray(changeEventCloneResult?.result?.missingMappings)
+      ? changeEventCloneResult.result.missingMappings
+      : [];
+    const rows = missing
+      .filter((row: any) => row?.type === "change_event_line_item_budget_code")
+      .map((row: any, index: number) => ({
+        rowKey: `${row.sourceChangeEventId || "event"}:${row.sourceLineItemId || "line"}:${index}`,
+        sourceChangeEventNumber: String(row.sourceChangeEventNumber || ""),
+        sourceChangeEventId: String(row.sourceChangeEventId || ""),
+        sourceLineItemId: String(row.sourceLineItemId || ""),
+        description: String(row.description || ""),
+        sourceBudgetCodeId: String(row.sourceBudgetCodeId || ""),
+        sourceFlatCode: String(row.sourceFlatCode || ""),
+        issue: String(row.issue || ""),
+        mappedFlatCode: String(row.mappedFlatCode || ""),
+        targetBudgetCodeId: "",
+      }));
+    setChangeEventMissingMappingRows(rows);
+    setChangeEventMappingModalOpen(true);
+  };
+
+  const updateChangeEventMissingMappingRow = (index: number, key: string, value: string) => {
+    setChangeEventMissingMappingRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row))
+    );
+  };
+
+  const fillChangeEventMappedFlatCodes = () => {
+    setChangeEventMissingMappingRows((current) =>
+      current.map((row) => ({
+        ...row,
+        targetBudgetCodeId: row.targetBudgetCodeId || row.mappedFlatCode || "",
+      }))
+    );
+  };
+
+  const applyChangeEventMissingMappings = () => {
+    let maps: Record<string, any> = {};
+    try {
+      maps = changeEventCloneMapsText.trim() ? JSON.parse(changeEventCloneMapsText) : {};
+    } catch (error) {
+      setChangeEventCloneError(`Mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    const budgetCodeIdMap =
+      maps.budgetCodeIdMap && typeof maps.budgetCodeIdMap === "object" && !Array.isArray(maps.budgetCodeIdMap)
+        ? { ...maps.budgetCodeIdMap }
+        : {};
+    const skipped: string[] = [];
+    for (const row of changeEventMissingMappingRows) {
+      const mapKey = String(row.sourceLineItemId || row.sourceBudgetCodeId || row.sourceFlatCode || "").trim();
+      const target = String(row.targetBudgetCodeId || "").trim();
+      if (!mapKey || !target) {
+        if (mapKey || target) skipped.push(row.sourceLineItemId || row.sourceBudgetCodeId || "missing-key");
+        continue;
+      }
+      budgetCodeIdMap[mapKey] = target;
+    }
+
+    setChangeEventCloneMapsText(
+      JSON.stringify(
+        {
+          budgetCodeIdMap,
+          flatCodeMap: maps.flatCodeMap || {},
+          lineItemTypeCodeMap: maps.lineItemTypeCodeMap || {},
+        },
+        null,
+        2
+      )
+    );
+    setChangeEventCloneError(skipped.length ? `Skipped ${skipped.length} incomplete change-event mapping row(s).` : null);
+    setChangeEventMappingModalOpen(false);
+  };
+
   const handleCloneTimeAndMaterial = async (dryRun: boolean) => {
     const sourceCompanyId = timeMaterialCloneSourceCompanyId.trim();
     const sourceProjectId = timeMaterialCloneSourceProjectId.trim();
@@ -8533,7 +8611,110 @@ function ProcoreContent() {
                     Download Result JSON
                   </button>
                 )}
+                {Array.isArray(changeEventCloneResult?.result?.missingMappings) && (
+                  <button
+                    type="button"
+                    onClick={loadChangeEventMissingMappings}
+                    disabled={!changeEventCloneResult.result.missingMappings.some((row: any) => row?.type === "change_event_line_item_budget_code")}
+                    className="bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Map Missing Budget Codes
+                  </button>
+                )}
               </div>
+
+              {changeEventMappingModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="max-h-[86vh] w-full max-w-6xl overflow-hidden rounded-lg bg-white shadow-2xl border border-rose-200">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+                      <div>
+                        <h3 className="text-base font-bold text-rose-900">Map Missing Change Event Budget Codes</h3>
+                        <p className="text-xs text-gray-600">
+                          Enter a target WBS/budget code ID, or a target flat code like <code className="bg-gray-100 px-1 rounded">03-300-20-70.L</code>.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={fillChangeEventMappedFlatCodes}
+                          className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-3 rounded text-xs"
+                        >
+                          Use Suggested Codes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applyChangeEventMissingMappings}
+                          className="bg-rose-700 hover:bg-rose-800 text-white font-bold py-1.5 px-3 rounded text-xs"
+                        >
+                          Apply To Mapping JSON
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setChangeEventMappingModalOpen(false)}
+                          className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded text-xs"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    {changeEventMissingMappingRows.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-600">
+                        No missing change-event budget code rows are loaded.
+                      </div>
+                    ) : (
+                      <div className="max-h-[70vh] overflow-auto">
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-gray-50 shadow-sm">
+                            <tr>
+                              <th className="text-left px-3 py-2">CE #</th>
+                              <th className="text-left px-3 py-2">Source Line</th>
+                              <th className="text-left px-3 py-2">Source Code</th>
+                              <th className="text-left px-3 py-2">Issue</th>
+                              <th className="text-left px-3 py-2">Target ID / Flat Code</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {changeEventMissingMappingRows.map((row, index) => (
+                              <tr key={row.rowKey || `${row.sourceLineItemId}-${index}`} className="border-t border-gray-100 align-top">
+                                <td className="px-3 py-2 font-semibold">{row.sourceChangeEventNumber || "-"}</td>
+                                <td className="px-3 py-2 min-w-72">
+                                  <div className="font-mono text-gray-800">{row.sourceLineItemId || "-"}</div>
+                                  <div className="text-gray-700">{row.description || "-"}</div>
+                                </td>
+                                <td className="px-3 py-2 min-w-44">
+                                  <div className="font-mono">{row.sourceBudgetCodeId || "-"}</div>
+                                  <div className="font-mono text-gray-600">{row.sourceFlatCode || "-"}</div>
+                                </td>
+                                <td className="px-3 py-2 min-w-52">
+                                  <div className="font-semibold text-amber-800">{row.issue || "-"}</div>
+                                  {row.mappedFlatCode && (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateChangeEventMissingMappingRow(index, "targetBudgetCodeId", row.mappedFlatCode || "")}
+                                      className="mt-1 rounded bg-amber-50 px-2 py-1 font-mono text-amber-900 border border-amber-200"
+                                    >
+                                      {row.mappedFlatCode}
+                                    </button>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 min-w-56">
+                                  <input
+                                    type="text"
+                                    value={row.targetBudgetCodeId ?? ""}
+                                    onChange={(event) => updateChangeEventMissingMappingRow(index, "targetBudgetCodeId", event.target.value)}
+                                    className="w-full border border-gray-300 rounded px-2 py-1 font-mono"
+                                    placeholder="Target ID or flat code"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {changeEventCloneError && (
                 <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">

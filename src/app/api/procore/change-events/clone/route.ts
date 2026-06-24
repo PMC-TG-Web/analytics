@@ -557,6 +557,25 @@ function mappedFlatCode(sourceFlatCode: string, lineItemTypeCodeMap: Record<stri
   return mappedType ? `${costCode}.${mappedType}` : sourceFlatCode;
 }
 
+function resolveMappedBudgetCodeValue(
+  value: string,
+  targetIndex: ReturnType<typeof buildBudgetCodeIndexes>,
+  strategy: string
+) {
+  const mapped = readStr(value);
+  if (!mapped) return null;
+  if (/^\d+$/.test(mapped)) return { id: mapped, strategy };
+  const matches = targetIndex.byFlatCode.get(normalize(mapped)) || [];
+  if (matches.length === 1) return { id: readStr(matches[0].id), strategy: `${strategy}_flat_code` };
+  return {
+    id: "",
+    strategy,
+    issue: matches.length === 0 ? "manual_mapped_flat_code_not_found" : "manual_mapped_flat_code_ambiguous",
+    matchCount: matches.length,
+    mappedFlatCode: mapped,
+  };
+}
+
 function resolveDescriptionWorkbookMapping(
   description: unknown,
   mappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }>
@@ -597,6 +616,7 @@ function resolveDescriptionWorkbookMapping(
 }
 
 function resolveBudgetCode(params: {
+  sourceLineItemId: string;
   sourceBudgetCode: UnknownRecord;
   description: string;
   targetIndex: ReturnType<typeof buildBudgetCodeIndexes>;
@@ -605,11 +625,17 @@ function resolveBudgetCode(params: {
   workbookFlatCodeMap: Record<string, string>;
   workbookDescriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }>;
   lineItemTypeCodeMap: Record<string, string>;
-}) {
+}): any {
+  const sourceLineItemId = readStr(params.sourceLineItemId);
   const sourceId = readStr(params.sourceBudgetCode.id);
   const sourceFlatCode = readStr(params.sourceBudgetCode.flat_code);
+  if (sourceLineItemId && params.budgetCodeIdMap[sourceLineItemId]) {
+    const mapped = resolveMappedBudgetCodeValue(params.budgetCodeIdMap[sourceLineItemId], params.targetIndex, "line_item_budget_code_map");
+    if (mapped) return mapped;
+  }
   if (sourceId && params.budgetCodeIdMap[sourceId]) {
-    return { id: params.budgetCodeIdMap[sourceId], strategy: "budget_code_id_map" };
+    const mapped = resolveMappedBudgetCodeValue(params.budgetCodeIdMap[sourceId], params.targetIndex, "budget_code_id_map");
+    if (mapped) return mapped;
   }
   if (sourceFlatCode && params.flatCodeMap[sourceFlatCode]) {
     const mapped = params.flatCodeMap[sourceFlatCode];
@@ -853,6 +879,7 @@ export async function POST(request: Request) {
       const itemPlans = sourceItems.map((item) => {
         const sourceBudgetCode = nestedRecord(item, "budget_code");
         const mapping = resolveBudgetCode({
+          sourceLineItemId: readStr(item.id),
           sourceBudgetCode,
           description: readStr(item.description),
           targetIndex: targetBudgetIndex,

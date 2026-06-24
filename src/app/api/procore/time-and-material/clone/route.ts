@@ -656,6 +656,8 @@ export async function POST(request: Request) {
     }
 
     const failed = createResults.filter((result) => result.ok === false);
+    const batchEndOffset = Math.min(sourceEntries.length, createOffset + createLimit);
+    const nextCreateOffset = batchEndOffset < sourceEntries.length ? batchEndOffset : null;
     return NextResponse.json({
       success: dryRun ? true : failed.length === 0,
       dryRun,
@@ -669,8 +671,12 @@ export async function POST(request: Request) {
         targetStatuses: targetStatuses.length,
         sourceMaterials: Object.values(sourceMaterialsByEntryId).reduce((sum, rows) => sum + rows.length, 0),
         missingMappings: missingMappings.length,
+        createOffset,
+        createLimit,
+        attempted: dryRun ? 0 : createResults.length,
         created: createResults.filter((result) => result.ok === true).length,
         failed: failed.length,
+        nextCreateOffset,
       },
       readyForLiveClone: missingMappings.length === 0,
       missingMappings,
@@ -681,7 +687,9 @@ export async function POST(request: Request) {
         ? "Review plan and skipped signatures/attachments/custom fields. If ready, rerun live."
         : failed.length
           ? "Some T&M entries failed. Review createResults."
-          : "T&M clone batch complete.",
+          : nextCreateOffset === null
+            ? "T&M clone complete."
+            : `T&M clone batch complete. Continue with createOffset=${nextCreateOffset}.`,
     });
   } catch (error) {
     return NextResponse.json(

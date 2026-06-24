@@ -670,6 +670,7 @@ function ProcoreContent() {
   const [timeMaterialCloneTargetProjectId, setTimeMaterialCloneTargetProjectId] = useState("");
   const [timeMaterialCloneIdsText, setTimeMaterialCloneIdsText] = useState("");
   const [timeMaterialCloneCreateOffset, setTimeMaterialCloneCreateOffset] = useState("0");
+  const [timeMaterialCloneCreateLimit, setTimeMaterialCloneCreateLimit] = useState("10");
   const [timeMaterialCloneNumberOffset, setTimeMaterialCloneNumberOffset] = useState("0");
   const [timeMaterialClonePreserveNumber, setTimeMaterialClonePreserveNumber] = useState(false);
   const [timeMaterialCloneOrderedByMapText, setTimeMaterialCloneOrderedByMapText] = useState("{}");
@@ -5757,6 +5758,7 @@ function ProcoreContent() {
     const targetCompanyId = timeMaterialCloneTargetCompanyId.trim();
     const targetProjectId = timeMaterialCloneTargetProjectId.trim();
     const createOffset = timeMaterialCloneCreateOffset.trim() || "0";
+    const createLimit = timeMaterialCloneCreateLimit.trim() || "10";
     const timeAndMaterialIds = timeMaterialCloneIdsText
       .split(/[\s,]+/)
       .map((entry) => entry.trim())
@@ -5792,7 +5794,7 @@ function ProcoreContent() {
           targetProjectId,
           timeAndMaterialIds,
           createOffset,
-          createLimit: 25,
+          createLimit,
           preserveNumber: timeMaterialClonePreserveNumber,
           numberOffset: timeMaterialCloneNumberOffset.trim() || "0",
           orderedByIdMap,
@@ -8824,6 +8826,18 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={timeMaterialCloneCreateLimit ?? ""}
+                    onChange={(event) => setTimeMaterialCloneCreateLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Number Offset</label>
                   <input
                     type="number"
@@ -8843,7 +8857,7 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mt-7">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 md:col-span-4">
                   <input
                     type="checkbox"
                     checked={Boolean(timeMaterialClonePreserveNumber)}
@@ -8897,9 +8911,18 @@ function ProcoreContent() {
                         ? `Dry run found ${timeMaterialCloneResult.result?.counts?.sourceEntries ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.sourceEntries === 1 ? "y" : "ies"}.`
                         : `${timeMaterialCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
                       : timeMaterialCloneResult.result?.success
-                        ? `Live clone created ${timeMaterialCloneResult.result?.counts?.created ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.created === 1 ? "y" : "ies"}.`
+                        ? `Live clone created ${timeMaterialCloneResult.result?.counts?.created ?? 0} T&M entr${timeMaterialCloneResult.result?.counts?.created === 1 ? "y" : "ies"}. ${timeMaterialCloneResult.result?.counts?.nextCreateOffset !== null && timeMaterialCloneResult.result?.counts?.nextCreateOffset !== undefined ? `Continue at offset ${timeMaterialCloneResult.result.counts.nextCreateOffset}.` : "Batch complete."}`
                         : "Live clone finished with errors."}
                   </div>
+                  {timeMaterialCloneResult.result?.counts?.nextCreateOffset !== null && timeMaterialCloneResult.result?.counts?.nextCreateOffset !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => setTimeMaterialCloneCreateOffset(String(timeMaterialCloneResult.result.counts.nextCreateOffset))}
+                      className="mb-3 bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      Set Offset to {timeMaterialCloneResult.result.counts.nextCreateOffset}
+                    </button>
+                  )}
                   <CollapsibleJson value={timeMaterialCloneResult} />
                 </div>
               )}

@@ -91,11 +91,14 @@ async function procoreJson(params: {
       cache: "no-store",
     });
     text = await response.text();
-    if (response.status !== 429 || attempt >= maxRetries) break;
+    const retryableStatus = response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504;
+    if (!retryableStatus || attempt >= maxRetries) break;
     const retryAfter = Number(response.headers.get("retry-after"));
+    const exponentialDelay = Math.min(60000, 1500 * 2 ** attempt);
+    const jitter = Math.floor(Math.random() * 750);
     const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
       ? retryAfter * 1000
-      : 2500 + attempt * 2500;
+      : exponentialDelay + jitter;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   // TypeScript cannot see that the loop always assigns response.
@@ -109,7 +112,15 @@ async function procoreJson(params: {
   }
   if (!finalResponse.ok) {
     const message = typeof payload === "string" ? payload : JSON.stringify(payload);
-    throw new Error(`Procore ${method} ${params.path} failed (${finalResponse.status}): ${message}`);
+    const requestId =
+      finalResponse.headers.get("x-request-id") ||
+      finalResponse.headers.get("procore-request-id") ||
+      finalResponse.headers.get("x-correlation-id") ||
+      finalResponse.headers.get("cf-ray") ||
+      "";
+    throw new Error(
+      `Procore ${method} ${params.path} failed (${finalResponse.status})${requestId ? ` requestId=${requestId}` : ""}: ${message}`
+    );
   }
   return payload;
 }
@@ -631,7 +642,10 @@ export async function POST(request: Request) {
     const allowPartial = body.allowPartial === true;
     const targetProposalIdFromBody = readStr(body.targetProposalId || body.createdProposalId);
     const lineItemOffset = Math.max(0, readInt(body.lineItemOffset, 0));
-    const lineItemLimit = Math.min(25, Math.max(1, readInt(body.lineItemLimit, 5)));
+    const requestedLineItemLimit = Math.max(1, readInt(body.lineItemLimit, dryRun ? 20 : 1));
+    const lineItemLimit = dryRun
+      ? Math.min(25, requestedLineItemLimit)
+      : Math.min(5, requestedLineItemLimit);
     const continuationGroupIdMap = mapFromObject(body.groupIdMap);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const requestedCrosswalkPath = readStr(body.crosswalkPath || DEFAULT_CROSSWALK_PATH);

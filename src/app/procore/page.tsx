@@ -377,8 +377,9 @@ function ProcoreContent() {
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
   const [cloneProposalContinuation, setCloneProposalContinuation] = useState<Record<string, unknown> | null>(null);
-  const [cloneProposalAutoContinue, setCloneProposalAutoContinue] = useState(true);
+  const [cloneProposalAutoContinue, setCloneProposalAutoContinue] = useState(false);
   const [cloneProposalMaxAutoBatches, setCloneProposalMaxAutoBatches] = useState("50");
+  const [cloneProposalLineItemLimit, setCloneProposalLineItemLimit] = useState("1");
   const [commitmentCloneSourceCompanyId, setCommitmentCloneSourceCompanyId] = useState("598134325658789");
   const [commitmentCloneSourceProjectId, setCommitmentCloneSourceProjectId] = useState("");
   const [commitmentCloneTargetCompanyId, setCommitmentCloneTargetCompanyId] = useState("598134325805519");
@@ -829,6 +830,12 @@ function ProcoreContent() {
   const effectiveCloneProposalContinuation = (
     cloneProposalContinuation || cloneProposalResult?.result?.batch?.continueRequest || null
   ) as Record<string, unknown> | null;
+  const cloneProposalContinuationOffset = effectiveCloneProposalContinuation
+    ? String(effectiveCloneProposalContinuation.lineItemOffset ?? "0")
+    : "";
+  const cloneProposalContinuationTargetId = effectiveCloneProposalContinuation
+    ? String(effectiveCloneProposalContinuation.targetProposalId ?? "")
+    : "";
 
   const handleEstimateCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -5207,7 +5214,11 @@ function ProcoreContent() {
     const targetProposalName = cloneTargetProposalName.trim();
     const targetProposalType = cloneTargetProposalType.trim() || "SOURCE";
     const crosswalkPath = cloneCrosswalkPath.trim() || "Codes to use.xlsx";
-    const lineItemLimit = dryRun ? 20 : 5;
+    const requestedLineItemLimit = Math.max(
+      1,
+      Math.min(5, Number.parseInt(cloneProposalLineItemLimit.trim() || "1", 10) || 1)
+    );
+    const lineItemLimit = dryRun ? 20 : requestedLineItemLimit;
     const maxAutoBatches = Math.max(1, Math.min(5000, Number.parseInt(cloneProposalMaxAutoBatches.trim() || "50", 10) || 50));
 
     if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
@@ -5312,7 +5323,7 @@ function ProcoreContent() {
         }
 
         currentContinuation = nextContinuation;
-        await new Promise((resolve) => setTimeout(resolve, 750));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
       if (lastResult) {
@@ -10971,6 +10982,19 @@ function ProcoreContent() {
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Live Line Items per Batch</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value={cloneProposalLineItemLimit ?? ""}
+                    onChange={(event) => setCloneProposalLineItemLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Use 1 when Procore is timing out.</p>
+                </div>
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
                   <input
                     type="number"
@@ -11015,7 +11039,17 @@ function ProcoreContent() {
                     disabled={cloneProposalBusy}
                     className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                   >
-                    {cloneProposalBusy ? "Working..." : "Continue Live Clone"}
+                    {cloneProposalBusy ? "Working..." : `Continue at Line ${cloneProposalContinuationOffset}`}
+                  </button>
+                )}
+                {effectiveCloneProposalContinuation && (
+                  <button
+                    type="button"
+                    onClick={() => setCloneProposalContinuationState(null)}
+                    disabled={cloneProposalBusy}
+                    className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Clear Continuation
                   </button>
                 )}
                 {cloneProposalResult && (
@@ -11031,6 +11065,13 @@ function ProcoreContent() {
               {cloneProposalError && (
                 <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                   <strong>Clone Error:</strong> {cloneProposalError}
+                </div>
+              )}
+
+              {effectiveCloneProposalContinuation && (
+                <div className="mt-4 bg-cyan-50 border border-cyan-200 text-cyan-900 px-4 py-3 rounded text-sm">
+                  <strong>Continuation ready:</strong> next line offset {cloneProposalContinuationOffset}
+                  {cloneProposalContinuationTargetId ? ` on target proposal ${cloneProposalContinuationTargetId}` : ""}.
                 </div>
               )}
 

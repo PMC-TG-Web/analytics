@@ -1202,7 +1202,10 @@ export async function POST(request: Request) {
     const sourceMode = readStr(body.sourceMode) || "all";
     const maxPages = Math.min(50, Math.max(1, readNum(body.maxPages) || 5));
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
-    const createLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || 2)));
+    const requestedCreateLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || 1)));
+    const createLimit = dryRun ? requestedCreateLimit : Math.min(requestedCreateLimit, 1);
+    const lineItemCreateOffset = Math.max(0, Math.trunc(readNum(body.lineItemCreateOffset) || 0));
+    const lineItemCreateLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.lineItemCreateLimit) || 10)));
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
@@ -1350,6 +1353,8 @@ export async function POST(request: Request) {
           missingMappings: missingMappings.length,
           createOffset,
           createLimit,
+          lineItemCreateOffset,
+          lineItemCreateLimit,
         },
         maps: Object.fromEntries(Object.entries(maps).map(([key, value]) => [key, Object.keys(value).length])),
         crosswalkAutoMappings,
@@ -1366,7 +1371,7 @@ export async function POST(request: Request) {
           dryRun: false,
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
-          counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, createOffset, createLimit },
+          counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
           crosswalkAutoMappings,
           missingMappings,
           plan,
@@ -1448,8 +1453,10 @@ export async function POST(request: Request) {
             }).then((result) => result.records).catch(() => [] as UnknownRecord[])
           : [];
 
-        if (cloneLineItems && createdContractId && Array.isArray(entry.lineItems)) {
-          for (const line of entry.lineItems as UnknownRecord[]) {
+        const allEntryLineItems = Array.isArray(entry.lineItems) ? entry.lineItems as UnknownRecord[] : [];
+        const lineItemsForBatch = allEntryLineItems.slice(lineItemCreateOffset, lineItemCreateOffset + lineItemCreateLimit);
+        if (cloneLineItems && createdContractId && allEntryLineItems.length > 0) {
+          for (const line of lineItemsForBatch) {
             try {
               const existingLine = findExistingTargetLineItem(line, existingTargetLines);
               if (existingLine) {
@@ -1506,8 +1513,15 @@ export async function POST(request: Request) {
       }
     }
 
+    const activeContractLineCount = plan.reduce((sum, entry) => {
+      const rows = Array.isArray(entry.lineItems) ? entry.lineItems.length : 0;
+      return Math.max(sum, rows);
+    }, 0);
+    const nextLineItemCreateOffset = cloneLineItems && lineItemCreateOffset + lineItemCreateLimit < activeContractLineCount
+      ? lineItemCreateOffset + lineItemCreateLimit
+      : null;
     const batchEndOffset = Math.min(selectedContracts.length, createOffset + createLimit);
-    const nextCreateOffset = batchEndOffset < selectedContracts.length ? batchEndOffset : null;
+    const nextCreateOffset = nextLineItemCreateOffset === null && batchEndOffset < selectedContracts.length ? batchEndOffset : null;
 
     return NextResponse.json({
       success: errors.length === 0,
@@ -1523,6 +1537,13 @@ export async function POST(request: Request) {
         sourceLineItems,
         createOffset,
         createLimit,
+        lineItemCreateOffset,
+        lineItemCreateLimit,
+        attemptedLineItems: plan.reduce((sum, entry) => {
+          const rows = Array.isArray(entry.lineItems) ? entry.lineItems.length : 0;
+          return sum + Math.min(lineItemCreateLimit, Math.max(0, rows - lineItemCreateOffset));
+        }, 0),
+        nextLineItemCreateOffset,
         nextCreateOffset,
         createdContracts: createdContracts.length,
         reusedContracts: reusedContracts.length,
@@ -1543,7 +1564,9 @@ export async function POST(request: Request) {
       plan,
       nextStep: errors.length
         ? "Commitment clone batch finished with errors. Review errors before continuing."
-        : nextCreateOffset === null
+        : nextLineItemCreateOffset !== null
+          ? `Commitment line-item batch complete. Continue same contract with lineItemCreateOffset=${nextLineItemCreateOffset}.`
+          : nextCreateOffset === null
           ? "Commitment clone complete."
           : `Commitment clone batch complete. Continue with createOffset=${nextCreateOffset}.`,
     });

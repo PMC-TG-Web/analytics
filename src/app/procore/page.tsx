@@ -391,7 +391,9 @@ function ProcoreContent() {
   const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
   const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
   const [commitmentCloneCreateOffset, setCommitmentCloneCreateOffset] = useState("0");
-  const [commitmentCloneCreateLimit, setCommitmentCloneCreateLimit] = useState("2");
+  const [commitmentCloneCreateLimit, setCommitmentCloneCreateLimit] = useState("1");
+  const [commitmentCloneLineItemCreateOffset, setCommitmentCloneLineItemCreateOffset] = useState("0");
+  const [commitmentCloneLineItemCreateLimit, setCommitmentCloneLineItemCreateLimit] = useState("10");
   const [commitmentCloneCrosswalkPath, setCommitmentCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [commitmentCloneCrosswalkWorkbookBase64, setCommitmentCloneCrosswalkWorkbookBase64] = useState("");
   const [commitmentCloneCrosswalkWorkbookName, setCommitmentCloneCrosswalkWorkbookName] = useState("");
@@ -5827,7 +5829,7 @@ function ProcoreContent() {
 
   const handleCloneCommitments = async (
     dryRun: boolean,
-    options?: { createOffset?: string; skipConfirm?: boolean }
+    options?: { createOffset?: string; lineItemCreateOffset?: string; skipConfirm?: boolean }
   ) => {
     const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
@@ -5837,7 +5839,9 @@ function ProcoreContent() {
     const targetStatus = commitmentCloneTargetStatus.trim() || "Draft";
     const crosswalkPath = commitmentCloneCrosswalkPath.trim() || "Codes to use.xlsx";
     const createOffset = options?.createOffset ?? (commitmentCloneCreateOffset.trim() || "0");
-    const createLimit = commitmentCloneCreateLimit.trim() || "2";
+    const createLimit = commitmentCloneCreateLimit.trim() || "1";
+    const lineItemCreateOffset = options?.lineItemCreateOffset ?? (commitmentCloneLineItemCreateOffset.trim() || "0");
+    const lineItemCreateLimit = commitmentCloneLineItemCreateLimit.trim() || "10";
     const commitmentIds = commitmentCloneIdsText
       .split(/[\s,]+/)
       .map((value) => value.trim())
@@ -5883,6 +5887,8 @@ function ProcoreContent() {
           allowUnmappedIds: commitmentCloneAllowUnmappedIds,
           createOffset,
           createLimit,
+          lineItemCreateOffset,
+          lineItemCreateLimit,
           commitmentIds,
           crosswalkPath,
           crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
@@ -11213,6 +11219,29 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Line Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={commitmentCloneLineItemCreateOffset ?? ""}
+                    onChange={(e) => setCommitmentCloneLineItemCreateOffset(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Line Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={commitmentCloneLineItemCreateLimit ?? ""}
+                    onChange={(e) => setCommitmentCloneLineItemCreateLimit(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
               </div>
 
               <div className="mb-4">
@@ -11363,20 +11392,42 @@ function ProcoreContent() {
                 >
                   {commitmentCloneBusy ? "Working..." : "Run Live Clone"}
                 </button>
-                {commitmentCloneResult?.result?.counts?.nextCreateOffset !== null && commitmentCloneResult?.result?.counts?.nextCreateOffset !== undefined && (
+                {(commitmentCloneResult?.result?.counts?.nextLineItemCreateOffset !== null && commitmentCloneResult?.result?.counts?.nextLineItemCreateOffset !== undefined) ||
+                (commitmentCloneResult?.result?.counts?.nextCreateOffset !== null && commitmentCloneResult?.result?.counts?.nextCreateOffset !== undefined) ? (
                   <button
                     type="button"
                     onClick={() => {
-                      const nextOffset = String(commitmentCloneResult.result.counts.nextCreateOffset);
-                      setCommitmentCloneCreateOffset(nextOffset);
-                      void handleCloneCommitments(false, { createOffset: nextOffset, skipConfirm: true });
+                      const nextLineOffset = commitmentCloneResult.result.counts.nextLineItemCreateOffset;
+                      const nextContractOffset = commitmentCloneResult.result.counts.nextCreateOffset;
+                      if (nextLineOffset !== null && nextLineOffset !== undefined) {
+                        const lineOffset = String(nextLineOffset);
+                        setCommitmentCloneLineItemCreateOffset(lineOffset);
+                        void handleCloneCommitments(false, {
+                          createOffset: commitmentCloneCreateOffset.trim() || "0",
+                          lineItemCreateOffset: lineOffset,
+                          skipConfirm: true,
+                        });
+                        return;
+                      }
+                      const contractOffset = String(nextContractOffset);
+                      setCommitmentCloneCreateOffset(contractOffset);
+                      setCommitmentCloneLineItemCreateOffset("0");
+                      void handleCloneCommitments(false, {
+                        createOffset: contractOffset,
+                        lineItemCreateOffset: "0",
+                        skipConfirm: true,
+                      });
                     }}
                     disabled={commitmentCloneBusy}
                     className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                   >
-                    {commitmentCloneBusy ? "Working..." : `Continue at ${commitmentCloneResult.result.counts.nextCreateOffset}`}
+                    {commitmentCloneBusy
+                      ? "Working..."
+                      : commitmentCloneResult.result.counts.nextLineItemCreateOffset !== null && commitmentCloneResult.result.counts.nextLineItemCreateOffset !== undefined
+                        ? `Continue Lines at ${commitmentCloneResult.result.counts.nextLineItemCreateOffset}`
+                        : `Continue Contract at ${commitmentCloneResult.result.counts.nextCreateOffset}`}
                   </button>
-                )}
+                ) : null}
                 {commitmentCloneResult && (
                   <button
                     onClick={() => downloadJson("procore-clone-commitments-result.json", commitmentCloneResult)}
@@ -11406,7 +11457,7 @@ function ProcoreContent() {
                         ? "Dry run is clean. Live clone is enabled."
                         : `${commitmentCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
                       : commitmentCloneResult.result?.success
-                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s). ${commitmentCloneResult.result?.counts?.nextCreateOffset !== null && commitmentCloneResult.result?.counts?.nextCreateOffset !== undefined ? `Continue at offset ${commitmentCloneResult.result.counts.nextCreateOffset}.` : "Batch complete."}`
+                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s). ${commitmentCloneResult.result?.counts?.nextLineItemCreateOffset !== null && commitmentCloneResult.result?.counts?.nextLineItemCreateOffset !== undefined ? `Continue line offset ${commitmentCloneResult.result.counts.nextLineItemCreateOffset}.` : commitmentCloneResult.result?.counts?.nextCreateOffset !== null && commitmentCloneResult.result?.counts?.nextCreateOffset !== undefined ? `Continue contract offset ${commitmentCloneResult.result.counts.nextCreateOffset}.` : "Batch complete."}`
                         : "Live clone finished with errors."}
                   </div>
                   <CollapsibleJson value={commitmentCloneResult} />

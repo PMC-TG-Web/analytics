@@ -390,6 +390,8 @@ function ProcoreContent() {
   const [commitmentClonePreserveStatus, setCommitmentClonePreserveStatus] = useState(false);
   const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
   const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
+  const [commitmentCloneCreateOffset, setCommitmentCloneCreateOffset] = useState("0");
+  const [commitmentCloneCreateLimit, setCommitmentCloneCreateLimit] = useState("2");
   const [commitmentCloneCrosswalkPath, setCommitmentCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [commitmentCloneCrosswalkWorkbookBase64, setCommitmentCloneCrosswalkWorkbookBase64] = useState("");
   const [commitmentCloneCrosswalkWorkbookName, setCommitmentCloneCrosswalkWorkbookName] = useState("");
@@ -5823,7 +5825,10 @@ function ProcoreContent() {
     }
   };
 
-  const handleCloneCommitments = async (dryRun: boolean) => {
+  const handleCloneCommitments = async (
+    dryRun: boolean,
+    options?: { createOffset?: string; skipConfirm?: boolean }
+  ) => {
     const sourceCompanyId = commitmentCloneSourceCompanyId.trim();
     const sourceProjectId = commitmentCloneSourceProjectId.trim();
     const targetCompanyId = commitmentCloneTargetCompanyId.trim();
@@ -5831,6 +5836,8 @@ function ProcoreContent() {
     const targetVendorIdOverride = commitmentCloneTargetVendorIdOverride.trim();
     const targetStatus = commitmentCloneTargetStatus.trim() || "Draft";
     const crosswalkPath = commitmentCloneCrosswalkPath.trim() || "Codes to use.xlsx";
+    const createOffset = options?.createOffset ?? (commitmentCloneCreateOffset.trim() || "0");
+    const createLimit = commitmentCloneCreateLimit.trim() || "2";
     const commitmentIds = commitmentCloneIdsText
       .split(/[\s,]+/)
       .map((value) => value.trim())
@@ -5840,7 +5847,7 @@ function ProcoreContent() {
       setCommitmentCloneError("Source company/project and target company/project are required.");
       return;
     }
-    if (!dryRun && !window.confirm(`Create cloned commitment(s) in target project ${targetProjectId}?`)) {
+    if (!dryRun && !options?.skipConfirm && !window.confirm(`Create cloned commitment batch in target project ${targetProjectId}?`)) {
       return;
     }
 
@@ -5874,6 +5881,8 @@ function ProcoreContent() {
           preserveStatus: commitmentClonePreserveStatus,
           cloneLineItems: commitmentCloneLineItems,
           allowUnmappedIds: commitmentCloneAllowUnmappedIds,
+          createOffset,
+          createLimit,
           commitmentIds,
           crosswalkPath,
           crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
@@ -11180,6 +11189,32 @@ function ProcoreContent() {
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={commitmentCloneCreateOffset ?? ""}
+                    onChange={(e) => setCommitmentCloneCreateOffset(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={commitmentCloneCreateLimit ?? ""}
+                    onChange={(e) => setCommitmentCloneCreateLimit(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Codes Crosswalk Workbook Path</label>
                 <input
@@ -11328,6 +11363,20 @@ function ProcoreContent() {
                 >
                   {commitmentCloneBusy ? "Working..." : "Run Live Clone"}
                 </button>
+                {commitmentCloneResult?.result?.counts?.nextCreateOffset !== null && commitmentCloneResult?.result?.counts?.nextCreateOffset !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOffset = String(commitmentCloneResult.result.counts.nextCreateOffset);
+                      setCommitmentCloneCreateOffset(nextOffset);
+                      void handleCloneCommitments(false, { createOffset: nextOffset, skipConfirm: true });
+                    }}
+                    disabled={commitmentCloneBusy}
+                    className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    {commitmentCloneBusy ? "Working..." : `Continue at ${commitmentCloneResult.result.counts.nextCreateOffset}`}
+                  </button>
+                )}
                 {commitmentCloneResult && (
                   <button
                     onClick={() => downloadJson("procore-clone-commitments-result.json", commitmentCloneResult)}
@@ -11357,7 +11406,7 @@ function ProcoreContent() {
                         ? "Dry run is clean. Live clone is enabled."
                         : `${commitmentCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
                       : commitmentCloneResult.result?.success
-                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        ? `Live clone created ${commitmentCloneResult.result?.counts?.createdContracts ?? 0} contract(s) and ${commitmentCloneResult.result?.counts?.createdLineItems ?? 0} line item(s). ${commitmentCloneResult.result?.counts?.nextCreateOffset !== null && commitmentCloneResult.result?.counts?.nextCreateOffset !== undefined ? `Continue at offset ${commitmentCloneResult.result.counts.nextCreateOffset}.` : "Batch complete."}`
                         : "Live clone finished with errors."}
                   </div>
                   <CollapsibleJson value={commitmentCloneResult} />

@@ -1201,6 +1201,8 @@ export async function POST(request: Request) {
     const targetStatus = readStr(body.targetStatus) || "Draft";
     const sourceMode = readStr(body.sourceMode) || "all";
     const maxPages = Math.min(50, Math.max(1, readNum(body.maxPages) || 5));
+    const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
+    const createLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || 2)));
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
@@ -1243,13 +1245,14 @@ export async function POST(request: Request) {
       if (requestedCommitmentIds.size === 0) return true;
       return requestedCommitmentIds.has(readStr(contract.id));
     });
+    const contractsForPlan = dryRun ? selectedContracts : selectedContracts.slice(createOffset, createOffset + createLimit);
 
     const plan: UnknownRecord[] = [];
     const missingMappings: UnknownRecord[] = [];
     let sourceLineItems = 0;
     const lineItemsByContractId = new Map<string, { records: UnknownRecord[]; errors: UnknownRecord[] }>();
 
-    for (const contract of selectedContracts) {
+    for (const contract of contractsForPlan) {
       const contractId = readStr(contract.id);
       const lineFetch = cloneLineItems && contractId
         ? await fetchLineItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, contractId, maxPages })
@@ -1263,7 +1266,7 @@ export async function POST(request: Request) {
         accessToken,
         targetCompanyId,
         targetProjectId,
-        sourceLineItems: selectedContracts.flatMap((contract) => {
+        sourceLineItems: contractsForPlan.flatMap((contract) => {
           const contractId = readStr(contract.id);
           const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[] };
           return lineFetch.records.map((lineItem) => ({
@@ -1280,7 +1283,7 @@ export async function POST(request: Request) {
       })
       : { enabled: false, source: "", applied: 0, skippedExisting: 0, issues: [] as UnknownRecord[] };
 
-    for (const contract of selectedContracts) {
+    for (const contract of contractsForPlan) {
       const contractId = readStr(contract.id);
       const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       const contractIssues: UnknownRecord[] = [];
@@ -1342,8 +1345,11 @@ export async function POST(request: Request) {
         target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
         counts: {
           sourceContracts: selectedContracts.length,
+          plannedContracts: contractsForPlan.length,
           sourceLineItems,
           missingMappings: missingMappings.length,
+          createOffset,
+          createLimit,
         },
         maps: Object.fromEntries(Object.entries(maps).map(([key, value]) => [key, Object.keys(value).length])),
         crosswalkAutoMappings,
@@ -1360,7 +1366,7 @@ export async function POST(request: Request) {
           dryRun: false,
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
-          counts: { sourceContracts: selectedContracts.length, sourceLineItems, missingMappings: missingMappings.length },
+          counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, createOffset, createLimit },
           crosswalkAutoMappings,
           missingMappings,
           plan,
@@ -1500,6 +1506,9 @@ export async function POST(request: Request) {
       }
     }
 
+    const batchEndOffset = Math.min(selectedContracts.length, createOffset + createLimit);
+    const nextCreateOffset = batchEndOffset < selectedContracts.length ? batchEndOffset : null;
+
     return NextResponse.json({
       success: errors.length === 0,
       dryRun: false,
@@ -1510,7 +1519,11 @@ export async function POST(request: Request) {
       target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
       counts: {
         sourceContracts: selectedContracts.length,
+        attemptedContracts: contractsForPlan.length,
         sourceLineItems,
+        createOffset,
+        createLimit,
+        nextCreateOffset,
         createdContracts: createdContracts.length,
         reusedContracts: reusedContracts.length,
         createdLineItems: createdContracts.reduce((sum, contract) => {
@@ -1528,6 +1541,11 @@ export async function POST(request: Request) {
       reusedContracts,
       errors,
       plan,
+      nextStep: errors.length
+        ? "Commitment clone batch finished with errors. Review errors before continuing."
+        : nextCreateOffset === null
+          ? "Commitment clone complete."
+          : `Commitment clone batch complete. Continue with createOffset=${nextCreateOffset}.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

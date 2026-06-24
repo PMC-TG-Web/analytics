@@ -1137,16 +1137,38 @@ async function createLineItem(params: {
   contractId: string;
   payload: UnknownRecord;
 }) {
+  const requestPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+    params.projectId
+  )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items`;
   const response = await procoreJson({
-    path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
-      params.projectId
-    )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items`,
+    path: requestPath,
     method: "POST",
     accessToken: params.accessToken,
     companyId: params.companyId,
     body: params.payload,
+    allowStatuses: [400, 422],
   });
-  return unwrapData(response.payload);
+  if (response.ok) return unwrapData(response.payload);
+
+  const responseText = safeJson(response.payload).toLowerCase();
+  if (/budget code was not found|wbs code .*not found|attributes\.wbs_code_id/.test(responseText)) {
+    const fallbackPayload = { ...params.payload };
+    delete fallbackPayload.wbs_code_id;
+    delete fallbackPayload.wbs_code;
+    delete fallbackPayload.budget_line_item_id;
+    delete fallbackPayload.budget_line_item;
+    const fallbackResponse = await procoreJson({
+      path: requestPath,
+      method: "POST",
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      body: fallbackPayload,
+    });
+    const created = unwrapData(fallbackResponse.payload);
+    return { created, fallbackUsed: "removed_invalid_budget_code", originalError: response.payload, attemptedPayload: fallbackPayload };
+  }
+
+  throw new Error(`Procore POST ${requestPath} failed (${response.status}): ${safeJson(response.payload)}`);
 }
 
 function lineItemMatchKeys(lineItem: UnknownRecord) {

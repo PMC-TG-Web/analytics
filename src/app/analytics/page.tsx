@@ -30,6 +30,19 @@ type ApiResponse = {
   count?: number;
   source?: string;
   note?: string;
+  diagnostics?: {
+    companyIdUsed?: string;
+    tableCountsByCompany?: {
+      budgetlineitems?: number;
+      timecardEntries?: number;
+      productivityLogs?: number;
+      purchaseOrderLineItemContractDetails?: number;
+    };
+    budgetlineitemsCompaniesWithData?: Array<{
+      companyId: string;
+      count: number;
+    }>;
+  };
   data?: PersistedLineItem[];
 };
 
@@ -192,6 +205,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [note, setNote] = useState<string>("");
+  const [diagnostics, setDiagnostics] = useState<ApiResponse["diagnostics"] | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>("");
 
   const [projectFilter, setProjectFilter] = useState<string>("");
@@ -218,6 +232,7 @@ export default function AnalyticsPage() {
     setLoading(true);
     setError("");
     setNote("");
+    setDiagnostics(null);
 
     try {
       const url = new URL("/api/analytics/advanced", window.location.origin);
@@ -237,10 +252,12 @@ export default function AnalyticsPage() {
       }
 
       const allRows: PersistedLineItem[] = Array.isArray(body.data) ? body.data : [];
+      const bodyDiagnostics = body.diagnostics || null;
 
       setRows(allRows);
+      setDiagnostics(bodyDiagnostics);
       setNote(
-        `Analytics loaded from local Procore tables: ${allRows.length.toLocaleString()} budget line rows.`
+        `Analytics loaded from local Procore tables: ${allRows.length.toLocaleString()} budget line rows${bodyDiagnostics?.companyIdUsed ? ` (company ${bodyDiagnostics.companyIdUsed})` : ""}.`
       );
       setLastRefreshedAt(new Date().toLocaleString());
     } catch (loadError) {
@@ -895,6 +912,23 @@ export default function AnalyticsPage() {
           </div>
 
           {note && <p className="mt-3 text-xs font-semibold text-amber-700">{note}</p>}
+          {diagnostics && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p className="font-semibold text-slate-800">
+                Diagnostics: company {diagnostics.companyIdUsed || "unknown"}
+              </p>
+              <p className="mt-1">
+                budgetlineitems: {(diagnostics.tableCountsByCompany?.budgetlineitems || 0).toLocaleString()} | timecards: {(diagnostics.tableCountsByCompany?.timecardEntries || 0).toLocaleString()} | productivity logs: {(diagnostics.tableCountsByCompany?.productivityLogs || 0).toLocaleString()} | PO line details: {(diagnostics.tableCountsByCompany?.purchaseOrderLineItemContractDetails || 0).toLocaleString()}
+              </p>
+              {Array.isArray(diagnostics.budgetlineitemsCompaniesWithData) && diagnostics.budgetlineitemsCompaniesWithData.length > 0 && (
+                <p className="mt-1">
+                  budgetlineitems companies with data: {diagnostics.budgetlineitemsCompaniesWithData
+                    .map((row) => `${row.companyId} (${Number(row.count || 0).toLocaleString()})`)
+                    .join(", ")}
+                </p>
+              )}
+            </div>
+          )}
           {error && <p className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
         </section>
 

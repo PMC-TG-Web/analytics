@@ -38,6 +38,15 @@ type ProductivityActualRow = {
   quantity_used: number | string | null;
 };
 
+type CountRow = {
+  count: string | number | bigint;
+};
+
+type CompanyCountRow = {
+  company_id: string;
+  count: string | number | bigint;
+};
+
 function normalizeId(value: unknown): string {
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number") return String(value);
@@ -76,6 +85,16 @@ function buildActualsKey(
   return `${normalizedProjectId}::${normalizedCostCode}`;
 }
 
+function parseCount(value: string | number | bigint | null | undefined): number {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -94,7 +113,16 @@ export async function GET(request: NextRequest) {
 
     const canonicalProjectsCte = buildCanonicalProcoreProjectsCte(1);
 
-    const [budgetRows, timecardRows, productivityRows] = await Promise.all([
+    const [
+      budgetRows,
+      timecardRows,
+      productivityRows,
+      budgetCountRows,
+      timecardCountRows,
+      productivityCountRows,
+      purchaseOrderLineCountRows,
+      budgetCompaniesRows,
+    ] = await Promise.all([
       prisma.$queryRawUnsafe<BudgetAnalyticsRow[]>(
         `
           WITH ${canonicalProjectsCte}
@@ -159,6 +187,47 @@ export async function GET(request: NextRequest) {
         `,
         companyId
       ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM budgetlineitems
+          WHERE company_id = $1
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM "TimecardEntry"
+          WHERE "procoreCompanyId" = $1
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM "ProductivityLog"
+          WHERE "procoreCompanyId" = $1
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM "PurchaseOrderLineItemContractDetail"
+          WHERE "procoreCompanyId" = $1
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<CompanyCountRow[]>(
+        `
+          SELECT company_id, COUNT(*)::text AS count
+          FROM budgetlineitems
+          GROUP BY company_id
+          ORDER BY COUNT(*) DESC
+          LIMIT 10
+        `
+      ),
     ]);
 
     const timecardActualsByKey = new Map<string, number>();
@@ -182,6 +251,19 @@ export async function GET(request: NextRequest) {
       companyId,
       actualsMode,
       count: budgetRows.length,
+      diagnostics: {
+        companyIdUsed: companyId,
+        tableCountsByCompany: {
+          budgetlineitems: parseCount(budgetCountRows[0]?.count),
+          timecardEntries: parseCount(timecardCountRows[0]?.count),
+          productivityLogs: parseCount(productivityCountRows[0]?.count),
+          purchaseOrderLineItemContractDetails: parseCount(purchaseOrderLineCountRows[0]?.count),
+        },
+        budgetlineitemsCompaniesWithData: budgetCompaniesRows.map((row) => ({
+          companyId: row.company_id,
+          count: parseCount(row.count),
+        })),
+      },
       data: budgetRows.map((row) => {
         const actualsCode =
           actualsMode === "rollup"

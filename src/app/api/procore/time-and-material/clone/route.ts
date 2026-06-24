@@ -504,10 +504,11 @@ export async function POST(request: Request) {
     const sourceEntries = timeAndMaterialIds.size
       ? sourceEntriesRaw.filter((entry) => timeAndMaterialIds.has(readStr(entry.id)) || timeAndMaterialIds.has(readStr(entry.number)))
       : sourceEntriesRaw;
+    const entriesNeedingMaterials = dryRun ? sourceEntries : sourceEntries.slice(createOffset, createOffset + createLimit);
 
     const sourceMaterialsByEntryId: Record<string, UnknownRecord[]> = {};
     await Promise.all(
-      sourceEntries.map(async (entry) => {
+      entriesNeedingMaterials.map(async (entry) => {
         const sourceId = readStr(entry.id);
         if (!sourceId) return;
         sourceMaterialsByEntryId[sourceId] = await fetchMaterials({
@@ -521,7 +522,7 @@ export async function POST(request: Request) {
     );
 
     const missingMappings: UnknownRecord[] = [];
-    const plan = sourceEntries.map((entry) => {
+    const plan = entriesNeedingMaterials.map((entry) => {
       const targetChangeEvent = resolveTargetChangeEvent(entry, targetEvents, numberOffset);
       const targetStatus = resolveTargetStatus(nestedRecord(entry, "change_event_status"), targetStatuses);
       const sourceId = readStr(entry.id);
@@ -586,7 +587,7 @@ export async function POST(request: Request) {
 
     const createResults: UnknownRecord[] = [];
     if (!dryRun && missingMappings.length === 0) {
-      for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
+      for (const entry of plan) {
         try {
           const signatureResults: UnknownRecord[] = [];
           const payload = isRecord(entry.payload) ? { ...entry.payload } : {};
@@ -670,6 +671,7 @@ export async function POST(request: Request) {
         targetChangeEvents: targetEvents.length,
         targetStatuses: targetStatuses.length,
         sourceMaterials: Object.values(sourceMaterialsByEntryId).reduce((sum, rows) => sum + rows.length, 0),
+        materialFetchScope: dryRun ? "all" : "current_batch",
         missingMappings: missingMappings.length,
         createOffset,
         createLimit,

@@ -802,7 +802,7 @@ export async function POST(request: Request) {
     const cloneLineItems = readBool(body.cloneLineItems, true);
     const preserveNumber = readBool(body.preserveNumber, false);
     const numberOffset = Math.trunc(readNum(body.numberOffset) || 0);
-    const allowUnmappedLineItems = readBool(body.allowUnmappedLineItems, false);
+    const allowUnmappedLineItems = readBool(body.allowUnmappedLineItems, true);
     const changeEventIds = new Set(parseIds(body.changeEventIds || body.ids));
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
     const createLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || 25)));
@@ -1088,7 +1088,7 @@ export async function POST(request: Request) {
       failedCreateResults: failed,
       nextStep: dryRun
         ? blockers.length
-          ? "Resolve missingMappings or set allowUnmappedLineItems=true to try creating unmapped lines without budget_code."
+          ? "Missing budget-code mappings are allowed; unmapped request lines will be created without budget_code."
           : "Review plan. If ready, rerun live."
         : blockers.length
           ? "Live clone blocked by missing line-item budget code mappings."

@@ -651,7 +651,7 @@ function ProcoreContent() {
   const [changeEventCloneCrosswalkPath, setChangeEventCloneCrosswalkPath] = useState("Codes to use.xlsx");
   const [changeEventCloneLineItems, setChangeEventCloneLineItems] = useState(true);
   const [changeEventClonePreserveNumber, setChangeEventClonePreserveNumber] = useState(false);
-  const [changeEventCloneAllowUnmappedLineItems, setChangeEventCloneAllowUnmappedLineItems] = useState(false);
+  const [changeEventCloneAllowUnmappedLineItems, setChangeEventCloneAllowUnmappedLineItems] = useState(true);
   const [changeEventCloneMapsText, setChangeEventCloneMapsText] = useState(`{
   "budgetCodeIdMap": {},
   "flatCodeMap": {},
@@ -8584,7 +8584,7 @@ function ProcoreContent() {
                     checked={Boolean(changeEventCloneAllowUnmappedLineItems)}
                     onChange={(event) => setChangeEventCloneAllowUnmappedLineItems(event.target.checked)}
                   />
-                  Allow unmapped lines
+                  Allow request lines without WBS
                 </label>
               </div>
 

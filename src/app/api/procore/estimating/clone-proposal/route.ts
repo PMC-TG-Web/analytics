@@ -824,6 +824,60 @@ export async function POST(request: Request) {
       });
     }
 
+    if (sourceLineItemRecords.length === 0) {
+      const retryContinuation = targetProposalIdFromBody && lineItemOffset > 0
+        ? {
+            targetProposalId: targetProposalIdFromBody,
+            groupIdMap: objectFromMap(continuationGroupIdMap),
+            lineItemOffset,
+            lineItemLimit,
+          }
+        : null;
+      return NextResponse.json(
+        {
+          error: "Source proposal line items returned empty.",
+          details:
+            "A live clone cannot safely treat an empty source fetch as complete. Retry the same continuation offset.",
+          retryable: true,
+          dryRun: false,
+          tokenSource,
+          batch: {
+            lineItemOffset,
+            lineItemLimit,
+            attemptedLineItems: 0,
+            nextLineItemOffset: lineItemOffset,
+            hasMoreLineItems: Boolean(retryContinuation),
+            continueRequest: retryContinuation,
+          },
+          source: {
+            companyId: sourceCompanyId,
+            projectId: sourceProjectId,
+            bidBoardProjectId: sourceBidBoardProjectId || null,
+            proposalId: sourceProposalId,
+          },
+          target: {
+            companyId: targetCompanyId,
+            bidBoardProjectId: targetBidBoardProjectId,
+            bidBoardProjectInputId: targetBidBoardProjectIdInput,
+            bidBoardProjectResolvedBy: targetBidBoardResolution.resolvedBy,
+            projectId: targetProjectId || null,
+            proposalId: targetProposalIdFromBody || null,
+          },
+          counts: {
+            sourceGroups: sourceGroupRecords.length,
+            sourceLineItems: 0,
+            cloneableLineItems: 0,
+            createdLineItems: 0,
+            failedLineItems: 0,
+            skippedMissingMappings: 0,
+          },
+          fetchAttempts,
+          targetBidBoardResolution,
+        },
+        { status: 503 }
+      );
+    }
+
     if (!readyForLiveClone && !allowPartial) {
       return NextResponse.json(
         {
@@ -975,6 +1029,7 @@ export async function POST(request: Request) {
       createdLineItems,
       failedLineItems,
       missingMappings,
+      fetchAttempts,
       targetBidBoardResolution,
     });
   } catch (error) {

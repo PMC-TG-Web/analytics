@@ -5151,6 +5151,32 @@ function ProcoreContent() {
     setCloneCrosswalkWorkbookName(file.name);
   };
 
+  const handleCloneProposalContinuationUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const result = parsed?.result || parsed;
+      const directContinuation = result?.batch?.continueRequest;
+      const batchResults = Array.isArray(result?.batchResults) ? result.batchResults : [];
+      const lastContinuation = [...batchResults]
+        .reverse()
+        .map((row: any) => row?.result?.batch?.continueRequest)
+        .find((value: any) => value && typeof value === "object");
+      const continuation = directContinuation || lastContinuation;
+      if (!continuation || typeof continuation !== "object") {
+        setCloneProposalError("No continuation was found in that result JSON.");
+        return;
+      }
+      setCloneProposalContinuationState(continuation as Record<string, unknown>);
+      setCloneProposalError(null);
+    } catch (error) {
+      setCloneProposalError(`Failed to load continuation JSON: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const handleCommitmentCloneCrosswalkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -10881,6 +10907,19 @@ function ProcoreContent() {
                       : "Optional: upload the crosswalk workbook here to avoid relying on a server file path."}
                   </p>
                 </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Restore Continuation from Result JSON</label>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleCloneProposalContinuationUpload}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                />
+                <p className="text-xs text-indigo-700 mt-2">
+                  Load a downloaded clone result to continue the same target proposal at its last saved offset.
+                </p>
               </div>
 
               <div className="mb-4 border border-indigo-100 rounded overflow-hidden">

@@ -26,46 +26,11 @@ type PersistedLineItem = {
 type ApiResponse = {
   success?: boolean;
   error?: string;
+  details?: string;
+  count?: number;
+  source?: string;
   note?: string;
   data?: PersistedLineItem[];
-  hasNextPage?: boolean;
-};
-
-type ProjectMasterRow = {
-  canonicalProjectId: string;
-  procoreProjectId: string | null;
-  projectName: string | null;
-  customer: string;
-  budgetLineItemCount: number;
-};
-
-type ProjectMasterApiResponse = {
-  success?: boolean;
-  error?: string;
-  data?: ProjectMasterRow[];
-  hasNextPage?: boolean;
-};
-
-type BudgetLineApiRow = {
-  id: string;
-  projectId: string;
-  costCode: string | null;
-  costCodeDescription?: string | null;
-  lineItemType?: string | null;
-  uom: string | null;
-  quantity: number | null;
-  unitCost: number | null;
-  originalBudgetAmount: number | null;
-  amount: number | null;
-  actualTimecardHours?: number;
-  actualProductivityQty?: number;
-  syncedAt: string;
-};
-
-type BudgetLineApiResponse = {
-  success?: boolean;
-  error?: string;
-  data?: BudgetLineApiRow[];
 };
 
 type RankedMetric = {
@@ -100,7 +65,6 @@ type TrendPoint = {
 };
 
 const DEFAULT_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
-const MAX_PAGES = 100;
 const PRESET_STORAGE_KEY = "analytics:advanced-presets";
 
 function toDateKey(value: string | null | undefined): string {
@@ -256,87 +220,27 @@ export default function AnalyticsPage() {
     setNote("");
 
     try {
-      const projects: ProjectMasterRow[] = [];
-      let projectPage = 1;
+      const url = new URL("/api/analytics/advanced", window.location.origin);
+      url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
+      url.searchParams.set("actualsMode", "cost-code");
+      url.searchParams.set("_ts", String(Date.now()));
 
-      while (projectPage <= MAX_PAGES) {
-        const url = new URL("/api/procore/projects-master", window.location.origin);
-        url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
-        url.searchParams.set("page", String(projectPage));
-        url.searchParams.set("pageSize", "500");
-        url.searchParams.set("_ts", String(Date.now()));
+      const response = await fetch(url.toString(), { cache: "no-store" });
+      const body: ApiResponse = await response.json();
 
-        const response = await fetch(url.toString(), { cache: "no-store" });
-        const body: ProjectMasterApiResponse = await response.json();
-
-        if (!response.ok || body.success === false) {
-          throw new Error(body.error || `Failed to load project list (${response.status})`);
-        }
-
-        const batch = Array.isArray(body.data) ? body.data : [];
-        projects.push(...batch);
-
-        if (!body.hasNextPage || batch.length === 0) break;
-        projectPage += 1;
+      if (!response.ok || body.success === false) {
+        throw new Error(
+          body.error
+            ? `${body.error}${body.details ? `: ${body.details}` : ""}`
+            : `Failed to load analytics data (${response.status})`
+        );
       }
 
-      const budgetProjects = projects.filter(
-        (project) => project.procoreProjectId && Number(project.budgetLineItemCount || 0) > 0
-      );
-
-      const projectMeta = new Map<string, { projectName: string | null; customerName: string | null }>();
-      for (const project of budgetProjects) {
-        const projectId = String(project.procoreProjectId || "").trim();
-        if (!projectId) continue;
-        projectMeta.set(projectId, {
-          projectName: project.projectName,
-          customerName: project.customer || "",
-        });
-      }
-
-      const budgetProjectIds = budgetProjects
-        .map((p) => String(p.procoreProjectId || "").trim())
-        .filter(Boolean);
-
-      const bulkUrl = new URL("/api/procore/budget-line-items-bulk", window.location.origin);
-      bulkUrl.searchParams.set("companyId", DEFAULT_COMPANY_ID);
-      bulkUrl.searchParams.set("projectIds", budgetProjectIds.join(","));
-      bulkUrl.searchParams.set("actualsMode", "cost-code");
-
-      const bulkResponse = await fetch(bulkUrl.toString(), { cache: "no-store" });
-      const bulkBody: BudgetLineApiResponse = await bulkResponse.json();
-
-      if (!bulkResponse.ok || bulkBody.success === false) {
-        throw new Error(bulkBody.error || `Failed to load budget data (${bulkResponse.status})`);
-      }
-
-      const allRows: PersistedLineItem[] = (Array.isArray(bulkBody.data) ? bulkBody.data : []).map((row) => {
-        const projectId = String(row.projectId || "").trim();
-        const meta = projectMeta.get(projectId);
-        return {
-          id: `${projectId}:${row.id}`,
-          projectName: meta?.projectName || null,
-          customerName: meta?.customerName || null,
-          projectId,
-          costCode: row.costCode,
-          costCodeName: row.costCodeDescription || null,
-          lineItemType: row.lineItemType || null,
-          uom: row.uom,
-          quantity: row.quantity,
-          unitCost: row.unitCost,
-          originalBudgetAmount: row.originalBudgetAmount,
-          amount: row.amount,
-          totalCost: Number(row.originalBudgetAmount || 0),
-          totalSales: Number(row.amount || 0),
-          actualTimecardHours: Number(row.actualTimecardHours || 0),
-          actualProductivityQty: Number(row.actualProductivityQty || 0),
-          syncedAt: row.syncedAt,
-        };
-      });
+      const allRows: PersistedLineItem[] = Array.isArray(body.data) ? body.data : [];
 
       setRows(allRows);
       setNote(
-        `Budget-only analytics loaded from ${budgetProjects.length.toLocaleString()} projects with budget lines.`
+        `Analytics loaded from local Procore tables: ${allRows.length.toLocaleString()} budget line rows.`
       );
       setLastRefreshedAt(new Date().toLocaleString());
     } catch (loadError) {

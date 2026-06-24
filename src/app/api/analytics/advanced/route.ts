@@ -79,11 +79,9 @@ function buildActualsKey(
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const companyId = String(
-      request.cookies.get("procore_company_id")?.value ||
-      searchParams.get("companyId") ||
-      ""
-    ).trim();
+    const queryCompanyId = String(searchParams.get("companyId") || "").trim();
+    const cookieCompanyId = String(request.cookies.get("procore_company_id")?.value || "").trim();
+    const companyId = queryCompanyId || cookieCompanyId;
     const requestedActualsMode = String(searchParams.get("actualsMode") || "").trim().toLowerCase();
     const actualsMode: ActualsMode = requestedActualsMode === "cost-code" ? "cost-code" : "rollup";
 

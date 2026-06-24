@@ -531,6 +531,7 @@ async function buildEventOriginMap(params: {
 }
 
 function buildBudgetCodeIndexes(budgetLineItems: UnknownRecord[]) {
+  const byId = new Map<string, UnknownRecord>();
   const byFlatCode = new Map<string, UnknownRecord[]>();
   const byCostCode = new Map<string, UnknownRecord[]>();
 
@@ -541,13 +542,16 @@ function buildBudgetCodeIndexes(budgetLineItems: UnknownRecord[]) {
     if (!id || !flatCode) continue;
     const costCode = flatCode.split(".")[0] || flatCode;
     const indexed = { id, flatCode, description: readStr(wbsCode.description) };
+    byId.set(id, indexed);
+    const budgetLineItemId = readStr(item.id);
+    if (budgetLineItemId) byId.set(budgetLineItemId, indexed);
     const flatKey = normalize(flatCode);
     const costKey = normalize(costCode);
     byFlatCode.set(flatKey, [...(byFlatCode.get(flatKey) || []), indexed]);
     byCostCode.set(costKey, [...(byCostCode.get(costKey) || []), indexed]);
   }
 
-  return { byFlatCode, byCostCode };
+  return { byId, byFlatCode, byCostCode };
 }
 
 function mappedFlatCode(sourceFlatCode: string, lineItemTypeCodeMap: Record<string, string>) {
@@ -564,7 +568,17 @@ function resolveMappedBudgetCodeValue(
 ) {
   const mapped = readStr(value);
   if (!mapped) return null;
-  if (/^\d+$/.test(mapped)) return { id: mapped, strategy };
+  if (/^\d+$/.test(mapped)) {
+    const target = targetIndex.byId.get(mapped);
+    if (target) return { id: readStr(target.id), strategy };
+    return {
+      id: "",
+      strategy,
+      issue: "manual_mapped_budget_code_id_not_found",
+      matchCount: 0,
+      mappedFlatCode: mapped,
+    };
+  }
   const matches = targetIndex.byFlatCode.get(normalize(mapped)) || [];
   if (matches.length === 1) return { id: readStr(matches[0].id), strategy: `${strategy}_flat_code` };
   return {

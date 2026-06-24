@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { procoreConfig } from "@/lib/procore";
+import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 
 const DEFAULT_ESTIMATING_BASE_URL = "https://api.procore.com";
@@ -79,13 +79,21 @@ export async function POST(request: Request) {
 
     const bodyToken = readString(body.accessToken);
     const cookieToken = readString(cookieStore.get("procore_access_token")?.value);
-    const accessToken = cookieToken || bodyToken;
+    let accessToken = bodyToken || cookieToken;
+    let tokenSource = bodyToken ? "body" : cookieToken ? "cookie" : "client_credentials";
 
     if (!accessToken) {
-      return NextResponse.json(
-        { error: "Missing access token. Authenticate with Procore first or provide accessToken." },
-        { status: 401 }
-      );
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error: "Missing access token. Authenticate with Procore first or configure client credentials.",
+            details: error instanceof Error ? error.message : String(error),
+          },
+          { status: 401 }
+        );
+      }
     }
 
     const companyId = readString(body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId);
@@ -207,6 +215,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         source: "estimating.create_bid_board_project",
+        tokenSource,
         companyId,
         baseUrl: host,
         attemptedPayload: payload,

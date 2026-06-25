@@ -47,6 +47,28 @@ type CompanyCountRow = {
   count: string | number | bigint;
 };
 
+type ProjectAnalyticsRow = {
+  company_id: string;
+  procore_project_id: string | null;
+  bid_board_id: string | null;
+  project_number: string | null;
+  project_name: string;
+  customer: string | null;
+  status: string | null;
+  bid_board_status: string | null;
+  source_table: string;
+  budget_line_items: string | number | bigint | null;
+  budget_amount: string | number | null;
+  original_budget_amount: string | number | null;
+  estimate_line_items: string | number | bigint | null;
+  estimate_proposals: string | number | bigint | null;
+  timecard_entries: string | number | bigint | null;
+  timecard_hours: string | number | null;
+  productivity_logs: string | number | bigint | null;
+  productivity_quantity_used: string | number | null;
+  productivity_quantity_delivered: string | number | null;
+};
+
 function normalizeId(value: unknown): string {
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number") return String(value);
@@ -112,6 +134,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [
+      projectRows,
       budgetRows,
       timecardRows,
       productivityRows,
@@ -123,6 +146,119 @@ export async function GET(request: NextRequest) {
       pmcProjectCountRows,
       pmcBidBoardProjectCountRows,
     ] = await Promise.all([
+      prisma.$queryRawUnsafe<ProjectAnalyticsRow[]>(
+        `
+          WITH clean_projects AS (
+            SELECT
+              p.company_id,
+              p.procore_project_id,
+              p.bid_board_id,
+              p.project_number,
+              p.project_name,
+              p.customer,
+              p.status,
+              p.bid_board_status,
+              'pmc_projects'::text AS source_table
+            FROM pmc_projects p
+            WHERE p.company_id = $1
+
+            UNION ALL
+
+            SELECT
+              b.company_id,
+              b.procore_project_id,
+              b.bid_board_id,
+              b.project_number,
+              b.project_name,
+              b.customer,
+              b.status,
+              b.status_raw AS bid_board_status,
+              'pmc_bid_board_projects'::text AS source_table
+            FROM pmc_bid_board_projects b
+            WHERE b.company_id = $1
+              AND b.procore_project_id IS NULL
+          ),
+          budget_totals AS (
+            SELECT
+              company_id,
+              project_id AS procore_project_id,
+              COUNT(*)::text AS budget_line_items,
+              COALESCE(SUM(amount), 0) AS budget_amount,
+              COALESCE(SUM(original_budget_amount), 0) AS original_budget_amount
+            FROM budgetlineitems
+            WHERE company_id = $1
+            GROUP BY company_id, project_id
+          ),
+          estimate_totals AS (
+            SELECT
+              company_id,
+              bid_board_project_id AS bid_board_id,
+              COUNT(*)::text AS estimate_line_items,
+              COUNT(DISTINCT proposal_id)::text AS estimate_proposals
+            FROM procore_proposal_line_items_live
+            WHERE company_id = $1
+            GROUP BY company_id, bid_board_project_id
+          ),
+          timecard_totals AS (
+            SELECT
+              t."procoreCompanyId" AS company_id,
+              t."procoreProjectId" AS procore_project_id,
+              COUNT(*)::text AS timecard_entries,
+              COALESCE(SUM(t.hours), 0) AS timecard_hours
+            FROM "TimecardEntry" t
+            WHERE t."procoreCompanyId" = $1
+              AND t."procoreProjectId" IS NOT NULL
+            GROUP BY t."procoreCompanyId", t."procoreProjectId"
+          ),
+          productivity_totals AS (
+            SELECT
+              pl."procoreCompanyId" AS company_id,
+              pl."procoreProjectId" AS procore_project_id,
+              COUNT(*)::text AS productivity_logs,
+              COALESCE(SUM(pl."quantityUsed"), 0) AS productivity_quantity_used,
+              COALESCE(SUM(pl."quantityDelivered"), 0) AS productivity_quantity_delivered
+            FROM "ProductivityLog" pl
+            WHERE pl."procoreCompanyId" = $1
+              AND pl."procoreProjectId" IS NOT NULL
+            GROUP BY pl."procoreCompanyId", pl."procoreProjectId"
+          )
+          SELECT
+            cp.company_id,
+            cp.procore_project_id,
+            cp.bid_board_id,
+            cp.project_number,
+            cp.project_name,
+            cp.customer,
+            cp.status,
+            cp.bid_board_status,
+            cp.source_table,
+            bt.budget_line_items,
+            bt.budget_amount,
+            bt.original_budget_amount,
+            et.estimate_line_items,
+            et.estimate_proposals,
+            tt.timecard_entries,
+            tt.timecard_hours,
+            pt.productivity_logs,
+            pt.productivity_quantity_used,
+            pt.productivity_quantity_delivered
+          FROM clean_projects cp
+          LEFT JOIN budget_totals bt
+            ON bt.company_id = cp.company_id
+           AND bt.procore_project_id = cp.procore_project_id
+          LEFT JOIN estimate_totals et
+            ON et.company_id = cp.company_id
+           AND et.bid_board_id = cp.bid_board_id
+          LEFT JOIN timecard_totals tt
+            ON tt.company_id = cp.company_id
+           AND tt.procore_project_id = cp.procore_project_id
+          LEFT JOIN productivity_totals pt
+            ON pt.company_id = cp.company_id
+           AND pt.procore_project_id = cp.procore_project_id
+          ORDER BY cp.project_name ASC
+        `,
+        companyId
+      ),
       prisma.$queryRawUnsafe<BudgetAnalyticsRow[]>(
         `
           WITH pmc_project_identity AS (
@@ -276,6 +412,7 @@ export async function GET(request: NextRequest) {
       source: "local_analytics_advanced",
       companyId,
       actualsMode,
+      projectCount: projectRows.length,
       count: budgetRows.length,
       diagnostics: {
         companyIdUsed: companyId,
@@ -292,6 +429,28 @@ export async function GET(request: NextRequest) {
           count: parseCount(row.count),
         })),
       },
+      projects: projectRows.map((row) => ({
+        id: row.procore_project_id || row.bid_board_id || row.project_name,
+        companyId: row.company_id,
+        procoreProjectId: row.procore_project_id,
+        bidBoardId: row.bid_board_id,
+        projectNumber: row.project_number,
+        projectName: row.project_name,
+        customerName: row.customer,
+        status: row.status,
+        bidBoardStatus: row.bid_board_status,
+        sourceTable: row.source_table,
+        budgetLineItems: parseCount(row.budget_line_items),
+        budgetAmount: normalizeNumber(row.budget_amount) || 0,
+        originalBudgetAmount: normalizeNumber(row.original_budget_amount) || 0,
+        estimateLineItems: parseCount(row.estimate_line_items),
+        estimateProposals: parseCount(row.estimate_proposals),
+        timecardEntries: parseCount(row.timecard_entries),
+        timecardHours: normalizeNumber(row.timecard_hours) || 0,
+        productivityLogs: parseCount(row.productivity_logs),
+        productivityQuantityUsed: normalizeNumber(row.productivity_quantity_used) || 0,
+        productivityQuantityDelivered: normalizeNumber(row.productivity_quantity_delivered) || 0,
+      })),
       data: budgetRows.map((row) => {
         const actualsCode =
           actualsMode === "rollup"

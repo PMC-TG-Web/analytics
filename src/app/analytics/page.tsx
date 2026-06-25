@@ -23,6 +23,29 @@ type PersistedLineItem = {
   syncedAt: string;
 };
 
+type ProjectSummary = {
+  id: string;
+  companyId: string;
+  procoreProjectId: string | null;
+  bidBoardId: string | null;
+  projectNumber: string | null;
+  projectName: string;
+  customerName: string | null;
+  status: string | null;
+  bidBoardStatus: string | null;
+  sourceTable: string;
+  budgetLineItems: number;
+  budgetAmount: number;
+  originalBudgetAmount: number;
+  estimateLineItems: number;
+  estimateProposals: number;
+  timecardEntries: number;
+  timecardHours: number;
+  productivityLogs: number;
+  productivityQuantityUsed: number;
+  productivityQuantityDelivered: number;
+};
+
 type ApiResponse = {
   success?: boolean;
   error?: string;
@@ -33,6 +56,8 @@ type ApiResponse = {
   diagnostics?: {
     companyIdUsed?: string;
     tableCountsByCompany?: {
+      pmcProjects?: number;
+      pmcBidBoardProjects?: number;
       budgetlineitems?: number;
       timecardEntries?: number;
       productivityLogs?: number;
@@ -43,6 +68,7 @@ type ApiResponse = {
       count: number;
     }>;
   };
+  projects?: ProjectSummary[];
   data?: PersistedLineItem[];
 };
 
@@ -201,6 +227,7 @@ function csvCell(value: unknown): string {
 
 
 export default function AnalyticsPage() {
+  const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>([]);
   const [rows, setRows] = useState<PersistedLineItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
@@ -252,17 +279,20 @@ export default function AnalyticsPage() {
       }
 
       const allRows: PersistedLineItem[] = Array.isArray(body.data) ? body.data : [];
+      const allProjects: ProjectSummary[] = Array.isArray(body.projects) ? body.projects : [];
       const bodyDiagnostics = body.diagnostics || null;
 
+      setProjectSummaries(allProjects);
       setRows(allRows);
       setDiagnostics(bodyDiagnostics);
       setNote(
-        `Analytics loaded from local Procore tables: ${allRows.length.toLocaleString()} budget line rows${bodyDiagnostics?.companyIdUsed ? ` (company ${bodyDiagnostics.companyIdUsed})` : ""}.`
+        `Analytics loaded from clean project tables: ${allProjects.length.toLocaleString()} projects and ${allRows.length.toLocaleString()} budget line rows${bodyDiagnostics?.companyIdUsed ? ` (company ${bodyDiagnostics.companyIdUsed})` : ""}.`
       );
       setLastRefreshedAt(new Date().toLocaleString());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load analytics data");
       setRows([]);
+      setProjectSummaries([]);
     } finally {
       setLoading(false);
     }
@@ -286,21 +316,56 @@ export default function AnalyticsPage() {
 
   const projectOptions = useMemo(() => {
     const unique = new Set<string>();
+    for (const project of projectSummaries) {
+      const value = String(project.projectName || "").trim();
+      if (value) unique.add(value);
+    }
     for (const row of rows) {
       const value = String(row.projectName || "").trim();
       if (value) unique.add(value);
     }
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  }, [projectSummaries, rows]);
 
   const customerOptions = useMemo(() => {
     const unique = new Set<string>();
+    for (const project of projectSummaries) {
+      const value = String(project.customerName || "").trim();
+      if (value) unique.add(value);
+    }
     for (const row of rows) {
       const value = String(row.customerName || "").trim();
       if (value) unique.add(value);
     }
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  }, [projectSummaries, rows]);
+
+  const filteredProjectSummaries = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return projectSummaries.filter((project) => {
+      const projectName = String(project.projectName || "").trim();
+      const customerName = String(project.customerName || "").trim();
+
+      if (projectFilter && projectName !== projectFilter) return false;
+      if (customerFilter && customerName !== customerFilter) return false;
+      if (!query) return true;
+
+      const haystack = [
+        project.projectName,
+        project.customerName,
+        project.projectNumber,
+        project.procoreProjectId,
+        project.bidBoardId,
+        project.status,
+        project.bidBoardStatus,
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+
+      return haystack.includes(query);
+    });
+  }, [projectSummaries, projectFilter, customerFilter, search]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -430,8 +495,10 @@ export default function AnalyticsPage() {
 
     return {
       lineItems: filteredRows.length,
-      projects: projectSet.size,
-      customers: customerSet.size,
+      projects: filteredProjectSummaries.length || projectSet.size,
+      customers: filteredProjectSummaries.length > 0
+        ? new Set(filteredProjectSummaries.map((project) => String(project.customerName || "").trim()).filter(Boolean)).size
+        : customerSet.size,
       budgetAmountTotal,
       costTotal: originalBudgetTotal,
       actualUnitsTotal,
@@ -451,7 +518,53 @@ export default function AnalyticsPage() {
       topProjects,
       topCustomers,
     };
-  }, [filteredRows]);
+  }, [filteredRows, filteredProjectSummaries]);
+
+  const projectTotals = useMemo(() => {
+    return filteredProjectSummaries.reduce(
+      (acc, project) => {
+        acc.budgetAmount += Number(project.budgetAmount || 0);
+        acc.originalBudgetAmount += Number(project.originalBudgetAmount || 0);
+        acc.estimateLineItems += Number(project.estimateLineItems || 0);
+        acc.estimateProposals += Number(project.estimateProposals || 0);
+        acc.timecardEntries += Number(project.timecardEntries || 0);
+        acc.timecardHours += Number(project.timecardHours || 0);
+        acc.productivityLogs += Number(project.productivityLogs || 0);
+        acc.productivityQuantityUsed += Number(project.productivityQuantityUsed || 0);
+        return acc;
+      },
+      {
+        budgetAmount: 0,
+        originalBudgetAmount: 0,
+        estimateLineItems: 0,
+        estimateProposals: 0,
+        timecardEntries: 0,
+        timecardHours: 0,
+        productivityLogs: 0,
+        productivityQuantityUsed: 0,
+      }
+    );
+  }, [filteredProjectSummaries]);
+
+  const projectPreviewRows = useMemo(() => {
+    return filteredProjectSummaries
+      .slice()
+      .sort((a, b) => {
+        const aActivity =
+          Number(a.budgetLineItems || 0) +
+          Number(a.estimateLineItems || 0) +
+          Number(a.timecardEntries || 0) +
+          Number(a.productivityLogs || 0);
+        const bActivity =
+          Number(b.budgetLineItems || 0) +
+          Number(b.estimateLineItems || 0) +
+          Number(b.timecardEntries || 0) +
+          Number(b.productivityLogs || 0);
+        if (aActivity !== bActivity) return bActivity - aActivity;
+        return String(a.projectName || "").localeCompare(String(b.projectName || ""));
+      })
+      .slice(0, 200);
+  }, [filteredProjectSummaries]);
 
   const trendData = useMemo(() => {
     const grouped = new Map<string, TrendPoint>();
@@ -918,7 +1031,7 @@ export default function AnalyticsPage() {
                 Diagnostics: company {diagnostics.companyIdUsed || "unknown"}
               </p>
               <p className="mt-1">
-                budgetlineitems: {(diagnostics.tableCountsByCompany?.budgetlineitems || 0).toLocaleString()} | timecards: {(diagnostics.tableCountsByCompany?.timecardEntries || 0).toLocaleString()} | productivity logs: {(diagnostics.tableCountsByCompany?.productivityLogs || 0).toLocaleString()} | PO line details: {(diagnostics.tableCountsByCompany?.purchaseOrderLineItemContractDetails || 0).toLocaleString()}
+                pmc projects: {(diagnostics.tableCountsByCompany?.pmcProjects || 0).toLocaleString()} | bid board: {(diagnostics.tableCountsByCompany?.pmcBidBoardProjects || 0).toLocaleString()} | budgetlineitems: {(diagnostics.tableCountsByCompany?.budgetlineitems || 0).toLocaleString()} | timecards: {(diagnostics.tableCountsByCompany?.timecardEntries || 0).toLocaleString()} | productivity logs: {(diagnostics.tableCountsByCompany?.productivityLogs || 0).toLocaleString()} | PO line details: {(diagnostics.tableCountsByCompany?.purchaseOrderLineItemContractDetails || 0).toLocaleString()}
               </p>
               {Array.isArray(diagnostics.budgetlineitemsCompaniesWithData) && diagnostics.budgetlineitemsCompaniesWithData.length > 0 && (
                 <p className="mt-1">
@@ -936,6 +1049,8 @@ export default function AnalyticsPage() {
           <MetricCard label="Line Items" value={formatNumber(analytics.lineItems)} tone="slate" />
           <MetricCard label="Projects" value={formatNumber(analytics.projects)} tone="teal" />
           <MetricCard label="Customers" value={formatNumber(analytics.customers)} tone="amber" />
+          <MetricCard label="Estimate Lines" value={formatNumber(projectTotals.estimateLineItems)} tone="blue" />
+          <MetricCard label="Estimate Proposals" value={formatNumber(projectTotals.estimateProposals)} tone="indigo" />
           <MetricCard label="Actual Units" value={formatNumber(analytics.actualUnitsTotal)} tone="emerald" />
           <MetricCard label="Total Planned Hours" value={formatNumber(analytics.totalPlannedHours)} tone="teal" />
           <MetricCard label="Operational Running Cost" value={formatCurrency(analytics.runningCostTotal)} tone="slate" />
@@ -950,6 +1065,69 @@ export default function AnalyticsPage() {
           <MetricCard label="Total Prod Qty" value={formatNumber(analytics.totalProductivityQty)} tone="violet" />
           <MetricCard label="Original Budget" value={formatCurrency(analytics.costTotal)} tone="blue" />
           <MetricCard label="All Budget Amount" value={formatCurrency(analytics.budgetAmountTotal)} tone="slate" />
+        </section>
+
+        <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">
+                Clean Project Overview ({formatNumber(filteredProjectSummaries.length)} projects)
+              </h2>
+              <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                Rooted in pmc_projects and pmc_bid_board_projects only.
+              </p>
+            </div>
+            <div className="text-right text-[11px] font-bold text-slate-600">
+              {formatCurrency(projectTotals.budgetAmount)} budget | {formatNumber(projectTotals.timecardHours)} hours | {formatNumber(projectTotals.productivityQuantityUsed)} used qty
+            </div>
+          </div>
+
+          <div className="overflow-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-left uppercase tracking-wider text-slate-500">
+                  <th className="py-2 pr-3 pl-4">Project</th>
+                  <th className="py-2 pr-3">Customer</th>
+                  <th className="py-2 pr-3">Project ID</th>
+                  <th className="py-2 pr-3">Bid Board ID</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3 text-right">Budget Lines</th>
+                  <th className="py-2 pr-3 text-right">Budget</th>
+                  <th className="py-2 pr-3 text-right">Estimate Lines</th>
+                  <th className="py-2 pr-3 text-right">Timecards</th>
+                  <th className="py-2 pr-3 text-right">Hours</th>
+                  <th className="py-2 pr-4 text-right">Prod Logs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!loading && projectPreviewRows.length === 0 && (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                      No clean project rows match these filters.
+                    </td>
+                  </tr>
+                )}
+                {projectPreviewRows.map((project) => (
+                  <tr key={project.id} className="border-b border-slate-100 text-slate-800 hover:bg-slate-50">
+                    <td className="py-2 pr-3 pl-4">
+                      <div className="font-semibold">{project.projectName || "-"}</div>
+                      <div className="text-[11px] text-slate-500">{project.projectNumber || project.sourceTable}</div>
+                    </td>
+                    <td className="py-2 pr-3">{project.customerName || "-"}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{project.procoreProjectId || "-"}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{project.bidBoardId || "-"}</td>
+                    <td className="py-2 pr-3">{project.status || project.bidBoardStatus || "-"}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(project.budgetLineItems)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(project.budgetAmount)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(project.estimateLineItems)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(project.timecardEntries)}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(project.timecardHours)}</td>
+                    <td className="whitespace-nowrap py-2 pr-4 text-right">{formatNumber(project.productivityLogs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">

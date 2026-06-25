@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRolledUpCostCode, normalizeCostCodeForRollup } from "@/lib/costCodeRollup";
-import { buildCanonicalProcoreProjectsCte } from "@/lib/procoreProjectsCanonicalSql";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +13,7 @@ type BudgetAnalyticsRow = {
   budget_line_item_id: string;
   project_name: string | null;
   customer_name: string | null;
+  project_identity_source: string | null;
   name: string | null;
   cost_code: string | null;
   cost_code_description: string | null;
@@ -111,8 +111,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const canonicalProjectsCte = buildCanonicalProcoreProjectsCte(1);
-
     const [
       budgetRows,
       timecardRows,
@@ -122,10 +120,49 @@ export async function GET(request: NextRequest) {
       productivityCountRows,
       purchaseOrderLineCountRows,
       budgetCompaniesRows,
+      pmcProjectCountRows,
+      pmcBidBoardProjectCountRows,
     ] = await Promise.all([
       prisma.$queryRawUnsafe<BudgetAnalyticsRow[]>(
         `
-          WITH ${canonicalProjectsCte}
+          WITH pmc_project_identity AS (
+            SELECT
+              p.company_id,
+              p.procore_project_id AS canonical_project_id,
+              p.project_name,
+              p.customer,
+              'pmc_projects'::text AS project_identity_source
+            FROM pmc_projects p
+            WHERE p.company_id = $1
+
+            UNION ALL
+
+            SELECT
+              s.company_id,
+              COALESCE(s.procore_project_id, s.external_id) AS canonical_project_id,
+              s.name AS project_name,
+              COALESCE(NULLIF(TRIM(s.customer), ''), NULLIF(TRIM(bb.customer), '')) AS customer,
+              'procore_project_staging_fallback'::text AS project_identity_source
+            FROM procore_project_staging s
+            LEFT JOIN LATERAL (
+              SELECT b.customer
+              FROM procore_bid_board_live b
+              WHERE b.company_id = s.company_id
+                AND b.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
+              ORDER BY b.synced_at DESC
+              LIMIT 1
+            ) bb ON TRUE
+            WHERE s.source = 'procore_v1_projects'
+              AND s.company_id = $1
+              AND s.external_id IS NOT NULL
+              AND s.name IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM pmc_projects p
+                WHERE p.company_id = s.company_id
+                  AND p.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
+              )
+          )
           SELECT
             b.id,
             b.company_id,
@@ -133,6 +170,7 @@ export async function GET(request: NextRequest) {
             b.budget_line_item_id,
             cp.project_name,
             cp.customer AS customer_name,
+            cp.project_identity_source,
             b.name,
             b.cost_code,
             b.cost_code_description,
@@ -144,7 +182,7 @@ export async function GET(request: NextRequest) {
             b.amount,
             b.synced_at::text
           FROM budgetlineitems b
-          LEFT JOIN canonical_projects cp
+          LEFT JOIN pmc_project_identity cp
             ON cp.company_id = b.company_id
            AND cp.canonical_project_id = b.project_id
           WHERE b.company_id = $1
@@ -228,6 +266,22 @@ export async function GET(request: NextRequest) {
           LIMIT 10
         `
       ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM pmc_projects
+          WHERE company_id = $1
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<CountRow[]>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM pmc_bid_board_projects
+          WHERE company_id = $1
+        `,
+        companyId
+      ),
     ]);
 
     const timecardActualsByKey = new Map<string, number>();
@@ -254,6 +308,8 @@ export async function GET(request: NextRequest) {
       diagnostics: {
         companyIdUsed: companyId,
         tableCountsByCompany: {
+          pmcProjects: parseCount(pmcProjectCountRows[0]?.count),
+          pmcBidBoardProjects: parseCount(pmcBidBoardProjectCountRows[0]?.count),
           budgetlineitems: parseCount(budgetCountRows[0]?.count),
           timecardEntries: parseCount(timecardCountRows[0]?.count),
           productivityLogs: parseCount(productivityCountRows[0]?.count),
@@ -278,6 +334,7 @@ export async function GET(request: NextRequest) {
           projectId: row.project_id,
           companyId: row.company_id,
           budgetLineItemId: row.budget_line_item_id,
+          projectIdentitySource: row.project_identity_source,
           name: row.name,
           costCode: row.cost_code,
           costCodeName: row.cost_code_description || null,

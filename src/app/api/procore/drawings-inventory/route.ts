@@ -92,15 +92,26 @@ function pickPossiblePdfFields(row: unknown): Record<string, unknown> {
   return candidates;
 }
 
-function summarizeDrawing(row: unknown, area: UnknownRecord | null): Record<string, unknown> {
+function summarizeDrawing(
+  row: unknown,
+  area: UnknownRecord | null,
+  drawingSetNameById: Map<string, string>
+): Record<string, unknown> {
+  const drawingSetIdRaw = field(row, "drawing_set_id") ?? nestedField(row, "drawing_set", "id");
+  const drawingSetId = readStr(drawingSetIdRaw);
+  const drawingSetName =
+    readStr(nestedField(row, "drawing_set", "name")) ||
+    readStr(field(row, "drawing_set_name")) ||
+    (drawingSetId ? drawingSetNameById.get(drawingSetId) || "" : "");
+
   return {
     id: field(row, "id"),
     number: field(row, "number") ?? field(row, "drawing_number"),
     title: field(row, "title") ?? field(row, "drawing_title"),
     drawingAreaId: area?.id ?? field(row, "drawing_area_id") ?? nestedField(row, "drawing_area", "id"),
     drawingAreaName: area?.name ?? nestedField(row, "drawing_area", "name"),
-    drawingSetId: field(row, "drawing_set_id") ?? nestedField(row, "drawing_set", "id"),
-    drawingSetName: nestedField(row, "drawing_set", "name"),
+    drawingSetId: drawingSetIdRaw,
+    drawingSetName: drawingSetName || null,
     currentRevisionId: nestedField(row, "current_revision", "id"),
     revision: field(row, "revision") ?? nestedField(row, "current_revision", "number"),
     drawingDate: field(row, "date") ?? field(row, "drawing_date") ?? nestedField(row, "current_revision", "date"),
@@ -229,6 +240,12 @@ export async function GET(request: Request) {
 
     const drawingsByArea: Array<Record<string, unknown>> = [];
     const drawings: unknown[] = [];
+    const drawingSetNameById = new Map<string, string>();
+    for (const setRow of setsResult.rows) {
+      const setId = readStr(field(setRow, "id"));
+      const setName = readStr(field(setRow, "name"));
+      if (setId && setName) drawingSetNameById.set(setId, setName);
+    }
 
     if (includeDrawings) {
       for (const area of areasResult.rows) {
@@ -254,7 +271,7 @@ export async function GET(request: Request) {
           drawingAreaName: areaRecord?.name,
           count: areaDrawings.rows.length,
           drawings: areaDrawings.rows,
-          summary: areaDrawings.rows.map((row) => summarizeDrawing(row, areaRecord)),
+          summary: areaDrawings.rows.map((row) => summarizeDrawing(row, areaRecord, drawingSetNameById)),
         });
       }
     }

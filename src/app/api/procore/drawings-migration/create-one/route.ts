@@ -435,9 +435,29 @@ async function createDrawingUploadWithFallback({
   }> = [];
 
   const pathVersions = ["v1.1", "v1.0"];
+  const payloadRecord = (payload && typeof payload === "object" ? payload : {}) as UnknownRecord;
+  const drawingLogImports = Array.isArray(payloadRecord.drawing_log_imports)
+    ? (payloadRecord.drawing_log_imports as unknown[])
+    : [];
+  const uploadUuids = Array.from(
+    new Set(
+      drawingLogImports
+        .map((entry) => readStr(field(entry, "upload_uuid")))
+        .filter(Boolean)
+    )
+  );
+
+  const payloadWithUploadUuids: UnknownRecord = {
+    ...payloadRecord,
+    ...(uploadUuids.length > 0 ? { upload_uuids: uploadUuids } : {}),
+  };
+
+  // Prefer wrapped payloads first; they have been the most compatible path in production.
   const payloadVariants: Array<{ label: string; payload: unknown }> = [
-    { label: "direct", payload },
-    { label: "wrapped", payload: { drawing_upload: payload } },
+    { label: "wrapped+upload_uuids", payload: { drawing_upload: payloadWithUploadUuids } },
+    { label: "wrapped", payload: { drawing_upload: payloadRecord } },
+    { label: "direct+upload_uuids", payload: payloadWithUploadUuids },
+    { label: "direct", payload: payloadRecord },
   ];
 
   for (const version of pathVersions) {

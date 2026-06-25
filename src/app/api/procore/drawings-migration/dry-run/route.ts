@@ -25,6 +25,21 @@ function readPdfUrl(drawing: UnknownRecord): string {
   return readStr(direct);
 }
 
+function nestedField(value: unknown, firstKey: string, secondKey: string): unknown {
+  return field(field(value, firstKey), secondKey);
+}
+
+function inferSourceDrawingSetName(drawing: UnknownRecord): string {
+  return (
+    readStr(field(drawing, "drawingSetName")) ||
+    readStr(field(drawing, "folder")) ||
+    readStr(field(drawing, "folderName")) ||
+    readStr(field(drawing, "folder_name")) ||
+    readStr(nestedField(drawing, "drawing_set", "name")) ||
+    readStr(nestedField(drawing, "drawingSet", "name"))
+  );
+}
+
 function filenameForDrawing(drawing: UnknownRecord): string {
   const number = readStr(field(drawing, "number")).replace(/[\\/:*?"<>|]+/g, "-");
   const title = readStr(field(drawing, "title")).replace(/[\\/:*?"<>|]+/g, "-");
@@ -120,7 +135,7 @@ export async function POST(request: Request) {
     const sourceProjectId = readStr(field(body, "sourceProjectId"));
     const targetCompanyId = readStr(field(body, "targetCompanyId"));
     const targetProjectId = readStr(field(body, "targetProjectId"));
-    const targetDrawingSetName = readStr(field(body, "targetDrawingSetName")) || "Migrated Drawings";
+    const targetDrawingSetName = readStr(field(body, "targetDrawingSetName")) || inferSourceDrawingSetName(drawingRecord) || "Migrated Drawings";
     const pdfUrl = readPdfUrl(drawingRecord);
 
     if (!sourceCompanyId) {

@@ -5,6 +5,10 @@ import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 
 type UnknownRecord = Record<string, unknown>;
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function readStr(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -34,6 +38,21 @@ function readPdfUrl(drawing: UnknownRecord): string {
     field(pdfFields, "pdf_url") ||
     field(pdfFields, "download_url");
   return readStr(direct);
+}
+
+function nestedField(value: unknown, firstKey: string, secondKey: string): unknown {
+  return field(field(value, firstKey), secondKey);
+}
+
+function inferSourceDrawingSetName(drawing: UnknownRecord): string {
+  return (
+    readStr(field(drawing, "drawingSetName")) ||
+    readStr(field(drawing, "folder")) ||
+    readStr(field(drawing, "folderName")) ||
+    readStr(field(drawing, "folder_name")) ||
+    readStr(nestedField(drawing, "drawing_set", "name")) ||
+    readStr(nestedField(drawing, "drawingSet", "name"))
+  );
 }
 
 function filenameForDrawing(drawing: UnknownRecord): string {
@@ -113,41 +132,69 @@ async function procoreFetch({
   body?: unknown;
 }) {
   const apiBase = (procoreConfig.apiUrl || "https://api.procore.com").replace(/\/$/, "");
-  const response = await fetch(`${apiBase}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "Procore-Company-Id": companyId,
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
+  const maxRetries = Math.max(0, Number.parseInt(process.env.PROCORE_API_MAX_RETRIES || "3", 10) || 3);
+  const baseDelayMs = Math.max(250, Number.parseInt(process.env.PROCORE_API_RETRY_BASE_MS || "1000", 10) || 1000);
+  const maxDelayMs = Math.max(baseDelayMs, Number.parseInt(process.env.PROCORE_API_RETRY_MAX_MS || "15000", 10) || 15000);
 
-  const text = await response.text();
-  let data: unknown = text;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // Keep raw text for diagnostics.
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${apiBase}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Procore-Company-Id": companyId,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    let data: unknown = text;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      // Keep raw text for diagnostics.
+    }
+
+    if (response.status === 429 && attempt < maxRetries) {
+      const retryAfterHeader = response.headers.get("retry-after");
+      const retryAfterMs = Number.isFinite(Number(retryAfterHeader))
+        ? Number(retryAfterHeader) * 1000
+        : Number.NaN;
+      const expoBackoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
+      const jitter = Math.floor(Math.random() * 250);
+      const delayMs = Math.min(maxDelayMs, Math.max(baseDelayMs, Number.isFinite(retryAfterMs) ? retryAfterMs : expoBackoff) + jitter);
+      await sleep(delayMs);
+      continue;
+    }
+
+    if (!response.ok) {
+      const error = new Error(`Procore ${method} ${path} failed (${response.status})`) as Error & {
+        status?: number;
+        details?: unknown;
+        path?: string;
+        requestBody?: unknown;
+      };
+      error.status = response.status;
+      error.details = data;
+      error.path = path;
+      error.requestBody = body;
+      throw error;
+    }
+
+    return data;
   }
 
-  if (!response.ok) {
-    const error = new Error(`Procore ${method} ${path} failed (${response.status})`) as Error & {
-      status?: number;
-      details?: unknown;
-      path?: string;
-      requestBody?: unknown;
-    };
-    error.status = response.status;
-    error.details = data;
-    error.path = path;
-    error.requestBody = body;
-    throw error;
-  }
-
-  return data;
+  const exhausted = new Error(`Procore ${method} ${path} failed (429) after ${maxRetries + 1} attempts`) as Error & {
+    status?: number;
+    path?: string;
+    requestBody?: unknown;
+  };
+  exhausted.status = 429;
+  exhausted.path = path;
+  exhausted.requestBody = body;
+  throw exhausted;
 }
 
 async function findOrCreateDrawingArea({
@@ -465,7 +512,7 @@ export async function POST(request: Request) {
     const sourceProjectId = readStr(field(body, "sourceProjectId"));
     const targetCompanyId = readStr(field(body, "targetCompanyId"));
     const targetProjectId = readStr(field(body, "targetProjectId"));
-    const targetDrawingSetName = readStr(field(body, "targetDrawingSetName")) || "Migrated Drawings";
+    const targetDrawingSetName = readStr(field(body, "targetDrawingSetName")) || inferSourceDrawingSetName(drawingRecord) || "Migrated Drawings";
     const targetDisciplineName = readStr(field(body, "targetDisciplineName")) || "General";
     const revision = readStr(field(drawingRecord, "revision")) || "0";
     const drawingDate = normalizeDate(field(drawingRecord, "drawingDate"));

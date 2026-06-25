@@ -1993,6 +1993,11 @@ function ProcoreContent() {
     return typeof value === "string" ? value : "";
   };
 
+  const getDrawingMigrationTargetSetName = (row: DrawingInventorySummaryRow) => {
+    if (drawingMigrationUseSourceSets && row.drawingSetName) return String(row.drawingSetName);
+    return drawingMigrationTargetSetName.trim() || "Migrated Drawings";
+  };
+
   const handleDrawingMigrationDryRun = async (row: DrawingInventorySummaryRow) => {
     const sourceCompanyId = drawingLookupCompanyId.trim();
     const sourceProjectId = drawingLookupProjectId.trim();
@@ -2037,7 +2042,7 @@ function ProcoreContent() {
           sourceProjectId,
           targetCompanyId,
           targetProjectId,
-          targetDrawingSetName: drawingMigrationTargetSetName.trim() || "Migrated Drawings",
+          targetDrawingSetName: getDrawingMigrationTargetSetName(row),
           drawing: row,
         }),
       });
@@ -2104,7 +2109,7 @@ function ProcoreContent() {
           sourceProjectId,
           targetCompanyId,
           targetProjectId,
-          targetDrawingSetName: drawingMigrationTargetSetName.trim() || "Migrated Drawings",
+          targetDrawingSetName: getDrawingMigrationTargetSetName(row),
           targetDisciplineName: drawingMigrationTargetDisciplineName.trim() || "General",
           drawing: row,
         }),
@@ -2172,9 +2177,7 @@ function ProcoreContent() {
 
         const rowResults: any[] = [];
         for (const row of rows) {
-          const targetDrawingSetName = drawingMigrationUseSourceSets && row.drawingSetName
-            ? String(row.drawingSetName)
-            : drawingMigrationTargetSetName.trim() || "Migrated Drawings";
+          const targetDrawingSetName = getDrawingMigrationTargetSetName(row);
           const label = `${row.number || row.id || "drawing"}${row.title ? ` - ${row.title}` : ""}`;
 
           try {

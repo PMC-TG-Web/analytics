@@ -134,34 +134,6 @@ export async function GET(request: NextRequest) {
               'pmc_projects'::text AS project_identity_source
             FROM pmc_projects p
             WHERE p.company_id = $1
-
-            UNION ALL
-
-            SELECT
-              s.company_id,
-              COALESCE(s.procore_project_id, s.external_id) AS canonical_project_id,
-              s.name AS project_name,
-              COALESCE(NULLIF(TRIM(s.customer), ''), NULLIF(TRIM(bb.customer), '')) AS customer,
-              'procore_project_staging_fallback'::text AS project_identity_source
-            FROM procore_project_staging s
-            LEFT JOIN LATERAL (
-              SELECT b.customer
-              FROM procore_bid_board_live b
-              WHERE b.company_id = s.company_id
-                AND b.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
-              ORDER BY b.synced_at DESC
-              LIMIT 1
-            ) bb ON TRUE
-            WHERE s.source = 'procore_v1_projects'
-              AND s.company_id = $1
-              AND s.external_id IS NOT NULL
-              AND s.name IS NOT NULL
-              AND NOT EXISTS (
-                SELECT 1
-                FROM pmc_projects p
-                WHERE p.company_id = s.company_id
-                  AND p.procore_project_id = COALESCE(s.procore_project_id, s.external_id)
-              )
           )
           SELECT
             b.id,

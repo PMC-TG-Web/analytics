@@ -125,6 +125,11 @@ async function procoreJson(params: {
   return payload;
 }
 
+function isRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bfailed \(429\)\b/i.test(message) || /rate limit|too many requests|surpassed the max number of requests/i.test(message);
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -946,10 +951,13 @@ export async function POST(request: Request) {
     const batchLineItems = cloneableLineItems.slice(lineItemOffset, lineItemOffset + lineItemLimit);
     const createdLineItems: UnknownRecord[] = [];
     const failedLineItems: UnknownRecord[] = [];
+    let attemptedLineItems = 0;
+    let rateLimitPause: UnknownRecord | null = null;
     for (const entry of batchLineItems) {
       if (!isRecord(entry.mapping)) continue;
       if (createdLineItems.length > 0) await sleep(750);
       const payload = buildLineItemPayload({ lineItem: entry.lineItem, mapping: entry.mapping, groupIdMap });
+      attemptedLineItems += 1;
       try {
         const created = await procoreJson({
           accessToken,
@@ -968,34 +976,53 @@ export async function POST(request: Request) {
           created,
         });
       } catch (error) {
+        const rateLimited = isRateLimitError(error);
+        const resumeOffset = lineItemOffset + Math.max(0, attemptedLineItems - 1);
         failedLineItems.push({
           oldLineItemId: readStr(entry.lineItem.id || entry.lineItem.line_item_id),
           oldCostItemId: entry.oldCostItemId,
           attemptedPayload: payload,
           error: error instanceof Error ? error.message : String(error),
+          rateLimited,
         });
+        if (rateLimited) {
+          rateLimitPause = {
+            targetProposalId: createdProposalId,
+            groupIdMap: objectFromMap(groupIdMap),
+            lineItemOffset: resumeOffset,
+            lineItemLimit,
+          };
+          break;
+        }
         if (!allowPartial) break;
       }
     }
-    const nextLineItemOffset = lineItemOffset + batchLineItems.length;
+    const nextLineItemOffset = rateLimitPause
+      ? readInt(rateLimitPause.lineItemOffset, lineItemOffset)
+      : lineItemOffset + batchLineItems.length;
     const hasMoreLineItems = nextLineItemOffset < cloneableLineItems.length;
-    const continueRequest = hasMoreLineItems
+    const continueRequest = rateLimitPause || (hasMoreLineItems
       ? {
           targetProposalId: createdProposalId,
           groupIdMap: objectFromMap(groupIdMap),
           lineItemOffset: nextLineItemOffset,
           lineItemLimit,
         }
-      : null;
+      : null);
 
     return NextResponse.json({
       success: failedLineItems.length === 0,
+      rateLimited: Boolean(rateLimitPause),
+      resumeAvailable: Boolean(continueRequest),
+      statusMessage: rateLimitPause
+        ? `Paused after Procore rate limit. Continue at line offset ${nextLineItemOffset}.`
+        : undefined,
       dryRun: false,
       tokenSource,
       batch: {
         lineItemOffset,
         lineItemLimit,
-        attemptedLineItems: batchLineItems.length,
+        attemptedLineItems,
         nextLineItemOffset,
         hasMoreLineItems,
         continueRequest,
@@ -1021,6 +1048,8 @@ export async function POST(request: Request) {
         cloneableLineItems: cloneableLineItems.length,
         createdLineItems: createdLineItems.length,
         failedLineItems: failedLineItems.length,
+        attemptedLineItems,
+        nextLineItemOffset,
         skippedMissingMappings: missingMappings.length,
       },
       mappingOverrides,

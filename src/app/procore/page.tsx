@@ -5259,6 +5259,9 @@ function ProcoreContent() {
     }
 
     const formatCloneProposalFailure = (status: number, result: any) => {
+      if (result?.rateLimited) {
+        return result?.statusMessage || "Estimating clone paused because Procore returned a rate limit. Continue clone is available.";
+      }
       if (status === 504) {
         return dryRun
           ? "Estimating clone dry-run timed out (504). The request did not finish in time."
@@ -11133,6 +11136,8 @@ function ProcoreContent() {
                         ? cloneProposalResult.result?.batch?.hasMoreLineItems
                           ? `Batch created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s). Continue clone is available.`
                           : `Live clone created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s).`
+                        : cloneProposalResult.result?.rateLimited
+                          ? cloneProposalResult.result?.statusMessage || `Paused by Procore rate limit. Continue at line ${cloneProposalResult.result?.batch?.nextLineItemOffset ?? 0}.`
                         : "Live clone finished with errors."}
                   </div>
                   {Array.isArray(cloneProposalResult.result?.missingMappings) && cloneProposalResult.result.missingMappings.length > 0 && (

@@ -892,13 +892,17 @@ function buildLineItemPayload(params: {
 
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
+    const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
     const mapped = mapId(
       sourceId,
       params.maps[item.mapName] || {},
       item.payloadField,
       params.issues,
       context,
-      { required: params.requireMappedIds, allowUnmappedIds: params.allowUnmappedIds }
+      {
+        required: params.requireMappedIds && isBudgetCodeField ? false : params.requireMappedIds,
+        allowUnmappedIds: params.allowUnmappedIds && !isBudgetCodeField,
+      }
     );
     delete payload[item.objectField];
     if (mapped !== undefined) payload[item.payloadField] = mapped;
@@ -1151,7 +1155,7 @@ async function createLineItem(params: {
   if (response.ok) return unwrapData(response.payload);
 
   const responseText = safeJson(response.payload).toLowerCase();
-  if (/budget code was not found|wbs code .*not found|attributes\.wbs_code_id/.test(responseText)) {
+  if (/budget code (?:was not found|is missing)|wbs code .*not found|attributes\.wbs_code_id/.test(responseText)) {
     const fallbackPayload = { ...params.payload };
     delete fallbackPayload.wbs_code_id;
     delete fallbackPayload.wbs_code;

@@ -610,10 +610,25 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
   const descriptionKey = norm(newRow.Description || newRow.Name || newRow["Cost Name"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
 
+  const matchesRequestedType = (candidate: UnknownRecord) => {
+    if (!costType) return true;
+    return normCode(candidate.costType) === costType || flatCodeSuffix(candidate.flatCode) === costType;
+  };
+
   // First resolve by cost code alone. Use type only when code is ambiguous.
   const codeMatches = targetIndex.byCode.get(costCode) || [];
   if (codeMatches.length === 1) {
-    return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
+    if (matchesRequestedType(codeMatches[0])) {
+      return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
+    }
+    return {
+      wbsCodeId: "",
+      issue: "cost_type_mismatch",
+      matchCount: 1,
+      requestedCostType: costType,
+      matchedCostType: readStr(codeMatches[0].costType),
+      matchedFlatCode: readStr(codeMatches[0].flatCode),
+    };
   }
 
   if (codeMatches.length > 1 && costType) {
@@ -629,6 +644,14 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
     if (typedMatches.length > 1) {
       return { wbsCodeId: "", issue: "ambiguous_target_wbs_code_type", matchCount: typedMatches.length, matches: typedMatches.slice(0, 8) };
     }
+
+    return {
+      wbsCodeId: "",
+      issue: "missing_target_wbs_code_type",
+      matchCount: 0,
+      requestedCostType: costType,
+      matches: codeMatches.slice(0, 8),
+    };
   }
 
   const segments = costCode.split("-").filter(Boolean);
@@ -645,7 +668,16 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
     let selected = prefixCandidates[0];
     if (costType) {
       const typeMatch = prefixCandidates.find(([flatCode]) => costType === flatCodeSuffix(flatCode));
-      if (typeMatch) selected = typeMatch;
+      if (!typeMatch) {
+        return {
+          wbsCodeId: "",
+          issue: "missing_target_wbs_code_type",
+          matchCount: prefixCandidates.length,
+          requestedCostType: costType,
+          matches: prefixCandidates.slice(0, 8).map(([flatCode, row]) => ({ flatCode, costType: row.costType, wbsCodeId: row.wbsCodeId })),
+        };
+      }
+      selected = typeMatch;
     }
     return {
       wbsCodeId: readStr(selected[1].wbsCodeId),
@@ -658,20 +690,33 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
 
   // If code lookup cannot find a match, use description as a final disambiguation aid.
   const descriptionMatches = descriptionKey ? targetIndex.byDescription.get(descriptionKey) || [] : [];
-  if (descriptionMatches.length === 1) {
+  const descriptionMatchesTyped = costType
+    ? descriptionMatches.filter((match) => matchesRequestedType(match))
+    : descriptionMatches;
+  if (descriptionMatchesTyped.length === 1) {
     return {
-      wbsCodeId: readStr(descriptionMatches[0].wbsCodeId),
+      wbsCodeId: readStr(descriptionMatchesTyped[0].wbsCodeId),
       issue: "",
       matchCount: 1,
       strategy: "description_exact",
-      matchedCostCode: descriptionMatches[0].costCode,
+      matchedCostCode: descriptionMatchesTyped[0].costCode,
     };
   }
-  if (descriptionMatches.length > 1) {
+  if (descriptionMatchesTyped.length > 1) {
     return {
       wbsCodeId: "",
       issue: "ambiguous_target_description_match",
+      matchCount: descriptionMatchesTyped.length,
+      matches: descriptionMatchesTyped.slice(0, 8),
+    };
+  }
+
+  if (descriptionMatches.length > 0 && costType) {
+    return {
+      wbsCodeId: "",
+      issue: "missing_target_description_cost_type",
       matchCount: descriptionMatches.length,
+      requestedCostType: costType,
       matches: descriptionMatches.slice(0, 8),
     };
   }

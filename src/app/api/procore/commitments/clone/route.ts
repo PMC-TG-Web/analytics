@@ -587,20 +587,26 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
   const costCode = normCode(newRow["Cost Code"]);
   const costType = normCode(newRow["Cost code type"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
-  const exactFlatMatch = costType ? targetIndex.byFlatCode.get(`${costCode}.${costType}`) : undefined;
-  if (exactFlatMatch) {
-    return { wbsCodeId: readStr(exactFlatMatch.wbsCodeId), issue: "", matchCount: 1, strategy: "flat_code_exact" };
-  }
-  const typedMatches = costType ? targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [] : [];
-  if (typedMatches.length === 1) {
-    return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
-  }
-  if (typedMatches.length > 1) {
-    return { wbsCodeId: "", issue: "ambiguous_target_wbs_code_type", matchCount: typedMatches.length, matches: typedMatches.slice(0, 8) };
-  }
+
+  // First resolve by cost code alone. Use type only when code is ambiguous.
   const codeMatches = targetIndex.byCode.get(costCode) || [];
   if (codeMatches.length === 1) {
     return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
+  }
+
+  if (codeMatches.length > 1 && costType) {
+    const exactFlatMatch = targetIndex.byFlatCode.get(`${costCode}.${costType}`);
+    if (exactFlatMatch) {
+      return { wbsCodeId: readStr(exactFlatMatch.wbsCodeId), issue: "", matchCount: 1, strategy: "flat_code_exact" };
+    }
+
+    const typedMatches = targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [];
+    if (typedMatches.length === 1) {
+      return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
+    }
+    if (typedMatches.length > 1) {
+      return { wbsCodeId: "", issue: "ambiguous_target_wbs_code_type", matchCount: typedMatches.length, matches: typedMatches.slice(0, 8) };
+    }
   }
 
   const segments = costCode.split("-").filter(Boolean);
@@ -614,10 +620,11 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
     codePrefixes.some((prefix) => flatCode.startsWith(`${prefix}.`) || flatCode.startsWith(`${prefix}-`))
   );
   if (prefixCandidates.length > 0) {
-    const preferredTypes = [costType].filter(Boolean);
-    const selected =
-      prefixCandidates.find(([flatCode]) => preferredTypes.includes(flatCodeSuffix(flatCode))) ||
-      prefixCandidates[0];
+    let selected = prefixCandidates[0];
+    if (costType) {
+      const typeMatch = prefixCandidates.find(([flatCode]) => costType === flatCodeSuffix(flatCode));
+      if (typeMatch) selected = typeMatch;
+    }
     return {
       wbsCodeId: readStr(selected[1].wbsCodeId),
       issue: "",

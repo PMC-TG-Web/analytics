@@ -730,7 +730,7 @@ function mapId(
   label: string,
   issues: UnknownRecord[],
   context: UnknownRecord,
-  options: { required: boolean; allowUnmappedIds: boolean }
+  options: { required: boolean; allowUnmappedIds: boolean; omitWhenUnmapped?: boolean }
 ) {
   const oldId = readStr(value);
   if (!oldId) return undefined;
@@ -740,6 +740,7 @@ function mapId(
     issues.push({ type: "missing_id_mapping", field: label, oldId, ...context });
     return undefined;
   }
+  if (options.omitWhenUnmapped) return undefined;
   return readNum(oldId) ?? oldId;
 }
 
@@ -899,6 +900,7 @@ function buildLineItemPayload(params: {
 
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
+    const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
     const mapped = mapId(
       sourceId,
       params.maps[item.mapName] || {},
@@ -906,8 +908,9 @@ function buildLineItemPayload(params: {
       params.issues,
       context,
       {
-        required: params.requireMappedIds,
-        allowUnmappedIds: item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id" ? false : params.allowUnmappedIds,
+        required: params.requireMappedIds && (!isBudgetCodeField || !params.allowUnmappedIds),
+        allowUnmappedIds: isBudgetCodeField ? params.allowUnmappedIds : params.allowUnmappedIds,
+        omitWhenUnmapped: isBudgetCodeField,
       }
     );
     delete payload[item.objectField];

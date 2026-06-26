@@ -556,10 +556,26 @@ function budgetLineCostType(item: UnknownRecord) {
   );
 }
 
+function budgetLineDescription(item: UnknownRecord) {
+  const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
+  const costCode = isRecord(item.cost_code) ? item.cost_code : {};
+  return readStr(
+    item.description ??
+      item.name ??
+      item.title ??
+      wbsCode.description ??
+      wbsCode.name ??
+      costCode.description ??
+      costCode.name ??
+      item.cost_code_description
+  );
+}
+
 function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCodeAndType = new Map<string, UnknownRecord[]>();
   const byCode = new Map<string, UnknownRecord[]>();
   const byFlatCode = new Map<string, UnknownRecord>();
+  const byDescription = new Map<string, UnknownRecord[]>();
   for (const item of items) {
     const wbsCodeId = budgetLineWbsId(item);
     const flatCode = normCode(budgetLineFlatCode(item));
@@ -572,20 +588,26 @@ function buildTargetWbsIndex(items: UnknownRecord[]) {
       costCode: budgetLineCostCode(item),
       flatCode: budgetLineFlatCode(item),
       costType: budgetLineCostType(item) || flatCodeSuffix(flatCode),
+      description: budgetLineDescription(item),
     };
     byCode.set(costCode, [...(byCode.get(costCode) || []), normalized]);
     if (flatCode && !byFlatCode.has(flatCode)) byFlatCode.set(flatCode, normalized);
+    const descriptionKey = norm(normalized.description);
+    if (descriptionKey) {
+      byDescription.set(descriptionKey, [...(byDescription.get(descriptionKey) || []), normalized]);
+    }
     if (costType) {
       const key = `${costCode}|${costType}`;
       byCodeAndType.set(key, [...(byCodeAndType.get(key) || []), normalized]);
     }
   }
-  return { byCodeAndType, byCode, byFlatCode };
+  return { byCodeAndType, byCode, byFlatCode, byDescription };
 }
 
 function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeof buildTargetWbsIndex>) {
   const costCode = normCode(newRow["Cost Code"]);
   const costType = normCode(newRow["Cost code type"]);
+  const descriptionKey = norm(newRow.Description || newRow.Name || newRow["Cost Name"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
 
   // First resolve by cost code alone. Use type only when code is ambiguous.
@@ -631,6 +653,26 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
       matchCount: prefixCandidates.length,
       strategy: "cost_code_prefix_fallback",
       selectedFlatCode: selected[0],
+    };
+  }
+
+  // If code lookup cannot find a match, use description as a final disambiguation aid.
+  const descriptionMatches = descriptionKey ? targetIndex.byDescription.get(descriptionKey) || [] : [];
+  if (descriptionMatches.length === 1) {
+    return {
+      wbsCodeId: readStr(descriptionMatches[0].wbsCodeId),
+      issue: "",
+      matchCount: 1,
+      strategy: "description_exact",
+      matchedCostCode: descriptionMatches[0].costCode,
+    };
+  }
+  if (descriptionMatches.length > 1) {
+    return {
+      wbsCodeId: "",
+      issue: "ambiguous_target_description_match",
+      matchCount: descriptionMatches.length,
+      matches: descriptionMatches.slice(0, 8),
     };
   }
 

@@ -892,7 +892,6 @@ function buildLineItemPayload(params: {
 
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
-    const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
     const mapped = mapId(
       sourceId,
       params.maps[item.mapName] || {},
@@ -900,8 +899,8 @@ function buildLineItemPayload(params: {
       params.issues,
       context,
       {
-        required: params.requireMappedIds && isBudgetCodeField ? false : params.requireMappedIds,
-        allowUnmappedIds: params.allowUnmappedIds && !isBudgetCodeField,
+        required: params.requireMappedIds,
+        allowUnmappedIds: item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id" ? false : params.allowUnmappedIds,
       }
     );
     delete payload[item.objectField];

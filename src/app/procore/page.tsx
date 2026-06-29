@@ -410,6 +410,12 @@ function ProcoreContent() {
   const [commitmentCloneError, setCommitmentCloneError] = useState<string | null>(null);
   const [commitmentCloneResult, setCommitmentCloneResult] = useState<any>(null);
   const [commitmentCloneMappingRows, setCommitmentCloneMappingRows] = useState<Array<Record<string, string>>>([]);
+  const [commitmentBudgetPatchBusy, setCommitmentBudgetPatchBusy] = useState(false);
+  const [commitmentBudgetPatchError, setCommitmentBudgetPatchError] = useState<string | null>(null);
+  const [commitmentBudgetPatchResult, setCommitmentBudgetPatchResult] = useState<any>(null);
+  const [commitmentBudgetPatchOffset, setCommitmentBudgetPatchOffset] = useState("0");
+  const [commitmentBudgetPatchLimit, setCommitmentBudgetPatchLimit] = useState("25");
+  const [commitmentBudgetPatchExisting, setCommitmentBudgetPatchExisting] = useState(false);
   const [commitmentVendorLookupMap, setCommitmentVendorLookupMap] = useState<Record<string, string>>({});
   const [commitmentVendorLookupSummary, setCommitmentVendorLookupSummary] = useState<string | null>(null);
   const [primeCloneSourceCompanyId, setPrimeCloneSourceCompanyId] = useState("598134325658789");
@@ -5962,6 +5968,55 @@ function ProcoreContent() {
     }
   };
 
+  const handlePatchCommitmentBudgetCodes = async (
+    dryRun: boolean,
+    options?: { patchOffset?: string; skipConfirm?: boolean }
+  ) => {
+    const targetCompanyId = commitmentCloneTargetCompanyId.trim();
+    const targetProjectId = commitmentCloneTargetProjectId.trim();
+    const crosswalkPath = commitmentCloneCrosswalkPath.trim() || "Codes to use.xlsx";
+    const patchOffset = options?.patchOffset ?? (commitmentBudgetPatchOffset.trim() || "0");
+    const patchLimit = commitmentBudgetPatchLimit.trim() || "25";
+
+    if (!targetCompanyId || !targetProjectId) {
+      setCommitmentBudgetPatchError("Target company/project are required.");
+      return;
+    }
+    if (!dryRun && !options?.skipConfirm && !window.confirm(`Patch blank target budget codes in project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setCommitmentBudgetPatchBusy(true);
+    setCommitmentBudgetPatchError(null);
+    setCommitmentBudgetPatchResult(null);
+
+    try {
+      const response = await fetch("/api/procore/budget-line-items/patch-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetCompanyId,
+          targetProjectId,
+          crosswalkPath,
+          crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
+          patchExisting: commitmentBudgetPatchExisting,
+          patchOffset,
+          patchLimit,
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setCommitmentBudgetPatchError(result?.error || `Budget code patch failed (${response.status}).`);
+      }
+      setCommitmentBudgetPatchResult({ status: response.status, ok: response.ok, result });
+    } catch (err) {
+      setCommitmentBudgetPatchError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCommitmentBudgetPatchBusy(false);
+    }
+  };
+
   const handleClonePrimeContracts = async (dryRun: boolean) => {
     const sourceCompanyId = primeCloneSourceCompanyId.trim();
     const sourceProjectId = primeCloneSourceProjectId.trim();
@@ -11491,6 +11546,116 @@ function ProcoreContent() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-emerald-900">Patch Target Budget Codes</h3>
+                    <p className="text-xs text-emerald-800 mt-1">
+                      Uses the same workbook to PATCH blank target budget line <code className="bg-white px-1 rounded">wbs_code_id</code> values. Amounts, units, and quantities are not changed.
+                    </p>
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-emerald-900">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(commitmentBudgetPatchExisting)}
+                        onChange={(e) => setCommitmentBudgetPatchExisting(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      Patch existing codes too
+                    </label>
+                    <p className="text-xs text-emerald-800 mt-1">
+                      Turn this on to move wrong-type lines such as <code className="bg-white px-1 rounded">.M</code> to <code className="bg-white px-1 rounded">.CON</code>.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-emerald-900 mb-1">Patch Offset</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={commitmentBudgetPatchOffset ?? ""}
+                        onChange={(e) => setCommitmentBudgetPatchOffset(e.target.value)}
+                        className="w-28 border border-emerald-200 rounded px-2 py-1 text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-emerald-900 mb-1">Patch Limit</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={commitmentBudgetPatchLimit ?? ""}
+                        onChange={(e) => setCommitmentBudgetPatchLimit(e.target.value)}
+                        className="w-28 border border-emerald-200 rounded px-2 py-1 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePatchCommitmentBudgetCodes(true)}
+                    disabled={commitmentBudgetPatchBusy}
+                    className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                  >
+                    {commitmentBudgetPatchBusy ? "Working..." : "Dry Run Budget Patch"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePatchCommitmentBudgetCodes(false)}
+                    disabled={commitmentBudgetPatchBusy || !commitmentBudgetPatchResult?.result?.counts?.patchable}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                  >
+                    {commitmentBudgetPatchBusy ? "Working..." : "Patch Budget Codes"}
+                  </button>
+                  {commitmentBudgetPatchResult?.result?.counts?.nextPatchOffset !== null &&
+                  commitmentBudgetPatchResult?.result?.counts?.nextPatchOffset !== undefined ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextOffset = String(commitmentBudgetPatchResult.result.counts.nextPatchOffset);
+                        setCommitmentBudgetPatchOffset(nextOffset);
+                        void handlePatchCommitmentBudgetCodes(false, { patchOffset: nextOffset, skipConfirm: true });
+                      }}
+                      disabled={commitmentBudgetPatchBusy}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Continue Patch at {commitmentBudgetPatchResult.result.counts.nextPatchOffset}
+                    </button>
+                  ) : null}
+                  {commitmentBudgetPatchResult && (
+                    <button
+                      type="button"
+                      onClick={() => downloadJson("procore-budget-code-patch-result.json", commitmentBudgetPatchResult)}
+                      className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-1.5 px-3 rounded text-xs"
+                    >
+                      Download Patch JSON
+                    </button>
+                  )}
+                </div>
+                {commitmentBudgetPatchError && (
+                  <div className="mt-3 bg-red-100 border border-red-300 text-red-700 px-3 py-2 rounded text-xs">
+                    <strong>Budget Patch Error:</strong> {commitmentBudgetPatchError}
+                  </div>
+                )}
+                {commitmentBudgetPatchResult && (
+                  <div className="mt-3">
+                    <div className={`px-3 py-2 rounded mb-2 border text-xs ${
+                      commitmentBudgetPatchResult.result?.success
+                        ? "bg-emerald-100 border-emerald-200 text-emerald-900"
+                        : "bg-amber-100 border-amber-200 text-amber-900"
+                    }`}>
+                      <strong>Budget Patch Result:</strong>{" "}
+                      {commitmentBudgetPatchResult.result?.dryRun
+                        ? `${commitmentBudgetPatchResult.result?.counts?.patchable ?? 0} budget line(s) can be patched; ${commitmentBudgetPatchResult.result?.counts?.blocked ?? 0} blocked.`
+                        : `Patched ${commitmentBudgetPatchResult.result?.counts?.patched ?? 0}; failed ${commitmentBudgetPatchResult.result?.counts?.failed ?? 0}.`}
+                    </div>
+                    <CollapsibleJson value={commitmentBudgetPatchResult} />
                   </div>
                 )}
               </div>

@@ -280,19 +280,44 @@ function buildTargetWbsIndex(items: UnknownRecord[]) {
   return { byCodeAndType, byCode, byFlatCode };
 }
 
-function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeof buildTargetWbsIndex>) {
+function resolveTargetWbsId(
+  newRow: UnknownRecord,
+  targetIndex: ReturnType<typeof buildTargetWbsIndex>,
+  options: { requireCostTypeMatch?: boolean } = {}
+) {
   const costCode = normCode(newRow["Cost Code"]);
   const costType = normCode(newRow["Cost code type"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
 
   const codeMatches = targetIndex.byCode.get(costCode) || [];
-  if (codeMatches.length === 1) {
+  if (codeMatches.length === 1 && (!options.requireCostTypeMatch || !costType)) {
     return {
       wbsCodeId: readStr(codeMatches[0].wbsCodeId),
       issue: "",
       matchCount: 1,
       strategy: "cost_code_only",
       matchedFlatCode: readStr(codeMatches[0].flatCode),
+    };
+  }
+  if (codeMatches.length === 1 && options.requireCostTypeMatch && costType) {
+    const onlyMatch = codeMatches[0];
+    const matchedType = normCode(onlyMatch.costType) || flatCodeSuffix(onlyMatch.flatCode);
+    if (matchedType === costType || flatCodeSuffix(onlyMatch.flatCode) === costType) {
+      return {
+        wbsCodeId: readStr(onlyMatch.wbsCodeId),
+        issue: "",
+        matchCount: 1,
+        strategy: "cost_code_only_type_verified",
+        matchedFlatCode: readStr(onlyMatch.flatCode),
+      };
+    }
+    return {
+      wbsCodeId: "",
+      issue: "missing_target_wbs_code_type",
+      matchCount: 1,
+      requestedCostType: costType,
+      matchedCostType: readStr(onlyMatch.costType),
+      matchedFlatCode: readStr(onlyMatch.flatCode),
     };
   }
 
@@ -421,7 +446,7 @@ export async function POST(request: Request) {
           candidates: workbookMatch.candidates,
         };
       }
-      const wbsMatch = resolveTargetWbsId(workbookMatch.row, targetIndex);
+      const wbsMatch = resolveTargetWbsId(workbookMatch.row, targetIndex, { requireCostTypeMatch: patchExisting });
       const currentWbsCodeId = budgetLineWbsId(item);
       const alreadyCorrect = Boolean(wbsMatch.wbsCodeId) && readStr(wbsMatch.wbsCodeId) === currentWbsCodeId;
       return {

@@ -141,6 +141,25 @@ function descriptionOverlapScore(left: unknown, right: unknown) {
   return shared / Math.max(1, Math.min(leftTokens.size, rightTokens.size));
 }
 
+function bestDescriptionMatch<T extends { item: ProductivityTargetLineItem; score: number; tokenScore: number; cleanMatch: boolean }>(matches: T[]) {
+  if (matches.length === 0) return undefined;
+  const sorted = [...matches].sort(
+    (a, b) =>
+      Number(b.cleanMatch) - Number(a.cleanMatch) ||
+      b.score - a.score ||
+      b.tokenScore - a.tokenScore
+  );
+  const best = sorted[0];
+  const tied = sorted.filter(
+    (entry) =>
+      entry.cleanMatch === best.cleanMatch &&
+      entry.score === best.score &&
+      entry.tokenScore === best.tokenScore
+  );
+  const uniqueDescriptions = new Set(tied.map((entry) => normalizeDescriptionKey(entry.item.description)));
+  return tied.length === 1 || uniqueDescriptions.size === 1 ? best : undefined;
+}
+
 function uniqueNumbers(values: Array<number | null | undefined>): number[] {
   const seen = new Set<number>();
   for (const value of values) {
@@ -938,28 +957,34 @@ function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
   if (!target && cleanDescriptionKey) {
     const sourceContractId = contractIdFromLog(log);
     const sourceContractMatches = lookups.productivityLineItems
-      .map((item) => ({ item, score: canonicalMaterialOverlap(lineItemDescription, item.description) }))
+      .map((item) => ({
+        item,
+        score: canonicalMaterialOverlap(lineItemDescription, item.description),
+        tokenScore: descriptionOverlapScore(lineItemDescription, item.description),
+        cleanMatch: normalizeDescriptionKey(item.description) === cleanDescriptionKey,
+      }))
       .filter(({ item, score }) => score >= 0.6 && sourceContractId && item.sourceContractIds.includes(sourceContractId))
-      .sort((a, b) => b.score - a.score);
-    const bestSourceContractScore = sourceContractMatches[0]?.score || 0;
-    const bestSourceContract = sourceContractMatches.filter((entry) => entry.score === bestSourceContractScore);
-    if (bestSourceContract.length === 1) {
-      target = bestSourceContract[0].item;
+    const bestSourceContract = bestDescriptionMatch(sourceContractMatches);
+    if (bestSourceContract) {
+      target = bestSourceContract.item;
       matchStrategy = "source_contract_canonical_description";
     }
   }
   if (!target && cleanDescriptionKey) {
     const contractMatches = lookups.productivityLineItems
-      .map((item) => ({ item, score: canonicalMaterialOverlap(lineItemDescription, item.description) }))
+      .map((item) => ({
+        item,
+        score: canonicalMaterialOverlap(lineItemDescription, item.description),
+        tokenScore: descriptionOverlapScore(lineItemDescription, item.description),
+        cleanMatch: normalizeDescriptionKey(item.description) === cleanDescriptionKey,
+      }))
       .filter(({ item, score }) =>
         score >= 0.6 &&
         (contractNumbersMatch(item.contractNumber, contractNumber) || normalizeKey(item.contractTitle) === contractTitleKey)
-      )
-      .sort((a, b) => b.score - a.score);
-    const bestScore = contractMatches[0]?.score || 0;
-    const best = contractMatches.filter((entry) => entry.score === bestScore);
-    if (best.length === 1) {
-      target = best[0].item;
+      );
+    const best = bestDescriptionMatch(contractMatches);
+    if (best) {
+      target = best.item;
       matchStrategy = "contract_canonical_description";
     }
   }
@@ -992,13 +1017,16 @@ function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
   }
   if (!target && cleanDescriptionKey) {
     const globalMatches = lookups.productivityLineItems
-      .map((item) => ({ item, score: canonicalMaterialOverlap(lineItemDescription, item.description) }))
+      .map((item) => ({
+        item,
+        score: canonicalMaterialOverlap(lineItemDescription, item.description),
+        tokenScore: descriptionOverlapScore(lineItemDescription, item.description),
+        cleanMatch: normalizeDescriptionKey(item.description) === cleanDescriptionKey,
+      }))
       .filter(({ score }) => score >= 0.75)
-      .sort((a, b) => b.score - a.score);
-    const bestScore = globalMatches[0]?.score || 0;
-    const best = globalMatches.filter((entry) => entry.score === bestScore);
-    if (best.length === 1) {
-      target = best[0].item;
+    const best = bestDescriptionMatch(globalMatches);
+    if (best) {
+      target = best.item;
       matchStrategy = "unique_canonical_description";
     }
   }

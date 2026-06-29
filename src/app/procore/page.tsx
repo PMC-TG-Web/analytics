@@ -584,10 +584,7 @@ function ProcoreContent() {
   const [dailyCloneEndDate, setDailyCloneEndDate] = useState("");
   const [dailyCloneDefaultTimeTypeId, setDailyCloneDefaultTimeTypeId] = useState("");
   const [dailyCloneCreateOffset, setDailyCloneCreateOffset] = useState("0");
-  const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState(`{
-  "Travel": "598134327876773",
-  "Shop": "598134327876773"
-}`);
+  const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
   const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
   const [dailyCloneClassificationMapText, setDailyCloneClassificationMapText] = useState("{}");
   const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);

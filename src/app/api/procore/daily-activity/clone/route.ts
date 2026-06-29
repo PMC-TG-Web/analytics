@@ -309,10 +309,19 @@ function sourceCostCodeFromEntry(entry: UnknownRecord) {
 
 function fallbackTimeTypeForSource(sourceName: unknown, lookups: TargetLookups) {
   const sourceKey = normalizeKey(sourceName);
-  if (!["travel", "shop"].includes(sourceKey)) return undefined;
+  if (!["", "travel", "shop"].includes(sourceKey)) return undefined;
   return (
     lookups.timeTypesByName.get("regular time") ||
     lookups.timeTypes.find((timeType) => normalizeKey(timeType.abbreviated_time_type) === "reg")
+  );
+}
+
+function fallbackCostCodeForSource(costCode: { fullCode: string; name: string }, lookups: TargetLookups) {
+  if (readStr(costCode.fullCode) || readStr(costCode.name)) return undefined;
+  return (
+    lookups.costCodesByFullCode.get("01-300-10-70.L") ||
+    lookups.costCodesByFullCode.get("01-300-10-70") ||
+    lookups.costCodesByName.get("shop labor")
   );
 }
 
@@ -1013,7 +1022,8 @@ function mapTimecardEntry(
   const onlyTargetTimeType = lookups.timeTypes.length === 1 ? lookups.timeTypes[0] : undefined;
   const targetCostCode =
     lookups.costCodesByFullCode.get(readStr(costCode.fullCode)) ||
-    lookups.costCodesByName.get(normalizeKey(costCode.name));
+    lookups.costCodesByName.get(normalizeKey(costCode.name)) ||
+    fallbackCostCodeForSource(costCode, lookups);
   const mappedClassificationId =
     readNum(timecardClassificationMap[classification.id]) ??
     readNum(timecardClassificationMap[classification.name]) ??

@@ -349,20 +349,46 @@ function workbookScore(row: UnknownRecord, item: UnknownRecord) {
   return score;
 }
 
+function budgetLineTypeHint(item: UnknownRecord) {
+  const description = norm(budgetLineDescription(item));
+  const explicitType = normCode(budgetLineCostType(item));
+  if (description.endsWith(".labor") || /\.labor\b/.test(description)) return "l";
+  if (description.endsWith(".materials") || /\.materials\b/.test(description)) return "m";
+  if (description.endsWith(".commitments") || /\.commitments\b/.test(description)) return "c";
+  if (description.endsWith(".other") || /\.other\b/.test(description)) return "o";
+  return explicitType;
+}
+
+function workbookCostTypeMatchesHint(row: UnknownRecord, hint: string) {
+  if (!hint) return true;
+  const rowType = normCode(row["Cost code type"]);
+  if (!rowType) return true;
+  if (rowType === hint) return true;
+  if (hint === "c" && ["s", "sub", "subcontract", "commitment", "commitments"].includes(rowType)) return true;
+  if (hint === "m" && ["mat", "material", "materials"].includes(rowType)) return true;
+  if (hint === "l" && ["lab", "labor"].includes(rowType)) return true;
+  if (hint === "o" && ["other"].includes(rowType)) return true;
+  return false;
+}
+
 function findWorkbookRowForBudgetLine(item: UnknownRecord, newRows: UnknownRecord[]) {
-  const scored = newRows
+  const typeHint = budgetLineTypeHint(item);
+  const typeFilteredRows = typeHint ? newRows.filter((row) => workbookCostTypeMatchesHint(row, typeHint)) : newRows;
+  const rowsToScore = typeFilteredRows.length > 0 ? typeFilteredRows : newRows;
+  const scored = rowsToScore
     .map((row) => ({ row, score: workbookScore(row, item) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
-  if (scored.length === 0) return { row: null, issue: "missing_workbook_match", matchCount: 0 };
+  if (scored.length === 0) return { row: null, issue: "missing_workbook_match", matchCount: 0, typeHint };
   const bestScore = scored[0].score;
   const best = scored.filter((entry) => entry.score === bestScore);
   const equivalent = new Set(best.map((entry) => `${normCode(entry.row["Cost Code"])}|${norm(entry.row["Cost code type"])}`));
-  if (equivalent.size === 1) return { row: best[0].row, issue: "", matchCount: best.length, score: bestScore };
+  if (equivalent.size === 1) return { row: best[0].row, issue: "", matchCount: best.length, score: bestScore, typeHint };
   return {
     row: null,
     issue: "ambiguous_workbook_match",
     matchCount: best.length,
+    typeHint,
     candidates: best.slice(0, 8).map((entry) => ({
       score: entry.score,
       name: entry.row.Name,
@@ -443,6 +469,7 @@ export async function POST(request: Request) {
           patchable: false,
           issue: workbookMatch.issue,
           matchCount: workbookMatch.matchCount,
+          typeHint: workbookMatch.typeHint,
           candidates: workbookMatch.candidates,
         };
       }
@@ -456,6 +483,7 @@ export async function POST(request: Request) {
         targetWbsCodeId: wbsMatch.wbsCodeId,
         targetCostCode: workbookMatch.row["Cost Code"],
         targetCostType: workbookMatch.row["Cost code type"],
+        typeHint: workbookMatch.typeHint,
         patchable: Boolean(wbsMatch.wbsCodeId) && !alreadyCorrect,
         alreadyCorrect,
         issue: alreadyCorrect ? "already_correct" : wbsMatch.issue,

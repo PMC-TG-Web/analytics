@@ -524,8 +524,10 @@ async function fetchPaged(params: {
   companyId: string;
   pathForPage: (page: number) => string;
   maxPages: number;
+  perPage?: number;
 }) {
   const rows: UnknownRecord[] = [];
+  const perPage = params.perPage || 100;
   for (let page = 1; page <= params.maxPages; page += 1) {
     const payload = await procoreFetch({
       accessToken: params.accessToken,
@@ -535,10 +537,20 @@ async function fetchPaged(params: {
     const pageRows = unwrapArray(payload);
     if (pageRows.length === 0) break;
     rows.push(...pageRows);
-    if (pageRows.length < 100) break;
+    if (pageRows.length < perPage) break;
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return rows;
+}
+
+function addDays(dateText: string, days: number): string {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function minDate(left: string, right: string): string {
+  return left <= right ? left : right;
 }
 
 async function fetchSourceProductivityLogs(params: {
@@ -573,20 +585,52 @@ async function fetchSourceTimecards(params: {
   endDate: string;
   maxPages: number;
 }) {
-  return fetchPaged({
-    accessToken: params.accessToken,
-    companyId: params.companyId,
-    maxPages: params.maxPages,
-    pathForPage: (page) => {
-      const query = new URLSearchParams({
-        start_date: params.startDate,
-        end_date: params.endDate,
-        page: String(page),
-        per_page: "100",
-      });
-      return `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?${query.toString()}`;
-    },
-  });
+  const fetchRange = (startDate: string, endDate: string, maxPages = params.maxPages) =>
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      maxPages,
+      perPage: 100,
+      pathForPage: (page) => {
+        const query = new URLSearchParams({
+          start_date: startDate,
+          end_date: endDate,
+          page: String(page),
+          per_page: "100",
+        });
+        return `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?${query.toString()}`;
+      },
+    });
+
+  try {
+    return await fetchRange(params.startDate, params.endDate);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/\(500\)/.test(message)) throw error;
+  }
+
+  const rowsById = new Map<string, UnknownRecord>();
+  for (let cursor = params.startDate; cursor <= params.endDate; cursor = addDays(cursor, 7)) {
+    const rangeEnd = minDate(addDays(cursor, 6), params.endDate);
+    let chunkRows: UnknownRecord[] = [];
+    try {
+      chunkRows = await fetchRange(cursor, rangeEnd, 5);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/\(500\)/.test(message)) throw error;
+      for (let day = cursor; day <= rangeEnd; day = addDays(day, 1)) {
+        const dayRows = await fetchRange(day, day, 5);
+        chunkRows.push(...dayRows);
+      }
+    }
+    for (const row of chunkRows) {
+      const id = readStr(row.id);
+      rowsById.set(id || `${rowsById.size}`, row);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  return Array.from(rowsById.values());
 }
 
 async function fetchWorkClassifications(params: {

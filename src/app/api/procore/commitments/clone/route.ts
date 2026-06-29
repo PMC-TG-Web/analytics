@@ -518,7 +518,7 @@ async function fetchProjectBudgetLineItems(params: {
 
 function budgetLineWbsId(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
-  return readStr(wbsCode.id ?? item.wbs_code_id ?? item.id ?? item.budget_line_item_id);
+  return readStr(wbsCode.id ?? item.wbs_code_id);
 }
 
 function budgetLineCostCode(item: UnknownRecord) {
@@ -988,7 +988,7 @@ function buildLineItemPayload(params: {
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
     const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
-    const mapped = mapId(
+    let mapped = mapId(
       sourceId,
       params.maps[item.mapName] || {},
       item.payloadField,
@@ -1000,6 +1000,17 @@ function buildLineItemPayload(params: {
         omitWhenUnmapped: isBudgetCodeField,
       }
     );
+    if (isBudgetCodeField && mapped !== undefined && !/^598\d{12}$/.test(String(mapped))) {
+      params.issues.push({
+        type: "invalid_id_mapping",
+        field: item.payloadField,
+        oldId: readStr(sourceId),
+        mappedId: readStr(mapped),
+        issue: "mapped_budget_code_id_is_not_target_wbs_id",
+        ...context,
+      });
+      mapped = undefined;
+    }
     delete payload[item.objectField];
     if (mapped !== undefined) payload[item.payloadField] = mapped;
     else delete payload[item.payloadField];

@@ -6209,12 +6209,17 @@ function ProcoreContent() {
     }
 
     const skipped: string[] = [];
+    const invalid: string[] = [];
     for (const row of commitmentCloneMappingRows) {
       const mapName = row.mapName || commitmentMapNameForField(row.field || "");
       const oldId = String(row.oldId || "").trim();
       const newId = String(row.newId || "").trim();
       if (!mapName || !oldId || !newId) {
         if (oldId || newId) skipped.push(`${row.field || "unknown"}:${oldId || "missing-old"}`);
+        continue;
+      }
+      if ((mapName === "wbsCodeIdMap" || mapName === "budgetLineItemIdMap") && !/^598\d{12}$/.test(newId)) {
+        invalid.push(`${row.field || mapName}:${oldId} -> ${newId}`);
         continue;
       }
       if (!maps[mapName] || typeof maps[mapName] !== "object" || Array.isArray(maps[mapName])) {
@@ -6231,7 +6236,11 @@ function ProcoreContent() {
       lineItemTypeIdMap: maps.lineItemTypeIdMap || {},
       taxCodeIdMap: maps.taxCodeIdMap || {},
     }, null, 2));
-    setCommitmentCloneError(skipped.length ? `Skipped ${skipped.length} incomplete mapping row(s).` : null);
+    if (invalid.length) {
+      setCommitmentCloneError(`Skipped ${invalid.length} invalid budget/WBS mapping row(s). Use target project Procore IDs that start with 598..., not workbook catalog item IDs like 514....`);
+    } else {
+      setCommitmentCloneError(skipped.length ? `Skipped ${skipped.length} incomplete mapping row(s).` : null);
+    }
   };
 
   const handleExportProposalCsv = async () => {

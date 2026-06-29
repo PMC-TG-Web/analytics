@@ -993,8 +993,8 @@ function buildLineItemPayload(params: {
       params.issues,
       context,
       {
-        required: params.requireMappedIds && (!isBudgetCodeField || !params.allowUnmappedIds),
-        allowUnmappedIds: isBudgetCodeField ? params.allowUnmappedIds : params.allowUnmappedIds,
+        required: params.requireMappedIds,
+        allowUnmappedIds: isBudgetCodeField ? false : params.allowUnmappedIds,
         omitWhenUnmapped: isBudgetCodeField,
       }
     );
@@ -1467,7 +1467,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const readyForLiveClone = missingMappings.length === 0 || allowUnmappedIds;
+    const criticalMissingMappings = missingMappings.filter((mapping) => {
+      const field = readStr(mapping.field);
+      return field === "wbs_code_id" || field === "budget_line_item_id" || readStr(mapping.type) === "invalid_id_mapping";
+    });
+    const readyForLiveClone = missingMappings.length === 0 || (allowUnmappedIds && criticalMissingMappings.length === 0);
 
     if (dryRun) {
       return NextResponse.json({
@@ -1482,6 +1486,7 @@ export async function POST(request: Request) {
           plannedContracts: contractsForPlan.length,
           sourceLineItems,
           missingMappings: missingMappings.length,
+          criticalMissingMappings: criticalMissingMappings.length,
           createOffset,
           createLimit,
           lineItemCreateOffset,
@@ -1502,7 +1507,7 @@ export async function POST(request: Request) {
           dryRun: false,
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
-          counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
+          counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, criticalMissingMappings: criticalMissingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
           crosswalkAutoMappings,
           missingMappings,
           plan,

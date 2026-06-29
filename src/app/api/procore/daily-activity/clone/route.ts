@@ -309,7 +309,7 @@ function sourceCostCodeFromEntry(entry: UnknownRecord) {
 
 function fallbackTimeTypeForSource(sourceName: unknown, lookups: TargetLookups) {
   const sourceKey = normalizeKey(sourceName);
-  if (!["", "travel", "shop"].includes(sourceKey)) return undefined;
+  if (!["travel", "shop"].includes(sourceKey)) return undefined;
   return (
     lookups.timeTypesByName.get("regular time") ||
     lookups.timeTypes.find((timeType) => normalizeKey(timeType.abbreviated_time_type) === "reg")
@@ -1058,6 +1058,7 @@ function mapTimecardEntry(
     lookups.usersByLogin.get(normalizeKey(party.login)) ||
     lookups.usersByName.get(normalizeKey(party.name));
   const targetTimeType = lookups.timeTypesByName.get(normalizeKey(timeType.name));
+  const sourceTimeTypeBlank = !readStr(timeType.id) && !readStr(timeType.name);
   const mappedTimeTypeId =
     readNum(timecardTimeTypeMap[timeType.id]) ??
     readNum(timecardTimeTypeMap[timeType.name]) ??
@@ -1091,7 +1092,9 @@ function mapTimecardEntry(
     time_in: readStr(entry.time_in),
     time_out: readStr(entry.time_out),
     party_id: partyId,
-    timecard_time_type_id: getNestedId(targetTimeType) ?? mappedTimeTypeId ?? getNestedId(fallbackTimeType) ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
+    timecard_time_type_id: sourceTimeTypeBlank
+      ? undefined
+      : mappedTimeTypeId ?? getNestedId(targetTimeType) ?? getNestedId(fallbackTimeType) ?? defaultTimecardTimeTypeId ?? getNestedId(onlyTargetTimeType),
     cost_code_id: getNestedId(targetCostCode),
     work_classification_id: targetClassificationId,
   };
@@ -1100,7 +1103,7 @@ function mapTimecardEntry(
 
   const issues = [
     payload.party_id ? "" : "missing_target_party",
-    payload.timecard_time_type_id ? "" : "missing_target_time_type",
+    sourceTimeTypeBlank || payload.timecard_time_type_id ? "" : "missing_target_time_type",
     payload.cost_code_id ? "" : "missing_target_cost_code",
     classification.id || classification.name ? (payload.work_classification_id ? "" : "missing_target_classification") : "",
   ].filter(Boolean);
@@ -1112,8 +1115,8 @@ function mapTimecardEntry(
     targetParty: targetPerson || (partyId !== undefined ? { id: partyId, mapped: true, source: mappedPartyValue !== undefined ? "map" : "company_user" } : null),
     targetUser: targetUser || null,
     sourceTimeType: timeType,
-    targetTimeTypeFallbackUsed: !targetTimeType && (mappedTimeTypeId !== undefined || Boolean(fallbackTimeType) || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType)),
-    targetTimeType: targetTimeType || (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || fallbackTimeType || onlyTargetTimeType || null,
+    targetTimeTypeFallbackUsed: sourceTimeTypeBlank ? false : mappedTimeTypeId !== undefined || (!targetTimeType && (Boolean(fallbackTimeType) || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType))),
+    targetTimeType: sourceTimeTypeBlank ? null : (mappedTimeTypeId !== undefined ? { id: mappedTimeTypeId, mapped: true } : undefined) || targetTimeType || fallbackTimeType || onlyTargetTimeType || null,
     sourceCostCode: costCode,
     sourceClassification: classification,
     targetClassificationFallbackUsed: !targetClassification && mappedClassificationId !== undefined,
@@ -1279,7 +1282,7 @@ function retryDelayMsFromError(message: string) {
 }
 
 function isRetryableProcoreCreateError(message: string) {
-  return /\((429|502|503|504)\)/.test(message) || /"retryable"\s*:\s*true/i.test(message);
+  return /\((429|500|502|503|504)\)/.test(message) || /"retryable"\s*:\s*true/i.test(message);
 }
 
 function isRateLimitProcoreCreateError(message: string) {

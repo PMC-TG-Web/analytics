@@ -618,13 +618,11 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
   // First resolve by cost code alone. Use type only when code is ambiguous.
   const codeMatches = targetIndex.byCode.get(costCode) || [];
   if (codeMatches.length === 1) {
-    if (matchesRequestedType(codeMatches[0])) {
-      return { wbsCodeId: readStr(codeMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_only" };
-    }
     return {
-      wbsCodeId: "",
-      issue: "cost_type_mismatch",
+      wbsCodeId: readStr(codeMatches[0].wbsCodeId),
+      issue: "",
       matchCount: 1,
+      strategy: matchesRequestedType(codeMatches[0]) ? "cost_code_only" : "cost_code_only_type_mismatch_ignored",
       requestedCostType: costType,
       matchedCostType: readStr(codeMatches[0].costType),
       matchedFlatCode: readStr(codeMatches[0].flatCode),

@@ -584,7 +584,10 @@ function ProcoreContent() {
   const [dailyCloneEndDate, setDailyCloneEndDate] = useState("");
   const [dailyCloneDefaultTimeTypeId, setDailyCloneDefaultTimeTypeId] = useState("");
   const [dailyCloneCreateOffset, setDailyCloneCreateOffset] = useState("0");
-  const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
+  const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState(`{
+  "Travel": "598134327876773",
+  "Shop": "598134327876773"
+}`);
   const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
   const [dailyCloneClassificationMapText, setDailyCloneClassificationMapText] = useState("{}");
   const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);
@@ -2795,7 +2798,7 @@ function ProcoreContent() {
     setTimecardCsvResults({ success, failed });
   };
 
-  const runDailyActivityClone = async (dryRun: boolean) => {
+  const runDailyActivityClone = async (dryRun: boolean, options?: { createOffset?: string }) => {
     setDailyCloneBusy(true);
     setDailyCloneError(null);
     setDailyCloneResult(null);
@@ -2839,13 +2842,14 @@ function ProcoreContent() {
           includeProductivity: dailyCloneIncludeProductivity,
           includeTimecards: dailyCloneIncludeTimecards,
           defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
-          createOffset: dailyCloneCreateOffset.trim() || undefined,
+          createOffset: options?.createOffset ?? (dailyCloneCreateOffset.trim() || undefined),
           timecardTimeTypeMap,
           partyMap,
           timecardClassificationMap,
           dryRun,
           maxPages: 25,
-          createLimit: 100,
+          createLimit: dryRun ? 100 : 25,
+          maxCreateMs: 18000,
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -9235,6 +9239,20 @@ function ProcoreContent() {
                 >
                   {dailyCloneBusy ? "Working..." : "Live Clone Ready Rows"}
                 </button>
+                {dailyCloneResult?.result?.counts?.nextCreateOffset !== null && dailyCloneResult?.result?.counts?.nextCreateOffset !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOffset = String(dailyCloneResult.result.counts.nextCreateOffset);
+                      setDailyCloneCreateOffset(nextOffset);
+                      void runDailyActivityClone(false, { createOffset: nextOffset });
+                    }}
+                    disabled={dailyCloneBusy}
+                    className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Continue at {dailyCloneResult.result.counts.nextCreateOffset}
+                  </button>
+                )}
                 {dailyCloneResult && (
                   <button
                     onClick={() => downloadJson("daily-productivity-timecards-clone.json", dailyCloneResult)}
@@ -9271,6 +9289,12 @@ function ProcoreContent() {
               {dailyCloneError && (
                 <div className="mb-4 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded text-sm">
                   {dailyCloneError}
+                </div>
+              )}
+
+              {dailyCloneResult?.result?.nextStep && (
+                <div className="mb-4 bg-cyan-50 border border-cyan-200 text-cyan-900 px-3 py-2 rounded text-sm">
+                  {dailyCloneResult.result.nextStep}
                 </div>
               )}
 

@@ -1228,6 +1228,10 @@ function isRetryableProcoreCreateError(message: string) {
   return /\((429|502|503|504)\)/.test(message) || /"retryable"\s*:\s*true/i.test(message);
 }
 
+function isRateLimitProcoreCreateError(message: string) {
+  return /\(429\)/.test(message) || /rate limit|too many requests|surpassed the max number of requests/i.test(message);
+}
+
 async function retryProcoreCreate<T>(operation: () => Promise<T>, maxAttempts = 3): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -1270,6 +1274,7 @@ export async function POST(request: Request) {
     const maxPages = Math.max(1, Math.min(100, Math.trunc(readNum(body.maxPages) || 10)));
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
     const createLimit = Math.max(1, Math.min(500, Math.trunc(readNum(body.createLimit) || 100)));
+    const maxCreateMs = Math.max(5000, Math.min(25000, Math.trunc(readNum(body.maxCreateMs) || 18000)));
     const defaultTimecardTimeTypeId = readNum(body.defaultTimecardTimeTypeId);
     const timecardTimeTypeMap = isRecord(body.timecardTimeTypeMap) ? body.timecardTimeTypeMap : {};
     const partyMap = isRecord(body.partyMap) ? body.partyMap : {};
@@ -1303,22 +1308,49 @@ export async function POST(request: Request) {
     ];
 
     const createResults: UnknownRecord[] = [];
+    const createStartedAt = Date.now();
+    let attemptedCreateRows = 0;
+    let pausedBeforeTimeout = false;
+    let rateLimited = false;
+    let pauseReason = "";
     if (!dryRun) {
       const addedProjectUserIds = new Set<number>();
       for (const row of productivity.filter((item) => item.mapped).slice(createOffset, createOffset + createLimit)) {
+        if (Date.now() - createStartedAt > maxCreateMs) {
+          pausedBeforeTimeout = true;
+          pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
+          break;
+        }
         try {
+          attemptedCreateRows += 1;
           const result = await retryProcoreCreate(() =>
             createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
           createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
-          createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: false, error: error instanceof Error ? error.message : String(error), payload: row.payload });
+          const message = error instanceof Error ? error.message : String(error);
+          const retryable = isRetryableProcoreCreateError(message);
+          rateLimited = isRateLimitProcoreCreateError(message);
+          createResults.push({ type: "productivity_log", sourceId: row.sourceId, ok: false, error: message, retryable, rateLimited, payload: row.payload });
+          if (retryable) {
+            attemptedCreateRows -= 1;
+            pauseReason = rateLimited
+              ? `Paused after Procore rate limit. Continue at create offset ${createOffset + attemptedCreateRows}.`
+              : `Paused after transient Procore error. Continue at create offset ${createOffset + attemptedCreateRows}.`;
+            break;
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       for (const row of timecards.filter((item) => item.mapped && !item.existingTargetTimecard).slice(createOffset, createOffset + createLimit)) {
+        if (Date.now() - createStartedAt > maxCreateMs) {
+          pausedBeforeTimeout = true;
+          pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
+          break;
+        }
         try {
+          attemptedCreateRows += 1;
           const targetParty = isRecord(row.targetParty) ? row.targetParty : null;
           const shouldAddProjectUser = readStr(targetParty?.source) === "company_user";
           const partyId = readNum(row.payload.party_id);
@@ -1338,7 +1370,17 @@ export async function POST(request: Request) {
           );
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
-          createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: false, error: error instanceof Error ? error.message : String(error), payload: row.payload });
+          const message = error instanceof Error ? error.message : String(error);
+          const retryable = isRetryableProcoreCreateError(message);
+          rateLimited = isRateLimitProcoreCreateError(message);
+          createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: false, error: message, retryable, rateLimited, payload: row.payload });
+          if (retryable) {
+            attemptedCreateRows -= 1;
+            pauseReason = rateLimited
+              ? `Paused after Procore rate limit. Continue at create offset ${createOffset + attemptedCreateRows}.`
+              : `Paused after transient Procore error. Continue at create offset ${createOffset + attemptedCreateRows}.`;
+            break;
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -1370,6 +1412,16 @@ export async function POST(request: Request) {
         missingMappings: missingMappings.length,
         createOffset,
         createLimit,
+        nextCreateOffset: dryRun ? null : createOffset + attemptedCreateRows,
+        hasMoreCreatableRows: dryRun
+          ? false
+          : createOffset + attemptedCreateRows < (
+              includeTimecards
+                ? timecards.filter((row) => row.mapped && !row.existingTargetTimecard).length
+                : productivity.filter((row) => row.mapped).length
+            ),
+        pausedBeforeTimeout,
+        rateLimited,
         created: createResults.filter((row) => row.ok === true).length,
         failed: errors.length,
       },
@@ -1405,6 +1457,8 @@ export async function POST(request: Request) {
       },
       nextStep: dryRun
         ? "Review missingMappings. If readyForLiveClone is true, rerun with dryRun=false."
+        : pauseReason
+          ? pauseReason
         : errors.length
           ? "Some live creates failed. Review createResults before continuing."
           : "Live clone completed for this batch.",

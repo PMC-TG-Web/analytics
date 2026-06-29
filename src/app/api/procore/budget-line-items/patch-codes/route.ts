@@ -251,6 +251,16 @@ function flatCodeSuffix(value: unknown) {
   return parts.length > 1 ? parts[parts.length - 1] : "";
 }
 
+function canonicalCostType(value: unknown) {
+  const normalized = normCode(value);
+  if (["l", "lab", "labor"].includes(normalized)) return "l";
+  if (["m", "mat", "material", "materials"].includes(normalized)) return "m";
+  if (["s", "sub", "subcontract", "commitment", "commitments", "c"].includes(normalized)) return "c";
+  if (["con", "conc", "concrete"].includes(normalized)) return "con";
+  if (["o", "other"].includes(normalized)) return "o";
+  return normalized;
+}
+
 function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCodeAndType = new Map<string, UnknownRecord[]>();
   const byCode = new Map<string, UnknownRecord[]>();
@@ -261,13 +271,13 @@ function buildTargetWbsIndex(items: UnknownRecord[]) {
     const flatCode = normCode(budgetLineFlatCode(item));
     const costCode = costCodeBaseKey(budgetLineCostCode(item) || flatCode);
     if (!wbsCodeId || !costCode) continue;
-    const costType = normCode(budgetLineCostType(item)) || flatCodeSuffix(flatCode);
+    const costType = canonicalCostType(budgetLineCostType(item) || flatCodeSuffix(flatCode));
     const normalized = {
       item,
       wbsCodeId,
       costCode: budgetLineCostCode(item),
       flatCode: budgetLineFlatCode(item),
-      costType: budgetLineCostType(item) || flatCodeSuffix(flatCode),
+      costType: canonicalCostType(budgetLineCostType(item) || flatCodeSuffix(flatCode)),
       description: budgetLineDescription(item),
     };
     byCode.set(costCode, [...(byCode.get(costCode) || []), normalized]);
@@ -286,7 +296,7 @@ function resolveTargetWbsId(
   options: { requireCostTypeMatch?: boolean } = {}
 ) {
   const costCode = normCode(newRow["Cost Code"]);
-  const costType = normCode(newRow["Cost code type"]);
+  const costType = canonicalCostType(newRow["Cost code type"]);
   if (!costCode) return { wbsCodeId: "", issue: "missing_new_cost_code", matchCount: 0 };
 
   const codeMatches = targetIndex.byCode.get(costCode) || [];
@@ -301,8 +311,8 @@ function resolveTargetWbsId(
   }
   if (codeMatches.length === 1 && options.requireCostTypeMatch && costType) {
     const onlyMatch = codeMatches[0];
-    const matchedType = normCode(onlyMatch.costType) || flatCodeSuffix(onlyMatch.flatCode);
-    if (matchedType === costType || flatCodeSuffix(onlyMatch.flatCode) === costType) {
+    const matchedType = canonicalCostType(onlyMatch.costType || flatCodeSuffix(onlyMatch.flatCode));
+    if (matchedType === costType || canonicalCostType(flatCodeSuffix(onlyMatch.flatCode)) === costType) {
       return {
         wbsCodeId: readStr(onlyMatch.wbsCodeId),
         issue: "",
@@ -353,21 +363,18 @@ function budgetLineTypeHint(item: UnknownRecord) {
   const description = norm(budgetLineDescription(item));
   const explicitType = normCode(budgetLineCostType(item));
   if (description.endsWith(".labor") || /\.labor\b/.test(description)) return "l";
-  if (description.endsWith(".materials") || /\.materials\b/.test(description)) return "m";
+  // A current ".Materials" suffix can be the wrong code we are trying to fix
+  // (for example concrete rows that should become .CON), so do not force M.
   if (description.endsWith(".commitments") || /\.commitments\b/.test(description)) return "c";
   if (description.endsWith(".other") || /\.other\b/.test(description)) return "o";
-  return explicitType;
+  return canonicalCostType(explicitType);
 }
 
 function workbookCostTypeMatchesHint(row: UnknownRecord, hint: string) {
   if (!hint) return true;
-  const rowType = normCode(row["Cost code type"]);
+  const rowType = canonicalCostType(row["Cost code type"]);
   if (!rowType) return true;
   if (rowType === hint) return true;
-  if (hint === "c" && ["s", "sub", "subcontract", "commitment", "commitments"].includes(rowType)) return true;
-  if (hint === "m" && ["mat", "material", "materials"].includes(rowType)) return true;
-  if (hint === "l" && ["lab", "labor"].includes(rowType)) return true;
-  if (hint === "o" && ["other"].includes(rowType)) return true;
   return false;
 }
 

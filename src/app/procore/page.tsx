@@ -391,6 +391,7 @@ function ProcoreContent() {
   const [commitmentClonePreserveStatus, setCommitmentClonePreserveStatus] = useState(false);
   const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
   const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
+  const [commitmentClonePassthroughIds, setCommitmentClonePassthroughIds] = useState(false);
   const [commitmentCloneCreateOffset, setCommitmentCloneCreateOffset] = useState("0");
   const [commitmentCloneCreateLimit, setCommitmentCloneCreateLimit] = useState("1");
   const [commitmentCloneLineItemCreateOffset, setCommitmentCloneLineItemCreateOffset] = useState("0");
@@ -6025,6 +6026,7 @@ function ProcoreContent() {
           preserveStatus: commitmentClonePreserveStatus,
           cloneLineItems: commitmentCloneLineItems,
           allowUnmappedIds: commitmentCloneAllowUnmappedIds,
+          passthroughIds: commitmentClonePassthroughIds,
           createOffset,
           createLimit,
           lineItemCreateOffset,
@@ -11724,16 +11726,32 @@ function ProcoreContent() {
               <div className="mb-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
                   <label className="block text-sm font-semibold text-gray-700">ID Mapping JSON</label>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-amber-800">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(commitmentCloneAllowUnmappedIds)}
-                      onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    Allow unmapped IDs
-                  </label>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(commitmentCloneAllowUnmappedIds)}
+                        onChange={(e) => setCommitmentCloneAllowUnmappedIds(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      Allow unmapped IDs
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-red-800">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(commitmentClonePassthroughIds)}
+                        onChange={(e) => setCommitmentClonePassthroughIds(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      Pass source IDs through
+                    </label>
+                  </div>
                 </div>
+                {commitmentClonePassthroughIds && (
+                  <p className="text-xs text-red-800 mb-2">
+                    Raw mode skips workbook crosswalks and mapping tables. Source vendor, WBS, cost code, type, and tax IDs are sent as-is.
+                  </p>
+                )}
                 <textarea
                   value={commitmentCloneMapsText ?? ""}
                   onChange={(e) => setCommitmentCloneMapsText(e.target.value)}

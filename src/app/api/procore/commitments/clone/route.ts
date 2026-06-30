@@ -892,6 +892,7 @@ function buildContractPayload(params: {
   issues: UnknownRecord[];
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
+  passthroughIds: boolean;
 }) {
   const payload = stripContractPayload(params.source);
   const vendor = isRecord(params.source.vendor) ? params.source.vendor : {};
@@ -907,12 +908,14 @@ function buildContractPayload(params: {
   payload.status = params.preserveStatus ? readStr(params.source.status) || params.targetStatus : params.targetStatus;
   if (!readStr(payload.status)) payload.status = "Draft";
 
-  const mappedVendorId = params.targetVendorIdOverride
-    ? readNum(params.targetVendorIdOverride) ?? params.targetVendorIdOverride
-    : mapId(sourceVendorId, params.vendorIdMap, "vendor_id", params.issues, context, {
-      required: params.requireMappedIds && readStr(payload.status).toLowerCase() !== "draft",
-      allowUnmappedIds: params.allowUnmappedIds,
-    });
+  const mappedVendorId = params.passthroughIds
+    ? (readNum(sourceVendorId) ?? sourceVendorId)
+    : params.targetVendorIdOverride
+      ? (readNum(params.targetVendorIdOverride) ?? params.targetVendorIdOverride)
+      : mapId(sourceVendorId, params.vendorIdMap, "vendor_id", params.issues, context, {
+        required: params.requireMappedIds && readStr(payload.status).toLowerCase() !== "draft",
+        allowUnmappedIds: params.allowUnmappedIds,
+      });
   delete payload.vendor;
   delete payload.vendor_name;
   if (mappedVendorId !== undefined) payload.vendor_id = mappedVendorId;
@@ -944,6 +947,7 @@ function buildLineItemPayload(params: {
   issues: UnknownRecord[];
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
+  passthroughIds: boolean;
 }) {
   const payload: UnknownRecord = { ...params.source };
   const readonlyKeys = [
@@ -986,19 +990,24 @@ function buildLineItemPayload(params: {
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
     const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
-    let mapped = mapId(
-      sourceId,
-      params.maps[item.mapName] || {},
-      item.payloadField,
-      params.issues,
-      context,
-      {
-        required: params.requireMappedIds,
-        allowUnmappedIds: isBudgetCodeField ? false : params.allowUnmappedIds,
-        omitWhenUnmapped: isBudgetCodeField,
-      }
-    );
-    if (isBudgetCodeField && mapped !== undefined && !/^598\d{12}$/.test(String(mapped))) {
+    let mapped: string | number | undefined;
+    if (params.passthroughIds) {
+      mapped = readNum(sourceId) ?? (readStr(sourceId) || undefined);
+    } else {
+      mapped = mapId(
+        sourceId,
+        params.maps[item.mapName] || {},
+        item.payloadField,
+        params.issues,
+        context,
+        {
+          required: params.requireMappedIds,
+          allowUnmappedIds: isBudgetCodeField ? false : params.allowUnmappedIds,
+          omitWhenUnmapped: isBudgetCodeField,
+        }
+      );
+    }
+    if (!params.passthroughIds && isBudgetCodeField && mapped !== undefined && !/^598\d{12}$/.test(String(mapped))) {
       params.issues.push({
         type: "invalid_id_mapping",
         field: item.payloadField,
@@ -1338,6 +1347,7 @@ export async function POST(request: Request) {
     const lineItemCreateOffset = Math.max(0, Math.trunc(readNum(body.lineItemCreateOffset) || 0));
     const lineItemCreateLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.lineItemCreateLimit) || 10)));
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
+    const passthroughIds = readBool(body.passthroughIds || body.rawPassthroughIds, false);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
     const rawCrosswalkPath = readStr(body.crosswalkPath) || DEFAULT_CROSSWALK_PATH;
     const crosswalkPath = path.isAbsolute(rawCrosswalkPath)
@@ -1357,7 +1367,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const requireMappedIds = sourceCompanyId !== targetCompanyId || sourceProjectId !== targetProjectId;
+    const requireMappedIds = !passthroughIds && (sourceCompanyId !== targetCompanyId || sourceProjectId !== targetProjectId);
     const maps = {
       vendorIdMap: buildIdMap(body.vendorIdMap),
       budgetLineItemIdMap: buildIdMap(body.budgetLineItemIdMap),
@@ -1395,7 +1405,7 @@ export async function POST(request: Request) {
       sourceLineItems += lineFetch.records.length;
     }
 
-    const crosswalkAutoMappings = requireMappedIds && cloneLineItems
+    const crosswalkAutoMappings = requireMappedIds && cloneLineItems && !passthroughIds
       ? await applyCommitmentCrosswalkWbsMappings({
         accessToken,
         targetCompanyId,
@@ -1430,6 +1440,7 @@ export async function POST(request: Request) {
         issues: contractIssues,
         requireMappedIds,
         allowUnmappedIds,
+        passthroughIds,
       });
       const lineItemPlans = lineFetch.records.map((lineItem) => {
         const lineIssues: UnknownRecord[] = [];
@@ -1440,6 +1451,7 @@ export async function POST(request: Request) {
           issues: lineIssues,
           requireMappedIds,
           allowUnmappedIds,
+          passthroughIds,
         });
         missingMappings.push(...lineIssues);
         return {
@@ -1471,7 +1483,7 @@ export async function POST(request: Request) {
       const field = readStr(mapping.field);
       return field === "wbs_code_id" || field === "budget_line_item_id" || readStr(mapping.type) === "invalid_id_mapping";
     });
-    const readyForLiveClone = missingMappings.length === 0 || (allowUnmappedIds && criticalMissingMappings.length === 0);
+    const readyForLiveClone = passthroughIds || missingMappings.length === 0 || (allowUnmappedIds && criticalMissingMappings.length === 0);
 
     if (dryRun) {
       return NextResponse.json({
@@ -1480,7 +1492,8 @@ export async function POST(request: Request) {
         tokenSource,
         readyForLiveClone,
         source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
-        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
+        target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride: passthroughIds ? "" : targetVendorIdOverride },
+        options: { passthroughIds },
         counts: {
           sourceContracts: selectedContracts.length,
           plannedContracts: contractsForPlan.length,
@@ -1508,6 +1521,7 @@ export async function POST(request: Request) {
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
           counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, criticalMissingMappings: criticalMissingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
+          options: { passthroughIds },
           crosswalkAutoMappings,
           missingMappings,
           plan,
@@ -1539,7 +1553,7 @@ export async function POST(request: Request) {
         );
         const existingTargetId = existingTarget ? readStr(existingTarget.id) : "";
 
-        const targetVendorId = readStr((entry.contractPayload as UnknownRecord)?.vendor_id);
+        const targetVendorId = passthroughIds ? "" : readStr((entry.contractPayload as UnknownRecord)?.vendor_id);
         if (targetVendorId && !existingTargetId) {
           const addResult = await addVendorToProject({
             accessToken,

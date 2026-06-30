@@ -638,6 +638,23 @@ function ProcoreContent() {
   const [submittalCloneBusy, setSubmittalCloneBusy] = useState(false);
   const [submittalCloneError, setSubmittalCloneError] = useState<string | null>(null);
   const [submittalCloneResult, setSubmittalCloneResult] = useState<any>(null);
+  const [rfiCloneSourceCompanyId, setRfiCloneSourceCompanyId] = useState("598134325658789");
+  const [rfiCloneSourceProjectId, setRfiCloneSourceProjectId] = useState("");
+  const [rfiCloneTargetCompanyId, setRfiCloneTargetCompanyId] = useState("598134325805519");
+  const [rfiCloneTargetProjectId, setRfiCloneTargetProjectId] = useState("");
+  const [rfiCloneIdsText, setRfiCloneIdsText] = useState("");
+  const [rfiCloneCreateOffset, setRfiCloneCreateOffset] = useState("0");
+  const [rfiCloneCreateLimit, setRfiCloneCreateLimit] = useState("10");
+  const [rfiCloneNumberOffset, setRfiCloneNumberOffset] = useState("0");
+  const [rfiCloneReplies, setRfiCloneReplies] = useState(true);
+  const [rfiClonePreserveNumber, setRfiClonePreserveNumber] = useState(true);
+  const [rfiClonePreserveStatus, setRfiClonePreserveStatus] = useState(false);
+  const [rfiCloneMapsText, setRfiCloneMapsText] = useState(`{
+  "userIdMap": {}
+}`);
+  const [rfiCloneBusy, setRfiCloneBusy] = useState(false);
+  const [rfiCloneError, setRfiCloneError] = useState<string | null>(null);
+  const [rfiCloneResult, setRfiCloneResult] = useState<any>(null);
   const [imageCloneSourceCompanyId, setImageCloneSourceCompanyId] = useState("598134325658789");
   const [imageCloneSourceProjectId, setImageCloneSourceProjectId] = useState("");
   const [imageCloneTargetCompanyId, setImageCloneTargetCompanyId] = useState("598134325805519");
@@ -5521,6 +5538,78 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneRfis = async (dryRun: boolean, options?: { createOffset?: string; skipConfirm?: boolean }) => {
+    const sourceCompanyId = rfiCloneSourceCompanyId.trim();
+    const sourceProjectId = rfiCloneSourceProjectId.trim();
+    const targetCompanyId = rfiCloneTargetCompanyId.trim();
+    const targetProjectId = rfiCloneTargetProjectId.trim();
+    const createOffset = options?.createOffset ?? (rfiCloneCreateOffset.trim() || "0");
+    const createLimit = rfiCloneCreateLimit.trim() || "10";
+    const rfiIds = rfiCloneIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    let maps: any = {};
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setRfiCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+    try {
+      maps = rfiCloneMapsText.trim() ? JSON.parse(rfiCloneMapsText) : {};
+    } catch (error) {
+      setRfiCloneError(`Mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!dryRun && !options?.skipConfirm && !window.confirm(`Create cloned RFI(s) in target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setRfiCloneBusy(true);
+    setRfiCloneError(null);
+    setRfiCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/rfis/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId,
+          sourceProjectId,
+          targetCompanyId,
+          targetProjectId,
+          rfiIds,
+          createOffset,
+          createLimit,
+          cloneReplies: rfiCloneReplies,
+          preserveNumber: rfiClonePreserveNumber,
+          preserveStatus: rfiClonePreserveStatus,
+          numberOffset: rfiCloneNumberOffset.trim() || "0",
+          userIdMap: maps.userIdMap || {},
+          dryRun,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        const firstCreateError = Array.isArray(result?.errors) && result.errors.length > 0
+          ? String(result.errors[0]?.error || result.errors[0]?.message || JSON.stringify(result.errors[0]))
+          : "";
+        setRfiCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : firstCreateError
+              ? `RFI clone create error: ${firstCreateError}`
+              : `RFI clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+      setRfiCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setRfiCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRfiCloneBusy(false);
+    }
+  };
+
   const handleCloneImages = async (dryRun: boolean) => {
     const sourceCompanyId = imageCloneSourceCompanyId.trim();
     const sourceProjectId = imageCloneSourceProjectId.trim();
@@ -8401,6 +8490,196 @@ function ProcoreContent() {
                         : "Live clone finished with errors."}
                   </div>
                   <CollapsibleJson value={submittalCloneResult} />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-indigo-500 mb-6 order-6">
+              <h2 className="text-xl font-bold text-indigo-900 mb-3">Clone RFIs</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone RFIs and RFI replies from one Procore project to another. Dry-run first to review payloads and duplicate matches.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={rfiCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setRfiCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={rfiCloneSourceProjectId ?? ""}
+                    onChange={(event) => setRfiCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={rfiCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setRfiCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={rfiCloneTargetProjectId ?? ""}
+                    onChange={(event) => setRfiCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">RFI IDs</label>
+                  <textarea
+                    value={rfiCloneIdsText ?? ""}
+                    onChange={(event) => setRfiCloneIdsText(event.target.value)}
+                    placeholder="Optional: comma or line separated. Blank clones all fetched RFIs."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={rfiCloneCreateOffset ?? ""}
+                    onChange={(event) => setRfiCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={rfiCloneCreateLimit ?? ""}
+                    onChange={(event) => setRfiCloneCreateLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number Offset</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={rfiCloneNumberOffset ?? ""}
+                    onChange={(event) => setRfiCloneNumberOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <div className="space-y-3 pt-2">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(rfiCloneReplies)}
+                        onChange={(event) => setRfiCloneReplies(event.target.checked)}
+                      />
+                      Clone replies
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(rfiClonePreserveNumber)}
+                        onChange={(event) => setRfiClonePreserveNumber(event.target.checked)}
+                      />
+                      Preserve numbers
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(rfiClonePreserveStatus)}
+                        onChange={(event) => setRfiClonePreserveStatus(event.target.checked)}
+                      />
+                      Preserve status
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Mapping JSON</label>
+                  <textarea
+                    value={rfiCloneMapsText ?? ""}
+                    onChange={(event) => setRfiCloneMapsText(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use <code className="bg-gray-100 px-1 rounded">userIdMap</code> to map old RFI managers, assignees, creators, and reply users to target user IDs.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneRfis(true)}
+                  disabled={rfiCloneBusy}
+                  className="bg-indigo-700 hover:bg-indigo-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {rfiCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneRfis(false)}
+                  disabled={rfiCloneBusy || !rfiCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {rfiCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {rfiCloneResult?.result?.counts?.nextCreateOffset !== null &&
+                rfiCloneResult?.result?.counts?.nextCreateOffset !== undefined ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOffset = String(rfiCloneResult.result.counts.nextCreateOffset);
+                      setRfiCloneCreateOffset(nextOffset);
+                      void handleCloneRfis(false, { createOffset: nextOffset, skipConfirm: true });
+                    }}
+                    disabled={rfiCloneBusy}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Continue at {rfiCloneResult.result.counts.nextCreateOffset}
+                  </button>
+                ) : null}
+                {rfiCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-rfis-result.json", rfiCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {rfiCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>RFI Clone Error:</strong> {rfiCloneError}
+                </div>
+              )}
+
+              {rfiCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    rfiCloneResult.result?.readyForLiveClone || rfiCloneResult.result?.success
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>RFI Clone Result:</strong>{" "}
+                    {rfiCloneResult.result?.dryRun
+                      ? `Dry run found ${rfiCloneResult.result?.counts?.sourceRfis ?? 0} RFI(s), ${rfiCloneResult.result?.counts?.replies ?? 0} replie(s), and ${rfiCloneResult.result?.counts?.duplicates ?? 0} duplicate(s).`
+                      : rfiCloneResult.result?.success
+                        ? `Live clone created ${rfiCloneResult.result?.counts?.created ?? 0} RFI(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <CollapsibleJson value={rfiCloneResult} />
                 </div>
               )}
             </div>

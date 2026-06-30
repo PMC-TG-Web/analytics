@@ -651,7 +651,8 @@ function ProcoreContent() {
   const [rfiClonePreserveNumber, setRfiClonePreserveNumber] = useState(true);
   const [rfiClonePreserveStatus, setRfiClonePreserveStatus] = useState(false);
   const [rfiCloneMapsText, setRfiCloneMapsText] = useState(`{
-  "userIdMap": {}
+  "userIdMap": {},
+  "vendorIdMap": {}
 }`);
   const [rfiCloneBusy, setRfiCloneBusy] = useState(false);
   const [rfiCloneError, setRfiCloneError] = useState<string | null>(null);
@@ -5587,6 +5588,7 @@ function ProcoreContent() {
           preserveStatus: rfiClonePreserveStatus,
           numberOffset: rfiCloneNumberOffset.trim() || "0",
           userIdMap: maps.userIdMap || {},
+          vendorIdMap: maps.vendorIdMap || {},
           dryRun,
         }),
       });
@@ -8616,7 +8618,7 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Use <code className="bg-gray-100 px-1 rounded">userIdMap</code> to map old RFI managers, assignees, creators, and reply users to target user IDs.
+                    Use <code className="bg-gray-100 px-1 rounded">userIdMap</code> for people and <code className="bg-gray-100 px-1 rounded">vendorIdMap</code> for responsible contractors.
                   </p>
                 </div>
               </div>

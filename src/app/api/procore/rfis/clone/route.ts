@@ -266,9 +266,13 @@ function offsetNumber(value: unknown, offset: number) {
 function buildRfiPayload(params: {
   source: UnknownRecord;
   userIdMap: Record<string, string>;
+  vendorIdMap: Record<string, string>;
   preserveNumber: boolean;
   numberOffset: number;
   preserveStatus: boolean;
+  issues: UnknownRecord[];
+  sourceCompanyId: string;
+  targetCompanyId: string;
 }) {
   const source = params.source;
   const assigneeIds = asArray(source.assignees)
@@ -279,6 +283,22 @@ function buildRfiPayload(params: {
     .filter((id) => id !== undefined);
   const managerId = mapId(source.rfi_manager ?? source.manager ?? source.rfi_manager_id, params.userIdMap);
   const createdById = mapId(source.created_by ?? source.created_by_id, params.userIdMap);
+  const responsibleContractor = source.responsible_contractor ?? source.responsible_contractor_id;
+  const sourceResponsibleContractorId = readStr(isRecord(responsibleContractor) ? responsibleContractor.id : responsibleContractor);
+  let responsibleContractorId = mapId(responsibleContractor, params.vendorIdMap);
+  if (responsibleContractorId === undefined && params.sourceCompanyId === params.targetCompanyId) {
+    responsibleContractorId = readNum(sourceResponsibleContractorId);
+  }
+  if (responsibleContractorId === undefined && sourceResponsibleContractorId) {
+    params.issues.push({
+      type: "missing_vendor_mapping",
+      field: "responsible_contractor_id",
+      oldId: sourceResponsibleContractorId,
+      rfiId: readStr(source.id),
+      rfiNumber: rfiNumber(source),
+      subject: rfiSubject(source),
+    });
+  }
 
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
@@ -295,7 +315,7 @@ function buildRfiPayload(params: {
     private: typeof source.private === "boolean" ? source.private : undefined,
     reference: readStr(source.reference),
     location_id: readNum(nestedRecord(source, "location").id ?? source.location_id),
-    responsible_contractor_id: readNum(nestedRecord(source, "responsible_contractor").id ?? source.responsible_contractor_id),
+    responsible_contractor_id: responsibleContractorId,
   });
 }
 
@@ -375,6 +395,7 @@ export async function POST(request: Request) {
     const maxPages = Math.max(1, Math.min(50, readNum(body.maxPages) ?? 10));
     const requestedRfiIds = new Set(parseIds(body.rfiIds));
     const userIdMap = buildStringMap(body.userIdMap);
+    const vendorIdMap = buildStringMap(body.vendorIdMap);
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
       return NextResponse.json(
@@ -405,7 +426,18 @@ export async function POST(request: Request) {
 
     const targetKeys = new Set(targetFetch.rfis.map(rfiKey));
     const plan = sourceDetails.map((rfi) => {
-      const payload = buildRfiPayload({ source: rfi, userIdMap, preserveNumber, numberOffset, preserveStatus });
+      const issues: UnknownRecord[] = [];
+      const payload = buildRfiPayload({
+        source: rfi,
+        userIdMap,
+        vendorIdMap,
+        preserveNumber,
+        numberOffset,
+        preserveStatus,
+        issues,
+        sourceCompanyId,
+        targetCompanyId,
+      });
       const simulatedTarget = { ...rfi, number: payload.number, subject: payload.subject };
       const duplicate = targetKeys.has(rfiKey(simulatedTarget as UnknownRecord));
       const replies = asArray(rfi._cloneReplies).map((reply) => buildReplyPayload(reply, userIdMap)).filter((reply) => readStr(reply.body || reply.plain_text_body));
@@ -415,6 +447,7 @@ export async function POST(request: Request) {
         subject: rfiSubject(rfi),
         duplicate,
         payload,
+        issues,
         replies,
         replyCount: replies.length,
       };
@@ -437,6 +470,7 @@ export async function POST(request: Request) {
           creatable: creatable.length,
           duplicates: plan.length - creatable.length,
           replies: plan.reduce((sum, entry) => sum + entry.replyCount, 0),
+          missingVendorMappings: plan.reduce((sum, entry) => sum + asArray(entry.issues).length, 0),
         },
         fetchWarnings: fetchWarnings.slice(0, 20),
         plan,

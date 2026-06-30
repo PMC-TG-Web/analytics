@@ -245,7 +245,7 @@ function budgetLineWbsId(item: UnknownRecord) {
 
 function budgetLineFlatCode(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
-  return readStr(wbsCode.flat_code ?? item.flat_code ?? item.cost_code_string);
+  return readStr(wbsCode.flat_code ?? wbsCode.full_code ?? item.flat_code ?? item.full_code ?? item.cost_code_string);
 }
 
 function targetWbsId(item: UnknownRecord) {
@@ -256,12 +256,23 @@ function targetWbsId(item: UnknownRecord) {
 function budgetLineCostCode(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
   const costCode = isRecord(item.cost_code) ? item.cost_code : {};
-  return readStr(item.cost_code_string ?? wbsCode.flat_code ?? wbsCode.code ?? costCode.code ?? costCode.name ?? item.cost_code);
+  const flatCode = budgetLineFlatCode(item);
+  return readStr(item.cost_code_string || (flatCode ? flatCode.split(".")[0] : "") || wbsCode.code || costCode.code || costCode.name || item.cost_code);
 }
 
 function budgetLineCostType(item: UnknownRecord) {
   const lineItemType = isRecord(item.line_item_type) ? item.line_item_type : {};
   const costType = isRecord(item.cost_type) ? item.cost_type : {};
+  const flatCodeType = flatCodeSuffix(budgetLineFlatCode(item));
+  const segmentItems = [
+    ...asArray(item.segment_items).filter(isRecord),
+    ...asArray(item.segments).filter(isRecord),
+    ...asArray(item.wbs_segments).filter(isRecord),
+  ];
+  const segmentType = segmentItems
+    .map((segment) => readStr(segment.code ?? segment.abbreviation ?? segment.name ?? segment.value))
+    .map(canonicalCostType)
+    .find((value) => ["l", "m", "c", "con", "o"].includes(value));
   return readStr(
     lineItemType.code ??
       lineItemType.abbreviation ??
@@ -269,6 +280,8 @@ function budgetLineCostType(item: UnknownRecord) {
       costType.code ??
       costType.abbreviation ??
       costType.name ??
+      segmentType ??
+      flatCodeType ??
       item.line_item_type ??
       item.cost_type
   );
@@ -399,13 +412,31 @@ function resolveTargetWbsId(
     if (exactFlatMatch) return { wbsCodeId: readStr(exactFlatMatch.wbsCodeId), issue: "", matchCount: 1, strategy: "flat_code_exact" };
     const typedMatches = targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [];
     if (typedMatches.length === 1) return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
-    if (typedMatches.length > 1) return { wbsCodeId: "", issue: "ambiguous_target_wbs_code_type", matchCount: typedMatches.length };
+    if (typedMatches.length > 1) {
+      return {
+        wbsCodeId: "",
+        issue: "ambiguous_target_wbs_code_type",
+        matchCount: typedMatches.length,
+        matches: typedMatches.slice(0, 8).map((match) => ({
+          wbsCodeId: match.wbsCodeId,
+          flatCode: match.flatCode,
+          costType: match.costType,
+          description: match.description,
+        })),
+      };
+    }
   }
 
   return {
     wbsCodeId: "",
     issue: codeMatches.length === 0 ? "missing_target_wbs_code" : "ambiguous_target_wbs_code",
     matchCount: codeMatches.length,
+    matches: codeMatches.slice(0, 8).map((match) => ({
+      wbsCodeId: match.wbsCodeId,
+      flatCode: match.flatCode,
+      costType: match.costType,
+      description: match.description,
+    })),
   };
 }
 
@@ -584,11 +615,12 @@ function buildPatchPlan(params: {
       typeHint: workbookMatch.typeHint,
       patchable: Boolean(wbsMatch.wbsCodeId) && !alreadyCorrect,
       alreadyCorrect,
-      issue: alreadyCorrect ? "already_correct" : wbsMatch.issue,
-      matchCount: wbsMatch.matchCount,
-      strategy: wbsMatch.strategy,
-      matchedFlatCode: wbsMatch.matchedFlatCode,
-    };
+        issue: alreadyCorrect ? "already_correct" : wbsMatch.issue,
+        matchCount: wbsMatch.matchCount,
+        strategy: wbsMatch.strategy,
+        matchedFlatCode: wbsMatch.matchedFlatCode,
+        matches: wbsMatch.matches,
+      };
   });
 }
 

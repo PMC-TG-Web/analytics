@@ -395,7 +395,9 @@ function buildRfiPayload(params: {
   if (defaultAssigneeIds.length === 0 && defaultAssigneeId !== undefined) defaultAssigneeIds.push(defaultAssigneeId);
   const responsibleContractor = source.responsible_contractor ?? source.responsible_contractor_id;
   const sourceResponsibleContractorId = readStr(isRecord(responsibleContractor) ? responsibleContractor.id : responsibleContractor);
-  let responsibleContractorId = mapId(responsibleContractor, params.vendorIdMap);
+  let responsibleContractorId =
+    mapId(responsibleContractor, params.vendorIdMap) ??
+    readNum(params.defaults.responsibleContractorId ?? params.defaults.defaultResponsibleContractorId);
   if (responsibleContractorId === undefined && params.sourceCompanyId === params.targetCompanyId) {
     responsibleContractorId = readNum(sourceResponsibleContractorId);
   }
@@ -453,7 +455,13 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
     subject: params.payload.subject,
     question: params.payload.question,
   });
-  const payloads = [params.payload, minimalPayload, requiredPayload];
+  const requiredWithContractorPayload = compactPayload({
+    number: params.payload.number,
+    subject: params.payload.subject,
+    question: params.payload.question,
+    responsible_contractor_id: params.payload.responsible_contractor_id,
+  });
+  const payloads = [params.payload, minimalPayload, requiredWithContractorPayload, requiredPayload];
   const bodies = payloads.flatMap((payload) => [{ rfi: payload }, payload]);
   const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`;
   const attempts: UnknownRecord[] = [];

@@ -654,6 +654,7 @@ function ProcoreContent() {
   "userIdMap": {},
   "vendorIdMap": {},
   "rfiDefaults": {
+    "responsibleContractorId": "598134335120254",
     "rfiManagerId": "",
     "assigneeIds": []
   }

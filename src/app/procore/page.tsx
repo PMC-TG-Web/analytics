@@ -416,6 +416,7 @@ function ProcoreContent() {
   const [commitmentBudgetPatchOffset, setCommitmentBudgetPatchOffset] = useState("0");
   const [commitmentBudgetPatchLimit, setCommitmentBudgetPatchLimit] = useState("25");
   const [commitmentBudgetPatchExisting, setCommitmentBudgetPatchExisting] = useState(false);
+  const [commitmentBudgetEnsureMissingCodes, setCommitmentBudgetEnsureMissingCodes] = useState(false);
   const [commitmentVendorLookupMap, setCommitmentVendorLookupMap] = useState<Record<string, string>>({});
   const [commitmentVendorLookupSummary, setCommitmentVendorLookupSummary] = useState<string | null>(null);
   const [primeCloneSourceCompanyId, setPrimeCloneSourceCompanyId] = useState("598134325658789");
@@ -6000,6 +6001,7 @@ function ProcoreContent() {
           crosswalkPath,
           crosswalkWorkbookBase64: commitmentCloneCrosswalkWorkbookBase64 || undefined,
           patchExisting: commitmentBudgetPatchExisting,
+          ensureMissingCodes: commitmentBudgetEnsureMissingCodes,
           patchOffset,
           patchLimit,
           dryRun,
@@ -11568,6 +11570,18 @@ function ProcoreContent() {
                     </label>
                     <p className="text-xs text-emerald-800 mt-1">
                       Turn this on to move wrong-type lines such as <code className="bg-white px-1 rounded">.M</code> to <code className="bg-white px-1 rounded">.CON</code>.
+                    </p>
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-emerald-900">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(commitmentBudgetEnsureMissingCodes)}
+                        onChange={(e) => setCommitmentBudgetEnsureMissingCodes(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      Create missing WBS codes first
+                    </label>
+                    <p className="text-xs text-emerald-800 mt-1">
+                      Use this when the target project has <code className="bg-white px-1 rounded">.M</code> but needs a new <code className="bg-white px-1 rounded">.CON</code> code by API.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">

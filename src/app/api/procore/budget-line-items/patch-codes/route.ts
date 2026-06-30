@@ -192,6 +192,48 @@ async function fetchBudgetLineItems(params: {
   return { records, errors };
 }
 
+async function fetchProjectWbsCodes(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  maxPages: number;
+}) {
+  const records: UnknownRecord[] = [];
+  const errors: UnknownRecord[] = [];
+
+  for (let page = 1; page <= params.maxPages; page += 1) {
+    const endpoints = [
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes?page=${page}&per_page=100`,
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes?company_id=${encodeURIComponent(params.companyId)}&page=${page}&per_page=100`,
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/wbs/codes?page=${page}&per_page=100`,
+    ];
+
+    let pageRecords: UnknownRecord[] = [];
+    let pageOk = false;
+    for (const endpoint of endpoints) {
+      const response = await procoreJson({
+        path: endpoint,
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        allowStatuses: [400, 403, 404, 405],
+      });
+      if (!response.ok) {
+        errors.push({ path: endpoint, status: response.status, response: response.payload });
+        continue;
+      }
+      pageRecords = asArray(response.payload, ["data", "wbs_codes", "codes"]).filter(isRecord);
+      pageOk = true;
+      break;
+    }
+
+    if (!pageOk || pageRecords.length === 0) break;
+    records.push(...pageRecords);
+    if (pageRecords.length < 100) break;
+  }
+
+  return { records, errors };
+}
+
 function budgetLineId(item: UnknownRecord) {
   return readStr(item.id ?? item.budget_line_item_id);
 }
@@ -204,6 +246,11 @@ function budgetLineWbsId(item: UnknownRecord) {
 function budgetLineFlatCode(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
   return readStr(wbsCode.flat_code ?? item.flat_code ?? item.cost_code_string);
+}
+
+function targetWbsId(item: UnknownRecord) {
+  const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
+  return readStr(wbsCode.id ?? item.wbs_code_id ?? (budgetLineFlatCode(item) ? item.id : ""));
 }
 
 function budgetLineCostCode(item: UnknownRecord) {
@@ -261,13 +308,29 @@ function canonicalCostType(value: unknown) {
   return normalized;
 }
 
+function procoreFlatCostType(value: unknown) {
+  const canonical = canonicalCostType(value);
+  if (canonical === "c") return "C";
+  if (canonical === "con") return "CON";
+  if (canonical === "l") return "L";
+  if (canonical === "m") return "M";
+  if (canonical === "o") return "O";
+  return readStr(value).toUpperCase();
+}
+
+function targetFlatCodeFromPlan(entry: UnknownRecord) {
+  const costCode = readStr(entry.targetCostCode);
+  const costType = procoreFlatCostType(entry.targetCostType);
+  return costCode && costType ? `${costCode}.${costType}` : "";
+}
+
 function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCodeAndType = new Map<string, UnknownRecord[]>();
   const byCode = new Map<string, UnknownRecord[]>();
   const byFlatCode = new Map<string, UnknownRecord>();
 
   for (const item of items) {
-    const wbsCodeId = budgetLineWbsId(item);
+    const wbsCodeId = targetWbsId(item);
     const flatCode = normCode(budgetLineFlatCode(item));
     const costCode = costCodeBaseKey(budgetLineCostCode(item) || flatCode);
     if (!wbsCodeId || !costCode) continue;
@@ -427,6 +490,108 @@ async function patchBudgetLineItem(params: {
   });
 }
 
+async function createProjectWbsCode(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  flatCode: string;
+}) {
+  const bodies = [
+    { wbs_code: { flat_code: params.flatCode } },
+    { wbs_code: { code: params.flatCode } },
+    { wbs_code: { full_code: params.flatCode } },
+    { flat_code: params.flatCode },
+    { code: params.flatCode },
+  ];
+  const paths = [
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes?company_id=${encodeURIComponent(params.companyId)}`,
+  ];
+  const attempts: UnknownRecord[] = [];
+
+  for (const path of paths) {
+    for (const body of bodies) {
+      const response = await procoreJson({
+        path,
+        method: "POST",
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        body,
+        allowStatuses: [400, 403, 404, 405, 409, 422],
+      });
+      attempts.push({ path, body, status: response.status, ok: response.ok, response: response.payload });
+      if (response.ok) return { ok: true, path, body, status: response.status, response: response.payload, attempts };
+      const text = safeJson(response.payload).toLowerCase();
+      if (response.status === 409 || /already|taken|exists/.test(text)) {
+        return { ok: true, alreadyExists: true, path, body, status: response.status, response: response.payload, attempts };
+      }
+    }
+  }
+
+  const bulkBody = { wbs_codes: [{ flat_code: params.flatCode }] };
+  for (const method of ["PATCH", "POST"]) {
+    const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes/bulk_create`;
+    const response = await procoreJson({
+      path,
+      method,
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      body: bulkBody,
+      allowStatuses: [400, 403, 404, 405, 409, 422],
+    });
+    attempts.push({ path, method, body: bulkBody, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { ok: true, path, method, body: bulkBody, status: response.status, response: response.payload, attempts };
+    const text = safeJson(response.payload).toLowerCase();
+    if (response.status === 409 || /already|taken|exists/.test(text)) {
+      return { ok: true, alreadyExists: true, path, method, body: bulkBody, status: response.status, response: response.payload, attempts };
+    }
+  }
+
+  return { ok: false, flatCode: params.flatCode, attempts };
+}
+
+function buildPatchPlan(params: {
+  candidates: UnknownRecord[];
+  workbookRows: UnknownRecord[];
+  targetIndex: ReturnType<typeof buildTargetWbsIndex>;
+  patchExisting: boolean;
+}) {
+  return params.candidates.map((item) => {
+    const workbookMatch = findWorkbookRowForBudgetLine(item, params.workbookRows);
+    if (!workbookMatch.row) {
+      return {
+        budgetLineItemId: budgetLineId(item),
+        description: budgetLineDescription(item),
+        currentWbsCodeId: budgetLineWbsId(item),
+        patchable: false,
+        issue: workbookMatch.issue,
+        matchCount: workbookMatch.matchCount,
+        typeHint: workbookMatch.typeHint,
+        candidates: workbookMatch.candidates,
+      };
+    }
+    const wbsMatch = resolveTargetWbsId(workbookMatch.row, params.targetIndex, { requireCostTypeMatch: params.patchExisting });
+    const currentWbsCodeId = budgetLineWbsId(item);
+    const alreadyCorrect = Boolean(wbsMatch.wbsCodeId) && readStr(wbsMatch.wbsCodeId) === currentWbsCodeId;
+    return {
+      budgetLineItemId: budgetLineId(item),
+      description: budgetLineDescription(item),
+      currentWbsCodeId,
+      targetWbsCodeId: wbsMatch.wbsCodeId,
+      targetCostCode: workbookMatch.row["Cost Code"],
+      targetCostType: workbookMatch.row["Cost code type"],
+      targetFlatCode: `${readStr(workbookMatch.row["Cost Code"])}.${procoreFlatCostType(workbookMatch.row["Cost code type"])}`,
+      typeHint: workbookMatch.typeHint,
+      patchable: Boolean(wbsMatch.wbsCodeId) && !alreadyCorrect,
+      alreadyCorrect,
+      issue: alreadyCorrect ? "already_correct" : wbsMatch.issue,
+      matchCount: wbsMatch.matchCount,
+      strategy: wbsMatch.strategy,
+      matchedFlatCode: wbsMatch.matchedFlatCode,
+    };
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -434,6 +599,7 @@ export async function POST(request: Request) {
     const targetProjectId = readStr(body.targetProjectId || body.projectId);
     const dryRun = readBool(body.dryRun, true);
     const patchExisting = readBool(body.patchExisting, false);
+    const ensureMissingCodes = readBool(body.ensureMissingCodes, false);
     const patchOffset = readInt(body.patchOffset, 0);
     const patchLimit = Math.max(1, Math.min(100, readInt(body.patchLimit, 25)));
     const maxPages = Math.max(1, Math.min(50, readInt(body.maxPages, 10)));
@@ -457,7 +623,13 @@ export async function POST(request: Request) {
       projectId: targetProjectId,
       maxPages,
     });
-    const targetIndex = buildTargetWbsIndex(budgetFetch.records);
+    let wbsFetch = await fetchProjectWbsCodes({
+      accessToken,
+      companyId: targetCompanyId,
+      projectId: targetProjectId,
+      maxPages,
+    });
+    let targetIndex = buildTargetWbsIndex([...budgetFetch.records, ...wbsFetch.records]);
     const workbookRows = buildWorkbookNewRows(workbookLoad.workbook);
 
     const candidates = budgetFetch.records.filter((item) => {
@@ -466,39 +638,37 @@ export async function POST(request: Request) {
       return !budgetLineWbsId(item);
     });
 
-    const plan = candidates.map((item) => {
-      const workbookMatch = findWorkbookRowForBudgetLine(item, workbookRows);
-      if (!workbookMatch.row) {
-        return {
-          budgetLineItemId: budgetLineId(item),
-          description: budgetLineDescription(item),
-          currentWbsCodeId: budgetLineWbsId(item),
-          patchable: false,
-          issue: workbookMatch.issue,
-          matchCount: workbookMatch.matchCount,
-          typeHint: workbookMatch.typeHint,
-          candidates: workbookMatch.candidates,
-        };
+    let plan = buildPatchPlan({ candidates, workbookRows, targetIndex, patchExisting });
+    const missingCodeFlatCodes = Array.from(
+      new Set(
+        plan
+          .filter((entry) => readStr(entry.issue) === "missing_target_wbs_code_type" || readStr(entry.issue) === "missing_target_wbs_code")
+          .map(targetFlatCodeFromPlan)
+          .filter(Boolean)
+      )
+    );
+
+    const ensureResults = [];
+    if (ensureMissingCodes && !dryRun && missingCodeFlatCodes.length > 0) {
+      for (const flatCode of missingCodeFlatCodes) {
+        const result = await createProjectWbsCode({
+          accessToken,
+          companyId: targetCompanyId,
+          projectId: targetProjectId,
+          flatCode,
+        });
+        ensureResults.push({ flatCode, ...result });
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
-      const wbsMatch = resolveTargetWbsId(workbookMatch.row, targetIndex, { requireCostTypeMatch: patchExisting });
-      const currentWbsCodeId = budgetLineWbsId(item);
-      const alreadyCorrect = Boolean(wbsMatch.wbsCodeId) && readStr(wbsMatch.wbsCodeId) === currentWbsCodeId;
-      return {
-        budgetLineItemId: budgetLineId(item),
-        description: budgetLineDescription(item),
-        currentWbsCodeId,
-        targetWbsCodeId: wbsMatch.wbsCodeId,
-        targetCostCode: workbookMatch.row["Cost Code"],
-        targetCostType: workbookMatch.row["Cost code type"],
-        typeHint: workbookMatch.typeHint,
-        patchable: Boolean(wbsMatch.wbsCodeId) && !alreadyCorrect,
-        alreadyCorrect,
-        issue: alreadyCorrect ? "already_correct" : wbsMatch.issue,
-        matchCount: wbsMatch.matchCount,
-        strategy: wbsMatch.strategy,
-        matchedFlatCode: wbsMatch.matchedFlatCode,
-      };
-    });
+      wbsFetch = await fetchProjectWbsCodes({
+        accessToken,
+        companyId: targetCompanyId,
+        projectId: targetProjectId,
+        maxPages,
+      });
+      targetIndex = buildTargetWbsIndex([...budgetFetch.records, ...wbsFetch.records]);
+      plan = buildPatchPlan({ candidates, workbookRows, targetIndex, patchExisting });
+    }
 
     const patchable = plan.filter((entry) => entry.patchable && entry.targetWbsCodeId);
     const alreadyCorrect = plan.filter((entry) => entry.alreadyCorrect);
@@ -530,10 +700,13 @@ export async function POST(request: Request) {
       tokenSource,
       target: { companyId: targetCompanyId, projectId: targetProjectId },
       workbook: { source: workbookLoad.source, rows: workbookRows.length },
-      options: { patchExisting, patchOffset, patchLimit },
+      options: { patchExisting, ensureMissingCodes, patchOffset, patchLimit },
       counts: {
         targetBudgetLineItems: budgetFetch.records.length,
+        targetWbsCodes: wbsFetch.records.length,
         candidates: candidates.length,
+        missingWbsCodes: missingCodeFlatCodes.length,
+        ensuredWbsCodes: ensureResults.filter((result) => result.ok).length,
         patchable: patchable.length,
         alreadyCorrect: alreadyCorrect.length,
         blocked: plan.length - patchable.length - alreadyCorrect.length,
@@ -541,11 +714,15 @@ export async function POST(request: Request) {
         failed: failed.length,
         nextPatchOffset,
       },
-      fetchWarnings: budgetFetch.errors.slice(0, 8),
+      fetchWarnings: [...budgetFetch.errors, ...wbsFetch.errors].slice(0, 12),
+      missingWbsCodes: missingCodeFlatCodes,
+      ensureResults,
       plan,
       patchResults,
       nextStep: dryRun
-        ? "Review plan. Rerun with dryRun=false to PATCH existing budget line item wbs_code_id values."
+        ? ensureMissingCodes
+          ? "Review missingWbsCodes. Rerun with dryRun=false to create missing WBS codes, refetch, then PATCH budget line item wbs_code_id values."
+          : "Review plan. Rerun with dryRun=false to PATCH existing budget line item wbs_code_id values."
         : nextPatchOffset !== null
           ? `Continue at patchOffset ${nextPatchOffset}.`
           : "Budget code patch batch complete.",

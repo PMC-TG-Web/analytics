@@ -652,7 +652,11 @@ function ProcoreContent() {
   const [rfiClonePreserveStatus, setRfiClonePreserveStatus] = useState(false);
   const [rfiCloneMapsText, setRfiCloneMapsText] = useState(`{
   "userIdMap": {},
-  "vendorIdMap": {}
+  "vendorIdMap": {},
+  "rfiDefaults": {
+    "rfiManagerId": "",
+    "assigneeIds": []
+  }
 }`);
   const [rfiCloneBusy, setRfiCloneBusy] = useState(false);
   const [rfiCloneError, setRfiCloneError] = useState<string | null>(null);
@@ -5589,6 +5593,7 @@ function ProcoreContent() {
           numberOffset: rfiCloneNumberOffset.trim() || "0",
           userIdMap: maps.userIdMap || {},
           vendorIdMap: maps.vendorIdMap || {},
+          rfiDefaults: maps.rfiDefaults || {},
           dryRun,
         }),
       });
@@ -8618,7 +8623,7 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Use <code className="bg-gray-100 px-1 rounded">userIdMap</code> for people and <code className="bg-gray-100 px-1 rounded">vendorIdMap</code> for responsible contractors.
+                    Use <code className="bg-gray-100 px-1 rounded">userIdMap</code> for people, <code className="bg-gray-100 px-1 rounded">vendorIdMap</code> for contractors, and <code className="bg-gray-100 px-1 rounded">rfiDefaults</code> for target manager/assignees.
                   </p>
                 </div>
               </div>

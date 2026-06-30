@@ -86,11 +86,23 @@ function buildStringMap(value: unknown): Record<string, string> {
   return out;
 }
 
+function buildDefaults(value: unknown): UnknownRecord {
+  return isRecord(value) ? value : {};
+}
+
 function mapId(value: unknown, map: Record<string, string>) {
   const id = readStr(isRecord(value) ? value.id : value);
   if (!id) return undefined;
   const mapped = map[id] || map[normalize(isRecord(value) ? value.name : "")] || "";
   return readNum(mapped) ?? (mapped || undefined);
+}
+
+function firstId(records: UnknownRecord[]) {
+  for (const record of records) {
+    const id = readNum(record.id);
+    if (id !== undefined) return id;
+  }
+  return undefined;
 }
 
 function safeJson(value: unknown): string {
@@ -245,6 +257,78 @@ async function fetchRfiReplies(params: { accessToken: string; companyId: string;
   return { replies: [] as UnknownRecord[], errors };
 }
 
+async function fetchRfiHelperRows(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  endpoint: string;
+  keys?: string[];
+}) {
+  const encodedProjectId = encodeURIComponent(params.projectId);
+  const endpoint = params.endpoint.replace(/^\/+/, "");
+  const paths = [
+    `/rest/v1.0/projects/${encodedProjectId}/rfis/${endpoint}`,
+    `/rest/v1.0/rfis/${endpoint}?project_id=${encodedProjectId}`,
+  ];
+  const attempts: UnknownRecord[] = [];
+  for (const path of paths) {
+    const response = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path,
+      allowStatuses: [400, 403, 404, 405],
+    });
+    attempts.push({ endpoint, path, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { rows: asArray(response.payload, params.keys || []), attempts };
+  }
+  return { rows: [] as UnknownRecord[], attempts };
+}
+
+async function fetchRfiTargetSetup(params: { accessToken: string; companyId: string; projectId: string }) {
+  const [potentialManagers, potentialAssignees, defaultDistribution, filterOptions] = await Promise.all([
+    fetchRfiHelperRows({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      projectId: params.projectId,
+      endpoint: "potential_rfi_managers",
+      keys: ["potential_rfi_managers", "rfi_managers", "users"],
+    }),
+    fetchRfiHelperRows({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      projectId: params.projectId,
+      endpoint: "potential_assignees",
+      keys: ["potential_assignees", "assignees", "users"],
+    }),
+    fetchRfiHelperRows({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      projectId: params.projectId,
+      endpoint: "default_distribution",
+      keys: ["default_distribution", "distribution_members", "users"],
+    }),
+    fetchRfiHelperRows({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      projectId: params.projectId,
+      endpoint: "filter_options",
+      keys: ["filter_options", "statuses", "data"],
+    }),
+  ]);
+  return {
+    potentialManagers: potentialManagers.rows,
+    potentialAssignees: potentialAssignees.rows,
+    defaultDistribution: defaultDistribution.rows,
+    filterOptions: filterOptions.rows,
+    attempts: [
+      ...potentialManagers.attempts,
+      ...potentialAssignees.attempts,
+      ...defaultDistribution.attempts,
+      ...filterOptions.attempts,
+    ],
+  };
+}
+
 function rfiNumber(value: UnknownRecord) {
   return readStr(value.number ?? value.rfi_number);
 }
@@ -281,6 +365,8 @@ function buildRfiPayload(params: {
   source: UnknownRecord;
   userIdMap: Record<string, string>;
   vendorIdMap: Record<string, string>;
+  defaults: UnknownRecord;
+  targetSetup: Awaited<ReturnType<typeof fetchRfiTargetSetup>>;
   preserveNumber: boolean;
   numberOffset: number;
   preserveStatus: boolean;
@@ -297,6 +383,16 @@ function buildRfiPayload(params: {
     .filter((id) => id !== undefined);
   const managerId = mapId(source.rfi_manager ?? source.manager ?? source.rfi_manager_id, params.userIdMap);
   const createdById = mapId(source.created_by ?? source.created_by_id, params.userIdMap);
+  const defaultManagerId =
+    readNum(params.defaults.rfiManagerId ?? params.defaults.defaultRfiManagerId) ??
+    firstId(params.targetSetup.potentialManagers);
+  const defaultAssigneeId =
+    readNum(params.defaults.assigneeId ?? params.defaults.defaultAssigneeId) ??
+    firstId(params.targetSetup.potentialAssignees);
+  const defaultAssigneeIds = parseIds(params.defaults.assigneeIds ?? params.defaults.defaultAssigneeIds)
+    .map((entry) => readNum(entry))
+    .filter((id) => id !== undefined);
+  if (defaultAssigneeIds.length === 0 && defaultAssigneeId !== undefined) defaultAssigneeIds.push(defaultAssigneeId);
   const responsibleContractor = source.responsible_contractor ?? source.responsible_contractor_id;
   const sourceResponsibleContractorId = readStr(isRecord(responsibleContractor) ? responsibleContractor.id : responsibleContractor);
   let responsibleContractorId = mapId(responsibleContractor, params.vendorIdMap);
@@ -322,9 +418,9 @@ function buildRfiPayload(params: {
     due_date: readStr(source.due_date),
     initiated_at: readStr(source.initiated_at ?? source.initiated_on),
     received_from_id: mapId(source.received_from ?? source.received_from_id, params.userIdMap),
-    rfi_manager_id: managerId,
+    rfi_manager_id: managerId ?? defaultManagerId,
     created_by_id: createdById,
-    assignee_ids: assigneeIds,
+    assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     distribution_member_ids: distributionIds,
     private: typeof source.private === "boolean" ? source.private : undefined,
     reference: readStr(source.reference),
@@ -444,6 +540,7 @@ export async function POST(request: Request) {
     const requestedRfiIds = new Set(parseIds(body.rfiIds));
     const userIdMap = buildStringMap(body.userIdMap);
     const vendorIdMap = buildStringMap(body.vendorIdMap);
+    const rfiDefaults = buildDefaults(body.rfiDefaults);
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
       return NextResponse.json(
@@ -454,9 +551,10 @@ export async function POST(request: Request) {
 
     const sourceFetch = await fetchRfis({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages });
     const targetFetch = await fetchRfis({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
+    const targetSetup = await fetchRfiTargetSetup({ accessToken, companyId: targetCompanyId, projectId: targetProjectId });
     const selected = sourceFetch.rfis.filter((rfi) => requestedRfiIds.size === 0 || requestedRfiIds.has(readStr(rfi.id)));
     const sourceDetails: UnknownRecord[] = [];
-    const fetchWarnings: UnknownRecord[] = [...sourceFetch.errors, ...targetFetch.errors];
+    const fetchWarnings: UnknownRecord[] = [...sourceFetch.errors, ...targetFetch.errors, ...targetSetup.attempts.filter((attempt) => !attempt.ok)];
 
     for (const sourceRfi of selected) {
       const sourceId = readStr(sourceRfi.id);
@@ -479,6 +577,8 @@ export async function POST(request: Request) {
         source: rfi,
         userIdMap,
         vendorIdMap,
+        defaults: rfiDefaults,
+        targetSetup,
         preserveNumber,
         numberOffset,
         preserveStatus,
@@ -512,6 +612,12 @@ export async function POST(request: Request) {
         source: { companyId: sourceCompanyId, projectId: sourceProjectId },
         target: { companyId: targetCompanyId, projectId: targetProjectId },
         options: { cloneReplies, preserveNumber, preserveStatus, numberOffset, createOffset, createLimit },
+        targetSetup: {
+          potentialManagers: targetSetup.potentialManagers.slice(0, 10),
+          potentialAssignees: targetSetup.potentialAssignees.slice(0, 10),
+          defaultDistribution: targetSetup.defaultDistribution.slice(0, 10),
+          filterOptions: targetSetup.filterOptions.slice(0, 10),
+        },
         counts: {
           sourceRfis: selected.length,
           targetRfis: targetFetch.rfis.length,

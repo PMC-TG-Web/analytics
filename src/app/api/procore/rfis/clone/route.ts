@@ -253,6 +253,20 @@ function rfiSubject(value: UnknownRecord) {
   return readStr(value.subject ?? value.title);
 }
 
+function rfiQuestion(value: UnknownRecord) {
+  const question = readStr(
+    value.question ??
+    value.body ??
+    value.description ??
+    value.plain_text_body ??
+    value.html_body ??
+    value.details
+  );
+  if (question) return question;
+  const subject = rfiSubject(value);
+  return subject ? subject : "Cloned RFI";
+}
+
 function rfiKey(value: UnknownRecord) {
   return `${normalize(rfiNumber(value))}|${normalize(rfiSubject(value))}`;
 }
@@ -303,7 +317,7 @@ function buildRfiPayload(params: {
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
-    question: readStr(source.question ?? source.body ?? source.description),
+    question: rfiQuestion(source),
     status: params.preserveStatus ? readStr(source.status) : undefined,
     due_date: readStr(source.due_date),
     initiated_at: readStr(source.initiated_at ?? source.initiated_on),

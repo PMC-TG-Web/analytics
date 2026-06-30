@@ -459,6 +459,7 @@ function budgetLineTypeHint(item: UnknownRecord) {
   if (description.endsWith(".labor") || /\.labor\b/.test(description)) return "l";
   // A current ".Materials" suffix can be the wrong code we are trying to fix
   // (for example concrete rows that should become .CON), so do not force M.
+  if (description.endsWith(".materials") || /\.materials\b/.test(description)) return "";
   if (description.endsWith(".commitments") || /\.commitments\b/.test(description)) return "c";
   if (description.endsWith(".other") || /\.other\b/.test(description)) return "o";
   return canonicalCostType(explicitType);

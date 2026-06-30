@@ -344,21 +344,39 @@ function buildReplyPayload(reply: UnknownRecord, userIdMap: Record<string, strin
 }
 
 async function createRfi(params: { accessToken: string; companyId: string; projectId: string; payload: UnknownRecord }) {
-  const bodies = [{ rfi: params.payload }, params.payload];
+  const minimalPayload = compactPayload({
+    number: params.payload.number,
+    subject: params.payload.subject,
+    question: params.payload.question,
+    due_date: params.payload.due_date,
+    private: params.payload.private,
+    responsible_contractor_id: params.payload.responsible_contractor_id,
+  });
+  const requiredPayload = compactPayload({
+    number: params.payload.number,
+    subject: params.payload.subject,
+    question: params.payload.question,
+  });
+  const payloads = [params.payload, minimalPayload, requiredPayload];
+  const bodies = payloads.flatMap((payload) => [{ rfi: payload }, payload]);
   const paths = [
     `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`,
     `/rest/v1.0/rfis?project_id=${encodeURIComponent(params.projectId)}`,
   ];
   const attempts: UnknownRecord[] = [];
+  const seen = new Set<string>();
   for (const path of paths) {
     for (const body of bodies) {
+      const key = `${path}:${safeJson(body)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const response = await procoreJson({
         accessToken: params.accessToken,
         companyId: params.companyId,
         method: "POST",
         path,
         body,
-        allowStatuses: [400, 403, 404, 405, 409, 422],
+        allowStatuses: [400, 403, 404, 405, 409, 422, 500, 502, 504],
       });
       attempts.push({ path, body, status: response.status, ok: response.ok, response: response.payload });
       if (response.ok) return { created: unwrapData(response.payload), attempts };

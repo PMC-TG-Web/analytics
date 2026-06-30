@@ -359,30 +359,46 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
   });
   const payloads = [params.payload, minimalPayload, requiredPayload];
   const bodies = payloads.flatMap((payload) => [{ rfi: payload }, payload]);
-  const paths = [
-    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`,
-    `/rest/v1.0/rfis?project_id=${encodeURIComponent(params.projectId)}`,
-  ];
+  const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`;
   const attempts: UnknownRecord[] = [];
   const seen = new Set<string>();
-  for (const path of paths) {
-    for (const body of bodies) {
-      const key = `${path}:${safeJson(body)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const response = await procoreJson({
-        accessToken: params.accessToken,
-        companyId: params.companyId,
+
+  for (const body of bodies) {
+    const key = safeJson(body);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    let payload: unknown = null;
+    let status = 0;
+    let ok = false;
+    try {
+      const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
         method: "POST",
-        path,
-        body,
-        allowStatuses: [400, 403, 404, 405, 409, 422, 500, 502, 504],
+        headers: {
+          Authorization: `Bearer ${params.accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Procore-Company-Id": params.companyId,
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
       });
-      attempts.push({ path, body, status: response.status, ok: response.ok, response: response.payload });
-      if (response.ok) return { created: unwrapData(response.payload), attempts };
+      status = response.status;
+      ok = response.ok;
+      const text = await response.text();
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+    } catch (error) {
+      payload = error instanceof Error ? error.message : String(error);
     }
+    attempts.push({ path, body, status, ok, response: payload });
+    if (ok) return { created: unwrapData(payload), attempts };
   }
-  throw new Error(`RFI create failed: ${safeJson(attempts.slice(-4))}`);
+
+  throw new Error(`RFI create failed: ${safeJson(attempts)}`);
 }
 
 async function createRfiReply(params: { accessToken: string; companyId: string; projectId: string; rfiId: string; payload: UnknownRecord }) {

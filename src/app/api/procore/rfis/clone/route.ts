@@ -105,6 +105,12 @@ function firstId(records: UnknownRecord[]) {
   return undefined;
 }
 
+function recordIds(records: UnknownRecord[]) {
+  return records
+    .map((record) => readNum(record.id))
+    .filter((id) => id !== undefined);
+}
+
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -382,7 +388,6 @@ function buildRfiPayload(params: {
     .map((user) => mapId(user, params.userIdMap))
     .filter((id) => id !== undefined);
   const managerId = mapId(source.rfi_manager ?? source.manager ?? source.rfi_manager_id, params.userIdMap);
-  const createdById = mapId(source.created_by ?? source.created_by_id, params.userIdMap);
   const defaultManagerId =
     readNum(params.defaults.rfiManagerId ?? params.defaults.defaultRfiManagerId) ??
     firstId(params.targetSetup.potentialManagers);
@@ -393,6 +398,7 @@ function buildRfiPayload(params: {
     .map((entry) => readNum(entry))
     .filter((id) => id !== undefined);
   if (defaultAssigneeIds.length === 0 && defaultAssigneeId !== undefined) defaultAssigneeIds.push(defaultAssigneeId);
+  const defaultDistributionIds = recordIds(params.targetSetup.defaultDistribution);
   const responsibleContractor = source.responsible_contractor ?? source.responsible_contractor_id;
   const sourceResponsibleContractorId = readStr(isRecord(responsibleContractor) ? responsibleContractor.id : responsibleContractor);
   let responsibleContractorId =
@@ -415,19 +421,19 @@ function buildRfiPayload(params: {
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
-    question: rfiQuestion(source),
-    status: params.preserveStatus ? readStr(source.status) : undefined,
+    question: compactPayload({ body: rfiQuestion(source) }),
     due_date: readStr(source.due_date),
-    initiated_at: readStr(source.initiated_at ?? source.initiated_on),
-    received_from_id: mapId(source.received_from ?? source.received_from_id, params.userIdMap),
     rfi_manager_id: managerId ?? defaultManagerId,
-    created_by_id: createdById,
+    assignee_id: assigneeIds[0] ?? defaultAssigneeIds[0],
     assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
-    distribution_member_ids: distributionIds,
+    required_assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
+    distribution_ids: distributionIds.length ? distributionIds : defaultDistributionIds,
+    received_from_login_information_id: mapId(source.received_from ?? source.received_from_id, params.userIdMap),
     private: typeof source.private === "boolean" ? source.private : undefined,
     reference: readStr(source.reference),
     location_id: readNum(nestedRecord(source, "location").id ?? source.location_id),
     responsible_contractor_id: responsibleContractorId,
+    draft: params.preserveStatus ? readStr(source.status).toLowerCase() === "draft" : undefined,
   });
 }
 
@@ -446,60 +452,66 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
     number: params.payload.number,
     subject: params.payload.subject,
     question: params.payload.question,
+    rfi_manager_id: params.payload.rfi_manager_id,
+    assignee_id: params.payload.assignee_id,
+    assignee_ids: params.payload.assignee_ids,
+    required_assignee_ids: params.payload.required_assignee_ids,
     due_date: params.payload.due_date,
     private: params.payload.private,
     responsible_contractor_id: params.payload.responsible_contractor_id,
+    distribution_ids: params.payload.distribution_ids,
+    received_from_login_information_id: params.payload.received_from_login_information_id,
   });
   const requiredPayload = compactPayload({
-    number: params.payload.number,
     subject: params.payload.subject,
     question: params.payload.question,
+    rfi_manager_id: params.payload.rfi_manager_id,
   });
-  const requiredWithContractorPayload = compactPayload({
-    number: params.payload.number,
+  const requiredWithManagerAndContractorPayload = compactPayload({
     subject: params.payload.subject,
     question: params.payload.question,
+    rfi_manager_id: params.payload.rfi_manager_id,
     responsible_contractor_id: params.payload.responsible_contractor_id,
   });
-  const payloads = [params.payload, minimalPayload, requiredWithContractorPayload, requiredPayload];
-  const bodies = payloads.flatMap((payload) => [{ rfi: payload }, payload]);
+  const payloads = [params.payload, minimalPayload, requiredWithManagerAndContractorPayload, requiredPayload];
   const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`;
   const attempts: UnknownRecord[] = [];
   const seen = new Set<string>();
 
-  for (const body of bodies) {
-    const key = safeJson(body);
+  for (const rfiPayload of payloads) {
+    const key = safeJson(rfiPayload);
     if (seen.has(key)) continue;
     seen.add(key);
 
-    let payload: unknown = null;
+    let responsePayload: unknown = null;
     let status = 0;
     let ok = false;
     try {
+      const form = new FormData();
+      form.set("rfi", JSON.stringify(rfiPayload));
       const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${params.accessToken}`,
           Accept: "application/json",
-          "Content-Type": "application/json",
           "Procore-Company-Id": params.companyId,
         },
-        body: JSON.stringify(body),
+        body: form,
         cache: "no-store",
       });
       status = response.status;
       ok = response.ok;
       const text = await response.text();
       try {
-        payload = text ? JSON.parse(text) : null;
+        responsePayload = text ? JSON.parse(text) : null;
       } catch {
-        payload = text;
+        responsePayload = text;
       }
     } catch (error) {
-      payload = error instanceof Error ? error.message : String(error);
+      responsePayload = error instanceof Error ? error.message : String(error);
     }
-    attempts.push({ path, body, status, ok, response: payload });
-    if (ok) return { created: unwrapData(payload), attempts };
+    attempts.push({ path, body: { rfi: rfiPayload }, status, ok, response: responsePayload });
+    if (ok) return { created: unwrapData(responsePayload), attempts };
   }
 
   throw new Error(`RFI create failed: ${safeJson(attempts)}`);

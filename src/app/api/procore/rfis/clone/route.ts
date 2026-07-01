@@ -937,9 +937,6 @@ export async function POST(request: Request) {
             rfiId: targetRfiId,
           })
           : { skipped: true, attempts: [] as UnknownRecord[] };
-        if (isRecord(recycleResult) && "error" in recycleResult) {
-          throw new Error(String(recycleResult.error));
-        }
         createResults.push({
           sourceRfiId: entry.sourceRfiId,
           ok: true,

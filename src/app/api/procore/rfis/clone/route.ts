@@ -66,6 +66,28 @@ function compactPayload(value: UnknownRecord) {
   return out;
 }
 
+function compactDeepPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const items = value.map((entry) => compactDeepPayload(entry)).filter((entry) => {
+      if (entry === undefined || entry === null || entry === "") return false;
+      if (Array.isArray(entry)) return entry.length > 0;
+      if (isRecord(entry)) return Object.keys(entry).length > 0;
+      return true;
+    });
+    return items;
+  }
+  if (!isRecord(value)) return value;
+  const out: UnknownRecord = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const compacted = compactDeepPayload(entry);
+    if (compacted === undefined || compacted === null || compacted === "") continue;
+    if (Array.isArray(compacted) && compacted.length === 0) continue;
+    if (isRecord(compacted) && Object.keys(compacted).length === 0) continue;
+    out[key] = compacted;
+  }
+  return out;
+}
+
 function nestedRecord(value: unknown, key: string): UnknownRecord {
   return isRecord(value) && isRecord(value[key]) ? value[key] : {};
 }
@@ -653,14 +675,7 @@ async function updateRfiAfterCreate(params: {
   rfiId: string;
   payload: UnknownRecord;
 }) {
-  const updatePayload = compactPayload({
-    distribution_ids: params.payload.distribution_ids,
-    schedule_impact: params.payload.schedule_impact,
-    private: params.payload.private,
-    reference: params.payload.reference,
-    received_from_login_information_id: params.payload.received_from_login_information_id,
-    rfi_manager_id: params.payload.rfi_manager_id,
-  });
+  const updatePayload = compactDeepPayload(params.payload);
   if (Object.keys(updatePayload).length === 0) return { skipped: true, attempts: [] as UnknownRecord[] };
 
   const paths = [

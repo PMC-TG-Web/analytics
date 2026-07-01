@@ -547,6 +547,11 @@ function buildRfiPayload(params: {
     ...params.targetSetup.potentialAssignees,
     ...params.targetSetup.potentialManagers,
   ]);
+  const sourceReceivedFrom = source.received_from ?? source.received_from_id ?? source.received_from_login_information_id;
+  const receivedFromId = resolveUserId(sourceReceivedFrom, params.userIdMap, [
+    ...params.targetSetup.potentialAssignees,
+    ...params.targetSetup.potentialManagers,
+  ]);
   const defaultManagerId =
     readNum(params.defaults.rfiManagerId ?? params.defaults.defaultRfiManagerId) ??
     firstId(params.targetSetup.potentialManagers);
@@ -607,11 +612,7 @@ function buildRfiPayload(params: {
     assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     required_assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     distribution_ids: distributionIds.length ? distributionIds : defaultDistributionIds,
-    received_from_login_information_id: resolveUserId(
-      source.received_from ?? source.received_from_id,
-      params.userIdMap,
-      params.targetSetup.potentialAssignees
-    ),
+    received_from_login_information_id: receivedFromId,
     private: typeof source.private === "boolean" ? source.private : undefined,
     project_stage_id: readNum(nestedRecord(source, "project_stage").id ?? source.project_stage_id),
     schedule_impact: scheduleImpact,

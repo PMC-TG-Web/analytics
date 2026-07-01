@@ -167,6 +167,32 @@ function recordIds(records: UnknownRecord[]) {
     .filter((id) => id !== undefined);
 }
 
+function uniqNumIds(values: Array<number | undefined>) {
+  return [...new Set(values.filter((value) => value !== undefined))];
+}
+
+function buildScheduleImpact(source: UnknownRecord) {
+  const impact = source.schedule_impact;
+  if (isRecord(impact)) {
+    return compactPayload({
+      status: readStr(impact.status).toLowerCase(),
+      value: readNum(impact.value),
+    });
+  }
+  const statusFromFields = readStr(source.schedule_impact_status).toLowerCase();
+  if (statusFromFields) {
+    return compactPayload({
+      status: statusFromFields,
+      value: readNum(source.schedule_impact_value),
+    });
+  }
+  const statusFromText = readStr(impact).toLowerCase();
+  if (statusFromText) {
+    return compactPayload({ status: statusFromText });
+  }
+  return undefined;
+}
+
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -455,9 +481,17 @@ function buildRfiPayload(params: {
   const assigneeIds = asArray(source.assignees)
     .map((user) => resolveUserId(user, params.userIdMap, params.targetSetup.potentialAssignees))
     .filter((id) => id !== undefined);
-  const distributionIds = asArray(source.distribution_members ?? source.distribution_list)
+  const distributionFromUsers = asArray(source.distribution_members ?? source.distribution_list)
     .map((user) => resolveUserId(user, params.userIdMap, [...params.targetSetup.potentialAssignees, ...params.targetSetup.defaultDistribution]))
     .filter((id) => id !== undefined);
+  const distributionFromIds = parseIds(source.distribution_ids)
+    .map((entry) => {
+      const mapped = readNum(params.userIdMap[entry] || "");
+      if (mapped !== undefined) return mapped;
+      if (params.sourceCompanyId === params.targetCompanyId) return readNum(entry);
+      return undefined;
+    });
+  const distributionIds = uniqNumIds([...distributionFromUsers, ...distributionFromIds]);
   const sourceManager = source.rfi_manager ?? source.manager ?? source.rfi_manager_id;
   const managerId = resolveUserId(sourceManager, params.userIdMap, params.targetSetup.potentialManagers);
   const defaultManagerId =
@@ -505,6 +539,7 @@ function buildRfiPayload(params: {
 
   const sourceReference = readStr(source.reference);
   const referenceWithAudit = buildOriginalAuditReference(source, sourceReference);
+  const scheduleImpact = buildScheduleImpact(source);
 
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
@@ -522,6 +557,7 @@ function buildRfiPayload(params: {
       params.targetSetup.potentialAssignees
     ),
     private: typeof source.private === "boolean" ? source.private : undefined,
+    schedule_impact: scheduleImpact,
     reference: referenceWithAudit,
     location_id: readNum(nestedRecord(source, "location").id ?? source.location_id),
     responsible_contractor_id: responsibleContractorId,

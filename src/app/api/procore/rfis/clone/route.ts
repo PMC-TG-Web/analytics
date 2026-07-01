@@ -215,6 +215,33 @@ function buildScheduleImpact(source: UnknownRecord) {
   return undefined;
 }
 
+function buildCostImpact(source: UnknownRecord) {
+  const impact = source.cost_impact;
+  if (isRecord(impact)) {
+    return compactPayload({
+      status: readStr(impact.status).toLowerCase(),
+      value: readNum(impact.value),
+    });
+  }
+  const statusFromFields = readStr(source.cost_impact_status).toLowerCase();
+  if (statusFromFields) {
+    return compactPayload({
+      status: statusFromFields,
+      value: readNum(source.cost_impact_value),
+    });
+  }
+  const statusFromText = readStr(impact).toLowerCase();
+  if (statusFromText) {
+    return compactPayload({ status: statusFromText });
+  }
+  return undefined;
+}
+
+function buildTextFieldValue(value: unknown) {
+  if (isRecord(value)) return readStr(value.value ?? value.text ?? value.body ?? value.name);
+  return readStr(value);
+}
+
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -516,6 +543,10 @@ function buildRfiPayload(params: {
   const distributionIds = uniqNumIds([...distributionFromUsers, ...distributionFromIds]);
   const sourceManager = source.rfi_manager ?? source.manager ?? source.rfi_manager_id;
   const managerId = resolveUserId(sourceManager, params.userIdMap, params.targetSetup.potentialManagers);
+  const ballInCourtId = resolveUserId(source.ball_in_court ?? source.ball_in_court_id, params.userIdMap, [
+    ...params.targetSetup.potentialAssignees,
+    ...params.targetSetup.potentialManagers,
+  ]);
   const defaultManagerId =
     readNum(params.defaults.rfiManagerId ?? params.defaults.defaultRfiManagerId) ??
     firstId(params.targetSetup.potentialManagers);
@@ -562,13 +593,16 @@ function buildRfiPayload(params: {
   const sourceReference = readStr(source.reference);
   const referenceWithAudit = buildOriginalAuditReference(source, sourceReference);
   const scheduleImpact = buildScheduleImpact(source);
+  const costImpact = buildCostImpact(source);
 
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
     question: compactPayload({ body: rfiQuestion(source) }),
+    accepted: typeof source.accepted === "boolean" ? source.accepted : undefined,
     due_date: readStr(source.due_date),
     rfi_manager_id: managerId ?? defaultManagerId,
+    ball_in_court_id: ballInCourtId,
     assignee_id: assigneeIds[0] ?? defaultAssigneeIds[0],
     assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     required_assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
@@ -579,7 +613,15 @@ function buildRfiPayload(params: {
       params.targetSetup.potentialAssignees
     ),
     private: typeof source.private === "boolean" ? source.private : undefined,
+    project_stage_id: readNum(nestedRecord(source, "project_stage").id ?? source.project_stage_id),
     schedule_impact: scheduleImpact,
+    cost_impact: costImpact,
+    drawing_number: readStr(source.drawing_number),
+    specification_section_id: readNum(nestedRecord(source, "specification_section").id ?? source.specification_section_id),
+    cost_code_id: readNum(nestedRecord(source, "cost_code").id ?? source.cost_code_id),
+    sub_job_id: readNum(nestedRecord(source, "sub_job").id ?? source.sub_job_id),
+    custom_textfield_1: buildTextFieldValue(source.custom_textfield_1),
+    custom_textfield_2: buildTextFieldValue(source.custom_textfield_2),
     reference: referenceWithAudit,
     location_id: readNum(nestedRecord(source, "location").id ?? source.location_id),
     responsible_contractor_id: responsibleContractorId,
@@ -720,6 +762,26 @@ async function createRfiReply(params: { accessToken: string; companyId: string; 
     }
   }
   return { error: `RFI reply create failed: ${safeJson(attempts.slice(-4))}`, attempts };
+}
+
+async function recycleRfi(params: { accessToken: string; companyId: string; projectId: string; rfiId: string }) {
+  const paths = [
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/recycle`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/recycle`,
+  ];
+  const attempts: UnknownRecord[] = [];
+  for (const path of paths) {
+    const response = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      method: "PATCH",
+      path,
+      allowStatuses: [400, 403, 404, 405, 409, 422],
+    });
+    attempts.push({ path, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { recycled: true, attempts };
+  }
+  return { error: `RFI recycle failed: ${safeJson(attempts.slice(-2))}`, attempts };
 }
 
 export async function POST(request: Request) {
@@ -866,12 +928,24 @@ export async function POST(request: Request) {
             await new Promise((resolve) => setTimeout(resolve, 200));
           }
         }
+        const recycleResult = targetRfiId
+          ? await recycleRfi({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            rfiId: targetRfiId,
+          })
+          : { skipped: true, attempts: [] as UnknownRecord[] };
+        if (isRecord(recycleResult) && "error" in recycleResult) {
+          throw new Error(String(recycleResult.error));
+        }
         createResults.push({
           sourceRfiId: entry.sourceRfiId,
           ok: true,
           targetRfiId,
           createAttempts: createResult.attempts,
           updateResult,
+          recycleResult,
           replyResults,
         });
       } catch (error) {

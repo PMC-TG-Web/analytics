@@ -421,7 +421,7 @@ function buildRfiPayload(params: {
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
-    question: compactPayload({ body: rfiQuestion(source) }),
+    question: rfiQuestion(source),
     due_date: readStr(source.due_date),
     rfi_manager_id: managerId ?? defaultManagerId,
     assignee_id: assigneeIds[0] ?? defaultAssigneeIds[0],
@@ -448,6 +448,7 @@ function buildReplyPayload(reply: UnknownRecord, userIdMap: Record<string, strin
 }
 
 async function createRfi(params: { accessToken: string; companyId: string; projectId: string; payload: UnknownRecord }) {
+  const questionText = readStr(params.payload.question);
   const minimalPayload = compactPayload({
     number: params.payload.number,
     subject: params.payload.subject,
@@ -473,7 +474,19 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
     rfi_manager_id: params.payload.rfi_manager_id,
     responsible_contractor_id: params.payload.responsible_contractor_id,
   });
-  const payloads = [params.payload, minimalPayload, requiredWithManagerAndContractorPayload, requiredPayload];
+  const nestedQuestionPayload = questionText
+    ? compactPayload({
+      ...params.payload,
+      question: compactPayload({ body: questionText }),
+    })
+    : undefined;
+  const payloads = [
+    params.payload,
+    minimalPayload,
+    requiredWithManagerAndContractorPayload,
+    requiredPayload,
+    nestedQuestionPayload,
+  ];
   const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`;
   const attempts: UnknownRecord[] = [];
   const seen = new Set<string>();

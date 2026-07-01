@@ -344,6 +344,11 @@ function rfiSubject(value: UnknownRecord) {
 }
 
 function rfiQuestion(value: UnknownRecord) {
+  const nestedQuestion = isRecord(value.question)
+    ? readStr(value.question.body ?? value.question.plain_text_body ?? value.question.html_body)
+    : "";
+  if (nestedQuestion) return nestedQuestion;
+
   const question = readStr(
     value.question ??
     value.body ??

@@ -588,6 +588,9 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
     assignee_id: basePayload.assignee_id,
     assignee_ids: basePayload.assignee_ids,
     required_assignee_ids: basePayload.required_assignee_ids,
+    distribution_ids: basePayload.distribution_ids,
+    schedule_impact: basePayload.schedule_impact,
+    private: basePayload.private,
     due_date: basePayload.due_date,
   });
   const requiredPayload = compactPayload({
@@ -641,6 +644,43 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
   }
 
   throw new Error(`RFI create failed: ${safeJson(attempts)}`);
+}
+
+async function updateRfiAfterCreate(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  rfiId: string;
+  payload: UnknownRecord;
+}) {
+  const updatePayload = compactPayload({
+    distribution_ids: params.payload.distribution_ids,
+    schedule_impact: params.payload.schedule_impact,
+    private: params.payload.private,
+    reference: params.payload.reference,
+    received_from_login_information_id: params.payload.received_from_login_information_id,
+    rfi_manager_id: params.payload.rfi_manager_id,
+  });
+  if (Object.keys(updatePayload).length === 0) return { skipped: true, attempts: [] as UnknownRecord[] };
+
+  const paths = [
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}?run_configurable_validations=false`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}`,
+  ];
+  const attempts: UnknownRecord[] = [];
+  for (const path of paths) {
+    const response = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      method: "PATCH",
+      path,
+      body: { rfi: updatePayload },
+      allowStatuses: [400, 403, 404, 405, 409, 422],
+    });
+    attempts.push({ path, body: { rfi: updatePayload }, status: response.status, ok: response.ok, response: response.payload });
+    if (response.ok) return { updated: unwrapData(response.payload), attempts };
+  }
+  return { error: `RFI post-create update failed: ${safeJson(attempts.slice(-2))}`, attempts };
 }
 
 async function createRfiReply(params: { accessToken: string; companyId: string; projectId: string; rfiId: string; payload: UnknownRecord }) {
@@ -788,6 +828,15 @@ export async function POST(request: Request) {
         });
         const createdRecord = isRecord(createResult.created) ? createResult.created : {};
         const targetRfiId = readStr(createdRecord.id);
+        const updateResult = targetRfiId
+          ? await updateRfiAfterCreate({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            rfiId: targetRfiId,
+            payload: entry.payload as UnknownRecord,
+          })
+          : { skipped: true, attempts: [] as UnknownRecord[] };
         const replyResults = [];
         if (cloneReplies && targetRfiId) {
           for (const reply of asArray(entry.replies)) {
@@ -802,7 +851,14 @@ export async function POST(request: Request) {
             await new Promise((resolve) => setTimeout(resolve, 200));
           }
         }
-        createResults.push({ sourceRfiId: entry.sourceRfiId, ok: true, targetRfiId, createAttempts: createResult.attempts, replyResults });
+        createResults.push({
+          sourceRfiId: entry.sourceRfiId,
+          ok: true,
+          targetRfiId,
+          createAttempts: createResult.attempts,
+          updateResult,
+          replyResults,
+        });
       } catch (error) {
         createResults.push({
           sourceRfiId: entry.sourceRfiId,

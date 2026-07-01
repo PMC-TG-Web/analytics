@@ -2857,33 +2857,81 @@ function ProcoreContent() {
         return;
       }
 
-      const response = await fetch("/api/procore/daily-activity/clone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceCompanyId: dailyCloneSourceCompanyId.trim(),
-          sourceProjectId: dailyCloneSourceProjectId.trim(),
-          targetCompanyId: dailyCloneTargetCompanyId.trim(),
-          targetProjectId: dailyCloneTargetProjectId.trim(),
-          startDate: dailyCloneStartDate.trim(),
-          endDate: dailyCloneEndDate.trim() || dailyCloneStartDate.trim(),
-          includeProductivity: dailyCloneIncludeProductivity,
-          includeTimecards: dailyCloneIncludeTimecards,
-          defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
-          createOffset: options?.createOffset ?? (dailyCloneCreateOffset.trim() || undefined),
-          timecardTimeTypeMap,
-          partyMap,
-          timecardClassificationMap,
-          dryRun,
-          maxPages: 25,
-          createLimit: dryRun ? 100 : 25,
-          maxCreateMs: 18000,
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      setDailyCloneResult({ status: response.status, ok: response.ok, result });
-      if (!response.ok) {
-        setDailyCloneError(result?.details || result?.error || `Daily clone failed (${response.status}).`);
+      const maxAutoBatches = dryRun ? 1 : 200;
+      let currentOffset = Number.parseInt(options?.createOffset ?? (dailyCloneCreateOffset.trim() || "0"), 10) || 0;
+      const batchResults: any[] = [];
+      let lastStatus = 0;
+      let lastOk = false;
+      let lastResult: any = null;
+
+      for (let batchIndex = 0; batchIndex < maxAutoBatches; batchIndex += 1) {
+        const response = await fetch("/api/procore/daily-activity/clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceCompanyId: dailyCloneSourceCompanyId.trim(),
+            sourceProjectId: dailyCloneSourceProjectId.trim(),
+            targetCompanyId: dailyCloneTargetCompanyId.trim(),
+            targetProjectId: dailyCloneTargetProjectId.trim(),
+            startDate: dailyCloneStartDate.trim(),
+            endDate: dailyCloneEndDate.trim() || dailyCloneStartDate.trim(),
+            includeProductivity: dailyCloneIncludeProductivity,
+            includeTimecards: dailyCloneIncludeTimecards,
+            defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
+            createOffset: String(currentOffset),
+            timecardTimeTypeMap,
+            partyMap,
+            timecardClassificationMap,
+            dryRun,
+            maxPages: 25,
+            createLimit: dryRun ? 100 : 25,
+            maxCreateMs: 18000,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        lastStatus = response.status;
+        lastOk = response.ok;
+        lastResult = result;
+        batchResults.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, status: response.status, ok: response.ok, result });
+
+        const aggregateResult = {
+          ...result,
+          autoContinue: !dryRun,
+          autoBatchCount: batchResults.length,
+          batchResults,
+        };
+        setDailyCloneResult({ status: response.status, ok: response.ok, result: aggregateResult });
+
+        if (!response.ok) {
+          setDailyCloneError(result?.details || result?.error || `Daily clone failed (${response.status}).`);
+          break;
+        }
+
+        const nextOffset = Number(result?.counts?.nextCreateOffset);
+        const hasMore = Boolean(result?.counts?.hasMoreCreatableRows);
+        if (dryRun || !hasMore || !Number.isFinite(nextOffset) || nextOffset <= currentOffset) {
+          if (!dryRun && hasMore && (!Number.isFinite(nextOffset) || nextOffset <= currentOffset)) {
+            setDailyCloneError("Daily clone paused but did not return a valid nextCreateOffset.");
+          }
+          break;
+        }
+
+        currentOffset = nextOffset;
+        setDailyCloneCreateOffset(String(currentOffset));
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+
+      if (lastResult) {
+        setDailyCloneResult({
+          status: lastStatus,
+          ok: lastOk,
+          result: {
+            ...lastResult,
+            autoContinue: !dryRun,
+            autoBatchCount: batchResults.length,
+            batchResults,
+          },
+        });
       }
     } catch (error) {
       setDailyCloneError(error instanceof Error ? error.message : String(error));

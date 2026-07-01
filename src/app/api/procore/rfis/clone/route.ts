@@ -97,6 +97,62 @@ function mapId(value: unknown, map: Record<string, string>) {
   return readNum(mapped) ?? (mapped || undefined);
 }
 
+function readIdentity(value: unknown) {
+  if (isRecord(value)) {
+    return {
+      id: readStr(value.id),
+      name: readStr(value.name),
+      login: readStr(value.login),
+    };
+  }
+  const raw = readStr(value);
+  return { id: raw, name: "", login: "" };
+}
+
+function resolveUserId(value: unknown, map: Record<string, string>, targetUsers: UnknownRecord[]) {
+  const identity = readIdentity(value);
+  const mappedFromMap = [
+    map[identity.id],
+    map[normalize(identity.name)],
+    map[normalize(identity.login)],
+  ].find(Boolean);
+  const mappedId = readNum(mappedFromMap);
+  if (mappedId !== undefined) return mappedId;
+
+  const normalizedLogin = normalize(identity.login);
+  const normalizedName = normalize(identity.name);
+  if (!normalizedLogin && !normalizedName) return undefined;
+
+  for (const user of targetUsers) {
+    const userId = readNum(user.id);
+    if (userId === undefined) continue;
+    const userLogin = normalize(user.login);
+    const userName = normalize(user.name);
+    if ((normalizedLogin && userLogin === normalizedLogin) || (normalizedName && userName === normalizedName)) {
+      return userId;
+    }
+  }
+  return undefined;
+}
+
+function trimReference(value: string) {
+  return value.length > 255 ? `${value.slice(0, 252)}...` : value;
+}
+
+function buildOriginalAuditReference(source: UnknownRecord, existingReference: string) {
+  const createdBy = readStr(nestedRecord(source, "created_by").name ?? nestedRecord(source, "created_by").login);
+  const initiatedAt = readStr(source.initiated_at ?? source.initiated_on ?? source.created_at);
+  const sourceManager = readStr(nestedRecord(source, "rfi_manager").name ?? nestedRecord(source, "rfi_manager").login);
+  const auditParts = [
+    sourceManager ? `Orig Mgr: ${sourceManager}` : "",
+    createdBy ? `Orig Created By: ${createdBy}` : "",
+    initiatedAt ? `Orig Initiated: ${initiatedAt}` : "",
+  ].filter(Boolean);
+  if (auditParts.length === 0) return existingReference;
+  const audit = auditParts.join(" | ");
+  return trimReference(existingReference ? `${existingReference} | ${audit}` : audit);
+}
+
 function firstId(records: UnknownRecord[]) {
   for (const record of records) {
     const id = readNum(record.id);
@@ -397,12 +453,13 @@ function buildRfiPayload(params: {
 }) {
   const source = params.source;
   const assigneeIds = asArray(source.assignees)
-    .map((user) => mapId(user, params.userIdMap))
+    .map((user) => resolveUserId(user, params.userIdMap, params.targetSetup.potentialAssignees))
     .filter((id) => id !== undefined);
   const distributionIds = asArray(source.distribution_members ?? source.distribution_list)
-    .map((user) => mapId(user, params.userIdMap))
+    .map((user) => resolveUserId(user, params.userIdMap, [...params.targetSetup.potentialAssignees, ...params.targetSetup.defaultDistribution]))
     .filter((id) => id !== undefined);
-  const managerId = mapId(source.rfi_manager ?? source.manager ?? source.rfi_manager_id, params.userIdMap);
+  const sourceManager = source.rfi_manager ?? source.manager ?? source.rfi_manager_id;
+  const managerId = resolveUserId(sourceManager, params.userIdMap, params.targetSetup.potentialManagers);
   const defaultManagerId =
     readNum(params.defaults.rfiManagerId ?? params.defaults.defaultRfiManagerId) ??
     firstId(params.targetSetup.potentialManagers);
@@ -433,6 +490,22 @@ function buildRfiPayload(params: {
     });
   }
 
+  if (managerId === undefined && readStr(isRecord(sourceManager) ? sourceManager.id ?? sourceManager.name ?? sourceManager.login : sourceManager)) {
+    params.issues.push({
+      type: "missing_user_mapping",
+      field: "rfi_manager_id",
+      oldId: readStr(isRecord(sourceManager) ? sourceManager.id : sourceManager),
+      oldLogin: readStr(isRecord(sourceManager) ? sourceManager.login : ""),
+      oldName: readStr(isRecord(sourceManager) ? sourceManager.name : ""),
+      rfiId: readStr(source.id),
+      rfiNumber: rfiNumber(source),
+      subject: rfiSubject(source),
+    });
+  }
+
+  const sourceReference = readStr(source.reference);
+  const referenceWithAudit = buildOriginalAuditReference(source, sourceReference);
+
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
@@ -443,9 +516,13 @@ function buildRfiPayload(params: {
     assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     required_assignee_ids: assigneeIds.length ? assigneeIds : defaultAssigneeIds,
     distribution_ids: distributionIds.length ? distributionIds : defaultDistributionIds,
-    received_from_login_information_id: mapId(source.received_from ?? source.received_from_id, params.userIdMap),
+    received_from_login_information_id: resolveUserId(
+      source.received_from ?? source.received_from_id,
+      params.userIdMap,
+      params.targetSetup.potentialAssignees
+    ),
     private: typeof source.private === "boolean" ? source.private : undefined,
-    reference: readStr(source.reference),
+    reference: referenceWithAudit,
     location_id: readNum(nestedRecord(source, "location").id ?? source.location_id),
     responsible_contractor_id: responsibleContractorId,
     draft: params.preserveStatus ? readStr(source.status).toLowerCase() === "draft" : undefined,

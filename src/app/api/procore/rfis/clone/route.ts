@@ -797,6 +797,7 @@ export async function POST(request: Request) {
     const cloneReplies = readBool(body.cloneReplies, true);
     const preserveNumber = readBool(body.preserveNumber, true);
     const preserveStatus = readBool(body.preserveStatus, false);
+    const moveToRecycleBin = readBool(body.moveToRecycleBin, false);
     const numberOffset = readNum(body.numberOffset) ?? 0;
     const createOffset = readNum(body.createOffset) ?? 0;
     const createLimit = Math.max(1, Math.min(100, readNum(body.createLimit) ?? 10));
@@ -929,7 +930,7 @@ export async function POST(request: Request) {
             await new Promise((resolve) => setTimeout(resolve, 200));
           }
         }
-        const recycleResult = targetRfiId
+        const recycleResult = moveToRecycleBin && targetRfiId
           ? await recycleRfi({
             accessToken,
             companyId: targetCompanyId,

@@ -421,7 +421,7 @@ function buildRfiPayload(params: {
   return compactPayload({
     number: params.preserveNumber ? rfiNumber(source) : offsetNumber(rfiNumber(source), params.numberOffset),
     subject: rfiSubject(source) || "Cloned RFI",
-    question: rfiQuestion(source),
+    question: compactPayload({ body: rfiQuestion(source) }),
     due_date: readStr(source.due_date),
     rfi_manager_id: managerId ?? defaultManagerId,
     assignee_id: assigneeIds[0] ?? defaultAssigneeIds[0],
@@ -448,83 +448,68 @@ function buildReplyPayload(reply: UnknownRecord, userIdMap: Record<string, strin
 }
 
 async function createRfi(params: { accessToken: string; companyId: string; projectId: string; payload: UnknownRecord }) {
-  const questionText = readStr(params.payload.question);
+  const question = isRecord(params.payload.question)
+    ? compactPayload({ body: readStr(params.payload.question.body) })
+    : compactPayload({ body: readStr(params.payload.question) });
+  const basePayload = compactPayload({ ...params.payload, question });
   const minimalPayload = compactPayload({
-    number: params.payload.number,
-    subject: params.payload.subject,
-    question: params.payload.question,
-    rfi_manager_id: params.payload.rfi_manager_id,
-    assignee_id: params.payload.assignee_id,
-    assignee_ids: params.payload.assignee_ids,
-    required_assignee_ids: params.payload.required_assignee_ids,
-    due_date: params.payload.due_date,
-    private: params.payload.private,
-    responsible_contractor_id: params.payload.responsible_contractor_id,
-    distribution_ids: params.payload.distribution_ids,
-    received_from_login_information_id: params.payload.received_from_login_information_id,
+    subject: basePayload.subject,
+    question: basePayload.question,
+    rfi_manager_id: basePayload.rfi_manager_id,
+    responsible_contractor_id: basePayload.responsible_contractor_id,
+    assignee_id: basePayload.assignee_id,
+    assignee_ids: basePayload.assignee_ids,
+    required_assignee_ids: basePayload.required_assignee_ids,
+    due_date: basePayload.due_date,
   });
   const requiredPayload = compactPayload({
-    subject: params.payload.subject,
-    question: params.payload.question,
-    rfi_manager_id: params.payload.rfi_manager_id,
+    subject: basePayload.subject,
+    question: basePayload.question,
+    rfi_manager_id: basePayload.rfi_manager_id,
   });
-  const requiredWithManagerAndContractorPayload = compactPayload({
-    subject: params.payload.subject,
-    question: params.payload.question,
-    rfi_manager_id: params.payload.rfi_manager_id,
-    responsible_contractor_id: params.payload.responsible_contractor_id,
-  });
-  const nestedQuestionPayload = questionText
-    ? compactPayload({
-      ...params.payload,
-      question: compactPayload({ body: questionText }),
-    })
-    : undefined;
-  const payloads = [
-    params.payload,
-    minimalPayload,
-    requiredWithManagerAndContractorPayload,
-    requiredPayload,
-    nestedQuestionPayload,
+  const payloads = [basePayload, minimalPayload, requiredPayload];
+  const paths = [
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis?run_configurable_validations=false`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`,
   ];
-  const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis`;
   const attempts: UnknownRecord[] = [];
   const seen = new Set<string>();
 
-  for (const rfiPayload of payloads) {
-    const key = safeJson(rfiPayload);
-    if (seen.has(key)) continue;
-    seen.add(key);
+  for (const path of paths) {
+    for (const rfiPayload of payloads) {
+      const key = `${path}|${safeJson(rfiPayload)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    let responsePayload: unknown = null;
-    let status = 0;
-    let ok = false;
-    try {
-      const form = new FormData();
-      form.set("rfi", JSON.stringify(rfiPayload));
-      const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${params.accessToken}`,
-          Accept: "application/json",
-          "Procore-Company-Id": params.companyId,
-        },
-        body: form,
-        cache: "no-store",
-      });
-      status = response.status;
-      ok = response.ok;
-      const text = await response.text();
+      let responsePayload: unknown = null;
+      let status = 0;
+      let ok = false;
       try {
-        responsePayload = text ? JSON.parse(text) : null;
-      } catch {
-        responsePayload = text;
+        const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${params.accessToken}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "Procore-Company-Id": params.companyId,
+          },
+          body: JSON.stringify({ rfi: rfiPayload }),
+          cache: "no-store",
+        });
+        status = response.status;
+        ok = response.ok;
+        const text = await response.text();
+        try {
+          responsePayload = text ? JSON.parse(text) : null;
+        } catch {
+          responsePayload = text;
+        }
+      } catch (error) {
+        responsePayload = error instanceof Error ? error.message : String(error);
       }
-    } catch (error) {
-      responsePayload = error instanceof Error ? error.message : String(error);
+      attempts.push({ path, body: { rfi: rfiPayload }, status, ok, response: responsePayload });
+      if (ok) return { created: unwrapData(responsePayload), attempts };
     }
-    attempts.push({ path, body: { rfi: rfiPayload }, status, ok, response: responsePayload });
-    if (ok) return { created: unwrapData(responsePayload), attempts };
   }
 
   throw new Error(`RFI create failed: ${safeJson(attempts)}`);

@@ -344,6 +344,16 @@ function rfiSubject(value: UnknownRecord) {
 }
 
 function rfiQuestion(value: UnknownRecord) {
+  const questionRows = asArray(value.questions ?? value.question_threads ?? value.rfi_questions);
+  const firstQuestion = questionRows[0] ?? {};
+  const questionFromRows = readStr(
+    firstQuestion.rich_text_body ??
+    firstQuestion.plain_text_body ??
+    firstQuestion.body ??
+    firstQuestion.html_body
+  );
+  if (questionFromRows) return questionFromRows;
+
   const nestedQuestion = isRecord(value.question)
     ? readStr(value.question.body ?? value.question.plain_text_body ?? value.question.html_body)
     : "";

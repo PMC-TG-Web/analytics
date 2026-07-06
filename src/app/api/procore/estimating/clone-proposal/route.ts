@@ -44,12 +44,29 @@ function norm(value: unknown): string {
   return readStr(value).replace(/\s+/g, " ").toLowerCase();
 }
 
+function normLoose(value: unknown): string {
+  return norm(value).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function nonUniqueKey(row: UnknownRecord): string {
   return [row.Name, row.Description, row["Cost Name"]].map(norm).join("|");
 }
 
 function itemIdentityKey(row: UnknownRecord): string {
   return [row.Name, row.Description].map(norm).join("|");
+}
+
+function itemIdentityLooseKey(row: UnknownRecord): string {
+  return [row.Name, row.Description].map(normLoose).join("|");
+}
+
+function itemNameLooseKey(row: UnknownRecord): string {
+  return normLoose(row.Name);
+}
+
+function appendMapping(map: Map<string, UnknownRecord[]>, key: string, mapping: UnknownRecord) {
+  if (!key) return;
+  map.set(key, [...(map.get(key) || []), mapping]);
 }
 
 function unwrapData(value: unknown): unknown {
@@ -184,6 +201,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   const byOldUniqueCostCode = new Map<string, UnknownRecord[]>();
   const byOldUniqueIdentity = new Map<string, UnknownRecord[]>();
   const byOldNonUniqueKey = new Map<string, UnknownRecord[]>();
+  const byOldAnyIdentity = new Map<string, UnknownRecord[]>();
+  const byOldAnyLooseIdentity = new Map<string, UnknownRecord[]>();
+  const byOldAnyLooseName = new Map<string, UnknownRecord[]>();
   const issues: UnknownRecord[] = [];
   const newUniqueByIdentity = new Map<string, UnknownRecord[]>();
   for (const row of uniqueNew) {
@@ -203,6 +223,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
       byOldItemId.set(oldItemId, mapping);
       if (costCode) byOldUniqueCostCode.set(costCode, [...(byOldUniqueCostCode.get(costCode) || []), mapping]);
       byOldUniqueIdentity.set(identityKey, [...(byOldUniqueIdentity.get(identityKey) || []), mapping]);
+      appendMapping(byOldAnyIdentity, identityKey, mapping);
+      appendMapping(byOldAnyLooseIdentity, itemIdentityLooseKey(oldRow), mapping);
+      appendMapping(byOldAnyLooseName, itemNameLooseKey(oldRow), mapping);
     } else {
       issues.push({
         strategy: "unique_cost_code",
@@ -223,6 +246,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
       const mapping = { old: oldRow, new: matches[0], strategy: "non_unique_composite" };
       byOldItemId.set(oldItemId, mapping);
       byOldNonUniqueKey.set(key, [...(byOldNonUniqueKey.get(key) || []), mapping]);
+      appendMapping(byOldAnyIdentity, itemIdentityKey(oldRow), mapping);
+      appendMapping(byOldAnyLooseIdentity, itemIdentityLooseKey(oldRow), mapping);
+      appendMapping(byOldAnyLooseName, itemNameLooseKey(oldRow), mapping);
     } else {
       issues.push({
         strategy: "non_unique_composite",
@@ -241,6 +267,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     byOldUniqueCostCode,
     byOldUniqueIdentity,
     byOldNonUniqueKey,
+    byOldAnyIdentity,
+    byOldAnyLooseIdentity,
+    byOldAnyLooseName,
     issues,
     summary: {
       uniqueOld: uniqueOld.length,
@@ -285,6 +314,9 @@ function applyBuiltInCrosswalkFallbacks(crosswalk: ReturnType<typeof buildCrossw
     crosswalk.byOldItemId.set(oldItemId, mapping);
     const key = nonUniqueKey(mapping.old);
     crosswalk.byOldNonUniqueKey.set(key, [mapping]);
+    appendMapping(crosswalk.byOldAnyIdentity, itemIdentityKey(mapping.old), mapping);
+    appendMapping(crosswalk.byOldAnyLooseIdentity, itemIdentityLooseKey(mapping.old), mapping);
+    appendMapping(crosswalk.byOldAnyLooseName, itemNameLooseKey(mapping.old), mapping);
     crosswalk.summary.mappedOldItemIds = crosswalk.byOldItemId.size;
   }
   return crosswalk;
@@ -317,6 +349,12 @@ function applyMappingOverrides(
       },
       strategy: "manual_override",
     });
+    const mapping = crosswalk.byOldItemId.get(oldItemId);
+    if (mapping && isRecord(mapping.old)) {
+      appendMapping(crosswalk.byOldAnyIdentity, itemIdentityKey(mapping.old), mapping);
+      appendMapping(crosswalk.byOldAnyLooseIdentity, itemIdentityLooseKey(mapping.old), mapping);
+      appendMapping(crosswalk.byOldAnyLooseName, itemNameLooseKey(mapping.old), mapping);
+    }
     applied += 1;
   }
   return { applied, skipped };
@@ -374,6 +412,31 @@ function resolveLineItemMapping(
   const uniqueIdentityMatches = crosswalk.byOldUniqueIdentity.get(identityKey) || [];
   if (uniqueIdentityMatches.length === 1) {
     return { mapping: uniqueIdentityMatches[0], strategy: "line_item_unique_identity", oldCostItemId, identityKey };
+  }
+
+  // Fallback only when the source line item is missing both stable mapping keys.
+  if (!oldCostItemId && !costCode) {
+    const anyIdentityMatches = crosswalk.byOldAnyIdentity.get(identityKey) || [];
+    if (anyIdentityMatches.length === 1) {
+      return { mapping: anyIdentityMatches[0], strategy: "line_item_any_identity", oldCostItemId, identityKey };
+    }
+
+    const looseIdentityKey = itemIdentityLooseKey(oldRow);
+    const anyLooseIdentityMatches = crosswalk.byOldAnyLooseIdentity.get(looseIdentityKey) || [];
+    if (anyLooseIdentityMatches.length === 1) {
+      return {
+        mapping: anyLooseIdentityMatches[0],
+        strategy: "line_item_any_loose_identity",
+        oldCostItemId,
+        looseIdentityKey,
+      };
+    }
+
+    const looseNameKey = itemNameLooseKey(oldRow);
+    const anyLooseNameMatches = crosswalk.byOldAnyLooseName.get(looseNameKey) || [];
+    if (anyLooseNameMatches.length === 1) {
+      return { mapping: anyLooseNameMatches[0], strategy: "line_item_any_loose_name", oldCostItemId, looseNameKey };
+    }
   }
 
   return {

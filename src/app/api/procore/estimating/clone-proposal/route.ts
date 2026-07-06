@@ -1182,6 +1182,49 @@ export async function POST(request: Request) {
     }
 
     if (sourceLineItemRecords.length === 0) {
+      const hasFetchErrors = fetchAttempts.some((attempt) => attempt.ok === false);
+      if (!dryRun && !hasFetchErrors && targetProposalIdFromBody && lineItemOffset > 0) {
+        return NextResponse.json({
+          success: true,
+          dryRun: false,
+          tokenSource,
+          statusMessage: `Reached end of source proposal line items at offset ${lineItemOffset}.`,
+          batch: {
+            lineItemOffset,
+            lineItemLimit,
+            attemptedLineItems: 0,
+            nextLineItemOffset: lineItemOffset,
+            hasMoreLineItems: false,
+            continueRequest: null,
+          },
+          source: {
+            companyId: sourceCompanyId,
+            projectId: sourceProjectId,
+            bidBoardProjectId: sourceBidBoardProjectId || null,
+            proposalId: sourceProposalId,
+          },
+          target: {
+            companyId: targetCompanyId,
+            bidBoardProjectId: targetBidBoardProjectId,
+            bidBoardProjectInputId: targetBidBoardProjectIdInput,
+            bidBoardProjectResolvedBy: targetBidBoardResolution.resolvedBy,
+            projectId: targetProjectId || null,
+            proposalId: targetProposalIdFromBody,
+          },
+          counts: {
+            sourceGroups: sourceGroupRecords.length,
+            sourceLineItems: 0,
+            cloneableLineItems: 0,
+            createdLineItems: 0,
+            failedLineItems: 0,
+            skippedMissingMappings: 0,
+            attemptedLineItems: 0,
+          },
+          fetchAttempts,
+          targetBidBoardResolution,
+        });
+      }
+
       const retryContinuation = targetProposalIdFromBody && lineItemOffset > 0
         ? {
             targetProposalId: targetProposalIdFromBody,

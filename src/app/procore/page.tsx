@@ -5,6 +5,29 @@ import { PROCORE_PERMANENT_COST_TYPE_BY_CODE } from "@/lib/procorePermanentCostT
 
 const CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY = "procore.cloneProposal.continuation";
 
+const DAILY_CLONE_PARTY_MAP_PRESET: Record<string, string> = {
+  "Alvin Huyard": "598134335120314",
+  "Blaise Schieler": "598134335120296",
+  "Francisco Garcia Romero": "598134335120295",
+  "James King": "598134335120270",
+  "Japheth King": "598134335120273",
+  "Jesse King": "598134335120275",
+  "John King": "598134335120277",
+  "Jose Cruz-Loaeza": "598134335120284",
+  "Joseph Beiler": "598134335120272",
+  "Joshua Guidroz": "598134335120301",
+  "Lee Zook": "598134332153925",
+  "Matt Beiler": "598134335120274",
+  "Mose Zook": "598134335120334",
+  "Omar Garcia Cruz": "598134335120282",
+  "Raymond King Jr": "598134335120281",
+  "William Stoltzfus": "598134335120324",
+};
+
+function formatDailyClonePartyMapPreset() {
+  return JSON.stringify(DAILY_CLONE_PARTY_MAP_PRESET, null, 2);
+}
+
 function csvCell(value: unknown): string {
   const text =
     value === null || value === undefined
@@ -605,6 +628,10 @@ function ProcoreContent() {
   const [dailyDeleteBusy, setDailyDeleteBusy] = useState(false);
   const [dailyDeleteError, setDailyDeleteError] = useState<string | null>(null);
   const [dailyDeleteResult, setDailyDeleteResult] = useState<any>(null);
+
+  const loadDailyClonePartyMapPreset = () => {
+    setDailyClonePartyMapText(formatDailyClonePartyMapPreset());
+  };
   const [dailyDeleteIdsText, setDailyDeleteIdsText] = useState("");
   const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
   const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
@@ -9601,6 +9628,15 @@ function ProcoreContent() {
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono"
                   spellCheck={false}
                 />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={loadDailyClonePartyMapPreset}
+                    className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Load workbook party map
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-gray-500">
                   Map old source party IDs or names to target Procore user IDs, for example {"{"}"Lee Zook":"13531193"{"}"}.
                 </p>

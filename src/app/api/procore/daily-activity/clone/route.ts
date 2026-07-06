@@ -1131,8 +1131,11 @@ function mapTimecardEntry(
 
   const issues = [
     payload.party_id ? "" : "missing_target_party",
-    sourceTimeTypeBlank || payload.timecard_time_type_id ? "" : "missing_target_time_type",
     payload.cost_code_id ? "" : "missing_target_cost_code",
+  ].filter(Boolean);
+
+  const warnings = [
+    sourceTimeTypeBlank || payload.timecard_time_type_id ? "" : "missing_target_time_type",
     classification.id || classification.name ? (payload.work_classification_id ? "" : "missing_target_classification") : "",
   ].filter(Boolean);
 
@@ -1153,6 +1156,7 @@ function mapTimecardEntry(
     existingTargetTimecard,
     payload,
     issues,
+    warnings,
   };
 }
 
@@ -1547,7 +1551,7 @@ export async function POST(request: Request) {
         : errors.length
           ? "Some live creates failed. Review createResults before continuing."
           : missingMappings.length
-            ? `Live clone completed for this batch, but ${missingMappings.length} row(s) still need mappings. Review diagnostics and continue only after filling party, time type, and classification mappings.`
+            ? `Live clone completed for this batch, but ${missingMappings.length} row(s) still need required mappings. Review diagnostics and continue after filling party or cost code mappings.`
           : "Live clone completed for this batch.",
     });
   } catch (error) {

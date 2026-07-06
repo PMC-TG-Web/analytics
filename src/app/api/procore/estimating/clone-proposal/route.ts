@@ -204,6 +204,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   const byOldAnyIdentity = new Map<string, UnknownRecord[]>();
   const byOldAnyLooseIdentity = new Map<string, UnknownRecord[]>();
   const byOldAnyLooseName = new Map<string, UnknownRecord[]>();
+  const manualOverrideByIdentity = new Map<string, UnknownRecord>();
+  const manualOverrideByGroupIdentity = new Map<string, UnknownRecord>();
   const issues: UnknownRecord[] = [];
   const newUniqueByIdentity = new Map<string, UnknownRecord[]>();
   for (const row of uniqueNew) {
@@ -270,6 +272,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     byOldAnyIdentity,
     byOldAnyLooseIdentity,
     byOldAnyLooseName,
+    manualOverrideByIdentity,
+    manualOverrideByGroupIdentity,
     issues,
     summary: {
       uniqueOld: uniqueOld.length,
@@ -333,12 +337,28 @@ function applyMappingOverrides(
     if (!isRecord(row)) continue;
     const oldItemId = readStr(row.oldItemId || row.old_item_id || row.sourceItemId || row.source_item_id);
     const newItemId = readStr(row.newItemId || row.new_item_id || row.targetItemId || row.target_item_id);
-    if (!oldItemId || !newItemId) {
-      skipped.push({ row, issue: "missing_old_or_new_item_id" });
+    const oldName = readStr(row.oldName || row.sourceName || row.name);
+    const oldDescription = readStr(row.oldDescription || row.sourceDescription);
+    const oldCostCode = readStr(row.oldCostCode || row.sourceCostCode || row.costCode || row.cost_code);
+    const oldCostName = readStr(row.oldCostName || row.sourceCostName || row.costName || row.cost_name);
+    const oldGroupId = readStr(row.oldGroupId || row.groupId || row.sourceGroupId || row.group_id);
+    if (!newItemId) {
+      skipped.push({ row, issue: "missing_new_item_id" });
       continue;
     }
-    crosswalk.byOldItemId.set(oldItemId, {
-      old: { ItemId: oldItemId },
+    if (!oldItemId && !oldName && !oldDescription) {
+      skipped.push({ row, issue: "missing_old_selector_or_item_id" });
+      continue;
+    }
+
+    const mapping = {
+      old: {
+        ...(oldItemId ? { ItemId: oldItemId } : {}),
+        ...(oldName ? { Name: oldName } : {}),
+        ...(oldDescription ? { Description: oldDescription } : {}),
+        ...(oldCostCode ? { "Cost Code": oldCostCode } : {}),
+        ...(oldCostName ? { "Cost Name": oldCostName } : {}),
+      },
       new: {
         ItemId: newItemId,
         Name: readStr(row.newName || row.name),
@@ -348,12 +368,22 @@ function applyMappingOverrides(
         Description: readStr(row.newDescription || row.description),
       },
       strategy: "manual_override",
-    });
-    const mapping = crosswalk.byOldItemId.get(oldItemId);
-    if (mapping && isRecord(mapping.old)) {
+    };
+
+    if (oldItemId) {
+      crosswalk.byOldItemId.set(oldItemId, mapping);
+    }
+    if (isRecord(mapping.old)) {
       appendMapping(crosswalk.byOldAnyIdentity, itemIdentityKey(mapping.old), mapping);
       appendMapping(crosswalk.byOldAnyLooseIdentity, itemIdentityLooseKey(mapping.old), mapping);
       appendMapping(crosswalk.byOldAnyLooseName, itemNameLooseKey(mapping.old), mapping);
+      const looseIdentity = itemIdentityLooseKey(mapping.old);
+      if (looseIdentity) {
+        crosswalk.manualOverrideByIdentity.set(looseIdentity, mapping);
+        if (oldGroupId) {
+          crosswalk.manualOverrideByGroupIdentity.set(`${oldGroupId}|${looseIdentity}`, mapping);
+        }
+      }
     }
     applied += 1;
   }
@@ -448,16 +478,42 @@ function buildGroupCostCodeHints(
 function resolveLineItemMapping(
   lineItem: UnknownRecord,
   crosswalk: ReturnType<typeof buildCrosswalk>,
+  groupId = "",
   groupCostCodeHint = "",
   groupNameHint = ""
 ) {
+  const oldRow = lineItemOldCrosswalkRow(lineItem);
+  const manualLooseIdentityKey = itemIdentityLooseKey(oldRow);
+  if (groupId && manualLooseIdentityKey) {
+    const groupOverride = crosswalk.manualOverrideByGroupIdentity.get(`${groupId}|${manualLooseIdentityKey}`);
+    if (groupOverride) {
+      return {
+        mapping: groupOverride,
+        strategy: "manual_override_group_identity",
+        oldCostItemId: lineItemOldCostItemId(lineItem),
+        groupId,
+        manualLooseIdentityKey,
+      };
+    }
+  }
+  if (manualLooseIdentityKey) {
+    const manualOverride = crosswalk.manualOverrideByIdentity.get(manualLooseIdentityKey);
+    if (manualOverride) {
+      return {
+        mapping: manualOverride,
+        strategy: "manual_override_identity",
+        oldCostItemId: lineItemOldCostItemId(lineItem),
+        manualLooseIdentityKey,
+      };
+    }
+  }
+
   const oldCostItemId = lineItemOldCostItemId(lineItem);
   if (oldCostItemId) {
     const byId = crosswalk.byOldItemId.get(oldCostItemId);
     if (byId) return { mapping: byId, strategy: "old_item_id", oldCostItemId };
   }
 
-  const oldRow = lineItemOldCrosswalkRow(lineItem);
   const compositeKey = nonUniqueKey(oldRow);
   const nonUniqueMatches = crosswalk.byOldNonUniqueKey.get(compositeKey) || [];
   if (nonUniqueMatches.length === 1) {
@@ -947,7 +1003,8 @@ export async function POST(request: Request) {
     }
 
     const seedMappedLineItems = sourceLineItemRecords.map((lineItem) => {
-      const resolved = resolveLineItemMapping(lineItem, crosswalk);
+      const groupId = lineItemGroupId(lineItem);
+      const resolved = resolveLineItemMapping(lineItem, crosswalk, groupId);
       return { lineItem, mapping: resolved.mapping || null };
     });
     const groupCostCodeHints = buildGroupCostCodeHints(seedMappedLineItems);
@@ -958,6 +1015,7 @@ export async function POST(request: Request) {
       const resolved = resolveLineItemMapping(
         lineItem,
         crosswalk,
+        groupId,
         groupId ? groupCostCodeHints.get(groupId) || "" : "",
         groupId ? groupNameById.get(groupId) || "" : ""
       );

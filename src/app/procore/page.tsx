@@ -5385,9 +5385,18 @@ function ProcoreContent() {
             crosswalkPath,
             crosswalkWorkbookBase64: cloneCrosswalkWorkbookBase64 || undefined,
             mappingOverrides: cloneMappingOverrides
-              .filter((row) => row.oldItemId?.trim() && row.newItemId?.trim())
+              .filter(
+                (row) =>
+                  row.newItemId?.trim() &&
+                  (row.oldItemId?.trim() || row.oldName?.trim() || row.oldDescription?.trim())
+              )
               .map((row) => ({
                 oldItemId: row.oldItemId.trim(),
+                oldName: row.oldName?.trim() || undefined,
+                oldDescription: row.oldDescription?.trim() || undefined,
+                oldCostCode: row.oldCostCode?.trim() || undefined,
+                oldCostName: row.oldCostName?.trim() || undefined,
+                oldGroupId: row.oldGroupId?.trim() || row.groupId?.trim() || undefined,
                 newItemId: row.newItemId.trim(),
                 newName: row.newName?.trim() || undefined,
                 newCostCode: row.newCostCode?.trim() || undefined,
@@ -11572,6 +11581,12 @@ function ProcoreContent() {
                           cloneProposalResult.result.missingMappings.map((row: any) => ({
                             oldItemId: String(row.oldCostItemId ?? row.oldItemId ?? ""),
                             oldName: String(row.name ?? row.oldCostItem?.name ?? ""),
+                            oldDescription: String(row.inferredOldRow?.Description ?? row.oldCostItem?.description ?? ""),
+                            oldCostCode: String(row.inferredOldRow?.["Cost Code"] ?? row.oldCostCode?.code ?? ""),
+                            oldCostName: String(row.inferredOldRow?.["Cost Name"] ?? row.oldCostCode?.name ?? ""),
+                            oldGroupId: String(row.groupId ?? ""),
+                            groupId: String(row.groupId ?? ""),
+                            groupName: String(row.groupName ?? ""),
                             newItemId: "",
                             newName: "",
                             newCostCode: "",

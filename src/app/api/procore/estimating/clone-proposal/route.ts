@@ -826,6 +826,37 @@ async function fetchPaged(params: {
   return rows;
 }
 
+async function fetchPagedWindow(params: {
+  accessToken: string;
+  companyId: string;
+  path: string;
+  arrayKeys: string[];
+  offset: number;
+  limit: number;
+}) {
+  if (params.limit <= 0) return [] as unknown[];
+  const pageSize = PROCORE_PAGE_SIZE;
+  const startPage = Math.floor(params.offset / pageSize) + 1;
+  const endExclusive = params.offset + params.limit;
+  const endPage = Math.floor(Math.max(params.offset, endExclusive - 1) / pageSize) + 1;
+  const rows: unknown[] = [];
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    const separator = params.path.includes("?") ? "&" : "?";
+    const payload = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `${params.path}${separator}page=${page}&per_page=${pageSize}`,
+    });
+    const items = asArray(payload, params.arrayKeys);
+    rows.push(...items);
+    if (items.length < pageSize) break;
+  }
+
+  const localStart = params.offset - (startPage - 1) * pageSize;
+  return rows.slice(Math.max(0, localStart), Math.max(0, localStart) + params.limit);
+}
+
 async function resolveBidBoardProjectId(params: {
   accessToken: string;
   companyId: string;
@@ -996,12 +1027,24 @@ export async function POST(request: Request) {
     const fetchAttempts: UnknownRecord[] = [];
     for (const candidatePath of lineItemPaths) {
       try {
-        sourceLineItems = await fetchPaged({
-          accessToken,
-          companyId: sourceCompanyId,
-          path: candidatePath,
-          arrayKeys: ["data", "line_items", "items"],
-        });
+        if (dryRun) {
+          sourceLineItems = await fetchPaged({
+            accessToken,
+            companyId: sourceCompanyId,
+            path: candidatePath,
+            arrayKeys: ["data", "line_items", "items"],
+          });
+        } else {
+          const liveWindowLimit = Math.max(lineItemLimit + 1, lineItemLimit * 4);
+          sourceLineItems = await fetchPagedWindow({
+            accessToken,
+            companyId: sourceCompanyId,
+            path: candidatePath,
+            arrayKeys: ["data", "line_items", "items"],
+            offset: lineItemOffset,
+            limit: liveWindowLimit,
+          });
+        }
         fetchAttempts.push({ kind: "line_items", path: candidatePath, count: sourceLineItems.length, ok: true });
         if (sourceLineItems.length > 0) break;
       } catch (error) {
@@ -1025,6 +1068,9 @@ export async function POST(request: Request) {
 
     const sourceGroupRecords = sourceGroups.filter(isRecord);
     const sourceLineItemRecords = sourceLineItems.filter(isRecord);
+    const lineItemsToProcessInBatch = dryRun
+      ? sourceLineItemRecords.length
+      : Math.min(lineItemLimit, sourceLineItemRecords.length);
     const groupPayloads = sourceGroupRecords.map((group) => ({
       oldGroupId: readStr(group.id || group.group_id || group.line_item_group_id),
       name: readStr(group.name),
@@ -1061,6 +1107,9 @@ export async function POST(request: Request) {
       const oldCostItemId = resolved.oldCostItemId;
       const mapping = resolved.mapping;
       if (!mapping) {
+        if (!dryRun && index >= lineItemsToProcessInBatch) {
+          return { lineItem, oldCostItemId, mapping: null, matchStrategy: resolved.strategy };
+        }
         missingMappings.push({
           index,
           lineItemId: readStr(lineItem.id || lineItem.line_item_id),
@@ -1259,8 +1308,12 @@ export async function POST(request: Request) {
       return createdGroupId;
     };
 
-    const cloneableLineItems = mappedLineItems.filter((entry) => isRecord(entry.mapping));
-    const batchLineItems = cloneableLineItems.slice(lineItemOffset, lineItemOffset + lineItemLimit);
+    const cloneableLineItems = dryRun
+      ? mappedLineItems.filter((entry) => isRecord(entry.mapping))
+      : mappedLineItems.slice(0, lineItemsToProcessInBatch).filter((entry) => isRecord(entry.mapping));
+    const batchLineItems = dryRun
+      ? cloneableLineItems.slice(lineItemOffset, lineItemOffset + lineItemLimit)
+      : cloneableLineItems;
     const createdLineItems: UnknownRecord[] = [];
     const failedLineItems: UnknownRecord[] = [];
     let attemptedLineItems = 0;
@@ -1341,8 +1394,10 @@ export async function POST(request: Request) {
     }
     const nextLineItemOffset = rateLimitPause
       ? readInt(rateLimitPause.lineItemOffset, lineItemOffset)
-      : lineItemOffset + batchLineItems.length;
-    const hasMoreLineItems = nextLineItemOffset < cloneableLineItems.length;
+      : lineItemOffset + (dryRun ? batchLineItems.length : lineItemsToProcessInBatch);
+    const hasMoreLineItems = dryRun
+      ? nextLineItemOffset < cloneableLineItems.length
+      : sourceLineItemRecords.length > lineItemsToProcessInBatch;
     const continueRequest = rateLimitPause || (hasMoreLineItems
       ? {
           targetProposalId: createdProposalId,

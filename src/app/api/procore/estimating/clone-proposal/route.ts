@@ -396,6 +396,29 @@ function chooseByGroupCostCodeHint(matches: UnknownRecord[], groupCostCodeHint: 
   return hinted.length === 1 ? hinted[0] : null;
 }
 
+function mappingOldCostName(mapping: UnknownRecord): string {
+  const oldRow = isRecord(mapping.old) ? mapping.old : {};
+  return norm(oldRow["Cost Name"]);
+}
+
+function guessGroupCostNameHint(groupName: string): string {
+  const value = norm(groupName);
+  if (!value) return "";
+  if (/\bsog\b|slab on grade/.test(value)) return "sog rebar material";
+  if (/\bsite\b/.test(value)) return "site rebar material";
+  if (/\bwall\b|wf\d/.test(value)) return "wall rebar material";
+  if (/\bfooting\b|\bspread\b|\bmat\b|foundation/.test(value)) return "foundation rebar material";
+  return "";
+}
+
+function chooseByGroupNameCostNameHint(matches: UnknownRecord[], groupNameHint: string): UnknownRecord | null {
+  if (!groupNameHint || matches.length < 2) return null;
+  const costNameHint = guessGroupCostNameHint(groupNameHint);
+  if (!costNameHint) return null;
+  const hinted = matches.filter((entry) => mappingOldCostName(entry) === costNameHint);
+  return hinted.length === 1 ? hinted[0] : null;
+}
+
 function buildGroupCostCodeHints(
   mappedLineItems: Array<{ lineItem: UnknownRecord; mapping: UnknownRecord | null }>
 ): Map<string, string> {
@@ -425,7 +448,8 @@ function buildGroupCostCodeHints(
 function resolveLineItemMapping(
   lineItem: UnknownRecord,
   crosswalk: ReturnType<typeof buildCrosswalk>,
-  groupCostCodeHint = ""
+  groupCostCodeHint = "",
+  groupNameHint = ""
 ) {
   const oldCostItemId = lineItemOldCostItemId(lineItem);
   if (oldCostItemId) {
@@ -468,6 +492,16 @@ function resolveLineItemMapping(
         groupCostCodeHint,
       };
     }
+    const groupNameHintedIdentity = chooseByGroupNameCostNameHint(anyIdentityMatches, groupNameHint);
+    if (groupNameHintedIdentity) {
+      return {
+        mapping: groupNameHintedIdentity,
+        strategy: "line_item_any_identity_group_name_hint",
+        oldCostItemId,
+        identityKey,
+        groupNameHint,
+      };
+    }
 
     const looseIdentityKey = itemIdentityLooseKey(oldRow);
     const anyLooseIdentityMatches = crosswalk.byOldAnyLooseIdentity.get(looseIdentityKey) || [];
@@ -489,6 +523,16 @@ function resolveLineItemMapping(
         groupCostCodeHint,
       };
     }
+    const groupNameHintedLooseIdentity = chooseByGroupNameCostNameHint(anyLooseIdentityMatches, groupNameHint);
+    if (groupNameHintedLooseIdentity) {
+      return {
+        mapping: groupNameHintedLooseIdentity,
+        strategy: "line_item_any_loose_identity_group_name_hint",
+        oldCostItemId,
+        looseIdentityKey,
+        groupNameHint,
+      };
+    }
 
     const looseNameKey = itemNameLooseKey(oldRow);
     const anyLooseNameMatches = crosswalk.byOldAnyLooseName.get(looseNameKey) || [];
@@ -503,6 +547,16 @@ function resolveLineItemMapping(
         oldCostItemId,
         looseNameKey,
         groupCostCodeHint,
+      };
+    }
+    const groupNameHintedLooseName = chooseByGroupNameCostNameHint(anyLooseNameMatches, groupNameHint);
+    if (groupNameHintedLooseName) {
+      return {
+        mapping: groupNameHintedLooseName,
+        strategy: "line_item_any_loose_name_group_name_hint",
+        oldCostItemId,
+        looseNameKey,
+        groupNameHint,
       };
     }
   }
@@ -886,6 +940,12 @@ export async function POST(request: Request) {
       payload: buildGroupPayload(group),
     }));
 
+    const groupNameById = new Map<string, string>();
+    for (const group of sourceGroupRecords) {
+      const id = readStr(group.id || group.group_id || group.line_item_group_id);
+      if (id) groupNameById.set(id, readStr(group.name));
+    }
+
     const seedMappedLineItems = sourceLineItemRecords.map((lineItem) => {
       const resolved = resolveLineItemMapping(lineItem, crosswalk);
       return { lineItem, mapping: resolved.mapping || null };
@@ -895,7 +955,12 @@ export async function POST(request: Request) {
     const missingMappings: UnknownRecord[] = [];
     const mappedLineItems = sourceLineItemRecords.map((lineItem, index) => {
       const groupId = lineItemGroupId(lineItem);
-      const resolved = resolveLineItemMapping(lineItem, crosswalk, groupId ? groupCostCodeHints.get(groupId) || "" : "");
+      const resolved = resolveLineItemMapping(
+        lineItem,
+        crosswalk,
+        groupId ? groupCostCodeHints.get(groupId) || "" : "",
+        groupId ? groupNameById.get(groupId) || "" : ""
+      );
       const oldCostItemId = resolved.oldCostItemId;
       const mapping = resolved.mapping;
       if (!mapping) {
@@ -903,6 +968,7 @@ export async function POST(request: Request) {
           index,
           lineItemId: readStr(lineItem.id || lineItem.line_item_id),
           groupId: groupId || null,
+          groupName: groupId ? groupNameById.get(groupId) || null : null,
           groupCostCodeHint: groupId ? groupCostCodeHints.get(groupId) || null : null,
           name: readStr(lineItem.name),
           oldCostItemId,

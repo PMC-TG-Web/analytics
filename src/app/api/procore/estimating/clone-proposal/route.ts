@@ -1030,6 +1030,10 @@ export async function POST(request: Request) {
       name: readStr(group.name),
       payload: buildGroupPayload(group),
     }));
+    const groupPayloadByOldId = new Map<string, { oldGroupId: string; name: string; payload: UnknownRecord }>();
+    for (const group of groupPayloads) {
+      if (group.oldGroupId) groupPayloadByOldId.set(group.oldGroupId, group);
+    }
 
     const groupNameById = new Map<string, string>();
     for (const group of sourceGroupRecords) {
@@ -1227,24 +1231,33 @@ export async function POST(request: Request) {
 
     const groupIdMap = new Map<string, string>(continuationGroupIdMap);
     const createdGroups: UnknownRecord[] = [];
-    if (!targetProposalIdFromBody) {
-      for (const group of groupPayloads) {
-        if (createdGroups.length > 0) await sleep(350);
-        const payload = await procoreJson({
-          accessToken,
-          companyId: targetCompanyId,
-          method: "POST",
-          path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
-            targetBidBoardProjectId
-          )}/proposals/${encodeURIComponent(createdProposalId)}/line_item_groups`,
-          body: group.payload,
-        });
-        const created = isRecord(unwrapData(payload)) ? (unwrapData(payload) as UnknownRecord) : {};
-        const createdGroupId = readStr(created.id || created.group_id || created.line_item_group_id);
-        if (group.oldGroupId && createdGroupId) groupIdMap.set(group.oldGroupId, createdGroupId);
-        createdGroups.push({ oldGroupId: group.oldGroupId, newGroupId: createdGroupId, payload });
+
+    const ensureGroupCreated = async (oldGroupId: string): Promise<string> => {
+      if (!oldGroupId) return "";
+      const existing = groupIdMap.get(oldGroupId);
+      if (existing) return existing;
+
+      const group = groupPayloadByOldId.get(oldGroupId);
+      if (!group) return "";
+
+      if (createdGroups.length > 0) await sleep(200);
+      const payload = await procoreJson({
+        accessToken,
+        companyId: targetCompanyId,
+        method: "POST",
+        path: `/rest/v2.0/companies/${encodeURIComponent(targetCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
+          targetBidBoardProjectId
+        )}/proposals/${encodeURIComponent(createdProposalId)}/line_item_groups`,
+        body: group.payload,
+      });
+      const created = isRecord(unwrapData(payload)) ? (unwrapData(payload) as UnknownRecord) : {};
+      const createdGroupId = readStr(created.id || created.group_id || created.line_item_group_id);
+      if (createdGroupId) {
+        groupIdMap.set(oldGroupId, createdGroupId);
       }
-    }
+      createdGroups.push({ oldGroupId: group.oldGroupId, newGroupId: createdGroupId || null, payload });
+      return createdGroupId;
+    };
 
     const cloneableLineItems = mappedLineItems.filter((entry) => isRecord(entry.mapping));
     const batchLineItems = cloneableLineItems.slice(lineItemOffset, lineItemOffset + lineItemLimit);
@@ -1255,6 +1268,36 @@ export async function POST(request: Request) {
     for (const entry of batchLineItems) {
       if (!isRecord(entry.mapping)) continue;
       if (createdLineItems.length > 0) await sleep(750);
+
+      const oldGroupId = lineItemGroupId(entry.lineItem);
+      if (oldGroupId && !groupIdMap.has(oldGroupId)) {
+        try {
+          await ensureGroupCreated(oldGroupId);
+        } catch (error) {
+          failedLineItems.push({
+            oldLineItemId: readStr(entry.lineItem.id || entry.lineItem.line_item_id),
+            oldCostItemId: entry.oldCostItemId,
+            oldGroupId,
+            error: error instanceof Error ? error.message : String(error),
+            stage: "ensure_group",
+            rateLimited: isRateLimitError(error),
+          });
+          if (!allowPartial || isRateLimitError(error)) {
+            if (isRateLimitError(error)) {
+              const resumeOffset = lineItemOffset + Math.max(0, attemptedLineItems);
+              rateLimitPause = {
+                targetProposalId: createdProposalId,
+                groupIdMap: objectFromMap(groupIdMap),
+                lineItemOffset: resumeOffset,
+                lineItemLimit,
+              };
+            }
+            break;
+          }
+          continue;
+        }
+      }
+
       const payload = buildLineItemPayload({ lineItem: entry.lineItem, mapping: entry.mapping, groupIdMap });
       attemptedLineItems += 1;
       try {

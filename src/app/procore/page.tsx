@@ -5754,7 +5754,8 @@ function ProcoreContent() {
 
     try {
       const maxAutoBatches = dryRun ? 1 : Math.max(1, Math.min(100, Number.parseInt(meetingCloneMaxAutoBatches || "50", 10) || 50));
-      let currentOffset = Number.parseInt(options?.createOffset ?? meetingCloneCreateOffset.trim() || "0", 10) || 0;
+      const createOffsetValue = options?.createOffset ?? (meetingCloneCreateOffset.trim() || "0");
+      let currentOffset = Number.parseInt(createOffsetValue, 10) || 0;
       const batchResults: any[] = [];
       let lastStatus = 0;
       let lastOk = false;

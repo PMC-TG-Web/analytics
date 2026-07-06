@@ -1546,6 +1546,8 @@ export async function POST(request: Request) {
           ? pauseReason
         : errors.length
           ? "Some live creates failed. Review createResults before continuing."
+          : missingMappings.length
+            ? `Live clone completed for this batch, but ${missingMappings.length} row(s) still need mappings. Review diagnostics and continue only after filling party, time type, and classification mappings.`
           : "Live clone completed for this batch.",
     });
   } catch (error) {

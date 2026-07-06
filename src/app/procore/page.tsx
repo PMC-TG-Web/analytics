@@ -377,6 +377,8 @@ function ProcoreContent() {
   const [cloneProposalError, setCloneProposalError] = useState<string | null>(null);
   const [cloneProposalResult, setCloneProposalResult] = useState<any>(null);
   const [cloneProposalContinuation, setCloneProposalContinuation] = useState<Record<string, unknown> | null>(null);
+  const [cloneManualContinuationTargetId, setCloneManualContinuationTargetId] = useState("");
+  const [cloneManualContinuationOffset, setCloneManualContinuationOffset] = useState("0");
   const [cloneProposalAutoContinue, setCloneProposalAutoContinue] = useState(false);
   const [cloneProposalMaxAutoBatches, setCloneProposalMaxAutoBatches] = useState("50");
   const [cloneProposalLineItemLimit, setCloneProposalLineItemLimit] = useState("1");
@@ -11359,6 +11361,55 @@ function ProcoreContent() {
                 <p className="text-xs text-indigo-700 mt-2">
                   Load a downloaded clone result to continue the same target proposal at its last saved offset.
                 </p>
+              </div>
+
+              <div className="mb-4 border border-indigo-100 rounded p-3 bg-indigo-50/40">
+                <h3 className="text-sm font-bold text-indigo-900 mb-2">Manual Continuation</h3>
+                <p className="text-xs text-indigo-700 mb-3">
+                  Use this when you need to resume from a known line offset and do not have the downloaded result JSON.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Target Proposal ID</label>
+                    <input
+                      type="text"
+                      value={cloneManualContinuationTargetId ?? ""}
+                      onChange={(e) => setCloneManualContinuationTargetId(e.target.value)}
+                      placeholder="Required to resume same target proposal"
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Line Item Offset</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={cloneManualContinuationOffset ?? "0"}
+                      onChange={(e) => setCloneManualContinuationOffset(e.target.value)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetProposalId = (cloneManualContinuationTargetId || "").trim();
+                        const lineItemOffset = Math.max(0, Number.parseInt((cloneManualContinuationOffset || "0").trim() || "0", 10) || 0);
+                        const lineItemLimit = Math.max(1, Math.min(5, Number.parseInt((cloneProposalLineItemLimit || "1").trim() || "1", 10) || 1));
+                        setCloneProposalContinuationState({
+                          ...(targetProposalId ? { targetProposalId } : {}),
+                          lineItemOffset,
+                          lineItemLimit,
+                          groupIdMap: {},
+                        });
+                      }}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded text-sm"
+                    >
+                      Set Manual Continuation
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="mb-4 border border-indigo-100 rounded overflow-hidden">

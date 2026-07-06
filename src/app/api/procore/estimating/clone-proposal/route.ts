@@ -206,6 +206,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
   const byOldAnyLooseName = new Map<string, UnknownRecord[]>();
   const manualOverrideByIdentity = new Map<string, UnknownRecord>();
   const manualOverrideByGroupIdentity = new Map<string, UnknownRecord>();
+  const manualOverrideByName = new Map<string, UnknownRecord>();
+  const manualOverrideByGroupName = new Map<string, UnknownRecord>();
   const issues: UnknownRecord[] = [];
   const newUniqueByIdentity = new Map<string, UnknownRecord[]>();
   for (const row of uniqueNew) {
@@ -274,6 +276,8 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     byOldAnyLooseName,
     manualOverrideByIdentity,
     manualOverrideByGroupIdentity,
+    manualOverrideByName,
+    manualOverrideByGroupName,
     issues,
     summary: {
       uniqueOld: uniqueOld.length,
@@ -384,6 +388,13 @@ function applyMappingOverrides(
           crosswalk.manualOverrideByGroupIdentity.set(`${oldGroupId}|${looseIdentity}`, mapping);
         }
       }
+      const looseName = itemNameLooseKey(mapping.old);
+      if (looseName) {
+        crosswalk.manualOverrideByName.set(looseName, mapping);
+        if (oldGroupId) {
+          crosswalk.manualOverrideByGroupName.set(`${oldGroupId}|${looseName}`, mapping);
+        }
+      }
     }
     applied += 1;
   }
@@ -484,6 +495,7 @@ function resolveLineItemMapping(
 ) {
   const oldRow = lineItemOldCrosswalkRow(lineItem);
   const manualLooseIdentityKey = itemIdentityLooseKey(oldRow);
+  const manualLooseNameKey = itemNameLooseKey(oldRow);
   if (groupId && manualLooseIdentityKey) {
     const groupOverride = crosswalk.manualOverrideByGroupIdentity.get(`${groupId}|${manualLooseIdentityKey}`);
     if (groupOverride) {
@@ -496,6 +508,18 @@ function resolveLineItemMapping(
       };
     }
   }
+  if (groupId && manualLooseNameKey) {
+    const groupNameOverride = crosswalk.manualOverrideByGroupName.get(`${groupId}|${manualLooseNameKey}`);
+    if (groupNameOverride) {
+      return {
+        mapping: groupNameOverride,
+        strategy: "manual_override_group_name",
+        oldCostItemId: lineItemOldCostItemId(lineItem),
+        groupId,
+        manualLooseNameKey,
+      };
+    }
+  }
   if (manualLooseIdentityKey) {
     const manualOverride = crosswalk.manualOverrideByIdentity.get(manualLooseIdentityKey);
     if (manualOverride) {
@@ -504,6 +528,17 @@ function resolveLineItemMapping(
         strategy: "manual_override_identity",
         oldCostItemId: lineItemOldCostItemId(lineItem),
         manualLooseIdentityKey,
+      };
+    }
+  }
+  if (manualLooseNameKey) {
+    const manualNameOverride = crosswalk.manualOverrideByName.get(manualLooseNameKey);
+    if (manualNameOverride) {
+      return {
+        mapping: manualNameOverride,
+        strategy: "manual_override_name",
+        oldCostItemId: lineItemOldCostItemId(lineItem),
+        manualLooseNameKey,
       };
     }
   }

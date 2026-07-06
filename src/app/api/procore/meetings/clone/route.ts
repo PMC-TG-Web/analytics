@@ -15,6 +15,8 @@ type TargetUserLookup = {
 
 type MeetingCloneRow = {
   sourceId: string;
+  sourceParentId: string;
+  seriesKey: string;
   sourceTitle: string;
   sourceStart: string;
   sourceEnd: string;
@@ -22,11 +24,15 @@ type MeetingCloneRow = {
   sourcePosition: number | null;
   sourceAttendees: Array<{ id: string; login: string; name: string; status: string }>;
   mappedAttendees: number[];
+  mappedAttendance: Array<{ attendeeId: number; status: string }>;
   missingAttendees: Array<{ id: string; login: string; name: string }>;
   existingTargetMeeting: boolean;
   payload: UnknownRecord;
   issues: string[];
 };
+
+const MEETING_FALLBACK_START_DATETIME = "2026-01-01T12:00:00Z";
+const MEETING_FALLBACK_END_DATETIME = "2026-01-01T13:00:00Z";
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -128,6 +134,10 @@ function normalizeMeetingKey(meeting: UnknownRecord) {
   ].join("|");
 }
 
+function meetingSeriesKey(meeting: UnknownRecord) {
+  return `${normalize(meeting.title)}|${normalize(meeting.mode || "minutes")}`;
+}
+
 function firstRecord(...values: unknown[]): UnknownRecord | null {
   for (const value of values) {
     if (isRecord(value)) return value;
@@ -143,6 +153,16 @@ function attendeeIdentity(attendee: UnknownRecord) {
     login: readStr(nested?.login || nested?.email || attendee.login || attendee.email || attendee.email_address),
     status: readStr(attendee.status),
   };
+}
+
+function normalizeAttendeeStatus(value: unknown): string {
+  const normalized = normalize(value).replace(/\s+/g, "_");
+  if (!normalized) return "";
+  if (["present", "attended", "in_person"].includes(normalized)) return "present";
+  if (["absent", "not_present"].includes(normalized)) return "absent";
+  if (["for_distribution_only", "distribution_only", "fordistributiononly"].includes(normalized)) return "for_distribution_only";
+  if (["conference", "remote", "virtual"].includes(normalized)) return "conference";
+  return readStr(value);
 }
 
 function resolveTargetUserId(value: unknown, attendeeMap: Record<string, string>, targetUsers: TargetUserLookup[]) {
@@ -340,6 +360,242 @@ async function createMeeting(params: {
   });
 }
 
+function buildAgendaTopicPayload(topic: UnknownRecord) {
+  return compactPayload({
+    title: readStr(topic.title || topic.name || topic.subject || topic.description) || "Agenda Item",
+    position: readNum(topic.position),
+    due_date: readStr(topic.due_date),
+    minutes: readStr(topic.minutes),
+    note: readStr(topic.note || topic.notes),
+    status: readStr(topic.status),
+  });
+}
+
+function buildAgendaCategoryPayloads(meeting: UnknownRecord) {
+  const categories = asArray(meeting.meeting_categories).map((category) => {
+    const rawTopics = asArray(category.meeting_topics).length
+      ? asArray(category.meeting_topics)
+      : asArray(category.meeting_topic);
+    const topics = rawTopics.map((topic) => buildAgendaTopicPayload(topic));
+    return compactPayload({
+      title: readStr(category.title || category.name) || "Uncategorized Items",
+      position: readNum(category.position),
+      meeting_topic: topics,
+      meeting_topics: topics,
+    });
+  });
+
+  return categories.filter((category) => {
+    const title = readStr(category.title);
+    const hasTopics = Array.isArray(category.meeting_topic) && category.meeting_topic.length > 0;
+    return Boolean(title || hasTopics);
+  });
+}
+
+async function cloneMeetingAgenda(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  targetMeetingId: number;
+  sourceMeeting: UnknownRecord;
+}) {
+  const categoryPayloads = buildAgendaCategoryPayloads(params.sourceMeeting);
+  const sourceTopicCount = categoryPayloads.reduce((sum, category) => {
+    const topics = Array.isArray(category.meeting_topic) ? category.meeting_topic : [];
+    return sum + topics.length;
+  }, 0);
+
+  if (!categoryPayloads.length || sourceTopicCount === 0) {
+    return {
+      ok: true,
+      method: "none",
+      sourceCategories: categoryPayloads.length,
+      sourceTopics: sourceTopicCount,
+      createdTopics: 0,
+      createdCategories: 0,
+      skipped: true,
+    };
+  }
+
+  const patchAttempt = await procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}`,
+    method: "PATCH",
+    body: {
+      project_id: params.projectId,
+      meeting: {
+        meeting_categories: categoryPayloads,
+      },
+    },
+    allowStatuses: [400, 404, 405, 422],
+  });
+
+  if (patchAttempt.ok) {
+    return {
+      ok: true,
+      method: "patch_meeting_categories",
+      sourceCategories: categoryPayloads.length,
+      sourceTopics: sourceTopicCount,
+      createdTopics: sourceTopicCount,
+      createdCategories: categoryPayloads.length,
+    };
+  }
+
+  const topicPaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/topics`,
+  ];
+
+  const topicErrors: UnknownRecord[] = [];
+  let createdTopics = 0;
+  for (const category of categoryPayloads) {
+    const topics = Array.isArray(category.meeting_topic) ? category.meeting_topic : [];
+    for (const topic of topics) {
+      let created = false;
+      for (const path of topicPaths) {
+        const topicAttempt = await procoreJson({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          path,
+          method: "POST",
+          body: {
+            meeting_topic: topic,
+          },
+          allowStatuses: [400, 404, 405, 422],
+        });
+        if (topicAttempt.ok) {
+          createdTopics += 1;
+          created = true;
+          break;
+        }
+      }
+
+      if (!created) {
+        topicErrors.push({ topic, categoryTitle: readStr(category.title), error: "topic_create_not_supported" });
+      }
+    }
+  }
+
+  return {
+    ok: topicErrors.length === 0,
+    method: "topic_fallback",
+    sourceCategories: categoryPayloads.length,
+    sourceTopics: sourceTopicCount,
+    createdTopics,
+    createdCategories: 0,
+    patchError: patchAttempt.payload,
+    errors: topicErrors,
+  };
+}
+
+async function cloneMeetingAttendance(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  targetMeetingId: number;
+  mappedAttendance: Array<{ attendeeId: number; status: string }>;
+}) {
+  if (!params.mappedAttendance.length) {
+    return {
+      ok: true,
+      method: "none",
+      sourceAttendance: 0,
+      appliedAttendance: 0,
+      skipped: true,
+    };
+  }
+
+  const patchBodyVariants = [
+    {
+      project_id: params.projectId,
+      meeting: {
+        attendees: params.mappedAttendance.map((entry) => entry.attendeeId),
+        meeting_attendees: params.mappedAttendance.map((entry) => ({ id: entry.attendeeId, status: entry.status })),
+      },
+    },
+    {
+      project_id: params.projectId,
+      meeting: {
+        meeting_attendees: params.mappedAttendance.map((entry) => ({ attendee_id: entry.attendeeId, status: entry.status })),
+      },
+    },
+    {
+      project_id: params.projectId,
+      meeting: {
+        attendees_attributes: params.mappedAttendance.map((entry) => ({ id: entry.attendeeId, status: entry.status })),
+      },
+    },
+  ];
+
+  for (const body of patchBodyVariants) {
+    const patchAttempt = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}`,
+      method: "PATCH",
+      body,
+      allowStatuses: [400, 404, 405, 422],
+    });
+
+    if (patchAttempt.ok) {
+      return {
+        ok: true,
+        method: "patch_meeting_attendees",
+        sourceAttendance: params.mappedAttendance.length,
+        appliedAttendance: params.mappedAttendance.length,
+      };
+    }
+  }
+
+  const attendeePaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_attendees`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_attendees`,
+  ];
+  const attendeeBodyVariants = (entry: { attendeeId: number; status: string }) => [
+    { meeting_attendee: { attendee_id: entry.attendeeId, status: entry.status } },
+    { meeting_attendee: { user_id: entry.attendeeId, status: entry.status } },
+    { meeting_attendee: { id: entry.attendeeId, status: entry.status } },
+  ];
+
+  const errors: UnknownRecord[] = [];
+  let appliedAttendance = 0;
+  for (const entry of params.mappedAttendance) {
+    let applied = false;
+    for (const path of attendeePaths) {
+      for (const body of attendeeBodyVariants(entry)) {
+        const attempt = await procoreJson({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          path,
+          method: "POST",
+          body,
+          allowStatuses: [400, 404, 405, 422],
+        });
+        if (attempt.ok) {
+          appliedAttendance += 1;
+          applied = true;
+          break;
+        }
+      }
+      if (applied) break;
+    }
+
+    if (!applied) {
+      errors.push({ attendeeId: entry.attendeeId, status: entry.status, error: "attendee_status_not_supported" });
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    method: "attendee_fallback",
+    sourceAttendance: params.mappedAttendance.length,
+    appliedAttendance,
+    errors,
+  };
+}
+
 function buildMeetingCloneRow(params: {
   meeting: UnknownRecord;
   attendeeMap: Record<string, string>;
@@ -349,21 +605,32 @@ function buildMeetingCloneRow(params: {
   const sourceAttendeesRaw = asArray(params.meeting.attendees);
   const sourceAttendees = sourceAttendeesRaw.map((attendee) => attendeeIdentity(attendee));
   const mappedAttendees = new Set<number>();
+  const mappedAttendance = new Map<number, string>();
   const missingAttendees: Array<{ id: string; login: string; name: string }> = [];
 
   for (const attendee of sourceAttendees) {
     const targetId = resolveTargetUserId(attendee, params.attendeeMap, params.targetUsers);
     if (targetId !== undefined) {
       mappedAttendees.add(targetId);
+      const normalizedStatus = normalizeAttendeeStatus(attendee.status);
+      if (normalizedStatus && !mappedAttendance.has(targetId)) {
+        mappedAttendance.set(targetId, normalizedStatus);
+      }
     } else if (attendee.id || attendee.login || attendee.name) {
       missingAttendees.push({ id: attendee.id, login: attendee.login, name: attendee.name });
     }
   }
 
   const sourceTitle = readStr(params.meeting.title) || "Cloned Meeting";
+  const sourceId = readStr(params.meeting.id);
+  const rawParentId = readStr(params.meeting.parent_id || params.meeting.parentId || params.meeting.root_id || params.meeting.rootId);
+  const sourceParentId = rawParentId && rawParentId !== sourceId ? rawParentId : "";
   const sourceStart = readStr(params.meeting.starts_at);
   const sourceEnd = readStr(params.meeting.ends_at);
+  const payloadStart = sourceStart || MEETING_FALLBACK_START_DATETIME;
+  const payloadEnd = sourceEnd || MEETING_FALLBACK_END_DATETIME;
   const sourceMode = readStr(params.meeting.mode) || "minutes";
+  const seriesKey = `${normalize(sourceTitle)}|${normalize(sourceMode)}`;
   const sourcePosition = readNum(params.meeting.position) ?? null;
   const sourceTimeZone = readStr(params.meeting.time_zone);
   const payload = compactPayload({
@@ -372,8 +639,8 @@ function buildMeetingCloneRow(params: {
     description: readStr(params.meeting.description),
     location: readStr(params.meeting.location),
     occurred: typeof params.meeting.occurred === "boolean" ? params.meeting.occurred : undefined,
-    starts_at: sourceStart,
-    ends_at: sourceEnd,
+    starts_at: payloadStart,
+    ends_at: payloadEnd,
     time_zone: sourceTimeZone,
     is_private: typeof params.meeting.is_private === "boolean" ? params.meeting.is_private : undefined,
     is_draft: typeof params.meeting.is_draft === "boolean" ? params.meeting.is_draft : undefined,
@@ -387,13 +654,13 @@ function buildMeetingCloneRow(params: {
 
   const issues = [
     sourcePosition === null ? "missing_position" : "",
-    sourceStart ? "" : "missing_starts_at",
-    sourceEnd ? "" : "missing_ends_at",
     sourceAttendees.length > 0 && missingAttendees.length > 0 ? "missing_target_attendees" : "",
   ].filter(Boolean);
 
   return {
-    sourceId: readStr(params.meeting.id),
+    sourceId,
+    sourceParentId,
+    seriesKey,
     sourceTitle,
     sourceStart,
     sourceEnd,
@@ -401,6 +668,7 @@ function buildMeetingCloneRow(params: {
     sourcePosition,
     sourceAttendees,
     mappedAttendees: Array.from(mappedAttendees),
+    mappedAttendance: Array.from(mappedAttendance.entries()).map(([attendeeId, status]) => ({ attendeeId, status })),
     missingAttendees,
     existingTargetMeeting: params.existingTargetKeys.has(normalizeMeetingKey(params.meeting)),
     payload,
@@ -461,6 +729,34 @@ export async function POST(request: Request) {
       )
     );
 
+    const sourceMeetingById = new Map<string, UnknownRecord>();
+    for (const meeting of sourceMeetingDetails) {
+      const id = readStr(meeting.id);
+      if (id) sourceMeetingById.set(id, meeting);
+    }
+
+    const targetMeetingIdByKey = new Map<string, number>();
+    for (const meeting of targetMeetingsRaw) {
+      const key = normalizeMeetingKey(meeting);
+      const id = readNum(meeting.id);
+      if (key && id !== undefined && !targetMeetingIdByKey.has(key)) {
+        targetMeetingIdByKey.set(key, id);
+      }
+    }
+
+    const targetSeriesRootByKey = new Map<string, number>();
+    for (const meeting of targetMeetingsRaw) {
+      const id = readNum(meeting.id);
+      if (id === undefined) continue;
+      const key = meetingSeriesKey(meeting);
+      if (!key) continue;
+      const parentId = readNum(meeting.parent_id || meeting.parentId);
+      const isRoot = parentId === undefined || parentId === id;
+      if (isRoot && !targetSeriesRootByKey.has(key)) {
+        targetSeriesRootByKey.set(key, id);
+      }
+    }
+
     const targetUsers = buildTargetUsers(projectUsers, companyUsers);
     const existingTargetKeys = new Set(targetMeetingsRaw.map((meeting) => normalizeMeetingKey(meeting)));
     const meetingRows = sourceMeetingDetails.map((meeting) => buildMeetingCloneRow({
@@ -491,9 +787,13 @@ export async function POST(request: Request) {
     const createStartedAt = Date.now();
 
     if (!dryRun) {
-      const rowsToCreate = meetingRows.filter((row) => row.issues.length === 0 && !row.existingTargetMeeting);
+      const rowsToCreate = meetingRows
+        .filter((row) => row.issues.length === 0 && !row.existingTargetMeeting)
+        .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
       const slice = rowsToCreate.slice(createOffset, createOffset + createLimit);
       const addedProjectUserIds = new Set<number>();
+      const createdTargetIdBySourceId = new Map<string, number>();
+      const createdSeriesRootByKey = new Map<string, number>();
 
       for (const row of slice) {
         if (Date.now() - createStartedAt > 18000) {
@@ -524,10 +824,64 @@ export async function POST(request: Request) {
             }
           }
 
+          const payload: UnknownRecord = { ...row.payload };
+          let parentTargetId: number | undefined;
+          if (row.sourceParentId) {
+            parentTargetId = createdTargetIdBySourceId.get(row.sourceParentId);
+            if (parentTargetId === undefined) {
+              const sourceParent = sourceMeetingById.get(row.sourceParentId);
+              if (sourceParent) {
+                parentTargetId = targetMeetingIdByKey.get(normalizeMeetingKey(sourceParent));
+              }
+            }
+          }
+
+          if (parentTargetId === undefined) {
+            parentTargetId = createdSeriesRootByKey.get(row.seriesKey);
+          }
+
+          if (parentTargetId === undefined) {
+            parentTargetId = targetSeriesRootByKey.get(row.seriesKey);
+          }
+
+          if (parentTargetId !== undefined) {
+            payload.parent_id = parentTargetId;
+          }
+
           const result = await retryableCreate(() =>
-            createMeeting({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
+            createMeeting({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload })
           );
-          createResults.push({ type: "meeting", sourceId: row.sourceId, ok: true, result });
+          const createdPayload = isRecord(result.payload) ? result.payload : {};
+          const createdId = readNum(createdPayload.id || (isRecord(createdPayload.data) ? createdPayload.data.id : undefined));
+          let agendaClone: UnknownRecord | null = null;
+          let attendanceClone: UnknownRecord | null = null;
+          if (createdId !== undefined) {
+            createdTargetIdBySourceId.set(row.sourceId, createdId);
+            if (!createdSeriesRootByKey.has(row.seriesKey)) {
+              createdSeriesRootByKey.set(row.seriesKey, createdId);
+            }
+            if (!targetSeriesRootByKey.has(row.seriesKey)) {
+              targetSeriesRootByKey.set(row.seriesKey, createdId);
+            }
+            const sourceMeeting = sourceMeetingById.get(row.sourceId);
+            if (sourceMeeting) {
+              agendaClone = await cloneMeetingAgenda({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                targetMeetingId: createdId,
+                sourceMeeting,
+              });
+            }
+            attendanceClone = await cloneMeetingAttendance({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              targetMeetingId: createdId,
+              mappedAttendance: row.mappedAttendance,
+            });
+          }
+          createResults.push({ type: "meeting", sourceId: row.sourceId, ok: true, result, agendaClone, attendanceClone });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           createResults.push({ type: "meeting", sourceId: row.sourceId, ok: false, error: message, payload: row.payload });

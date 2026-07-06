@@ -691,6 +691,19 @@ function ProcoreContent() {
   const [rfiCloneBusy, setRfiCloneBusy] = useState(false);
   const [rfiCloneError, setRfiCloneError] = useState<string | null>(null);
   const [rfiCloneResult, setRfiCloneResult] = useState<any>(null);
+  const [meetingCloneSourceCompanyId, setMeetingCloneSourceCompanyId] = useState("598134325658789");
+  const [meetingCloneSourceProjectId, setMeetingCloneSourceProjectId] = useState("");
+  const [meetingCloneTargetCompanyId, setMeetingCloneTargetCompanyId] = useState("598134325805519");
+  const [meetingCloneTargetProjectId, setMeetingCloneTargetProjectId] = useState("");
+  const [meetingCloneMeetingIdsText, setMeetingCloneMeetingIdsText] = useState("");
+  const [meetingCloneCreateOffset, setMeetingCloneCreateOffset] = useState("0");
+  const [meetingCloneCreateLimit, setMeetingCloneCreateLimit] = useState("10");
+  const [meetingCloneAutoContinue, setMeetingCloneAutoContinue] = useState(true);
+  const [meetingCloneMaxAutoBatches, setMeetingCloneMaxAutoBatches] = useState("50");
+  const [meetingCloneAttendeeMapText, setMeetingCloneAttendeeMapText] = useState("{}");
+  const [meetingCloneBusy, setMeetingCloneBusy] = useState(false);
+  const [meetingCloneError, setMeetingCloneError] = useState<string | null>(null);
+  const [meetingCloneResult, setMeetingCloneResult] = useState<any>(null);
   const [imageCloneSourceCompanyId, setImageCloneSourceCompanyId] = useState("598134325658789");
   const [imageCloneSourceProjectId, setImageCloneSourceProjectId] = useState("");
   const [imageCloneTargetCompanyId, setImageCloneTargetCompanyId] = useState("598134325805519");
@@ -5705,6 +5718,119 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneMeetings = async (dryRun: boolean, options?: { createOffset?: string }) => {
+    const sourceCompanyId = meetingCloneSourceCompanyId.trim();
+    const sourceProjectId = meetingCloneSourceProjectId.trim();
+    const targetCompanyId = meetingCloneTargetCompanyId.trim();
+    const targetProjectId = meetingCloneTargetProjectId.trim();
+    const meetingIds = meetingCloneMeetingIdsText
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
+      setMeetingCloneError("Source company/project and target company/project are required.");
+      return;
+    }
+
+    let attendeeMap: Record<string, string> = {};
+    try {
+      attendeeMap = meetingCloneAttendeeMapText.trim() ? JSON.parse(meetingCloneAttendeeMapText) : {};
+      if (!attendeeMap || typeof attendeeMap !== "object" || Array.isArray(attendeeMap)) {
+        throw new Error("Attendee map must be a JSON object.");
+      }
+    } catch (error) {
+      setMeetingCloneError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+
+    if (!dryRun && !window.confirm(`Clone meeting(s) into target project ${targetProjectId}?`)) {
+      return;
+    }
+
+    setMeetingCloneBusy(true);
+    setMeetingCloneError(null);
+    setMeetingCloneResult(null);
+
+    try {
+      const maxAutoBatches = dryRun ? 1 : Math.max(1, Math.min(100, Number.parseInt(meetingCloneMaxAutoBatches || "50", 10) || 50));
+      let currentOffset = Number.parseInt(options?.createOffset ?? meetingCloneCreateOffset.trim() || "0", 10) || 0;
+      const batchResults: any[] = [];
+      let lastStatus = 0;
+      let lastOk = false;
+      let lastResult: any = null;
+
+      for (let batchIndex = 0; batchIndex < maxAutoBatches; batchIndex += 1) {
+        const response = await fetch("/api/procore/meetings/clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceCompanyId,
+            sourceProjectId,
+            targetCompanyId,
+            targetProjectId,
+            meetingIds,
+            attendeeMap,
+            createOffset: String(currentOffset),
+            createLimit: dryRun ? 100 : Math.max(1, Math.min(100, Number.parseInt(meetingCloneCreateLimit || "10", 10) || 10)),
+            dryRun,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        lastStatus = response.status;
+        lastOk = response.ok;
+        lastResult = result;
+        batchResults.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, status: response.status, ok: response.ok, result });
+
+        setMeetingCloneResult({
+          status: response.status,
+          ok: response.ok,
+          result: {
+            ...result,
+            autoContinue: !dryRun && meetingCloneAutoContinue,
+            autoBatchCount: batchResults.length,
+            batchResults,
+          },
+        });
+
+        if (!response.ok) {
+          setMeetingCloneError(result?.details || result?.error || `Meeting clone failed (${response.status}).`);
+          break;
+        }
+
+        const nextOffset = Number(result?.counts?.nextCreateOffset);
+        const hasMore = Boolean(result?.counts?.hasMoreCreatableRows);
+        if (dryRun || !meetingCloneAutoContinue || !hasMore || !Number.isFinite(nextOffset) || nextOffset <= currentOffset) {
+          if (!dryRun && meetingCloneAutoContinue && hasMore && (!Number.isFinite(nextOffset) || nextOffset <= currentOffset)) {
+            setMeetingCloneError("Meeting clone paused but did not return a valid nextCreateOffset.");
+          }
+          break;
+        }
+
+        currentOffset = nextOffset;
+        setMeetingCloneCreateOffset(String(currentOffset));
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+
+      if (lastResult) {
+        setMeetingCloneResult({
+          status: lastStatus,
+          ok: lastOk,
+          result: {
+            ...lastResult,
+            autoContinue: !dryRun && meetingCloneAutoContinue,
+            autoBatchCount: batchResults.length,
+            batchResults,
+          },
+        });
+      }
+    } catch (error) {
+      setMeetingCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMeetingCloneBusy(false);
+    }
+  };
+
   const handleCloneImages = async (dryRun: boolean) => {
     const sourceCompanyId = imageCloneSourceCompanyId.trim();
     const sourceProjectId = imageCloneSourceProjectId.trim();
@@ -8776,6 +8902,179 @@ function ProcoreContent() {
                         : "Live clone finished with errors."}
                   </div>
                   <CollapsibleJson value={rfiCloneResult} />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-violet-500 mb-6 order-9">
+              <h2 className="text-xl font-bold text-violet-900 mb-3">Clone Meetings</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone meetings from one Procore project to another. The first version clones the meeting core fields and attendees, and reports skipped attachments and meeting categories for review.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={meetingCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setMeetingCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={meetingCloneSourceProjectId ?? ""}
+                    onChange={(event) => setMeetingCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={meetingCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setMeetingCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={meetingCloneTargetProjectId ?? ""}
+                    onChange={(event) => setMeetingCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Meeting IDs</label>
+                  <textarea
+                    value={meetingCloneMeetingIdsText ?? ""}
+                    onChange={(event) => setMeetingCloneMeetingIdsText(event.target.value)}
+                    placeholder="Optional: comma or line separated. Blank clones all meetings."
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Attendee/User ID Map</label>
+                  <textarea
+                    value={meetingCloneAttendeeMapText ?? ""}
+                    onChange={(event) => setMeetingCloneAttendeeMapText(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Optional. Map source attendee IDs, names, or logins to target user IDs. Auto-match by target project users is attempted first.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={meetingCloneCreateOffset ?? ""}
+                    onChange={(event) => setMeetingCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={meetingCloneCreateLimit ?? ""}
+                    onChange={(event) => setMeetingCloneCreateLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Auto Batches</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    value={meetingCloneMaxAutoBatches ?? ""}
+                    onChange={(event) => setMeetingCloneMaxAutoBatches(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-3"
+                  />
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(meetingCloneAutoContinue)}
+                      onChange={(event) => setMeetingCloneAutoContinue(event.target.checked)}
+                    />
+                    Auto continue
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneMeetings(true)}
+                  disabled={meetingCloneBusy}
+                  className="bg-violet-700 hover:bg-violet-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {meetingCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneMeetings(false)}
+                  disabled={meetingCloneBusy || !meetingCloneResult?.result?.readyForLiveClone}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {meetingCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {meetingCloneResult?.result?.counts?.nextCreateOffset !== null && meetingCloneResult?.result?.counts?.nextCreateOffset !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOffset = String(meetingCloneResult.result.counts.nextCreateOffset);
+                      setMeetingCloneCreateOffset(nextOffset);
+                      void handleCloneMeetings(false, { createOffset: nextOffset });
+                    }}
+                    disabled={meetingCloneBusy}
+                    className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Continue at {meetingCloneResult.result.counts.nextCreateOffset}
+                  </button>
+                )}
+                {meetingCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-meetings-result.json", meetingCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {meetingCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Meeting Clone Error:</strong> {meetingCloneError}
+                </div>
+              )}
+
+              {meetingCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    meetingCloneResult.result?.readyForLiveClone || meetingCloneResult.result?.success
+                      ? "bg-violet-50 border-violet-200 text-violet-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Meeting Clone Result:</strong>{" "}
+                    {meetingCloneResult.result?.dryRun
+                      ? meetingCloneResult.result?.readyForLiveClone
+                        ? `Dry run found ${meetingCloneResult.result?.counts?.sourceMeetings ?? 0} meeting(s). Live clone is enabled.`
+                        : `${meetingCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      : meetingCloneResult.result?.success
+                        ? `Live clone created ${meetingCloneResult.result?.counts?.created ?? 0} meeting(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <CollapsibleJson value={meetingCloneResult} />
                 </div>
               )}
             </div>

@@ -38,6 +38,13 @@ function unwrapArray(response: unknown): unknown[] {
   return [];
 }
 
+function parseCsvIds(value: unknown): string[] {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function isNotFoundError(err: unknown): boolean {
   const status = Number((err as { status?: number })?.status || 0);
   if (status === 404) return true;
@@ -322,34 +329,43 @@ export async function POST(request: Request) {
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
+    const explicitProjectIds = Array.isArray(body.projectIds)
+      ? body.projectIds.map((value) => String(value || "").trim()).filter(Boolean)
+      : parseCsvIds(body.projectIds);
+
     let projects: ProcoreProject[] = [];
     let projectSource: "procore_api" | "staging_fallback" = "procore_api";
     let projectFetchWarning: string | null = null;
 
-    try {
-      projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
-    } catch (err) {
-      if (!isRateLimitedError(err)) throw err;
+    if (explicitProjectIds.length > 0) {
+      projects = explicitProjectIds.map((id) => ({ id }));
+      projectSource = "procore_api";
+    } else {
+      try {
+        projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+      } catch (err) {
+        if (!isRateLimitedError(err)) throw err;
 
-      const fallbackProjects = await fetchProjectsFromStaging(companyId, maxProjects || undefined);
-      if (!fallbackProjects.length) {
-        const message = err instanceof Error ? err.message : String(err);
-        return NextResponse.json(
-          {
-            success: false,
-            companyId,
-            retryable: true,
-            error: "Rate limited while loading projects and no local fallback project list is available.",
-            details: message,
-          },
-          { status: 503 }
-        );
+        const fallbackProjects = await fetchProjectsFromStaging(companyId, maxProjects || undefined);
+        if (!fallbackProjects.length) {
+          const message = err instanceof Error ? err.message : String(err);
+          return NextResponse.json(
+            {
+              success: false,
+              companyId,
+              retryable: true,
+              error: "Rate limited while loading projects and no local fallback project list is available.",
+              details: message,
+            },
+            { status: 503 }
+          );
+        }
+
+        projects = fallbackProjects;
+        projectSource = "staging_fallback";
+        projectFetchWarning =
+          "Procore project list was rate-limited (429). Continued using local staged projects for this run.";
       }
-
-      projects = fallbackProjects;
-      projectSource = "staging_fallback";
-      projectFetchWarning =
-        "Procore project list was rate-limited (429). Continued using local staged projects for this run.";
     }
 
     const summary = {

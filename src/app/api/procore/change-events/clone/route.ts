@@ -50,6 +50,14 @@ function readBool(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function normalize(value: unknown): string {
   return readStr(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -200,6 +208,77 @@ function compactPayload(payload: UnknownRecord) {
     }
   }
   return payload;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isBlankValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (isRecord(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+function cloneForCreate(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const next = value
+      .map((entry) => cloneForCreate(entry))
+      .filter((entry) => !isBlankValue(entry));
+    return next;
+  }
+  if (!isRecord(value)) return value;
+
+  const next: UnknownRecord = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (
+      [
+        "id",
+        "_id",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "company_id",
+        "project_id",
+        "created_by",
+        "updated_by",
+        "attachments",
+        "links",
+        "origin_data",
+        "lineage",
+        "prime_contract_for_estimates",
+      ].includes(key)
+    ) {
+      continue;
+    }
+    const cloned = cloneForCreate(nested);
+    if (!isBlankValue(cloned)) next[key] = cloned;
+  }
+  return next;
+}
+
+function mergeMissingFields(candidate: unknown, target: unknown): unknown {
+  if (isBlankValue(candidate)) return undefined;
+  if (Array.isArray(candidate)) {
+    if (Array.isArray(target) && target.length > 0) return undefined;
+    return candidate;
+  }
+  if (isRecord(candidate)) {
+    const next: UnknownRecord = {};
+    for (const [key, value] of Object.entries(candidate)) {
+      const merged = mergeMissingFields(value, isRecord(target) ? target[key] : undefined);
+      if (!isBlankValue(merged)) next[key] = merged;
+    }
+    return Object.keys(next).length ? next : undefined;
+  }
+  return isBlankValue(target) ? candidate : undefined;
 }
 
 async function getToken(bodyToken: unknown) {
@@ -367,6 +446,63 @@ async function fetchGenericToolItems(params: {
   });
 }
 
+async function createGenericToolItem(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  genericToolId: string;
+  sourceItem: UnknownRecord;
+}) {
+  const title = readStr(params.sourceItem.title) || "Cloned Origin Item";
+  const payload = compactPayload({
+    title,
+    description: readStr(params.sourceItem.description || params.sourceItem.body || params.sourceItem.note),
+    position: readNum(params.sourceItem.position || params.sourceItem.unformatted_position),
+  });
+
+  const bodies = [
+    { generic_tool_item: payload },
+    { item: payload },
+    payload,
+  ];
+
+  const path = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/generic_tools/${encodeURIComponent(
+    params.genericToolId
+  )}/generic_tool_items`;
+
+  const attempts: UnknownRecord[] = [];
+  for (const body of bodies) {
+    try {
+      const response = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        method: "POST",
+        path,
+        body,
+      });
+      const created = isRecord(response)
+        ? isRecord(response.data)
+          ? response.data
+          : isRecord(response.generic_tool_item)
+            ? response.generic_tool_item
+            : response
+        : {};
+      const createdId = readNum(created.id) || readStr(created.id);
+      attempts.push({ path, body, ok: true, createdId: createdId || null });
+      if (createdId) return { ok: true, id: createdId, attempts };
+    } catch (error) {
+      attempts.push({ path, body, ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  const hadSuccessWithoutId = attempts.some((attempt) => attempt.ok === true);
+  return {
+    ok: false,
+    error: hadSuccessWithoutId ? "generic_tool_item_create_missing_id" : "generic_tool_item_create_failed",
+    attempts,
+  };
+}
+
 function statusKey(status: UnknownRecord) {
   return normalize(status.mapped_to_status || status.name);
 }
@@ -435,6 +571,26 @@ function itemMatchKeys(item: UnknownRecord) {
   };
 }
 
+function normalizeItemDescription(item: UnknownRecord) {
+  return normalize(item.description || item.body || item.note);
+}
+
+function resolveDeterministicOriginMatch(matches: UnknownRecord[], sourceItem: UnknownRecord) {
+  if (matches.length === 0) return undefined;
+  if (matches.length === 1) return matches[0];
+
+  const sourceDescription = normalizeItemDescription(sourceItem);
+  if (sourceDescription) {
+    const sameDescription = matches.filter((item) => normalizeItemDescription(item) === sourceDescription);
+    if (sameDescription.length === 1) return sameDescription[0];
+    if (sameDescription.length > 1) {
+      return [...sameDescription].sort((a, b) => readStr(b.id).localeCompare(readStr(a.id), undefined, { numeric: true }))[0];
+    }
+  }
+
+  return [...matches].sort((a, b) => readStr(b.id).localeCompare(readStr(a.id), undefined, { numeric: true }))[0];
+}
+
 async function buildEventOriginMap(params: {
   accessToken: string;
   sourceCompanyId: string;
@@ -443,6 +599,8 @@ async function buildEventOriginMap(params: {
   targetProjectId: string;
   sourceEvents: UnknownRecord[];
   maxPages: number;
+  dryRun: boolean;
+  autoCreateMissingOriginItems: boolean;
 }) {
   const sourceOrigins = params.sourceEvents
     .map((event) => nestedRecord(event, "event_origin"))
@@ -516,6 +674,59 @@ async function buildEventOriginMap(params: {
           origin_type: "generic_tools",
         });
       } else if (sourceOrigins.some((origin) => readStr(origin.origin_id) === sourceItemId)) {
+        const deterministicMatch = resolveDeterministicOriginMatch(matches, sourceItem);
+        if (deterministicMatch) {
+          originBySourceId.set(sourceItemId, {
+            origin_id: readNum(deterministicMatch.id) || readStr(deterministicMatch.id),
+            origin_type: "generic_tools",
+          });
+          if (matches.length > 1) {
+            issues.push({
+              type: "event_origin",
+              sourceOriginId: sourceItemId,
+              sourceTitle: readStr(sourceItem.title),
+              issue: "target_origin_item_ambiguous_reused_existing",
+              matchCount: matches.length,
+            });
+          }
+          continue;
+        }
+
+        if (params.autoCreateMissingOriginItems && !params.dryRun) {
+          const created = await createGenericToolItem({
+            accessToken: params.accessToken,
+            companyId: params.targetCompanyId,
+            projectId: params.targetProjectId,
+            genericToolId: targetToolId,
+            sourceItem,
+          });
+          if (created.ok) {
+            originBySourceId.set(sourceItemId, {
+              origin_id: created.id,
+              origin_type: "generic_tools",
+            });
+            if (matches.length > 1) {
+              issues.push({
+                type: "event_origin",
+                sourceOriginId: sourceItemId,
+                sourceTitle: readStr(sourceItem.title),
+                issue: "target_origin_item_ambiguous_auto_created",
+                matchCount: matches.length,
+              });
+            }
+            continue;
+          }
+          issues.push({
+            type: "event_origin",
+            sourceOriginId: sourceItemId,
+            sourceTitle: readStr(sourceItem.title),
+            issue: matches.length === 0 ? "target_origin_item_create_failed" : "target_origin_item_ambiguous_create_failed",
+            matchCount: matches.length,
+            createError: created.error,
+            attempts: created.attempts,
+          });
+          continue;
+        }
         issues.push({
           type: "event_origin",
           sourceOriginId: sourceItemId,
@@ -561,6 +772,15 @@ function mappedFlatCode(sourceFlatCode: string, lineItemTypeCodeMap: Record<stri
   return mappedType ? `${costCode}.${mappedType}` : sourceFlatCode;
 }
 
+function resolveCostCodeFallback(flatCode: string, targetIndex: ReturnType<typeof buildBudgetCodeIndexes>, strategy: string) {
+  const costCode = readStr(flatCode).split(".")[0] || readStr(flatCode);
+  if (!costCode) return null;
+  const costMatches = targetIndex.byCostCode.get(normalize(costCode)) || [];
+  if (costMatches.length === 1) return { id: readStr(costMatches[0].id), strategy };
+  if (costMatches.length > 1) return { id: "", issue: "target_cost_code_ambiguous", matchCount: costMatches.length, sourceFlatCode: flatCode };
+  return { id: "", issue: "target_budget_code_missing", matchCount: 0, sourceFlatCode: flatCode };
+}
+
 function resolveMappedBudgetCodeValue(
   value: string,
   targetIndex: ReturnType<typeof buildBudgetCodeIndexes>,
@@ -581,6 +801,10 @@ function resolveMappedBudgetCodeValue(
   }
   const matches = targetIndex.byFlatCode.get(normalize(mapped)) || [];
   if (matches.length === 1) return { id: readStr(matches[0].id), strategy: `${strategy}_flat_code` };
+  if (matches.length === 0) {
+    const fallback = resolveCostCodeFallback(mapped, targetIndex, `${strategy}_cost_code_fallback`);
+    if (fallback && fallback.id) return fallback;
+  }
   return {
     id: "",
     strategy,
@@ -639,7 +863,7 @@ function resolveBudgetCode(params: {
   workbookFlatCodeMap: Record<string, string>;
   workbookDescriptionMappings: Array<{ key: string; targetFlatCode: string; oldName: string; oldCostCode: string }>;
   lineItemTypeCodeMap: Record<string, string>;
-}): any {
+}): UnknownRecord {
   const sourceLineItemId = readStr(params.sourceLineItemId);
   const sourceId = readStr(params.sourceBudgetCode.id);
   const sourceFlatCode = readStr(params.sourceBudgetCode.flat_code);
@@ -655,7 +879,11 @@ function resolveBudgetCode(params: {
     const mapped = params.flatCodeMap[sourceFlatCode];
     const matches = params.targetIndex.byFlatCode.get(normalize(mapped)) || [];
     if (matches.length === 1) return { id: readStr(matches[0].id), strategy: "flat_code_map" };
-    if (/^\d+$/.test(mapped)) return { id: mapped, strategy: "flat_code_map_to_id" };
+    if (/^\d+$/.test(mapped)) {
+      const target = params.targetIndex.byId.get(mapped);
+      if (target) return { id: readStr(target.id), strategy: "flat_code_map_to_id" };
+      return { id: "", issue: "manual_mapped_budget_code_id_not_found", matchCount: 0, mappedFlatCode: mapped };
+    }
     return { id: "", issue: matches.length === 0 ? "mapped_flat_code_not_found" : "mapped_flat_code_ambiguous", matchCount: matches.length };
   }
   const sourceCostCode = sourceFlatCode.split(".")[0] || sourceFlatCode;
@@ -664,6 +892,8 @@ function resolveBudgetCode(params: {
     const matches = params.targetIndex.byFlatCode.get(normalize(workbookMapped)) || [];
     if (matches.length === 1) return { id: readStr(matches[0].id), strategy: "workbook_cost_code_type" };
     if (matches.length > 1) return { id: "", issue: "workbook_flat_code_ambiguous", matchCount: matches.length, mappedFlatCode: workbookMapped };
+    const fallback = resolveCostCodeFallback(workbookMapped, params.targetIndex, "workbook_cost_code_fallback");
+    if (fallback && fallback.id) return fallback;
     return { id: "", issue: "workbook_target_budget_code_missing", matchCount: 0, mappedFlatCode: workbookMapped };
   }
   if (!sourceFlatCode) {
@@ -680,6 +910,12 @@ function resolveBudgetCode(params: {
           workbookMatch: { oldName: descriptionMapping.oldName, oldCostCode: descriptionMapping.oldCostCode },
         };
       }
+      const fallback = resolveCostCodeFallback(
+        descriptionMapping.targetFlatCode,
+        params.targetIndex,
+        `${descriptionMapping.strategy}_cost_code_fallback`
+      );
+      if (fallback && fallback.id) return fallback;
       return {
         id: "",
         issue: "workbook_description_target_missing",
@@ -714,10 +950,13 @@ function resolveBudgetCode(params: {
 }
 
 function buildChangeItemPayload(item: UnknownRecord, targetBudgetCodeId: string) {
+  const cloned = cloneForCreate(item);
+  const clonedPayload = isRecord(cloned) ? (cloned as UnknownRecord) : {};
   const costImpact = getEstimateImpact(nestedRecord(item, "cost_impact"));
   const revenueImpact = getEstimateImpact(nestedRecord(item, "revenue_impact"));
   const sourceOfRevenueRom = readStr(nestedRecord(item, "revenue_impact").source_of_revenue_rom);
   return compactPayload({
+    ...clonedPayload,
     description: readStr(item.description),
     budget_code: targetBudgetCodeId ? { id: Number(targetBudgetCodeId) || targetBudgetCodeId } : undefined,
     cost_impact: costImpact ? { estimate: costImpact } : undefined,
@@ -739,10 +978,26 @@ function buildChangeEventPayload(params: {
   changeReason?: UnknownRecord;
   eventOrigin?: UnknownRecord;
 }) {
+  const cloned = cloneForCreate(params.event);
+  const clonedPayload = isRecord(cloned) ? (cloned as UnknownRecord) : {};
+  const sourceOrigin = nestedRecord(params.event, "event_origin");
+  const sourceOriginDisplay = readStr(sourceOrigin.display_name || sourceOrigin.name || sourceOrigin.origin_id);
+  const sourceOriginType = readStr(sourceOrigin.origin_type);
+  const sourceDescription = readStr(params.event.description);
+  const originFallback = !params.eventOrigin && sourceOriginDisplay
+    ? `Source Origin${sourceOriginType ? ` (${sourceOriginType})` : ""}: ${sourceOriginDisplay}`
+    : "";
+  const description = originFallback
+    ? sourceDescription.includes("<")
+      ? `${sourceDescription}<p><strong>Source Origin:</strong> ${escapeHtml(sourceOriginDisplay)}${sourceOriginType ? ` (${escapeHtml(sourceOriginType)})` : ""}</p>`
+      : [sourceDescription, originFallback].filter(Boolean).join("\n\n")
+    : sourceDescription;
+
   return compactPayload({
+    ...clonedPayload,
     number: params.preserveNumber ? offsetChangeEventNumber(params.event.number, params.numberOffset) : undefined,
     title: readStr(params.event.title) || "Untitled Change Event",
-    description: readStr(params.event.description),
+    description,
     scope: readStr(params.event.scope),
     status: params.status,
     change_type: params.changeType,
@@ -776,9 +1031,135 @@ async function createChangeEvent(params: {
   });
 }
 
+function clonePayload<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function sanitizeCreatePayloadForError(payload: UnknownRecord, errorMessage: string) {
+  const next = clonePayload(payload);
+  let changed = false;
+
+  if (/prime_contract_for_estimates/i.test(errorMessage) && /id.*missing|is missing/i.test(errorMessage)) {
+    if ("prime_contract_for_estimates" in next) {
+      delete next.prime_contract_for_estimates;
+      changed = true;
+    }
+  }
+
+  const badWbsIds = [...errorMessage.matchAll(/Wbs Code with ID\s+(\d+)\s+not found/gi)].map((m) => m[1]);
+  if (badWbsIds.length && Array.isArray(next.change_items)) {
+    next.change_items = next.change_items.map((item) => {
+      if (!isRecord(item)) return item;
+      if (!isRecord(item.budget_code)) return item;
+      const budgetId = readStr(item.budget_code.id);
+      if (budgetId && badWbsIds.includes(budgetId)) {
+        const patched = { ...item };
+        delete patched.budget_code;
+        changed = true;
+        return patched;
+      }
+      return item;
+    });
+  }
+
+  return { changed, payload: compactPayload(next) };
+}
+
+async function createChangeEventWithFallback(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  payload: UnknownRecord;
+}) {
+  const attempts: UnknownRecord[] = [];
+  let currentPayload = clonePayload(params.payload);
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const created = await createChangeEvent({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        projectId: params.projectId,
+        payload: currentPayload,
+      });
+      attempts.push({ attempt, ok: true, payload: currentPayload });
+      return { created, attempts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      attempts.push({ attempt, ok: false, payload: currentPayload, error: message });
+      const sanitized = sanitizeCreatePayloadForError(currentPayload, message);
+      if (!sanitized.changed) {
+        throw new Error(`${message} | attempts=${safeJson(attempts.slice(-3))}`);
+      }
+      currentPayload = sanitized.payload;
+    }
+  }
+
+  throw new Error(`Change event create failed after retries: ${safeJson(attempts.slice(-3))}`);
+}
+
+async function updateChangeEvent(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  changeEventId: string;
+  payload: UnknownRecord;
+}) {
+  const query = new URLSearchParams({
+    project_id: params.projectId,
+    company_id: params.companyId,
+  });
+  const attempts = [
+    {
+      method: "PATCH",
+      path: `/rest/v1.1/change_events/${encodeURIComponent(params.changeEventId)}?${query.toString()}`,
+      body: { change_event: params.payload },
+    },
+    {
+      method: "PUT",
+      path: `/rest/v1.1/change_events/${encodeURIComponent(params.changeEventId)}?${query.toString()}`,
+      body: { change_event: params.payload },
+    },
+    {
+      method: "PATCH",
+      path: `/rest/v1.0/change_events/${encodeURIComponent(params.changeEventId)}?${query.toString()}`,
+      body: { change_event: params.payload },
+    },
+  ];
+
+  const errors: UnknownRecord[] = [];
+  for (const attempt of attempts) {
+    try {
+      const updated = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        method: attempt.method,
+        path: attempt.path,
+        body: attempt.body,
+      });
+      return { ok: true, method: attempt.method, path: attempt.path, updated, errors };
+    } catch (error) {
+      errors.push({
+        method: attempt.method,
+        path: attempt.path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { ok: false, errors };
+}
+
 function isNumberTakenError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /number/i.test(message) && /already been taken/i.test(message);
+}
+
+function resolveExistingTargetByTitle(title: unknown, targetByTitle: Map<string, UnknownRecord[]>): UnknownRecord | undefined {
+  const key = normalize(title);
+  if (!key) return undefined;
+  const matches = targetByTitle.get(key) || [];
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function offsetChangeEventNumber(value: unknown, offset: number) {
@@ -803,6 +1184,9 @@ export async function POST(request: Request) {
     const preserveNumber = readBool(body.preserveNumber, false);
     const numberOffset = Math.trunc(readNum(body.numberOffset) || 0);
     const allowUnmappedLineItems = readBool(body.allowUnmappedLineItems, true);
+    const autoCreateMissingOriginItems = readBool(body.autoCreateMissingOriginItems, true);
+    const updateExisting = readBool(body.updateExisting, false);
+    const updateOnlyBlankFields = readBool(body.updateOnlyBlankFields, true);
     const changeEventIds = new Set(parseIds(body.changeEventIds || body.ids));
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
     const createLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || 25)));
@@ -835,9 +1219,12 @@ export async function POST(request: Request) {
       ? sourceEventsRaw.filter((event) => changeEventIds.has(readStr(event.id)) || changeEventIds.has(readStr(event.number)))
       : sourceEventsRaw;
     const targetByNumber = new Map<string, UnknownRecord>();
+    const targetByTitle = new Map<string, UnknownRecord[]>();
     for (const event of targetEventsRaw) {
       const number = readStr(event.number);
       if (number) targetByNumber.set(number, event);
+      const titleKey = normalize(event.title);
+      if (titleKey) targetByTitle.set(titleKey, [...(targetByTitle.get(titleKey) || []), event]);
     }
     const targetBudgetIndex = buildBudgetCodeIndexes(targetBudgetLineItems);
     let workbookFlatCodeMap: Record<string, string> = {};
@@ -872,6 +1259,8 @@ export async function POST(request: Request) {
       targetProjectId,
       sourceEvents,
       maxPages,
+      dryRun,
+      autoCreateMissingOriginItems,
     });
     const missingMappings: UnknownRecord[] = [];
     const plan = sourceEvents.map((event) => {
@@ -903,7 +1292,7 @@ export async function POST(request: Request) {
           workbookDescriptionMappings,
           lineItemTypeCodeMap,
         });
-        if (!mapping.id) {
+        if (!mapping.id && !allowUnmappedLineItems) {
           missingMappings.push({
             type: "change_event_line_item_budget_code",
             sourceChangeEventId: readStr(event.id),
@@ -919,13 +1308,14 @@ export async function POST(request: Request) {
             candidates: mapping.candidates,
           });
         }
+        const mappedBudgetCodeId = readStr(mapping.id);
         return {
           sourceLineItemId: readStr(item.id),
           sourceFlatCode: readStr(sourceBudgetCode.flat_code),
-          targetBudgetCodeId: mapping.id,
+          targetBudgetCodeId: mappedBudgetCodeId,
           matchStrategy: mapping.strategy || null,
-          unmappedBudgetCodeAllowed: !mapping.id && allowUnmappedLineItems,
-          payload: mapping.id || allowUnmappedLineItems ? buildChangeItemPayload(item, mapping.id) : null,
+          unmappedBudgetCodeAllowed: !mappedBudgetCodeId && allowUnmappedLineItems,
+          payload: mappedBudgetCodeId || allowUnmappedLineItems ? buildChangeItemPayload(item, mappedBudgetCodeId) : null,
         };
       });
       const validItems = itemPlans.filter((item) => isRecord(item.payload)).map((item) => item.payload as UnknownRecord);
@@ -971,34 +1361,75 @@ export async function POST(request: Request) {
       };
     });
 
-    const blockers = missingMappings.filter((mapping) => mapping.type !== "change_event_line_item_budget_code" || !allowUnmappedLineItems);
+    const blockers = missingMappings.filter((mapping) => mapping.type === "change_event_line_item_budget_code" && !allowUnmappedLineItems);
     const createResults: UnknownRecord[] = [];
+    const updateResults: UnknownRecord[] = [];
     if (!dryRun && blockers.length === 0) {
       for (const entry of plan.slice(createOffset, createOffset + createLimit)) {
         try {
           const targetNumber = readStr(entry.targetNumber || entry.sourceNumber);
-          const existingTarget = preserveNumber ? targetByNumber.get(targetNumber) : undefined;
+          const existingTarget = preserveNumber
+            ? targetByNumber.get(targetNumber)
+            : updateExisting
+              ? resolveExistingTargetByTitle(entry.title, targetByTitle)
+              : undefined;
           if (existingTarget) {
+            const targetId = readStr(existingTarget.id);
+            if (updateExisting && targetId && isRecord(entry.payload)) {
+              const sourcePayload = entry.payload as UnknownRecord;
+              const updatePayload = updateOnlyBlankFields
+                ? mergeMissingFields(sourcePayload, existingTarget)
+                : sourcePayload;
+              if (isRecord(updatePayload) && Object.keys(updatePayload).length) {
+                const updated = await updateChangeEvent({
+                  accessToken,
+                  companyId: targetCompanyId,
+                  projectId: targetProjectId,
+                  changeEventId: targetId,
+                  payload: updatePayload,
+                });
+                updateResults.push({
+                  sourceId: entry.sourceId,
+                  sourceNumber: entry.sourceNumber,
+                  targetId,
+                  targetNumber,
+                  updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+                  ok: updated.ok,
+                  updated,
+                });
+              } else {
+                updateResults.push({
+                  sourceId: entry.sourceId,
+                  sourceNumber: entry.sourceNumber,
+                  targetId,
+                  targetNumber,
+                  updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+                  ok: true,
+                  skipped: true,
+                  reason: "No missing fields detected for update.",
+                });
+              }
+            }
             createResults.push({
               sourceId: entry.sourceId,
               sourceNumber: entry.sourceNumber,
               targetNumber,
               ok: true,
               reused: true,
-              targetId: readStr(existingTarget.id),
+              targetId,
               message: "Target change event number already exists; reused existing event.",
             });
             continue;
           }
-          const created = await createChangeEvent({
+          const created = await createChangeEventWithFallback({
             accessToken,
             companyId: targetCompanyId,
             projectId: targetProjectId,
             payload: isRecord(entry.payload) ? entry.payload : {},
           });
-          createResults.push({ sourceId: entry.sourceId, ok: true, created });
+          createResults.push({ sourceId: entry.sourceId, ok: true, created: created.created, createAttempts: created.attempts });
         } catch (error) {
-          if (preserveNumber && isNumberTakenError(error)) {
+          if (isNumberTakenError(error)) {
             const refreshedTargetEvents = await fetchChangeEvents({
               accessToken,
               companyId: targetCompanyId,
@@ -1006,15 +1437,50 @@ export async function POST(request: Request) {
               maxPages: 50,
             });
             const targetNumber = readStr(entry.targetNumber || entry.sourceNumber);
-            const existingTarget = refreshedTargetEvents.find((event) => readStr(event.number) === targetNumber);
+            let existingTarget = preserveNumber
+              ? refreshedTargetEvents.find((event) => readStr(event.number) === targetNumber)
+              : undefined;
+            if (!existingTarget && updateExisting) {
+              const refreshedTargetByTitle = new Map<string, UnknownRecord[]>();
+              for (const event of refreshedTargetEvents) {
+                const titleKey = normalize(event.title);
+                if (titleKey) refreshedTargetByTitle.set(titleKey, [...(refreshedTargetByTitle.get(titleKey) || []), event]);
+              }
+              existingTarget = resolveExistingTargetByTitle(entry.title, refreshedTargetByTitle);
+            }
             if (existingTarget) {
+              const targetId = readStr(existingTarget.id);
+              if (updateExisting && targetId && isRecord(entry.payload)) {
+                const sourcePayload = entry.payload as UnknownRecord;
+                const updatePayload = updateOnlyBlankFields
+                  ? mergeMissingFields(sourcePayload, existingTarget)
+                  : sourcePayload;
+                if (isRecord(updatePayload) && Object.keys(updatePayload).length) {
+                  const updated = await updateChangeEvent({
+                    accessToken,
+                    companyId: targetCompanyId,
+                    projectId: targetProjectId,
+                    changeEventId: targetId,
+                    payload: updatePayload,
+                  });
+                  updateResults.push({
+                    sourceId: entry.sourceId,
+                    sourceNumber: entry.sourceNumber,
+                    targetId,
+                    targetNumber,
+                    updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+                    ok: updated.ok,
+                    updated,
+                  });
+                }
+              }
               createResults.push({
                 sourceId: entry.sourceId,
                 sourceNumber: entry.sourceNumber,
                 targetNumber,
                 ok: true,
                 reused: true,
-                targetId: readStr(existingTarget.id),
+                targetId,
                 warning: "Procore reported this number already exists; treated as reused.",
                 originalError: error instanceof Error ? error.message : String(error),
               });
@@ -1048,7 +1514,8 @@ export async function POST(request: Request) {
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
       target: { companyId: targetCompanyId, projectId: targetProjectId },
-      options: { cloneLineItems, preserveNumber, numberOffset, allowUnmappedLineItems },
+      options: { cloneLineItems, preserveNumber, numberOffset, allowUnmappedLineItems, autoCreateMissingOriginItems },
+      updateOptions: { updateExisting, updateOnlyBlankFields },
       workbookCrosswalk,
       eventOriginMapping: {
         sourceGenericToolIds: eventOriginMap.sourceToolIds,
@@ -1068,7 +1535,16 @@ export async function POST(request: Request) {
               : 0),
           0
         ),
-        unmappedLineItemsAllowed: allowUnmappedLineItems ? missingMappings.length : 0,
+        unmappedLineItemsAllowed: allowUnmappedLineItems
+          ? plan.reduce(
+              (sum, entry) =>
+                sum +
+                (Array.isArray(entry.lineItems)
+                  ? entry.lineItems.filter((item) => isRecord(item) && !readStr(item.targetBudgetCodeId)).length
+                  : 0),
+              0
+            )
+          : 0,
         targetBudgetLineItems: targetBudgetLineItems.length,
         existingTargetChangeEvents: targetEventsRaw.length,
         targetStatuses: targetStatuses.length,
@@ -1080,11 +1556,15 @@ export async function POST(request: Request) {
         created: createResults.filter((result) => result.ok === true).length,
         reused: createResults.filter((result) => result.ok === true && result.reused === true).length,
         failed: failed.length,
+        updatedExisting: updateResults.filter((result) => result.ok === true && result.skipped !== true).length,
+        skippedExistingUpdates: updateResults.filter((result) => result.skipped === true).length,
+        failedExistingUpdates: updateResults.filter((result) => result.ok === false).length,
       },
       readyForLiveClone: blockers.length === 0,
       missingMappings,
       plan: plan.slice(0, 200),
       createResults,
+      updateResults,
       failedCreateResults: failed,
       nextStep: dryRun
         ? blockers.length
@@ -1094,7 +1574,9 @@ export async function POST(request: Request) {
           ? "Live clone blocked by missing line-item budget code mappings."
           : failed.length
             ? "Some change events failed. Review createResults."
-            : "Change event clone batch complete.",
+            : updateResults.some((result) => result.ok === false)
+              ? "Clone batch complete, but some existing-event updates failed. Review updateResults."
+              : "Change event clone batch complete.",
     });
   } catch (error) {
     return NextResponse.json(

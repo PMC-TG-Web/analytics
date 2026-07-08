@@ -1432,6 +1432,15 @@ function KPIPageContent({
     return map;
   }, [cardLoadData, monthNames]);
 
+  const additionalLeadtimeRows = useMemo(() => {
+    const rows = cardLoadData[normalizeCardName("Leadtimes by Month")] || [];
+    return rows.filter((row: any) => {
+      const label = String(row?.kpi || "").toLowerCase().trim();
+      if (!label) return false;
+      return !label.includes("leadtime hours") && !label.includes("leadtime months");
+    });
+  }, [cardLoadData]);
+
   logKpiDebug("[KPI] Total projects:", projects.length);
   logKpiDebug("[KPI] Filtered projects:", filteredProjects.length);
 
@@ -3402,6 +3411,25 @@ function KPIPageContent({
                     </tr>
                   </>
                 )}
+                {additionalLeadtimeRows.map((row: any, rowIndex: number) => {
+                  const rowColor = rowIndex % 2 === 0 ? "#15616D" : "#E06C00";
+                  const rowValues = monthNames.map((_, idx) => String(row?.values?.[idx] ?? "").trim());
+                  const latestValue = [...rowValues].reverse().find((value) => value.length > 0) || "";
+
+                  return (
+                    <tr key={`leadtime-extra-${rowIndex}-${String(row?.kpi || "")}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                      <td style={{ padding: "6px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{String(row?.kpi || "Additional")}</td>
+                      {rowValues.map((value, idx) => (
+                        <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: value ? rowColor : "#999", fontWeight: value ? 700 : 400, fontSize: 12 }}>
+                          {value || "—"}
+                        </td>
+                      ))}
+                      <td style={{ padding: "6px 6px", textAlign: "center", color: latestValue ? rowColor : "#999", fontWeight: latestValue ? 700 : 400, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                        {latestValue || "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

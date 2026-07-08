@@ -110,6 +110,13 @@ function parseIds(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function parseNumericIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => readNum(entry))
+    .filter((entry): entry is number => entry !== undefined);
+}
+
 function flattenMeetingGroups(payload: unknown): UnknownRecord[] {
   if (Array.isArray(payload)) {
     if (payload.every((entry) => isRecord(entry) && Array.isArray(entry.meetings))) {
@@ -276,18 +283,159 @@ async function fetchAllMeetings(params: {
   return rows;
 }
 
+function hasAgendaData(meeting: UnknownRecord): boolean {
+  const categories = asArray(meeting.meeting_categories);
+  const directTopics = [
+    ...asArray(meeting.meeting_topics),
+    ...asArray(meeting.meeting_topic),
+    ...asArray(meeting.agenda_items),
+    ...asArray(meeting.agenda_item),
+    ...asArray(meeting.topics),
+  ];
+
+  if (directTopics.length > 0) return true;
+  return categories.some((category) => {
+    const topics = [
+      ...asArray(category.meeting_topics),
+      ...asArray(category.meeting_topic),
+      ...asArray(category.agenda_items),
+      ...asArray(category.agenda_item),
+      ...asArray(category.topics),
+    ];
+    return topics.length > 0;
+  });
+}
+
+async function fetchOptionalArray(params: {
+  accessToken: string;
+  companyId: string;
+  path: string;
+  keys?: string[];
+}): Promise<UnknownRecord[]> {
+  const result = await procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: params.path,
+    allowStatuses: [400, 404, 405, 422],
+  });
+  if (!result.ok) return [];
+  return asArray(result.payload, params.keys || []);
+}
+
+function hydrateMeetingAgenda(meeting: UnknownRecord, categories: UnknownRecord[], topics: UnknownRecord[]): UnknownRecord {
+  const hydrated: UnknownRecord = { ...meeting };
+
+  if (categories.length > 0) {
+    const topicsByCategoryId = new Map<string, UnknownRecord[]>();
+    const unassignedTopics: UnknownRecord[] = [];
+
+    for (const topic of topics) {
+      const categoryId = readStr(topic.meeting_category_id || topic.category_id || topic.meetingCategoryId || topic.categoryId);
+      if (!categoryId) {
+        unassignedTopics.push(topic);
+        continue;
+      }
+      const list = topicsByCategoryId.get(categoryId) || [];
+      list.push(topic);
+      topicsByCategoryId.set(categoryId, list);
+    }
+
+    hydrated.meeting_categories = categories.map((category) => {
+      const categoryId = readStr(category.id);
+      const categoryTopics = categoryId ? (topicsByCategoryId.get(categoryId) || []) : [];
+      return {
+        ...category,
+        meeting_topics: categoryTopics,
+      };
+    });
+
+    if (unassignedTopics.length > 0) {
+      hydrated.meeting_topics = unassignedTopics;
+    }
+
+    return hydrated;
+  }
+
+  if (topics.length > 0) {
+    hydrated.meeting_topics = topics;
+  }
+
+  return hydrated;
+}
+
 async function fetchMeetingDetail(params: {
   accessToken: string;
   companyId: string;
   projectId: string;
   meetingId: string;
 }) {
-  const result = await procoreJson({
-    accessToken: params.accessToken,
-    companyId: params.companyId,
-    path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}`,
-  });
-  return isRecord(result.payload) ? result.payload : {};
+  const detailPaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}?serializer_view=extended`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}`,
+  ];
+
+  let meeting: UnknownRecord = {};
+  for (const path of detailPaths) {
+    const result = await procoreJson({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path,
+      allowStatuses: [404],
+    });
+    if (!result.ok) continue;
+    if (isRecord(result.payload)) {
+      meeting = result.payload;
+      break;
+    }
+  }
+
+  if (!isRecord(meeting) || Object.keys(meeting).length === 0) {
+    return {};
+  }
+
+  if (hasAgendaData(meeting)) {
+    return meeting;
+  }
+
+  const [categories, topics] = await Promise.all([
+    (async () => {
+      const categoryPaths = [
+        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
+        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
+        `/rest/v1.0/meeting_categories?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
+      ];
+      for (const path of categoryPaths) {
+        const rows = await fetchOptionalArray({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          path,
+        });
+        if (rows.length > 0) return rows;
+      }
+      return [];
+    })(),
+    (async () => {
+      const topicPaths = [
+        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
+        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
+        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/topics`,
+        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/agenda_items`,
+        `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
+      ];
+      for (const path of topicPaths) {
+        const rows = await fetchOptionalArray({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          path,
+        });
+        if (rows.length > 0) return rows;
+      }
+      return [];
+    })(),
+  ]);
+
+  return hydrateMeetingAgenda(meeting, categories, topics);
 }
 
 async function fetchProjectUsers(params: {
@@ -364,18 +512,70 @@ function buildAgendaTopicPayload(topic: UnknownRecord) {
   return compactPayload({
     title: readStr(topic.title || topic.name || topic.subject || topic.description) || "Agenda Item",
     position: readNum(topic.position),
+    description: readStr(topic.description),
     due_date: readStr(topic.due_date),
     minutes: readStr(topic.minutes),
     note: readStr(topic.note || topic.notes),
     status: readStr(topic.status),
+    priority: readStr(topic.priority),
+    closed_at: readStr(topic.closed_at),
+    is_private: typeof topic.is_private === "boolean" ? topic.is_private : undefined,
+    added_under_agenda: typeof topic.added_under_agenda === "boolean" ? topic.added_under_agenda : undefined,
+    meeting_wide_number: readNum(topic.meeting_wide_number),
+    assignment_ids: parseNumericIds(topic.assignment_ids),
+    upload_ids: parseIds(topic.upload_ids),
+    attachments: parseIds(topic.attachments),
   });
 }
 
+function collectAgendaCategories(meeting: UnknownRecord): UnknownRecord[] {
+  const categorySources = [
+    meeting.meeting_categories,
+    meeting.agenda_categories,
+    meeting.agenda_item_categories,
+    meeting.meeting_agenda_categories,
+    meeting.categories,
+  ];
+
+  const categories = categorySources.flatMap((source) => asArray(source));
+  if (categories.length > 0) {
+    return categories;
+  }
+
+  const directTopicSources = [
+    meeting.meeting_topics,
+    meeting.meeting_topic,
+    meeting.agenda_items,
+    meeting.agenda_item,
+    meeting.topics,
+    meeting.meeting_agenda_items,
+    meeting.meeting_agenda_item,
+  ];
+
+  const directTopics = directTopicSources.flatMap((source) => asArray(source));
+  if (directTopics.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      title: "Agenda Items",
+      position: undefined,
+      meeting_topic: directTopics,
+      meeting_topics: directTopics,
+    },
+  ];
+}
+
 function buildAgendaCategoryPayloads(meeting: UnknownRecord) {
-  const categories = asArray(meeting.meeting_categories).map((category) => {
-    const rawTopics = asArray(category.meeting_topics).length
-      ? asArray(category.meeting_topics)
-      : asArray(category.meeting_topic);
+  const categories = collectAgendaCategories(meeting).map((category) => {
+    const rawTopics = [
+      ...asArray(category.meeting_topics),
+      ...asArray(category.meeting_topic),
+      ...asArray(category.agenda_items),
+      ...asArray(category.agenda_item),
+      ...asArray(category.topics),
+    ];
     const topics = rawTopics.map((topic) => buildAgendaTopicPayload(topic));
     return compactPayload({
       title: readStr(category.title || category.name) || "Uncategorized Items",
@@ -431,45 +631,162 @@ async function cloneMeetingAgenda(params: {
     allowStatuses: [400, 404, 405, 422],
   });
 
-  if (patchAttempt.ok) {
-    return {
-      ok: true,
-      method: "patch_meeting_categories",
-      sourceCategories: categoryPayloads.length,
-      sourceTopics: sourceTopicCount,
-      createdTopics: sourceTopicCount,
-      createdCategories: categoryPayloads.length,
-    };
+  async function fetchTargetAgendaTopicCount() {
+    const countPaths = [
+      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
+      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/topics`,
+      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/agenda_items`,
+      `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(String(params.targetMeetingId))}`,
+    ];
+
+    for (const path of countPaths) {
+      const result = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        path,
+        allowStatuses: [400, 404, 405, 422],
+      });
+      if (!result.ok) continue;
+      const rows = asArray(result.payload);
+      if (rows.length > 0) return rows.length;
+    }
+
+    return 0;
   }
+
+  if (patchAttempt.ok) {
+    const targetTopicCount = await fetchTargetAgendaTopicCount();
+    if (targetTopicCount >= sourceTopicCount) {
+      return {
+        ok: true,
+        method: "patch_meeting_categories",
+        sourceCategories: categoryPayloads.length,
+        sourceTopics: sourceTopicCount,
+        createdTopics: sourceTopicCount,
+        createdCategories: categoryPayloads.length,
+      };
+    }
+    // If PATCH succeeded but no topics were materialized, continue with fallback paths.
+  }
+
+  const categoryPaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories`,
+    `/rest/v1.0/meeting_categories`,
+  ];
 
   const topicPaths = [
     `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
     `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
     `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/topics`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/agenda_items`,
+    `/rest/v1.0/meeting_topics`,
   ];
 
   const topicErrors: UnknownRecord[] = [];
   let createdTopics = 0;
+  let createdCategories = 0;
+
   for (const category of categoryPayloads) {
     const topics = Array.isArray(category.meeting_topic) ? category.meeting_topic : [];
-    for (const topic of topics) {
-      let created = false;
-      for (const path of topicPaths) {
-        const topicAttempt = await procoreJson({
+    let createdCategoryId: number | undefined;
+
+    for (const categoryPath of categoryPaths) {
+      const categoryBodyVariants = [
+        { meeting_category: compactPayload({ title: readStr(category.title), position: readNum(category.position) }) },
+        { meeting_categories: [compactPayload({ title: readStr(category.title), position: readNum(category.position) })] },
+        {
+          project_id: params.projectId,
+          meeting_id: params.targetMeetingId,
+          meeting_category: compactPayload({ title: readStr(category.title), position: readNum(category.position) }),
+        },
+      ];
+
+      let categoryCreated = false;
+      for (const body of categoryBodyVariants) {
+        const categoryAttempt = await procoreJson({
           accessToken: params.accessToken,
           companyId: params.companyId,
-          path,
+          path: categoryPath,
           method: "POST",
-          body: {
-            meeting_topic: topic,
-          },
+          body,
           allowStatuses: [400, 404, 405, 422],
         });
-        if (topicAttempt.ok) {
-          createdTopics += 1;
-          created = true;
-          break;
+
+        if (!categoryAttempt.ok) continue;
+
+        const payload = categoryAttempt.payload;
+        const payloadRecord = isRecord(payload) ? payload : null;
+        const firstCategory = payloadRecord ? firstRecord(payloadRecord.meeting_category, payloadRecord.data) : null;
+        createdCategoryId = readNum(
+          firstCategory?.id ||
+          (payloadRecord ? payloadRecord.id : undefined)
+        );
+        createdCategories += 1;
+        categoryCreated = true;
+        break;
+      }
+
+      if (categoryCreated) break;
+    }
+
+    for (const topic of topics) {
+      const topicWithCategory = compactPayload({
+        ...topic,
+        meeting_category_id: createdCategoryId,
+        category_id: createdCategoryId,
+      });
+      const topicAttachmentIds = parseIds(topic.upload_ids || topic.attachments || topic.attachment_ids);
+      const exactMeetingTopicPayload = compactPayload({
+        ...topicWithCategory,
+        upload_ids: parseIds(topicWithCategory.upload_ids || topicWithCategory.attachments || topicWithCategory.attachment_ids),
+      });
+
+      const scopedTopicPaths = createdCategoryId !== undefined
+        ? [
+            ...topicPaths,
+            `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories/${encodeURIComponent(String(createdCategoryId))}/meeting_topics`,
+            `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories/${encodeURIComponent(String(createdCategoryId))}/meeting_topics`,
+            `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(String(params.targetMeetingId))}&meeting_category_id=${encodeURIComponent(String(createdCategoryId))}`,
+          ]
+        : topicPaths;
+
+      let created = false;
+      for (const path of scopedTopicPaths) {
+        const bodyVariants = [
+          {
+            meeting_id: params.targetMeetingId,
+            meeting_topic: exactMeetingTopicPayload,
+            ...(topicAttachmentIds.length > 0 ? { attachments: topicAttachmentIds } : {}),
+          },
+          { meeting_topic: topicWithCategory },
+          { topic: topicWithCategory },
+          { agenda_item: topicWithCategory },
+        ];
+
+        for (const body of bodyVariants) {
+          const bodyWithIds = {
+            project_id: params.projectId,
+            meeting_id: params.targetMeetingId,
+            ...body,
+          };
+          const topicAttempt = await procoreJson({
+            accessToken: params.accessToken,
+            companyId: params.companyId,
+            path,
+            method: "POST",
+            body: bodyWithIds,
+            allowStatuses: [400, 404, 405, 422],
+          });
+          if (topicAttempt.ok) {
+            createdTopics += 1;
+            created = true;
+            break;
+          }
         }
+
+        if (created) break;
       }
 
       if (!created) {
@@ -478,13 +795,26 @@ async function cloneMeetingAgenda(params: {
     }
   }
 
+  if (createdTopics > 0) {
+    return {
+      ok: topicErrors.length === 0,
+      method: "category_topic_fallback",
+      sourceCategories: categoryPayloads.length,
+      sourceTopics: sourceTopicCount,
+      createdTopics,
+      createdCategories,
+      patchError: patchAttempt.payload,
+      errors: topicErrors,
+    };
+  }
+
   return {
     ok: topicErrors.length === 0,
-    method: "topic_fallback",
+    method: "agenda_clone_failed",
     sourceCategories: categoryPayloads.length,
     sourceTopics: sourceTopicCount,
     createdTopics,
-    createdCategories: 0,
+    createdCategories,
     patchError: patchAttempt.payload,
     errors: topicErrors,
   };
@@ -701,6 +1031,7 @@ export async function POST(request: Request) {
     const targetCompanyId = readStr(body.targetCompanyId || body.companyId || procoreConfig.companyId);
     const targetProjectId = readStr(body.targetProjectId);
     const dryRun = body.dryRun !== false;
+    const updateExistingMeetings = body.updateExistingMeetings !== false;
     const createOffset = Math.max(0, Math.trunc(readNum(body.createOffset) || 0));
     const createLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.createLimit) || (dryRun ? 100 : 10))));
     const maxPages = Math.max(1, Math.min(50, Math.trunc(readNum(body.maxPages) || 10)));
@@ -787,6 +1118,58 @@ export async function POST(request: Request) {
     const createStartedAt = Date.now();
 
     if (!dryRun) {
+      if (updateExistingMeetings) {
+        const existingRows = meetingRows
+          .filter((row) => row.issues.length === 0 && row.existingTargetMeeting)
+          .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
+
+        for (const row of existingRows) {
+          const sourceMeeting = sourceMeetingById.get(row.sourceId);
+          if (!sourceMeeting) continue;
+
+          const targetMeetingId = targetMeetingIdByKey.get(normalizeMeetingKey(sourceMeeting));
+          if (targetMeetingId === undefined) continue;
+
+          try {
+            const agendaClone = await cloneMeetingAgenda({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              targetMeetingId,
+              sourceMeeting,
+            });
+
+            const attendanceClone = await cloneMeetingAttendance({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              targetMeetingId,
+              mappedAttendance: row.mappedAttendance,
+            });
+
+            createResults.push({
+              type: "meeting_update_existing",
+              sourceId: row.sourceId,
+              targetMeetingId,
+              ok: true,
+              agendaClone,
+              attendanceClone,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            createResults.push({
+              type: "meeting_update_existing",
+              sourceId: row.sourceId,
+              targetMeetingId,
+              ok: false,
+              error: message,
+            });
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+      }
+
       const rowsToCreate = meetingRows
         .filter((row) => row.issues.length === 0 && !row.existingTargetMeeting)
         .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
@@ -891,7 +1274,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const created = createResults.filter((row) => row.ok === true).length;
+    const created = createResults.filter((row) => row.ok === true && row.type === "meeting").length;
     const failed = createResults.filter((row) => row.ok === false).length;
     const creatableMeetings = meetingRows.filter((row) => row.issues.length === 0 && !row.existingTargetMeeting).length;
 

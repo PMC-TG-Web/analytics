@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import {
+  makeRequest,
+  procoreConfig,
+  getClientCredentialsToken,
+  withProcoreLiveApiBypassForAuthenticatedSession,
+} from "@/lib/procore";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 
@@ -36,6 +40,11 @@ function unwrapBidBoardProjects(payload: unknown): unknown[] {
 
 function mapV1StatusToBidBoardStatus(status: string | null | undefined): string | null {
   return normalizeBidBoardStatus(status);
+}
+
+function toPrismaJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === undefined || value === null) return Prisma.JsonNull;
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function normalizeBidBoardStatus(status: string | null | undefined): string | null {
@@ -274,6 +283,148 @@ async function upsertProcoreStaging(params: {
   );
 }
 
+async function upsertPmcProject(params: {
+  companyId: string;
+  procoreProjectId: string;
+  bidBoardId?: string | null;
+  projectNumber?: string | null;
+  projectName: string;
+  customer?: string | null;
+  status?: string | null;
+  bidBoardStatus?: string | null;
+  projectManager?: string | null;
+  estimator?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  procoreCreatedAt?: Date | null;
+  procoreUpdatedAt?: Date | null;
+}) {
+  const {
+    companyId,
+    procoreProjectId,
+    bidBoardId,
+    projectNumber,
+    projectName,
+    customer,
+    status,
+    bidBoardStatus,
+    projectManager,
+    estimator,
+    address,
+    city,
+    state,
+    zip,
+    procoreCreatedAt,
+    procoreUpdatedAt,
+  } = params;
+
+  await prisma.pmcProject.upsert({
+    where: {
+      companyId_procoreProjectId: {
+        companyId,
+        procoreProjectId,
+      },
+    },
+    create: {
+      companyId,
+      procoreProjectId,
+      bidBoardId: bidBoardId || null,
+      projectNumber: projectNumber || null,
+      projectName,
+      customer: customer || null,
+      status: status || null,
+      bidBoardStatus: bidBoardStatus || null,
+      projectManager: projectManager || null,
+      estimator: estimator || null,
+      address: address || null,
+      city: city || null,
+      state: state || null,
+      zip: zip || null,
+      procoreCreatedAt: procoreCreatedAt || null,
+      procoreUpdatedAt: procoreUpdatedAt || null,
+      syncedAt: new Date(),
+    },
+    update: {
+      bidBoardId: bidBoardId || null,
+      projectNumber: projectNumber || null,
+      projectName,
+      customer: customer || null,
+      status: status || null,
+      bidBoardStatus: bidBoardStatus || null,
+      projectManager: projectManager || null,
+      estimator: estimator || null,
+      address: address || null,
+      city: city || null,
+      state: state || null,
+      zip: zip || null,
+      procoreCreatedAt: procoreCreatedAt || null,
+      procoreUpdatedAt: procoreUpdatedAt || null,
+      syncedAt: new Date(),
+    },
+  });
+}
+
+async function upsertPmcBidBoardProject(params: {
+  companyId: string;
+  bidBoardId: string;
+  procoreProjectId?: string | null;
+  projectNumber?: string | null;
+  projectName: string;
+  customer?: string | null;
+  customerCompanyId?: string | null;
+  status?: string | null;
+  statusRaw?: string | null;
+  payload?: unknown;
+}) {
+  const {
+    companyId,
+    bidBoardId,
+    procoreProjectId,
+    projectNumber,
+    projectName,
+    customer,
+    customerCompanyId,
+    status,
+    statusRaw,
+    payload,
+  } = params;
+
+  await prisma.pmcBidBoardProject.upsert({
+    where: {
+      companyId_bidBoardId: {
+        companyId,
+        bidBoardId,
+      },
+    },
+    create: {
+      companyId,
+      bidBoardId,
+      procoreProjectId: procoreProjectId || null,
+      projectNumber: projectNumber || null,
+      projectName,
+      customer: customer || null,
+      customerCompanyId: customerCompanyId || null,
+      status: status || null,
+      statusRaw: statusRaw || null,
+      payload: toPrismaJsonValue(payload),
+      syncedAt: new Date(),
+    },
+    update: {
+      procoreProjectId: procoreProjectId || null,
+      projectNumber: projectNumber || null,
+      projectName,
+      customer: customer || null,
+      customerCompanyId: customerCompanyId || null,
+      status: status || null,
+      statusRaw: statusRaw || null,
+      payload: toPrismaJsonValue(payload),
+      syncedAt: new Date(),
+    },
+  });
+}
+
 async function applyBidBoardStatusToV1Staging(params: {
   companyId: string;
   procoreProjectId?: string | null;
@@ -354,7 +505,7 @@ async function applyBidBoardStatusToV1Staging(params: {
 }
 
 export async function POST(request: Request) {
-  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+  return withProcoreLiveApiBypassForAuthenticatedSession(request, async () => {
     try {
     const body = await request.json().catch(() => ({}));
 
@@ -700,33 +851,17 @@ export async function POST(request: Request) {
       failedById: [] as Array<{ id: string; error: string }>,
     };
 
-    // Read seed IDs from Projects_test file if requested
-    let fileSeeds: string[] = [];
     if (seedFromFile) {
-      try {
-        const filePath = join(process.cwd(), 'Projects_test');
-        const raw = readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw) as { response?: { results?: Array<{ id?: string }> } };
-        const results = parsed?.response?.results ?? [];
-        fileSeeds = results
-          .map((r) => String(r?.id ?? '').trim())
-          .filter(Boolean);
-        primeBackfillStats.seedFileIds = fileSeeds.length;
-        console.log(`Loaded ${fileSeeds.length} seed IDs from Projects_test`);
-      } catch (err) {
-        console.warn(`Could not read Projects_test for seed IDs: ${err instanceof Error ? err.message : err}`);
-      }
+      console.warn("seedFromFile was requested, but repo-local seed files are disabled in production.");
     }
 
-    if (includePrimeContractProjectBackfill || fileSeeds.length > 0) {
+    if (includePrimeContractProjectBackfill) {
       const primeResult = await fetchPrimeContractProjectIds();
       const primeIds = primeResult.ids;
       primeBackfillStats.sourceCounts = primeResult.stats;
       primeBackfillStats.idsFromPrimeContracts = primeIds.length;
 
-      // Merge prime contract IDs with file seed IDs (deduplicated)
-      const mergedIdSet = new Set([...primeIds, ...fileSeeds]);
-      const allIds = Array.from(mergedIdSet);
+      const allIds = Array.from(new Set(primeIds));
       primeBackfillStats.requestedById = allIds.length;
 
       const missingIds = allIds.filter((id) => !v1ById.has(id));
@@ -1065,6 +1200,8 @@ export async function POST(request: Request) {
     const results = {
       v1Synced: 0,
       bidBoardSynced: 0,
+      pmcProjectsSynced: 0,
+      pmcBidBoardProjectsSynced: 0,
       projectStagesSynced: 0,
       stagingSynced: 0,
       stagingBidBoardStatusUpdated: 0,
@@ -1171,6 +1308,26 @@ export async function POST(request: Request) {
           payload: p,
         });
         results.stagingSynced++;
+
+        await upsertPmcProject({
+          companyId,
+          procoreProjectId: procoreId,
+          bidBoardId: null,
+          projectNumber: number || null,
+          projectName: name,
+          customer: isMeaningfulCustomer(customer) ? customer : null,
+          status,
+          bidBoardStatus: fallbackBidBoardStatus,
+          projectManager: typeof p.project_manager === "string" ? p.project_manager : null,
+          estimator: typeof p.project_estimator === "string" ? p.project_estimator : null,
+          address: typeof p.address === "string" ? p.address : null,
+          city: typeof p.city === "string" ? p.city : null,
+          state: typeof p.state_code === "string" ? p.state_code : null,
+          zip: typeof p.zip === "string" ? p.zip : null,
+          procoreCreatedAt: p.created_at ? new Date(String(p.created_at)) : null,
+          procoreUpdatedAt: p.updated_at ? new Date(String(p.updated_at)) : null,
+        });
+        results.pmcProjectsSynced++;
 
         if (existing) {
           const existingCustomFields =
@@ -1304,6 +1461,20 @@ export async function POST(request: Request) {
           customer: isMeaningfulCustomer(customer) ? customer : null,
           payload: bb,
         });
+
+        await upsertPmcBidBoardProject({
+          companyId,
+          bidBoardId: bidId,
+          procoreProjectId,
+          projectNumber: typeof bb.project_number === 'string' ? bb.project_number : null,
+          projectName: name,
+          customer: isMeaningfulCustomer(customer) ? customer : null,
+          customerCompanyId: bb.customer_company?.id ? String(bb.customer_company.id) : null,
+          status: bidStatus,
+          statusRaw: bidStatusRaw,
+          payload: bb,
+        });
+        results.pmcBidBoardProjectsSynced++;
 
         // Match by customFields path instead of new columns
         const existing = await prisma.project.findFirst({

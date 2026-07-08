@@ -2127,6 +2127,16 @@ function KPIPageContent({
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
 
+  const managedScheduledHoursByMonth = useMemo(() => {
+    const rows = cardLoadData[normalizeCardName("Sales By Month")] || [];
+    const row = rows.find((entry: any) => normalizeCardName((entry?.kpi || "").toString()) === "scheduled hours");
+    const byMonth: Record<number, string> = {};
+    monthNames.forEach((_, idx) => {
+      byMonth[idx + 1] = String(row?.values?.[idx] ?? "").trim();
+    });
+    return byMonth;
+  }, [cardLoadData, monthNames]);
+
   const getCardActualMonthMap = (cardName: string): Record<number, number> => {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
     if (rows.length === 0) return {};
@@ -2543,6 +2553,50 @@ function KPIPageContent({
                           )}
                         </td>
                       </tr>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
+                        {monthNames.map((_, idx) => {
+                          const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                          const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                          const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
+                          const formatted = hasValue
+                            ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                            : "—";
+
+                          return (
+                            <td
+                              key={idx}
+                              style={{
+                                padding: "4px 2px",
+                                textAlign: "center",
+                                color: hasValue ? "#15616D" : "#999",
+                                fontWeight: hasValue ? 700 : 400,
+                                fontSize: 12,
+                              }}
+                            >
+                              {formatted}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          {(() => {
+                            const total = monthNames.reduce((sum, _, idx) => {
+                              const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+                            }, 0);
+                            const ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
+                              const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+                            }, 0);
+                            return renderTotalWithYtd(
+                              total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+                              ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                            );
+                          })()}
+                        </td>
+                      </tr>
                     </React.Fragment>
                   );} ) }
                 </tbody>
@@ -2701,6 +2755,51 @@ function KPIPageContent({
                             `$${bidSubmittedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
                             `$${bidSubmittedYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                           )}
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
+                        {allYearMonths.map(({ month }, idx) => {
+                          const rawValue = managedScheduledHoursByMonth[month] || "";
+                          const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                          const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
+                          const formatted = hasValue
+                            ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                            : "—";
+
+                          return (
+                            <td
+                              key={idx}
+                              style={{
+                                padding: "4px 2px",
+                                textAlign: "center",
+                                color: hasValue ? "#15616D" : "#999",
+                                fontWeight: hasValue ? 700 : 400,
+                                fontSize: 12,
+                              }}
+                            >
+                              {formatted}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                          {(() => {
+                            const total = allYearMonths.reduce((sum, { month }) => {
+                              const rawValue = managedScheduledHoursByMonth[month] || "";
+                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+                            }, 0);
+                            const ytdTotal = allYearMonths.reduce((sum, { month }) => {
+                              if (month > ytdMonthCutoff) return sum;
+                              const rawValue = managedScheduledHoursByMonth[month] || "";
+                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+                            }, 0);
+                            return renderTotalWithYtd(
+                              total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+                              ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                            );
+                          })()}
                         </td>
                       </tr>
                     </tbody>
@@ -3200,7 +3299,7 @@ function KPIPageContent({
               </thead>
               <tbody>
                 {(() => {
-                  const salesCardRows = getSortedCardRows("Sales By Month");
+                  const salesCardRows = getSortedCardRows("Sales By Month").filter((row) => normalizeCardName((row?.kpi || "").toString()) !== "scheduled hours");
                   const firstGoalRowIndex = salesCardRows.findIndex((row) => {
                     const label = (row.kpi || "").toLowerCase();
                     return label.includes("goal") || label.includes("allowance");

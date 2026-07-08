@@ -308,7 +308,7 @@ function normalizeCardName(name: string) {
 
 function ensureSalesCardRows(rows: Array<{ kpi: string; values: string[] }>) {
   const existingRows = Array.isArray(rows) ? rows : [];
-  const hasScheduledHours = existingRows.some((row) => normalize((row?.kpi || "").toString()) === "scheduled hours");
+  const hasScheduledHours = existingRows.some((row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours");
   if (hasScheduledHours) return existingRows;
 
   return [

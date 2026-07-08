@@ -42,39 +42,54 @@ function isNotFoundError(err: unknown): boolean {
   return /(?:^|\D)404(?:\D|$)/.test(msg);
 }
 
+function isSchemaPermissionDeniedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("permission denied for schema public") || message.includes("Code: `42501`");
+}
+
 async function ensurePrimeContractsLiveTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS procore_prime_contracts_live (
-      prime_contract_id TEXT PRIMARY KEY,
-      company_id TEXT,
-      project_id TEXT,
-      project_procore_id TEXT,
-      number TEXT,
-      title TEXT,
-      status TEXT,
-      contract_date TIMESTAMPTZ,
-      signed_contract_received_date TIMESTAMPTZ,
-      execution_date TIMESTAMPTZ,
-      contract_start_date TIMESTAMPTZ,
-      payload JSONB NOT NULL,
-      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS procore_prime_contracts_live (
+        prime_contract_id TEXT PRIMARY KEY,
+        company_id TEXT,
+        project_id TEXT,
+        project_procore_id TEXT,
+        number TEXT,
+        title TEXT,
+        status TEXT,
+        contract_date TIMESTAMPTZ,
+        signed_contract_received_date TIMESTAMPTZ,
+        execution_date TIMESTAMPTZ,
+        contract_start_date TIMESTAMPTZ,
+        payload JSONB NOT NULL,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
 
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_project_id_idx
-      ON procore_prime_contracts_live (project_id)
-  `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_project_id_idx
+        ON procore_prime_contracts_live (project_id)
+    `);
 
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_project_procore_id_idx
-      ON procore_prime_contracts_live (project_procore_id)
-  `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_project_procore_id_idx
+        ON procore_prime_contracts_live (project_procore_id)
+    `);
 
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_synced_at_idx
-      ON procore_prime_contracts_live (synced_at DESC)
-  `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS procore_prime_contracts_live_synced_at_idx
+        ON procore_prime_contracts_live (synced_at DESC)
+    `);
+  } catch (err) {
+    if (!isSchemaPermissionDeniedError(err)) {
+      throw err;
+    }
+
+    // In constrained production roles we may not have CREATE on schema public.
+    // Continue if the table already exists and is queryable.
+    await prisma.$queryRawUnsafe(`SELECT 1 FROM procore_prime_contracts_live LIMIT 1`);
+  }
 }
 
 async function upsertPrimeContractLive(params: {

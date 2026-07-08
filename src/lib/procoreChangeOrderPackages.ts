@@ -32,47 +32,61 @@ function asObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function isSchemaPermissionDeniedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes('permission denied for schema public') || message.includes('Code: `42501`');
+}
+
 let tableReady: Promise<void> | null = null;
 
 export async function ensureChangeOrderPackagesTable(): Promise<void> {
   if (tableReady) return tableReady;
 
   tableReady = (async () => {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS procore_change_order_packages (
-        company_id            TEXT NOT NULL,
-        project_id            TEXT NOT NULL,
-        contract_id           TEXT NOT NULL,
-        package_id            TEXT NOT NULL,
-        number                TEXT,
-        title                 TEXT,
-        status                TEXT,
-        description           TEXT,
-        revision              TEXT,
-        amount                NUMERIC,
-        executed_on           TIMESTAMPTZ,
-        source_created_at     TIMESTAMPTZ,
-        source_updated_at     TIMESTAMPTZ,
-        payload               JSONB NOT NULL,
-        synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (company_id, project_id, package_id)
-      )
-    `);
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS procore_change_order_packages (
+          company_id            TEXT NOT NULL,
+          project_id            TEXT NOT NULL,
+          contract_id           TEXT NOT NULL,
+          package_id            TEXT NOT NULL,
+          number                TEXT,
+          title                 TEXT,
+          status                TEXT,
+          description           TEXT,
+          revision              TEXT,
+          amount                NUMERIC,
+          executed_on           TIMESTAMPTZ,
+          source_created_at     TIMESTAMPTZ,
+          source_updated_at     TIMESTAMPTZ,
+          payload               JSONB NOT NULL,
+          synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (company_id, project_id, package_id)
+        )
+      `);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS procore_cop_project_id_idx
-        ON procore_change_order_packages (project_id)
-    `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS procore_cop_project_id_idx
+          ON procore_change_order_packages (project_id)
+      `);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS procore_cop_status_idx
-        ON procore_change_order_packages (status)
-    `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS procore_cop_status_idx
+          ON procore_change_order_packages (status)
+      `);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS procore_cop_synced_at_idx
-        ON procore_change_order_packages (synced_at DESC)
-    `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS procore_cop_synced_at_idx
+          ON procore_change_order_packages (synced_at DESC)
+      `);
+    } catch (err) {
+      if (!isSchemaPermissionDeniedError(err)) {
+        throw err;
+      }
+
+      // Production DB roles may not be able to CREATE; continue if table exists.
+      await prisma.$queryRawUnsafe('SELECT 1 FROM procore_change_order_packages LIMIT 1');
+    }
   })();
 
   return tableReady;

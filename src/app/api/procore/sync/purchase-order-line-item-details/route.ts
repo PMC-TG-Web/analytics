@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { prisma } from "@/lib/prisma";
 import {
   persistPurchaseOrderLineItemDetails,
   type ProcoreLineItemContractDetail,
@@ -9,6 +10,9 @@ import {
 import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
 
 type ProcoreProject = Record<string, unknown>;
+
+const RATE_LIMIT_MAX_RETRIES = 6;
+const RATE_LIMIT_BASE_DELAY_MS = 1200;
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -39,6 +43,46 @@ function isNotFoundError(err: unknown): boolean {
   if (status === 404) return true;
   const msg = err instanceof Error ? err.message : String(err);
   return /(?:^|\D)404(?:\D|$)/.test(msg);
+}
+
+function isRateLimitedError(err: unknown): boolean {
+  const status = Number((err as { status?: number })?.status || 0);
+  if (status === 429) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /(?:^|\D)429(?:\D|$)/.test(msg) || msg.toLowerCase().includes("rate limit");
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function makeRequestWithRateLimitRetry(
+  endpoint: string,
+  accessToken: string,
+  companyId: string,
+  acceptedStatuses?: number[]
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt += 1) {
+    try {
+      return await makeRequest(endpoint, accessToken, undefined, companyId, acceptedStatuses);
+    } catch (err) {
+      lastError = err;
+      if (!isRateLimitedError(err) || attempt >= RATE_LIMIT_MAX_RETRIES) {
+        throw err;
+      }
+
+      const exponentialDelay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt);
+      const jitter = Math.floor(Math.random() * 400);
+      const delayMs = Math.min(30_000, exponentialDelay + jitter);
+      console.warn(
+        `[PO Sync] Rate limited on ${endpoint}; retry ${attempt + 1}/${RATE_LIMIT_MAX_RETRIES} in ${delayMs}ms`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function isIgnorableProbeError(err: unknown): boolean {
@@ -81,7 +125,7 @@ async function fetchAllProjects(accessToken: string, companyId: string, maxProje
   let page = 1;
   while (true) {
     const endpoint = `/rest/v1.0/projects?company_id=${encodeURIComponent(companyId)}&page=${page}&per_page=100`;
-    const response = await makeRequest(endpoint, accessToken, undefined, companyId);
+    const response = await makeRequestWithRateLimitRetry(endpoint, accessToken, companyId);
     const pageItems = Array.isArray(response) ? (response as ProcoreProject[]) : [];
     if (!pageItems.length) break;
     projects.push(...pageItems);
@@ -91,6 +135,32 @@ async function fetchAllProjects(accessToken: string, companyId: string, maxProje
     if (page > 100) break;
   }
   return projects;
+}
+
+async function fetchProjectsFromStaging(companyId: string, maxProjects?: number): Promise<ProcoreProject[]> {
+  const rows = await prisma.procoreProjectStaging.findMany({
+    where: {
+      companyId,
+      source: "procore_v1_projects",
+      procoreProjectId: { not: null },
+    },
+    select: {
+      procoreProjectId: true,
+      projectNumber: true,
+      name: true,
+      displayName: true,
+    },
+    orderBy: { syncedAt: "desc" },
+    take: maxProjects && maxProjects > 0 ? maxProjects : undefined,
+  });
+
+  return rows
+    .map((row) => ({
+      id: row.procoreProjectId,
+      project_number: row.projectNumber,
+      name: row.name || row.displayName || row.procoreProjectId,
+    }))
+    .filter((row) => String(row.id || "").trim().length > 0);
 }
 
 async function fetchPurchaseOrderContractsForProject(
@@ -107,7 +177,7 @@ async function fetchPurchaseOrderContractsForProject(
     const endpoint = `/rest/v1.0/purchase_order_contracts?company_id=${encodeURIComponent(companyId)}&project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=${perPage}`;
     let response: unknown;
     try {
-      response = await makeRequest(endpoint, accessToken, undefined, companyId);
+      response = await makeRequestWithRateLimitRetry(endpoint, accessToken, companyId);
     } catch (err) {
       if (isNotFoundError(err)) return { records: [], notEnabled: true };
       throw err;
@@ -163,7 +233,7 @@ async function fetchLineItemContractDetailsForContract(
 
     for (const endpoint of candidates) {
       try {
-        const response = await makeRequest(endpoint, accessToken, undefined, companyId, [400, 404, 500]);
+        const response = await makeRequestWithRateLimitRetry(endpoint, accessToken, companyId, [400, 404, 500]);
         return {
           records: unwrapArray(response) as ProcoreLineItemContractDetail[],
           notEnabled: false,
@@ -229,16 +299,19 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
-    const accessToken =
-      cookieStore.get("procore_access_token")?.value ||
-      String(body.accessToken || "").trim() ||
-      undefined;
+    const explicitAccessToken = String(body.accessToken || "").trim() || undefined;
+    const cookieAccessToken = cookieStore.get("procore_access_token")?.value || undefined;
+    let accessToken = explicitAccessToken || cookieAccessToken;
     const companyId = String(
       body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || ''
     ).trim();
 
     if (!accessToken) {
-      return NextResponse.json({ error: "Missing access token.", connectUrl: "/api/auth/procore/login" }, { status: 401 });
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json({ error: "Missing access token.", connectUrl: "/api/auth/procore/login" }, { status: 401 });
+      }
     }
     if (!companyId) {
       return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
@@ -249,11 +322,41 @@ export async function POST(request: Request) {
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
-    const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+    let projects: ProcoreProject[] = [];
+    let projectSource: "procore_api" | "staging_fallback" = "procore_api";
+    let projectFetchWarning: string | null = null;
+
+    try {
+      projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+    } catch (err) {
+      if (!isRateLimitedError(err)) throw err;
+
+      const fallbackProjects = await fetchProjectsFromStaging(companyId, maxProjects || undefined);
+      if (!fallbackProjects.length) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json(
+          {
+            success: false,
+            companyId,
+            retryable: true,
+            error: "Rate limited while loading projects and no local fallback project list is available.",
+            details: message,
+          },
+          { status: 503 }
+        );
+      }
+
+      projects = fallbackProjects;
+      projectSource = "staging_fallback";
+      projectFetchWarning =
+        "Procore project list was rate-limited (429). Continued using local staged projects for this run.";
+    }
 
     const summary = {
       success: true,
       companyId,
+      projectSource,
+      projectFetchWarning,
       totalProjectsChecked: projects.length,
       projectsWithPurchaseOrderContracts: 0,
       projectsNotEnabled: 0,

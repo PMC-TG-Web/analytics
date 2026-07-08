@@ -921,9 +921,71 @@ function KPIPageContent({
     // Return immediately without waiting
   };
 
-  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates" | "estimatesActualHours", currentValue: number) => {
+  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates" | "estimatesActualHours" | "scheduledHours", currentValue: number) => {
     setEditingCell({ year, month, field });
     setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
+  };
+
+  const saveSalesCardScheduledHours = (month: number, value: number | null) => {
+    const normalizedSalesCardName = normalizeCardName("Sales By Month");
+
+    setCardLoadData((prev) => {
+      const next = { ...prev };
+      const existingRows = ensureSalesCardRows(next[normalizedSalesCardName] || []);
+      const scheduledHoursIndex = existingRows.findIndex(
+        (row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours"
+      );
+
+      const rows = existingRows.map((row) => ({
+        ...row,
+        values: Array.isArray(row.values) ? [...row.values] : Array(12).fill(""),
+      }));
+
+      const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rows.length;
+      if (scheduledHoursIndex < 0) {
+        rows.push({ kpi: "Scheduled Hours", values: Array(12).fill("") });
+      }
+
+      rows[targetIndex].values[month - 1] = value === null ? "" : String(value);
+      next[normalizedSalesCardName] = rows;
+      return next;
+    });
+
+    (async () => {
+      try {
+        const normalizedCurrentRows = ensureSalesCardRows(cardLoadData[normalizedSalesCardName] || []);
+        const rowsForSave = normalizedCurrentRows.map((row) => ({
+          ...row,
+          values: Array.isArray(row.values) ? [...row.values] : Array(12).fill(""),
+        }));
+
+        const scheduledHoursIndex = rowsForSave.findIndex(
+          (row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours"
+        );
+
+        const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rowsForSave.length;
+        if (scheduledHoursIndex < 0) {
+          rowsForSave.push({ kpi: "Scheduled Hours", values: Array(12).fill("") });
+        }
+
+        rowsForSave[targetIndex].values[month - 1] = value === null ? "" : String(value);
+
+        await fetch("/api/kpi-cards", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cardName: "Sales By Month",
+            rows: rowsForSave,
+            allowRowDeletes: true,
+            updatedBy: "admin",
+          }),
+        });
+      } catch (error) {
+        console.warn("[KPI] Error saving Scheduled Hours row:", error);
+      }
+    })();
   };
 
   const cancelEditKpiCell = () => {
@@ -933,6 +995,21 @@ function KPIPageContent({
 
   const commitEditKpiCell = () => {
     if (!editingCell) return;
+
+    if (editingCell.field === "scheduledHours") {
+      const raw = String(editValue ?? "").trim();
+      if (!raw) {
+        saveSalesCardScheduledHours(editingCell.month, null);
+        cancelEditKpiCell();
+        return;
+      }
+
+      const parsed = Number(raw.replace(/[$,\s]/g, ""));
+      const sanitized = Number.isFinite(parsed) ? parsed : 0;
+      saveSalesCardScheduledHours(editingCell.month, sanitized);
+      cancelEditKpiCell();
+      return;
+    }
 
     const parsed = Number(String(editValue || "").replace(/[$,\s]/g, ""));
     const sanitized = Number.isFinite(parsed) ? parsed : 0;
@@ -2562,19 +2639,38 @@ function KPIPageContent({
                           const formatted = hasValue
                             ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
                             : "—";
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === idx + 1 &&
+                            editingCell?.field === "scheduledHours";
 
                           return (
                             <td
                               key={idx}
+                              onDoubleClick={() => beginEditKpiCell(year, idx + 1, "scheduledHours", Number.isFinite(numericValue) ? numericValue : 0)}
                               style={{
                                 padding: "4px 2px",
                                 textAlign: "center",
                                 color: hasValue ? "#15616D" : "#999",
                                 fontWeight: hasValue ? 700 : 400,
                                 fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {formatted}
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : formatted}
                             </td>
                           );
                         })}
@@ -2759,26 +2855,45 @@ function KPIPageContent({
                       </tr>
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
-                        {allYearMonths.map(({ month }, idx) => {
+                        {allYearMonths.map(({ year, month }, idx) => {
                           const rawValue = managedScheduledHoursByMonth[month] || "";
                           const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                           const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
                           const formatted = hasValue
                             ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
                             : "—";
+                          const isEditing =
+                            editingCell?.year === year &&
+                            editingCell?.month === month &&
+                            editingCell?.field === "scheduledHours";
 
                           return (
                             <td
                               key={idx}
+                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledHours", Number.isFinite(numericValue) ? numericValue : 0)}
                               style={{
                                 padding: "4px 2px",
                                 textAlign: "center",
                                 color: hasValue ? "#15616D" : "#999",
                                 fontWeight: hasValue ? 700 : 400,
                                 fontSize: 12,
+                                cursor: "pointer",
                               }}
+                              title="Double-click to edit"
                             >
-                              {formatted}
+                              {isEditing ? (
+                                <input
+                                  ref={inputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEditKpiCell}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitEditKpiCell();
+                                    if (e.key === "Escape") cancelEditKpiCell();
+                                  }}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
+                                />
+                              ) : formatted}
                             </td>
                           );
                         })}

@@ -306,6 +306,20 @@ function normalizeCardName(name: string) {
   return name.replace(/^\uFEFF/, "").trim().toLowerCase();
 }
 
+function ensureSalesCardRows(rows: Array<{ kpi: string; values: string[] }>) {
+  const existingRows = Array.isArray(rows) ? rows : [];
+  const hasScheduledHours = existingRows.some((row) => normalize((row?.kpi || "").toString()) === "scheduled hours");
+  if (hasScheduledHours) return existingRows;
+
+  return [
+    ...existingRows,
+    {
+      kpi: "Scheduled Hours",
+      values: Array(12).fill(""),
+    },
+  ];
+}
+
 function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: string; projectName: string } {
   const [customer = "", projectNumber = "", projectName = ""] = (jobKey || "").split("~");
   return { customer, projectNumber, projectName };
@@ -991,7 +1005,10 @@ function KPIPageContent({
         const mapped: Record<string, { kpi: string; values: string[] }[]> = {};
         cards.forEach((card: any) => {
           const cardNameNormalized = normalizeCardName(card.cardName);
-          mapped[cardNameNormalized] = Array.isArray(card.rows) ? card.rows : [];
+          const rows = Array.isArray(card.rows) ? card.rows : [];
+          mapped[cardNameNormalized] = cardNameNormalized === normalizeCardName("Sales By Month")
+            ? ensureSalesCardRows(rows)
+            : rows;
         });
 
         setCardLoadData(mapped);
@@ -1910,7 +1927,8 @@ function KPIPageContent({
         });
       }
 
-      if (normalizeCardName(cardName) === normalizeCardName("Sales By Month") && rowLabel.includes("sched")) {
+      const isScheduledSalesRow = rowLabel.includes("sched") && !rowLabel.includes("hour");
+      if (normalizeCardName(cardName) === normalizeCardName("Sales By Month") && isScheduledSalesRow) {
         const selectedYear = yearFilter || new Date().getFullYear().toString();
         rowValues = monthNames.map((_, idx) => {
           const month = idx + 1;

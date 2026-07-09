@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       prisma.$queryRawUnsafe<ProjectAnalyticsRow[]>(
         `
-          WITH clean_projects AS (
+          WITH pmc_projects_ranked AS (
             SELECT
               p.company_id,
               p.procore_project_id,
@@ -206,25 +206,78 @@ export async function GET(request: NextRequest) {
               p.customer,
               p.status,
               p.bid_board_status,
-              'pmc_projects'::text AS source_table
+              'pmc_projects'::text AS source_table,
+              ROW_NUMBER() OVER (
+                PARTITION BY p.company_id, p.procore_project_id
+                ORDER BY p.synced_at DESC, p.project_name ASC
+              ) AS rn
             FROM pmc_projects p
             WHERE p.company_id = $1
-
-            UNION ALL
-
+              AND p.procore_project_id IS NOT NULL
+          ),
+          pmc_projects_clean AS (
+            SELECT
+              company_id,
+              procore_project_id,
+              bid_board_id,
+              project_number,
+              project_name,
+              customer,
+              status,
+              bid_board_status,
+              source_table
+            FROM pmc_projects_ranked
+            WHERE rn = 1
+          ),
+          bid_board_ranked AS (
             SELECT
               b.company_id,
               b.procore_project_id,
-              b.bid_board_id,
+              CASE
+                WHEN b.bid_board_id IS NULL THEN NULL
+                WHEN strpos(b.bid_board_id, ':') > 0 THEN regexp_replace(b.bid_board_id, '^.*:', '')
+                ELSE b.bid_board_id
+              END AS bid_board_id,
               b.project_number,
               b.project_name,
               b.customer,
               b.status,
               b.status_raw AS bid_board_status,
-              'pmc_bid_board_projects'::text AS source_table
+              'pmc_bid_board_projects'::text AS source_table,
+              ROW_NUMBER() OVER (
+                PARTITION BY b.company_id,
+                  CASE
+                    WHEN b.bid_board_id IS NULL THEN NULL
+                    WHEN strpos(b.bid_board_id, ':') > 0 THEN regexp_replace(b.bid_board_id, '^.*:', '')
+                    ELSE b.bid_board_id
+                  END
+                ORDER BY b.synced_at DESC, b.project_name ASC
+              ) AS rn
             FROM pmc_bid_board_projects b
             WHERE b.company_id = $1
               AND b.procore_project_id IS NULL
+              AND b.bid_board_id IS NOT NULL
+          ),
+          bid_board_clean AS (
+            SELECT
+              company_id,
+              procore_project_id,
+              bid_board_id,
+              project_number,
+              project_name,
+              customer,
+              status,
+              bid_board_status,
+              source_table
+            FROM bid_board_ranked
+            WHERE rn = 1
+          ),
+          clean_projects AS (
+            SELECT * FROM pmc_projects_clean
+
+            UNION ALL
+
+            SELECT * FROM bid_board_clean
           ),
           budget_totals AS (
             SELECT
@@ -240,12 +293,22 @@ export async function GET(request: NextRequest) {
           estimate_totals AS (
             SELECT
               company_id,
-              bid_board_project_id AS bid_board_id,
+              CASE
+                WHEN bid_board_project_id IS NULL THEN NULL
+                WHEN strpos(bid_board_project_id, ':') > 0 THEN regexp_replace(bid_board_project_id, '^.*:', '')
+                ELSE bid_board_project_id
+              END AS bid_board_id,
               COUNT(*)::text AS estimate_line_items,
               COUNT(DISTINCT proposal_id)::text AS estimate_proposals
             FROM procore_proposal_line_items_live
             WHERE company_id = $1
-            GROUP BY company_id, bid_board_project_id
+            GROUP BY
+              company_id,
+              CASE
+                WHEN bid_board_project_id IS NULL THEN NULL
+                WHEN strpos(bid_board_project_id, ':') > 0 THEN regexp_replace(bid_board_project_id, '^.*:', '')
+                ELSE bid_board_project_id
+              END
           ),
           timecard_totals AS (
             SELECT

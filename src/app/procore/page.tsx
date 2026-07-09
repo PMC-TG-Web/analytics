@@ -707,6 +707,15 @@ function ProcoreContent() {
   const [meetingCloneBusy, setMeetingCloneBusy] = useState(false);
   const [meetingCloneError, setMeetingCloneError] = useState<string | null>(null);
   const [meetingCloneResult, setMeetingCloneResult] = useState<any>(null);
+  const [projectTeamCloneSourceCompanyId, setProjectTeamCloneSourceCompanyId] = useState("598134325658789");
+  const [projectTeamCloneSourceProjectId, setProjectTeamCloneSourceProjectId] = useState("");
+  const [projectTeamCloneTargetCompanyId, setProjectTeamCloneTargetCompanyId] = useState("598134325805519");
+  const [projectTeamCloneTargetProjectId, setProjectTeamCloneTargetProjectId] = useState("");
+  const [projectTeamCloneSyncRoles, setProjectTeamCloneSyncRoles] = useState(true);
+  const [projectTeamCloneMaxPages, setProjectTeamCloneMaxPages] = useState("10");
+  const [projectTeamCloneBusy, setProjectTeamCloneBusy] = useState(false);
+  const [projectTeamCloneError, setProjectTeamCloneError] = useState<string | null>(null);
+  const [projectTeamCloneResult, setProjectTeamCloneResult] = useState<any>(null);
   const [imageCloneSourceCompanyId, setImageCloneSourceCompanyId] = useState("598134325658789");
   const [imageCloneSourceProjectId, setImageCloneSourceProjectId] = useState("");
   const [imageCloneTargetCompanyId, setImageCloneTargetCompanyId] = useState("598134325805519");
@@ -5850,6 +5859,57 @@ function ProcoreContent() {
     }
   };
 
+  const handleCloneProjectTeam = async (dryRun: boolean) => {
+    const sourceCompanyId = projectTeamCloneSourceCompanyId.trim();
+    const sourceProjectId = projectTeamCloneSourceProjectId.trim();
+    const targetCompanyId = projectTeamCloneTargetCompanyId.trim();
+    const targetProjectId = projectTeamCloneTargetProjectId.trim();
+
+    if (!sourceProjectId || !targetProjectId) {
+      setProjectTeamCloneError("Source project and target project are required.");
+      return;
+    }
+
+    if (!dryRun && !window.confirm(`Clone Project Team from ${sourceProjectId} to ${targetProjectId}?`)) {
+      return;
+    }
+
+    setProjectTeamCloneBusy(true);
+    setProjectTeamCloneError(null);
+    setProjectTeamCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/project-team/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId: sourceCompanyId || undefined,
+          sourceProjectId,
+          targetCompanyId: targetCompanyId || undefined,
+          targetProjectId,
+          syncRoles: projectTeamCloneSyncRoles,
+          maxPages: Number.parseInt(projectTeamCloneMaxPages || "10", 10) || 10,
+          dryRun,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setProjectTeamCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Project Team clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+
+      setProjectTeamCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setProjectTeamCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProjectTeamCloneBusy(false);
+    }
+  };
+
   const handleCloneImages = async (dryRun: boolean) => {
     const sourceCompanyId = imageCloneSourceCompanyId.trim();
     const sourceProjectId = imageCloneSourceProjectId.trim();
@@ -9103,7 +9163,125 @@ function ProcoreContent() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-fuchsia-500 mb-6 order-10">
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-emerald-500 mb-6 order-10">
+              <h2 className="text-xl font-bold text-emerald-900 mb-3">Clone Project Team</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Project Team users and optionally sync Project Directory role members from one Procore project to another.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={projectTeamCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setProjectTeamCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={projectTeamCloneSourceProjectId ?? ""}
+                    onChange={(event) => setProjectTeamCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={projectTeamCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setProjectTeamCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={projectTeamCloneTargetProjectId ?? ""}
+                    onChange={(event) => setProjectTeamCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(projectTeamCloneSyncRoles)}
+                    onChange={(event) => setProjectTeamCloneSyncRoles(event.target.checked)}
+                  />
+                  Sync Project Directory Roles
+                </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={projectTeamCloneMaxPages ?? ""}
+                    onChange={(event) => setProjectTeamCloneMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneProjectTeam(true)}
+                  disabled={projectTeamCloneBusy}
+                  className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {projectTeamCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneProjectTeam(false)}
+                  disabled={projectTeamCloneBusy}
+                  className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {projectTeamCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {projectTeamCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-project-team-result.json", projectTeamCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {projectTeamCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Project Team Clone Error:</strong> {projectTeamCloneError}
+                </div>
+              )}
+
+              {projectTeamCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    projectTeamCloneResult.result?.success
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Project Team Clone Result:</strong>{" "}
+                    {projectTeamCloneResult.result?.dryRun
+                      ? `Dry run found ${projectTeamCloneResult.result?.counts?.toAdd ?? 0} user(s) to add and ${projectTeamCloneResult.result?.counts?.rolesReadyToUpdate ?? 0} role(s) ready.`
+                      : projectTeamCloneResult.result?.success
+                        ? `Live clone added ${projectTeamCloneResult.result?.counts?.added ?? 0} user(s) and updated ${projectTeamCloneResult.result?.counts?.rolesUpdated ?? 0} role(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <CollapsibleJson value={projectTeamCloneResult} />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-fuchsia-500 mb-6 order-11">
               <h2 className="text-xl font-bold text-fuchsia-900 mb-3">Clone Photos</h2>
               <p className="text-sm text-gray-600 mb-4">
                 Clone Procore photo albums and images from one project to another. Live clone uploads image files in batches.

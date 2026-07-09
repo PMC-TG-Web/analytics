@@ -739,6 +739,18 @@ async function fetchTargetProductivityLineItems(params: {
   companyId: string;
   projectId: string;
 }) {
+  const fetchFirstNonEmpty = async (paths: string[]) => {
+    for (const path of paths) {
+      const rows = await procoreFetch({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        path,
+      }).then(unwrapArray).catch(() => []);
+      if (rows.length > 0) return rows;
+    }
+    return [] as UnknownRecord[];
+  };
+
   const out: ProductivityTargetLineItem[] = [];
 
   const commitmentContracts = unwrapArray(
@@ -752,19 +764,11 @@ async function fetchTargetProductivityLineItems(params: {
   for (const contract of commitmentContracts) {
     const contractId = readStr(contract.id);
     if (!contractId) continue;
-    const lineItems = unwrapArray(
-      await procoreFetch({
-        accessToken: params.accessToken,
-        companyId: params.companyId,
-        path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/commitment_contracts/${encodeURIComponent(contractId)}/line_items?view=extended&page=1&per_page=100`,
-      }).catch(async () =>
-        procoreFetch({
-          accessToken: params.accessToken,
-          companyId: params.companyId,
-          path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/commitment_contracts/${encodeURIComponent(contractId)}/line_items?page=1&per_page=100`,
-        }).catch(() => [])
-      )
-    );
+    const lineItems = await fetchFirstNonEmpty([
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/commitment_contracts/${encodeURIComponent(contractId)}/line_items?page=1&per_page=100`,
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/commitment_contracts/${encodeURIComponent(contractId)}/line_items?view=extended&page=1&per_page=100`,
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/commitment_contracts/${encodeURIComponent(contractId)}/line_items?page=1&per_page=100`,
+    ]);
     const contractSourceIds = targetContractSourceIds(contract);
     for (const [index, item] of lineItems.entries()) {
       const id = readNum(item.id);
@@ -786,25 +790,20 @@ async function fetchTargetProductivityLineItems(params: {
   }
 
   for (const contractPath of ["purchase_order_contracts", "work_order_contracts"] as const) {
-    const contracts = unwrapArray(
-      await procoreFetch({
-        accessToken: params.accessToken,
-        companyId: params.companyId,
-        path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=100`,
-      }).catch(() => [])
-    ).filter(isApprovedContract);
+    const contracts = (await fetchFirstNonEmpty([
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}?company_id=${encodeURIComponent(params.companyId)}&filters[status]=Approved&page=1&per_page=100`,
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=100`,
+    ])).filter(isApprovedContract);
 
     for (const contract of contracts) {
       const contractId = readStr(contract.id);
       if (!contractId) continue;
       const contractSourceIds = targetContractSourceIds(contract);
-      const lineItems = unwrapArray(
-        await procoreFetch({
-          accessToken: params.accessToken,
-          companyId: params.companyId,
-          path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}/${encodeURIComponent(contractId)}/line_items?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=200`,
-        }).catch(() => [])
-      );
+      const lineItems = await fetchFirstNonEmpty([
+        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}/${encodeURIComponent(contractId)}/line_items?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=200`,
+        `/rest/v1.0/${contractPath}/${encodeURIComponent(contractId)}/line_items?project_id=${encodeURIComponent(params.projectId)}&company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=200`,
+        `/rest/v1.0/${contractPath}/${encodeURIComponent(contractId)}/line_items?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=200`,
+      ]);
       for (const [index, item] of lineItems.entries()) {
         const id = readNum(item.id);
         if (id === undefined) continue;

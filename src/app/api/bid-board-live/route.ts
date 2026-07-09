@@ -7,6 +7,7 @@ const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
 
 type BidBoardLiveRow = {
   bid_board_id: string;
+  canonical_bid_board_id: string;
   procore_project_id: string | null;
   name: string | null;
   status: string | null;
@@ -69,9 +70,28 @@ export async function GET(request: NextRequest) {
 
     const rows = await prisma.$queryRawUnsafe<BidBoardLiveRow[]>(
       `
-        WITH ranked AS (
+        WITH normalized AS (
           SELECT
             bid_board_id,
+            CASE
+              WHEN bid_board_id IS NULL THEN NULL
+              WHEN strpos(bid_board_id, ':') > 0 THEN regexp_replace(bid_board_id, '^.*:', '')
+              ELSE bid_board_id
+            END AS canonical_bid_board_id,
+            procore_project_id,
+            name,
+            status,
+            status_raw,
+            customer,
+            synced_at
+          FROM procore_bid_board_live
+          WHERE bid_board_id IS NOT NULL
+            AND company_id = $3
+        ),
+        ranked AS (
+          SELECT
+            bid_board_id,
+            canonical_bid_board_id,
             procore_project_id,
             name,
             status,
@@ -79,15 +99,14 @@ export async function GET(request: NextRequest) {
             customer,
             synced_at,
             ROW_NUMBER() OVER (
-              PARTITION BY COALESCE(NULLIF(procore_project_id, ''), bid_board_id)
+              PARTITION BY canonical_bid_board_id
               ORDER BY synced_at DESC, bid_board_id DESC
             ) AS rn
-          FROM procore_bid_board_live
-          WHERE bid_board_id IS NOT NULL
-            AND company_id = $3
+          FROM normalized
         )
         SELECT
           bid_board_id,
+          canonical_bid_board_id,
           procore_project_id,
           name,
           status,
@@ -107,15 +126,26 @@ export async function GET(request: NextRequest) {
 
     const countRows = await prisma.$queryRawUnsafe<Array<{ total: number }>>(
       `
-        WITH ranked AS (
+        WITH normalized AS (
           SELECT
-            ROW_NUMBER() OVER (
-              PARTITION BY COALESCE(NULLIF(procore_project_id, ''), bid_board_id)
-              ORDER BY synced_at DESC, bid_board_id DESC
-            ) AS rn
+            CASE
+              WHEN bid_board_id IS NULL THEN NULL
+              WHEN strpos(bid_board_id, ':') > 0 THEN regexp_replace(bid_board_id, '^.*:', '')
+              ELSE bid_board_id
+            END AS canonical_bid_board_id,
+            bid_board_id,
+            synced_at
           FROM procore_bid_board_live
           WHERE bid_board_id IS NOT NULL
             AND company_id = $1
+        ),
+        ranked AS (
+          SELECT
+            ROW_NUMBER() OVER (
+              PARTITION BY canonical_bid_board_id
+              ORDER BY synced_at DESC, bid_board_id DESC
+            ) AS rn
+          FROM normalized
         )
         SELECT COUNT(*)::int AS total
         FROM ranked
@@ -129,8 +159,8 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
     const data = rows.map((row) => ({
-      id: row.bid_board_id,
-      bidBoardId: row.bid_board_id,
+      id: row.canonical_bid_board_id || row.bid_board_id,
+      bidBoardId: row.canonical_bid_board_id || row.bid_board_id,
       procoreId: row.procore_project_id,
       projectName: row.name,
       status: normalizeBidBoardStatus(row.status) || normalizeBidBoardStatus(row.status_raw) || row.status,

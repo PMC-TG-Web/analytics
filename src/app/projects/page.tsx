@@ -496,7 +496,7 @@ export default function ProjectsPage() {
         registerRowIndex(newRow, mergedProjectItems.length - 1);
       }
 
-      setRows(mergedProjectItems);
+      setRows(collapseProjectRows(mergedProjectItems));
       setChangeOrderSource((changeOrdersPayload.source || "").toString());
       setLastRefreshedAt(new Date().toLocaleString());
     } catch (err) {
@@ -1010,4 +1010,92 @@ function normalizeProcoreProjectId(value: string): string | null {
   if (!text) return null;
   if (text.includes(":")) return null;
   return text;
+}
+
+function toEpoch(value: string | null | undefined): number {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pickText(primary?: string | null, fallback?: string | null): string | null {
+  const a = String(primary || "").trim();
+  if (a) return a;
+  const b = String(fallback || "").trim();
+  return b || null;
+}
+
+function pickMaxNumber(a?: number | null, b?: number | null): number {
+  return Math.max(Number(a || 0), Number(b || 0));
+}
+
+function mergeRowsByPreference(first: ProjectRow, second: ProjectRow): ProjectRow {
+  const firstTs = toEpoch(first.syncedAt);
+  const secondTs = toEpoch(second.syncedAt);
+  const newer = secondTs >= firstTs ? second : first;
+  const older = newer === first ? second : first;
+
+  return {
+    ...older,
+    ...newer,
+    id: pickText(newer.id, older.id) || "",
+    projectName: pickText(newer.projectName, older.projectName),
+    projectNumber: pickText(newer.projectNumber, older.projectNumber),
+    customer: pickText(newer.customer, older.customer),
+    status: pickText(newer.status, older.status),
+    statusRaw: pickText(newer.statusRaw, older.statusRaw),
+    projectStageName: pickText(newer.projectStageName, older.projectStageName),
+    projectStageCategory: pickText(newer.projectStageCategory, older.projectStageCategory),
+    bidBoardStatus: pickText(newer.bidBoardStatus, older.bidBoardStatus),
+    bidBoardId: pickText(normalizeBidBoardId(newer.bidBoardId || ""), normalizeBidBoardId(older.bidBoardId || "")),
+    procoreId: pickText(normalizeProcoreProjectId(newer.procoreId || ""), normalizeProcoreProjectId(older.procoreId || "")),
+    syncedAt: pickText(newer.syncedAt, older.syncedAt),
+    budgetUoms: pickText(newer.budgetUoms, older.budgetUoms) || "",
+    budgetAmount: pickMaxNumber(newer.budgetAmount, older.budgetAmount),
+    budgetLineItemCount: pickMaxNumber(newer.budgetLineItemCount, older.budgetLineItemCount),
+    budgetSyncedAt: pickText(newer.budgetSyncedAt, older.budgetSyncedAt),
+    changeOrderCount: pickMaxNumber(newer.changeOrderCount, older.changeOrderCount),
+    changeOrderValue: pickMaxNumber(newer.changeOrderValue, older.changeOrderValue),
+    approvedChangeOrderValue: pickMaxNumber(newer.approvedChangeOrderValue, older.approvedChangeOrderValue),
+    changeOrderStatuses: pickText(newer.changeOrderStatuses, older.changeOrderStatuses) || "",
+    changeOrderSyncedAt: pickText(newer.changeOrderSyncedAt, older.changeOrderSyncedAt),
+    bidCount: pickMaxNumber(newer.bidCount, older.bidCount),
+    bidFormCount: pickMaxNumber(newer.bidFormCount, older.bidFormCount),
+    bidPackageCount: pickMaxNumber(newer.bidPackageCount, older.bidPackageCount),
+    bidStatuses: pickText(newer.bidStatuses, older.bidStatuses) || "",
+    estimateProposalCount: pickMaxNumber(newer.estimateProposalCount, older.estimateProposalCount),
+    estimateLineItemCount: pickMaxNumber(newer.estimateLineItemCount, older.estimateLineItemCount),
+    estimateProposalIds: mergeCommaSeparated(newer.estimateProposalIds || "", older.estimateProposalIds || ""),
+    estimateProposalNames: mergeCommaSeparated(newer.estimateProposalNames || "", older.estimateProposalNames || ""),
+  };
+}
+
+function getIdentityKey(row: ProjectRow): string {
+  const procoreId = normalizeProcoreProjectId(row.procoreId || row.id || "");
+  if (procoreId) return `p:${procoreId}`;
+
+  const bidBoardId = normalizeBidBoardId(row.bidBoardId || "");
+  if (bidBoardId) return `b:${bidBoardId}`;
+
+  const nameCustomer = normalizeJoinKey(row.projectName, row.customer);
+  if (nameCustomer) return `n:${nameCustomer}`;
+
+  return `id:${String(row.id || "")}`;
+}
+
+function collapseProjectRows(input: ProjectRow[]): ProjectRow[] {
+  const mergedByKey = new Map<string, ProjectRow>();
+
+  for (const row of input) {
+    const key = getIdentityKey(row);
+    const existing = mergedByKey.get(key);
+    if (!existing) {
+      mergedByKey.set(key, row);
+      continue;
+    }
+    mergedByKey.set(key, mergeRowsByPreference(existing, row));
+  }
+
+  return Array.from(mergedByKey.values());
 }

@@ -734,6 +734,11 @@ function isApprovedContract(contract: UnknownRecord) {
   return !status || ["approved", "processing", "submitted", "executed", "complete", "active", "open"].includes(status);
 }
 
+function preferApprovedContracts(contracts: UnknownRecord[]) {
+  const approved = contracts.filter(isApprovedContract);
+  return approved.length > 0 ? approved : contracts;
+}
+
 async function fetchTargetProductivityLineItems(params: {
   accessToken: string;
   companyId: string;
@@ -753,13 +758,14 @@ async function fetchTargetProductivityLineItems(params: {
 
   const out: ProductivityTargetLineItem[] = [];
 
-  const commitmentContracts = unwrapArray(
+  const commitmentContractRows = unwrapArray(
     await procoreFetch({
       accessToken: params.accessToken,
       companyId: params.companyId,
       path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/commitment_contracts?page=1&per_page=100`,
     }).catch(() => [])
-  ).filter(isApprovedContract);
+  );
+  const commitmentContracts = preferApprovedContracts(commitmentContractRows);
 
   for (const contract of commitmentContracts) {
     const contractId = readStr(contract.id);
@@ -790,10 +796,11 @@ async function fetchTargetProductivityLineItems(params: {
   }
 
   for (const contractPath of ["purchase_order_contracts", "work_order_contracts"] as const) {
-    const contracts = (await fetchFirstNonEmpty([
+    const contractRows = await fetchFirstNonEmpty([
       `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}?company_id=${encodeURIComponent(params.companyId)}&filters[status]=Approved&page=1&per_page=100`,
       `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/${contractPath}?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=100`,
-    ])).filter(isApprovedContract);
+    ]);
+    const contracts = preferApprovedContracts(contractRows);
 
     for (const contract of contracts) {
       const contractId = readStr(contract.id);

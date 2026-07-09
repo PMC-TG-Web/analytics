@@ -272,12 +272,33 @@ export async function GET(request: NextRequest) {
             FROM bid_board_ranked
             WHERE rn = 1
           ),
+          bid_board_unmatched AS (
+            SELECT b.*
+            FROM bid_board_clean b
+            LEFT JOIN pmc_projects_clean p
+              ON p.company_id = b.company_id
+             AND (
+               (
+                 NULLIF(BTRIM(COALESCE(b.project_number, '')), '') IS NOT NULL
+                 AND NULLIF(BTRIM(COALESCE(p.project_number, '')), '') IS NOT NULL
+                 AND LOWER(BTRIM(b.project_number)) = LOWER(BTRIM(p.project_number))
+               )
+               OR (
+                 (
+                   NULLIF(BTRIM(COALESCE(b.project_number, '')), '') IS NULL
+                   OR NULLIF(BTRIM(COALESCE(p.project_number, '')), '') IS NULL
+                 )
+                 AND LOWER(BTRIM(COALESCE(b.project_name, ''))) = LOWER(BTRIM(COALESCE(p.project_name, '')))
+               )
+             )
+            WHERE p.procore_project_id IS NULL
+          ),
           clean_projects AS (
             SELECT * FROM pmc_projects_clean
 
             UNION ALL
 
-            SELECT * FROM bid_board_clean
+            SELECT * FROM bid_board_unmatched
           ),
           budget_totals AS (
             SELECT

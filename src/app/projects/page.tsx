@@ -1086,15 +1086,74 @@ function getIdentityKey(row: ProjectRow): string {
 
 function collapseProjectRows(input: ProjectRow[]): ProjectRow[] {
   const mergedByKey = new Map<string, ProjectRow>();
+  const aliasToKey = new Map<string, string>();
+
+  const getSignals = (row: ProjectRow) => {
+    const procoreKey = normalizeProcoreProjectId(row.procoreId || row.id || "");
+    const bidBoardKey = normalizeBidBoardId(row.bidBoardId || "");
+    const nameKey = normalizeJoinKey(row.projectName, row.customer);
+    return {
+      procoreKey,
+      bidBoardKey,
+      nameKey,
+      hasStrongId: Boolean(procoreKey || bidBoardKey),
+    };
+  };
+
+  const registerAliases = (canonicalKey: string, row: ProjectRow) => {
+    const { procoreKey, bidBoardKey, nameKey } = getSignals(row);
+    if (procoreKey) aliasToKey.set(`p:${procoreKey}`, canonicalKey);
+    if (bidBoardKey) aliasToKey.set(`b:${bidBoardKey}`, canonicalKey);
+    if (nameKey) aliasToKey.set(`n:${nameKey}`, canonicalKey);
+  };
+
+  const hasConflictingStrongIds = (a: ProjectRow, b: ProjectRow) => {
+    const sa = getSignals(a);
+    const sb = getSignals(b);
+
+    if (!sa.hasStrongId || !sb.hasStrongId) return false;
+
+    if (sa.procoreKey && sb.procoreKey && sa.procoreKey !== sb.procoreKey) return true;
+    if (sa.bidBoardKey && sb.bidBoardKey && sa.bidBoardKey !== sb.bidBoardKey) return true;
+
+    return false;
+  };
 
   for (const row of input) {
-    const key = getIdentityKey(row);
-    const existing = mergedByKey.get(key);
-    if (!existing) {
-      mergedByKey.set(key, row);
+    const { procoreKey, bidBoardKey, nameKey } = getSignals(row);
+
+    const directMatchKey =
+      (procoreKey ? aliasToKey.get(`p:${procoreKey}`) : undefined) ||
+      (bidBoardKey ? aliasToKey.get(`b:${bidBoardKey}`) : undefined);
+
+    const nameMatchKey = nameKey ? aliasToKey.get(`n:${nameKey}`) : undefined;
+    const chosenKey = directMatchKey || nameMatchKey;
+
+    if (!chosenKey) {
+      const newKey = getIdentityKey(row);
+      mergedByKey.set(newKey, row);
+      registerAliases(newKey, row);
       continue;
     }
-    mergedByKey.set(key, mergeRowsByPreference(existing, row));
+
+    const existing = mergedByKey.get(chosenKey);
+    if (!existing) {
+      mergedByKey.set(chosenKey, row);
+      registerAliases(chosenKey, row);
+      continue;
+    }
+
+    // Do not merge two rows that both have strong but conflicting identities.
+    if (nameMatchKey && !directMatchKey && hasConflictingStrongIds(existing, row)) {
+      const newKey = getIdentityKey(row);
+      mergedByKey.set(newKey, row);
+      registerAliases(newKey, row);
+      continue;
+    }
+
+    const merged = mergeRowsByPreference(existing, row);
+    mergedByKey.set(chosenKey, merged);
+    registerAliases(chosenKey, merged);
   }
 
   return Array.from(mergedByKey.values());

@@ -1,0 +1,116 @@
+{
+  "totalSegments": 22,
+  "totalLines": 4226,
+  "segments": [
+    {
+      "name": "REST Command Runner",
+      "type": "visible",
+      "lines": 78
+    },
+    {
+      "name": "Drawing Sets Transfer",
+      "type": "hidden",
+      "lines": 126
+    },
+    {
+      "name": "Drawings Migration Inventory",
+      "type": "visible",
+      "lines": 375
+    },
+    {
+      "name": "Estimating Plans Probe",
+      "type": "hidden",
+      "lines": 147
+    },
+    {
+      "name": "Clone Correspondences",
+      "type": "visible",
+      "lines": 132
+    },
+    {
+      "name": "Clone Submittals",
+      "type": "visible",
+      "lines": 175
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 1
+    },
+    {
+      "name": "Clone Photos",
+      "type": "visible",
+      "lines": 188
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 1
+    },
+    {
+      "name": "Clone Change Events",
+      "type": "visible",
+      "lines": 176
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 1
+    },
+    {
+      "name": "Clone Time and Material",
+      "type": "visible",
+      "lines": 163
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 79
+    },
+    {
+      "name": "Clone Daily Productivity and Timecards",
+      "type": "visible",
+      "lines": 262
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 953
+    },
+    {
+      "name": "Bid Board Project Import (Step 1)",
+      "type": "visible",
+      "lines": 74
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 475
+    },
+    {
+      "name": "Clone Estimate or Change Order",
+      "type": "visible",
+      "lines": 302
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 1
+    },
+    {
+      "name": "Clone Commitments",
+      "type": "visible",
+      "lines": 304
+    },
+    {
+      "name": "",
+      "type": "hidden",
+      "lines": 1
+    },
+    {
+      "name": "Clone Prime Contracts",
+      "type": "visible",
+      "lines": 212
+    }
+  ]
+}

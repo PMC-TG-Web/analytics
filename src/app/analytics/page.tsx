@@ -5,6 +5,7 @@ import Navigation from "@/components/Navigation";
 
 type PersistedLineItem = {
   id: string;
+  actualsKey?: string | null;
   projectName: string | null;
   customerName: string | null;
   projectId: string;
@@ -19,7 +20,11 @@ type PersistedLineItem = {
   totalCost?: number | null;
   totalSales?: number | null;
   actualTimecardHours?: number;
+  actualTimecardFirstDate?: string | null;
+  actualTimecardLastDate?: string | null;
   actualProductivityQty?: number;
+  actualProductivityFirstDate?: string | null;
+  actualProductivityLastDate?: string | null;
   syncedAt: string;
 };
 
@@ -81,6 +86,7 @@ type RankedMetric = {
 };
 
 type DateGranularity = "day" | "week" | "month";
+type FieldActualSource = "timecards" | "productivity";
 
 type FilterPreset = {
   id: string;
@@ -101,6 +107,23 @@ type TrendPoint = {
   cost: number;
   actualUnits: number;
   runningCost: number;
+};
+
+type ComparisonRow = {
+  key: string;
+  projectName: string;
+  customerName: string;
+  actualSource: FieldActualSource;
+  lineItems: number;
+  budgetQty: number;
+  plannedHours: number;
+  budgetAmount: number;
+  originalBudgetAmount: number;
+  completedBudgetAmount: number;
+  actualUnits: number;
+  runningCost: number;
+  isMargin: boolean;
+  syncedAt: string;
 };
 
 const DEFAULT_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
@@ -133,10 +156,16 @@ function formatNumber(value: number): string {
   });
 }
 
+function getFieldActualSource(row: PersistedLineItem): FieldActualSource {
+  return isHourBasedUom(row.uom) ? "timecards" : "productivity";
+}
+
+function formatFieldActualSource(source: FieldActualSource): string {
+  return source === "timecards" ? "Timecards" : "Productivity";
+}
+
 function getActualUnits(row: PersistedLineItem): number {
-  const normalizedUom = String(row.uom || "").trim().toLowerCase();
-  const isHourUom = /\b(hours?|hrs?|h)\b/.test(normalizedUom);
-  if (isHourUom) return Number(row.actualTimecardHours || 0);
+  if (getFieldActualSource(row) === "timecards") return Number(row.actualTimecardHours || 0);
   return Number(row.actualProductivityQty || 0);
 }
 
@@ -157,17 +186,44 @@ function getRunningCost(row: PersistedLineItem): number {
   return actualUnits * unitCost;
 }
 
+function getFieldFirstDate(row: PersistedLineItem): string | null {
+  if (getFieldActualSource(row) === "timecards") return row.actualTimecardFirstDate || null;
+  return row.actualProductivityFirstDate || null;
+}
+
+function getFieldLastDate(row: PersistedLineItem): string | null {
+  if (getFieldActualSource(row) === "timecards") return row.actualTimecardLastDate || null;
+  return row.actualProductivityLastDate || null;
+}
+
+function getComparisonKey(row: PersistedLineItem): string {
+  const source = getFieldActualSource(row);
+  const actualsKey = String(row.actualsKey || "").trim();
+  if (actualsKey) return `${actualsKey}::${source}`;
+
+  const fallbackCostCode = String(row.costCode || row.id || "").trim().toUpperCase();
+  return `${row.projectId}::${fallbackCostCode}::${source}`;
+}
+
+function getLaterDateString(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+  if (Number.isNaN(aTime)) return b;
+  if (Number.isNaN(bTime)) return a;
+  return bTime > aTime ? b : a;
+}
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }
 
-function getProductionCompletionRatio(row: PersistedLineItem): number {
-  const quantity = Number(row.quantity || 0);
-  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
-
-  const actualUnits = getActualUnits(row);
-  return clamp01(actualUnits / quantity);
+function getComparisonCompletionRatio(budgetQty: number, actualUnits: number): number {
+  if (!Number.isFinite(budgetQty) || budgetQty <= 0) return 0;
+  return clamp01(actualUnits / budgetQty);
 }
 
 function getEffectiveUnitCost(row: PersistedLineItem): number {
@@ -398,6 +454,63 @@ export default function AnalyticsPage() {
     });
   }, [rows, projectFilter, customerFilter, dateFrom, dateTo, search]);
 
+  const comparisonRows = useMemo(() => {
+    const grouped = new Map<string, ComparisonRow & { unitCostFallbackTotal: number }>();
+
+    for (const row of filteredRows) {
+      const key = getComparisonKey(row);
+      const budgetQty = Number(row.quantity || 0);
+      const budgetAmount = Number(row.totalSales || 0);
+      const originalBudgetAmount = Number(row.totalCost || 0);
+      const actualUnits = getActualUnits(row);
+      const existing =
+        grouped.get(key) ||
+        {
+          key,
+          projectName: String(row.projectName || "Unassigned Project").trim(),
+          customerName: String(row.customerName || "Unassigned Customer").trim(),
+          actualSource: getFieldActualSource(row),
+          lineItems: 0,
+          budgetQty: 0,
+          plannedHours: 0,
+          budgetAmount: 0,
+          originalBudgetAmount: 0,
+          completedBudgetAmount: 0,
+          actualUnits: 0,
+          runningCost: 0,
+          isMargin: false,
+          syncedAt: "",
+          unitCostFallbackTotal: 0,
+        };
+
+      existing.lineItems += 1;
+      existing.budgetQty += budgetQty;
+      existing.plannedHours += getPlannedHours(row);
+      existing.budgetAmount += budgetAmount;
+      existing.originalBudgetAmount += originalBudgetAmount;
+      existing.actualUnits = Math.max(existing.actualUnits, actualUnits);
+      existing.isMargin = existing.isMargin || isMarginRevenueLine(row);
+      existing.syncedAt = getLaterDateString(existing.syncedAt, row.syncedAt || "");
+      existing.unitCostFallbackTotal += getEffectiveUnitCost(row);
+      grouped.set(key, existing);
+    }
+
+    return Array.from(grouped.values()).map(({ unitCostFallbackTotal, ...row }) => {
+      const effectiveUnitCost =
+        row.budgetQty > 0
+          ? row.budgetAmount / row.budgetQty
+          : row.lineItems > 0
+            ? unitCostFallbackTotal / row.lineItems
+            : 0;
+
+      return {
+        ...row,
+        completedBudgetAmount: row.budgetAmount * getComparisonCompletionRatio(row.budgetQty, row.actualUnits),
+        runningCost: row.actualUnits * effectiveUnitCost,
+      };
+    });
+  }, [filteredRows]);
+
   const analytics = useMemo(() => {
     let budgetAmountTotal = 0;
     let originalBudgetTotal = 0;
@@ -415,29 +528,32 @@ export default function AnalyticsPage() {
     const byProject = new Map<string, RankedMetric>();
     const byCustomer = new Map<string, RankedMetric>();
 
-    for (const row of filteredRows) {
-      const budgetAmount = Number(row.totalSales || 0);
-      const originalBudget = Number(row.totalCost || 0);
-      const actualUnits = getActualUnits(row);
-      const runningCost = getRunningCost(row);
-      const isMargin = isMarginRevenueLine(row);
-      const projectName = String(row.projectName || "Unassigned Project").trim();
-      const customerName = String(row.customerName || "Unassigned Customer").trim();
+    for (const row of comparisonRows) {
+      const budgetAmount = row.budgetAmount;
+      const originalBudget = row.originalBudgetAmount;
+      const actualUnits = row.actualUnits;
+      const runningCost = row.runningCost;
+      const isMargin = row.isMargin;
+      const projectName = row.projectName;
+      const customerName = row.customerName;
 
       budgetAmountTotal += budgetAmount;
       originalBudgetTotal += originalBudget;
       actualUnitsTotal += actualUnits;
-      totalPlannedHours += getPlannedHours(row);
+      totalPlannedHours += row.plannedHours;
       if (isMargin) {
         plannedOpRevenueTotal += budgetAmount;
       } else {
         operationalRunningCostTotal += runningCost;
         operationalBudgetAmountTotal += budgetAmount;
         operationalOriginalBudgetTotal += originalBudget;
-        operationalCompletedBudgetAmountTotal += budgetAmount * getProductionCompletionRatio(row);
+        operationalCompletedBudgetAmountTotal += row.completedBudgetAmount;
       }
-      totalTimecardHours += Number(row.actualTimecardHours || 0);
-      totalProductivityQty += Number(row.actualProductivityQty || 0);
+      if (row.actualSource === "timecards") {
+        totalTimecardHours += actualUnits;
+      } else {
+        totalProductivityQty += actualUnits;
+      }
       projectSet.add(projectName);
       customerSet.add(customerName);
 
@@ -448,7 +564,7 @@ export default function AnalyticsPage() {
         sales: 0,
         actualUnits: 0,
       };
-      projectMetric.lineItems += 1;
+      projectMetric.lineItems += row.lineItems;
       projectMetric.sales += budgetAmount;
       projectMetric.actualUnits += actualUnits;
       byProject.set(projectName, projectMetric);
@@ -460,7 +576,7 @@ export default function AnalyticsPage() {
         sales: 0,
         actualUnits: 0,
       };
-      customerMetric.lineItems += 1;
+      customerMetric.lineItems += row.lineItems;
       customerMetric.sales += budgetAmount;
       customerMetric.actualUnits += actualUnits;
       byCustomer.set(customerName, customerMetric);
@@ -518,7 +634,7 @@ export default function AnalyticsPage() {
       topProjects,
       topCustomers,
     };
-  }, [filteredRows, filteredProjectSummaries]);
+  }, [filteredRows.length, filteredProjectSummaries, comparisonRows]);
 
   const projectTotals = useMemo(() => {
     return filteredProjectSummaries.reduce(
@@ -569,7 +685,7 @@ export default function AnalyticsPage() {
   const trendData = useMemo(() => {
     const grouped = new Map<string, TrendPoint>();
 
-    for (const row of filteredRows) {
+    for (const row of comparisonRows) {
       const rawDate = toDateKey(row.syncedAt);
       if (!rawDate) continue;
 
@@ -592,16 +708,16 @@ export default function AnalyticsPage() {
         runningCost: 0,
       };
 
-      current.lineItems += 1;
-      current.sales += Number(row.totalSales || 0);
-      current.cost += Number(row.totalCost || 0);
-      current.actualUnits += getActualUnits(row);
-      current.runningCost += getRunningCost(row);
+      current.lineItems += row.lineItems;
+      current.sales += row.budgetAmount;
+      current.cost += row.originalBudgetAmount;
+      current.actualUnits += row.actualUnits;
+      current.runningCost += row.runningCost;
       grouped.set(bucketKey, current);
     }
 
     return Array.from(grouped.values()).sort((a, b) => a.key.localeCompare(b.key));
-  }, [filteredRows, dateGranularity]);
+  }, [comparisonRows, dateGranularity]);
 
   const applyPreset = useCallback(
     (presetId: string) => {
@@ -666,9 +782,12 @@ export default function AnalyticsPage() {
       "costCode",
       "costCodeName",
       "uom",
+      "fieldSource",
+      "fieldFirstDate",
+      "fieldLastDate",
       "effectiveUnitCost",
       "budgetQty",
-      "actualUnits",
+      "fieldUsedUnits",
       "qtyVariance",
       "runningCost",
       "budgetAmount",
@@ -685,6 +804,9 @@ export default function AnalyticsPage() {
           row.costCode || "",
           row.costCodeName || "",
           row.uom || "",
+          formatFieldActualSource(getFieldActualSource(row)),
+          toDateKey(getFieldFirstDate(row)),
+          toDateKey(getFieldLastDate(row)),
           getEffectiveUnitCost(row).toFixed(2),
           Number(row.quantity || 0).toFixed(2),
           getActualUnits(row).toFixed(1),
@@ -752,7 +874,7 @@ export default function AnalyticsPage() {
       "effectiveUnitCost",
       "lines",
       "budgetQty",
-      "actualUnits",
+      "fieldUsedUnits",
       "qtyVariance",
       "runningCost",
       "budgetAmount",
@@ -852,6 +974,8 @@ export default function AnalyticsPage() {
         case "costCode":      av = (a.costCode || "").toLowerCase(); bv = (b.costCode || "").toLowerCase(); break;
         case "costCodeName":  av = (a.costCodeName || "").toLowerCase(); bv = (b.costCodeName || "").toLowerCase(); break;
         case "uom":           av = (a.uom || "").toLowerCase(); bv = (b.uom || "").toLowerCase(); break;
+        case "fieldSource":   av = formatFieldActualSource(getFieldActualSource(a)); bv = formatFieldActualSource(getFieldActualSource(b)); break;
+        case "fieldLastDate": av = getFieldLastDate(a) || ""; bv = getFieldLastDate(b) || ""; break;
         case "quantity":      av = Number(a.quantity || 0); bv = Number(b.quantity || 0); break;
         case "unitCost":      av = getEffectiveUnitCost(a); bv = getEffectiveUnitCost(b); break;
         case "actualUnits":   av = getActualUnits(a); bv = getActualUnits(b); break;
@@ -869,7 +993,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <Navigation currentPage="reporting" />
+      <Navigation currentPage="analytics" />
 
       <div className="mx-auto w-full max-w-[1700px] px-3 py-8 xl:px-6">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1051,18 +1175,18 @@ export default function AnalyticsPage() {
           <MetricCard label="Customers" value={formatNumber(analytics.customers)} tone="amber" />
           <MetricCard label="Estimate Lines" value={formatNumber(projectTotals.estimateLineItems)} tone="blue" />
           <MetricCard label="Estimate Proposals" value={formatNumber(projectTotals.estimateProposals)} tone="indigo" />
-          <MetricCard label="Actual Units" value={formatNumber(analytics.actualUnitsTotal)} tone="emerald" />
+          <MetricCard label="Field Used Units" value={formatNumber(analytics.actualUnitsTotal)} tone="emerald" />
           <MetricCard label="Total Planned Hours" value={formatNumber(analytics.totalPlannedHours)} tone="teal" />
           <MetricCard label="Operational Running Cost" value={formatCurrency(analytics.runningCostTotal)} tone="slate" />
           <MetricCard label="Operational Budget Amount" value={formatCurrency(analytics.operationalBudgetAmountTotal)} tone="rose" />
           <MetricCard label="Planned O&P Revenue" value={formatCurrency(analytics.plannedOpRevenueTotal)} tone="violet" />
-          <MetricCard label="Actual O&P Revenue" value={formatCurrency(analytics.actualOpRevenueTotal)} tone="indigo" />
+          <MetricCard label="Earned O&P Revenue" value={formatCurrency(analytics.actualOpRevenueTotal)} tone="indigo" />
           <MetricCard label="Spent %" value={`${analytics.spentPct.toFixed(1)}%`} tone="indigo" />
           <MetricCard label="Remaining %" value={`${analytics.remainingPct.toFixed(1)}%`} tone="teal" />
           <MetricCard label="Variance %" value={`${analytics.variancePct.toFixed(1)}%`} tone="amber" />
           <MetricCard label="Budget Remaining" value={formatCurrency(analytics.budgetRemaining)} tone="blue" />
-          <MetricCard label="Total TC Hours" value={formatNumber(analytics.totalTimecardHours)} tone="indigo" />
-          <MetricCard label="Total Prod Qty" value={formatNumber(analytics.totalProductivityQty)} tone="violet" />
+          <MetricCard label="Timecard Hours" value={formatNumber(analytics.totalTimecardHours)} tone="indigo" />
+          <MetricCard label="Productivity Qty" value={formatNumber(analytics.totalProductivityQty)} tone="violet" />
           <MetricCard label="Original Budget" value={formatCurrency(analytics.costTotal)} tone="blue" />
           <MetricCard label="All Budget Amount" value={formatCurrency(analytics.budgetAmountTotal)} tone="slate" />
         </section>
@@ -1135,12 +1259,12 @@ export default function AnalyticsPage() {
           <RankedListCard
             title="Top Projects by Budget Amount"
             rows={analytics.topProjects}
-            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} units`}
+            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} field units`}
           />
           <RankedListCard
             title="Top Customers by Budget Amount"
             rows={analytics.topCustomers}
-            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} units`}
+            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} field units`}
           />
         </section>
 
@@ -1163,9 +1287,11 @@ export default function AnalyticsPage() {
                       ["costCode", "Cost Code"],
                       ["costCodeName", "Cost Code Name"],
                       ["uom", "UOM"],
+                      ["fieldSource", "Field Source"],
+                      ["fieldLastDate", "Last Used"],
                       ["unitCost", "Unit Cost (Eff)"],
                       ["quantity", "Budget Qty"],
-                      ["actualUnits", "Actual Units"],
+                      ["actualUnits", "Field Used"],
                       ["qtyVariance", "Qty Variance"],
                       ["runningCost", "Running Cost"],
                       ["amount", "Budget Amount"],
@@ -1188,7 +1314,7 @@ export default function AnalyticsPage() {
               <tbody>
                 {!loading && previewRows.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan={14} className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
                       No rows match these filters.
                     </td>
                   </tr>
@@ -1204,6 +1330,8 @@ export default function AnalyticsPage() {
                       <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
                       <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
                       <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{formatFieldActualSource(getFieldActualSource(row))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{toDateKey(getFieldLastDate(row)) || "-"}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
@@ -1217,7 +1345,7 @@ export default function AnalyticsPage() {
               {!loading && filteredRows.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
-                    <td colSpan={6} className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">
+                    <td colSpan={8} className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">
                       Totals (Filtered)
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
@@ -1265,7 +1393,7 @@ export default function AnalyticsPage() {
                   <th className="py-2 pr-3 pl-4">Category</th>
                   <th className="py-2 pr-3 text-right">Lines</th>
                   <th className="py-2 pr-3 text-right">Budget Qty</th>
-                  <th className="py-2 pr-3 text-right">Actual Units</th>
+                  <th className="py-2 pr-3 text-right">Field Used</th>
                   <th className="py-2 pr-3 text-right">Qty Variance</th>
                   <th className="py-2 pr-3 text-right">Running Cost</th>
                   <th className="py-2 pr-4 text-right">Budget Amount</th>
@@ -1382,7 +1510,7 @@ function TrendChartCard({ trendData, granularity }: { trendData: TrendPoint[]; g
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-black text-slate-700">{row.label}</p>
                 <p className="text-[11px] font-semibold text-slate-600">
-                  {row.lineItems.toLocaleString()} items | {formatNumber(row.actualUnits)} units
+                  {row.lineItems.toLocaleString()} items | {formatNumber(row.actualUnits)} field units
                 </p>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">

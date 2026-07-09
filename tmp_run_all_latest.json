@@ -1,0 +1,909 @@
+{
+  "success": false,
+  "companyId": "598134325805519",
+  "elapsedMs": 949333,
+  "steps": [
+    {
+      "step": "all-projects",
+      "ok": true,
+      "status": 200,
+      "summary": {
+        "success": true,
+        "tokenSource": "client_credentials",
+        "bidBoardStatusFilter": "All",
+        "summary": {
+          "v1Synced": 36,
+          "bidBoardSynced": 73,
+          "pmcProjectsSynced": 36,
+          "pmcBidBoardProjectsSynced": 73,
+          "projectStagesSynced": 5,
+          "stagingSynced": 71,
+          "stagingBidBoardStatusUpdated": 35,
+          "stagingBidBoardStatusSkipped": 38,
+          "errors": []
+        },
+        "primeProjectBackfill": {
+          "enabled": false,
+          "truthMode": false,
+          "seedFromFile": false,
+          "seedFileIds": 0,
+          "sourceCounts": {
+            "distinctByProjectId": 0,
+            "distinctByProjectProcoreId": 0,
+            "distinctCoalesced": 0
+          },
+          "idsFromPrimeContracts": 0,
+          "requestedById": 0,
+          "missingFromList": 0,
+          "fetchedById": 0,
+          "fetchErrors": 0,
+          "failedById": []
+        }
+      }
+    },
+    {
+      "step": "prime-contracts",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "success": false,
+        "error": "\nInvalid `prisma.$executeRawUnsafe()` invocation:\n\n\nRaw query failed. Code: `42501`. Message: `ERROR: permission denied for schema public`"
+      }
+    },
+    {
+      "step": "change-order-packages",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "success": false,
+        "error": "Failed to sync change order packages",
+        "details": "\nInvalid `prisma.$executeRawUnsafe()` invocation:\n\n\nRaw query failed. Code: `42501`. Message: `ERROR: permission denied for schema public`"
+      }
+    },
+    {
+      "step": "commitment-contracts",
+      "ok": true,
+      "status": 200,
+      "summary": {
+        "success": true,
+        "companyId": "598134325805519",
+        "totalProjectsChecked": 36,
+        "projectsWithContracts": 23,
+        "totalContractsFetched": 126,
+        "totalContractsSaved": 126,
+        "totalProjectsCreated": 0,
+        "activeProjects": [
+          {
+            "projectId": "598134326663521",
+            "projectNumber": "2603 - DO",
+            "projectName": "DART Office",
+            "contractCount": 2,
+            "savedCount": 2,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqv1xu69003ozsf5prmvrvde"
+          },
+          {
+            "projectId": "598134326663551",
+            "projectNumber": "2604 - GP",
+            "projectName": "Gables 826 Patio",
+            "contractCount": 2,
+            "savedCount": 2,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqv2cjx7004czsf536qbndz4"
+          },
+          {
+            "projectId": "598134326664197",
+            "projectNumber": "2510 - DCC",
+            "projectName": "Dutch Cousins Campground",
+            "contractCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqzhf561000c0be1putpj1n5"
+          },
+          {
+            "projectId": "598134326662286",
+            "projectNumber": "2602 - GI",
+            "projectName": "Giant #6459",
+            "contractCount": 5,
+            "savedCount": 5,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq87a44e002014dx8ud494z3"
+          },
+          {
+            "projectId": "598134326661426",
+            "projectNumber": "2601 - GSQ",
+            "projectName": "Goods Store Quarryville",
+            "contractCount": 5,
+            "savedCount": 5,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtew4g4001m3zcafzje4pa5"
+          },
+          {
+            "projectId": "598134326674594",
+            "projectNumber": "HB - 24 - 001",
+            "projectName": "Hearthside Building",
+            "contractCount": 3,
+            "savedCount": 3,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmr9idp25000369dx87fkfn5h"
+          },
+          {
+            "projectId": "598134326669592",
+            "projectNumber": "2604 - HRMC",
+            "projectName": "Hidden River Mennonite Church Phase 1",
+            "contractCount": 2,
+            "savedCount": 2,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmr1y2s6900032uf9k1z9po4x"
+          },
+          {
+            "projectId": "598134326634438",
+            "projectNumber": "2508 - GI",
+            "projectName": "Giant #6582",
+            "contractCount": 18,
+            "savedCount": 18,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq0zmid80010ytdvlojmls43"
+          },
+          {
+            "projectId": "598134326649722",
+            "projectNumber": "2506-LA",
+            "projectName": "Lancaster Archery",
+            "contractCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqhzeijm0003yxf9wt0gwrjw"
+          },
+          {
+            "projectId": "598134326663132",
+            "projectNumber": "2601-MW",
+            "projectName": "Melvin Weaver 2024",
+            "contractCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqus25k600031jdv825h9stf"
+          },
+          {
+            "projectId": "598134326664157",
+            "projectNumber": "2510 - MC3A",
+            "projectName": "Memory Care 3A",
+            "contractCount": 7,
+            "savedCount": 7,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqva9gd4000303f12hhigapj"
+          },
+          {
+            "projectId": "598134326661486",
+            "projectNumber": "2511-MRC",
+            "projectName": "Mine Road Church",
+            "contractCount": 5,
+            "savedCount": 5,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtgfryg002g3zca00mcytoc"
+          },
+          {
+            "projectId": "598134326660487",
+            "projectNumber": "2505-MF",
+            "projectName": "Mechanicsburg Volunteer Fire Department",
+            "contractCount": 22,
+            "savedCount": 22,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq59iwsc00031be4mi6kur1h"
+          },
+          {
+            "projectId": "598134326662485",
+            "projectNumber": "2602 - SBRC",
+            "projectName": "Samuel Brothers Retail Center",
+            "contractCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtusaa6003z1if5frkno1vn"
+          },
+          {
+            "projectId": "598134326663255",
+            "projectNumber": "2508 - SC",
+            "projectName": "Sadsbury Commons",
+            "contractCount": 7,
+            "savedCount": 7,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmquxoz8t000gzsf5to3uhvhz"
+          },
+          {
+            "projectId": "598134326649802",
+            "projectNumber": "2511-SFM",
+            "projectName": "Sauders Feedmill",
+            "contractCount": 2,
+            "savedCount": 2,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqi1n1d10003zndwza6914h6"
+          },
+          {
+            "projectId": "598134326662430",
+            "projectNumber": "2510 - SP",
+            "projectName": "St Peters",
+            "contractCount": 3,
+            "savedCount": 3,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmpmptuoj000a44dyfs1ckiok"
+          },
+          {
+            "projectId": "598134326664181",
+            "projectNumber": "2509 - SFMS",
+            "projectName": "Stevens Feed Mill Schoeneck",
+            "contractCount": 7,
+            "savedCount": 7,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqzhdxaj00080be1oi3qy40o"
+          },
+          {
+            "projectId": "598134326661733",
+            "projectNumber": "2506 - TH",
+            "projectName": "Tel Hai Health Center",
+            "contractCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtkxs35003f3zcadc55lump"
+          },
+          {
+            "projectId": "598134326659649",
+            "projectNumber": "2505-WP",
+            "projectName": "Westminster Presbyterian Add",
+            "contractCount": 1,
+            "savedCount": 1,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqs4iu2v0003urdt400v484r"
+          },
+          {
+            "projectId": "598134326663850",
+            "projectNumber": "2512-WW",
+            "projectName": "Wolfgang - Warrell Warehouse 4",
+            "contractCount": 5,
+            "savedCount": 5,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqv66zg4000s11dtrastw8jr"
+          },
+          {
+            "projectId": "598134326662203",
+            "projectNumber": "2511 - VA",
+            "projectName": "Veritas Academy",
+            "contractCount": 8,
+            "savedCount": 8,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtr0ih8000k1if5x34vzfda"
+          },
+          {
+            "projectId": "598134326628693",
+            "projectNumber": "2603 - WR",
+            "projectName": "WSCA Ramp",
+            "contractCount": 2,
+            "savedCount": 2,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmpwrqa6v000kyef2v36wc38l"
+          }
+        ],
+        "errors": []
+      }
+    },
+    {
+      "step": "commitment-change-order-line-items",
+      "ok": true,
+      "status": 200,
+      "summary": {
+        "success": true,
+        "companyId": "598134325805519",
+        "totalProjectsChecked": 36,
+        "projectsWithChangeOrders": 0,
+        "projectsNotEnabled": 36,
+        "projectsWithoutChangeOrders": 0,
+        "totalChangeOrdersFetched": 0,
+        "totalLineItemsFetched": 0,
+        "totalLineItemsSaved": 0,
+        "totalProjectsCreated": 0,
+        "activeProjects": [
+          {
+            "projectId": "598134326650016",
+            "projectNumber": "2507-BS",
+            "projectName": "Broadcasting District Site",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326663521",
+            "projectNumber": "2603 - DO",
+            "projectName": "DART Office",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326664197",
+            "projectNumber": "2510 - DCC",
+            "projectName": "Dutch Cousins Campground",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326612123",
+            "projectNumber": null,
+            "projectName": "Default Estimating Template",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326667721",
+            "projectNumber": "2606 - EP",
+            "projectName": "Evergreen Project",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326667403",
+            "projectNumber": "2506 - FTW",
+            "projectName": "Family Treasures Wholesale",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326663551",
+            "projectNumber": "2604 - GP",
+            "projectName": "Gables 826 Patio",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326662286",
+            "projectNumber": "2602 - GI",
+            "projectName": "Giant #6459",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326634438",
+            "projectNumber": "2508 - GI",
+            "projectName": "Giant #6582",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326662409",
+            "projectNumber": "2602 - GF",
+            "projectName": "Gish Furniture",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326661400",
+            "projectNumber": "2512 - GFS",
+            "projectName": "Gish Furniture Sitework",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326661426",
+            "projectNumber": "2601 - GSQ",
+            "projectName": "Goods Store Quarryville",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326674594",
+            "projectNumber": "HB - 24 - 001",
+            "projectName": "Hearthside Building",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326669592",
+            "projectNumber": "2604 - HRMC",
+            "projectName": "Hidden River Mennonite Church Phase 1",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326649722",
+            "projectNumber": "2506-LA",
+            "projectName": "Lancaster Archery",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326660487",
+            "projectNumber": "2505-MF",
+            "projectName": "Mechanicsburg Volunteer Fire Department",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326663132",
+            "projectNumber": "2601-MW",
+            "projectName": "Melvin Weaver 2024",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326664157",
+            "projectNumber": "2510 - MC3A",
+            "projectName": "Memory Care 3A",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326661398",
+            "projectNumber": "MAPS - 25 - 001",
+            "projectName": "Middletown Area Primary School",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326661486",
+            "projectNumber": "2511-MRC",
+            "projectName": "Mine Road Church",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326663255",
+            "projectNumber": "2508 - SC",
+            "projectName": "Sadsbury Commons",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326662485",
+            "projectNumber": "2602 - SBRC",
+            "projectName": "Samuel Brothers Retail Center",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326649802",
+            "projectNumber": "2511-SFM",
+            "projectName": "Sauders Feedmill",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326542329",
+            "projectNumber": null,
+            "projectName": "Standard Project Template",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326664181",
+            "projectNumber": "2509 - SFMS",
+            "projectName": "Stevens Feed Mill Schoeneck",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326662430",
+            "projectNumber": "2510 - SP",
+            "projectName": "St Peters",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326661733",
+            "projectNumber": "2506 - TH",
+            "projectName": "Tel Hai Health Center",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326669479",
+            "projectNumber": "TAD-001",
+            "projectName": "ToddandDave cost code test",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326662203",
+            "projectNumber": "2511 - VA",
+            "projectName": "Veritas Academy",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326634377",
+            "projectNumber": "2508 - WD",
+            "projectName": "Washburn Dam",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326630602",
+            "projectNumber": "2606 - WI",
+            "projectName": "Weaver Industries",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326659649",
+            "projectNumber": "2505-WP",
+            "projectName": "Westminster Presbyterian Add",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326658382",
+            "projectNumber": "WG-25-001",
+            "projectName": "Willow Grove Site",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326663850",
+            "projectNumber": "2512-WW",
+            "projectName": "Wolfgang - Warrell Warehouse 4",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326628693",
+            "projectNumber": "2603 - WR",
+            "projectName": "WSCA Ramp",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          },
+          {
+            "projectId": "598134326673623",
+            "projectNumber": "ZIM-25-001",
+            "projectName": "Zimmeys Auto 24-145",
+            "changeOrderCount": 0,
+            "lineItemCount": 0,
+            "savedCount": 0,
+            "projectCreated": false,
+            "status": "Not enabled (404)"
+          }
+        ],
+        "errors": []
+      }
+    },
+    {
+      "step": "bids",
+      "ok": true,
+      "status": 200,
+      "summary": {
+        "success": true,
+        "message": "Bids sync complete",
+        "data": {
+          "companyWide": true,
+          "companyId": "598134325805519",
+          "projectId": null,
+          "projectsLimit": 100,
+          "projectsScanned": 37,
+          "skippedProjectsNoBiddingAccess": 37,
+          "fetched": 0,
+          "upserted": 0,
+          "warnings": [
+            "project:598134326542329 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326612123 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326626273 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326628693 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326630602 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326634377 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326634438 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326649722 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326649802 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326650016 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326658382 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326659649 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326660487 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326661398 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326661400 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326661426 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326661486 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326661733 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326662203 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326662286 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326662409 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326662430 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326662485 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326663132 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}",
+            "project:598134326663255 bids skipped (access): API Request Failed: Procore API error 403: {\"errors\":\"You do not have sufficient access to complete that action.\"}"
+          ],
+          "errors": []
+        }
+      }
+    },
+    {
+      "step": "timecard-entries",
+      "ok": true,
+      "status": 200,
+      "summary": {
+        "success": true,
+        "companyId": "598134325805519",
+        "totalProjectsChecked": 36,
+        "projectsWithActivity": 9,
+        "totalEntriesFetched": 1204,
+        "totalEntriesSaved": 1204,
+        "totalProjectsCreated": 0,
+        "activeProjects": [
+          {
+            "projectId": "598134326663551",
+            "projectNumber": "2604 - GP",
+            "projectName": "Gables 826 Patio",
+            "entryCount": 18,
+            "savedCount": 18,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqv2cjx7004czsf536qbndz4"
+          },
+          {
+            "projectId": "598134326664197",
+            "projectNumber": "2510 - DCC",
+            "projectName": "Dutch Cousins Campground",
+            "entryCount": 25,
+            "savedCount": 25,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqzhf561000c0be1putpj1n5"
+          },
+          {
+            "projectId": "598134326662286",
+            "projectNumber": "2602 - GI",
+            "projectName": "Giant #6459",
+            "entryCount": 4,
+            "savedCount": 4,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq87a44e002014dx8ud494z3"
+          },
+          {
+            "projectId": "598134326661400",
+            "projectNumber": "2512 - GFS",
+            "projectName": "Gish Furniture Sitework",
+            "entryCount": 1,
+            "savedCount": 1,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqtd9cg8000q3zcapq7bsynn"
+          },
+          {
+            "projectId": "598134326634438",
+            "projectNumber": "2508 - GI",
+            "projectName": "Giant #6582",
+            "entryCount": 112,
+            "savedCount": 112,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq0zmid80010ytdvlojmls43"
+          },
+          {
+            "projectId": "598134326660487",
+            "projectNumber": "2505-MF",
+            "projectName": "Mechanicsburg Volunteer Fire Department",
+            "entryCount": 130,
+            "savedCount": 130,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmq59iwsc00031be4mi6kur1h"
+          },
+          {
+            "projectId": "598134326664157",
+            "projectNumber": "2510 - MC3A",
+            "projectName": "Memory Care 3A",
+            "entryCount": 292,
+            "savedCount": 292,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqva9gd4000303f12hhigapj"
+          },
+          {
+            "projectId": "598134326663255",
+            "projectNumber": "2508 - SC",
+            "projectName": "Sadsbury Commons",
+            "entryCount": 390,
+            "savedCount": 390,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmquxoz8t000gzsf5to3uhvhz"
+          },
+          {
+            "projectId": "598134326664181",
+            "projectNumber": "2509 - SFMS",
+            "projectName": "Stevens Feed Mill Schoeneck",
+            "entryCount": 232,
+            "savedCount": 232,
+            "skippedCount": 0,
+            "projectCreated": false,
+            "linkedProjectId": "cmqvaltgm000q03f1pf5es7as"
+          }
+        ],
+        "errors": [
+          "Project 598134326662430 (St Peters): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326661733 (Tel Hai Health Center): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326662203 (Veritas Academy): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326634377 (Washburn Dam): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326630602 (Weaver Industries): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326658382 (Willow Grove Site): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326663850 (Wolfgang - Warrell Warehouse 4): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326628693 (WSCA Ramp): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+          "Project 598134326673623 (Zimmeys Auto 24-145): API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}"
+        ]
+      }
+    },
+    {
+      "step": "productivity-projects",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "error": "Failed to sync projects with Procore productivity activity",
+        "details": "API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}"
+      }
+    },
+    {
+      "step": "budget-line-items",
+      "ok": false,
+      "error": "fetch failed"
+    },
+    {
+      "step": "purchase-order-line-item-details",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "success": false,
+        "error": "API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}"
+      }
+    },
+    {
+      "step": "company-users",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "success": false,
+        "error": "Failed to sync company users",
+        "details": "API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}"
+      }
+    },
+    {
+      "step": "vendors",
+      "ok": false,
+      "status": 500,
+      "summary": {
+        "success": false,
+        "error": "Failed to sync vendors",
+        "details": "API Request Failed: Procore API error 429: {\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}"
+      }
+    },
+    {
+      "step": "estimating-catalogs",
+      "ok": false,
+      "status": 429,
+      "summary": {
+        "success": false,
+        "error": "Estimating API error 429",
+        "details": "{\"message\":\"You have surpassed the max number of requests for your rate limit. Please wait until your limit resets.\"}",
+        "url": "https://api.procore.com/rest/v2.0/companies/598134325805519/estimating/catalogs?page=1&per_page=200"
+      }
+    }
+  ]
+}

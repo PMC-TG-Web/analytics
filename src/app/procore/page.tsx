@@ -415,6 +415,8 @@ function ProcoreContent() {
   const [commitmentCloneTargetStatus, setCommitmentCloneTargetStatus] = useState("Draft");
   const [commitmentClonePreserveStatus, setCommitmentClonePreserveStatus] = useState(false);
   const [commitmentCloneLineItems, setCommitmentCloneLineItems] = useState(true);
+  const [commitmentCloneUpdateExisting, setCommitmentCloneUpdateExisting] = useState(true);
+  const [commitmentCloneUpdateOnlyBlankFields, setCommitmentCloneUpdateOnlyBlankFields] = useState(true);
   const [commitmentCloneAllowUnmappedIds, setCommitmentCloneAllowUnmappedIds] = useState(false);
   const [commitmentClonePassthroughIds, setCommitmentClonePassthroughIds] = useState(false);
   const [commitmentCloneCreateOffset, setCommitmentCloneCreateOffset] = useState("0");
@@ -426,6 +428,7 @@ function ProcoreContent() {
   const [commitmentCloneCrosswalkWorkbookName, setCommitmentCloneCrosswalkWorkbookName] = useState("");
   const [commitmentCloneMapsText, setCommitmentCloneMapsText] = useState(`{
   "vendorIdMap": {},
+  "contractIdMap": {},
   "budgetLineItemIdMap": {},
   "wbsCodeIdMap": {},
   "costCodeIdMap": {},
@@ -730,9 +733,24 @@ function ProcoreContent() {
   const [changeEventCloneLineItems, setChangeEventCloneLineItems] = useState(true);
   const [changeEventClonePreserveNumber, setChangeEventClonePreserveNumber] = useState(false);
   const [changeEventCloneAllowUnmappedLineItems, setChangeEventCloneAllowUnmappedLineItems] = useState(true);
+  const [changeEventCloneUpdateExisting, setChangeEventCloneUpdateExisting] = useState(true);
+  const [changeEventCloneUpdateOnlyBlankFields, setChangeEventCloneUpdateOnlyBlankFields] = useState(true);
+  const [changeEventCloneAutoCreateMissingOriginItems, setChangeEventCloneAutoCreateMissingOriginItems] = useState(true);
   const [changeEventCloneMapsText, setChangeEventCloneMapsText] = useState(`{
-  "budgetCodeIdMap": {},
-  "flatCodeMap": {},
+  "budgetCodeIdMap": {
+    "598134329042857": "51482283",
+    "598134329042858": "51482282",
+    "598134329042859": "51482283",
+    "598134329042860": "51482282",
+    "598134329042861": "51482283",
+    "598134329042862": "51482282"
+  },
+  "flatCodeMap": {
+    "03-300-10-50.O": "51482338",
+    "01-300-10-40.O": "51482353",
+    "03-200-40-20.O": "51482175",
+    "02-500-10-10.O": "51482383"
+  },
   "lineItemTypeCodeMap": {
     "O": "L"
   }
@@ -6014,6 +6032,9 @@ function ProcoreContent() {
           preserveNumber: changeEventClonePreserveNumber,
           numberOffset: changeEventCloneNumberOffset.trim() || "0",
           allowUnmappedLineItems: changeEventCloneAllowUnmappedLineItems,
+          updateExisting: changeEventCloneUpdateExisting,
+          updateOnlyBlankFields: changeEventCloneUpdateOnlyBlankFields,
+          autoCreateMissingOriginItems: changeEventCloneAutoCreateMissingOriginItems,
           crosswalkPath: changeEventCloneCrosswalkPath.trim() || undefined,
           budgetCodeIdMap: maps.budgetCodeIdMap || {},
           flatCodeMap: maps.flatCodeMap || {},
@@ -6246,6 +6267,8 @@ function ProcoreContent() {
           targetStatus,
           preserveStatus: commitmentClonePreserveStatus,
           cloneLineItems: commitmentCloneLineItems,
+          updateExisting: commitmentCloneUpdateExisting,
+          updateOnlyBlankFields: commitmentCloneUpdateOnlyBlankFields,
           allowUnmappedIds: commitmentCloneAllowUnmappedIds,
           passthroughIds: commitmentClonePassthroughIds,
           createOffset,
@@ -9342,7 +9365,7 @@ function ProcoreContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
                   <input
@@ -9387,6 +9410,34 @@ function ProcoreContent() {
                     onChange={(event) => setChangeEventCloneAllowUnmappedLineItems(event.target.checked)}
                   />
                   Allow request lines without WBS
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(changeEventCloneUpdateExisting)}
+                    onChange={(event) => setChangeEventCloneUpdateExisting(event.target.checked)}
+                  />
+                  Update existing matching change events
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(changeEventCloneUpdateOnlyBlankFields)}
+                    onChange={(event) => setChangeEventCloneUpdateOnlyBlankFields(event.target.checked)}
+                    disabled={!changeEventCloneUpdateExisting}
+                  />
+                  Only fill blank fields on existing events
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(changeEventCloneAutoCreateMissingOriginItems)}
+                    onChange={(event) => setChangeEventCloneAutoCreateMissingOriginItems(event.target.checked)}
+                  />
+                  Auto-create missing origin items
                 </label>
               </div>
 
@@ -9533,9 +9584,20 @@ function ProcoreContent() {
                   }`}>
                     <strong>Change Event Clone Result:</strong>{" "}
                     {changeEventCloneResult.result?.dryRun
-                      ? changeEventCloneResult.result?.readyForLiveClone
-                        ? `Dry run found ${changeEventCloneResult.result?.counts?.sourceChangeEvents ?? 0} event(s) and mapped ${changeEventCloneResult.result?.counts?.mappedLineItems ?? 0} line item(s).`
-                        : `${changeEventCloneResult.result?.counts?.missingMappings ?? 0} missing mapping(s).`
+                      ? (() => {
+                          const allMissing = Array.isArray(changeEventCloneResult.result?.missingMappings)
+                            ? changeEventCloneResult.result.missingMappings
+                            : [];
+                          const blockingBudgetMappings = allMissing.filter(
+                            (row: any) => row?.type === "change_event_line_item_budget_code"
+                          ).length;
+                          const warnings = allMissing.length - blockingBudgetMappings;
+
+                          if (changeEventCloneResult.result?.readyForLiveClone) {
+                            return `Dry run ready: ${changeEventCloneResult.result?.counts?.sourceChangeEvents ?? 0} event(s), ${changeEventCloneResult.result?.counts?.mappedLineItems ?? 0} mapped line item(s), ${warnings} warning(s).`;
+                          }
+                          return `${blockingBudgetMappings} blocking budget mapping(s), ${warnings} warning(s).`;
+                        })()
                       : changeEventCloneResult.result?.success
                         ? `Live clone created ${changeEventCloneResult.result?.counts?.created ?? 0} event(s).`
                         : "Live clone finished with errors."}
@@ -12063,6 +12125,7 @@ function ProcoreContent() {
                     <option value="all">All available</option>
                     <option value="commitment_contracts">Commitment contracts v2</option>
                     <option value="purchase_order_contracts">Purchase order contracts v1</option>
+                    <option value="potential_change_orders">Potential change orders v1</option>
                   </select>
                 </div>
                 <div>
@@ -12096,6 +12159,27 @@ function ProcoreContent() {
                     Clone line items
                   </label>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(commitmentCloneUpdateExisting)}
+                    onChange={(e) => setCommitmentCloneUpdateExisting(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Update existing commitments and line items
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(commitmentCloneUpdateOnlyBlankFields)}
+                    onChange={(e) => setCommitmentCloneUpdateOnlyBlankFields(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Only fill blank fields on existing records
+                </label>
               </div>
 
               <div className="mb-4">

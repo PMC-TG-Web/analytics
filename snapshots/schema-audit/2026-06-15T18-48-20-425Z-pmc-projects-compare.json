@@ -1,0 +1,209 @@
+{
+  "companyId": "598134325805519",
+  "generatedAt": "2026-06-15T18:48:20.998Z",
+  "summary": {
+    "legacyProjectCount": 26,
+    "legacyProjectsWithProcoreProjectId": 24,
+    "legacyProjectsMissingProcoreProjectId": 2,
+    "pmcProjectCount": 6,
+    "missingInPmc": 18,
+    "missingInLegacy": 0,
+    "duplicateLegacyProcoreProjectIds": 0,
+    "fieldDifferences": 1
+  },
+  "legacyMissingProcoreProjectId": [
+    {
+      "legacyProjectId": "cmpgtope3000402gi1lr3qeta",
+      "bidBoardId": "562949955798705",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Estimating",
+      "projectArchived": false
+    },
+    {
+      "legacyProjectId": "cmpgtop8d000302giwy61tcbf",
+      "bidBoardId": "562949955798698",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "projectArchived": true
+    }
+  ],
+  "missingInPmc": [
+    {
+      "legacyProjectId": "cmpmn3d7j000044dy7mjmqg84",
+      "procoreProjectId": "598134326618317",
+      "bidBoardId": null,
+      "projectNumber": "*Testing",
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpgtooua000102gifharytss",
+      "procoreProjectId": "598134326542330",
+      "bidBoardId": null,
+      "projectNumber": "12345",
+      "projectName": "Sandbox Test Project",
+      "customer": "General Contractor (Demo Company)",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmq59iwsc00031be4mi6kur1h",
+      "procoreProjectId": "598134326244841",
+      "bidBoardId": null,
+      "projectNumber": "2505-MF",
+      "projectName": "Mechanicsburg Volunteer Fire Department",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmpx045h4000307f608di2vbx",
+      "procoreProjectId": "598134326198819",
+      "bidBoardId": null,
+      "projectNumber": "2506 - FTW",
+      "projectName": "Family Treasures Wholesale",
+      "customer": "Hoover Building Specialists, Inc.",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmqb0sa1i0003yhf91c5mkpag",
+      "procoreProjectId": "598134326377799",
+      "bidBoardId": null,
+      "projectNumber": "2509 - MCH",
+      "projectName": "Modern Country Homes",
+      "customer": "Paradise Masonry, LLC",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmpmqry4h000e44dy0vnpx20r",
+      "procoreProjectId": "598134326378308",
+      "bidBoardId": null,
+      "projectNumber": "2509 - PA",
+      "projectName": "Pro Ag",
+      "customer": "Scenic Ridge Construction",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmpmptuoj000a44dyfs1ckiok",
+      "procoreProjectId": "598134326378325",
+      "bidBoardId": null,
+      "projectNumber": "2510 - SP",
+      "projectName": "St Peters",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "Estimating"
+    },
+    {
+      "legacyProjectId": "cmpmoyhhv000544dyhpsg87y5",
+      "procoreProjectId": "598134326601978",
+      "bidBoardId": null,
+      "projectNumber": "2512-WW",
+      "projectName": "Wolfgang - Warrell Warehouse 4",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmq87a44e002014dx8ud494z3",
+      "procoreProjectId": "598134326559089",
+      "bidBoardId": null,
+      "projectNumber": "2602 - GI",
+      "projectName": "Giant #6459",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmqf3biyd0003w5f67z4l5kkh",
+      "procoreProjectId": "598134326608654",
+      "bidBoardId": null,
+      "projectNumber": "2602 - ROB",
+      "projectName": "Rohrers Office Building",
+      "customer": "Paradise Masonry, LLC",
+      "status": "In Progress"
+    },
+    {
+      "legacyProjectId": "cmq9mwsak000l3tdwqtcgnxp1",
+      "procoreProjectId": "598134326642611",
+      "bidBoardId": null,
+      "projectNumber": "2605 - M",
+      "projectName": "Marlee Phase II",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmq9mvvah00033tdwmx1p6m20",
+      "procoreProjectId": "598134326642608",
+      "bidBoardId": null,
+      "projectNumber": "2606 - GMBS",
+      "projectName": "Giorgio Mushroom Building Slab",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpwomzsq0003zsghht9a59w6",
+      "procoreProjectId": "598134326628443",
+      "bidBoardId": null,
+      "projectNumber": "TG-new codes",
+      "projectName": "TG-new codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpv6i5sn000317gmucj0c4rk",
+      "procoreProjectId": "598134326626273",
+      "bidBoardId": null,
+      "projectNumber": "TG-new-codes",
+      "projectName": "Test New Codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpwrphr40003yef2vjaaja3u",
+      "procoreProjectId": "598134326628690",
+      "bidBoardId": null,
+      "projectNumber": "Test New Codes",
+      "projectName": "Test New Codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpxxbfs60008wudz2imct2zb",
+      "procoreProjectId": "598134326601975",
+      "bidBoardId": null,
+      "projectNumber": "WR - 2603",
+      "projectName": "WSCA Ramp",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpybmhey000311f42y7tsd5b",
+      "procoreProjectId": "598134326631038",
+      "bidBoardId": null,
+      "projectNumber": null,
+      "projectName": "New Project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    },
+    {
+      "legacyProjectId": "cmpmno8j5000144dyyutbylg2",
+      "procoreProjectId": "598134326618439",
+      "bidBoardId": "562949955798698",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted"
+    }
+  ],
+  "missingInLegacy": [],
+  "duplicateLegacyProcoreProjectIds": [],
+  "fieldDifferences": [
+    {
+      "procoreProjectId": "598134326612123",
+      "legacyProjectId": "cmpgtoopy000002gisv07k5x5",
+      "field": "bidBoardId",
+      "legacyValue": "562949955798587",
+      "pmcValue": null
+    }
+  ]
+}

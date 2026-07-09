@@ -1,0 +1,38 @@
+{
+  "companyId": "598134325805519",
+  "generatedAt": "2026-06-15T18:26:32.708Z",
+  "summary": {
+    "legacyProjectCount": 26,
+    "legacyProjectsWithProcoreProjectId": 24,
+    "legacyProjectsMissingProcoreProjectId": 2,
+    "pmcProjectCount": 24,
+    "missingInPmc": 0,
+    "missingInLegacy": 0,
+    "duplicateLegacyProcoreProjectIds": 0,
+    "fieldDifferences": 0
+  },
+  "legacyMissingProcoreProjectId": [
+    {
+      "legacyProjectId": "cmpgtope3000402gi1lr3qeta",
+      "bidBoardId": "562949955798705",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Estimating",
+      "projectArchived": false
+    },
+    {
+      "legacyProjectId": "cmpgtop8d000302giwy61tcbf",
+      "bidBoardId": "562949955798698",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "projectArchived": true
+    }
+  ],
+  "missingInPmc": [],
+  "missingInLegacy": [],
+  "duplicateLegacyProcoreProjectIds": [],
+  "fieldDifferences": []
+}

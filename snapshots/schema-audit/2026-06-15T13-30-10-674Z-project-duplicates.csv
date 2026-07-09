@@ -1,0 +1,10 @@
+groupType,key,count,keeperId,id,procoreId,projectNumber,projectName,customer,status,projectArchived,score
+normalizedName,new project,5,cmpybmhey000311f42y7tsd5b,cmpgtope3000402gi1lr3qeta,,,New project,"Paradise Masonry, LLC New",Estimating,false,132
+normalizedName,new project,5,cmpybmhey000311f42y7tsd5b,cmpybmhey000311f42y7tsd5b,598134326631038,,New Project,"Paradise Masonry, LLC",Bid Submitted,false,132
+normalizedName,new project,5,cmpybmhey000311f42y7tsd5b,cmpmno8j5000144dyyutbylg2,598134326618439,,New project,"Paradise Masonry, LLC",Bid Submitted,true,32
+normalizedName,new project,5,cmpybmhey000311f42y7tsd5b,cmpmn3d7j000044dy7mjmqg84,598134326618317,*Testing,New project,"Paradise Masonry, LLC",Bid Submitted,false,132
+normalizedName,new project,5,cmpybmhey000311f42y7tsd5b,cmpgtop8d000302giwy61tcbf,,,New project,"Paradise Masonry, LLC New",Bid Submitted,true,32
+normalizedName,test new codes,2,cmpv6i5sn000317gmucj0c4rk,cmpv6i5sn000317gmucj0c4rk,598134326626273,TG-new-codes,Test New Codes,davetoddtestcustomer,Bid Submitted,false,132
+normalizedName,test new codes,2,cmpv6i5sn000317gmucj0c4rk,cmpwrphr40003yef2vjaaja3u,598134326628690,Test New Codes,Test New Codes,davetoddtestcustomer,Bid Submitted,false,132
+normalizedName,wsca ramp,2,cmpxxbfs60008wudz2imct2zb,cmpwrqa6v000kyef2v36wc38l,598134326628693,2603 - WR,WSCA Ramp,"Paradise Masonry, LLC New",Bid Submitted,false,132
+normalizedName,wsca ramp,2,cmpxxbfs60008wudz2imct2zb,cmpxxbfs60008wudz2imct2zb,598134326601975,WR - 2603,WSCA Ramp,"Centurion Construction Group, LLC",Bid Submitted,false,132

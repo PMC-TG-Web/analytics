@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRequiredSyncSecret, parsePositiveInt, runProcoreCronSync } from "@/lib/cronSync";
+import { getRequiredSyncSecret, parseNonNegativeInt, parsePositiveInt, runProcoreCronSync } from "@/lib/cronSync";
 
 /**
  * POST /api/cron/sync
@@ -12,7 +12,7 @@ import { getRequiredSyncSecret, parsePositiveInt, runProcoreCronSync } from "@/l
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const SINGLE_ALLOWED_PROCORE_COMPANY_ID = '598134325805519';
+const SINGLE_ALLOWED_PROCORE_COMPANY_ID = (process.env.PROCORE_COMPANY_ID || '598134325805519').trim();
 
 export async function POST(request: NextRequest) {
   const cronSecret = (process.env.CRON_SECRET || "").trim();
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   const triggeredBy: string = triggeredByInput === "manual" ? "manual" : "cron";
   const maxProjects = maxProjectsInput === undefined || maxProjectsInput === null
     ? undefined
-    : Math.max(1, parsePositiveInt(String(maxProjectsInput), 25));
+    : parseNonNegativeInt(String(maxProjectsInput), 25);
   const lookbackDays = lookbackDaysInput === undefined || lookbackDaysInput === null
     ? undefined
     : Math.max(7, parsePositiveInt(String(lookbackDaysInput), 30));

@@ -45,6 +45,12 @@ export function parsePositiveInt(value: string | undefined, fallback: number): n
   return parsed;
 }
 
+export function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(value || '').trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
 export function getRequiredSyncSecret(): string {
   return (process.env.PROCORE_SYNC_SECRET || '').trim();
 }
@@ -64,7 +70,7 @@ export function buildSyncWindow(options?: {
   );
   const maxProjects = Math.max(
     0,
-    options?.maxProjects ?? parsePositiveInt(process.env.PROCORE_SYNC_MAX_PROJECTS, 25)
+    options?.maxProjects ?? parseNonNegativeInt(process.env.PROCORE_SYNC_MAX_PROJECTS, 25)
   );
   const endDate = toDateKey(new Date(now));
   const startDate = toDateKey(new Date(now - lookbackDays * 24 * 60 * 60 * 1000));

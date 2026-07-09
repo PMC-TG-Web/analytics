@@ -1,0 +1,23 @@
+source,sourceId,companyId,procoreProjectId,projectNumber,projectName,customer,canBackfill,reason,scopeCount,scheduleEntryCount,scheduledHours
+GanttV2Project,521a8cf9-16bf-44c3-91bb-c29f29829d69,598134325805519,,2512-WW,Wolfgang - Warrell Warehouse 4,"Centurion Construction Group, LLC",false,project_number_matches_598134326601978_review_required,0,0,0
+GanttV2Project,76596991-5d41-4171-8a84-24115c8e296c,598134325805519,,WR - 2603,WSCA Ramp,"Centurion Construction Group, LLC",false,project_number_matches_598134326601975_review_required,0,0,0
+GanttV2Project,746369a9-1fd2-4361-8c1b-f168d68e014d,598134325805519,,,Standard Project Template,"Paradise Masonry, LLC New",false,no_exact_procore_project_id_match,0,0,0
+GanttV2Project,0555332b-c470-4acf-852c-565404ccda3d,598134325805519,,2510 - SP,St Peters,"Centurion Construction Group, LLC",false,project_number_matches_598134326378325_review_required,0,0,0
+GanttV2Project,12abb1e5-e0ea-4d96-966b-900343d80921,598134325805519,,2602 - ROB,Rohrers Office Building,,false,project_number_matches_598134326608654_review_required,0,0,0
+GanttV2Project,32be1f3f-2be7-4c2f-bec5-ba3c687401f6,598134325805519,,2509 - MCH,Modern Country Homes,,false,project_number_matches_598134326377799_review_required,0,0,0
+GanttV2Project,826afe47-b78e-49f4-8a2e-dd0142ee7716,598134325805519,,2605 - M,Marlee Phase II,,false,project_number_matches_598134326642611_review_required,0,0,0
+GanttV2Project,70d4c3ec-b74f-4972-999e-693809304b9d,598134325805519,,2606 - GMBS,Giorgio Mushroom Building Slab,,false,project_number_matches_598134326642608_review_required,0,0,0
+GanttV2Project,3b21b1ef-b307-441a-a051-b1a680e77d24,598134325805519,,2602 - GI,Giant #6459,,false,project_number_matches_598134326559089_review_required,0,0,0
+GanttV2Project,7bada5bf-f6f7-4fdd-8b5a-27128e44c787,598134325805519,,davetodd-do-not-use,davetodd-do-not-use,davetoddtestcustomer,false,no_exact_procore_project_id_match,0,0,0
+GanttV2Project,6ace4a14-c3ab-4dcb-84a2-3c3cb597c7d2,598134325805519,,2606 - WI,Weaver Industries,"Paradise Masonry, LLC New",false,project_number_matches_598134326630602_review_required,0,0,0
+GanttV2Project,25fe8e8d-6607-4194-bfd6-8fcfec8c7e64,598134325805519,,2508 - WD,Washburn Dam,Berg Construction,false,project_number_matches_598134326634377_review_required,0,0,0
+GanttV2Project,dc288da6-af22-421f-959f-ab59f0f98c46,598134325805519,,2603 - WR,WSCA Ramp,"Paradise Masonry, LLC New",false,project_number_matches_598134326628693_review_required,0,0,0
+GanttV2Project,8dc5b2e2-7020-446e-a5b5-90de2bf637df,598134325805519,,TG-new-codes,Test New Codes,davetoddtestcustomer,false,project_number_matches_598134326626273_review_required,0,0,0
+GanttV2Project,bfd589a1-4609-4aa8-bb8d-5a7d81222b7a,598134325805519,,12345,Sandbox Test Project,General Contractor (Demo Company),false,project_number_matches_598134326542330_review_required,0,0,0
+GanttV2Project,ca0d4f74-9fe4-4f20-b9cb-f745caa73cef,598134325805519,,2509 - PA,Pro Ag,Scenic Ridge Construction,false,project_number_matches_598134326378308_review_required,0,0,0
+GanttV2Project,e2ec7058-ec71-4241-8228-5b8bdd84feb8,598134325805519,,Old Test,Old Test,davetoddtestcustomer,false,no_exact_procore_project_id_match,0,0,0
+GanttV2Project,25c6d50a-39fa-471d-9418-9009fcf8e03d,598134325805519,,2505-MF,Mechanicsburg Volunteer Fire Department,"Centurion Construction Group, LLC",false,project_number_matches_598134326244841_review_required,0,0,0
+GanttV2Project,a5516098-d598-4681-a7fc-44ca745da568,598134325805519,,2508 - GI,Giant #6582,"Ames Construction, Inc.",false,project_number_matches_598134326634438_review_required,0,0,0
+GanttV2Project,c6b9af11-ec31-4195-8454-911d1b8f9243,598134325805519,,2506 - FTW,Family Treasures Wholesale,"Hoover Building Specialists, Inc.",false,project_number_matches_598134326198819_review_required,0,0,0
+GanttV2Project,fbdc8f61-c787-4eaf-ae61-710d967ce7e5,598134325805519,,,Default Estimating Template,"Paradise Masonry, LLC New",false,no_exact_procore_project_id_match,0,0,0
+GanttV2Project,4a2767c0-78ff-4cd4-bcae-c62df2a49487,598134325805519,,,New project,"Paradise Masonry, LLC New",false,no_exact_procore_project_id_match,0,0,0

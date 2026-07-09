@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-06-15T18:48:13.610Z",
+  "companyId": "598134325805519",
+  "options": {
+    "includeInactive": false,
+    "includeDemo": false,
+    "includeTemplates": false,
+    "purgeOtherCompanies": false
+  },
+  "fetched": {
+    "v1Projects": 6,
+    "bidBoardProjects": 23,
+    "bidBoardUniqueProjectIds": 23,
+    "bidBoardWithoutProjectId": 0
+  },
+  "written": {
+    "pmcProjects": 6
+  },
+  "skipped": 0,
+  "skippedProjects": [],
+  "bidBoardWithoutProjectId": []
+}

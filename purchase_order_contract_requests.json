@@ -1,0 +1,391 @@
+{
+  "generated_at": "2026-06-11T18:42:48.079Z",
+  "source_csv": "c:\\Users\\ToddGilmore\\Downloads\\Productivity_Log (7).csv",
+  "project_id": "598134326626273",
+  "total_contracts": 5,
+  "create_purchase_order_contract_requests": [
+    {
+      "project_id": "598134326626273",
+      "purchase_order_contract": {
+        "accounting_method": "amount",
+        "contract_date": "2026-05-26",
+        "delivery_date": "2026-05-26",
+        "issued_on_date": "2026-05-26",
+        "number": "PO-009",
+        "title": "53,281 Sq Ft. - 4\" Interior Slab on Grade",
+        "description": "Imported from CSV (Productivity_Log (7).csv).",
+        "status": "Draft",
+        "private": false,
+        "payment_terms": "Net 30"
+      },
+      "source_context": {
+        "contract_label": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+        "vendor_names": [
+          "Paradise Masonry, LLC"
+        ],
+        "estimated_contract_total": 112915.5,
+        "line_item_count": 6
+      }
+    },
+    {
+      "project_id": "598134326626273",
+      "purchase_order_contract": {
+        "accounting_method": "amount",
+        "contract_date": "2026-05-19",
+        "delivery_date": "2026-05-19",
+        "issued_on_date": "2026-05-19",
+        "number": "PO-010",
+        "title": "5,434 Sq Ft. - 6\" Interior Slab on Grade",
+        "description": "Imported from CSV (Productivity_Log (7).csv).",
+        "status": "Draft",
+        "private": false,
+        "payment_terms": "Net 30"
+      },
+      "source_context": {
+        "contract_label": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+        "vendor_names": [
+          "Paradise Masonry, LLC"
+        ],
+        "estimated_contract_total": 23739.64,
+        "line_item_count": 5
+      }
+    },
+    {
+      "project_id": "598134326626273",
+      "purchase_order_contract": {
+        "accounting_method": "amount",
+        "contract_date": "2026-05-27",
+        "delivery_date": "2026-05-27",
+        "issued_on_date": "2026-05-27",
+        "number": "PO-001",
+        "title": "Non-Budgeted Items",
+        "description": "Imported from CSV (Productivity_Log (7).csv).",
+        "status": "Draft",
+        "private": false,
+        "payment_terms": "Net 30"
+      },
+      "source_context": {
+        "contract_label": "PO-001 - Non-Budgeted Items",
+        "vendor_names": [
+          "Paradise Masonry, LLC"
+        ],
+        "estimated_contract_total": 0,
+        "line_item_count": 3
+      }
+    },
+    {
+      "project_id": "598134326626273",
+      "purchase_order_contract": {
+        "accounting_method": "amount",
+        "contract_date": "2026-05-20",
+        "delivery_date": "2026-05-20",
+        "issued_on_date": "2026-05-20",
+        "number": "PO-008",
+        "title": "197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+        "description": "Imported from CSV (Productivity_Log (7).csv).",
+        "status": "Draft",
+        "private": false,
+        "payment_terms": "Net 30"
+      },
+      "source_context": {
+        "contract_label": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+        "vendor_names": [
+          "Paradise Masonry, LLC"
+        ],
+        "estimated_contract_total": 948.79,
+        "line_item_count": 4
+      }
+    },
+    {
+      "project_id": "598134326626273",
+      "purchase_order_contract": {
+        "accounting_method": "amount",
+        "contract_date": "2026-05-16",
+        "delivery_date": "2026-05-16",
+        "issued_on_date": "2026-05-16",
+        "number": "PO-013",
+        "title": "1,904 Sq Ft. - 5\" Interior Slab on Deck",
+        "description": "Imported from CSV (Productivity_Log (7).csv).",
+        "status": "Draft",
+        "private": false,
+        "payment_terms": "Net 30"
+      },
+      "source_context": {
+        "contract_label": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+        "vendor_names": [
+          "Paradise Masonry, LLC"
+        ],
+        "estimated_contract_total": 7175.41,
+        "line_item_count": 5
+      }
+    }
+  ],
+  "purchase_order_contract_line_item_templates": [
+    {
+      "contract_number": "PO-009",
+      "contract_title": "53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_items": [
+        {
+          "description": "#21 - 1\" Styrofoam",
+          "quantity": 1,
+          "unit_cost": 0,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#19 - Pressure treated 2x6",
+          "quantity": 1,
+          "unit_cost": 0,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#20 - Pressure treated 2x8",
+          "quantity": 1,
+          "unit_cost": 0,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#1 - Ready Mix Concrete For Slabs On Grade",
+          "quantity": 686,
+          "unit_cost": 143.2,
+          "amount": 98235.2,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#2 - 2\"x4'x8' GreenGuard Scoreboard",
+          "quantity": 276,
+          "unit_cost": 52.51,
+          "amount": 14492.76,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#9 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+          "quantity": 5.24,
+          "unit_cost": 35.79,
+          "amount": 187.54,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        }
+      ]
+    },
+    {
+      "contract_number": "PO-010",
+      "contract_title": "5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_items": [
+        {
+          "description": "#6 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+          "quantity": 114,
+          "unit_cost": 35.79,
+          "amount": 4080.06,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#1 - Ready Mix Concrete For Slabs On Grade",
+          "quantity": 106,
+          "unit_cost": 143.2,
+          "amount": 15179.2,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#2 - 2\"x4'x8' GreenGuard Scoreboard",
+          "quantity": 43,
+          "unit_cost": 52.51,
+          "amount": 2257.93,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#3 - Vapor Barrier 10 mil 20'x100'",
+          "quantity": 2.99,
+          "unit_cost": 101.12,
+          "amount": 302.35,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#8 - 6 ga Wire 5'x10' Sheet",
+          "quantity": 130,
+          "unit_cost": 14.77,
+          "amount": 1920.1,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        }
+      ]
+    },
+    {
+      "contract_number": "PO-001",
+      "contract_title": "Non-Budgeted Items",
+      "line_items": [
+        {
+          "description": "#2 - #5 Rebar Speed Dowel Tube 3/4\" x 9\"",
+          "quantity": 0,
+          "unit_cost": 1.79,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#13 - #6 (3/4\") X 18\" Smooth Dowels",
+          "quantity": 0,
+          "unit_cost": 1.87,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#8 - 6\" Noma flex Expansion",
+          "quantity": 0,
+          "unit_cost": 5.91,
+          "amount": 0,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        }
+      ]
+    },
+    {
+      "contract_number": "PO-008",
+      "contract_title": "197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "line_items": [
+        {
+          "description": "#4 - #4 Rebar By The Piece",
+          "quantity": 26,
+          "unit_cost": 7.18,
+          "amount": 186.68,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#3 - Metal Bar Chairs",
+          "quantity": 18,
+          "unit_cost": 2,
+          "amount": 36,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#2 - Vapor Barrier 10 mil 20'x100'",
+          "quantity": 0.1,
+          "unit_cost": 101.12,
+          "amount": 10.11,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#1 - Ready Mix Concrete For Slabs On Grade",
+          "quantity": 5,
+          "unit_cost": 143.2,
+          "amount": 716,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        }
+      ]
+    },
+    {
+      "contract_number": "PO-013",
+      "contract_title": "1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_items": [
+        {
+          "description": "#4 - L&M Curing Compound 5 Gal.",
+          "quantity": 1.09,
+          "unit_cost": 56.49,
+          "amount": 61.57,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#7 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+          "quantity": 38,
+          "unit_cost": 35.79,
+          "amount": 1360.02,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#6 - Trailer Pump",
+          "quantity": 1,
+          "unit_cost": 850,
+          "amount": 850,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#1 - Ready Mix Concrete For Slabs On Grade",
+          "quantity": 29.5,
+          "unit_cost": 143.2,
+          "amount": 4224.4,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        },
+        {
+          "description": "#2 - 6 ga Wire 5'x10' Sheet",
+          "quantity": 46,
+          "unit_cost": 14.77,
+          "amount": 679.42,
+          "uom": "EA",
+          "cost_code_id": null,
+          "line_item_type_id": null,
+          "budget_line_item_id": null
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Create contracts first using create_purchase_order_contract_requests.",
+    "Then create line items per contract using purchase_order_contract_line_item_templates.",
+    "Map vendor_names to a valid Procore vendor_id if submitting non-Draft status.",
+    "Line item IDs (cost_code_id, line_item_type_id, budget_line_item_id) must be provided before line-item create."
+  ]
+}

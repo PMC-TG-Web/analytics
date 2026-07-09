@@ -1,0 +1,1564 @@
+{
+  "target_contracts": [
+    {
+      "id": "598134328434635",
+      "number": "SFM-001",
+      "title": "Interior slabs on Grade, Interior slabs on deck, Ceiling slabs, Pan steps"
+    },
+    {
+      "id": "598134328434637",
+      "number": "SFM-002",
+      "title": "12\" slab at Loadout bay OHD's"
+    },
+    {
+      "id": "598134328434638",
+      "number": "SFM-003",
+      "title": "Bollards "
+    },
+    {
+      "id": "598134328434639",
+      "number": "SFM-004",
+      "title": "MUA pads, Approach pads, Dumpster pad, Aprons, Transformer pad, Tunnel lid, Stoops, Steps"
+    },
+    {
+      "id": "598134328434640",
+      "number": "SFM-005",
+      "title": "36\" raft slab "
+    },
+    {
+      "id": "598134328434641",
+      "number": "SFM-006",
+      "title": "Stevens Feed Mill Billing File"
+    },
+    {
+      "id": "598134328434642",
+      "number": "SFM-007",
+      "title": "Non Billables"
+    }
+  ],
+  "target_SFM-001_598134328434635": [
+    {
+      "id": "598134410865588",
+      "amount": "682.91",
+      "change_event_line_item": null,
+      "description": "Vapor Barrier 6 mil 20'x100'",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 1,
+      "prime_line_item_id": null,
+      "quantity": "7.81",
+      "tax_code_id": null,
+      "unit_cost": "87.44",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344488",
+        "flat_code": "03-150-10-35.M",
+        "description": "Vapor Barrier 6-10mil.Materials"
+      },
+      "wbs_code_id": "598136734344488"
+    },
+    {
+      "id": "598134410865589",
+      "amount": "33443.28",
+      "change_event_line_item": null,
+      "description": "#5 Rebar - 20' Pc - SOG",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 2,
+      "prime_line_item_id": null,
+      "quantity": "3176.0",
+      "tax_code_id": null,
+      "unit_cost": "10.53",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344492",
+        "flat_code": "03-200-30-20.M",
+        "description": "SOG Rebar Material.Materials"
+      },
+      "wbs_code_id": "598136734344492"
+    },
+    {
+      "id": "598134410865590",
+      "amount": "968.8",
+      "change_event_line_item": null,
+      "description": "L&M Curing Compound",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 3,
+      "prime_line_item_id": null,
+      "quantity": "17.15",
+      "tax_code_id": null,
+      "unit_cost": "56.49",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344480",
+        "flat_code": "03-300-40-60.M",
+        "description": "Concrete Interior Sealers.Materials"
+      },
+      "wbs_code_id": "598136734344480"
+    },
+    {
+      "id": "598134410865591",
+      "amount": "1442.68",
+      "change_event_line_item": null,
+      "description": "TK-Floor Hardner and Densifier 55 gal",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 4,
+      "prime_line_item_id": null,
+      "quantity": "1.58",
+      "tax_code_id": null,
+      "unit_cost": "913.09",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344480",
+        "flat_code": "03-300-40-60.M",
+        "description": "Concrete Interior Sealers.Materials"
+      },
+      "wbs_code_id": "598136734344480"
+    },
+    {
+      "id": "598134410865592",
+      "amount": "1922.0",
+      "change_event_line_item": null,
+      "description": "Chairs 3\" (5' section)",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 5,
+      "prime_line_item_id": null,
+      "quantity": "961.0",
+      "tax_code_id": null,
+      "unit_cost": "2.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344495",
+        "flat_code": "03-200-50-30.M",
+        "description": "Chairs.Materials"
+      },
+      "wbs_code_id": "598136734344495"
+    },
+    {
+      "id": "598134410865593",
+      "amount": "1023.5",
+      "change_event_line_item": null,
+      "description": "Chairs 1.5\" (5' section)",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 6,
+      "prime_line_item_id": null,
+      "quantity": "575.0",
+      "tax_code_id": null,
+      "unit_cost": "1.78",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344495",
+        "flat_code": "03-200-50-30.M",
+        "description": "Chairs.Materials"
+      },
+      "wbs_code_id": "598136734344495"
+    },
+    {
+      "id": "598134410865594",
+      "amount": "656.01",
+      "change_event_line_item": null,
+      "description": "Expansion Rigid Foam 6\"x10'",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 7,
+      "prime_line_item_id": null,
+      "quantity": "111.0",
+      "tax_code_id": null,
+      "unit_cost": "5.91",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865597",
+      "amount": "1620.22",
+      "change_event_line_item": null,
+      "description": "Slab On Grade Wood Forms - SOG",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 8,
+      "prime_line_item_id": null,
+      "quantity": "1141.0",
+      "tax_code_id": null,
+      "unit_cost": "1.42",
+      "uom": "sf",
+      "wbs_code": {
+        "id": "598136734344491",
+        "flat_code": "03-100-30-20.M",
+        "description": "SOG Forms Material.Materials"
+      },
+      "wbs_code_id": "598136734344491"
+    },
+    {
+      "id": "598134410865598",
+      "amount": "324.94",
+      "change_event_line_item": null,
+      "description": "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 9,
+      "prime_line_item_id": null,
+      "quantity": "22.0",
+      "tax_code_id": null,
+      "unit_cost": "14.77",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344494",
+        "flat_code": "03-200-50-20.M",
+        "description": "Wire Material.Materials"
+      },
+      "wbs_code_id": "598136734344494"
+    },
+    {
+      "id": "598134410865599",
+      "amount": "1333.62",
+      "change_event_line_item": null,
+      "description": "Chairs 2\" (5' section)",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 10,
+      "prime_line_item_id": null,
+      "quantity": "717.0",
+      "tax_code_id": null,
+      "unit_cost": "1.86",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344495",
+        "flat_code": "03-200-50-30.M",
+        "description": "Chairs.Materials"
+      },
+      "wbs_code_id": "598136734344495"
+    },
+    {
+      "id": "598134410865600",
+      "amount": "717.72",
+      "change_event_line_item": null,
+      "description": "Box Expand-Tite 200 (100' per carton)",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 11,
+      "prime_line_item_id": null,
+      "quantity": "2.11",
+      "tax_code_id": null,
+      "unit_cost": "340.15",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344490",
+        "flat_code": "03-150-10-05.M",
+        "description": "Waterstop.Materials"
+      },
+      "wbs_code_id": "598136734344490"
+    },
+    {
+      "id": "598134410865601",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Bo Metal Hydrostrip waterstop ",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 12,
+      "prime_line_item_id": null,
+      "quantity": "1.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344490",
+        "flat_code": "03-150-10-05.M",
+        "description": "Waterstop.Materials"
+      },
+      "wbs_code_id": "598136734344490"
+    },
+    {
+      "id": "598134410865602",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 non-taxable, 20' pc",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 13,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344492",
+        "flat_code": "03-200-30-20.M",
+        "description": "SOG Rebar Material.Materials"
+      },
+      "wbs_code_id": "598136734344492"
+    },
+    {
+      "id": "598134410865603",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "5\" chairs (5' lengths)",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 14,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344495",
+        "flat_code": "03-200-50-30.M",
+        "description": "Chairs.Materials"
+      },
+      "wbs_code_id": "598136734344495"
+    },
+    {
+      "id": "598134410865604",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Rebar anchor epoxy ",
+      "extended_type": "manual",
+      "funding_rule_id": null,
+      "position": 15,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    }
+  ],
+  "old_SFM-007_598134328062973": [
+    {
+      "id": "598134402488882",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#4 Rebar Speed Dowel Tube 5/8\" x 9\" ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 1,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.79",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488886",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 Rebar Speed Dowel Tube  3/4\" x 9\" ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 2,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.79",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488891",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 Speed Dowel Tube -3/4\"x 9\"",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 3,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.93",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488893",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x4\"x50' Foam Expansion Roll",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 4,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.88",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488896",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x6\"x50' Foam Expansion Roll ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 5,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.32",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488900",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "4\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 6,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "3.92",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488904",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "12\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 7,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.85",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488907",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "6\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 8,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "5.91",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488911",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Great Stuff Insulating Foam",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 9,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "11.96",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488915",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "EPS Foam Concrete Adhesive",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 10,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.76",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488919",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/4\"x4\"x100' Foam Expansion Roll ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 11,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.88",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488921",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Touch N Foam",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 12,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.17",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488925",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#6 (3/4\") X 18\" Smooth Dowels",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 13,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.87",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488928",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 14,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "2.23",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488933",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x10' Expansion Cap (snap cap) ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 15,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "4.13",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134402488935",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#4x20' rebar ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 16,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816065",
+        "flat_code": "03-200-30-20.O",
+        "description": "SOG Rebar Material.Other"
+      },
+      "wbs_code_id": "598136219816065"
+    },
+    {
+      "id": "598134403505831",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Durajoint 6\" waterstop ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 17,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "lf",
+      "wbs_code": {
+        "id": "598136219816062",
+        "flat_code": "03-150-10-05.O",
+        "description": "Waterstop.Other"
+      },
+      "wbs_code_id": "598136219816062"
+    },
+    {
+      "id": "598134407574518",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Clear silicone caulk ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 18,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816061",
+        "flat_code": "03-100-30-20.O",
+        "description": "SOG Forms Material.Other"
+      },
+      "wbs_code_id": "598136219816061"
+    },
+    {
+      "id": "598134407574553",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Boom lift rental ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 19,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "days",
+      "wbs_code": {
+        "id": "598136219816069",
+        "flat_code": "03-300-20-30.O",
+        "description": "SOG Concrete Equipment.Other"
+      },
+      "wbs_code_id": "598136219816069"
+    },
+    {
+      "id": "598134408709030",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "TK Cure n Seal ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 20,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816071",
+        "flat_code": "03-300-40-60.O",
+        "description": "Concrete Interior Sealers.Other"
+      },
+      "wbs_code_id": "598136219816071"
+    },
+    {
+      "id": "598134408709113",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Support posts rental (8)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 21,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "months",
+      "wbs_code": {
+        "id": "598136219816061",
+        "flat_code": "03-100-30-20.O",
+        "description": "SOG Forms Material.Other"
+      },
+      "wbs_code_id": "598136219816061"
+    }
+  ],
+  "old_SFM-001_598134327682719": [
+    {
+      "id": "598134394793420",
+      "amount": "682.91",
+      "change_event_line_item": null,
+      "description": "Vapor Barrier 6 mil 20'x100'",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 1,
+      "prime_line_item_id": null,
+      "quantity": "7.81",
+      "tax_code_id": null,
+      "unit_cost": "87.44",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816063",
+        "flat_code": "03-150-10-35.O",
+        "description": "Vapor Barrier 6-10mil.Other"
+      },
+      "wbs_code_id": "598136219816063"
+    },
+    {
+      "id": "598134394793421",
+      "amount": "33443.28",
+      "change_event_line_item": null,
+      "description": "#5 Rebar - 20' Pc - SOG",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 2,
+      "prime_line_item_id": null,
+      "quantity": "3176.0",
+      "tax_code_id": null,
+      "unit_cost": "10.53",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816065",
+        "flat_code": "03-200-30-20.O",
+        "description": "SOG Rebar Material.Other"
+      },
+      "wbs_code_id": "598136219816065"
+    },
+    {
+      "id": "598134394793422",
+      "amount": "98655.25",
+      "change_event_line_item": null,
+      "description": "Slab On Grade Concrete - SOG",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 3,
+      "prime_line_item_id": null,
+      "quantity": "709.75",
+      "tax_code_id": null,
+      "unit_cost": "139.0",
+      "uom": "cy",
+      "wbs_code": {
+        "id": "598136219816068",
+        "flat_code": "03-300-20-20.O",
+        "description": "SOG Concrete Material.Other"
+      },
+      "wbs_code_id": "598136219816068"
+    },
+    {
+      "id": "598134394793423",
+      "amount": "6702.25",
+      "change_event_line_item": null,
+      "description": "Fiber - SOG",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 4,
+      "prime_line_item_id": null,
+      "quantity": "705.5",
+      "tax_code_id": null,
+      "unit_cost": "9.5",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816068",
+        "flat_code": "03-300-20-20.O",
+        "description": "SOG Concrete Material.Other"
+      },
+      "wbs_code_id": "598136219816068"
+    },
+    {
+      "id": "598134394793424",
+      "amount": "11595.87",
+      "change_event_line_item": null,
+      "description": "Boom Pump Rental w/Operator",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 5,
+      "prime_line_item_id": null,
+      "quantity": "11.0",
+      "tax_code_id": null,
+      "unit_cost": "1054.17",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816070",
+        "flat_code": "03-300-40-30.O",
+        "description": "Concrete Pumping.Other"
+      },
+      "wbs_code_id": "598136219816070"
+    },
+    {
+      "id": "598134394793425",
+      "amount": "968.8",
+      "change_event_line_item": null,
+      "description": "L&M Curing Compound",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 6,
+      "prime_line_item_id": null,
+      "quantity": "17.15",
+      "tax_code_id": null,
+      "unit_cost": "56.49",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816071",
+        "flat_code": "03-300-40-60.O",
+        "description": "Concrete Interior Sealers.Other"
+      },
+      "wbs_code_id": "598136219816071"
+    },
+    {
+      "id": "598134394793426",
+      "amount": "1442.68",
+      "change_event_line_item": null,
+      "description": "TK-Floor Hardner and Densifier 55 gal",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 7,
+      "prime_line_item_id": null,
+      "quantity": "1.58",
+      "tax_code_id": null,
+      "unit_cost": "913.09",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816071",
+        "flat_code": "03-300-40-60.O",
+        "description": "Concrete Interior Sealers.Other"
+      },
+      "wbs_code_id": "598136219816071"
+    },
+    {
+      "id": "598134394793427",
+      "amount": "1922.0",
+      "change_event_line_item": null,
+      "description": "Chairs 3\" (5' section)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 8,
+      "prime_line_item_id": null,
+      "quantity": "961.0",
+      "tax_code_id": null,
+      "unit_cost": "2.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816067",
+        "flat_code": "03-200-50-30.O",
+        "description": "Chairs.Other"
+      },
+      "wbs_code_id": "598136219816067"
+    },
+    {
+      "id": "598134394793428",
+      "amount": "1023.5",
+      "change_event_line_item": null,
+      "description": "Chairs 1.5\" (5' section)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 9,
+      "prime_line_item_id": null,
+      "quantity": "575.0",
+      "tax_code_id": null,
+      "unit_cost": "1.78",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816067",
+        "flat_code": "03-200-50-30.O",
+        "description": "Chairs.Other"
+      },
+      "wbs_code_id": "598136219816067"
+    },
+    {
+      "id": "598134394793429",
+      "amount": "656.01",
+      "change_event_line_item": null,
+      "description": "Expansion Rigid Foam 6\"x10'",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 10,
+      "prime_line_item_id": null,
+      "quantity": "111.0",
+      "tax_code_id": null,
+      "unit_cost": "5.91",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    },
+    {
+      "id": "598134394793430",
+      "amount": "1620.22",
+      "change_event_line_item": null,
+      "description": "Slab On Grade Wood Forms - SOG",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 11,
+      "prime_line_item_id": null,
+      "quantity": "1141.0",
+      "tax_code_id": null,
+      "unit_cost": "1.42",
+      "uom": "sf",
+      "wbs_code": {
+        "id": "598136219816061",
+        "flat_code": "03-100-30-20.O",
+        "description": "SOG Forms Material.Other"
+      },
+      "wbs_code_id": "598136219816061"
+    },
+    {
+      "id": "598134394793431",
+      "amount": "324.94",
+      "change_event_line_item": null,
+      "description": "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 12,
+      "prime_line_item_id": null,
+      "quantity": "22.0",
+      "tax_code_id": null,
+      "unit_cost": "14.77",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816066",
+        "flat_code": "03-200-50-20.O",
+        "description": "Wire Material.Other"
+      },
+      "wbs_code_id": "598136219816066"
+    },
+    {
+      "id": "598134394793432",
+      "amount": "3688.8",
+      "change_event_line_item": null,
+      "description": "Trailer Pump (Includes 3 hr)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 13,
+      "prime_line_item_id": null,
+      "quantity": "6.0",
+      "tax_code_id": null,
+      "unit_cost": "614.8",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816070",
+        "flat_code": "03-300-40-30.O",
+        "description": "Concrete Pumping.Other"
+      },
+      "wbs_code_id": "598136219816070"
+    },
+    {
+      "id": "598134394793433",
+      "amount": "1333.62",
+      "change_event_line_item": null,
+      "description": "Chairs 2\" (5' section)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 14,
+      "prime_line_item_id": null,
+      "quantity": "717.0",
+      "tax_code_id": null,
+      "unit_cost": "1.86",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816067",
+        "flat_code": "03-200-50-30.O",
+        "description": "Chairs.Other"
+      },
+      "wbs_code_id": "598136219816067"
+    },
+    {
+      "id": "598134394793434",
+      "amount": "717.72",
+      "change_event_line_item": null,
+      "description": "Box Expand-Tite 200 (100' per carton)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 15,
+      "prime_line_item_id": null,
+      "quantity": "2.11",
+      "tax_code_id": null,
+      "unit_cost": "340.15",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816062",
+        "flat_code": "03-150-10-05.O",
+        "description": "Waterstop.Other"
+      },
+      "wbs_code_id": "598136219816062"
+    },
+    {
+      "id": "598134394793435",
+      "amount": "1272.0",
+      "change_event_line_item": null,
+      "description": "Telehandler 8000 lb (In-House) - SOG",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 16,
+      "prime_line_item_id": null,
+      "quantity": "6.0",
+      "tax_code_id": null,
+      "unit_cost": "212.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816069",
+        "flat_code": "03-300-20-30.O",
+        "description": "SOG Concrete Equipment.Other"
+      },
+      "wbs_code_id": "598136219816069"
+    },
+    {
+      "id": "598134403342783",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Bo Metal Hydrostrip waterstop ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 17,
+      "prime_line_item_id": null,
+      "quantity": "1.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816062",
+        "flat_code": "03-150-10-05.O",
+        "description": "Waterstop.Other"
+      },
+      "wbs_code_id": "598136219816062"
+    },
+    {
+      "id": "598134406302206",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 non-taxable, 20' pc",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 18,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816065",
+        "flat_code": "03-200-30-20.O",
+        "description": "SOG Rebar Material.Other"
+      },
+      "wbs_code_id": "598136219816065"
+    },
+    {
+      "id": "598134406302207",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "non-taxable SOG concrete",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 19,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "cy",
+      "wbs_code": {
+        "id": "598136219816068",
+        "flat_code": "03-300-20-20.O",
+        "description": "SOG Concrete Material.Other"
+      },
+      "wbs_code_id": "598136219816068"
+    },
+    {
+      "id": "598134406302706",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "non-taxable SOG fiber",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 20,
+      "prime_line_item_id": null,
+      "quantity": "1.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ls",
+      "wbs_code": {
+        "id": "598136219816068",
+        "flat_code": "03-300-20-20.O",
+        "description": "SOG Concrete Material.Other"
+      },
+      "wbs_code_id": "598136219816068"
+    },
+    {
+      "id": "598134406306652",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "5\" chairs (5' lengths)",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 21,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816067",
+        "flat_code": "03-200-50-30.O",
+        "description": "Chairs.Other"
+      },
+      "wbs_code_id": "598136219816067"
+    },
+    {
+      "id": "598134406306653",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Rebar anchor epoxy ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 22,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136219816064",
+        "flat_code": "03-150-10-85.O",
+        "description": "Accessories Material.Other"
+      },
+      "wbs_code_id": "598136219816064"
+    }
+  ],
+  "target_SFM-007_598134328434642": [
+    {
+      "id": "598134410865827",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": null,
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 1,
+      "prime_line_item_id": null,
+      "quantity": "1.0",
+      "tax_code_id": null,
+      "unit_cost": "0.0",
+      "uom": "ls",
+      "wbs_code": {
+        "id": "598136734344422",
+        "flat_code": "",
+        "description": ""
+      },
+      "wbs_code_id": "598136734344422"
+    },
+    {
+      "id": "598134410865829",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#4 Rebar Speed Dowel Tube 5/8\" x 9\" ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 2,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.79",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865831",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 Rebar Speed Dowel Tube  3/4\" x 9\" ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 3,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.79",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865832",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#5 Speed Dowel Tube -3/4\"x 9\"",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 4,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "0.93",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865833",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x4\"x50' Foam Expansion Roll",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 5,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.88",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865834",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x6\"x50' Foam Expansion Roll ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 6,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.32",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865835",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "4\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 7,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "3.92",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865836",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "12\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 8,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.85",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865837",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "6\" Noma flex Expansion",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 9,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "5.91",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865838",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Great Stuff Insulating Foam",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 10,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "11.96",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865839",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "EPS Foam Concrete Adhesive",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 11,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "13.76",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865840",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/4\"x4\"x100' Foam Expansion Roll ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 12,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.88",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865841",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Touch N Foam",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 13,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "8.17",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865842",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "#6 (3/4\") X 18\" Smooth Dowels",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 14,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "1.87",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865843",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 15,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "2.23",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    },
+    {
+      "id": "598134410865844",
+      "amount": "0.0",
+      "change_event_line_item": null,
+      "description": "1/2\"x10' Expansion Cap (snap cap) ",
+      "extended_type": "calculated",
+      "funding_rule_id": null,
+      "position": 16,
+      "prime_line_item_id": null,
+      "quantity": "0.0",
+      "tax_code_id": null,
+      "unit_cost": "4.13",
+      "uom": "ea",
+      "wbs_code": {
+        "id": "598136734344489",
+        "flat_code": "03-150-10-85.M",
+        "description": "Accessories Material.Materials"
+      },
+      "wbs_code_id": "598136734344489"
+    }
+  ],
+  "old_contracts": [
+    {
+      "id": "598134327682719",
+      "number": "SFM-001",
+      "title": "Interior slabs on Grade, Interior slabs on deck, Ceiling slabs, Pan steps"
+    },
+    {
+      "id": "598134327682775",
+      "number": "SFM-002",
+      "title": "12\" slab at Loadout bay OHD's"
+    },
+    {
+      "id": "598134327682789",
+      "number": "SFM-003",
+      "title": "Bollards "
+    },
+    {
+      "id": "598134327686995",
+      "number": "SFM-004",
+      "title": "MUA pads, Approach pads, Dumpster pad, Aprons, Transformer pad, Tunnel lid, Stoops, Steps"
+    },
+    {
+      "id": "598134327686996",
+      "number": "SFM-005",
+      "title": "36\" raft slab "
+    },
+    {
+      "id": "598134328043896",
+      "number": "SFM-006",
+      "title": "Stevens Feed Mill Billing File"
+    },
+    {
+      "id": "598134328062973",
+      "number": "SFM-007",
+      "title": "Non budgeted items "
+    }
+  ]
+}

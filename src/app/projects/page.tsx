@@ -91,6 +91,19 @@ type SortKey =
 type ApiResponse = {
   success?: boolean;
   data?: ProjectRow[];
+  rows?: Array<{
+    procore_project_id?: string | null;
+    name?: string | null;
+    project_number?: string | null;
+    status?: string | null;
+    status_raw?: string | null;
+    customer?: string | null;
+    stage_name?: string | null;
+    stage_category?: string | null;
+    bid_board_status?: string | null;
+    bid_board_id?: string | null;
+    synced_at?: string | null;
+  }>;
 };
 
 type BudgetApiResponse = {
@@ -337,8 +350,32 @@ export default function ProjectsPage() {
         }
       }
 
-      const projectItems: ProjectRow[] = (Array.isArray(payload.data) ? payload.data : []).map((project) => {
-        const lookupId = (project.procoreId || project.id || "").toString().trim();
+      const canonicalRows = Array.isArray(payload.data)
+        ? payload.data
+        : (Array.isArray(payload.rows)
+            ? payload.rows.map((row) => ({
+                id: String(row.procore_project_id || ""),
+                projectName: row.name || null,
+                projectNumber: row.project_number || null,
+                customer: row.customer || null,
+                status: row.status || null,
+                statusRaw: row.status_raw || null,
+                projectStageName: row.stage_name || null,
+                projectStageCategory: row.stage_category || null,
+                bidBoardStatus: row.bid_board_status || null,
+                bidBoardId: row.bid_board_id || null,
+                procoreId: row.procore_project_id || null,
+                syncedAt: row.synced_at || null,
+              }))
+            : []);
+
+      const projectItems: ProjectRow[] = canonicalRows.map((project) => {
+        const rawProcoreId = String(project.procoreId || project.id || "").trim();
+        const procoreId = normalizeProcoreProjectId(rawProcoreId);
+        const bidBoardId = normalizeBidBoardId(
+          String(project.bidBoardId || "").trim() || extractBidBoardIdFromComposite(rawProcoreId) || ""
+        );
+        const lookupId = procoreId || "";
         const budget = lookupId ? budgetByProjectId.get(lookupId) : undefined;
         const changeOrders = lookupId ? changeOrdersByProjectId.get(lookupId) : undefined;
         const estimatesBids = lookupId ? estimatesBidsByProjectId.get(lookupId) : undefined;
@@ -360,6 +397,8 @@ export default function ProjectsPage() {
 
         return {
           ...project,
+          procoreId,
+          bidBoardId,
           budgetUoms: (budget?.uoms || "").toString(),
           budgetAmount: Number(budget?.totalAmount || 0),
           budgetLineItemCount: Number(budget?.lineItemCount || 0),
@@ -393,27 +432,56 @@ export default function ProjectsPage() {
         : (Array.isArray(bidPayload.data) ? bidPayload.data : []);
 
       const mergedProjectItems: ProjectRow[] = [...projectItems];
-      const existingProcoreIds = new Set(
-        projectItems
-          .map((item) => String(item.procoreId || "").trim())
-          .filter(Boolean)
-      );
-      const existingBidBoardIds = new Set(
-        projectItems
-          .map((item) => String(item.bidBoardId || "").trim())
-          .filter(Boolean)
-      );
+      const projectIndexByProcoreId = new Map<string, number>();
+      const projectIndexByBidBoardId = new Map<string, number>();
+      const projectIndexByNameCustomer = new Map<string, number>();
+
+      const registerRowIndex = (row: ProjectRow, index: number) => {
+        const procoreId = normalizeProcoreProjectId(row.procoreId || "");
+        if (procoreId) projectIndexByProcoreId.set(procoreId, index);
+
+        const bidBoardId = normalizeBidBoardId(row.bidBoardId || "");
+        if (bidBoardId) projectIndexByBidBoardId.set(bidBoardId, index);
+
+        const nameCustomerKey = normalizeJoinKey(row.projectName, row.customer);
+        if (nameCustomerKey && !projectIndexByNameCustomer.has(nameCustomerKey)) {
+          projectIndexByNameCustomer.set(nameCustomerKey, index);
+        }
+      };
+
+      mergedProjectItems.forEach((row, index) => {
+        registerRowIndex(row, index);
+      });
 
       for (const bidItem of bidItems) {
-        const procoreId = String(bidItem.procoreId || "").trim();
-        const bidBoardId = String(bidItem.bidBoardId || bidItem.id || "").trim();
-        const hasMatch =
-          (procoreId && existingProcoreIds.has(procoreId)) ||
-          (bidBoardId && existingBidBoardIds.has(bidBoardId));
+        const procoreId = normalizeProcoreProjectId(bidItem.procoreId || "");
+        const bidBoardId = normalizeBidBoardId(String(bidItem.bidBoardId || bidItem.id || ""));
+        const nameCustomerKey = normalizeJoinKey(bidItem.projectName, bidItem.customer);
 
-        if (hasMatch) continue;
+        const existingIndex =
+          (procoreId ? projectIndexByProcoreId.get(procoreId) : undefined) ??
+          (bidBoardId ? projectIndexByBidBoardId.get(bidBoardId) : undefined) ??
+          (nameCustomerKey ? projectIndexByNameCustomer.get(nameCustomerKey) : undefined);
 
-        mergedProjectItems.push({
+        if (existingIndex !== undefined) {
+          const existing = mergedProjectItems[existingIndex];
+          const mergedRow: ProjectRow = {
+            ...existing,
+            projectName: existing.projectName || bidItem.projectName || null,
+            customer: existing.customer || bidItem.customer || null,
+            status: existing.status || bidItem.status || null,
+            statusRaw: existing.statusRaw || bidItem.statusRaw || null,
+            bidBoardStatus: existing.bidBoardStatus || bidItem.status || null,
+            bidBoardId: existing.bidBoardId || bidBoardId || null,
+            procoreId: existing.procoreId || procoreId || null,
+            syncedAt: existing.syncedAt || bidItem.syncedAt || null,
+          };
+          mergedProjectItems[existingIndex] = mergedRow;
+          registerRowIndex(mergedRow, existingIndex);
+          continue;
+        }
+
+        const newRow: ProjectRow = {
           id: bidBoardId || procoreId || String(bidItem.id || ""),
           projectName: bidItem.projectName || null,
           customer: bidItem.customer || null,
@@ -423,7 +491,9 @@ export default function ProjectsPage() {
           bidBoardId: bidBoardId || null,
           procoreId: procoreId || null,
           syncedAt: bidItem.syncedAt || null,
-        });
+        };
+        mergedProjectItems.push(newRow);
+        registerRowIndex(newRow, mergedProjectItems.length - 1);
       }
 
       setRows(mergedProjectItems);
@@ -834,13 +904,14 @@ export default function ProjectsPage() {
               <HeaderCell label="Est Proposals" onClick={() => toggleSort("estimateProposalCount")} />
               <HeaderCell label="Est Items" onClick={() => toggleSort("estimateLineItemCount")} />
               <HeaderCell label="Proposal IDs" onClick={() => toggleSort("estimateProposalIds")} />
+              <th className="px-3 py-2 text-left">Bid Board ID</th>
               <th className="px-3 py-2 text-left">Procore ID</th>
             </tr>
           </thead>
           <tbody>
             {!loading && filteredProjects.length === 0 && (
               <tr>
-                <td colSpan={18} className="px-3 py-10 text-center text-gray-400">
+                <td colSpan={19} className="px-3 py-10 text-center text-gray-400">
                   No V1 projects found.
                 </td>
               </tr>
@@ -865,6 +936,7 @@ export default function ProjectsPage() {
                 <td className="px-3 py-2 text-right text-gray-700">{row.estimateProposalCount ? row.estimateProposalCount.toLocaleString() : ""}</td>
                 <td className="px-3 py-2 text-right text-gray-700">{row.estimateLineItemCount ? row.estimateLineItemCount.toLocaleString() : ""}</td>
                 <td className="px-3 py-2 text-gray-700">{row.estimateProposalIds || ""}</td>
+                <td className="px-3 py-2 text-gray-700">{row.bidBoardId || ""}</td>
                 <td className="px-3 py-2 text-gray-700">{row.procoreId || ""}</td>
               </tr>
             ))}
@@ -915,4 +987,27 @@ function normalizeJoinKey(...parts: Array<string | null | undefined>) {
     .filter(Boolean);
 
   return normalized.length > 0 ? normalized.join("||") : "";
+}
+
+function extractBidBoardIdFromComposite(value: string): string | null {
+  const text = String(value || "").trim();
+  if (!text.includes(":")) return null;
+  const parts = text.split(":").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const candidate = parts[parts.length - 1];
+  return /^\d{8,}$/.test(candidate) ? candidate : null;
+}
+
+function normalizeBidBoardId(value: string): string | null {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const extracted = extractBidBoardIdFromComposite(text);
+  return extracted || text;
+}
+
+function normalizeProcoreProjectId(value: string): string | null {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (text.includes(":")) return null;
+  return text;
 }

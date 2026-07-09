@@ -1,0 +1,221 @@
+{
+  "projectId": "598134326626273",
+  "companyId": "598134325805519",
+  "idA": "598134328354804",
+  "idB": "598134328354823",
+  "comparedFields": 24,
+  "differences": [
+    {
+      "field": "id",
+      "a": "598134328354804",
+      "b": "598134328354823"
+    },
+    {
+      "field": "number",
+      "a": "PO-021",
+      "b": "PO-033"
+    },
+    {
+      "field": "title",
+      "a": "tttt",
+      "b": "Non-Budgeted Items a"
+    },
+    {
+      "field": "signature_required",
+      "a": true,
+      "b": false
+    },
+    {
+      "field": "accounting_method",
+      "a": "unit",
+      "b": "amount"
+    },
+    {
+      "field": "private",
+      "a": true,
+      "b": false
+    },
+    {
+      "field": "contract_date",
+      "a": null,
+      "b": "2025-12-17"
+    },
+    {
+      "field": "issued_on_date",
+      "a": null,
+      "b": "2025-12-17"
+    },
+    {
+      "field": "created_at",
+      "a": "2026-06-12T11:22:33Z",
+      "b": "2026-06-12T11:34:25Z"
+    },
+    {
+      "field": "updated_at",
+      "a": "2026-06-12T11:22:34Z",
+      "b": "2026-06-12T11:35:04Z"
+    }
+  ],
+  "contractA": {
+    "id": "598134328354804",
+    "type": "PurchaseOrderContract",
+    "number": "PO-021",
+    "title": "tttt",
+    "status": "Approved",
+    "executed": false,
+    "signature_required": true,
+    "accounting_method": "unit",
+    "enable_ssov": false,
+    "allow_change_orders_ssov": false,
+    "allow_payment_applications": true,
+    "allow_payments": true,
+    "private": true,
+    "show_line_items_to_non_admins": false,
+    "contract_date": null,
+    "issued_on_date": null,
+    "signed_contract_received_date": null,
+    "created_at": "2026-06-12T11:22:33Z",
+    "updated_at": "2026-06-12T11:22:34Z"
+  },
+  "contractB": {
+    "id": "598134328354823",
+    "type": "PurchaseOrderContract",
+    "number": "PO-033",
+    "title": "Non-Budgeted Items a",
+    "status": "Approved",
+    "executed": false,
+    "signature_required": false,
+    "accounting_method": "amount",
+    "enable_ssov": false,
+    "allow_change_orders_ssov": false,
+    "allow_payment_applications": true,
+    "allow_payments": true,
+    "private": false,
+    "show_line_items_to_non_admins": false,
+    "contract_date": "2025-12-17",
+    "issued_on_date": "2025-12-17",
+    "signed_contract_received_date": null,
+    "created_at": "2026-06-12T11:34:25Z",
+    "updated_at": "2026-06-12T11:35:04Z"
+  },
+  "rawA": {
+    "id": "598134328354804",
+    "accessor_ids": [],
+    "accounting_method": "unit",
+    "allow_change_orders_ssov": false,
+    "allow_comments": false,
+    "allow_markups": false,
+    "allow_payment_applications": true,
+    "allow_payments": true,
+    "approval_letter_date": null,
+    "bill_recipient_ids": [],
+    "bill_to_address": "<p>Santa Claus Lane, Carpinteria, CA</p>",
+    "change_order_level_of_detail": "line_item",
+    "contract_date": null,
+    "created_at": "2026-06-12T11:22:33Z",
+    "created_by": {
+      "id": "14134125",
+      "name": "Todd Gilmore"
+    },
+    "currency_configuration": {
+      "currency_iso_code": null
+    },
+    "custom_fields": {},
+    "delivery_date": null,
+    "description": null,
+    "display_materials_retainage": true,
+    "display_work_retainage": true,
+    "enable_ssov": false,
+    "executed": false,
+    "execution_date": null,
+    "external_data": {
+      "origin_id": null,
+      "origin_data": null,
+      "origin_code": null
+    },
+    "grand_total": "22.0",
+    "issued_on_date": null,
+    "letter_of_intent_date": null,
+    "number": "PO-021",
+    "payment_terms": null,
+    "private": true,
+    "prostore_file_ids": [],
+    "retainage_percent": "0.0",
+    "returned_date": null,
+    "ship_to_address": "<p>1410 Harbor View Drive Newport Beach, CA 92663</p>",
+    "ship_via": null,
+    "show_cost_code_on_pdf": true,
+    "show_line_items_to_non_admins": false,
+    "signature_required": true,
+    "signed_contract_received_date": null,
+    "ssr_enabled": false,
+    "status": "Approved",
+    "title": "tttt",
+    "type": "PurchaseOrderContract",
+    "updated_at": "2026-06-12T11:22:34Z",
+    "vendor": {
+      "id": "598134334366393",
+      "name": "Paradise Masonry, LLC"
+    }
+  },
+  "rawB": {
+    "id": "598134328354823",
+    "accessor_ids": [],
+    "accounting_method": "amount",
+    "allow_change_orders_ssov": false,
+    "allow_comments": false,
+    "allow_markups": false,
+    "allow_payment_applications": true,
+    "allow_payments": true,
+    "approval_letter_date": null,
+    "bill_recipient_ids": [],
+    "bill_to_address": "<p>Santa Claus Lane, Carpinteria, CA</p>",
+    "change_order_level_of_detail": "line_item",
+    "contract_date": "2025-12-17",
+    "created_at": "2026-06-12T11:34:25Z",
+    "created_by": {
+      "id": "14134125",
+      "name": "Todd Gilmore"
+    },
+    "currency_configuration": {
+      "currency_iso_code": null
+    },
+    "custom_fields": {},
+    "delivery_date": "2025-12-17",
+    "description": "<p>Imported from CSV (Commitments (2)3.csv).</p>",
+    "display_materials_retainage": true,
+    "display_work_retainage": true,
+    "enable_ssov": false,
+    "executed": false,
+    "execution_date": null,
+    "external_data": {
+      "origin_id": null,
+      "origin_data": null,
+      "origin_code": null
+    },
+    "grand_total": "44.0",
+    "issued_on_date": "2025-12-17",
+    "letter_of_intent_date": null,
+    "number": "PO-033",
+    "payment_terms": "Net 30",
+    "private": false,
+    "prostore_file_ids": [],
+    "retainage_percent": "0.0",
+    "returned_date": null,
+    "ship_to_address": "<p>1410 Harbor View Drive Newport Beach, CA 92663</p>",
+    "ship_via": null,
+    "show_cost_code_on_pdf": true,
+    "show_line_items_to_non_admins": false,
+    "signature_required": false,
+    "signed_contract_received_date": null,
+    "ssr_enabled": false,
+    "status": "Approved",
+    "title": "Non-Budgeted Items a",
+    "type": "PurchaseOrderContract",
+    "updated_at": "2026-06-12T11:35:04Z",
+    "vendor": {
+      "id": "598134334366393",
+      "name": "Paradise Masonry, LLC"
+    }
+  }
+}

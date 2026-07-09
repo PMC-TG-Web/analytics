@@ -105,6 +105,46 @@ function safeJson(value: unknown): string {
   }
 }
 
+function isBlankValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (isRecord(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+function mergeMissingFields(candidate: unknown, target: unknown): unknown {
+  if (isBlankValue(candidate)) return undefined;
+  if (Array.isArray(candidate)) {
+    if (Array.isArray(target) && target.length > 0) return undefined;
+    return candidate;
+  }
+  if (isRecord(candidate)) {
+    const next: UnknownRecord = {};
+    for (const [key, value] of Object.entries(candidate)) {
+      const merged = mergeMissingFields(value, isRecord(target) ? target[key] : undefined);
+      if (!isBlankValue(merged)) next[key] = merged;
+    }
+    return Object.keys(next).length ? next : undefined;
+  }
+  return isBlankValue(target) ? candidate : undefined;
+}
+
+function compactPayload(payload: UnknownRecord) {
+  for (const key of Object.keys(payload)) {
+    const value = payload[key];
+    if (value === undefined || value === null || value === "") {
+      delete payload[key];
+      continue;
+    }
+    if (isRecord(value)) {
+      compactPayload(value);
+      if (Object.keys(value).length === 0) delete payload[key];
+    }
+  }
+  return payload;
+}
+
 async function getToken(bodyToken: unknown) {
   const cookieStore = await cookies();
   const explicitToken = readStr(bodyToken);
@@ -877,10 +917,73 @@ function stripContractPayload(source: UnknownRecord) {
 
 function sourceContractType(source: UnknownRecord) {
   const raw = readStr(source.type ?? source.contract_type ?? source.kind).toLowerCase();
+  if (raw.includes("potential") && raw.includes("change")) return "PotentialChangeOrder";
   if (raw.includes("work")) return "WorkOrderContract";
   if (raw.includes("purchase")) return "PurchaseOrderContract";
   if (raw.includes("sub")) return "CommitmentContract";
   return readStr(source.type) || "PurchaseOrderContract";
+}
+
+function isPotentialChangeOrderSource(source: UnknownRecord) {
+  return readStr(source._cloneSourceEndpoint) === "potential_change_orders";
+}
+
+function buildPotentialChangeOrderPayload(params: {
+  source: UnknownRecord;
+  targetStatus: string;
+  preserveStatus: boolean;
+  contractIdMap: Record<string, string>;
+  issues: UnknownRecord[];
+  requireMappedIds: boolean;
+  allowUnmappedIds: boolean;
+  passthroughIds: boolean;
+  targetProjectId: string;
+}) {
+  const sourceContractId = readStr(params.source.contract_id);
+  const context = {
+    contractId: readStr(params.source.id),
+    contractNumber: readStr(params.source.number),
+    contractTitle: readStr(params.source.title),
+    sourceContractId,
+  };
+
+  const mappedContractId = params.passthroughIds
+    ? (readNum(sourceContractId) ?? sourceContractId)
+    : mapId(sourceContractId, params.contractIdMap, "contract_id", params.issues, context, {
+      required: params.requireMappedIds,
+      allowUnmappedIds: params.allowUnmappedIds,
+    });
+
+  const sourceOriginId = readStr(params.source.origin_id);
+  const sourceOriginData = readStr(params.source.origin_data);
+  const sourceId = readStr(params.source.id);
+  const number = readStr(params.source.number);
+  const title = readStr(params.source.title) || number || "Untitled Potential Change Order";
+  const status = params.preserveStatus ? readStr(params.source.status) || params.targetStatus : params.targetStatus;
+
+  const changeOrder = compactPayload({
+    change_order_request_id: (readNum(params.source.change_order_request_id) ?? readStr(params.source.change_order_request_id)) || undefined,
+    commitment_change_event_id: (readNum(params.source.commitment_change_event_id) ?? readStr(params.source.commitment_change_event_id)) || undefined,
+    prime_change_event_id: (readNum(params.source.prime_change_event_id) ?? readStr(params.source.prime_change_event_id)) || undefined,
+    description: readStr(params.source.description),
+    due_date: readStr(params.source.due_date),
+    grand_total: readStr(params.source.grand_total),
+    invoiced_date: readStr(params.source.invoiced_date),
+    number,
+    origin_id: sourceOriginId || sourceId || undefined,
+    origin_data: sourceOriginData || (sourceId ? `pmc_pco_clone:${sourceId}` : undefined),
+    paid_date: readStr(params.source.paid_date),
+    schedule_impact_amount: readNum(params.source.schedule_impact_amount),
+    status: status || "draft",
+    title,
+    currency_exchange_rate: readStr(params.source.currency_exchange_rate),
+  });
+
+  return compactPayload({
+    project_id: readNum(params.targetProjectId) ?? params.targetProjectId,
+    contract_id: mappedContractId,
+    change_order: changeOrder,
+  });
 }
 
 function buildContractPayload(params: {
@@ -888,12 +991,28 @@ function buildContractPayload(params: {
   targetStatus: string;
   preserveStatus: boolean;
   vendorIdMap: Record<string, string>;
+  contractIdMap: Record<string, string>;
   targetVendorIdOverride: string;
   issues: UnknownRecord[];
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
   passthroughIds: boolean;
+  targetProjectId: string;
 }) {
+  if (isPotentialChangeOrderSource(params.source)) {
+    return buildPotentialChangeOrderPayload({
+      source: params.source,
+      targetStatus: params.targetStatus,
+      preserveStatus: params.preserveStatus,
+      contractIdMap: params.contractIdMap,
+      issues: params.issues,
+      requireMappedIds: params.requireMappedIds,
+      allowUnmappedIds: params.allowUnmappedIds,
+      passthroughIds: params.passthroughIds,
+      targetProjectId: params.targetProjectId,
+    });
+  }
+
   const payload = stripContractPayload(params.source);
   const vendor = isRecord(params.source.vendor) ? params.source.vendor : {};
   const sourceVendorId = readStr(params.source.vendor_id ?? vendor.id);
@@ -1077,6 +1196,19 @@ async function fetchCommitments(params: {
     errors.push(...result.errors);
   }
 
+  if (params.sourceMode === "all" || params.sourceMode === "potential_change_orders") {
+    const result = await fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["potential_change_orders", "data"],
+      pathForPage: (page) =>
+        `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+    });
+    contracts.push(...result.records.map((record) => ({ ...record, _cloneSourceEndpoint: "potential_change_orders" })));
+    errors.push(...result.errors);
+  }
+
   const deduped = new Map<string, UnknownRecord & { _cloneSourceEndpoint?: string }>();
   for (const contract of contracts) {
     const key = readStr(contract.id) || `${readStr(contract.number)}|${readStr(contract.title)}`;
@@ -1156,7 +1288,19 @@ async function createContract(params: {
   companyId: string;
   projectId: string;
   payload: UnknownRecord;
+  sourceEndpoint?: string;
 }) {
+  if (params.sourceEndpoint === "potential_change_orders") {
+    const response = await procoreJson({
+      path: `/rest/v1.0/potential_change_orders`,
+      method: "POST",
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      body: params.payload,
+    });
+    return unwrapData(response.payload);
+  }
+
   const response = await procoreJson({
     path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
       params.projectId
@@ -1187,6 +1331,7 @@ async function fetchTargetContractsForDuplicateCheck(params: {
   companyId: string;
   projectId: string;
   maxPages: number;
+  includePotentialChangeOrders?: boolean;
 }) {
   const result = await fetchPaged({
     accessToken: params.accessToken,
@@ -1198,7 +1343,21 @@ async function fetchTargetContractsForDuplicateCheck(params: {
         params.projectId
       )}/commitment_contracts?page=${page}&per_page=100`,
   });
-  return result.records;
+  const records = [...result.records];
+
+  if (params.includePotentialChangeOrders) {
+    const pcoResult = await fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["potential_change_orders", "data"],
+      pathForPage: (page) =>
+        `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+    });
+    records.push(...pcoResult.records.map((record) => ({ ...record, _cloneSourceEndpoint: "potential_change_orders" })));
+  }
+
+  return records;
 }
 
 function findExistingTargetContract(sourceContract: UnknownRecord, targetContracts: UnknownRecord[]) {
@@ -1289,6 +1448,152 @@ async function createLineItem(params: {
   throw new Error(`Procore POST ${requestPath} failed (${response.status}): ${safeJson(response.payload)}`);
 }
 
+async function updateContract(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  contractId: string;
+  payload: UnknownRecord;
+  sourceEndpoint?: string;
+}) {
+  if (params.sourceEndpoint === "potential_change_orders") {
+    const attempts = [
+      {
+        method: "PATCH",
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}`,
+        body: params.payload,
+      },
+    ];
+
+    const errors: UnknownRecord[] = [];
+    for (const attempt of attempts) {
+      try {
+        const updated = await procoreJson({
+          path: attempt.path,
+          method: attempt.method,
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          body: attempt.body,
+        });
+        return {
+          ok: true,
+          method: attempt.method,
+          path: attempt.path,
+          updated: unwrapData(updated.payload),
+          errors,
+        };
+      } catch (error) {
+        errors.push({
+          method: attempt.method,
+          path: attempt.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { ok: false, errors };
+  }
+
+  const attempts = [
+    {
+      method: "PATCH",
+      path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_contracts/${encodeURIComponent(params.contractId)}`,
+      body: params.payload,
+    },
+    {
+      method: "PUT",
+      path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_contracts/${encodeURIComponent(params.contractId)}`,
+      body: params.payload,
+    },
+  ];
+
+  const errors: UnknownRecord[] = [];
+  for (const attempt of attempts) {
+    try {
+      const updated = await procoreJson({
+        path: attempt.path,
+        method: attempt.method,
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        body: attempt.body,
+      });
+      return {
+        ok: true,
+        method: attempt.method,
+        path: attempt.path,
+        updated: unwrapData(updated.payload),
+        errors,
+      };
+    } catch (error) {
+      errors.push({
+        method: attempt.method,
+        path: attempt.path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { ok: false, errors };
+}
+
+async function updateLineItem(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  contractId: string;
+  lineItemId: string;
+  payload: UnknownRecord;
+}) {
+  const attempts = [
+    {
+      method: "PATCH",
+      path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items/${encodeURIComponent(params.lineItemId)}`,
+      body: params.payload,
+    },
+    {
+      method: "PUT",
+      path: `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items/${encodeURIComponent(params.lineItemId)}`,
+      body: params.payload,
+    },
+  ];
+
+  const errors: UnknownRecord[] = [];
+  for (const attempt of attempts) {
+    try {
+      const updated = await procoreJson({
+        path: attempt.path,
+        method: attempt.method,
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        body: attempt.body,
+      });
+      return {
+        ok: true,
+        method: attempt.method,
+        path: attempt.path,
+        updated: unwrapData(updated.payload),
+        errors,
+      };
+    } catch (error) {
+      errors.push({
+        method: attempt.method,
+        path: attempt.path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { ok: false, errors };
+}
+
 function lineItemMatchKeys(lineItem: UnknownRecord) {
   const ids = new Set<string>();
   const id = readStr(lineItem.origin_id || lineItem.originId);
@@ -1346,6 +1651,8 @@ export async function POST(request: Request) {
     const createLimit = dryRun ? requestedCreateLimit : Math.min(requestedCreateLimit, 1);
     const lineItemCreateOffset = Math.max(0, Math.trunc(readNum(body.lineItemCreateOffset) || 0));
     const lineItemCreateLimit = Math.max(1, Math.min(100, Math.trunc(readNum(body.lineItemCreateLimit) || 10)));
+    const updateExisting = readBool(body.updateExisting, true);
+    const updateOnlyBlankFields = readBool(body.updateOnlyBlankFields, true);
     const allowUnmappedIds = readBool(body.allowUnmappedIds, false);
     const passthroughIds = readBool(body.passthroughIds || body.rawPassthroughIds, false);
     const crosswalkWorkbookBase64 = readStr(body.crosswalkWorkbookBase64);
@@ -1370,6 +1677,7 @@ export async function POST(request: Request) {
     const requireMappedIds = !passthroughIds && (sourceCompanyId !== targetCompanyId || sourceProjectId !== targetProjectId);
     const maps = {
       vendorIdMap: buildIdMap(body.vendorIdMap),
+      contractIdMap: buildIdMap(body.contractIdMap),
       budgetLineItemIdMap: buildIdMap(body.budgetLineItemIdMap),
       wbsCodeIdMap: buildIdMap(body.wbsCodeIdMap),
       costCodeIdMap: buildIdMap(body.costCodeIdMap),
@@ -1398,7 +1706,9 @@ export async function POST(request: Request) {
 
     for (const contract of contractsForPlan) {
       const contractId = readStr(contract.id);
+      const sourceEndpoint = readStr(contract._cloneSourceEndpoint);
       const lineFetch = cloneLineItems && contractId
+        && sourceEndpoint !== "potential_change_orders"
         ? await fetchLineItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, contractId, maxPages })
         : { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       lineItemsByContractId.set(contractId, lineFetch);
@@ -1436,11 +1746,13 @@ export async function POST(request: Request) {
         targetStatus,
         preserveStatus,
         vendorIdMap: maps.vendorIdMap,
+        contractIdMap: maps.contractIdMap,
         targetVendorIdOverride,
         issues: contractIssues,
         requireMappedIds,
         allowUnmappedIds,
         passthroughIds,
+        targetProjectId,
       });
       const lineItemPlans = lineFetch.records.map((lineItem) => {
         const lineIssues: UnknownRecord[] = [];
@@ -1493,6 +1805,7 @@ export async function POST(request: Request) {
         readyForLiveClone,
         source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
         target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride: passthroughIds ? "" : targetVendorIdOverride },
+        updateOptions: { updateExisting, updateOnlyBlankFields },
         options: { passthroughIds },
         counts: {
           sourceContracts: selectedContracts.length,
@@ -1520,6 +1833,7 @@ export async function POST(request: Request) {
           dryRun: false,
           error: "Commitment clone blocked by missing ID mapping(s).",
           readyForLiveClone,
+          updateOptions: { updateExisting, updateOnlyBlankFields },
           counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, criticalMissingMappings: criticalMissingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
           options: { passthroughIds },
           crosswalkAutoMappings,
@@ -1535,10 +1849,16 @@ export async function POST(request: Request) {
       companyId: targetCompanyId,
       projectId: targetProjectId,
       maxPages,
+      includePotentialChangeOrders:
+        sourceMode === "all" ||
+        sourceMode === "potential_change_orders" ||
+        plan.some((entry) => readStr(entry.sourceEndpoint) === "potential_change_orders"),
     }).catch(() => [] as UnknownRecord[]);
 
     const createdContracts: UnknownRecord[] = [];
     const reusedContracts: UnknownRecord[] = [];
+    const contractUpdateResults: UnknownRecord[] = [];
+    const lineItemUpdateResults: UnknownRecord[] = [];
     const errors: UnknownRecord[] = [];
     const projectVendorAdds: UnknownRecord[] = [];
     for (const entry of plan) {
@@ -1554,7 +1874,7 @@ export async function POST(request: Request) {
         const existingTargetId = existingTarget ? readStr(existingTarget.id) : "";
 
         const targetVendorId = passthroughIds ? "" : readStr((entry.contractPayload as UnknownRecord)?.vendor_id);
-        if (targetVendorId && !existingTargetId) {
+        if (targetVendorId && !existingTargetId && readStr(entry.sourceEndpoint) !== "potential_change_orders") {
           const addResult = await addVendorToProject({
             accessToken,
             companyId: targetCompanyId,
@@ -1588,9 +1908,59 @@ export async function POST(request: Request) {
               companyId: targetCompanyId,
               projectId: targetProjectId,
               payload: entry.contractPayload as UnknownRecord,
+              sourceEndpoint: readStr(entry.sourceEndpoint),
             });
         const createdRecord = isRecord(created) ? created : {};
         const createdContractId = existingTargetId || readStr(createdRecord.id);
+        if (existingTargetId && updateExisting && isRecord(entry.contractPayload)) {
+          let updatePayload: unknown;
+          if (readStr(entry.sourceEndpoint) === "potential_change_orders") {
+            const sourcePayload = entry.contractPayload as UnknownRecord;
+            const sourceChange = isRecord(sourcePayload.change_order) ? sourcePayload.change_order : {};
+            const mergedChange = updateOnlyBlankFields
+              ? mergeMissingFields(sourceChange, existingTarget)
+              : sourceChange;
+            updatePayload = isRecord(mergedChange)
+              ? compactPayload({
+                project_id: readNum(targetProjectId) ?? targetProjectId,
+                contract_id: sourcePayload.contract_id ?? existingTarget.contract_id,
+                change_order: mergedChange,
+              })
+              : undefined;
+          } else {
+            updatePayload = updateOnlyBlankFields
+              ? mergeMissingFields(entry.contractPayload, existingTarget)
+              : (entry.contractPayload as UnknownRecord);
+          }
+          if (isRecord(updatePayload) && Object.keys(updatePayload).length > 0) {
+            const updated = await updateContract({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              contractId: createdContractId,
+              payload: updatePayload,
+              sourceEndpoint: readStr(entry.sourceEndpoint),
+            });
+            contractUpdateResults.push({
+              sourceContractId: entry.sourceContractId,
+              sourceNumber: entry.number,
+              targetContractId: createdContractId,
+              updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+              ok: updated.ok,
+              updated,
+            });
+          } else {
+            contractUpdateResults.push({
+              sourceContractId: entry.sourceContractId,
+              sourceNumber: entry.number,
+              targetContractId: createdContractId,
+              updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+              ok: true,
+              skipped: true,
+              reason: "No missing fields detected for contract update.",
+            });
+          }
+        }
         const createdLineItems: UnknownRecord[] = [];
         const reusedLineItems: UnknownRecord[] = [];
         const existingTargetLines = existingTargetId && cloneLineItems
@@ -1610,6 +1980,43 @@ export async function POST(request: Request) {
             try {
               const existingLine = findExistingTargetLineItem(line, existingTargetLines);
               if (existingLine) {
+                if (updateExisting && isRecord(line.payload)) {
+                  const linePayload = line.payload as UnknownRecord;
+                  const lineUpdatePayload = updateOnlyBlankFields
+                    ? mergeMissingFields(linePayload, existingLine)
+                    : linePayload;
+                  const targetLineId = readStr(existingLine.id);
+                  if (targetLineId && isRecord(lineUpdatePayload) && Object.keys(lineUpdatePayload).length > 0) {
+                    const updatedLine = await updateLineItem({
+                      accessToken,
+                      companyId: targetCompanyId,
+                      projectId: targetProjectId,
+                      contractId: createdContractId,
+                      lineItemId: targetLineId,
+                      payload: lineUpdatePayload,
+                    });
+                    lineItemUpdateResults.push({
+                      sourceContractId: entry.sourceContractId,
+                      sourceLineItemId: line.sourceLineItemId,
+                      targetContractId: createdContractId,
+                      targetLineItemId: targetLineId,
+                      updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+                      ok: updatedLine.ok,
+                      updated: updatedLine,
+                    });
+                  } else {
+                    lineItemUpdateResults.push({
+                      sourceContractId: entry.sourceContractId,
+                      sourceLineItemId: line.sourceLineItemId,
+                      targetContractId: createdContractId,
+                      targetLineItemId: targetLineId || null,
+                      updateMode: updateOnlyBlankFields ? "missing_only" : "full",
+                      ok: true,
+                      skipped: true,
+                      reason: "No missing fields detected for line-item update.",
+                    });
+                  }
+                }
                 reusedLineItems.push({
                   sourceLineItemId: line.sourceLineItemId,
                   result: existingLine,
@@ -1681,6 +2088,7 @@ export async function POST(request: Request) {
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId, sourceMode },
       target: { companyId: targetCompanyId, projectId: targetProjectId, targetStatus, preserveStatus, targetVendorIdOverride },
+      updateOptions: { updateExisting, updateOnlyBlankFields },
       counts: {
         sourceContracts: selectedContracts.length,
         attemptedContracts: contractsForPlan.length,
@@ -1697,6 +2105,9 @@ export async function POST(request: Request) {
         nextCreateOffset,
         createdContracts: createdContracts.length,
         reusedContracts: reusedContracts.length,
+        updatedContracts: contractUpdateResults.filter((result) => result.ok === true && result.skipped !== true).length,
+        skippedContractUpdates: contractUpdateResults.filter((result) => result.skipped === true).length,
+        failedContractUpdates: contractUpdateResults.filter((result) => result.ok === false).length,
         createdLineItems: createdContracts.reduce((sum, contract) => {
           const lines = Array.isArray(contract.createdLineItems) ? contract.createdLineItems.length : 0;
           return sum + lines;
@@ -1704,12 +2115,17 @@ export async function POST(request: Request) {
           const lines = Array.isArray(contract.createdLineItems) ? contract.createdLineItems.length : 0;
           return sum + lines;
         }, 0),
+        updatedLineItems: lineItemUpdateResults.filter((result) => result.ok === true && result.skipped !== true).length,
+        skippedLineItemUpdates: lineItemUpdateResults.filter((result) => result.skipped === true).length,
+        failedLineItemUpdates: lineItemUpdateResults.filter((result) => result.ok === false).length,
         errors: errors.length,
       },
       crosswalkAutoMappings,
       projectVendorAdds,
       createdContracts,
       reusedContracts,
+      contractUpdateResults,
+      lineItemUpdateResults,
       errors,
       plan,
       nextStep: errors.length

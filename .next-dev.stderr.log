@@ -1,0 +1,41 @@
+prisma:warn In production, we recommend using `prisma generate --no-engine` (See: `prisma generate --help`)
+Failed to fetch concrete orders: Error [PrismaClientKnownRequestError]: 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42501`. Message: `ERROR: permission denied for schema public`
+    at async ensureConcreteOrdersTable (src\app\api\concrete-orders\route.ts:16:3)
+    at async GET (src\app\api\concrete-orders\route.ts:78:5)
+  14 | async function ensureConcreteOrdersTable() {
+  15 |   if (tableEnsured) return;
+> 16 |   await prisma.$executeRawUnsafe(`
+     |   ^
+  17 |     CREATE TABLE IF NOT EXISTS concrete_orders (
+  18 |       id TEXT PRIMARY KEY,
+  19 |       job_key TEXT NOT NULL, {
+  code: 'P2010',
+  meta: [Object],
+  clientVersion: '6.19.2'
+}
+Failed to fetch concrete orders: Error [PrismaClientKnownRequestError]: 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42501`. Message: `ERROR: permission denied for schema public`
+    at async ensureConcreteOrdersTable (src\app\api\concrete-orders\route.ts:16:3)
+    at async GET (src\app\api\concrete-orders\route.ts:78:5)
+  14 | async function ensureConcreteOrdersTable() {
+  15 |   if (tableEnsured) return;
+> 16 |   await prisma.$executeRawUnsafe(`
+     |   ^
+  17 |     CREATE TABLE IF NOT EXISTS concrete_orders (
+  18 |       id TEXT PRIMARY KEY,
+  19 |       job_key TEXT NOT NULL, {
+  code: 'P2010',
+  meta: [Object],
+  clientVersion: '6.19.2'
+}
+⨯ SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>) {
+  page: '/procore'
+}

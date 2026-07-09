@@ -1,0 +1,889 @@
+{
+  "generatedAt": "2026-06-15T18:50:22.358Z",
+  "rowCounts": [
+    {
+      "model": "Project",
+      "delegate": "project",
+      "status": "ok",
+      "count": 26
+    },
+    {
+      "model": "ProjectScope",
+      "delegate": "projectScope",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "Schedule",
+      "delegate": "schedule",
+      "status": "ok",
+      "count": 20
+    },
+    {
+      "model": "ScheduleAllocation",
+      "delegate": "scheduleAllocation",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "ActiveSchedule",
+      "delegate": "activeSchedule",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "ScopeTracking",
+      "delegate": "scopeTracking",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "GanttV2Project",
+      "delegate": "ganttV2Project",
+      "status": "ok",
+      "count": 22
+    },
+    {
+      "model": "GanttV2Scope",
+      "delegate": "ganttV2Scope",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "GanttV2ScheduleEntry",
+      "delegate": "ganttV2ScheduleEntry",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "ProductivityLog",
+      "delegate": "productivityLog",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "TimecardEntry",
+      "delegate": "timecardEntry",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "TimecardTimeType",
+      "delegate": "timecardTimeType",
+      "status": "ok",
+      "count": 56
+    },
+    {
+      "model": "CommitmentContract",
+      "delegate": "commitmentContract",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "CommitmentChangeOrder",
+      "delegate": "commitmentChangeOrder",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "CommitmentChangeOrderLineItem",
+      "delegate": "commitmentChangeOrderLineItem",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PurchaseOrderContract",
+      "delegate": "purchaseOrderContract",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PurchaseOrderLineItemContractDetail",
+      "delegate": "purchaseOrderLineItemContractDetail",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "BudgetLineItem",
+      "delegate": "budgetLineItem",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "ConcreteOrder",
+      "delegate": "concreteOrder",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "KPIEntry",
+      "delegate": "kPIEntry",
+      "status": "ok",
+      "count": 12
+    },
+    {
+      "model": "DashboardSummary",
+      "delegate": "dashboardSummary",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "User",
+      "delegate": "user",
+      "status": "ok",
+      "count": 7
+    },
+    {
+      "model": "Employee",
+      "delegate": "employee",
+      "status": "ok",
+      "count": 33
+    },
+    {
+      "model": "AuditLog",
+      "delegate": "auditLog",
+      "status": "ok",
+      "count": 50
+    },
+    {
+      "model": "SyncLog",
+      "delegate": "syncLog",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PmcProject",
+      "delegate": "pmcProject",
+      "status": "ok",
+      "count": 4
+    },
+    {
+      "model": "PmcProjectScope",
+      "delegate": "pmcProjectScope",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PmcScheduleEntry",
+      "delegate": "pmcScheduleEntry",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PmcScheduleAllocation",
+      "delegate": "pmcScheduleAllocation",
+      "status": "ok",
+      "count": 0
+    },
+    {
+      "model": "PmcSyncLog",
+      "delegate": "pmcSyncLog",
+      "status": "ok",
+      "count": 0
+    }
+  ],
+  "modelFamilies": {
+    "projectSchedulingLegacy": [
+      {
+        "model": "Project",
+        "delegate": "project",
+        "status": "ok",
+        "count": 26
+      },
+      {
+        "model": "ProjectScope",
+        "delegate": "projectScope",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "Schedule",
+        "delegate": "schedule",
+        "status": "ok",
+        "count": 20
+      },
+      {
+        "model": "ScheduleAllocation",
+        "delegate": "scheduleAllocation",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "ActiveSchedule",
+        "delegate": "activeSchedule",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "ScopeTracking",
+        "delegate": "scopeTracking",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "GanttV2Project",
+        "delegate": "ganttV2Project",
+        "status": "ok",
+        "count": 22
+      },
+      {
+        "model": "GanttV2Scope",
+        "delegate": "ganttV2Scope",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "GanttV2ScheduleEntry",
+        "delegate": "ganttV2ScheduleEntry",
+        "status": "ok",
+        "count": 0
+      }
+    ],
+    "projectSchedulingV2": [
+      {
+        "model": "PmcProject",
+        "delegate": "pmcProject",
+        "status": "ok",
+        "count": 4
+      },
+      {
+        "model": "PmcProjectScope",
+        "delegate": "pmcProjectScope",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "PmcScheduleEntry",
+        "delegate": "pmcScheduleEntry",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "PmcScheduleAllocation",
+        "delegate": "pmcScheduleAllocation",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "PmcSyncLog",
+        "delegate": "pmcSyncLog",
+        "status": "ok",
+        "count": 0
+      }
+    ],
+    "procoreMirrors": [
+      {
+        "model": "BudgetLineItem",
+        "delegate": "budgetLineItem",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "ProductivityLog",
+        "delegate": "productivityLog",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "TimecardEntry",
+        "delegate": "timecardEntry",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "TimecardTimeType",
+        "delegate": "timecardTimeType",
+        "status": "ok",
+        "count": 56
+      },
+      {
+        "model": "CommitmentContract",
+        "delegate": "commitmentContract",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "CommitmentChangeOrder",
+        "delegate": "commitmentChangeOrder",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "CommitmentChangeOrderLineItem",
+        "delegate": "commitmentChangeOrderLineItem",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "PurchaseOrderContract",
+        "delegate": "purchaseOrderContract",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "PurchaseOrderLineItemContractDetail",
+        "delegate": "purchaseOrderLineItemContractDetail",
+        "status": "ok",
+        "count": 0
+      }
+    ],
+    "appOwned": [
+      {
+        "model": "KPIEntry",
+        "delegate": "kPIEntry",
+        "status": "ok",
+        "count": 12
+      },
+      {
+        "model": "DashboardSummary",
+        "delegate": "dashboardSummary",
+        "status": "ok",
+        "count": 0
+      },
+      {
+        "model": "User",
+        "delegate": "user",
+        "status": "ok",
+        "count": 7
+      },
+      {
+        "model": "Employee",
+        "delegate": "employee",
+        "status": "ok",
+        "count": 33
+      },
+      {
+        "model": "AuditLog",
+        "delegate": "auditLog",
+        "status": "ok",
+        "count": 50
+      },
+      {
+        "model": "ConcreteOrder",
+        "delegate": "concreteOrder",
+        "status": "ok",
+        "count": 0
+      }
+    ]
+  },
+  "projectSummary": {
+    "totalProjects": 26,
+    "projectsMissingProcoreId": 2,
+    "duplicateGroups": 3,
+    "pmcProjectPreviewRows": 24
+  },
+  "missingProcoreId": [
+    {
+      "id": "cmpgtope3000402gi1lr3qeta",
+      "procoreId": null,
+      "bidBoardId": "562949955798705",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Estimating",
+      "sales": null,
+      "cost": null,
+      "hours": null,
+      "projectArchived": false,
+      "projectManager": null,
+      "estimator": null,
+      "dateUpdated": null,
+      "updatedAt": "2026-05-27T15:14:52.808Z"
+    },
+    {
+      "id": "cmpgtop8d000302giwy61tcbf",
+      "procoreId": null,
+      "bidBoardId": "562949955798698",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "sales": null,
+      "cost": null,
+      "hours": null,
+      "projectArchived": true,
+      "projectManager": null,
+      "estimator": null,
+      "dateUpdated": null,
+      "updatedAt": "2026-06-05T15:42:21.064Z"
+    }
+  ],
+  "duplicateGroups": [
+    {
+      "groupType": "normalizedName",
+      "key": "new project",
+      "count": 5,
+      "keeperId": "cmpybmhey000311f42y7tsd5b",
+      "rows": [
+        {
+          "id": "cmpgtope3000402gi1lr3qeta",
+          "procoreId": null,
+          "projectNumber": null,
+          "projectName": "New project",
+          "customer": "Paradise Masonry, LLC New",
+          "status": "Estimating",
+          "projectArchived": false,
+          "score": 132
+        },
+        {
+          "id": "cmpybmhey000311f42y7tsd5b",
+          "procoreId": "598134326631038",
+          "projectNumber": null,
+          "projectName": "New Project",
+          "customer": "Paradise Masonry, LLC",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        },
+        {
+          "id": "cmpmno8j5000144dyyutbylg2",
+          "procoreId": "598134326618439",
+          "projectNumber": null,
+          "projectName": "New project",
+          "customer": "Paradise Masonry, LLC",
+          "status": "Bid Submitted",
+          "projectArchived": true,
+          "score": 32
+        },
+        {
+          "id": "cmpmn3d7j000044dy7mjmqg84",
+          "procoreId": "598134326618317",
+          "projectNumber": "*Testing",
+          "projectName": "New project",
+          "customer": "Paradise Masonry, LLC",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        },
+        {
+          "id": "cmpgtop8d000302giwy61tcbf",
+          "procoreId": null,
+          "projectNumber": null,
+          "projectName": "New project",
+          "customer": "Paradise Masonry, LLC New",
+          "status": "Bid Submitted",
+          "projectArchived": true,
+          "score": 32
+        }
+      ]
+    },
+    {
+      "groupType": "normalizedName",
+      "key": "test new codes",
+      "count": 2,
+      "keeperId": "cmpv6i5sn000317gmucj0c4rk",
+      "rows": [
+        {
+          "id": "cmpv6i5sn000317gmucj0c4rk",
+          "procoreId": "598134326626273",
+          "projectNumber": "TG-new-codes",
+          "projectName": "Test New Codes",
+          "customer": "davetoddtestcustomer",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        },
+        {
+          "id": "cmpwrphr40003yef2vjaaja3u",
+          "procoreId": "598134326628690",
+          "projectNumber": "Test New Codes",
+          "projectName": "Test New Codes",
+          "customer": "davetoddtestcustomer",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        }
+      ]
+    },
+    {
+      "groupType": "normalizedName",
+      "key": "wsca ramp",
+      "count": 2,
+      "keeperId": "cmpxxbfs60008wudz2imct2zb",
+      "rows": [
+        {
+          "id": "cmpwrqa6v000kyef2v36wc38l",
+          "procoreId": "598134326628693",
+          "projectNumber": "2603 - WR",
+          "projectName": "WSCA Ramp",
+          "customer": "Paradise Masonry, LLC New",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        },
+        {
+          "id": "cmpxxbfs60008wudz2imct2zb",
+          "procoreId": "598134326601975",
+          "projectNumber": "WR - 2603",
+          "projectName": "WSCA Ramp",
+          "customer": "Centurion Construction Group, LLC",
+          "status": "Bid Submitted",
+          "projectArchived": false,
+          "score": 132
+        }
+      ]
+    }
+  ],
+  "orphanReports": [
+    {
+      "model": "ProjectScope",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "Schedule",
+      "status": "ok",
+      "checkedRows": 20,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "ActiveSchedule",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "ScopeTracking",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "ProductivityLog",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "TimecardEntry",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "TimecardTimeType",
+      "status": "ok",
+      "checkedRows": 56,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "CommitmentContract",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "PurchaseOrderContract",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    },
+    {
+      "model": "PurchaseOrderLineItemContractDetail",
+      "status": "ok",
+      "checkedRows": 0,
+      "orphanCount": 0,
+      "sample": []
+    }
+  ],
+  "pmcProjectPreview": [
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326378325",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpmptuoj000a44dyfs1ckiok",
+      "projectNumber": "2510 - SP",
+      "projectName": "St Peters",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "Estimating",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326626273",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpv6i5sn000317gmucj0c4rk",
+      "projectNumber": "TG-new-codes",
+      "projectName": "Test New Codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326628690",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpwrphr40003yef2vjaaja3u",
+      "projectNumber": "Test New Codes",
+      "projectName": "Test New Codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326628693",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpwrqa6v000kyef2v36wc38l",
+      "projectNumber": "2603 - WR",
+      "projectName": "WSCA Ramp",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326631038",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpybmhey000311f42y7tsd5b",
+      "projectNumber": null,
+      "projectName": "New Project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326618439",
+      "bidBoardId": "562949955798698",
+      "sourceProjectId": "cmpmno8j5000144dyyutbylg2",
+      "projectNumber": null,
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326542330",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpgtooua000102gifharytss",
+      "projectNumber": "12345",
+      "projectName": "Sandbox Test Project",
+      "customer": "General Contractor (Demo Company)",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326378308",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpmqry4h000e44dy0vnpx20r",
+      "projectNumber": "2509 - PA",
+      "projectName": "Pro Ag",
+      "customer": "Scenic Ridge Construction",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326559089",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq87a44e002014dx8ud494z3",
+      "projectNumber": "2602 - GI",
+      "projectName": "Giant #6459",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326634438",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq0zmid80010ytdvlojmls43",
+      "projectNumber": "2508 - GI",
+      "projectName": "Giant #6582",
+      "customer": "Ames Construction, Inc.",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326601975",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpxxbfs60008wudz2imct2zb",
+      "projectNumber": "WR - 2603",
+      "projectName": "WSCA Ramp",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326542329",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpgtooy3000202gi9w5q7s4h",
+      "projectNumber": null,
+      "projectName": "Standard Project Template",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326601978",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpmoyhhv000544dyhpsg87y5",
+      "projectNumber": "2512-WW",
+      "projectName": "Wolfgang - Warrell Warehouse 4",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326612123",
+      "bidBoardId": "562949955798587",
+      "sourceProjectId": "cmpgtoopy000002gisv07k5x5",
+      "projectNumber": null,
+      "projectName": "Default Estimating Template",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326618317",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpmn3d7j000044dy7mjmqg84",
+      "projectNumber": "*Testing",
+      "projectName": "New project",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326198819",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpx045h4000307f608di2vbx",
+      "projectNumber": "2506 - FTW",
+      "projectName": "Family Treasures Wholesale",
+      "customer": "Hoover Building Specialists, Inc.",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326628443",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpwomzsq0003zsghht9a59w6",
+      "projectNumber": "TG-new codes",
+      "projectName": "TG-new codes",
+      "customer": "davetoddtestcustomer",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326244841",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq59iwsc00031be4mi6kur1h",
+      "projectNumber": "2505-MF",
+      "projectName": "Mechanicsburg Volunteer Fire Department",
+      "customer": "Centurion Construction Group, LLC",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326642611",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq9mwsak000l3tdwqtcgnxp1",
+      "projectNumber": "2605 - M",
+      "projectName": "Marlee Phase II",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326630602",
+      "bidBoardId": null,
+      "sourceProjectId": "cmpy5ggtj00030hdxft09qhyl",
+      "projectNumber": "2606 - WI",
+      "projectName": "Weaver Industries",
+      "customer": "Paradise Masonry, LLC New",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326634377",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq0yvvlh0003ytdvgdkj328r",
+      "projectNumber": "2508 - WD",
+      "projectName": "Washburn Dam",
+      "customer": "Berg Construction",
+      "status": "Complete",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326377799",
+      "bidBoardId": null,
+      "sourceProjectId": "cmqb0sa1i0003yhf91c5mkpag",
+      "projectNumber": "2509 - MCH",
+      "projectName": "Modern Country Homes",
+      "customer": "Paradise Masonry, LLC",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326642608",
+      "bidBoardId": null,
+      "sourceProjectId": "cmq9mvvah00033tdwmx1p6m20",
+      "projectNumber": "2606 - GMBS",
+      "projectName": "Giorgio Mushroom Building Slab",
+      "customer": "Paradise Masonry, LLC",
+      "status": "Bid Submitted",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    },
+    {
+      "companyId": "598134325805519",
+      "procoreProjectId": "598134326608654",
+      "bidBoardId": null,
+      "sourceProjectId": "cmqf3biyd0003w5f67z4l5kkh",
+      "projectNumber": "2602 - ROB",
+      "projectName": "Rohrers Office Building",
+      "customer": "Paradise Masonry, LLC",
+      "status": "In Progress",
+      "duplicateSourceRows": 1,
+      "needsReview": false
+    }
+  ]
+}

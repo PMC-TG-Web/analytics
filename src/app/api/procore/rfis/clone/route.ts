@@ -250,6 +250,57 @@ function safeJson(value: unknown): string {
   }
 }
 
+function describeError(error: unknown): UnknownRecord {
+  if (!(error instanceof Error)) return { message: String(error) };
+
+  const cause = (error as Error & { cause?: unknown }).cause;
+  const causeRecord = isRecord(cause)
+    ? compactPayload({
+        name: readStr(cause.name),
+        message: readStr(cause.message),
+        code: readStr(cause.code),
+        errno: readStr(cause.errno),
+        syscall: readStr(cause.syscall),
+        hostname: readStr(cause.hostname),
+      })
+    : cause instanceof Error
+      ? { name: cause.name, message: cause.message }
+      : cause
+        ? { message: String(cause) }
+        : undefined;
+
+  return compactPayload({
+    name: error.name,
+    message: error.message,
+    cause: causeRecord,
+  });
+}
+
+function isRetryableStatus(status: number): boolean {
+  return [408, 429, 500, 502, 503, 504].includes(status);
+}
+
+function retryDelayMs(response: Response | undefined, attempt: number): number {
+  const retryAfter = Number(response?.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return retryAfter * 1000;
+  return Math.min(15000, 1500 * Math.pow(2, attempt));
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  const cause = (error as Error & { cause?: unknown }).cause;
+  const causeMessage = cause instanceof Error ? cause.message.toLowerCase() : "";
+  return (
+    message.includes("fetch failed") ||
+    message.includes("aborted") ||
+    message.includes("did not return an http response") ||
+    causeMessage.includes("timeout") ||
+    causeMessage.includes("socket") ||
+    causeMessage.includes("connection")
+  );
+}
+
 async function getToken(bodyToken: unknown) {
   const cookieStore = await cookies();
   const explicitToken = readStr(bodyToken);
@@ -267,29 +318,44 @@ async function procoreJson(params: {
   body?: unknown;
   allowStatuses?: number[];
   maxRetries?: number;
+  timeoutMs?: number;
 }) {
   const method = params.method || "GET";
   const maxRetries = params.maxRetries ?? (method === "GET" ? 1 : 4);
+  const timeoutMs = params.timeoutMs ?? 30000;
   let response: Response | undefined;
   let text = "";
+  let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${params.accessToken}`,
-        Accept: "application/json",
-        ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
-        "Procore-Company-Id": params.companyId,
-      },
-      body: params.body === undefined ? undefined : JSON.stringify(params.body),
-      cache: "no-store",
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${params.accessToken}`,
+          Accept: "application/json",
+          ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
+          "Procore-Company-Id": params.companyId,
+        },
+        body: params.body === undefined ? undefined : JSON.stringify(params.body),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      lastError = error;
+      if (method === "GET" && attempt < maxRetries && isNetworkFailure(error)) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs(undefined, attempt)));
+        continue;
+      }
+      throw new Error(`Procore ${method} ${params.path} did not return an HTTP response: ${safeJson(describeError(error))}`);
+    } finally {
+      clearTimeout(timeout);
+    }
     text = await response.text();
-    if ((response.status !== 429 && response.status !== 502 && response.status !== 504) || attempt >= maxRetries) break;
-    const retryAfter = Number(response.headers.get("retry-after"));
-    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000 * Math.pow(2, attempt);
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (!isRetryableStatus(response.status) || attempt >= maxRetries) break;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(response, attempt)));
   }
 
   let payload: unknown = text;
@@ -299,7 +365,9 @@ async function procoreJson(params: {
     // Keep text.
   }
 
-  if (!response) throw new Error(`Procore ${method} ${params.path} did not return a response.`);
+  if (!response) {
+    throw new Error(`Procore ${method} ${params.path} did not return a response: ${safeJson(describeError(lastError))}`);
+  }
   if (!response.ok && !params.allowStatuses?.includes(response.status)) {
     throw new Error(`Procore ${method} ${params.path} failed (${response.status}): ${safeJson(payload)}`);
   }
@@ -378,6 +446,10 @@ async function fetchRfiReplies(params: { accessToken: string; companyId: string;
   const paths = [
     `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/replies`,
     `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/replies?project_id=${encodeURIComponent(params.projectId)}`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/responses`,
+    `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/responses?project_id=${encodeURIComponent(params.projectId)}`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/question_answers`,
+    `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/question_answers?project_id=${encodeURIComponent(params.projectId)}`,
   ];
   const errors: UnknownRecord[] = [];
   for (const path of paths) {
@@ -385,7 +457,7 @@ async function fetchRfiReplies(params: { accessToken: string; companyId: string;
       accessToken: params.accessToken,
       companyId: params.companyId,
       path,
-      keys: ["replies", "rfi_replies"],
+      keys: ["replies", "rfi_replies", "responses", "rfi_responses", "question_answers", "answers"],
       maxPages: params.maxPages,
     });
     errors.push(...result.errors);
@@ -630,12 +702,38 @@ function buildRfiPayload(params: {
   });
 }
 
+function extractRfiResponseRows(rfi: UnknownRecord) {
+  return asArray(
+    rfi._cloneReplies ??
+    rfi.replies ??
+    rfi.rfi_replies ??
+    rfi.responses ??
+    rfi.rfi_responses ??
+    rfi.question_answers ??
+    rfi.answers
+  );
+}
+
 function buildReplyPayload(reply: UnknownRecord, userIdMap: Record<string, string>) {
+  const body = readStr(
+    reply.body ??
+      reply.reply ??
+      reply.response ??
+      reply.answer ??
+      reply.rich_text_body ??
+      reply.plain_text_body ??
+      reply.html_body
+  );
   return compactPayload({
-    body: readStr(reply.body ?? reply.reply ?? reply.response ?? reply.plain_text_body ?? reply.html_body),
+    body,
+    response: body,
+    answer: body,
+    rich_text_body: readStr(reply.rich_text_body),
     plain_text_body: readStr(reply.plain_text_body),
+    html_body: readStr(reply.html_body),
     created_at: readStr(reply.created_at),
     user_id: mapId(reply.user ?? reply.created_by ?? reply.user_id, userIdMap),
+    response_user_id: mapId(reply.user ?? reply.created_by ?? reply.user_id, userIdMap),
     official: typeof reply.official === "boolean" ? reply.official : undefined,
   });
 }
@@ -677,34 +775,28 @@ async function createRfi(params: { accessToken: string; companyId: string; proje
       if (seen.has(key)) continue;
       seen.add(key);
 
-      let responsePayload: unknown = null;
-      let status = 0;
-      let ok = false;
       try {
-        const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
+        const response = await procoreJson({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${params.accessToken}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            "Procore-Company-Id": params.companyId,
-          },
-          body: JSON.stringify({ rfi: rfiPayload }),
-          cache: "no-store",
+          path,
+          body: { rfi: rfiPayload },
+          allowStatuses: [400, 403, 404, 405, 409, 422, 429],
+          maxRetries: 2,
+          timeoutMs: 45000,
         });
-        status = response.status;
-        ok = response.ok;
-        const text = await response.text();
-        try {
-          responsePayload = text ? JSON.parse(text) : null;
-        } catch {
-          responsePayload = text;
+        attempts.push({ path, body: { rfi: rfiPayload }, status: response.status, ok: response.ok, response: response.payload });
+        if (response.ok) return { created: unwrapData(response.payload), attempts };
+        if (response.status === 429) {
+          throw new Error(`RFI create rate limited by Procore. Stop this batch and retry the same createOffset after the rate limit resets: ${safeJson(attempts.slice(-1))}`);
         }
       } catch (error) {
-        responsePayload = error instanceof Error ? error.message : String(error);
+        if (!isNetworkFailure(error)) throw error;
+        const diagnostic = describeError(error);
+        attempts.push({ path, body: { rfi: rfiPayload }, status: 0, ok: false, response: diagnostic });
+        throw new Error(`RFI create did not receive an HTTP response from Procore. Stop this batch, check whether the target RFI was created, then retry the same createOffset if needed: ${safeJson(attempts.slice(-1))}`);
       }
-      attempts.push({ path, body: { rfi: rfiPayload }, status, ok, response: responsePayload });
-      if (ok) return { created: unwrapData(responsePayload), attempts };
     }
   }
 
@@ -742,10 +834,22 @@ async function updateRfiAfterCreate(params: {
 }
 
 async function createRfiReply(params: { accessToken: string; companyId: string; projectId: string; rfiId: string; payload: UnknownRecord }) {
-  const bodies = [{ reply: params.payload }, { rfi_reply: params.payload }, params.payload];
+  const bodies = [
+    { reply: params.payload },
+    { rfi_reply: params.payload },
+    { response: params.payload },
+    { rfi_response: params.payload },
+    { question_answer: params.payload },
+    { answer: params.payload },
+    params.payload,
+  ];
   const paths = [
     `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/replies`,
     `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/replies?project_id=${encodeURIComponent(params.projectId)}`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/responses`,
+    `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/responses?project_id=${encodeURIComponent(params.projectId)}`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/rfis/${encodeURIComponent(params.rfiId)}/question_answers`,
+    `/rest/v1.0/rfis/${encodeURIComponent(params.rfiId)}/question_answers?project_id=${encodeURIComponent(params.projectId)}`,
   ];
   const attempts: UnknownRecord[] = [];
   for (const path of paths) {
@@ -762,7 +866,7 @@ async function createRfiReply(params: { accessToken: string; companyId: string; 
       if (response.ok) return { created: unwrapData(response.payload), attempts };
     }
   }
-  return { error: `RFI reply create failed: ${safeJson(attempts.slice(-4))}`, attempts };
+  return { error: `RFI response create failed: ${safeJson(attempts.slice(-6))}`, attempts };
 }
 
 async function recycleRfi(params: { accessToken: string; companyId: string; projectId: string; rfiId: string }) {
@@ -853,7 +957,9 @@ export async function POST(request: Request) {
       });
       const simulatedTarget = { ...rfi, number: payload.number, subject: payload.subject };
       const duplicate = targetKeys.has(rfiKey(simulatedTarget as UnknownRecord));
-      const replies = asArray(rfi._cloneReplies).map((reply) => buildReplyPayload(reply, userIdMap)).filter((reply) => readStr(reply.body || reply.plain_text_body));
+      const replies = extractRfiResponseRows(rfi)
+        .map((reply) => buildReplyPayload(reply, userIdMap))
+        .filter((reply) => readStr(reply.body || reply.response || reply.answer || reply.plain_text_body || reply.html_body));
       return {
         sourceRfiId: readStr(rfi.id),
         number: rfiNumber(rfi),

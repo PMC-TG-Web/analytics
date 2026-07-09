@@ -21,11 +21,17 @@ type TargetLookups = {
   productivityLineItems: ProductivityTargetLineItem[];
   existingTimecardKeys: Set<string>;
   timeTypes: UnknownRecord[];
+  people: UnknownRecord[];
   peopleById: Map<string, UnknownRecord>;
   peopleByName: Map<string, UnknownRecord>;
+  peopleByCompactName: Map<string, UnknownRecord>;
+  peopleByNameTokens: Map<string, UnknownRecord>;
   peopleByUserId: Map<string, UnknownRecord>;
   peopleByContactId: Map<string, UnknownRecord>;
+  users: UnknownRecord[];
   usersByName: Map<string, UnknownRecord>;
+  usersByCompactName: Map<string, UnknownRecord>;
+  usersByNameTokens: Map<string, UnknownRecord>;
   usersByLogin: Map<string, UnknownRecord>;
   timeTypesByName: Map<string, UnknownRecord>;
   workClassifications: UnknownRecord[];
@@ -35,6 +41,15 @@ type TargetLookups = {
   workClassificationsByAbbreviation: Map<string, UnknownRecord>;
   costCodesByFullCode: Map<string, UnknownRecord>;
   costCodesByName: Map<string, UnknownRecord>;
+};
+
+const BUILT_IN_PARTY_FALLBACK_BY_SOURCE_ID: Record<string, number> = {
+  // Source person Kevin Buch -> target person Kevin Buch
+  "598134334003737": 598134335893533,
+};
+
+const BUILT_IN_PARTY_FALLBACK_BY_NAME: Record<string, number> = {
+  "kevin buch": 598134335893533,
 };
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -63,6 +78,16 @@ function normalizeKey(value: unknown): string {
 
 function compactKey(value: unknown): string {
   return normalizeKey(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function nameTokenKey(value: unknown): string {
+  return normalizeKey(value)
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1)
+    .sort()
+    .join("|");
 }
 
 function normalizeDescriptionKey(value: unknown): string {
@@ -504,6 +529,33 @@ function productivityCandidateTargets(params: {
     .slice(0, 8);
 }
 
+function resolveProductivityFallbackTarget(params: {
+  lineItemDescription: string;
+  contractNumber: string;
+  contractTitle: string;
+  lookups: TargetLookups;
+}) {
+  const candidates = productivityCandidateTargets(params);
+  const top = candidates[0];
+  const second = candidates[1];
+  if (!top) return null;
+
+  const sameContract = top.sameContractNumber || top.sameContractTitle;
+  const clearlyBest = !second || top.canonicalScore - second.canonicalScore >= 0.15 || top.tokenScore - second.tokenScore >= 0.2;
+
+  if (sameContract && top.canonicalScore >= 0.25 && clearlyBest) {
+    const target = params.lookups.productivityLineItems.find((item) => item.id === top.id);
+    return target || null;
+  }
+
+  if (top.canonicalScore >= 0.8 && clearlyBest) {
+    const target = params.lookups.productivityLineItems.find((item) => item.id === top.id);
+    return target || null;
+  }
+
+  return null;
+}
+
 async function procoreFetch(params: {
   accessToken: string;
   companyId: string;
@@ -819,25 +871,37 @@ async function fetchTargetLookups(params: {
   ]);
 
   const usersByName = new Map<string, UnknownRecord>();
+  const usersByCompactName = new Map<string, UnknownRecord>();
+  const usersByNameTokens = new Map<string, UnknownRecord>();
   const usersByLogin = new Map<string, UnknownRecord>();
   for (const user of [...users, ...companyUsers]) {
     const name = normalizeKey(user.name);
+    const compactName = compactKey(user.name);
+    const tokenName = nameTokenKey(user.name);
     const login = normalizeKey(user.login || user.email_address || user.email);
     if (name && !usersByName.has(name)) usersByName.set(name, user);
+    if (compactName && !usersByCompactName.has(compactName)) usersByCompactName.set(compactName, user);
+    if (tokenName && !usersByNameTokens.has(tokenName)) usersByNameTokens.set(tokenName, user);
     if (login && !usersByLogin.has(login)) usersByLogin.set(login, user);
   }
 
   const peopleById = new Map<string, UnknownRecord>();
   const peopleByName = new Map<string, UnknownRecord>();
+  const peopleByCompactName = new Map<string, UnknownRecord>();
+  const peopleByNameTokens = new Map<string, UnknownRecord>();
   const peopleByUserId = new Map<string, UnknownRecord>();
   const peopleByContactId = new Map<string, UnknownRecord>();
   for (const person of people) {
     const id = readStr(person.id);
     const name = normalizeKey(person.name || `${readStr(person.first_name)} ${readStr(person.last_name)}`);
+    const compactName = compactKey(person.name || `${readStr(person.first_name)} ${readStr(person.last_name)}`);
+    const tokenName = nameTokenKey(person.name || `${readStr(person.first_name)} ${readStr(person.last_name)}`);
     const userId = readStr(person.user_id || person.userId);
     const contactId = readStr(person.contact_id || person.contactId);
     if (id) peopleById.set(id, person);
     if (name && !peopleByName.has(name)) peopleByName.set(name, person);
+    if (compactName && !peopleByCompactName.has(compactName)) peopleByCompactName.set(compactName, person);
+    if (tokenName && !peopleByNameTokens.has(tokenName)) peopleByNameTokens.set(tokenName, person);
     if (userId) peopleByUserId.set(userId, person);
     if (contactId) peopleByContactId.set(contactId, person);
   }
@@ -884,11 +948,17 @@ async function fetchTargetLookups(params: {
     productivityLineItems,
     existingTimecardKeys,
     timeTypes,
+    people,
     peopleById,
     peopleByName,
+    peopleByCompactName,
+    peopleByNameTokens,
     peopleByUserId,
     peopleByContactId,
+    users: [...users, ...companyUsers],
     usersByName,
+    usersByCompactName,
+    usersByNameTokens,
     usersByLogin,
     timeTypesByName,
     workClassifications,
@@ -901,7 +971,11 @@ async function fetchTargetLookups(params: {
   };
 }
 
-function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
+function mapProductivityLog(
+  log: UnknownRecord,
+  lookups: TargetLookups,
+  options?: { allowFallbackMatch?: boolean; productivityLineItemMap?: Record<string, unknown> }
+) {
   const sourceLineItemId = readStr(log.line_item_id || log.lineItemId || firstRecord(log.line_item)?.id);
   const contractNumber = contractNumberFromLog(log);
   const contractTitle = contractTitleFromLog(log);
@@ -912,11 +986,33 @@ function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
   const cleanDescriptionKey = normalizeDescriptionKey(lineItemDescription);
   const contractNumberKey = normalizeKey(contractNumber);
   const contractTitleKey = normalizeKey(contractTitle);
+  const sourceContractId = contractIdFromLog(log);
 
-  let target = sourceLineItemId
+  const overrideMap = options?.productivityLineItemMap || {};
+  const overrideKey = `${sourceContractId}|${sourceLineItemId}`;
+  const overrideValue =
+    (sourceLineItemId
+      ? readNum(overrideMap[sourceLineItemId]) ?? readStr(overrideMap[sourceLineItemId])
+      : undefined) ??
+    (sourceLineItemId
+      ? readNum(overrideMap[overrideKey]) ?? readStr(overrideMap[overrideKey])
+      : undefined) ??
+    readNum(overrideMap[lineItemDescription]) ?? readStr(overrideMap[lineItemDescription]) ??
+    readNum(overrideMap[cleanDescriptionKey]) ?? readStr(overrideMap[cleanDescriptionKey]) ??
+    readNum(overrideMap[`${contractNumber}|${lineNumber ?? ""}`]) ?? readStr(overrideMap[`${contractNumber}|${lineNumber ?? ""}`]);
+
+  let target =
+    overrideValue !== undefined && String(overrideValue).trim()
+      ? lookups.productivityLineItems.find((item) => String(item.id) === String(overrideValue).trim())
+      : undefined;
+  let matchStrategy = target ? "override_map" : "";
+
+  if (!target) {
+    target = sourceLineItemId
     ? lookups.productivityLineItems.find((item) => item.sourceIds.includes(sourceLineItemId))
     : undefined;
-  let matchStrategy = target ? "source_line_item_id" : "";
+    if (target) matchStrategy = "source_line_item_id";
+  }
   if (!target) target = lookups.productivityLineItems.find(
     (item) => contractNumbersMatch(item.contractNumber, contractNumber) && normalizeKey(item.description) === descriptionKey
   );
@@ -1035,6 +1131,11 @@ function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
     if (target) matchStrategy = "description_only";
   }
 
+  if (!target && options?.allowFallbackMatch) {
+    target = resolveProductivityFallbackTarget({ lineItemDescription, contractNumber, contractTitle, lookups }) || undefined;
+    if (target) matchStrategy = "fallback_best_candidate";
+  }
+
   const payload: UnknownRecord = {
     date: normalizeDate(log.log_date || log.date),
     notes: readStr(log.notes),
@@ -1046,7 +1147,7 @@ function mapProductivityLog(log: UnknownRecord, lookups: TargetLookups) {
 
   return {
     sourceId: readStr(log.id),
-    sourceContractId: contractIdFromLog(log),
+    sourceContractId,
     sourceLineItemId,
     contractNumber,
     contractTitle,
@@ -1067,7 +1168,8 @@ function mapTimecardEntry(
   defaultTimecardTimeTypeId?: number,
   timecardTimeTypeMap: Record<string, unknown> = {},
   partyMap: Record<string, unknown> = {},
-  timecardClassificationMap: Record<string, unknown> = {}
+  timecardClassificationMap: Record<string, unknown> = {},
+  options?: { allowPartyNameFallback?: boolean; defaultPartyId?: number; allowBuiltInPartyFallback?: boolean }
 ) {
   const party = sourcePartyFromEntry(entry);
   const timeType = sourceTimeTypeFromEntry(entry);
@@ -1081,10 +1183,17 @@ function mapTimecardEntry(
     readNum(partyMap[party.login]) ??
     readNum(partyMap[normalizeKey(party.login)]);
   const mappedPartyId = resolveTargetPersonId(lookups, mappedPartyValue);
-  const targetPerson = lookups.peopleByName.get(normalizeKey(party.name));
+  const sameIdPerson = party.id ? lookups.peopleById.get(party.id) : undefined;
+  const exactPerson = lookups.peopleByName.get(normalizeKey(party.name));
+  const compactPerson = lookups.peopleByCompactName.get(compactKey(party.name));
+  const tokenPerson = lookups.peopleByNameTokens.get(nameTokenKey(party.name));
+  const targetPerson = exactPerson || (options?.allowPartyNameFallback ? (compactPerson || tokenPerson) : undefined);
   const targetUser =
     lookups.usersByLogin.get(normalizeKey(party.login)) ||
-    lookups.usersByName.get(normalizeKey(party.name));
+    lookups.usersByName.get(normalizeKey(party.name)) ||
+    (options?.allowPartyNameFallback
+      ? lookups.usersByCompactName.get(compactKey(party.name)) || lookups.usersByNameTokens.get(nameTokenKey(party.name))
+      : undefined);
   const targetTimeType = lookups.timeTypesByName.get(normalizeKey(timeType.name));
   const sourceTimeTypeBlank = !readStr(timeType.id) && !readStr(timeType.name);
   const mappedTimeTypeId =
@@ -1109,7 +1218,17 @@ function mapTimecardEntry(
     lookups.workClassificationsByAbbreviation.get(normalizeKey(classification.abbreviation));
   const targetClassificationId = getNestedId(targetClassification) ?? mappedClassificationId;
   const targetUserId = getTargetPartyId(targetUser);
-  const partyId = mappedPartyId ?? mappedPartyValue ?? getTargetPartyId(targetPerson) ?? targetUserId;
+  const builtInFallbackPartyId = options?.allowBuiltInPartyFallback === false
+    ? undefined
+    : BUILT_IN_PARTY_FALLBACK_BY_SOURCE_ID[party.id] ?? BUILT_IN_PARTY_FALLBACK_BY_NAME[normalizeKey(party.name)];
+  const partyId =
+    mappedPartyId ??
+    mappedPartyValue ??
+    getTargetPartyId(sameIdPerson) ??
+    getTargetPartyId(targetPerson) ??
+    targetUserId ??
+    builtInFallbackPartyId ??
+    options?.defaultPartyId;
 
   const payload: UnknownRecord = {
     date: normalizeDate(entry.date || entry.log_date),
@@ -1142,8 +1261,30 @@ function mapTimecardEntry(
   return {
     sourceId: readStr(entry.id),
     sourceParty: party,
-    targetPartyFallbackUsed: !targetPerson && partyId !== undefined,
-    targetParty: targetPerson || (partyId !== undefined ? { id: partyId, mapped: true, source: mappedPartyValue !== undefined ? "map" : "company_user" } : null),
+    targetPartyFallbackUsed:
+      (options?.allowPartyNameFallback && !exactPerson && (Boolean(compactPerson) || Boolean(tokenPerson))) ||
+      (!targetPerson && partyId !== undefined),
+    targetParty:
+      sameIdPerson ||
+      targetPerson ||
+      (partyId !== undefined
+        ? {
+            id: partyId,
+            mapped: true,
+            source:
+              mappedPartyValue !== undefined
+                ? "map"
+                : getTargetPartyId(sameIdPerson) !== undefined
+                  ? "same_person_id"
+                  : targetUserId !== undefined
+                    ? "company_user"
+                    : builtInFallbackPartyId !== undefined
+                      ? "built_in_fallback"
+                    : options?.defaultPartyId !== undefined
+                      ? "default_party_id"
+                      : "company_user",
+          }
+        : null),
     targetUser: targetUser || null,
     sourceTimeType: timeType,
     targetTimeTypeFallbackUsed: sourceTimeTypeBlank ? false : mappedTimeTypeId !== undefined || (!targetTimeType && (Boolean(fallbackTimeType) || defaultTimecardTimeTypeId !== undefined || Boolean(onlyTargetTimeType))),
@@ -1365,6 +1506,11 @@ export async function POST(request: Request) {
     const createLimit = Math.max(1, Math.min(500, Math.trunc(readNum(body.createLimit) || 100)));
     const maxCreateMs = Math.max(5000, Math.min(25000, Math.trunc(readNum(body.maxCreateMs) || 18000)));
     const defaultTimecardTimeTypeId = readNum(body.defaultTimecardTimeTypeId);
+    const defaultPartyId = readNum(body.defaultPartyId);
+    const allowProductivityFallback = body.allowProductivityFallback !== false;
+    const allowPartyNameFallback = body.allowPartyNameFallback !== false;
+    const allowBuiltInPartyFallback = body.allowBuiltInPartyFallback !== false;
+    const productivityLineItemMap = isRecord(body.productivityLineItemMap) ? body.productivityLineItemMap : {};
     const timecardTimeTypeMap = isRecord(body.timecardTimeTypeMap) ? body.timecardTimeTypeMap : {};
     const partyMap = isRecord(body.partyMap) ? body.partyMap : {};
     const timecardClassificationMap = isRecord(body.timecardClassificationMap) ? body.timecardClassificationMap : {};
@@ -1386,9 +1532,51 @@ export async function POST(request: Request) {
       fetchTargetLookups({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
     ]);
 
-    const productivity = sourceProductivity.map((log) => mapProductivityLog(log, targetLookups));
+    const lookupHealth = {
+      targetProductivityLineItems: targetLookups.productivityLineItems.length,
+      targetPeople: targetLookups.peopleById.size,
+      targetCostCodes: targetLookups.costCodesByFullCode.size,
+      targetTimeTypes: targetLookups.timeTypes.length,
+      targetClassifications: targetLookups.workClassifications.length,
+    };
+
+    // When target lookups come back empty, mapping would incorrectly show everything as missing.
+    // Return a retryable infrastructure-style response instead of a misleading mapping response.
+    if (
+      (includeTimecards && sourceTimecards.length > 0 && lookupHealth.targetPeople === 0 && lookupHealth.targetCostCodes === 0) ||
+      (includeProductivity && sourceProductivity.length > 0 && lookupHealth.targetProductivityLineItems === 0)
+    ) {
+      return NextResponse.json(
+        {
+          error: "Target lookup fetch returned empty data. This is usually a transient Procore API/permission/rate-limit issue.",
+          retryable: true,
+          source: { companyId: sourceCompanyId, projectId: sourceProjectId, startDate, endDate },
+          target: { companyId: targetCompanyId, projectId: targetProjectId },
+          createOffset,
+          createLimit,
+          lookupHealth,
+          nextStep: `Retry with the same createOffset (${createOffset}) after a short wait.`,
+        },
+        { status: 503 }
+      );
+    }
+
+    const productivity = sourceProductivity.map((log) =>
+      mapProductivityLog(log, targetLookups, {
+        allowFallbackMatch: allowProductivityFallback,
+        productivityLineItemMap,
+      })
+    );
     const timecards = sourceTimecards.map((entry) =>
-      mapTimecardEntry(entry, targetLookups, defaultTimecardTimeTypeId, timecardTimeTypeMap, partyMap, timecardClassificationMap)
+      mapTimecardEntry(
+        entry,
+        targetLookups,
+        defaultTimecardTimeTypeId,
+        timecardTimeTypeMap,
+        partyMap,
+        timecardClassificationMap,
+        { allowPartyNameFallback, defaultPartyId, allowBuiltInPartyFallback }
+      )
     );
 
     const missingMappings = [
@@ -1485,6 +1673,11 @@ export async function POST(request: Request) {
       target: { companyId: targetCompanyId, projectId: targetProjectId },
       defaults: {
         defaultTimecardTimeTypeId: defaultTimecardTimeTypeId ?? null,
+        defaultPartyId: defaultPartyId ?? null,
+        allowProductivityFallback,
+        allowPartyNameFallback,
+        allowBuiltInPartyFallback,
+        productivityLineItemMap,
         timecardTimeTypeMap,
         partyMap,
         timecardClassificationMap,
@@ -1513,6 +1706,7 @@ export async function POST(request: Request) {
         rateLimited,
         created: createResults.filter((row) => row.ok === true).length,
         failed: errors.length,
+        lookupHealth,
       },
       readyForLiveClone: missingMappings.length === 0,
       productivity,

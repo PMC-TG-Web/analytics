@@ -1,0 +1,12 @@
+
+> analytics@0.1.0 dev
+> next dev --webpack -p 3001
+
+▲ Next.js 16.1.1 (webpack)
+- Local:         http://localhost:3001
+- Network:       http://10.1.10.168:3001
+- Environments: .env.local, .env
+
+✓ Starting...
+  Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h

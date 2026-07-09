@@ -1,4 +1,9 @@
-import { getRequiredSyncSecret, parsePositiveInt, runProcoreCronSync } from "../../src/lib/cronSync";
+import {
+  getRequiredSyncSecret,
+  parseNonNegativeInt,
+  parsePositiveInt,
+  runProcoreCronSync,
+} from "../../src/lib/cronSync";
 
 function getBaseUrl(): string {
   return (process.env.APP_BASE_URL || "").replace(/\/$/, "");
@@ -47,7 +52,7 @@ const handler = async (request: Request) => {
   ).trim();
   const maxProjects = maxProjectsInput === undefined || maxProjectsInput === null
     ? undefined
-    : Math.max(1, parsePositiveInt(String(maxProjectsInput), 25));
+    : parseNonNegativeInt(String(maxProjectsInput), 25);
   const lookbackDays = lookbackDaysInput === undefined || lookbackDaysInput === null
     ? undefined
     : Math.max(7, parsePositiveInt(String(lookbackDaysInput), 30));

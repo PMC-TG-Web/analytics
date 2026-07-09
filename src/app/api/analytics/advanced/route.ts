@@ -30,12 +30,22 @@ type TimecardActualRow = {
   procore_project_id: string | null;
   cost_code: string | null;
   hours: number | string | null;
+  first_date: string | null;
+  last_date: string | null;
 };
 
 type ProductivityActualRow = {
   procore_project_id: string | null;
   cost_code: string | null;
   quantity_used: number | string | null;
+  first_date: string | null;
+  last_date: string | null;
+};
+
+type ActualAggregate = {
+  units: number;
+  firstDate: string | null;
+  lastDate: string | null;
 };
 
 type CountRow = {
@@ -117,12 +127,50 @@ function parseCount(value: string | number | bigint | null | undefined): number 
   return 0;
 }
 
+function pickEarlierDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+  if (Number.isNaN(aTime)) return b;
+  if (Number.isNaN(bTime)) return a;
+  return bTime < aTime ? b : a;
+}
+
+function pickLaterDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+  if (Number.isNaN(aTime)) return b;
+  if (Number.isNaN(bTime)) return a;
+  return bTime > aTime ? b : a;
+}
+
+function mergeActualAggregate(
+  map: Map<string, ActualAggregate>,
+  key: string,
+  units: number,
+  firstDate: string | null,
+  lastDate: string | null
+) {
+  const existing = map.get(key) || { units: 0, firstDate: null, lastDate: null };
+  map.set(key, {
+    units: existing.units + units,
+    firstDate: pickEarlierDate(existing.firstDate, firstDate),
+    lastDate: pickLaterDate(existing.lastDate, lastDate),
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const queryCompanyId = String(searchParams.get("companyId") || "").trim();
     const cookieCompanyId = String(request.cookies.get("procore_company_id")?.value || "").trim();
-    const companyId = queryCompanyId || cookieCompanyId;
+    const envCompanyId = String(process.env.PROCORE_COMPANY_ID || "").trim();
+    const companyId = queryCompanyId || cookieCompanyId || envCompanyId;
     const requestedActualsMode = String(searchParams.get("actualsMode") || "").trim().toLowerCase();
     const actualsMode: ActualsMode = requestedActualsMode === "cost-code" ? "cost-code" : "rollup";
 
@@ -307,7 +355,9 @@ export async function GET(request: NextRequest) {
           SELECT
             t."procoreProjectId" AS procore_project_id,
             t."costCodeFullCode" AS cost_code,
-            COALESCE(SUM(t.hours), 0) AS hours
+            COALESCE(SUM(t.hours), 0) AS hours,
+            MIN(t.date)::text AS first_date,
+            MAX(t.date)::text AS last_date
           FROM "TimecardEntry" t
           WHERE t."procoreCompanyId" = $1
             AND t."procoreProjectId" IS NOT NULL
@@ -322,7 +372,9 @@ export async function GET(request: NextRequest) {
           SELECT
             pl."procoreProjectId" AS procore_project_id,
             li."costCode" AS cost_code,
-            COALESCE(SUM(pl."quantityUsed"), 0) AS quantity_used
+            COALESCE(SUM(pl."quantityUsed"), 0) AS quantity_used,
+            MIN(pl.date)::text AS first_date,
+            MAX(pl.date)::text AS last_date
           FROM "ProductivityLog" pl
           LEFT JOIN "PurchaseOrderLineItemContractDetail" li
             ON li."procoreId" = pl."lineItemId"
@@ -392,19 +444,31 @@ export async function GET(request: NextRequest) {
       ),
     ]);
 
-    const timecardActualsByKey = new Map<string, number>();
-    const productivityActualsByKey = new Map<string, number>();
+    const timecardActualsByKey = new Map<string, ActualAggregate>();
+    const productivityActualsByKey = new Map<string, ActualAggregate>();
 
     for (const row of timecardRows) {
       const key = buildActualsKey(row.procore_project_id, row.cost_code, actualsMode);
       if (!key) continue;
-      timecardActualsByKey.set(key, (timecardActualsByKey.get(key) || 0) + normalizeMetric(row.hours));
+      mergeActualAggregate(
+        timecardActualsByKey,
+        key,
+        normalizeMetric(row.hours),
+        row.first_date,
+        row.last_date
+      );
     }
 
     for (const row of productivityRows) {
       const key = buildActualsKey(row.procore_project_id, row.cost_code, actualsMode);
       if (!key) continue;
-      productivityActualsByKey.set(key, (productivityActualsByKey.get(key) || 0) + normalizeMetric(row.quantity_used));
+      mergeActualAggregate(
+        productivityActualsByKey,
+        key,
+        normalizeMetric(row.quantity_used),
+        row.first_date,
+        row.last_date
+      );
     }
 
     return NextResponse.json({
@@ -457,9 +521,12 @@ export async function GET(request: NextRequest) {
             ? getRolledUpCostCode(row.cost_code) || row.cost_code
             : row.cost_code;
         const actualsKey = buildActualsKey(row.project_id, actualsCode, actualsMode) || "";
+        const timecardActual = timecardActualsByKey.get(actualsKey);
+        const productivityActual = productivityActualsByKey.get(actualsKey);
 
         return {
           id: `${row.project_id}:${normalizeId(row.id)}`,
+          actualsKey: actualsKey || null,
           projectName: row.project_name || null,
           customerName: row.customer_name || null,
           projectId: row.project_id,
@@ -477,8 +544,12 @@ export async function GET(request: NextRequest) {
           amount: normalizeNumber(row.amount),
           totalCost: normalizeNumber(row.original_budget_amount) || 0,
           totalSales: normalizeNumber(row.amount) || 0,
-          actualTimecardHours: Number(timecardActualsByKey.get(actualsKey) || 0),
-          actualProductivityQty: Number(productivityActualsByKey.get(actualsKey) || 0),
+          actualTimecardHours: Number(timecardActual?.units || 0),
+          actualTimecardFirstDate: timecardActual?.firstDate || null,
+          actualTimecardLastDate: timecardActual?.lastDate || null,
+          actualProductivityQty: Number(productivityActual?.units || 0),
+          actualProductivityFirstDate: productivityActual?.firstDate || null,
+          actualProductivityLastDate: productivityActual?.lastDate || null,
           syncedAt: row.synced_at,
         };
       }),

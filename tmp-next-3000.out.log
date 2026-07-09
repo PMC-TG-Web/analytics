@@ -1,0 +1,251 @@
+
+> analytics@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.1.1 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://10.1.10.168:3000
+- Environments: .env.local, .env
+
+✓ Starting...
+✓ Ready in 2.5s
+ GET /api/pmc/projects?type=combined 200 in 1493ms (compile: 734ms, render: 759ms)
+ GET /procore 200 in 1171ms (compile: 845ms, render: 326ms)
+ GET /api/auth/me 401 in 628ms (compile: 608ms, render: 19ms)
+ GET /api/procore/me 401 in 616ms (compile: 593ms, render: 23ms)
+prisma:warn Attempt 1/3 failed for querying: This request must be retried
+prisma:warn Retrying after 30ms
+prisma:warn Attempt 1/3 failed for querying: This request must be retried
+prisma:warn Retrying after 61ms
+ GET /api/procore/po-line-item-mappings 200 in 1730ms (compile: 593ms, render: 1138ms)
+✓ Initialized 7 users from database permissions
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 83ms (compile: 42ms, render: 42ms)
+ GET /api/procore/me 401 in 262ms (compile: 243ms, render: 19ms)
+ GET /api/procore/me 401 in 5ms (compile: 1818µs, render: 4ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 66ms (compile: 39ms, render: 27ms)
+ GET /api/procore/po-line-item-mappings 200 in 1079ms (compile: 242ms, render: 838ms)
+ GET /api/procore/po-line-item-mappings 200 in 92ms (compile: 1610µs, render: 91ms)
+Redirecting to Procore OAuth: https://login.procore.com/oauth/authorize?client_id=EDs8c5w4pQvxaTkuLlhnyZ6VnqsVKoMsDb3GZgz2BYQ&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fprocore%2Fcallback&state=ffe7261ab1f222038818008e36ab005afabb46929dcbcde4
+ GET /api/auth/procore/login 307 in 241ms (compile: 225ms, render: 16ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 138ms (compile: 83ms, render: 55ms)
+ GET /procore 200 in 13ms (compile: 3ms, render: 9ms)
+ GET /api/procore/me 401 in 249ms (compile: 233ms, render: 16ms)
+ GET /api/procore/po-line-item-mappings 200 in 729ms (compile: 232ms, render: 497ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 66ms (compile: 39ms, render: 26ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 123ms (compile: 84ms, render: 39ms)
+ GET /procore 200 in 33ms (compile: 6ms, render: 27ms)
+ GET /procore 200 in 17ms (compile: 5ms, render: 12ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 58ms (compile: 36ms, render: 22ms)
+Redirecting to Procore OAuth: https://login.procore.com/oauth/authorize?client_id=EDs8c5w4pQvxaTkuLlhnyZ6VnqsVKoMsDb3GZgz2BYQ&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fprocore%2Fcallback&state=50a9fd0787ff8e74c0a6c25e631c5b7d9eb8236e490ac167
+ GET /api/auth/procore/login?returnTo=/procore 307 in 273ms (compile: 259ms, render: 14ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 54ms (compile: 25ms, render: 29ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 60ms (compile: 28ms, render: 31ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 41ms (compile: 23ms, render: 18ms)
+ GET /procore 200 in 30ms (compile: 8ms, render: 22ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 119ms (compile: 86ms, render: 33ms)
+ GET /api/procore/auth-status 200 in 605ms (compile: 345ms, render: 260ms)
+ GET /api/procore/po-line-item-mappings 200 in 961ms (compile: 344ms, render: 617ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 96ms (compile: 50ms, render: 46ms)
+ GET /procore 200 in 30ms (compile: 6ms, render: 24ms)
+ GET /procore 200 in 16ms (compile: 4ms, render: 12ms)
+ GET /procore 200 in 23ms (compile: 5ms, render: 18ms)
+ GET /procore 200 in 203ms (compile: 176ms, render: 27ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 152ms (compile: 103ms, render: 49ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 58ms (compile: 35ms, render: 23ms)
+ GET /api/procore/auth-status 200 in 456ms (compile: 218ms, render: 238ms)
+ GET /api/procore/po-line-item-mappings 200 in 951ms (compile: 217ms, render: 735ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 111ms (compile: 75ms, render: 36ms)
+ GET /procore 200 in 232ms (compile: 92ms, render: 140ms)
+✓ Initialized 7 users from database permissions
+ GET /api/auth/me 401 in 1204ms (compile: 1176ms, render: 28ms)
+Redirecting to Procore OAuth: https://login.procore.com/oauth/authorize?client_id=EDs8c5w4pQvxaTkuLlhnyZ6VnqsVKoMsDb3GZgz2BYQ&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fprocore%2Fcallback&state=c74b1b783325446bad57051354e620628a63f8c13e3c2f5f
+ GET /api/auth/procore/login?returnTo=%2Fprocore 307 in 554ms (compile: 517ms, render: 36ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 81ms (compile: 38ms, render: 43ms)
+ GET /api/procore/po-line-item-mappings 200 in 1318ms (compile: 1158ms, render: 160ms)
+ GET /api/procore/auth-status 200 in 1489ms (compile: 1158ms, render: 331ms)
+Exchanging authorization code for access token...
+Sending token request to: https://api.procore.com/oauth/token
+Body params: {
+  grant_type: 'authorization_code',
+  client_id: 'EDs8c5w4pQvxaTkuLlhnyZ6VnqsVKoMsDb3GZgz2BYQ',
+  redirect_uri: 'http://localhost:3000/api/auth/procore/callback',
+  code: 'XfgOS...'
+}
+OK Successfully authenticated with Procore
+ GET /api/auth/procore/callback?code=XfgOSIAEH4glocSgtK9KIXT-RTYiNL9TsXqwHgRjCaY&state=c74b1b783325446bad57051354e620628a63f8c13e3c2f5f 307 in 343ms (compile: 193ms, render: 150ms)
+✓ Initialized 7 users from database permissions
+ GET /procore?status=authenticated 200 in 133ms (compile: 26ms, render: 107ms)
+ GET /api/procore/po-line-item-mappings 200 in 109ms (compile: 5ms, render: 103ms)
+ GET /procore 200 in 250ms (compile: 231ms, render: 18ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 197ms (compile: 126ms, render: 71ms)
+ GET /procore 200 in 257ms (compile: 238ms, render: 19ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 96ms (compile: 45ms, render: 51ms)
+ GET /api/procore/auth-status 200 in 271ms (compile: 243ms, render: 28ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 90ms (compile: 44ms, render: 46ms)
+ GET /api/procore/po-line-item-mappings 200 in 1065ms (compile: 241ms, render: 824ms)
+ GET /procore 200 in 130ms (compile: 45ms, render: 85ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/auth-status 200 in 18ms (compile: 7ms, render: 11ms)
+ GET /api/procore/po-line-item-mappings 200 in 108ms (compile: 11ms, render: 97ms)
+ GET /procore 200 in 202ms (compile: 107ms, render: 95ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/auth-status 200 in 264ms (compile: 249ms, render: 15ms)
+ GET /api/procore/po-line-item-mappings 200 in 353ms (compile: 248ms, render: 105ms)
+ GET /procore 200 in 95ms (compile: 29ms, render: 66ms)
+ GET /api/procore/auth-status 200 in 18ms (compile: 4ms, render: 14ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/po-line-item-mappings 200 in 225ms (compile: 11ms, render: 214ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 43ms (compile: 19ms, render: 25ms)
+ GET /api/procore/drawing-uploads?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100 200 in 1141ms (compile: 488ms, render: 653ms)
+ GET /procore 200 in 199ms (compile: 179ms, render: 19ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 138ms (compile: 90ms, render: 49ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 55ms (compile: 32ms, render: 23ms)
+ GET /api/procore/auth-status 200 in 242ms (compile: 226ms, render: 17ms)
+ GET /api/procore/po-line-item-mappings 200 in 1110ms (compile: 225ms, render: 885ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 79ms (compile: 43ms, render: 36ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 62ms (compile: 37ms, render: 25ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 117ms (compile: 78ms, render: 39ms)
+ GET /procore 200 in 75ms (compile: 3ms, render: 71ms)
+ GET /api/procore/auth-status 200 in 587ms (compile: 569ms, render: 19ms)
+ GET /api/procore/po-line-item-mappings 200 in 1228ms (compile: 567ms, render: 661ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 6.5s (compile: 180ms, render: 6.3s)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 261ms (compile: 220ms, render: 41ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 166ms (compile: 109ms, render: 57ms)
+ GET /api/procore/auth-status 200 in 244ms (compile: 228ms, render: 16ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 72ms (compile: 34ms, render: 38ms)
+ GET /api/procore/po-line-item-mappings 200 in 838ms (compile: 227ms, render: 611ms)
+ GET /procore 200 in 71ms (compile: 4ms, render: 67ms)
+ GET /api/procore/auth-status 200 in 20ms (compile: 8ms, render: 13ms)
+ GET /api/procore/po-line-item-mappings 200 in 651ms (compile: 1788µs, render: 649ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 6.5s (compile: 169ms, render: 6.4s)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 265ms (compile: 212ms, render: 53ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 152ms (compile: 104ms, render: 48ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 61ms (compile: 33ms, render: 28ms)
+ GET /api/procore/auth-status 200 in 236ms (compile: 221ms, render: 16ms)
+ GET /api/procore/po-line-item-mappings 200 in 1008ms (compile: 216ms, render: 792ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 73ms (compile: 41ms, render: 32ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 66ms (compile: 38ms, render: 28ms)
+ GET /procore 200 in 90ms (compile: 4ms, render: 87ms)
+ GET /api/procore/auth-status 200 in 38ms (compile: 15ms, render: 23ms)
+ GET /api/procore/po-line-item-mappings 200 in 492ms (compile: 25ms, render: 466ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 7.2s (compile: 241ms, render: 7.0s)
+ GET /procore 200 in 70ms (compile: 17ms, render: 53ms)
+ GET /api/procore/auth-status 200 in 27ms (compile: 14ms, render: 13ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/po-line-item-mappings 200 in 258ms (compile: 4ms, render: 254ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 6.1s (compile: 1640µs, render: 6.1s)
+ POST /api/procore/drawings-migration/dry-run 200 in 1192ms (compile: 162ms, render: 1029ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 206ms (compile: 181ms, render: 25ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 138ms (compile: 96ms, render: 42ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 58ms (compile: 34ms, render: 24ms)
+ GET /api/procore/auth-status 200 in 240ms (compile: 223ms, render: 16ms)
+ GET /api/procore/po-line-item-mappings 200 in 846ms (compile: 222ms, render: 624ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 76ms (compile: 44ms, render: 32ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 67ms (compile: 38ms, render: 30ms)
+ GET /procore 200 in 80ms (compile: 4ms, render: 76ms)
+ GET /api/procore/auth-status 200 in 30ms (compile: 13ms, render: 17ms)
+ GET /api/procore/po-line-item-mappings 200 in 671ms (compile: 21ms, render: 649ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 6.4s (compile: 221ms, render: 6.2s)
+ POST /api/procore/drawings-migration/create-one 404 in 988ms (compile: 147ms, render: 841ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 145ms (compile: 112ms, render: 33ms)
+ GET /procore 200 in 16ms (compile: 4ms, render: 12ms)
+ GET /procore 200 in 22ms (compile: 5ms, render: 17ms)
+ GET /procore 200 in 193ms (compile: 166ms, render: 27ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 76ms (compile: 41ms, render: 35ms)
+ GET /api/procore/auth-status 200 in 243ms (compile: 229ms, render: 14ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 57ms (compile: 34ms, render: 24ms)
+ GET /api/procore/po-line-item-mappings 200 in 1021ms (compile: 229ms, render: 792ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 67ms (compile: 39ms, render: 27ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 74ms (compile: 41ms, render: 33ms)
+ GET /procore 200 in 110ms (compile: 5ms, render: 105ms)
+ GET /api/procore/auth-status 200 in 25ms (compile: 15ms, render: 10ms)
+ GET /api/procore/po-line-item-mappings 200 in 833ms (compile: 32ms, render: 802ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 80ms (compile: 41ms, render: 39ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 134ms (compile: 95ms, render: 39ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 62ms (compile: 27ms, render: 34ms)
+ GET /api/procore/drawings-inventory?companyId=598134325658789&projectId=598134326377653&page=1&perPage=100&maxPages=10&includeDrawings=true&includeUploads=true 200 in 7.5s (compile: 402ms, render: 7.1s)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 39ms (compile: 17ms, render: 21ms)
+ POST /api/procore/drawings-migration/create-one 422 in 3.1s (compile: 330ms, render: 2.8s)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 119ms (compile: 82ms, render: 37ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 74ms (compile: 43ms, render: 32ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 72ms (compile: 39ms, render: 32ms)
+ GET /procore 200 in 75ms (compile: 3ms, render: 72ms)
+ GET /api/auth/me 401 in 652ms (compile: 629ms, render: 22ms)
+ GET /api/procore/auth-status 200 in 618ms (compile: 594ms, render: 24ms)
+ GET /api/procore/po-line-item-mappings 200 in 1165ms (compile: 591ms, render: 573ms)
+ POST /api/procore/estimating/bid-board-documents-probe 200 in 4.3s (compile: 142ms, render: 4.2s)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 130ms (compile: 98ms, render: 32ms)
+ GET /procore 200 in 15ms (compile: 4ms, render: 10ms)
+ GET /procore 200 in 39ms (compile: 6ms, render: 33ms)
+ GET /procore 200 in 232ms (compile: 205ms, render: 27ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 260ms (compile: 160ms, render: 99ms)
+✓ Initialized 7 users from database permissions
+ GET /procore 200 in 64ms (compile: 34ms, render: 30ms)
+ GET /api/procore/auth-status 200 in 347ms (compile: 329ms, render: 17ms)
+ GET /api/procore/po-line-item-mappings 200 in 703ms (compile: 328ms, render: 375ms)
+ GET /api/procore/auth-status 200 in 369ms (compile: 268ms, render: 101ms)
+ GET /procore 200 in 379ms (compile: 269ms, render: 111ms)
+ GET /api/procore/po-line-item-mappings 200 in 385ms (compile: 266ms, render: 119ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/auth-status 200 in 13ms (compile: 3ms, render: 9ms)
+ GET /api/procore/po-line-item-mappings 200 in 91ms (compile: 7ms, render: 85ms)
+ GET /procore 200 in 129ms (compile: 39ms, render: 90ms)
+✓ Initialized 7 users from database permissions
+ GET /api/procore/auth-status 200 in 21ms (compile: 7ms, render: 14ms)
+ GET /api/procore/po-line-item-mappings 200 in 114ms (compile: 12ms, render: 102ms)
+ GET /procore 500 in 5.1s (compile: 5.1s, render: 12ms)
+ GET /procore 500 in 5.1s (compile: 5.1s, render: 13ms)
+ GET /procore 500 in 4.0s (compile: 954ms, render: 3.0s)
+ GET /procore 500 in 375ms (compile: 362ms, render: 13ms)
+ GET /procore 500 in 376ms (compile: 362ms, render: 13ms)

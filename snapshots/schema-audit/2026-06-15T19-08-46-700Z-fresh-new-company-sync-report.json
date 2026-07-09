@@ -1,0 +1,109 @@
+{
+  "generatedAt": "2026-06-15T19:08:55.766Z",
+  "companyId": "598134325805519",
+  "options": {
+    "includeInactive": false,
+    "includeDemo": false,
+    "includeTemplates": false,
+    "purgeOtherCompanies": false
+  },
+  "fetched": {
+    "v1Projects": 4,
+    "bidBoardProjects": 23,
+    "bidBoardUniqueProjectIds": 6,
+    "bidBoardWithoutProjectId": 17
+  },
+  "written": {
+    "pmcProjects": 4,
+    "pmcBidBoardProjects": 23
+  },
+  "skipped": 0,
+  "skippedProjects": [],
+  "bidBoardWithoutProjectId": [
+    {
+      "bidBoardId": "598134325805519:562949955830770",
+      "name": "Jakobsen Motors",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955831080",
+      "name": "Geoprobe",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955834331",
+      "name": "Black Rock Gymnasium",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955835264",
+      "name": "Lapp Electric Warehouse Renovation",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955838439",
+      "name": "Newark Delaware Project",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955839532",
+      "name": "Township Of Spring Police Department",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955842405",
+      "name": "Evergreen Project",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955842451",
+      "name": "Garman Coal & Mulch",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955847254",
+      "name": "Sadsbury Commons Midbox Site",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955849233",
+      "name": "Autohaus Lancaster Porsche",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955850242",
+      "name": "Ciccocioppo Garage",
+      "status": "BID_SUBMITTED"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955854695",
+      "name": "Shank Door Main Building",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955854696",
+      "name": "Willow Grove Site",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955854697",
+      "name": "Lancaster Archery",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955854698",
+      "name": "Melvin Weaver 2024",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955854699",
+      "name": "Landis Homes - The Meadows Building 3",
+      "status": "ESTIMATING"
+    },
+    {
+      "bidBoardId": "598134325805519:562949955855939",
+      "name": "Double Run Carriers",
+      "status": "ESTIMATING"
+    }
+  ]
+}

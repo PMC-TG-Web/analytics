@@ -1,0 +1,114 @@
+prisma:warn In production, we recommend using `prisma generate --no-engine` (See: `prisma generate --help`)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\server\app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\server\\app-paths-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\server\app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\server\\app-paths-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Users\ToddGilmore\Analytics\.next\dev\cache\webpack\client-development-fallback\0.pack.gz_' -> 'C:\Users\ToddGilmore\Analytics\.next\dev\cache\webpack\client-development-fallback\0.pack.gz'
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json',
+  page: '/procore'
+}
+⨯ Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}
+Error: ENOENT: no such file or directory, open 'C:\Users\ToddGilmore\Analytics\.next\dev\routes-manifest.json'
+    at ignore-listed frames {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\ToddGilmore\\Analytics\\.next\\dev\\routes-manifest.json'
+}

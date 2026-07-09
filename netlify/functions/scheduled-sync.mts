@@ -7,6 +7,8 @@
  *   PROCORE_SYNC_SECRET
  *   URL or APP_BASE_URL
  */
+import type { Config } from "@netlify/functions";
+
 const handler = async () => {
   const syncSecret = (process.env.PROCORE_SYNC_SECRET || "").trim();
   const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
@@ -65,3 +67,7 @@ const handler = async () => {
 };
 
 export default handler;
+
+export const config: Config = {
+  schedule: "*/15 * * * *",
+};

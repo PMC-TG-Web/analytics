@@ -1,0 +1,347 @@
+{
+  "project_id": "598134326626273",
+  "generated_at": "2026-06-11T17:10:23.743Z",
+  "total_logs": 31,
+  "note": "line_item_id values are null - use _csv_contract and _csv_line_item to map from Procore API",
+  "line_item_mapping": [
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#21 - 1\" Styrofoam",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#19 - Pressure treated 2x6",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#20 - Pressure treated 2x8",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#1 - Ready Mix Concrete For Slabs On Grade",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_item": "#6 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_item": "#1 - Ready Mix Concrete For Slabs On Grade",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#2 - 2\"x4'x8' GreenGuard Scoreboard",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-001 - Non-Budgeted Items",
+      "line_item": "#2 - #5 Rebar Speed Dowel Tube  3/4\" x 9\"",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-001 - Non-Budgeted Items",
+      "line_item": "#13 - #6 (3/4\") X 18\" Smooth Dowels",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-001 - Non-Budgeted Items",
+      "line_item": "#8 - 6\" Noma flex Expansion",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_item": "#2 - 2\"x4'x8' GreenGuard Scoreboard",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_item": "#3 - Vapor Barrier 10 mil 20'x100'",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "line_item": "#8 - 6 ga Wire 5'x10' Sheet",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "line_item": "#9 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "line_item": "#4 - #4 Rebar By The Piece",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "line_item": "#3 - Metal Bar Chairs",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "line_item": "#2 - Vapor Barrier 10 mil 20'x100'",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "line_item": "#1 - Ready Mix Concrete For Slabs On Grade",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_item": "#4 - L&M Curing Compound 5 Gal.",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_item": "#7 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_item": "#6 - Trailer Pump",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_item": "#1 - Ready Mix Concrete For Slabs On Grade",
+      "line_item_id": null
+    },
+    {
+      "contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "line_item": "#2 - 6 ga Wire 5'x10' Sheet",
+      "line_item_id": null
+    }
+  ],
+  "logs": [
+    {
+      "date": "06/10/26",
+      "line_item_id": null,
+      "quantity_delivered": 106,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#21 - 1\" Styrofoam"
+    },
+    {
+      "date": "06/10/26",
+      "line_item_id": null,
+      "quantity_delivered": 46,
+      "notes": "20’ers",
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#19 - Pressure treated 2x6"
+    },
+    {
+      "date": "06/10/26",
+      "line_item_id": null,
+      "quantity_delivered": 22,
+      "notes": "20’ers",
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#20 - Pressure treated 2x8"
+    },
+    {
+      "date": "06/09/26",
+      "line_item_id": null,
+      "quantity_delivered": 13,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "06/08/26",
+      "line_item_id": null,
+      "quantity_delivered": 6,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "06/05/26",
+      "line_item_id": null,
+      "quantity_delivered": 16.5,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "06/03/26",
+      "line_item_id": null,
+      "quantity_delivered": 8,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "06/01/26",
+      "line_item_id": null,
+      "quantity_delivered": 20,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/29/26",
+      "line_item_id": null,
+      "quantity_delivered": 23,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/28/26",
+      "line_item_id": null,
+      "quantity_delivered": 58,
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#6 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft."
+    },
+    {
+      "date": "05/28/26",
+      "line_item_id": null,
+      "quantity_delivered": 110,
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 113,
+      "notes": "113 pcs 1” Insulation instead of 2”",
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#2 - 2\"x4'x8' GreenGuard Scoreboard"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 97,
+      "_csv_contract": "PO-001 - Non-Budgeted Items",
+      "_csv_line_item": "#2 - #5 Rebar Speed Dowel Tube  3/4\" x 9\""
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 48,
+      "_csv_contract": "PO-001 - Non-Budgeted Items",
+      "_csv_line_item": "#13 - #6 (3/4\") X 18\" Smooth Dowels"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 90,
+      "_csv_contract": "PO-001 - Non-Budgeted Items",
+      "_csv_line_item": "#2 - #5 Rebar Speed Dowel Tube  3/4\" x 9\""
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 40,
+      "_csv_contract": "PO-001 - Non-Budgeted Items",
+      "_csv_line_item": "#8 - 6\" Noma flex Expansion"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 19,
+      "notes": "Only used for horizontal in slab",
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#2 - 2\"x4'x8' GreenGuard Scoreboard"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 3.5,
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#3 - Vapor Barrier 10 mil 20'x100'"
+    },
+    {
+      "date": "05/27/26",
+      "line_item_id": null,
+      "quantity_delivered": 134,
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#8 - 6 ga Wire 5'x10' Sheet"
+    },
+    {
+      "date": "05/26/26",
+      "line_item_id": null,
+      "quantity_delivered": 20,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/26/26",
+      "line_item_id": null,
+      "quantity_delivered": 3,
+      "_csv_contract": "PO-009 - 53,281 Sq Ft. - 4\" Interior Slab on Grade",
+      "_csv_line_item": "#9 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft."
+    },
+    {
+      "date": "05/20/26",
+      "line_item_id": null,
+      "quantity_delivered": 31,
+      "_csv_contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "_csv_line_item": "#4 - #4 Rebar By The Piece"
+    },
+    {
+      "date": "05/20/26",
+      "line_item_id": null,
+      "quantity_delivered": 9,
+      "_csv_contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "_csv_line_item": "#3 - Metal Bar Chairs"
+    },
+    {
+      "date": "05/20/26",
+      "line_item_id": null,
+      "quantity_delivered": 0.1,
+      "_csv_contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "_csv_line_item": "#2 - Vapor Barrier 10 mil 20'x100'"
+    },
+    {
+      "date": "05/20/26",
+      "line_item_id": null,
+      "quantity_delivered": 4.5,
+      "_csv_contract": "PO-008 - 197 Sq Ft. - 8\" Dock Leveler Pit Slabs",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/19/26",
+      "line_item_id": null,
+      "quantity_delivered": 1,
+      "_csv_contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "_csv_line_item": "#4 - L&M Curing Compound 5 Gal."
+    },
+    {
+      "date": "05/19/26",
+      "line_item_id": null,
+      "quantity_delivered": 10,
+      "_csv_contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "_csv_line_item": "#7 - Sureflex Hardener For Concrete Floors 1lb. per sq. ft."
+    },
+    {
+      "date": "05/19/26",
+      "line_item_id": null,
+      "quantity_delivered": 1,
+      "notes": "Pumped 29 yds",
+      "_csv_contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "_csv_line_item": "#6 - Trailer Pump"
+    },
+    {
+      "date": "05/19/26",
+      "line_item_id": null,
+      "quantity_delivered": 1,
+      "_csv_contract": "PO-010 - 5,434 Sq Ft. - 6\" Interior Slab on Grade",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/19/26",
+      "line_item_id": null,
+      "quantity_delivered": 29,
+      "_csv_contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "_csv_line_item": "#1 - Ready Mix Concrete For Slabs On Grade"
+    },
+    {
+      "date": "05/16/26",
+      "line_item_id": null,
+      "quantity_delivered": 45,
+      "_csv_contract": "PO-013 - 1,904 Sq Ft. - 5\" Interior Slab on Deck",
+      "_csv_line_item": "#2 - 6 ga Wire 5'x10' Sheet"
+    }
+  ]
+}

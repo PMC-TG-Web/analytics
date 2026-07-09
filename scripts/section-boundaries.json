@@ -1,0 +1,74 @@
+[
+  {
+    "header": "Procore REST Command Runner",
+    "startLine": 7065,
+    "endLine": 7142,
+    "lines": 78
+  },
+  {
+    "header": "Drawings Migration Inventory",
+    "startLine": 7269,
+    "endLine": 7643,
+    "lines": 375
+  },
+  {
+    "header": "Clone Correspondences",
+    "startLine": 7791,
+    "endLine": 7922,
+    "lines": 132
+  },
+  {
+    "header": "Clone Submittals",
+    "startLine": 7924,
+    "endLine": 8098,
+    "lines": 175
+  },
+  {
+    "header": "Clone Photos",
+    "startLine": 8100,
+    "endLine": 8287,
+    "lines": 188
+  },
+  {
+    "header": "Clone Change Events",
+    "startLine": 8289,
+    "endLine": 8464,
+    "lines": 176
+  },
+  {
+    "header": "Clone Time and Material",
+    "startLine": 8466,
+    "endLine": 8628,
+    "lines": 163
+  },
+  {
+    "header": "Clone Daily Productivity and Timecards",
+    "startLine": 8708,
+    "endLine": 8969,
+    "lines": 262
+  },
+  {
+    "header": "Bid Board Project Import (Step 1)",
+    "startLine": 9923,
+    "endLine": 9996,
+    "lines": 74
+  },
+  {
+    "header": "Clone Estimate or Change Order",
+    "startLine": 10472,
+    "endLine": 10773,
+    "lines": 302
+  },
+  {
+    "header": "Clone Commitments",
+    "startLine": 10775,
+    "endLine": 11078,
+    "lines": 304
+  },
+  {
+    "header": "Clone Prime Contracts",
+    "startLine": 11080,
+    "endLine": 11291,
+    "lines": 212
+  }
+]

@@ -42,6 +42,37 @@ type ProductivityActualRow = {
   last_date: string | null;
 };
 
+type ProductivityBreakdownRow = {
+  procore_project_id: string | null;
+  cost_code: string | null;
+  contract_number: string | null;
+  contract_title: string | null;
+  line_item_position: number | string | null;
+  line_item_description: string | null;
+  line_item_quantity: number | string | null;
+  line_item_uom: string | null;
+  quantity_used: number | string | null;
+  quantity_delivered: number | string | null;
+  log_count: string | number | bigint | null;
+  first_date: string | null;
+  last_date: string | null;
+};
+
+type ProductivityBreakdownItem = {
+  costCode: string | null;
+  contractNumber: string | null;
+  contractTitle: string | null;
+  lineItemPosition: number | null;
+  lineItemDescription: string | null;
+  lineItemQuantity: number | null;
+  lineItemUom: string | null;
+  quantityUsed: number;
+  quantityDelivered: number;
+  logCount: number;
+  firstDate: string | null;
+  lastDate: string | null;
+};
+
 type ActualAggregate = {
   units: number;
   firstDate: string | null;
@@ -186,6 +217,7 @@ export async function GET(request: NextRequest) {
       budgetRows,
       timecardRows,
       productivityRows,
+      productivityBreakdownRows,
       budgetCountRows,
       timecardCountRows,
       productivityCountRows,
@@ -350,8 +382,17 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(pl."quantityUsed"), 0) AS productivity_quantity_used,
               COALESCE(SUM(pl."quantityDelivered"), 0) AS productivity_quantity_delivered
             FROM "ProductivityLog" pl
+            LEFT JOIN "PurchaseOrderLineItemContractDetail" li
+              ON li."procoreId" = pl."lineItemId"
+            LEFT JOIN "PurchaseOrderContract" poc
+              ON poc.id = li."purchaseOrderContractId"
             WHERE pl."procoreCompanyId" = $1
               AND pl."procoreProjectId" IS NOT NULL
+              AND NOT (
+                COALESCE(poc.title, '') ILIKE '%billing file%'
+                OR COALESCE(pl."lineItemHolderTitle", '') ILIKE '%billing file%'
+                OR COALESCE(pl.contract, '') ILIKE '%billing file%'
+              )
             GROUP BY pl."procoreCompanyId", pl."procoreProjectId"
           )
           SELECT
@@ -462,10 +503,59 @@ export async function GET(request: NextRequest) {
           FROM "ProductivityLog" pl
           LEFT JOIN "PurchaseOrderLineItemContractDetail" li
             ON li."procoreId" = pl."lineItemId"
+          LEFT JOIN "PurchaseOrderContract" poc
+            ON poc.id = li."purchaseOrderContractId"
           WHERE pl."procoreCompanyId" = $1
             AND pl."procoreProjectId" IS NOT NULL
             AND pl."quantityUsed" IS NOT NULL
+            AND NOT (
+              COALESCE(poc.title, '') ILIKE '%billing file%'
+              OR COALESCE(pl."lineItemHolderTitle", '') ILIKE '%billing file%'
+              OR COALESCE(pl.contract, '') ILIKE '%billing file%'
+            )
           GROUP BY pl."procoreProjectId", li."costCode"
+        `,
+        companyId
+      ),
+      prisma.$queryRawUnsafe<ProductivityBreakdownRow[]>(
+        `
+          SELECT
+            pl."procoreProjectId" AS procore_project_id,
+            li."costCode" AS cost_code,
+            poc.number AS contract_number,
+            poc.title AS contract_title,
+            li.position AS line_item_position,
+            COALESCE(li.description, pl."lineItemDescription") AS line_item_description,
+            li.quantity AS line_item_quantity,
+            li.uom AS line_item_uom,
+            COALESCE(SUM(pl."quantityUsed"), 0) AS quantity_used,
+            COALESCE(SUM(pl."quantityDelivered"), 0) AS quantity_delivered,
+            COUNT(*)::text AS log_count,
+            MIN(pl.date)::text AS first_date,
+            MAX(pl.date)::text AS last_date
+          FROM "ProductivityLog" pl
+          LEFT JOIN "PurchaseOrderLineItemContractDetail" li
+            ON li."procoreId" = pl."lineItemId"
+          LEFT JOIN "PurchaseOrderContract" poc
+            ON poc.id = li."purchaseOrderContractId"
+          WHERE pl."procoreCompanyId" = $1
+            AND pl."procoreProjectId" IS NOT NULL
+            AND pl."quantityUsed" IS NOT NULL
+            AND NOT (
+              COALESCE(poc.title, '') ILIKE '%billing file%'
+              OR COALESCE(pl."lineItemHolderTitle", '') ILIKE '%billing file%'
+              OR COALESCE(pl.contract, '') ILIKE '%billing file%'
+            )
+          GROUP BY
+            pl."procoreProjectId",
+            li."costCode",
+            poc.number,
+            poc.title,
+            li.position,
+            li.description,
+            pl."lineItemDescription",
+            li.quantity,
+            li.uom
         `,
         companyId
       ),
@@ -530,6 +620,7 @@ export async function GET(request: NextRequest) {
 
     const timecardActualsByKey = new Map<string, ActualAggregate>();
     const productivityActualsByKey = new Map<string, ActualAggregate>();
+    const productivityBreakdownsByKey = new Map<string, ProductivityBreakdownItem[]>();
 
     for (const row of timecardRows) {
       const key = buildActualsKey(row.procore_project_id, row.cost_code, actualsMode);
@@ -553,6 +644,39 @@ export async function GET(request: NextRequest) {
         row.first_date,
         row.last_date
       );
+    }
+
+    for (const row of productivityBreakdownRows) {
+      const key = buildActualsKey(row.procore_project_id, row.cost_code, actualsMode);
+      if (!key) continue;
+
+      const list = productivityBreakdownsByKey.get(key) || [];
+      list.push({
+        costCode: row.cost_code || null,
+        contractNumber: row.contract_number || null,
+        contractTitle: row.contract_title || null,
+        lineItemPosition: normalizeNumber(row.line_item_position),
+        lineItemDescription: row.line_item_description || null,
+        lineItemQuantity: normalizeNumber(row.line_item_quantity),
+        lineItemUom: row.line_item_uom || null,
+        quantityUsed: normalizeMetric(row.quantity_used),
+        quantityDelivered: normalizeMetric(row.quantity_delivered),
+        logCount: parseCount(row.log_count),
+        firstDate: row.first_date,
+        lastDate: row.last_date,
+      });
+      productivityBreakdownsByKey.set(key, list);
+    }
+
+    for (const list of productivityBreakdownsByKey.values()) {
+      list.sort((a, b) => {
+        const contractCompare = String(a.contractNumber || "").localeCompare(String(b.contractNumber || ""));
+        if (contractCompare !== 0) return contractCompare;
+        const aPosition = a.lineItemPosition ?? Number.MAX_SAFE_INTEGER;
+        const bPosition = b.lineItemPosition ?? Number.MAX_SAFE_INTEGER;
+        if (aPosition !== bPosition) return aPosition - bPosition;
+        return String(a.lineItemDescription || "").localeCompare(String(b.lineItemDescription || ""));
+      });
     }
 
     return NextResponse.json({
@@ -607,6 +731,7 @@ export async function GET(request: NextRequest) {
         const actualsKey = buildActualsKey(row.project_id, actualsCode, actualsMode) || "";
         const timecardActual = timecardActualsByKey.get(actualsKey);
         const productivityActual = productivityActualsByKey.get(actualsKey);
+        const productivityBreakdown = productivityBreakdownsByKey.get(actualsKey) || [];
 
         return {
           id: `${row.project_id}:${normalizeId(row.id)}`,
@@ -634,6 +759,7 @@ export async function GET(request: NextRequest) {
           actualProductivityQty: Number(productivityActual?.units || 0),
           actualProductivityFirstDate: productivityActual?.firstDate || null,
           actualProductivityLastDate: productivityActual?.lastDate || null,
+          actualProductivityBreakdown: productivityBreakdown,
           syncedAt: row.synced_at,
         };
       }),

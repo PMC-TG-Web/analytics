@@ -988,7 +988,7 @@ async function handleCommitmentsEvent(event: {
 
 // ─── Event dispatch ──────────────────────────────────────────────────────────
 
-export async function processEvent(event: {
+async function processEvent(event: {
   companyId: string | null;
   projectId: string | null;
   resourceName: string | null;

@@ -429,6 +429,9 @@ function ProcoreContent() {
   const [commitmentCloneMapsText, setCommitmentCloneMapsText] = useState(`{
   "vendorIdMap": {},
   "contractIdMap": {},
+  "changeOrderRequestIdMap": {},
+  "commitmentChangeEventIdMap": {},
+  "primeChangeEventIdMap": {},
   "budgetLineItemIdMap": {},
   "wbsCodeIdMap": {},
   "costCodeIdMap": {},
@@ -639,6 +642,20 @@ function ProcoreContent() {
   const [dailyCloneCommitmentsBusy, setDailyCloneCommitmentsBusy] = useState(false);
   const [dailyCloneCommitmentsError, setDailyCloneCommitmentsError] = useState<string | null>(null);
   const [dailyCloneCommitmentsResult, setDailyCloneCommitmentsResult] = useState<any>(null);
+  const [simpleCloneSuiteSourceCompanyId, setSimpleCloneSuiteSourceCompanyId] = useState("598134325658789");
+  const [simpleCloneSuiteSourceProjectId, setSimpleCloneSuiteSourceProjectId] = useState("");
+  const [simpleCloneSuiteTargetCompanyId, setSimpleCloneSuiteTargetCompanyId] = useState("598134325805519");
+  const [simpleCloneSuiteTargetProjectId, setSimpleCloneSuiteTargetProjectId] = useState("");
+  const [simpleCloneSuiteCorrespondences, setSimpleCloneSuiteCorrespondences] = useState(true);
+  const [simpleCloneSuiteSubmittals, setSimpleCloneSuiteSubmittals] = useState(true);
+  const [simpleCloneSuiteRfis, setSimpleCloneSuiteRfis] = useState(true);
+  const [simpleCloneSuiteMeetings, setSimpleCloneSuiteMeetings] = useState(true);
+  const [simpleCloneSuiteProjectTeam, setSimpleCloneSuiteProjectTeam] = useState(true);
+  const [simpleCloneSuiteTasks, setSimpleCloneSuiteTasks] = useState(true);
+  const [simpleCloneSuiteImages, setSimpleCloneSuiteImages] = useState(true);
+  const [simpleCloneSuiteBusy, setSimpleCloneSuiteBusy] = useState(false);
+  const [simpleCloneSuiteError, setSimpleCloneSuiteError] = useState<string | null>(null);
+  const [simpleCloneSuiteResult, setSimpleCloneSuiteResult] = useState<any>(null);
   const [correspondenceCloneSourceCompanyId, setCorrespondenceCloneSourceCompanyId] = useState("598134325658789");
   const [correspondenceCloneSourceProjectId, setCorrespondenceCloneSourceProjectId] = useState("");
   const [correspondenceCloneTargetCompanyId, setCorrespondenceCloneTargetCompanyId] = useState("598134325805519");
@@ -716,6 +733,18 @@ function ProcoreContent() {
   const [projectTeamCloneBusy, setProjectTeamCloneBusy] = useState(false);
   const [projectTeamCloneError, setProjectTeamCloneError] = useState<string | null>(null);
   const [projectTeamCloneResult, setProjectTeamCloneResult] = useState<any>(null);
+  const [taskCloneSourceCompanyId, setTaskCloneSourceCompanyId] = useState("598134325658789");
+  const [taskCloneSourceProjectId, setTaskCloneSourceProjectId] = useState("");
+  const [taskCloneTargetCompanyId, setTaskCloneTargetCompanyId] = useState("598134325805519");
+  const [taskCloneTargetProjectId, setTaskCloneTargetProjectId] = useState("");
+  const [taskCloneIdsText, setTaskCloneIdsText] = useState("");
+  const [taskCloneCreateOffset, setTaskCloneCreateOffset] = useState("0");
+  const [taskCloneCreateLimit, setTaskCloneCreateLimit] = useState("25");
+  const [taskCloneMaxPages, setTaskCloneMaxPages] = useState("10");
+  const [taskCloneComments, setTaskCloneComments] = useState(true);
+  const [taskCloneBusy, setTaskCloneBusy] = useState(false);
+  const [taskCloneError, setTaskCloneError] = useState<string | null>(null);
+  const [taskCloneResult, setTaskCloneResult] = useState<any>(null);
   const [imageCloneSourceCompanyId, setImageCloneSourceCompanyId] = useState("598134325658789");
   const [imageCloneSourceProjectId, setImageCloneSourceProjectId] = useState("");
   const [imageCloneTargetCompanyId, setImageCloneTargetCompanyId] = useState("598134325805519");
@@ -5594,6 +5623,363 @@ function ProcoreContent() {
     }
   };
 
+  const handleRunSimpleCloneSuite = async (dryRun: boolean) => {
+    const sourceCompanyId = simpleCloneSuiteSourceCompanyId.trim();
+    const sourceProjectId = simpleCloneSuiteSourceProjectId.trim();
+    const targetCompanyId = simpleCloneSuiteTargetCompanyId.trim();
+    const targetProjectId = simpleCloneSuiteTargetProjectId.trim();
+
+    if (!sourceProjectId || !targetProjectId) {
+      setSimpleCloneSuiteError("Source project and target project are required.");
+      return;
+    }
+
+    const enabledJobs = [
+      simpleCloneSuiteCorrespondences,
+      simpleCloneSuiteSubmittals,
+      simpleCloneSuiteRfis,
+      simpleCloneSuiteMeetings,
+      simpleCloneSuiteProjectTeam,
+      simpleCloneSuiteTasks,
+      simpleCloneSuiteImages,
+    ].filter(Boolean).length;
+
+    if (enabledJobs === 0) {
+      setSimpleCloneSuiteError("Select at least one clone to run.");
+      return;
+    }
+
+    let submittalMaps: any = {};
+    let rfiMaps: any = {};
+    let meetingAttendeeMap: Record<string, string> = {};
+
+    try {
+      submittalMaps = submittalCloneMapsText.trim() ? JSON.parse(submittalCloneMapsText) : {};
+    } catch (error) {
+      setSimpleCloneSuiteError(`Submittal mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    try {
+      rfiMaps = rfiCloneMapsText.trim() ? JSON.parse(rfiCloneMapsText) : {};
+    } catch (error) {
+      setSimpleCloneSuiteError(`RFI mapping JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    try {
+      meetingAttendeeMap = meetingCloneAttendeeMapText.trim() ? JSON.parse(meetingCloneAttendeeMapText) : {};
+      if (!meetingAttendeeMap || typeof meetingAttendeeMap !== "object" || Array.isArray(meetingAttendeeMap)) {
+        throw new Error("Attendee map must be a JSON object.");
+      }
+    } catch (error) {
+      setSimpleCloneSuiteError(`Meeting attendee map is invalid: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    if (!dryRun && !window.confirm(`Run selected simple clones from ${sourceProjectId} to ${targetProjectId}?`)) {
+      return;
+    }
+
+    setSimpleCloneSuiteBusy(true);
+    setSimpleCloneSuiteError(null);
+    setSimpleCloneSuiteResult(null);
+
+    try {
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const isRateLimitedResult = (status: number, result: any) => {
+        const detailText = [
+          typeof result?.details === "string" ? result.details : "",
+          typeof result?.error === "string" ? result.error : "",
+        ].join(" ").toLowerCase();
+        return status === 429 || detailText.includes("rate limit") || detailText.includes("surpassed the max number of requests");
+      };
+
+      const postClone = async (path: string, body: Record<string, unknown>) => {
+        const retryDelaysMs = [5000, 15000, 30000];
+        let lastRun: { status: number; ok: boolean; result: any; attempts: number } | null = null;
+
+        for (let attemptIndex = 0; attemptIndex <= retryDelaysMs.length; attemptIndex += 1) {
+          const response = await fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const result = await response.json().catch(() => ({}));
+          const run = {
+            status: response.status,
+            ok: response.ok && result?.success !== false,
+            result,
+            attempts: attemptIndex + 1,
+          };
+
+          lastRun = run;
+          if (run.ok || !isRateLimitedResult(run.status, run.result) || attemptIndex === retryDelaysMs.length) {
+            return run;
+          }
+
+          await sleep(retryDelaysMs[attemptIndex]);
+        }
+
+        return lastRun || { status: 0, ok: false, result: { error: "Unknown suite request failure." }, attempts: 0 };
+      };
+
+      const runPagedClone = async (params: {
+        label: string;
+        path: string;
+        buildBody: (createOffset: number) => Record<string, unknown>;
+        getNextOffset: (result: any) => number | null;
+        shouldContinue: (result: any, currentOffset: number, nextOffset: number | null) => boolean;
+        maxBatches?: number;
+      }) => {
+        const maxBatches = params.maxBatches ?? 100;
+        const batches: any[] = [];
+        let currentOffset = 0;
+        let finalRun: any = null;
+
+        for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
+          const run = await postClone(params.path, params.buildBody(currentOffset));
+          finalRun = run;
+          batches.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, ...run });
+          if (!run.ok) break;
+
+          const nextOffset = params.getNextOffset(run.result);
+          if (dryRun || !params.shouldContinue(run.result, currentOffset, nextOffset)) break;
+          if (nextOffset === null || nextOffset <= currentOffset) break;
+
+          currentOffset = nextOffset;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        return {
+          label: params.label,
+          status: finalRun?.status ?? 0,
+          ok: finalRun?.ok ?? false,
+          result: finalRun?.result,
+          batches,
+        };
+      };
+
+      const jobs: Array<{ key: string; enabled: boolean; run: () => Promise<any> }> = [
+        {
+          key: "correspondences",
+          enabled: simpleCloneSuiteCorrespondences,
+          run: async () => runPagedClone({
+            label: "Correspondences",
+            path: "/api/procore/correspondences/clone",
+            buildBody: (createOffset) => ({
+              sourceCompanyId,
+              sourceProjectId,
+              targetCompanyId,
+              targetProjectId,
+              sourceGenericToolId: correspondenceCloneToolId.trim() || undefined,
+              genericToolTitle: correspondenceCloneToolTitle.trim() || undefined,
+              createOffset,
+              createLimit: 100,
+              dryRun,
+            }),
+            getNextOffset: (result) => {
+              const created = Number(result?.counts?.created ?? 0);
+              const offset = Number(result?.counts?.createOffset ?? 0);
+              return offset + created;
+            },
+            shouldContinue: (result, currentOffset, nextOffset) => {
+              const total = Number(result?.counts?.sourceItems ?? 0);
+              return Number.isFinite(total) && total > 0 && nextOffset !== null && nextOffset > currentOffset && nextOffset < total;
+            },
+          }),
+        },
+        {
+          key: "submittals",
+          enabled: simpleCloneSuiteSubmittals,
+          run: async () => postClone("/api/procore/submittals/clone", {
+            sourceCompanyId,
+            sourceProjectId,
+            targetCompanyId,
+            targetProjectId,
+            submittalIds: [],
+            createOffset: 0,
+            createLimit: 100,
+            clonePackages: submittalClonePackages,
+            cloneSubmittals: submittalCloneSubmittals,
+            preserveNumber: submittalClonePreserveNumber,
+            preserveStatus: submittalClonePreserveStatus,
+            numberOffset: submittalCloneNumberOffset.trim() || "0",
+            typeIdMap: submittalMaps.typeIdMap || {},
+            statusIdMap: submittalMaps.statusIdMap || {},
+            responsibleContractorIdMap: submittalMaps.responsibleContractorIdMap || {},
+            submittalManagerIdMap: submittalMaps.submittalManagerIdMap || {},
+            defaultResponsibleContractorId: submittalMaps.defaultResponsibleContractorId || undefined,
+            defaultSubmittalManagerId: submittalMaps.defaultSubmittalManagerId || undefined,
+            dryRun,
+          }).then((run) => ({ label: "Submittals", ...run, batches: [run] })),
+        },
+        {
+          key: "rfis",
+          enabled: simpleCloneSuiteRfis,
+          run: async () => runPagedClone({
+            label: "RFIs",
+            path: "/api/procore/rfis/clone",
+            buildBody: (createOffset) => ({
+              sourceCompanyId,
+              sourceProjectId,
+              targetCompanyId,
+              targetProjectId,
+              rfiIds: [],
+              createOffset,
+              createLimit: 100,
+              cloneReplies: rfiCloneReplies,
+              preserveNumber: rfiClonePreserveNumber,
+              preserveStatus: rfiClonePreserveStatus,
+              numberOffset: rfiCloneNumberOffset.trim() || "0",
+              userIdMap: rfiMaps.userIdMap || {},
+              vendorIdMap: rfiMaps.vendorIdMap || {},
+              rfiDefaults: rfiMaps.rfiDefaults || {},
+              dryRun,
+            }),
+            getNextOffset: (result) => {
+              const next = Number(result?.counts?.nextCreateOffset);
+              return Number.isFinite(next) ? next : null;
+            },
+            shouldContinue: (result, _currentOffset, nextOffset) => nextOffset !== null && result?.nextStep?.includes("Continue at createOffset"),
+          }),
+        },
+        {
+          key: "meetings",
+          enabled: simpleCloneSuiteMeetings,
+          run: async () => runPagedClone({
+            label: "Meetings",
+            path: "/api/procore/meetings/clone",
+            buildBody: (createOffset) => ({
+              sourceCompanyId,
+              sourceProjectId,
+              targetCompanyId,
+              targetProjectId,
+              meetingIds: [],
+              attendeeMap: meetingAttendeeMap,
+              createOffset,
+              createLimit: dryRun ? 100 : 100,
+              dryRun,
+            }),
+            getNextOffset: (result) => {
+              const next = Number(result?.counts?.nextCreateOffset);
+              return Number.isFinite(next) ? next : null;
+            },
+            shouldContinue: (result, _currentOffset, nextOffset) => Boolean(result?.counts?.hasMoreCreatableRows) && nextOffset !== null,
+            maxBatches: Math.max(1, Math.min(100, Number.parseInt(meetingCloneMaxAutoBatches || "50", 10) || 50)),
+          }),
+        },
+        {
+          key: "project-team",
+          enabled: simpleCloneSuiteProjectTeam,
+          run: async () => postClone("/api/procore/project-team/clone", {
+            sourceCompanyId,
+            sourceProjectId,
+            targetCompanyId,
+            targetProjectId,
+            syncRoles: projectTeamCloneSyncRoles,
+            maxPages: Number.parseInt(projectTeamCloneMaxPages || "10", 10) || 10,
+            dryRun,
+          }).then((run) => ({ label: "Project Team", ...run, batches: [run] })),
+        },
+        {
+          key: "task-items",
+          enabled: simpleCloneSuiteTasks,
+          run: async () => runPagedClone({
+            label: "Task Items",
+            path: "/api/procore/task-items/clone",
+            buildBody: (createOffset) => ({
+              sourceCompanyId,
+              sourceProjectId,
+              targetCompanyId,
+              targetProjectId,
+              taskIds: [],
+              createOffset,
+              createLimit: 100,
+              maxPages: Number.parseInt(taskCloneMaxPages || "10", 10) || 10,
+              cloneComments: taskCloneComments,
+              dryRun,
+            }),
+            getNextOffset: (result) => {
+              const offset = Number(result?.counts?.createOffset ?? 0);
+              const created = Number(result?.counts?.created ?? 0);
+              const failed = Number(result?.counts?.createFailed ?? 0);
+              return offset + created + failed;
+            },
+            shouldContinue: (result, currentOffset, nextOffset) => {
+              const total = Number(result?.counts?.planned ?? 0);
+              return Number.isFinite(total) && total > 0 && nextOffset !== null && nextOffset > currentOffset && nextOffset < total;
+            },
+          }),
+        },
+        {
+          key: "images",
+          enabled: simpleCloneSuiteImages,
+          run: async () => runPagedClone({
+            label: "Photos",
+            path: "/api/procore/images/clone",
+            buildBody: (createOffset) => ({
+              sourceCompanyId,
+              sourceProjectId,
+              targetCompanyId,
+              targetProjectId,
+              imageIds: [],
+              createOffset,
+              createLimit: 10,
+              uploadDelayMs: Number.parseInt(imageCloneUploadDelayMs || "1000", 10) || 1000,
+              maxPages: Number.parseInt(imageCloneMaxPages || "10", 10) || 10,
+              cloneCategories: imageCloneCategories,
+              dryRun,
+            }),
+            getNextOffset: (result) => {
+              const next = Number(result?.nextCreateOffset);
+              return Number.isFinite(next) ? next : null;
+            },
+            shouldContinue: (result, currentOffset, nextOffset) => {
+              const total = Number(result?.counts?.sourceImages ?? 0);
+              return Number.isFinite(total) && total > 0 && nextOffset !== null && nextOffset > currentOffset && nextOffset < total;
+            },
+            maxBatches: Math.max(1, Math.min(500, Number.parseInt(imageCloneMaxAutoBatches || "50", 10) || 50)),
+          }),
+        },
+      ];
+
+      const completedJobs: any[] = [];
+      for (const job of jobs) {
+        if (!job.enabled) continue;
+        const run = await job.run();
+        completedJobs.push({ key: job.key, ...run });
+
+        setSimpleCloneSuiteResult({
+          success: completedJobs.every((entry) => entry.ok),
+          dryRun,
+          source: { companyId: sourceCompanyId, projectId: sourceProjectId },
+          target: { companyId: targetCompanyId, projectId: targetProjectId },
+          jobs: completedJobs,
+          counts: {
+            selected: enabledJobs,
+            completed: completedJobs.length,
+            succeeded: completedJobs.filter((entry) => entry.ok).length,
+            failed: completedJobs.filter((entry) => !entry.ok).length,
+          },
+        });
+
+        if (!run.ok) {
+          setSimpleCloneSuiteError(`${run.label} failed. Review the suite result JSON.`);
+          break;
+        }
+
+        if (!dryRun) {
+          await sleep(1500);
+        }
+      }
+    } catch (error) {
+      setSimpleCloneSuiteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSimpleCloneSuiteBusy(false);
+    }
+  };
+
   const handleCloneSubmittals = async (dryRun: boolean) => {
     const sourceCompanyId = submittalCloneSourceCompanyId.trim();
     const sourceProjectId = submittalCloneSourceProjectId.trim();
@@ -5907,6 +6293,64 @@ function ProcoreContent() {
       setProjectTeamCloneError(error instanceof Error ? error.message : String(error));
     } finally {
       setProjectTeamCloneBusy(false);
+    }
+  };
+
+  const handleCloneTasks = async (dryRun: boolean) => {
+    const sourceCompanyId = taskCloneSourceCompanyId.trim();
+    const sourceProjectId = taskCloneSourceProjectId.trim();
+    const targetCompanyId = taskCloneTargetCompanyId.trim();
+    const targetProjectId = taskCloneTargetProjectId.trim();
+    const taskIds = taskCloneIdsText
+      .split(/[\s,]+/)
+      .map((value) => Number.parseInt(value.trim(), 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!sourceProjectId || !targetProjectId) {
+      setTaskCloneError("Source project and target project are required.");
+      return;
+    }
+
+    if (!dryRun && !window.confirm(`Clone Task Items from ${sourceProjectId} to ${targetProjectId}?`)) {
+      return;
+    }
+
+    setTaskCloneBusy(true);
+    setTaskCloneError(null);
+    setTaskCloneResult(null);
+
+    try {
+      const response = await fetch("/api/procore/task-items/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCompanyId: sourceCompanyId || undefined,
+          sourceProjectId,
+          targetCompanyId: targetCompanyId || undefined,
+          targetProjectId,
+          taskIds,
+          createOffset: Number.parseInt(taskCloneCreateOffset || "0", 10) || 0,
+          createLimit: Number.parseInt(taskCloneCreateLimit || "25", 10) || 25,
+          maxPages: Number.parseInt(taskCloneMaxPages || "10", 10) || 10,
+          cloneComments: taskCloneComments,
+          dryRun,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) {
+        setTaskCloneError(
+          result?.error
+            ? `${result.error}${result?.details ? `: ${result.details}` : ""}`
+            : `Task clone ${dryRun ? "dry-run" : "live run"} failed (${response.status}).`
+        );
+      }
+
+      setTaskCloneResult({ status: response.status, ok: response.ok, result });
+    } catch (error) {
+      setTaskCloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTaskCloneBusy(false);
     }
   };
 
@@ -6496,6 +6940,10 @@ function ProcoreContent() {
   const commitmentMapNameForField = (field: string): string => {
     const normalized = String(field || "").trim();
     if (normalized === "vendor_id") return "vendorIdMap";
+    if (normalized === "contract_id") return "contractIdMap";
+    if (normalized === "change_order_request_id") return "changeOrderRequestIdMap";
+    if (normalized === "commitment_change_event_id") return "commitmentChangeEventIdMap";
+    if (normalized === "prime_change_event_id") return "primeChangeEventIdMap";
     if (normalized === "budget_line_item_id") return "budgetLineItemIdMap";
     if (normalized === "wbs_code_id") return "wbsCodeIdMap";
     if (normalized === "cost_code_id") return "costCodeIdMap";
@@ -6682,6 +7130,10 @@ function ProcoreContent() {
 
     setCommitmentCloneMapsText(JSON.stringify({
       vendorIdMap: maps.vendorIdMap || {},
+      contractIdMap: maps.contractIdMap || {},
+      changeOrderRequestIdMap: maps.changeOrderRequestIdMap || {},
+      commitmentChangeEventIdMap: maps.commitmentChangeEventIdMap || {},
+      primeChangeEventIdMap: maps.primeChangeEventIdMap || {},
       budgetLineItemIdMap: maps.budgetLineItemIdMap || {},
       wbsCodeIdMap: maps.wbsCodeIdMap || {},
       costCodeIdMap: maps.costCodeIdMap || {},
@@ -8495,9 +8947,135 @@ function ProcoreContent() {
             </div>
             )}
 
-            <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6 order-4">
-              <h2 className="text-xl font-bold text-sky-900 mb-3">Clone Correspondences</h2>
-              <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-white rounded-lg shadow p-6 border-2 border-teal-500 mb-6 order-6">
+                  <h2 className="text-xl font-bold text-teal-900 mb-3">Simple Clone Suite</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Run the simple project-to-project cloners in one pass using a shared source and target project. This suite uses the current defaults from each individual section for tool-specific options.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                      <input
+                        type="text"
+                        value={simpleCloneSuiteSourceCompanyId ?? ""}
+                        onChange={(event) => setSimpleCloneSuiteSourceCompanyId(event.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                      <input
+                        type="text"
+                        value={simpleCloneSuiteSourceProjectId ?? ""}
+                        onChange={(event) => setSimpleCloneSuiteSourceProjectId(event.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                      <input
+                        type="text"
+                        value={simpleCloneSuiteTargetCompanyId ?? ""}
+                        onChange={(event) => setSimpleCloneSuiteTargetCompanyId(event.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                      <input
+                        type="text"
+                        value={simpleCloneSuiteTargetProjectId ?? ""}
+                        onChange={(event) => setSimpleCloneSuiteTargetProjectId(event.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteCorrespondences)} onChange={(event) => setSimpleCloneSuiteCorrespondences(event.target.checked)} />
+                      Correspondences
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteSubmittals)} onChange={(event) => setSimpleCloneSuiteSubmittals(event.target.checked)} />
+                      Submittals
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteRfis)} onChange={(event) => setSimpleCloneSuiteRfis(event.target.checked)} />
+                      RFIs
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteMeetings)} onChange={(event) => setSimpleCloneSuiteMeetings(event.target.checked)} />
+                      Meetings
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteProjectTeam)} onChange={(event) => setSimpleCloneSuiteProjectTeam(event.target.checked)} />
+                      Project Team
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteTasks)} onChange={(event) => setSimpleCloneSuiteTasks(event.target.checked)} />
+                      Task Items
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={Boolean(simpleCloneSuiteImages)} onChange={(event) => setSimpleCloneSuiteImages(event.target.checked)} />
+                      Photos
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => handleRunSimpleCloneSuite(true)}
+                      disabled={simpleCloneSuiteBusy}
+                      className="bg-teal-700 hover:bg-teal-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      {simpleCloneSuiteBusy ? "Working..." : "Dry Run Suite"}
+                    </button>
+                    <button
+                      onClick={() => handleRunSimpleCloneSuite(false)}
+                      disabled={simpleCloneSuiteBusy}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                      {simpleCloneSuiteBusy ? "Working..." : "Run Live Suite"}
+                    </button>
+                    {simpleCloneSuiteResult && (
+                      <button
+                        onClick={() => downloadJson("procore-simple-clone-suite-result.json", simpleCloneSuiteResult)}
+                        className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                      >
+                        Download Result JSON
+                      </button>
+                    )}
+                  </div>
+
+                  {simpleCloneSuiteError && (
+                    <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                      <strong>Simple Clone Suite Error:</strong> {simpleCloneSuiteError}
+                    </div>
+                  )}
+
+                  {simpleCloneSuiteResult && (
+                    <div className="mt-4">
+                      <div className={`px-4 py-3 rounded mb-3 border ${
+                        simpleCloneSuiteResult?.success
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                          : "bg-amber-50 border-amber-200 text-amber-900"
+                      }`}>
+                        <strong>Simple Clone Suite Result:</strong>{" "}
+                        {simpleCloneSuiteResult?.dryRun
+                          ? `Dry run completed ${simpleCloneSuiteResult?.counts?.completed ?? 0} selected clone(s).`
+                          : simpleCloneSuiteResult?.success
+                            ? `Live suite completed ${simpleCloneSuiteResult?.counts?.succeeded ?? 0} clone(s).`
+                            : `Suite stopped after ${simpleCloneSuiteResult?.counts?.completed ?? 0} clone(s).`}
+                      </div>
+                      <CollapsibleJson value={simpleCloneSuiteResult} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6 border-2 border-sky-500 mb-6 order-6">
+                  <h2 className="text-xl font-bold text-sky-900 mb-3">Clone Correspondences</h2>
+                  <p className="text-sm text-gray-600 mb-4">
                 Clone correspondence generic tool items from one Procore project to another. Version one clones the item header/body fields and reports skipped attachments, people fields, and custom fields for review.
               </p>
 
@@ -9267,6 +9845,8 @@ function ProcoreContent() {
                   <div className={`px-4 py-3 rounded mb-3 border ${
                     projectTeamCloneResult.result?.success
                       ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      : projectTeamCloneResult.result?.partialSuccess
+                        ? "bg-amber-50 border-amber-200 text-amber-900"
                       : "bg-amber-50 border-amber-200 text-amber-900"
                   }`}>
                     <strong>Project Team Clone Result:</strong>{" "}
@@ -9274,9 +9854,165 @@ function ProcoreContent() {
                       ? `Dry run found ${projectTeamCloneResult.result?.counts?.toAdd ?? 0} user(s) to add and ${projectTeamCloneResult.result?.counts?.rolesReadyToUpdate ?? 0} role(s) ready.`
                       : projectTeamCloneResult.result?.success
                         ? `Live clone added ${projectTeamCloneResult.result?.counts?.added ?? 0} user(s) and updated ${projectTeamCloneResult.result?.counts?.rolesUpdated ?? 0} role(s).`
+                        : projectTeamCloneResult.result?.partialSuccess
+                          ? `Live clone added ${projectTeamCloneResult.result?.counts?.added ?? 0} user(s), but ${projectTeamCloneResult.result?.counts?.rolesMissingTargetRole ?? 0} role(s) were skipped because matching target project roles were not found.`
                         : "Live clone finished with errors."}
                   </div>
                   <CollapsibleJson value={projectTeamCloneResult} />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6 border-2 border-cyan-500 mb-6 order-11">
+              <h2 className="text-xl font-bold text-cyan-900 mb-3">Clone Task Items</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Clone Procore Task Items between projects with category/assignee/distribution mapping and optional comment cloning.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Company ID</label>
+                  <input
+                    type="text"
+                    value={taskCloneSourceCompanyId ?? ""}
+                    onChange={(event) => setTaskCloneSourceCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <input
+                    type="text"
+                    value={taskCloneSourceProjectId ?? ""}
+                    onChange={(event) => setTaskCloneSourceProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Company ID</label>
+                  <input
+                    type="text"
+                    value={taskCloneTargetCompanyId ?? ""}
+                    onChange={(event) => setTaskCloneTargetCompanyId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Project ID</label>
+                  <input
+                    type="text"
+                    value={taskCloneTargetProjectId ?? ""}
+                    onChange={(event) => setTaskCloneTargetProjectId(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Task IDs (optional, comma/space separated)</label>
+                  <textarea
+                    rows={2}
+                    value={taskCloneIdsText}
+                    onChange={(event) => setTaskCloneIdsText(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                    placeholder="12345, 12346"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Offset</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={taskCloneCreateOffset ?? ""}
+                    onChange={(event) => setTaskCloneCreateOffset(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Create Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={taskCloneCreateLimit ?? ""}
+                    onChange={(event) => setTaskCloneCreateLimit(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(taskCloneComments)}
+                    onChange={(event) => setTaskCloneComments(event.target.checked)}
+                  />
+                  Clone Task Comments
+                </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Max Pages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={taskCloneMaxPages ?? ""}
+                    onChange={(event) => setTaskCloneMaxPages(event.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleCloneTasks(true)}
+                  disabled={taskCloneBusy}
+                  className="bg-cyan-700 hover:bg-cyan-800 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {taskCloneBusy ? "Working..." : "Dry Run Clone"}
+                </button>
+                <button
+                  onClick={() => handleCloneTasks(false)}
+                  disabled={taskCloneBusy}
+                  className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
+                >
+                  {taskCloneBusy ? "Working..." : "Run Live Clone"}
+                </button>
+                {taskCloneResult && (
+                  <button
+                    onClick={() => downloadJson("procore-clone-task-items-result.json", taskCloneResult)}
+                    className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm"
+                  >
+                    Download Result JSON
+                  </button>
+                )}
+              </div>
+
+              {taskCloneError && (
+                <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                  <strong>Task Clone Error:</strong> {taskCloneError}
+                </div>
+              )}
+
+              {taskCloneResult && (
+                <div className="mt-4">
+                  <div className={`px-4 py-3 rounded mb-3 border ${
+                    taskCloneResult.result?.success
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}>
+                    <strong>Task Clone Result:</strong>{" "}
+                    {taskCloneResult.result?.dryRun
+                      ? `Dry run planned ${taskCloneResult.result?.counts?.planned ?? 0} task(s).`
+                      : taskCloneResult.result?.success
+                        ? `Live clone created ${taskCloneResult.result?.counts?.created ?? 0} task(s) and ${taskCloneResult.result?.counts?.commentsCreated ?? 0} comment(s).`
+                        : "Live clone finished with errors."}
+                  </div>
+                  <CollapsibleJson value={taskCloneResult} />
                 </div>
               )}
             </div>

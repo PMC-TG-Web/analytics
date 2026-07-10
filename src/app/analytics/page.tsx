@@ -25,7 +25,23 @@ type PersistedLineItem = {
   actualProductivityQty?: number;
   actualProductivityFirstDate?: string | null;
   actualProductivityLastDate?: string | null;
+  actualProductivityBreakdown?: ProductivityBreakdownItem[];
   syncedAt: string;
+};
+
+type ProductivityBreakdownItem = {
+  costCode: string | null;
+  contractNumber: string | null;
+  contractTitle: string | null;
+  lineItemPosition: number | null;
+  lineItemDescription: string | null;
+  lineItemQuantity: number | null;
+  lineItemUom: string | null;
+  quantityUsed: number;
+  quantityDelivered: number;
+  logCount: number;
+  firstDate: string | null;
+  lastDate: string | null;
 };
 
 type ProjectSummary = {
@@ -83,6 +99,8 @@ type RankedMetric = {
   lineItems: number;
   sales: number;
   actualUnits: number;
+  timecardHours: number;
+  productivityQty: number;
 };
 
 type DateGranularity = "day" | "week" | "month";
@@ -106,6 +124,8 @@ type TrendPoint = {
   sales: number;
   cost: number;
   actualUnits: number;
+  timecardHours: number;
+  productivityQty: number;
   runningCost: number;
 };
 
@@ -124,6 +144,12 @@ type ComparisonRow = {
   runningCost: number;
   isMargin: boolean;
   syncedAt: string;
+};
+
+type PreviewRow = {
+  id: string;
+  budgetRow: PersistedLineItem;
+  productivityLine?: ProductivityBreakdownItem;
 };
 
 const DEFAULT_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
@@ -157,11 +183,173 @@ function formatNumber(value: number): string {
 }
 
 function getFieldActualSource(row: PersistedLineItem): FieldActualSource {
+  const costCodeType = getCostCodeTypeSuffix(row.costCode);
+  if (costCodeType === "L") return "timecards";
   return isHourBasedUom(row.uom) ? "timecards" : "productivity";
 }
 
 function formatFieldActualSource(source: FieldActualSource): string {
   return source === "timecards" ? "Timecards" : "Productivity";
+}
+
+function formatFieldActivity(productivityQty: number, timecardHours: number): string {
+  return `${formatNumber(productivityQty)} qty / ${formatNumber(timecardHours)} hrs`;
+}
+
+function formatQuantityWithUom(quantity: number | null | undefined, uom: string | null | undefined): string {
+  if (quantity == null || !Number.isFinite(quantity)) return "-";
+  const normalizedUom = String(uom || "").trim();
+  return normalizedUom ? `${formatNumber(quantity)} ${normalizedUom}` : formatNumber(quantity);
+}
+
+function formatProductivityBreakdownLabel(item: ProductivityBreakdownItem): string {
+  const position = item.lineItemPosition != null ? `#${formatNumber(item.lineItemPosition)} - ` : "";
+  return `${position}${item.lineItemDescription || "Unassigned PO line"}`;
+}
+
+function getProductivityBreakdown(row: PersistedLineItem): ProductivityBreakdownItem[] {
+  if (getFieldActualSource(row) !== "productivity") return [];
+  return row.actualProductivityBreakdown || [];
+}
+
+function getProductivityBreakdownUoms(row: PersistedLineItem): string[] {
+  return Array.from(
+    new Set(
+      getProductivityBreakdown(row)
+        .map((item) => String(item.lineItemUom || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function hasMixedProductivityUnits(row: PersistedLineItem): boolean {
+  return getProductivityBreakdownUoms(row).length > 1;
+}
+
+function getProductivityBreakdownVariance(item: ProductivityBreakdownItem): number | null {
+  const contractQty = item.lineItemQuantity;
+  if (contractQty == null || !Number.isFinite(contractQty)) return null;
+  return contractQty - Number(item.quantityUsed || 0);
+}
+
+function formatBudgetRowActual(row: PersistedLineItem): string {
+  if (hasMixedProductivityUnits(row)) {
+    return `${getProductivityBreakdown(row).length.toLocaleString()} PO lines`;
+  }
+  return formatNumber(getActualUnits(row));
+}
+
+function formatBudgetRowVariance(row: PersistedLineItem, variance: number): string {
+  return hasMixedProductivityUnits(row) ? "see PO lines" : formatNumber(variance);
+}
+
+function getBudgetCostType(row: PersistedLineItem): string {
+  const name = String(row.costCodeName || "").trim();
+  if (name.includes(".")) {
+    const suffix = name.slice(name.lastIndexOf(".") + 1).trim();
+    if (suffix) return suffix;
+  }
+
+  const lineItemType = String(row.lineItemType || "").trim();
+  if (lineItemType) return lineItemType;
+
+  const costCodeType = getCostCodeTypeSuffix(row.costCode);
+  if (costCodeType === "L") return "Labor";
+  if (costCodeType === "M") return "Materials";
+  if (costCodeType === "S") return "Subcontractors";
+  if (costCodeType === "O") return "Other";
+  return "";
+}
+
+function getBudgetCategoryPrefix(row: PersistedLineItem): string {
+  const name = String(row.costCodeName || "").trim();
+  if (!name) return String(row.costCode || "").trim();
+  return name.includes(".") ? name.slice(0, name.lastIndexOf(".")).trim() : name;
+}
+
+function getGroupedCategoryName(row: PersistedLineItem): string {
+  const costType = getBudgetCostType(row);
+  if (costType.toLowerCase() === "labor") return "Labor";
+
+  const prefix = getBudgetCategoryPrefix(row) || "(no name)";
+  const words = prefix.split(/\s+/).filter(Boolean);
+  return words.length >= 2 ? words.slice(-2).join(" ") : prefix;
+}
+
+function getBudgetSubcategoryName(row: PersistedLineItem): string {
+  const prefix = getBudgetCategoryPrefix(row) || row.costCodeName || row.costCode || "-";
+  if (getBudgetCostType(row).toLowerCase() === "labor") {
+    return prefix.replace(/^labor\s+/i, "").trim() || "Labor";
+  }
+  return prefix;
+}
+
+function buildPreviewRows(rows: PersistedLineItem[]): PreviewRow[] {
+  return rows.flatMap((row) => {
+    const breakdown = getProductivityBreakdown(row);
+    if (breakdown.length === 0) {
+      return [{ id: row.id, budgetRow: row }];
+    }
+
+    return breakdown.map((item, index) => ({
+      id: `${row.id}:productivity:${item.contractNumber || "contract"}:${item.lineItemPosition ?? index}`,
+      budgetRow: row,
+      productivityLine: item,
+    }));
+  });
+}
+
+function getPreviewLineLabel(row: PreviewRow): string {
+  return row.productivityLine ? formatProductivityBreakdownLabel(row.productivityLine) : getBudgetSubcategoryName(row.budgetRow);
+}
+
+function getPreviewLineUom(row: PreviewRow): string {
+  return row.productivityLine?.lineItemUom || row.budgetRow.uom || "-";
+}
+
+function getPreviewLineSource(row: PreviewRow): string {
+  return row.productivityLine ? "Productivity" : formatFieldActualSource(getFieldActualSource(row.budgetRow));
+}
+
+function getPreviewLineLastDate(row: PreviewRow): string | null {
+  return row.productivityLine?.lastDate || getFieldLastDate(row.budgetRow);
+}
+
+function getPreviewLineBudgetQty(row: PreviewRow): string {
+  const item = row.productivityLine;
+  if (item) return formatQuantityWithUom(item.lineItemQuantity, item.lineItemUom);
+  return row.budgetRow.quantity != null ? formatNumber(Number(row.budgetRow.quantity)) : "-";
+}
+
+function getPreviewLineActual(row: PreviewRow): string {
+  const item = row.productivityLine;
+  if (item) return formatQuantityWithUom(item.quantityUsed, item.lineItemUom);
+  return formatBudgetRowActual(row.budgetRow);
+}
+
+function getPreviewLineVariance(row: PreviewRow): { text: string; isOver: boolean } {
+  const item = row.productivityLine;
+  if (item) {
+    const variance = getProductivityBreakdownVariance(item);
+    return {
+      text: variance == null ? "-" : formatQuantityWithUom(variance, item.lineItemUom),
+      isOver: variance != null && variance < 0,
+    };
+  }
+
+  const variance = Number(row.budgetRow.quantity || 0) - getActualUnits(row.budgetRow);
+  return {
+    text: formatBudgetRowVariance(row.budgetRow, variance),
+    isOver: !hasMixedProductivityUnits(row.budgetRow) && variance < 0,
+  };
+}
+
+function getPreviewLineRunningCost(row: PreviewRow): string {
+  return row.productivityLine ? "-" : formatCurrency(getRunningCost(row.budgetRow));
+}
+
+function getPreviewLineBudgetAmount(row: PreviewRow): string {
+  return row.productivityLine ? "-" : formatCurrency(Number(row.budgetRow.amount || 0));
 }
 
 function getActualUnits(row: PersistedLineItem): number {
@@ -172,6 +360,11 @@ function getActualUnits(row: PersistedLineItem): number {
 function isHourBasedUom(value: string | null | undefined): boolean {
   const normalizedUom = String(value || "").trim().toLowerCase();
   return /\b(hours?|hrs?|h)\b/.test(normalizedUom);
+}
+
+function getCostCodeTypeSuffix(value: string | null | undefined): string {
+  const match = String(value || "").trim().match(/\.([A-Za-z])$/);
+  return match ? match[1].toUpperCase() : "";
 }
 
 function getPlannedHours(row: PersistedLineItem): number {
@@ -563,10 +756,17 @@ export default function AnalyticsPage() {
         lineItems: 0,
         sales: 0,
         actualUnits: 0,
+        timecardHours: 0,
+        productivityQty: 0,
       };
       projectMetric.lineItems += row.lineItems;
       projectMetric.sales += budgetAmount;
       projectMetric.actualUnits += actualUnits;
+      if (row.actualSource === "timecards") {
+        projectMetric.timecardHours += actualUnits;
+      } else {
+        projectMetric.productivityQty += actualUnits;
+      }
       byProject.set(projectName, projectMetric);
 
       const customerMetric = byCustomer.get(customerName) || {
@@ -575,10 +775,17 @@ export default function AnalyticsPage() {
         lineItems: 0,
         sales: 0,
         actualUnits: 0,
+        timecardHours: 0,
+        productivityQty: 0,
       };
       customerMetric.lineItems += row.lineItems;
       customerMetric.sales += budgetAmount;
       customerMetric.actualUnits += actualUnits;
+      if (row.actualSource === "timecards") {
+        customerMetric.timecardHours += actualUnits;
+      } else {
+        customerMetric.productivityQty += actualUnits;
+      }
       byCustomer.set(customerName, customerMetric);
     }
 
@@ -705,6 +912,8 @@ export default function AnalyticsPage() {
         sales: 0,
         cost: 0,
         actualUnits: 0,
+        timecardHours: 0,
+        productivityQty: 0,
         runningCost: 0,
       };
 
@@ -712,6 +921,11 @@ export default function AnalyticsPage() {
       current.sales += row.budgetAmount;
       current.cost += row.originalBudgetAmount;
       current.actualUnits += row.actualUnits;
+      if (row.actualSource === "timecards") {
+        current.timecardHours += row.actualUnits;
+      } else {
+        current.productivityQty += row.actualUnits;
+      }
       current.runningCost += row.runningCost;
       grouped.set(bucketKey, current);
     }
@@ -833,15 +1047,18 @@ export default function AnalyticsPage() {
   }, [filteredRows]);
 
   const groupedRows = useMemo(() => {
-    const map = new Map<string, { budgetQty: number; actualUnits: number; runningCost: number; budgetAmount: number; rowCount: number; lines: PersistedLineItem[] }>();
+    const map = new Map<string, { budgetQty: number; actualUnits: number; timecardHours: number; productivityQty: number; runningCost: number; budgetAmount: number; rowCount: number; lines: PersistedLineItem[] }>();
     for (const row of filteredRows) {
-      const name = row.costCodeName || "(no name)";
-      const prefix = name.includes(".") ? name.slice(0, name.lastIndexOf(".")).trim() : name.trim();
-      const words = prefix.split(/\s+/);
-      const group = words.length >= 2 ? words.slice(-2).join(" ") : prefix;
-      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, runningCost: 0, budgetAmount: 0, rowCount: 0, lines: [] };
+      const group = getGroupedCategoryName(row);
+      const existing = map.get(group) ?? { budgetQty: 0, actualUnits: 0, timecardHours: 0, productivityQty: 0, runningCost: 0, budgetAmount: 0, rowCount: 0, lines: [] };
+      const actualUnits = getActualUnits(row);
       existing.budgetQty += Number(row.quantity || 0);
-      existing.actualUnits += getActualUnits(row);
+      existing.actualUnits += actualUnits;
+      if (getFieldActualSource(row) === "timecards") {
+        existing.timecardHours += actualUnits;
+      } else {
+        existing.productivityQty += actualUnits;
+      }
       existing.runningCost += getRunningCost(row);
       existing.budgetAmount += Number(row.amount || 0);
       existing.rowCount += 1;
@@ -849,7 +1066,16 @@ export default function AnalyticsPage() {
       map.set(group, existing);
     }
     return Array.from(map.entries())
-      .map(([group, totals]) => ({ group, ...totals, qtyVariance: totals.budgetQty - totals.actualUnits }))
+      .map(([group, totals]) => ({
+        group,
+        ...totals,
+        lines: [...totals.lines].sort((a, b) => {
+          const labelCompare = getBudgetSubcategoryName(a).localeCompare(getBudgetSubcategoryName(b));
+          if (labelCompare !== 0) return labelCompare;
+          return String(a.costCode || "").localeCompare(String(b.costCode || ""));
+        }),
+        qtyVariance: totals.budgetQty - totals.actualUnits,
+      }))
       .sort((a, b) => a.group.localeCompare(b.group));
   }, [filteredRows]);
 
@@ -869,7 +1095,7 @@ export default function AnalyticsPage() {
       "project",
       "customer",
       "costCode",
-      "costCodeName",
+      "subcategory",
       "uom",
       "effectiveUnitCost",
       "lines",
@@ -910,7 +1136,7 @@ export default function AnalyticsPage() {
             row.projectName || "",
             row.customerName || "",
             row.costCode || "",
-            row.costCodeName || "",
+            getBudgetSubcategoryName(row),
             row.uom || "",
             getEffectiveUnitCost(row).toFixed(2),
             "",
@@ -942,13 +1168,21 @@ export default function AnalyticsPage() {
     let unitCostTotal = 0;
     let budgetQtyTotal = 0;
     let actualUnitsTotal = 0;
+    let timecardHoursTotal = 0;
+    let productivityQtyTotal = 0;
     let runningCostTotal = 0;
     let budgetAmountTotal = 0;
 
     for (const row of filteredRows) {
+      const actualUnits = getActualUnits(row);
       unitCostTotal += getEffectiveUnitCost(row);
       budgetQtyTotal += Number(row.quantity || 0);
-      actualUnitsTotal += getActualUnits(row);
+      actualUnitsTotal += actualUnits;
+      if (getFieldActualSource(row) === "timecards") {
+        timecardHoursTotal += actualUnits;
+      } else {
+        productivityQtyTotal += actualUnits;
+      }
       runningCostTotal += getRunningCost(row);
       budgetAmountTotal += Number(row.amount || 0);
     }
@@ -957,6 +1191,8 @@ export default function AnalyticsPage() {
       unitCostTotal,
       budgetQtyTotal,
       actualUnitsTotal,
+      timecardHoursTotal,
+      productivityQtyTotal,
       qtyVarianceTotal: budgetQtyTotal - actualUnitsTotal,
       runningCostTotal,
       budgetAmountTotal,
@@ -964,24 +1200,26 @@ export default function AnalyticsPage() {
   }, [filteredRows]);
 
   const previewRows = useMemo(() => {
-    const sorted = [...filteredRows].sort((a, b) => {
+    const sorted = buildPreviewRows(filteredRows).sort((a, b) => {
+      const aBudgetRow = a.budgetRow;
+      const bBudgetRow = b.budgetRow;
       let av: string | number = 0;
       let bv: string | number = 0;
       switch (sortCol) {
-        case "syncedAt":      av = a.syncedAt || ""; bv = b.syncedAt || ""; break;
-        case "projectName":   av = (a.projectName || "").toLowerCase(); bv = (b.projectName || "").toLowerCase(); break;
-        case "customerName":  av = (a.customerName || "").toLowerCase(); bv = (b.customerName || "").toLowerCase(); break;
-        case "costCode":      av = (a.costCode || "").toLowerCase(); bv = (b.costCode || "").toLowerCase(); break;
-        case "costCodeName":  av = (a.costCodeName || "").toLowerCase(); bv = (b.costCodeName || "").toLowerCase(); break;
-        case "uom":           av = (a.uom || "").toLowerCase(); bv = (b.uom || "").toLowerCase(); break;
-        case "fieldSource":   av = formatFieldActualSource(getFieldActualSource(a)); bv = formatFieldActualSource(getFieldActualSource(b)); break;
-        case "fieldLastDate": av = getFieldLastDate(a) || ""; bv = getFieldLastDate(b) || ""; break;
-        case "quantity":      av = Number(a.quantity || 0); bv = Number(b.quantity || 0); break;
-        case "unitCost":      av = getEffectiveUnitCost(a); bv = getEffectiveUnitCost(b); break;
-        case "actualUnits":   av = getActualUnits(a); bv = getActualUnits(b); break;
-        case "runningCost":   av = getRunningCost(a); bv = getRunningCost(b); break;
-        case "qtyVariance":   av = Number(a.quantity || 0) - getActualUnits(a); bv = Number(b.quantity || 0) - getActualUnits(b); break;
-        case "amount":        av = Number(a.amount || 0); bv = Number(b.amount || 0); break;
+        case "syncedAt":      av = aBudgetRow.syncedAt || ""; bv = bBudgetRow.syncedAt || ""; break;
+        case "projectName":   av = (aBudgetRow.projectName || "").toLowerCase(); bv = (bBudgetRow.projectName || "").toLowerCase(); break;
+        case "customerName":  av = (aBudgetRow.customerName || "").toLowerCase(); bv = (bBudgetRow.customerName || "").toLowerCase(); break;
+        case "costCode":      av = (a.productivityLine?.costCode || aBudgetRow.costCode || "").toLowerCase(); bv = (b.productivityLine?.costCode || bBudgetRow.costCode || "").toLowerCase(); break;
+        case "costCodeName":  av = getPreviewLineLabel(a).toLowerCase(); bv = getPreviewLineLabel(b).toLowerCase(); break;
+        case "uom":           av = getPreviewLineUom(a).toLowerCase(); bv = getPreviewLineUom(b).toLowerCase(); break;
+        case "fieldSource":   av = getPreviewLineSource(a); bv = getPreviewLineSource(b); break;
+        case "fieldLastDate": av = getPreviewLineLastDate(a) || ""; bv = getPreviewLineLastDate(b) || ""; break;
+        case "quantity":      av = Number(a.productivityLine?.lineItemQuantity ?? aBudgetRow.quantity ?? 0); bv = Number(b.productivityLine?.lineItemQuantity ?? bBudgetRow.quantity ?? 0); break;
+        case "unitCost":      av = a.productivityLine ? 0 : getEffectiveUnitCost(aBudgetRow); bv = b.productivityLine ? 0 : getEffectiveUnitCost(bBudgetRow); break;
+        case "actualUnits":   av = Number(a.productivityLine?.quantityUsed ?? getActualUnits(aBudgetRow)); bv = Number(b.productivityLine?.quantityUsed ?? getActualUnits(bBudgetRow)); break;
+        case "runningCost":   av = a.productivityLine ? 0 : getRunningCost(aBudgetRow); bv = b.productivityLine ? 0 : getRunningCost(bBudgetRow); break;
+        case "qtyVariance":   av = a.productivityLine ? Number(getProductivityBreakdownVariance(a.productivityLine) ?? 0) : Number(aBudgetRow.quantity || 0) - getActualUnits(aBudgetRow); bv = b.productivityLine ? Number(getProductivityBreakdownVariance(b.productivityLine) ?? 0) : Number(bBudgetRow.quantity || 0) - getActualUnits(bBudgetRow); break;
+        case "amount":        av = a.productivityLine ? 0 : Number(aBudgetRow.amount || 0); bv = b.productivityLine ? 0 : Number(bBudgetRow.amount || 0); break;
         default: av = ""; bv = "";
       }
       if (av < bv) return sortDir === "asc" ? -1 : 1;
@@ -1175,7 +1413,7 @@ export default function AnalyticsPage() {
           <MetricCard label="Customers" value={formatNumber(analytics.customers)} tone="amber" />
           <MetricCard label="Estimate Lines" value={formatNumber(projectTotals.estimateLineItems)} tone="blue" />
           <MetricCard label="Estimate Proposals" value={formatNumber(projectTotals.estimateProposals)} tone="indigo" />
-          <MetricCard label="Field Used Units" value={formatNumber(analytics.actualUnitsTotal)} tone="emerald" />
+          <MetricCard label="Field Used" value={formatFieldActivity(analytics.totalProductivityQty, analytics.totalTimecardHours)} tone="emerald" />
           <MetricCard label="Total Planned Hours" value={formatNumber(analytics.totalPlannedHours)} tone="teal" />
           <MetricCard label="Operational Running Cost" value={formatCurrency(analytics.runningCostTotal)} tone="slate" />
           <MetricCard label="Operational Budget Amount" value={formatCurrency(analytics.operationalBudgetAmountTotal)} tone="rose" />
@@ -1259,12 +1497,12 @@ export default function AnalyticsPage() {
           <RankedListCard
             title="Top Projects by Budget Amount"
             rows={analytics.topProjects}
-            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} field units`}
+            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatFieldActivity(row.productivityQty, row.timecardHours)}`}
           />
           <RankedListCard
             title="Top Customers by Budget Amount"
             rows={analytics.topCustomers}
-            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatNumber(row.actualUnits)} field units`}
+            valueFormatter={(row) => `${formatCurrency(row.sales)} budget | ${formatFieldActivity(row.productivityQty, row.timecardHours)}`}
           />
         </section>
 
@@ -1285,7 +1523,7 @@ export default function AnalyticsPage() {
                       ["projectName", "Project"],
                       ["customerName", "Customer"],
                       ["costCode", "Cost Code"],
-                      ["costCodeName", "Cost Code Name"],
+                      ["costCodeName", "Line"],
                       ["uom", "UOM"],
                       ["fieldSource", "Field Source"],
                       ["fieldLastDate", "Last Used"],
@@ -1320,24 +1558,24 @@ export default function AnalyticsPage() {
                   </tr>
                 )}
                 {previewRows.map((row) => {
-                  const qtyVariance = Number(row.quantity || 0) - getActualUnits(row);
-                  const isOver = qtyVariance < 0;
+                  const budgetRow = row.budgetRow;
+                  const variance = getPreviewLineVariance(row);
                   return (
-                    <tr key={row.id} className={`border-b border-slate-100 text-slate-800 ${isOver ? "bg-red-50" : ""}`}>
-                      <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(row.syncedAt) || "-"}</td>
-                      <td className="py-2 pr-3">{row.projectName || "-"}</td>
-                      <td className="py-2 pr-3">{row.customerName || "-"}</td>
-                      <td className="whitespace-nowrap py-2 pr-3">{row.costCode || "-"}</td>
-                      <td className="py-2 pr-3">{row.costCodeName || "-"}</td>
-                      <td className="whitespace-nowrap py-2 pr-3">{row.uom || "-"}</td>
-                      <td className="whitespace-nowrap py-2 pr-3">{formatFieldActualSource(getFieldActualSource(row))}</td>
-                      <td className="whitespace-nowrap py-2 pr-3">{toDateKey(getFieldLastDate(row)) || "-"}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getEffectiveUnitCost(row))}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right">{row.quantity != null ? formatNumber(Number(row.quantity)) : "-"}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(getActualUnits(row))}</td>
-                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${isOver ? "text-red-600" : ""}`}>{formatNumber(qtyVariance)}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(getRunningCost(row))}</td>
-                      <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(Number(row.amount || 0))}</td>
+                    <tr key={row.id} className={`border-b border-slate-100 text-slate-800 ${variance.isOver ? "bg-red-50" : ""}`}>
+                      <td className="whitespace-nowrap py-2 pr-3 pl-4">{toDateKey(budgetRow.syncedAt) || "-"}</td>
+                      <td className="py-2 pr-3">{budgetRow.projectName || "-"}</td>
+                      <td className="py-2 pr-3">{budgetRow.customerName || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{row.productivityLine?.costCode || budgetRow.costCode || "-"}</td>
+                      <td className="py-2 pr-3">{getPreviewLineLabel(row)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{getPreviewLineUom(row)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{getPreviewLineSource(row)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3">{toDateKey(getPreviewLineLastDate(row)) || "-"}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{row.productivityLine ? "-" : formatCurrency(getEffectiveUnitCost(budgetRow))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{getPreviewLineBudgetQty(row)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{getPreviewLineActual(row)}</td>
+                      <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${variance.isOver ? "text-red-600" : ""}`}>{variance.text}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">{getPreviewLineRunningCost(row)}</td>
+                      <td className="whitespace-nowrap py-2 pr-4 text-right">{getPreviewLineBudgetAmount(row)}</td>
                     </tr>
                   );
                 })}
@@ -1355,7 +1593,8 @@ export default function AnalyticsPage() {
                       {formatNumber(tableTotals.budgetQtyTotal)}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
-                      {formatNumber(tableTotals.actualUnitsTotal)}
+                      <div>{formatNumber(tableTotals.productivityQtyTotal)} qty</div>
+                      <div className="text-[10px] font-bold text-slate-500">{formatNumber(tableTotals.timecardHoursTotal)} hrs</div>
                     </td>
                     <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${tableTotals.qtyVarianceTotal < 0 ? "text-red-600" : ""}`}>
                       {formatNumber(tableTotals.qtyVarianceTotal)}
@@ -1414,23 +1653,73 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="whitespace-nowrap py-2 pr-3 text-right text-slate-500">{g.rowCount}</td>
                         <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.budgetQty)}</td>
-                        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatNumber(g.actualUnits)}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-right">
+                          <div>{formatNumber(g.productivityQty)} qty</div>
+                          <div className="text-[10px] font-bold text-slate-500">{formatNumber(g.timecardHours)} hrs</div>
+                        </td>
                         <td className={`whitespace-nowrap py-2 pr-3 text-right font-semibold ${g.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(g.qtyVariance)}</td>
                         <td className="whitespace-nowrap py-2 pr-3 text-right">{formatCurrency(g.runningCost)}</td>
                         <td className="whitespace-nowrap py-2 pr-4 text-right">{formatCurrency(g.budgetAmount)}</td>
                       </tr>
                       {isExpanded && g.lines.map((row) => {
                         const qv = Number(row.quantity || 0) - getActualUnits(row);
+                        const productivityBreakdown = getProductivityBreakdown(row);
+                        const mixedProductivityUnits = hasMixedProductivityUnits(row);
                         return (
-                          <tr key={row.id} className={`border-b border-slate-100 text-slate-600 ${qv < 0 ? "bg-red-50" : "bg-slate-50"}`}>
-                            <td className="py-1.5 pr-3 pl-10 text-[11px]">{row.costCodeName || "-"} <span className="ml-1 text-slate-400">{row.projectName}</span></td>
-                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px] text-slate-400">{row.costCode || "-"}</td>
-                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(Number(row.quantity || 0))}</td>
-                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(getActualUnits(row))}</td>
-                            <td className={`whitespace-nowrap py-1.5 pr-3 text-right text-[11px] font-semibold ${qv < 0 ? "text-red-600" : ""}`}>{formatNumber(qv)}</td>
-                            <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatCurrency(getRunningCost(row))}</td>
-                            <td className="whitespace-nowrap py-1.5 pr-4 text-right text-[11px]">{formatCurrency(Number(row.amount || 0))}</td>
-                          </tr>
+                          <React.Fragment key={row.id}>
+                            <tr className={`border-b border-slate-100 text-slate-600 ${!mixedProductivityUnits && qv < 0 ? "bg-red-50" : "bg-slate-50"}`}>
+                              <td className="py-1.5 pr-3 pl-10 text-[11px]">{getBudgetSubcategoryName(row)} <span className="ml-1 text-slate-400">{row.projectName}</span></td>
+                              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px] text-slate-400">{row.costCode || "-"}</td>
+                              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatNumber(Number(row.quantity || 0))}</td>
+                              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatBudgetRowActual(row)}</td>
+                              <td className={`whitespace-nowrap py-1.5 pr-3 text-right text-[11px] font-semibold ${!mixedProductivityUnits && qv < 0 ? "text-red-600" : ""}`}>{formatBudgetRowVariance(row, qv)}</td>
+                              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-[11px]">{formatCurrency(getRunningCost(row))}</td>
+                              <td className="whitespace-nowrap py-1.5 pr-4 text-right text-[11px]">{formatCurrency(Number(row.amount || 0))}</td>
+                            </tr>
+                            {productivityBreakdown.length > 0 && (
+                              <tr className="border-b border-slate-100 bg-white text-slate-600">
+                                <td colSpan={7} className="py-2 pr-4 pl-14">
+                                  <table className="min-w-full text-[11px]">
+                                    <thead>
+                                      <tr className="border-b border-slate-100 text-left uppercase tracking-wider text-slate-400">
+                                        <th className="py-1 pr-3 font-black">PO Line</th>
+                                        <th className="py-1 pr-3 font-black">Contract</th>
+                                        <th className="py-1 pr-3 text-right font-black">Logs</th>
+                                        <th className="py-1 pr-3 text-right font-black">Contract Qty</th>
+                                        <th className="py-1 pr-3 text-right font-black">Used</th>
+                                        <th className="py-1 pr-3 text-right font-black">Variance</th>
+                                        <th className="py-1 pr-3 text-right font-black">Delivered</th>
+                                        <th className="py-1 text-right font-black">Last</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {productivityBreakdown.map((item, index) => {
+                                        const lineVariance = getProductivityBreakdownVariance(item);
+                                        const isLineOver = lineVariance != null && lineVariance < 0;
+                                        return (
+                                          <tr key={`${row.id}:productivity:${item.contractNumber || "contract"}:${item.lineItemPosition ?? index}`} className="border-b border-slate-50 last:border-0">
+                                            <td className="py-1 pr-3 text-slate-700">{formatProductivityBreakdownLabel(item)}</td>
+                                            <td className="py-1 pr-3 text-slate-500">
+                                              <span className="font-bold text-slate-600">{item.contractNumber || "-"}</span>
+                                              {item.contractTitle ? <span className="ml-1">{item.contractTitle}</span> : null}
+                                            </td>
+                                            <td className="whitespace-nowrap py-1 pr-3 text-right">{formatNumber(item.logCount)}</td>
+                                            <td className="whitespace-nowrap py-1 pr-3 text-right">{formatQuantityWithUom(item.lineItemQuantity, item.lineItemUom)}</td>
+                                            <td className="whitespace-nowrap py-1 pr-3 text-right font-semibold text-slate-800">{formatQuantityWithUom(item.quantityUsed, item.lineItemUom)}</td>
+                                            <td className={`whitespace-nowrap py-1 pr-3 text-right font-semibold ${isLineOver ? "text-red-600" : "text-slate-700"}`}>
+                                              {lineVariance == null ? "-" : formatQuantityWithUom(lineVariance, item.lineItemUom)}
+                                            </td>
+                                            <td className="whitespace-nowrap py-1 pr-3 text-right">{formatQuantityWithUom(item.quantityDelivered, item.lineItemUom)}</td>
+                                            <td className="whitespace-nowrap py-1 text-right">{toDateKey(item.lastDate) || "-"}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </React.Fragment>
@@ -1441,18 +1730,23 @@ export default function AnalyticsPage() {
                 const gt = groupedRows.reduce((acc, g) => ({
                   budgetQty: acc.budgetQty + g.budgetQty,
                   actualUnits: acc.actualUnits + g.actualUnits,
+                  timecardHours: acc.timecardHours + g.timecardHours,
+                  productivityQty: acc.productivityQty + g.productivityQty,
                   qtyVariance: acc.qtyVariance + g.qtyVariance,
                   runningCost: acc.runningCost + g.runningCost,
                   budgetAmount: acc.budgetAmount + g.budgetAmount,
                   rowCount: acc.rowCount + g.rowCount,
-                }), { budgetQty: 0, actualUnits: 0, qtyVariance: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 });
+                }), { budgetQty: 0, actualUnits: 0, timecardHours: 0, productivityQty: 0, qtyVariance: 0, runningCost: 0, budgetAmount: 0, rowCount: 0 });
                 return (
                   <tfoot>
                     <tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
                       <td className="py-2 pr-3 pl-4 text-[11px] font-black uppercase tracking-wider">Totals</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-black text-slate-500">{gt.rowCount}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.budgetQty)}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatNumber(gt.actualUnits)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-black">
+                        <div>{formatNumber(gt.productivityQty)} qty</div>
+                        <div className="text-[10px] font-bold text-slate-500">{formatNumber(gt.timecardHours)} hrs</div>
+                      </td>
                       <td className={`whitespace-nowrap py-2 pr-3 text-right font-black ${gt.qtyVariance < 0 ? "text-red-600" : ""}`}>{formatNumber(gt.qtyVariance)}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-black">{formatCurrency(gt.runningCost)}</td>
                       <td className="whitespace-nowrap py-2 pr-4 text-right font-black">{formatCurrency(gt.budgetAmount)}</td>
@@ -1510,7 +1804,7 @@ function TrendChartCard({ trendData, granularity }: { trendData: TrendPoint[]; g
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-black text-slate-700">{row.label}</p>
                 <p className="text-[11px] font-semibold text-slate-600">
-                  {row.lineItems.toLocaleString()} items | {formatNumber(row.actualUnits)} field units
+                  {row.lineItems.toLocaleString()} items | {formatFieldActivity(row.productivityQty, row.timecardHours)}
                 </p>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">

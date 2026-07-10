@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
+import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
 import {
   persistPurchaseOrderLineItemDetails,
@@ -303,6 +303,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 }
 
 export async function POST(request: Request) {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
@@ -510,4 +511,5 @@ export async function POST(request: Request) {
   } catch (err) {
     return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
+  });
 }

@@ -2,9 +2,6 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { processEvent } from '@/app/api/webhooks/procore/process/route';
-
-const IMMEDIATE_LOCK_OWNER = 'webhook:immediate';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -35,99 +32,6 @@ function secretsMatch(provided: string, expected: string): boolean {
   const expectedBuffer = Buffer.from(expected, 'utf8');
   if (providedBuffer.length !== expectedBuffer.length) return false;
   return timingSafeEqual(providedBuffer, expectedBuffer);
-}
-
-function nextRetryDelayMs(attemptNumber: number): number {
-  const baseMs = 1_000;
-  const maxMs = 5 * 60 * 1000;
-  return Math.min(maxMs, baseMs * Math.pow(2, Math.max(0, attemptNumber - 1)));
-}
-
-async function runImmediateProjectsProcessing(params: {
-  queueId: string;
-  eventId: string;
-  maxAttempts: number;
-  event: {
-    companyId: string | null;
-    projectId: string | null;
-    resourceName: string | null;
-    eventType: string | null;
-    resourceId: string | null;
-    payload: unknown;
-  };
-  timeoutMs: number;
-}) {
-  const { queueId, eventId, maxAttempts, event, timeoutMs } = params;
-
-  const claim = await prisma.procoreWebhookQueue.updateMany({
-    where: {
-      id: queueId,
-      status: 'pending',
-    },
-    data: {
-      status: 'processing',
-      lockedAt: new Date(),
-      lockedBy: IMMEDIATE_LOCK_OWNER,
-      attempts: { increment: 1 },
-    },
-  });
-
-  if (claim.count === 0) {
-    return { attempted: false, processed: false };
-  }
-
-  const processingPromise = processEvent(event);
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutHandle = setTimeout(() => reject(new Error(`Immediate processing timed out after ${timeoutMs}ms`)), timeoutMs);
-  });
-
-  try {
-    await Promise.race([processingPromise, timeoutPromise]);
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-
-    await prisma.$transaction([
-      prisma.procoreWebhookQueue.update({
-        where: { id: queueId },
-        data: {
-          status: 'completed',
-          processedAt: new Date(),
-          lastError: null,
-          lockedAt: null,
-          lockedBy: null,
-        },
-      }),
-      prisma.procoreWebhookEvent.update({
-        where: { id: eventId },
-        data: { processedAt: new Date() },
-      }),
-    ]);
-
-    return { attempted: true, processed: true };
-  } catch (error) {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-    const attempted = 1;
-    const shouldFailPermanently = attempted >= maxAttempts;
-
-    await prisma.procoreWebhookQueue.update({
-      where: { id: queueId },
-      data: {
-        status: shouldFailPermanently ? 'failed' : 'pending',
-        availableAt: shouldFailPermanently
-          ? new Date()
-          : new Date(Date.now() + nextRetryDelayMs(attempted)),
-        lockedAt: null,
-        lockedBy: null,
-        lastError: error instanceof Error ? error.message.slice(0, 1000) : 'Immediate processing failed',
-      },
-    });
-
-    return {
-      attempted: true,
-      processed: false,
-      error: error instanceof Error ? error.message : 'Immediate processing failed',
-    };
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -174,11 +78,6 @@ export async function POST(request: NextRequest) {
   const bodyHash = createHash('sha256').update(rawBody).digest('hex');
   const eventKey = eventUlid || procoreEventId || `sha256:${bodyHash}`;
   const maxAttempts = Math.max(1, Number.parseInt(process.env.PROCORE_WEBHOOK_MAX_ATTEMPTS || '5', 10) || 5);
-  const immediateProjectsEnabled = process.env.PROCORE_WEBHOOK_IMMEDIATE_PROJECTS !== 'false';
-  const immediateTimeoutMs = Math.max(
-    500,
-    Math.min(10_000, Number.parseInt(process.env.PROCORE_WEBHOOK_IMMEDIATE_TIMEOUT_MS || '3000', 10) || 3000)
-  );
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -206,28 +105,11 @@ export async function POST(request: NextRequest) {
       return { event, queueItem };
     });
 
-    let immediate: { attempted: boolean; processed: boolean; error?: string } = {
+    const immediate: { attempted: boolean; processed: boolean; reason: string } = {
       attempted: false,
       processed: false,
+      reason: 'queued-for-scheduled-processing',
     };
-
-    const isProjectsEvent = (resourceName || '').toLowerCase() === 'projects';
-    if (immediateProjectsEnabled && isProjectsEvent) {
-      immediate = await runImmediateProjectsProcessing({
-        queueId: created.queueItem.id,
-        eventId: created.event.id,
-        maxAttempts,
-        event: {
-          companyId,
-          projectId,
-          resourceName,
-          eventType,
-          resourceId,
-          payload: parsedBody,
-        },
-        timeoutMs: immediateTimeoutMs,
-      });
-    }
 
     return NextResponse.json(
       {

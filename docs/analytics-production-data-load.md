@@ -62,7 +62,18 @@ Prefer project batches over one huge historical run. Keep concurrency low in pro
 Use two refresh lanes:
 
 - Webhook lane: `netlify/functions/scheduled-sync.mts` drains queued Procore webhook events every 15 minutes.
-- Polling lane: run `procore-sync-background` manually or from an external scheduler for a rolling 30-120 day window.
+- Actuals polling lane: `netlify/functions/scheduled-actuals-sync.mts` runs at minutes 7/22/37/52 and calls `/api/cron/actuals`.
+  - This is required for field actuals because the current Procore webhook resource catalog exposes project events, but not timecard entries or productivity logs.
+  - The actuals route refreshes purchase-order line item details before productivity logs so productivity quantities can be joined back to budget cost codes.
+  - The route rotates through budgeted projects in small batches. Defaults: `PROCORE_ACTUALS_SYNC_PROJECT_BATCH_SIZE=1`, `PROCORE_ACTUALS_SYNC_LOOKBACK_DAYS=45`, `PROCORE_ACTUALS_SYNC_PER_PAGE=100`.
+  - For an immediate project-specific refresh:
+    ```bash
+    curl -X POST "https://analyticspmc.netlify.app/api/cron/actuals" \
+      -H "Content-Type: application/json" \
+      -H "x-sync-secret: $PROCORE_SYNC_SECRET" \
+      -d '{"projectIds":["598134326660487"],"startDate":"2025-08-01","endDate":"2026-07-09"}'
+    ```
+- Broad polling lane: run `procore-sync-background` manually from a maintenance window for a full bootstrap or larger rolling 30-120 day window.
 
 A normal polling payload:
 

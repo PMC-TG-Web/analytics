@@ -121,6 +121,16 @@ function buildSyncSteps(options: { startDate: string; endDate: string; maxProjec
       },
     },
     {
+      name: 'purchase-order-line-item-details',
+      path: '/api/procore/sync/purchase-order-line-item-details',
+      body: {
+        forceUserOAuth: false,
+        perPage: 50,
+        concurrency: 1,
+        ...(maxProjects > 0 ? { maxProjects } : {}),
+      },
+    },
+    {
       name: 'timecard-entries',
       path: '/api/procore/sync/timecard-entries',
       body: {

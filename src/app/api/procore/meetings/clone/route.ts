@@ -1131,21 +1131,25 @@ export async function POST(request: Request) {
           if (targetMeetingId === undefined) continue;
 
           try {
-            const agendaClone = await cloneMeetingAgenda({
-              accessToken,
-              companyId: targetCompanyId,
-              projectId: targetProjectId,
-              targetMeetingId,
-              sourceMeeting,
-            });
+            const agendaClone = await retryableCreate(() =>
+              cloneMeetingAgenda({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                targetMeetingId,
+                sourceMeeting,
+              })
+            );
 
-            const attendanceClone = await cloneMeetingAttendance({
-              accessToken,
-              companyId: targetCompanyId,
-              projectId: targetProjectId,
-              targetMeetingId,
-              mappedAttendance: row.mappedAttendance,
-            });
+            const attendanceClone = await retryableCreate(() =>
+              cloneMeetingAttendance({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                targetMeetingId,
+                mappedAttendance: row.mappedAttendance,
+              })
+            );
 
             createResults.push({
               type: "meeting_update_existing",
@@ -1248,21 +1252,25 @@ export async function POST(request: Request) {
             }
             const sourceMeeting = sourceMeetingById.get(row.sourceId);
             if (sourceMeeting) {
-              agendaClone = await cloneMeetingAgenda({
+              agendaClone = await retryableCreate(() =>
+                cloneMeetingAgenda({
+                  accessToken,
+                  companyId: targetCompanyId,
+                  projectId: targetProjectId,
+                  targetMeetingId: createdId,
+                  sourceMeeting,
+                })
+              );
+            }
+            attendanceClone = await retryableCreate(() =>
+              cloneMeetingAttendance({
                 accessToken,
                 companyId: targetCompanyId,
                 projectId: targetProjectId,
                 targetMeetingId: createdId,
-                sourceMeeting,
-              });
-            }
-            attendanceClone = await cloneMeetingAttendance({
-              accessToken,
-              companyId: targetCompanyId,
-              projectId: targetProjectId,
-              targetMeetingId: createdId,
-              mappedAttendance: row.mappedAttendance,
-            });
+                mappedAttendance: row.mappedAttendance,
+              })
+            );
           }
           createResults.push({ type: "meeting", sourceId: row.sourceId, ok: true, result, agendaClone, attendanceClone });
         } catch (error) {

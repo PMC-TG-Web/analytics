@@ -769,6 +769,8 @@ function resolveTargetWbsId(newRow: UnknownRecord, targetIndex: ReturnType<typeo
 
 async function applyCommitmentCrosswalkWbsMappings(params: {
   accessToken: string;
+  sourceCompanyId: string;
+  sourceProjectId: string;
   targetCompanyId: string;
   targetProjectId: string;
   sourceLineItems: UnknownRecord[];
@@ -799,6 +801,20 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
 
   summary.enabled = true;
   summary.crosswalk = crosswalk.summary;
+  const sourceBudget = await fetchProjectBudgetLineItems({
+    accessToken: params.accessToken,
+    companyId: params.sourceCompanyId,
+    projectId: params.sourceProjectId,
+    maxPages: params.maxPages,
+  });
+  const sourceBudgetByWbsId = new Map<string, UnknownRecord>();
+  for (const row of sourceBudget.records) {
+    const wbsId = budgetLineWbsId(row);
+    if (wbsId && !sourceBudgetByWbsId.has(wbsId)) sourceBudgetByWbsId.set(wbsId, row);
+  }
+  summary.sourceBudgetLineItems = sourceBudget.records.length;
+  if (sourceBudget.errors.length) summary.sourceBudgetWarnings = sourceBudget.errors.slice(0, 12);
+
   const targetBudget = await fetchProjectBudgetLineItems({
     accessToken: params.accessToken,
     companyId: params.targetCompanyId,
@@ -816,6 +832,17 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
       summary.skippedExisting = Number(summary.skippedExisting) + 1;
       continue;
     }
+
+    const sourceBudgetRow = sourceBudgetByWbsId.get(oldWbsId);
+    if (sourceBudgetRow) {
+      const directTargetWbs = resolveTargetWbsId(sourceBudgetRow, targetIndex);
+      if (directTargetWbs.wbsCodeId) {
+        params.maps.wbsCodeIdMap[oldWbsId] = directTargetWbs.wbsCodeId;
+        summary.applied = Number(summary.applied) + 1;
+        continue;
+      }
+    }
+
     const workbookMatch = resolveCommitmentCrosswalkMapping(lineItem, crosswalk);
     if (!workbookMatch.mapping) {
       (summary.issues as UnknownRecord[]).push({
@@ -846,6 +873,119 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
     summary.applied = Number(summary.applied) + 1;
   }
 
+  return summary;
+}
+
+async function autoMapPotentialChangeOrderParentContracts(params: {
+  accessToken: string;
+  sourceCompanyId: string;
+  sourceProjectId: string;
+  targetCompanyId: string;
+  targetProjectId: string;
+  maxPages: number;
+  potentialChangeOrders: UnknownRecord[];
+  contractIdMap: Record<string, string>;
+}) {
+  const summary: UnknownRecord = {
+    enabled: false,
+    sourceParentContracts: 0,
+    applied: 0,
+    skippedExisting: 0,
+    issues: [] as UnknownRecord[],
+  };
+
+  const sourceParentIds = new Set(
+    params.potentialChangeOrders
+      .map((row) => readStr(row.contract_id))
+      .filter(Boolean)
+  );
+  summary.sourceParentContracts = sourceParentIds.size;
+  if (sourceParentIds.size === 0) return summary;
+
+  summary.enabled = true;
+
+  const [sourceContractsResult, targetContractsResult] = await Promise.all([
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.sourceCompanyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["data", "commitment_contracts"],
+      pathForPage: (page) =>
+        `/rest/v2.0/companies/${encodeURIComponent(params.sourceCompanyId)}/projects/${encodeURIComponent(
+          params.sourceProjectId
+        )}/commitment_contracts?page=${page}&per_page=100`,
+    }),
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.targetCompanyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["data", "commitment_contracts"],
+      pathForPage: (page) =>
+        `/rest/v2.0/companies/${encodeURIComponent(params.targetCompanyId)}/projects/${encodeURIComponent(
+          params.targetProjectId
+        )}/commitment_contracts?page=${page}&per_page=100`,
+    }),
+  ]);
+
+  const sourceById = new Map<string, UnknownRecord>();
+  for (const row of sourceContractsResult.records) {
+    const id = readStr(row.id);
+    if (id && !sourceById.has(id)) sourceById.set(id, row);
+  }
+
+  const targetBySourceId = new Map<string, string>();
+  const targetByNumberTitle = new Map<string, string[]>();
+  for (const row of targetContractsResult.records) {
+    const targetId = readStr(row.id);
+    if (!targetId) continue;
+    const originSourceId = readStr(row.origin_id || row.originId);
+    if (originSourceId && !targetBySourceId.has(originSourceId)) targetBySourceId.set(originSourceId, targetId);
+    const key = `${norm(row.number)}|${norm(row.title)}`;
+    if (key !== "|") targetByNumberTitle.set(key, [...(targetByNumberTitle.get(key) || []), targetId]);
+  }
+
+  for (const sourceParentId of sourceParentIds) {
+    if (params.contractIdMap[sourceParentId]) {
+      summary.skippedExisting = Number(summary.skippedExisting) + 1;
+      continue;
+    }
+
+    const mappedFromOrigin = targetBySourceId.get(sourceParentId);
+    if (mappedFromOrigin) {
+      params.contractIdMap[sourceParentId] = mappedFromOrigin;
+      summary.applied = Number(summary.applied) + 1;
+      continue;
+    }
+
+    const sourceContract = sourceById.get(sourceParentId);
+    if (sourceContract) {
+      const key = `${norm(sourceContract.number)}|${norm(sourceContract.title)}`;
+      const candidates = key !== "|" ? targetByNumberTitle.get(key) || [] : [];
+      if (candidates.length === 1) {
+        params.contractIdMap[sourceParentId] = candidates[0];
+        summary.applied = Number(summary.applied) + 1;
+        continue;
+      }
+      if (candidates.length > 1) {
+        (summary.issues as UnknownRecord[]).push({
+          type: "ambiguous_parent_contract_match",
+          sourceParentId,
+          sourceNumber: readStr(sourceContract.number),
+          sourceTitle: readStr(sourceContract.title),
+          candidateCount: candidates.length,
+        });
+        continue;
+      }
+    }
+
+    (summary.issues as UnknownRecord[]).push({
+      type: "missing_parent_contract_match",
+      sourceParentId,
+    });
+  }
+
+  if (sourceContractsResult.errors.length) summary.sourceContractWarnings = sourceContractsResult.errors.slice(0, 12);
+  if (targetContractsResult.errors.length) summary.targetContractWarnings = targetContractsResult.errors.slice(0, 12);
   return summary;
 }
 
@@ -933,6 +1073,9 @@ function buildPotentialChangeOrderPayload(params: {
   targetStatus: string;
   preserveStatus: boolean;
   contractIdMap: Record<string, string>;
+  changeOrderRequestIdMap: Record<string, string>;
+  commitmentChangeEventIdMap: Record<string, string>;
+  primeChangeEventIdMap: Record<string, string>;
   issues: UnknownRecord[];
   requireMappedIds: boolean;
   allowUnmappedIds: boolean;
@@ -940,6 +1083,9 @@ function buildPotentialChangeOrderPayload(params: {
   targetProjectId: string;
 }) {
   const sourceContractId = readStr(params.source.contract_id);
+  const targetProjectIdNormalized = readStr(params.targetProjectId);
+  const sourceProjectIdNormalized = readStr(params.source.project_id || params.source.projectId);
+  const sameProject = sourceProjectIdNormalized && targetProjectIdNormalized && sourceProjectIdNormalized === targetProjectIdNormalized;
   const context = {
     contractId: readStr(params.source.id),
     contractNumber: readStr(params.source.number),
@@ -961,10 +1107,65 @@ function buildPotentialChangeOrderPayload(params: {
   const title = readStr(params.source.title) || number || "Untitled Potential Change Order";
   const status = params.preserveStatus ? readStr(params.source.status) || params.targetStatus : params.targetStatus;
 
+  const sourceCorId = params.source.change_order_request_id;
+  const mappedCorId = sameProject
+    ? (readNum(sourceCorId) ?? readStr(sourceCorId)) || undefined
+    : params.passthroughIds
+      ? undefined
+      : mapId(
+        sourceCorId,
+        params.changeOrderRequestIdMap,
+        "change_order_request_id",
+        params.issues,
+        context,
+        {
+          required: false,
+          allowUnmappedIds: true,
+          omitWhenUnmapped: true,
+        }
+      );
+
+  const sourceCommitmentChangeEventId = params.source.commitment_change_event_id;
+  const mappedCommitmentChangeEventId = sameProject
+    ? (readNum(sourceCommitmentChangeEventId) ?? readStr(sourceCommitmentChangeEventId)) || undefined
+    : params.passthroughIds
+      ? undefined
+      : mapId(
+        sourceCommitmentChangeEventId,
+        params.commitmentChangeEventIdMap,
+        "commitment_change_event_id",
+        params.issues,
+        context,
+        {
+          required: false,
+          allowUnmappedIds: true,
+          omitWhenUnmapped: true,
+        }
+      );
+
+  const sourcePrimeChangeEventId = params.source.prime_change_event_id;
+  const mappedPrimeChangeEventId = sameProject
+    ? (readNum(sourcePrimeChangeEventId) ?? readStr(sourcePrimeChangeEventId)) || undefined
+    : params.passthroughIds
+      ? undefined
+      : mapId(
+        sourcePrimeChangeEventId,
+        params.primeChangeEventIdMap,
+        "prime_change_event_id",
+        params.issues,
+        context,
+        {
+          required: false,
+          allowUnmappedIds: true,
+          omitWhenUnmapped: true,
+        }
+      );
+
   const changeOrder = compactPayload({
-    change_order_request_id: (readNum(params.source.change_order_request_id) ?? readStr(params.source.change_order_request_id)) || undefined,
-    commitment_change_event_id: (readNum(params.source.commitment_change_event_id) ?? readStr(params.source.commitment_change_event_id)) || undefined,
-    prime_change_event_id: (readNum(params.source.prime_change_event_id) ?? readStr(params.source.prime_change_event_id)) || undefined,
+    // Cross-project links are only preserved when explicitly mapped to target IDs.
+    change_order_request_id: mappedCorId,
+    commitment_change_event_id: mappedCommitmentChangeEventId,
+    prime_change_event_id: mappedPrimeChangeEventId,
     description: readStr(params.source.description),
     due_date: readStr(params.source.due_date),
     grand_total: readStr(params.source.grand_total),
@@ -992,6 +1193,9 @@ function buildContractPayload(params: {
   preserveStatus: boolean;
   vendorIdMap: Record<string, string>;
   contractIdMap: Record<string, string>;
+  changeOrderRequestIdMap: Record<string, string>;
+  commitmentChangeEventIdMap: Record<string, string>;
+  primeChangeEventIdMap: Record<string, string>;
   targetVendorIdOverride: string;
   issues: UnknownRecord[];
   requireMappedIds: boolean;
@@ -1005,6 +1209,9 @@ function buildContractPayload(params: {
       targetStatus: params.targetStatus,
       preserveStatus: params.preserveStatus,
       contractIdMap: params.contractIdMap,
+      changeOrderRequestIdMap: params.changeOrderRequestIdMap,
+      commitmentChangeEventIdMap: params.commitmentChangeEventIdMap,
+      primeChangeEventIdMap: params.primeChangeEventIdMap,
       issues: params.issues,
       requireMappedIds: params.requireMappedIds,
       allowUnmappedIds: params.allowUnmappedIds,
@@ -1062,6 +1269,7 @@ function extractSourceId(record: UnknownRecord, field: string, objectField: stri
 function buildLineItemPayload(params: {
   source: UnknownRecord;
   sourceContract: UnknownRecord;
+  sourceEndpoint?: string;
   maps: Record<string, Record<string, string>>;
   issues: UnknownRecord[];
   requireMappedIds: boolean;
@@ -1109,6 +1317,9 @@ function buildLineItemPayload(params: {
   for (const item of idFields) {
     const sourceId = extractSourceId(params.source, item.payloadField, item.objectField);
     const isBudgetCodeField = item.payloadField === "wbs_code_id" || item.payloadField === "budget_line_item_id";
+    const isPotentialChangeOrder = params.sourceEndpoint === "potential_change_orders";
+    const isPcoOptionalField = isPotentialChangeOrder
+      && (item.payloadField === "cost_code_id" || item.payloadField === "line_item_type_id" || item.payloadField === "tax_code_id");
     let mapped: string | number | undefined;
     if (params.passthroughIds) {
       mapped = readNum(sourceId) ?? (readStr(sourceId) || undefined);
@@ -1120,9 +1331,9 @@ function buildLineItemPayload(params: {
         params.issues,
         context,
         {
-          required: params.requireMappedIds,
-          allowUnmappedIds: isBudgetCodeField ? false : params.allowUnmappedIds,
-          omitWhenUnmapped: isBudgetCodeField,
+          required: isPcoOptionalField ? false : params.requireMappedIds,
+          allowUnmappedIds: isBudgetCodeField ? false : (isPcoOptionalField ? true : params.allowUnmappedIds),
+          omitWhenUnmapped: isBudgetCodeField || isPcoOptionalField,
         }
       );
     }
@@ -1224,22 +1435,35 @@ async function fetchLineItems(params: {
   companyId: string;
   projectId: string;
   contractId: string;
+  sourceEndpoint?: string;
   maxPages: number;
 }) {
+  const isPotentialChangeOrder = params.sourceEndpoint === "potential_change_orders";
   const candidates = (page: number) => [
-    `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
-      params.projectId
-    )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items?page=${page}&per_page=100`,
-    `/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
-      params.contractId
-    )}/line_item_contract_details?company_id=${encodeURIComponent(params.companyId)}&project_id=${encodeURIComponent(
-      params.projectId
-    )}&page=${page}&per_page=100`,
-    `/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
-      params.contractId
-    )}/line_items?company_id=${encodeURIComponent(params.companyId)}&project_id=${encodeURIComponent(
-      params.projectId
-    )}&page=${page}&per_page=100`,
+    ...(isPotentialChangeOrder
+      ? [
+        `/rest/v1.0/potential_change_orders/${encodeURIComponent(
+          params.contractId
+        )}/line_items?project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+        `/rest/v1.0/potential_change_orders/${encodeURIComponent(
+          params.contractId
+        )}/line_item_contract_details?project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+      ]
+      : [
+        `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+          params.projectId
+        )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items?page=${page}&per_page=100`,
+        `/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
+          params.contractId
+        )}/line_item_contract_details?company_id=${encodeURIComponent(params.companyId)}&project_id=${encodeURIComponent(
+          params.projectId
+        )}&page=${page}&per_page=100`,
+        `/rest/v1.0/purchase_order_contracts/${encodeURIComponent(
+          params.contractId
+        )}/line_items?company_id=${encodeURIComponent(params.companyId)}&project_id=${encodeURIComponent(
+          params.projectId
+        )}&page=${page}&per_page=100`,
+      ]),
   ];
 
   let preferred: string | undefined;
@@ -1413,7 +1637,58 @@ async function createLineItem(params: {
   projectId: string;
   contractId: string;
   payload: UnknownRecord;
+  sourceEndpoint?: string;
 }) {
+  if (params.sourceEndpoint === "potential_change_orders") {
+    const attempts = [
+      {
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items?project_id=${encodeURIComponent(
+          params.projectId
+        )}`,
+        body: params.payload,
+      },
+      {
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_item_contract_details?project_id=${encodeURIComponent(
+          params.projectId
+        )}`,
+        body: params.payload,
+      },
+      {
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items?project_id=${encodeURIComponent(
+          params.projectId
+        )}`,
+        body: { line_item: params.payload },
+      },
+      {
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_item_contract_details?project_id=${encodeURIComponent(
+          params.projectId
+        )}`,
+        body: { line_item_contract_detail: params.payload },
+      },
+    ];
+
+    const errors: UnknownRecord[] = [];
+    for (const attempt of attempts) {
+      try {
+        const response = await procoreJson({
+          path: attempt.path,
+          method: "POST",
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          body: attempt.body,
+        });
+        return { created: unwrapData(response.payload), path: attempt.path, wrapperUsed: attempt.body === params.payload ? "none" : "wrapped" };
+      } catch (error) {
+        errors.push({
+          path: attempt.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    throw new Error(`Procore PCO line-item create failed: ${safeJson(errors)}`);
+  }
+
   const requestPath = `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
     params.projectId
   )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items`;
@@ -1547,7 +1822,69 @@ async function updateLineItem(params: {
   contractId: string;
   lineItemId: string;
   payload: UnknownRecord;
+  sourceEndpoint?: string;
 }) {
+  if (params.sourceEndpoint === "potential_change_orders") {
+    const attempts = [
+      {
+        method: "PATCH",
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items/${encodeURIComponent(
+          params.lineItemId
+        )}?project_id=${encodeURIComponent(params.projectId)}`,
+        body: params.payload,
+      },
+      {
+        method: "PATCH",
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_item_contract_details/${encodeURIComponent(
+          params.lineItemId
+        )}?project_id=${encodeURIComponent(params.projectId)}`,
+        body: params.payload,
+      },
+      {
+        method: "PUT",
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items/${encodeURIComponent(
+          params.lineItemId
+        )}?project_id=${encodeURIComponent(params.projectId)}`,
+        body: params.payload,
+      },
+      {
+        method: "PUT",
+        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_item_contract_details/${encodeURIComponent(
+          params.lineItemId
+        )}?project_id=${encodeURIComponent(params.projectId)}`,
+        body: params.payload,
+      },
+    ];
+
+    const errors: UnknownRecord[] = [];
+    for (const attempt of attempts) {
+      try {
+        const updated = await procoreJson({
+          path: attempt.path,
+          method: attempt.method,
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          body: attempt.body,
+        });
+        return {
+          ok: true,
+          method: attempt.method,
+          path: attempt.path,
+          updated: unwrapData(updated.payload),
+          errors,
+        };
+      } catch (error) {
+        errors.push({
+          method: attempt.method,
+          path: attempt.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { ok: false, errors };
+  }
+
   const attempts = [
     {
       method: "PATCH",
@@ -1678,6 +2015,9 @@ export async function POST(request: Request) {
     const maps = {
       vendorIdMap: buildIdMap(body.vendorIdMap),
       contractIdMap: buildIdMap(body.contractIdMap),
+      changeOrderRequestIdMap: buildIdMap(body.changeOrderRequestIdMap),
+      commitmentChangeEventIdMap: buildIdMap(body.commitmentChangeEventIdMap),
+      primeChangeEventIdMap: buildIdMap(body.primeChangeEventIdMap),
       budgetLineItemIdMap: buildIdMap(body.budgetLineItemIdMap),
       wbsCodeIdMap: buildIdMap(body.wbsCodeIdMap),
       costCodeIdMap: buildIdMap(body.costCodeIdMap),
@@ -1708,8 +2048,7 @@ export async function POST(request: Request) {
       const contractId = readStr(contract.id);
       const sourceEndpoint = readStr(contract._cloneSourceEndpoint);
       const lineFetch = cloneLineItems && contractId
-        && sourceEndpoint !== "potential_change_orders"
-        ? await fetchLineItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, contractId, maxPages })
+        ? await fetchLineItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, contractId, sourceEndpoint, maxPages })
         : { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       lineItemsByContractId.set(contractId, lineFetch);
       sourceLineItems += lineFetch.records.length;
@@ -1718,6 +2057,8 @@ export async function POST(request: Request) {
     const crosswalkAutoMappings = requireMappedIds && cloneLineItems && !passthroughIds
       ? await applyCommitmentCrosswalkWbsMappings({
         accessToken,
+        sourceCompanyId,
+        sourceProjectId,
         targetCompanyId,
         targetProjectId,
         sourceLineItems: contractsForPlan.flatMap((contract) => {
@@ -1737,8 +2078,22 @@ export async function POST(request: Request) {
       })
       : { enabled: false, source: "", applied: 0, skippedExisting: 0, issues: [] as UnknownRecord[] };
 
+    const parentContractAutoMappings = requireMappedIds && !passthroughIds
+      ? await autoMapPotentialChangeOrderParentContracts({
+        accessToken,
+        sourceCompanyId,
+        sourceProjectId,
+        targetCompanyId,
+        targetProjectId,
+        maxPages,
+        potentialChangeOrders: contractsForPlan.filter((contract) => readStr(contract._cloneSourceEndpoint) === "potential_change_orders"),
+        contractIdMap: maps.contractIdMap,
+      })
+      : { enabled: false, sourceParentContracts: 0, applied: 0, skippedExisting: 0, issues: [] as UnknownRecord[] };
+
     for (const contract of contractsForPlan) {
       const contractId = readStr(contract.id);
+      const sourceEndpoint = readStr(contract._cloneSourceEndpoint);
       const lineFetch = lineItemsByContractId.get(contractId) || { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
       const contractIssues: UnknownRecord[] = [];
       const contractPayload = buildContractPayload({
@@ -1747,6 +2102,9 @@ export async function POST(request: Request) {
         preserveStatus,
         vendorIdMap: maps.vendorIdMap,
         contractIdMap: maps.contractIdMap,
+        changeOrderRequestIdMap: maps.changeOrderRequestIdMap,
+        commitmentChangeEventIdMap: maps.commitmentChangeEventIdMap,
+        primeChangeEventIdMap: maps.primeChangeEventIdMap,
         targetVendorIdOverride,
         issues: contractIssues,
         requireMappedIds,
@@ -1759,6 +2117,7 @@ export async function POST(request: Request) {
         const payload = buildLineItemPayload({
           source: lineItem,
           sourceContract: contract,
+          sourceEndpoint,
           maps,
           issues: lineIssues,
           requireMappedIds,
@@ -1776,7 +2135,7 @@ export async function POST(request: Request) {
       missingMappings.push(...contractIssues);
       plan.push({
         sourceContractId: contractId,
-        sourceEndpoint: contract._cloneSourceEndpoint,
+        sourceEndpoint,
         number: readStr(contract.number),
         title: readStr(contract.title),
         status: readStr(contract.status),
@@ -1820,6 +2179,7 @@ export async function POST(request: Request) {
         },
         maps: Object.fromEntries(Object.entries(maps).map(([key, value]) => [key, Object.keys(value).length])),
         crosswalkAutoMappings,
+        parentContractAutoMappings,
         missingMappings,
         sourceFetchWarnings: sourceFetch.errors,
         plan,
@@ -1837,6 +2197,7 @@ export async function POST(request: Request) {
           counts: { sourceContracts: selectedContracts.length, plannedContracts: contractsForPlan.length, sourceLineItems, missingMappings: missingMappings.length, criticalMissingMappings: criticalMissingMappings.length, createOffset, createLimit, lineItemCreateOffset, lineItemCreateLimit },
           options: { passthroughIds },
           crosswalkAutoMappings,
+          parentContractAutoMappings,
           missingMappings,
           plan,
         },
@@ -1969,6 +2330,7 @@ export async function POST(request: Request) {
               companyId: targetCompanyId,
               projectId: targetProjectId,
               contractId: existingTargetId,
+              sourceEndpoint: readStr(entry.sourceEndpoint),
               maxPages,
             }).then((result) => result.records).catch(() => [] as UnknownRecord[])
           : [];
@@ -1994,6 +2356,7 @@ export async function POST(request: Request) {
                       contractId: createdContractId,
                       lineItemId: targetLineId,
                       payload: lineUpdatePayload,
+                      sourceEndpoint: readStr(entry.sourceEndpoint),
                     });
                     lineItemUpdateResults.push({
                       sourceContractId: entry.sourceContractId,
@@ -2029,6 +2392,7 @@ export async function POST(request: Request) {
                 projectId: targetProjectId,
                 contractId: createdContractId,
                 payload: line.payload as UnknownRecord,
+                sourceEndpoint: readStr(entry.sourceEndpoint),
               });
               createdLineItems.push({
                 sourceLineItemId: line.sourceLineItemId,
@@ -2121,6 +2485,7 @@ export async function POST(request: Request) {
         errors: errors.length,
       },
       crosswalkAutoMappings,
+      parentContractAutoMappings,
       projectVendorAdds,
       createdContracts,
       reusedContracts,

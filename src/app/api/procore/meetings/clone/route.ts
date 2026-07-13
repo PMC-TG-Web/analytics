@@ -1091,12 +1091,6 @@ export async function POST(request: Request) {
     }
 
     let companyUsers: UnknownRecord[] = [];
-    try {
-      companyUsers = await fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 });
-    } catch (error) {
-      companyUserLookupWarning = error instanceof Error ? error.message : String(error);
-      companyUsers = [];
-    }
 
     const sourceMeetings = sourceMeetingsRaw
       .filter((meeting) => (meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))))
@@ -1137,14 +1131,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const targetUsers = buildTargetUsers(projectUsers, companyUsers);
+    let targetUsers = buildTargetUsers(projectUsers, []);
     const existingTargetKeys = new Set(targetMeetingsRaw.map((meeting) => normalizeMeetingKey(meeting)));
-    const meetingRows = sourceMeetingDetails.map((meeting) => buildMeetingCloneRow({
+    const buildRows = (users: TargetUserLookup[]) => sourceMeetingDetails.map((meeting) => buildMeetingCloneRow({
       meeting,
       attendeeMap,
-      targetUsers,
+      targetUsers: users,
       existingTargetKeys,
     }));
+
+    let meetingRows = buildRows(targetUsers);
+
+    // Only load full company users when project users + attendee map cannot resolve attendees.
+    const attendeeMapProvided = Object.keys(attendeeMap).length > 0;
+    if (!attendeeMapProvided && meetingRows.some((row) => row.missingAttendees.length > 0)) {
+      try {
+        companyUsers = await fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 });
+        targetUsers = buildTargetUsers(projectUsers, companyUsers);
+        meetingRows = buildRows(targetUsers);
+      } catch (error) {
+        companyUserLookupWarning = error instanceof Error ? error.message : String(error);
+      }
+    }
 
     const missingMappings = meetingRows.flatMap((row) => [
       ...(row.issues.includes("missing_position") ? [{ type: "meeting_position", sourceId: row.sourceId, title: row.sourceTitle }] : []),
@@ -1167,7 +1175,7 @@ export async function POST(request: Request) {
     const createStartedAt = Date.now();
 
     if (!dryRun) {
-      if (updateExistingMeetings) {
+      if (updateExistingMeetings && createOffset === 0) {
         const existingRows = meetingRows
           .filter((row) => row.issues.length === 0 && row.existingTargetMeeting)
           .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
@@ -1243,21 +1251,19 @@ export async function POST(request: Request) {
           for (const attendeeId of row.mappedAttendees) {
             if (addedProjectUserIds.has(attendeeId)) continue;
             const projectUser = projectUsers.find((user) => readNum(user.id) === attendeeId);
-            const companyUser = companyUsers.find((user) => readNum(user.id) === attendeeId);
             if (projectUser) {
               addedProjectUserIds.add(attendeeId);
               continue;
             }
-            if (companyUser) {
-              await retryableCreate(() =>
-                addCompanyUserToProject({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, userId: attendeeId })
-              ).catch((error) => {
-                const message = error instanceof Error ? error.message : String(error);
-                if (!/already|taken|exists|has already/i.test(message)) throw error;
-                return null;
-              });
-              addedProjectUserIds.add(attendeeId);
-            }
+
+            await retryableCreate(() =>
+              addCompanyUserToProject({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, userId: attendeeId })
+            ).catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (!/already|taken|exists|has already/i.test(message)) throw error;
+              return null;
+            });
+            addedProjectUserIds.add(attendeeId);
           }
 
           const payload: UnknownRecord = { ...row.payload };

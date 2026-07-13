@@ -1066,12 +1066,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields: sourceCompanyId, sourceProjectId, targetCompanyId, targetProjectId." }, { status: 400 });
     }
 
+    let projectUserLookupWarning = "";
     let companyUserLookupWarning = "";
 
     const [sourceMeetingsRaw, targetMeetingsRaw, projectUsers, companyUsers] = await Promise.all([
       fetchAllMeetings({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
       fetchAllMeetings({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
-      fetchProjectUsers({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
+      fetchProjectUsers({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }).catch((error) => {
+        projectUserLookupWarning = error instanceof Error ? error.message : String(error);
+        return [] as UnknownRecord[];
+      }),
       fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 }).catch((error) => {
         companyUserLookupWarning = error instanceof Error ? error.message : String(error);
         return [] as UnknownRecord[];
@@ -1339,9 +1343,10 @@ export async function POST(request: Request) {
       diagnostics: {
         targetUsers: targetUsers.slice(0, 200),
         missingMappings,
-        warnings: companyUserLookupWarning
-          ? [{ type: "company_user_lookup_failed", message: companyUserLookupWarning }]
-          : [],
+        warnings: [
+          ...(projectUserLookupWarning ? [{ type: "project_user_lookup_failed", message: projectUserLookupWarning }] : []),
+          ...(companyUserLookupWarning ? [{ type: "company_user_lookup_failed", message: companyUserLookupWarning }] : []),
+        ],
       },
       meetings: meetingRows.map((row) => ({
         ...row,

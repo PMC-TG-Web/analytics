@@ -1066,21 +1066,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields: sourceCompanyId, sourceProjectId, targetCompanyId, targetProjectId." }, { status: 400 });
     }
 
+    let targetMeetingLookupWarning = "";
     let projectUserLookupWarning = "";
     let companyUserLookupWarning = "";
 
-    const [sourceMeetingsRaw, targetMeetingsRaw, projectUsers, companyUsers] = await Promise.all([
-      fetchAllMeetings({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
-      fetchAllMeetings({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
-      fetchProjectUsers({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }).catch((error) => {
-        projectUserLookupWarning = error instanceof Error ? error.message : String(error);
-        return [] as UnknownRecord[];
-      }),
-      fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 }).catch((error) => {
-        companyUserLookupWarning = error instanceof Error ? error.message : String(error);
-        return [] as UnknownRecord[];
-      }),
-    ]);
+    // Fetch source meetings first; the clone cannot proceed without this data.
+    const sourceMeetingsRaw = await fetchAllMeetings({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages });
+
+    // Target-side lookups are helpful but non-critical and frequently throttled.
+    let targetMeetingsRaw: UnknownRecord[] = [];
+    try {
+      targetMeetingsRaw = await fetchAllMeetings({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
+    } catch (error) {
+      targetMeetingLookupWarning = error instanceof Error ? error.message : String(error);
+      targetMeetingsRaw = [];
+    }
+
+    let projectUsers: UnknownRecord[] = [];
+    try {
+      projectUsers = await fetchProjectUsers({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
+    } catch (error) {
+      projectUserLookupWarning = error instanceof Error ? error.message : String(error);
+      projectUsers = [];
+    }
+
+    let companyUsers: UnknownRecord[] = [];
+    try {
+      companyUsers = await fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 });
+    } catch (error) {
+      companyUserLookupWarning = error instanceof Error ? error.message : String(error);
+      companyUsers = [];
+    }
 
     const sourceMeetings = sourceMeetingsRaw
       .filter((meeting) => (meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))))
@@ -1344,6 +1360,7 @@ export async function POST(request: Request) {
         targetUsers: targetUsers.slice(0, 200),
         missingMappings,
         warnings: [
+          ...(targetMeetingLookupWarning ? [{ type: "target_meeting_lookup_failed", message: targetMeetingLookupWarning }] : []),
           ...(projectUserLookupWarning ? [{ type: "project_user_lookup_failed", message: projectUserLookupWarning }] : []),
           ...(companyUserLookupWarning ? [{ type: "company_user_lookup_failed", message: companyUserLookupWarning }] : []),
         ],

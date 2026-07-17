@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import {
+  fixedBudgetCodeMappingForDescription,
+  procoreFlatCostType,
+  uniqueByIdentity,
+} from "@/lib/budgetCodePatchMatching";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -321,16 +326,6 @@ function canonicalCostType(value: unknown) {
   return normalized;
 }
 
-function procoreFlatCostType(value: unknown) {
-  const canonical = canonicalCostType(value);
-  if (canonical === "c") return "C";
-  if (canonical === "con") return "CON";
-  if (canonical === "l") return "L";
-  if (canonical === "m") return "M";
-  if (canonical === "o") return "O";
-  return readStr(value).toUpperCase();
-}
-
 function targetFlatCodeFromPlan(entry: UnknownRecord) {
   const costCode = readStr(entry.targetCostCode);
   const costType = procoreFlatCostType(entry.targetCostType);
@@ -341,21 +336,27 @@ function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCodeAndType = new Map<string, UnknownRecord[]>();
   const byCode = new Map<string, UnknownRecord[]>();
   const byFlatCode = new Map<string, UnknownRecord>();
+  const normalizedItems: UnknownRecord[] = [];
 
   for (const item of items) {
     const wbsCodeId = targetWbsId(item);
     const flatCode = normCode(budgetLineFlatCode(item));
     const costCode = costCodeBaseKey(budgetLineCostCode(item) || flatCode);
     if (!wbsCodeId || !costCode) continue;
-    const costType = canonicalCostType(budgetLineCostType(item) || flatCodeSuffix(flatCode));
-    const normalized = {
+    normalizedItems.push({
       item,
       wbsCodeId,
       costCode: budgetLineCostCode(item),
       flatCode: budgetLineFlatCode(item),
       costType: canonicalCostType(budgetLineCostType(item) || flatCodeSuffix(flatCode)),
       description: budgetLineDescription(item),
-    };
+    });
+  }
+
+  for (const normalized of uniqueByIdentity(normalizedItems, (item) => item.wbsCodeId)) {
+    const costCode = costCodeBaseKey(normalized.costCode || normalized.flatCode);
+    const flatCode = normCode(normalized.flatCode);
+    const costType = canonicalCostType(normalized.costType || flatCodeSuffix(flatCode));
     byCode.set(costCode, [...(byCode.get(costCode) || []), normalized]);
     if (flatCode && !byFlatCode.has(flatCode)) byFlatCode.set(flatCode, normalized);
     if (costType) {
@@ -408,7 +409,7 @@ function resolveTargetWbsId(
   }
 
   if (costType) {
-    const exactFlatMatch = targetIndex.byFlatCode.get(`${costCode}.${costType}`);
+    const exactFlatMatch = targetIndex.byFlatCode.get(`${costCode}.${normCode(procoreFlatCostType(newRow["Cost code type"]))}`);
     if (exactFlatMatch) return { wbsCodeId: readStr(exactFlatMatch.wbsCodeId), issue: "", matchCount: 1, strategy: "flat_code_exact" };
     const typedMatches = targetIndex.byCodeAndType.get(`${costCode}|${costType}`) || [];
     if (typedMatches.length === 1) return { wbsCodeId: readStr(typedMatches[0].wbsCodeId), issue: "", matchCount: 1, strategy: "cost_code_and_type" };
@@ -475,6 +476,10 @@ function workbookCostTypeMatchesHint(row: UnknownRecord, hint: string) {
 
 function findWorkbookRowForBudgetLine(item: UnknownRecord, newRows: UnknownRecord[]) {
   const typeHint = budgetLineTypeHint(item);
+  const fixedRow = fixedBudgetCodeMappingForDescription(budgetLineDescription(item));
+  if (fixedRow) {
+    return { row: fixedRow, issue: "", matchCount: 1, score: 1000, typeHint, strategy: "fixed_budget_mapping" };
+  }
   const typeFilteredRows = typeHint ? newRows.filter((row) => workbookCostTypeMatchesHint(row, typeHint)) : newRows;
   const rowsToScore = typeFilteredRows.length > 0 ? typeFilteredRows : newRows;
   const scored = rowsToScore
@@ -753,9 +758,11 @@ export async function POST(request: Request) {
       plan,
       patchResults,
       nextStep: dryRun
-        ? ensureMissingCodes
+        ? missingCodeFlatCodes.length > 0 && ensureMissingCodes
           ? "Review missingWbsCodes. Rerun with dryRun=false to create missing WBS codes, refetch, then PATCH budget line item wbs_code_id values."
-          : "Review plan. Rerun with dryRun=false to PATCH existing budget line item wbs_code_id values."
+          : patchable.length > 0
+            ? "Review plan. Rerun with dryRun=false to PATCH existing budget line item wbs_code_id values."
+            : "No budget code changes are required."
         : nextPatchOffset !== null
           ? `Continue at patchOffset ${nextPatchOffset}.`
           : "Budget code patch batch complete.",

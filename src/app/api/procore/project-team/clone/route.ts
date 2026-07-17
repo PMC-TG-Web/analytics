@@ -28,6 +28,40 @@ type CompanyRoleRecord = {
   roleType: "person" | "company";
 };
 
+let procoreRolePatchStartChain: Promise<void> = Promise.resolve();
+let lastProcoreRolePatchStartedAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldPaceProcoreRequest(path: string, method: string) {
+  if (method !== "PATCH") return false;
+  return /\/user_project_roles\/|\/vendor_project_roles\//i.test(path);
+}
+
+async function paceProcoreRequestStart(path: string, method: string) {
+  if (!shouldPaceProcoreRequest(path, method)) return;
+
+  const minGapMs = 350;
+  const jitterMs = Math.floor(Math.random() * 120);
+
+  let release: (() => void) | null = null;
+  const previous = procoreRolePatchStartChain;
+  procoreRolePatchStartChain = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  const waitForGap = Math.max(0, lastProcoreRolePatchStartedAt + minGapMs - Date.now());
+  if (waitForGap > 0) {
+    await sleep(waitForGap + jitterMs);
+  }
+
+  lastProcoreRolePatchStartedAt = Date.now();
+  release?.();
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -202,30 +236,56 @@ async function procoreJson(params: {
   method?: string;
   body?: unknown;
   allowStatuses?: number[];
+  maxRetries?: number;
 }) {
-  const response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
-    method: params.method || "GET",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
-      "Procore-Company-Id": params.companyId,
-    },
-    body: params.body === undefined ? undefined : JSON.stringify(params.body),
-    cache: "no-store",
-  });
+  const method = params.method || "GET";
+  const maxRetries = params.maxRetries ?? (method === "GET" ? 4 : 3);
+  const retryableStatuses = new Set([429, 502, 503, 504]);
 
-  const text = await response.text();
-  let payload: unknown = text;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    // Keep text response.
+  let response: Response | null = null;
+  let payload: unknown = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    await paceProcoreRequestStart(params.path, method);
+
+    response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
+        "Procore-Company-Id": params.companyId,
+      },
+      body: params.body === undefined ? undefined : JSON.stringify(params.body),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    payload = text;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      // Keep text response.
+    }
+
+    const shouldRetry = retryableStatuses.has(response.status) && attempt < maxRetries;
+    if (!shouldRetry) break;
+
+    const retryAfterHeader = response.headers.get("retry-after");
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+    const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : (method === "GET" ? 900 : 1300) * Math.pow(2, attempt) + Math.floor(Math.random() * 300);
+    await sleep(delayMs);
+  }
+
+  if (!response) {
+    throw new Error(`Procore ${method} ${params.path} failed: no response.`);
   }
 
   if (!response.ok && !params.allowStatuses?.includes(response.status)) {
     throw new Error(
-      `Procore ${params.method || "GET"} ${params.path} failed (${response.status}): ${typeof payload === "string" ? payload : JSON.stringify(payload)}`
+      `Procore ${method} ${params.path} failed (${response.status}): ${typeof payload === "string" ? payload : JSON.stringify(payload)}`
     );
   }
 

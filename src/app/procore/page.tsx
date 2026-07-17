@@ -721,6 +721,7 @@ function ProcoreContent() {
   const [meetingCloneAutoContinue, setMeetingCloneAutoContinue] = useState(true);
   const [meetingCloneMaxAutoBatches, setMeetingCloneMaxAutoBatches] = useState("50");
   const [meetingCloneAttendeeMapText, setMeetingCloneAttendeeMapText] = useState("{}");
+  const [meetingCloneAttendees, setMeetingCloneAttendees] = useState(true);
   const [meetingCloneBusy, setMeetingCloneBusy] = useState(false);
   const [meetingCloneError, setMeetingCloneError] = useState<string | null>(null);
   const [meetingCloneResult, setMeetingCloneResult] = useState<any>(null);
@@ -5857,6 +5858,7 @@ function ProcoreContent() {
               targetProjectId,
               meetingIds: [],
               attendeeMap: meetingAttendeeMap,
+              cloneAttendees: meetingCloneAttendees,
               createOffset,
               createLimit: dryRun ? 100 : 100,
               dryRun,
@@ -6185,6 +6187,7 @@ function ProcoreContent() {
             targetProjectId,
             meetingIds,
             attendeeMap,
+            cloneAttendees: meetingCloneAttendees,
             createOffset: String(currentOffset),
             createLimit: dryRun ? 100 : Math.max(1, Math.min(100, Number.parseInt(meetingCloneCreateLimit || "10", 10) || 10)),
             dryRun,
@@ -9624,6 +9627,14 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                    <input
+                      type="checkbox"
+                      checked={meetingCloneAttendees}
+                      onChange={(event) => setMeetingCloneAttendees(event.target.checked)}
+                    />
+                    Clone attendees (targeted name/email lookups)
+                  </label>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Attendee/User ID Map</label>
                   <textarea
                     value={meetingCloneAttendeeMapText ?? ""}
@@ -9631,7 +9642,7 @@ function ProcoreContent() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono h-24"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Optional. Map source attendee IDs, names, or logins to target user IDs. Auto-match by target project users is attempted first.
+                    Optional override. Attendees are matched by exact email first, then exact name, without scanning the full user directory.
                   </p>
                 </div>
                 <div>

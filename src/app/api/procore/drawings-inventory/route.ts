@@ -138,10 +138,23 @@ async function fetchJson(url: string, accessToken: string, companyId: string) {
   }
 
   if (!response.ok) {
+    const summary = (() => {
+      if (typeof data === "string") return data;
+      if (data && typeof data === "object") {
+        const message = (data as UnknownRecord).message;
+        const errors = (data as UnknownRecord).errors;
+        if (typeof message === "string" && message.trim()) return message;
+        if (typeof errors === "string" && errors.trim()) return errors;
+      }
+      return "";
+    })();
     const error = new Error(`Procore request failed (${response.status})`) as Error & {
       status?: number;
       details?: unknown;
     };
+    error.message = summary
+      ? `Procore request failed (${response.status}) at ${url}: ${summary}`
+      : `Procore request failed (${response.status}) at ${url}`;
     error.status = response.status;
     error.details = data;
     throw error;
@@ -211,32 +224,71 @@ export async function GET(request: Request) {
     const accessToken = await getToken();
     const encodedProjectId = encodeURIComponent(projectId);
 
-    const [areasResult, setsResult, uploadsResult] = await Promise.all([
-      fetchPagedRows({
-        path: `/rest/v1.0/projects/${encodedProjectId}/drawing_areas`,
-        accessToken,
-        companyId,
-        perPage,
-        maxPages,
-      }),
-      fetchPagedRows({
+    const warnings: Array<{ type: string; message: string }> = [];
+
+    let areasResult: { rows: unknown[]; rawPages: unknown[] } = { rows: [], rawPages: [] };
+    const drawingAreaPaths = [
+      `/rest/v1.0/projects/${encodedProjectId}/drawing_areas`,
+      `/rest/v1.1/projects/${encodedProjectId}/drawing_areas`,
+    ];
+    let drawingAreasLoaded = false;
+    let drawingAreasLastError = "";
+    for (const path of drawingAreaPaths) {
+      try {
+        areasResult = await fetchPagedRows({
+          path,
+          accessToken,
+          companyId,
+          perPage,
+          maxPages,
+        });
+        drawingAreasLoaded = true;
+        break;
+      } catch (error) {
+        drawingAreasLastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    if (!drawingAreasLoaded) {
+      warnings.push({
+        type: "drawing_areas_lookup_failed",
+        message: drawingAreasLastError || "Unable to load drawing areas from Procore.",
+      });
+    }
+
+    let setsResult: { rows: unknown[]; rawPages: unknown[] } = { rows: [], rawPages: [] };
+    try {
+      setsResult = await fetchPagedRows({
         path: `/rest/v1.0/projects/${encodedProjectId}/drawing_sets`,
         accessToken,
         companyId,
         perPage,
         maxPages,
-      }),
-      includeUploads
-        ? fetchPagedRows({
-            path: `/rest/v1.1/projects/${encodedProjectId}/drawing_uploads`,
-            accessToken,
-            companyId,
-            perPage,
-            maxPages,
-            baseParams: view ? new URLSearchParams({ view }) : undefined,
-          })
-        : Promise.resolve({ rows: [], rawPages: [] }),
-    ]);
+      });
+    } catch (error) {
+      warnings.push({
+        type: "drawing_sets_lookup_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    let uploadsResult: { rows: unknown[]; rawPages: unknown[] } = { rows: [], rawPages: [] };
+    if (includeUploads) {
+      try {
+        uploadsResult = await fetchPagedRows({
+          path: `/rest/v1.1/projects/${encodedProjectId}/drawing_uploads`,
+          accessToken,
+          companyId,
+          perPage,
+          maxPages,
+          baseParams: view ? new URLSearchParams({ view }) : undefined,
+        });
+      } catch (error) {
+        warnings.push({
+          type: "drawing_uploads_lookup_failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     const drawingsByArea: Array<Record<string, unknown>> = [];
     const drawings: unknown[] = [];
@@ -256,14 +308,23 @@ export async function GET(request: Request) {
         const params = new URLSearchParams({ project_id: projectId });
         if (view) params.set("view", view);
 
-        const areaDrawings = await fetchPagedRows({
-          path: `/rest/v1.1/drawing_areas/${encodeURIComponent(areaId)}/drawings`,
-          accessToken,
-          companyId,
-          perPage,
-          maxPages,
-          baseParams: params,
-        });
+        let areaDrawings: { rows: unknown[]; rawPages: unknown[] } = { rows: [], rawPages: [] };
+        try {
+          areaDrawings = await fetchPagedRows({
+            path: `/rest/v1.1/drawing_areas/${encodeURIComponent(areaId)}/drawings`,
+            accessToken,
+            companyId,
+            perPage,
+            maxPages,
+            baseParams: params,
+          });
+        } catch (error) {
+          warnings.push({
+            type: "drawing_area_drawings_lookup_failed",
+            message: `Area ${areaId}: ${error instanceof Error ? error.message : String(error)}`,
+          });
+          continue;
+        }
 
         drawings.push(...areaDrawings.rows);
         drawingsByArea.push({
@@ -278,6 +339,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
+      partialSuccess: warnings.length > 0,
       companyId,
       projectId,
       perPage,
@@ -294,6 +356,7 @@ export async function GET(request: Request) {
       drawings,
       drawingsSummary: drawingsByArea.flatMap((area) => Array.isArray(area.summary) ? area.summary : []),
       drawingsByArea,
+      warnings,
       rawPages: {
         drawingAreas: areasResult.rawPages,
         drawingSets: setsResult.rawPages,

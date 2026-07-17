@@ -34,6 +34,40 @@ type MeetingCloneRow = {
 const MEETING_FALLBACK_START_DATETIME = "2026-01-01T12:00:00Z";
 const MEETING_FALLBACK_END_DATETIME = "2026-01-01T13:00:00Z";
 
+let procoreRequestStartChain: Promise<void> = Promise.resolve();
+let lastProcoreRequestStartedAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldPaceProcoreRequest(path: string, method: string) {
+  if (method === "GET") return /\/meetings(?:[/?]|$)|\/users(?:[/?]|$)|\/meeting_(?:topics|categories)(?:[/?]|$)/i.test(path);
+  return /\/meetings(?:[/?]|$)|\/meeting_(?:topics|categories)(?:[/?]|$)/i.test(path);
+}
+
+async function paceProcoreRequestStart(path: string, method: string) {
+  if (!shouldPaceProcoreRequest(path, method)) return;
+
+  const minGapMs = 320;
+  const jitterMs = Math.floor(Math.random() * 90);
+
+  let release: (() => void) | null = null;
+  const previous = procoreRequestStartChain;
+  procoreRequestStartChain = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  const waitForGap = Math.max(0, lastProcoreRequestStartedAt + minGapMs - Date.now());
+  if (waitForGap > 0) {
+    await sleep(waitForGap + jitterMs);
+  }
+
+  lastProcoreRequestStartedAt = Date.now();
+  release?.();
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -221,6 +255,8 @@ async function procoreJson(params: {
   let payload: unknown = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    await paceProcoreRequestStart(params.path, method);
+
     response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
       method,
       headers: {
@@ -263,34 +299,12 @@ async function procoreJson(params: {
   return { status: response.status, ok: response.ok, payload };
 }
 
-async function fetchPaged(params: {
-  accessToken: string;
-  companyId: string;
-  path: string;
-  keys?: string[];
-  maxPages: number;
-}) {
-  const rows: UnknownRecord[] = [];
-  for (let page = 1; page <= params.maxPages; page += 1) {
-    const separator = params.path.includes("?") ? "&" : "?";
-    const result = await procoreJson({
-      accessToken: params.accessToken,
-      companyId: params.companyId,
-      path: `${params.path}${separator}page=${page}&per_page=100`,
-    });
-    const pageRows = asArray(result.payload, params.keys || []);
-    if (!pageRows.length) break;
-    rows.push(...pageRows);
-    if (pageRows.length < 100) break;
-  }
-  return rows;
-}
-
 async function fetchAllMeetings(params: {
   accessToken: string;
   companyId: string;
   projectId: string;
   maxPages: number;
+  maxRetries?: number;
 }) {
   const rows: UnknownRecord[] = [];
   for (let page = 1; page <= params.maxPages; page += 1) {
@@ -298,6 +312,7 @@ async function fetchAllMeetings(params: {
       accessToken: params.accessToken,
       companyId: params.companyId,
       path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings?serializer_view=extended&page=${page}&per_page=100`,
+      maxRetries: params.maxRetries,
     });
     const pageMeetings = flattenMeetingGroups(result.payload);
     if (!pageMeetings.length) break;
@@ -422,81 +437,114 @@ async function fetchMeetingDetail(params: {
     return meeting;
   }
 
-  const [categories, topics] = await Promise.all([
-    (async () => {
-      const categoryPaths = [
-        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
-        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
-        `/rest/v1.0/meeting_categories?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
-      ];
-      for (const path of categoryPaths) {
-        const rows = await fetchOptionalArray({
-          accessToken: params.accessToken,
-          companyId: params.companyId,
-          path,
-        });
-        if (rows.length > 0) return rows;
-      }
-      return [];
-    })(),
-    (async () => {
-      const topicPaths = [
-        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
-        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
-        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/topics`,
-        `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/agenda_items`,
-        `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
-      ];
-      for (const path of topicPaths) {
-        const rows = await fetchOptionalArray({
-          accessToken: params.accessToken,
-          companyId: params.companyId,
-          path,
-        });
-        if (rows.length > 0) return rows;
-      }
-      return [];
-    })(),
-  ]);
+  const categoryPaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_categories`,
+    `/rest/v1.0/meeting_categories?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
+  ];
+  let categories: UnknownRecord[] = [];
+  for (const path of categoryPaths) {
+    const rows = await fetchOptionalArray({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path,
+    });
+    if (rows.length > 0) {
+      categories = rows;
+      break;
+    }
+  }
+
+  const topicPaths = [
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/meeting_topics`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/topics`,
+    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(params.meetingId)}/agenda_items`,
+    `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(params.meetingId)}`,
+  ];
+  let topics: UnknownRecord[] = [];
+  for (const path of topicPaths) {
+    const rows = await fetchOptionalArray({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path,
+    });
+    if (rows.length > 0) {
+      topics = rows;
+      break;
+    }
+  }
 
   return hydrateMeetingAgenda(meeting, categories, topics);
 }
 
-async function fetchProjectUsers(params: {
-  accessToken: string;
-  companyId: string;
-  projectId: string;
-  maxPages: number;
-}) {
-  return fetchPaged({
-    accessToken: params.accessToken,
-    companyId: params.companyId,
-    maxPages: params.maxPages,
-    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,
-  });
+function targetUserIdentity(user: UnknownRecord) {
+  const nested = firstRecord(user.login_information, user.user, user.person);
+  return {
+    id: readNum(user.id || nested?.id),
+    login: readStr(user.login || user.email || user.email_address || nested?.login || nested?.email || nested?.email_address),
+    name: readStr(user.name || user.display_name || nested?.name || `${readStr(user.first_name)} ${readStr(user.last_name)}`),
+  };
 }
 
-async function fetchCompanyUsers(params: { accessToken: string; companyId: string; maxPages: number }) {
-  return fetchPaged({
+function exactUserMatches(rows: UnknownRecord[], attendee: { login: string; name: string }) {
+  const normalizedLogin = normalize(attendee.login);
+  const normalizedName = normalize(attendee.name);
+  const loginMatches = normalizedLogin
+    ? rows.filter((row) => normalize(targetUserIdentity(row).login) === normalizedLogin)
+    : [];
+  if (loginMatches.length === 1) return loginMatches;
+  if (loginMatches.length > 1) return [];
+
+  const nameMatches = normalizedName
+    ? rows.filter((row) => normalize(targetUserIdentity(row).name) === normalizedName)
+    : [];
+  return nameMatches.length === 1 ? nameMatches : [];
+}
+
+async function searchTargetUsers(params: {
+  accessToken: string;
+  companyId: string;
+  projectId?: string;
+  attendee: { login: string; name: string };
+}) {
+  const search = params.attendee.login || params.attendee.name;
+  if (!search) return [];
+
+  const basePath = params.projectId
+    ? `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users`
+    : `/rest/v1.3/companies/${encodeURIComponent(params.companyId)}/users`;
+  const searchFilter = params.projectId && !params.attendee.login
+    ? "filters[search_by_full_name]"
+    : "filters[search]";
+  const query = new URLSearchParams({
+    ...(params.projectId ? { company_id: params.companyId } : {}),
+    [searchFilter]: search,
+    page: "1",
+    per_page: "25",
+  });
+  const result = await procoreJson({
     accessToken: params.accessToken,
     companyId: params.companyId,
-    maxPages: params.maxPages,
-    path: `/rest/v1.0/companies/${encodeURIComponent(params.companyId)}/users`,
+    maxRetries: 0,
+    path: `${basePath}?${query.toString()}`,
   });
+  return exactUserMatches(asArray(result.payload), params.attendee);
 }
 
 function buildTargetUsers(projectUsers: UnknownRecord[], companyUsers: UnknownRecord[]) {
   const users: TargetUserLookup[] = [];
   const seenIds = new Set<number>();
   for (const user of [...projectUsers, ...companyUsers]) {
-    const id = readNum(user.id);
+    const identity = targetUserIdentity(user);
+    const id = identity.id;
     if (id === undefined || seenIds.has(id)) continue;
     seenIds.add(id);
     users.push({
       id,
-      login: readStr(user.login || user.email || user.email_address),
-      name: readStr(user.name || `${readStr(user.first_name)} ${readStr(user.last_name)}`),
-      source: projectUsers.some((item) => readNum(item.id) === id) ? "project_user" : "company_user",
+      login: identity.login,
+      name: identity.name,
+      source: projectUsers.some((item) => targetUserIdentity(item).id === id) ? "project_user" : "company_user",
     });
   }
   return users;
@@ -535,11 +583,9 @@ async function createMeeting(params: {
 function buildAgendaTopicPayload(topic: UnknownRecord) {
   return compactPayload({
     title: readStr(topic.title || topic.name || topic.subject || topic.description) || "Agenda Item",
-    position: readNum(topic.position),
     description: readStr(topic.description),
     due_date: readStr(topic.due_date),
     minutes: readStr(topic.minutes),
-    note: readStr(topic.note || topic.notes),
     status: readStr(topic.status),
     priority: readStr(topic.priority),
     closed_at: readStr(topic.closed_at),
@@ -548,8 +594,16 @@ function buildAgendaTopicPayload(topic: UnknownRecord) {
     meeting_wide_number: readNum(topic.meeting_wide_number),
     assignment_ids: parseNumericIds(topic.assignment_ids),
     upload_ids: parseIds(topic.upload_ids),
-    attachments: parseIds(topic.attachments),
   });
+}
+
+function agendaTopicKey(topic: UnknownRecord) {
+  return [
+    normalize(topic.title || topic.name || topic.subject || topic.description),
+    normalize(topic.description),
+    readStr(topic.meeting_wide_number),
+    readStr(topic.due_date),
+  ].join("|");
 }
 
 function collectAgendaCategories(meeting: UnknownRecord): UnknownRecord[] {
@@ -622,6 +676,7 @@ async function cloneMeetingAgenda(params: {
   projectId: string;
   targetMeetingId: number;
   sourceMeeting: UnknownRecord;
+  existingTargetMeeting?: UnknownRecord;
 }) {
   const categoryPayloads = buildAgendaCategoryPayloads(params.sourceMeeting);
   const sourceTopicCount = categoryPayloads.reduce((sum, category) => {
@@ -641,205 +696,94 @@ async function cloneMeetingAgenda(params: {
     };
   }
 
-  const patchAttempt = await procoreJson({
-    accessToken: params.accessToken,
-    companyId: params.companyId,
-    path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}`,
-    method: "PATCH",
-    body: {
-      project_id: params.projectId,
-      meeting: {
-        meeting_categories: categoryPayloads,
-      },
-    },
-    allowStatuses: [400, 404, 405, 422],
-  });
-
-  async function fetchTargetAgendaTopicCount() {
-    const countPaths = [
-      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
-      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
-      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/topics`,
-      `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/agenda_items`,
-      `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(String(params.targetMeetingId))}`,
-    ];
-
-    for (const path of countPaths) {
-      const result = await procoreJson({
-        accessToken: params.accessToken,
-        companyId: params.companyId,
-        path,
-        allowStatuses: [400, 404, 405, 422],
-      });
-      if (!result.ok) continue;
-      const rows = asArray(result.payload);
-      if (rows.length > 0) return rows.length;
-    }
-
-    return 0;
-  }
-
-  if (patchAttempt.ok) {
-    const targetTopicCount = await fetchTargetAgendaTopicCount();
-    if (targetTopicCount >= sourceTopicCount) {
-      return {
-        ok: true,
-        method: "patch_meeting_categories",
-        sourceCategories: categoryPayloads.length,
-        sourceTopics: sourceTopicCount,
-        createdTopics: sourceTopicCount,
-        createdCategories: categoryPayloads.length,
-      };
-    }
-    // If PATCH succeeded but no topics were materialized, continue with fallback paths.
-  }
-
-  const categoryPaths = [
-    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories`,
-    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories`,
-    `/rest/v1.0/meeting_categories`,
-  ];
-
-  const topicPaths = [
-    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
-    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_topics`,
-    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/topics`,
-    `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/agenda_items`,
-    `/rest/v1.0/meeting_topics`,
-  ];
-
   const topicErrors: UnknownRecord[] = [];
   let createdTopics = 0;
   let createdCategories = 0;
+  let existingTopics = 0;
+  const existingCategories = params.existingTargetMeeting
+    ? collectAgendaCategories(params.existingTargetMeeting)
+    : [];
 
   for (const category of categoryPayloads) {
     const topics = Array.isArray(category.meeting_topic) ? category.meeting_topic : [];
-    let createdCategoryId: number | undefined;
+    const categoryTitle = readStr(category.title);
+    const categoryPosition = readNum(category.position);
+    const existingCategory = existingCategories.find((candidate) => (
+      normalize(candidate.title || candidate.name) === normalize(categoryTitle) &&
+      (categoryPosition === undefined || readNum(candidate.position) === categoryPosition)
+    ));
+    let targetCategoryId = readNum(existingCategory?.id);
 
-    for (const categoryPath of categoryPaths) {
-      const categoryBodyVariants = [
-        { meeting_category: compactPayload({ title: readStr(category.title), position: readNum(category.position) }) },
-        { meeting_categories: [compactPayload({ title: readStr(category.title), position: readNum(category.position) })] },
-        {
+    if (targetCategoryId === undefined) {
+      const categoryAttempt = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        path: "/rest/v1.0/meeting_categories",
+        method: "POST",
+        body: {
           project_id: params.projectId,
           meeting_id: params.targetMeetingId,
-          meeting_category: compactPayload({ title: readStr(category.title), position: readNum(category.position) }),
+          meeting_category: compactPayload({ title: categoryTitle, position: categoryPosition }),
         },
-      ];
-
-      let categoryCreated = false;
-      for (const body of categoryBodyVariants) {
-        const categoryAttempt = await procoreJson({
-          accessToken: params.accessToken,
-          companyId: params.companyId,
-          path: categoryPath,
-          method: "POST",
-          body,
-          allowStatuses: [400, 404, 405, 422],
-        });
-
-        if (!categoryAttempt.ok) continue;
-
-        const payload = categoryAttempt.payload;
-        const payloadRecord = isRecord(payload) ? payload : null;
-        const firstCategory = payloadRecord ? firstRecord(payloadRecord.meeting_category, payloadRecord.data) : null;
-        createdCategoryId = readNum(
-          firstCategory?.id ||
-          (payloadRecord ? payloadRecord.id : undefined)
-        );
-        createdCategories += 1;
-        categoryCreated = true;
-        break;
+        allowStatuses: [400, 404, 405, 422],
+      });
+      if (!categoryAttempt.ok) {
+        topicErrors.push({ categoryTitle, error: "category_create_failed", response: categoryAttempt.payload });
+        continue;
       }
-
-      if (categoryCreated) break;
+      const payloadRecord = isRecord(categoryAttempt.payload) ? categoryAttempt.payload : null;
+      const categoryRecord = payloadRecord ? firstRecord(payloadRecord.meeting_category, payloadRecord.data) : null;
+      targetCategoryId = readNum(categoryRecord?.id || payloadRecord?.id);
+      createdCategories += 1;
     }
+
+    const existingTopicKeys = new Set([
+      ...asArray(existingCategory?.meeting_topics),
+      ...asArray(existingCategory?.meeting_topic),
+      ...asArray(existingCategory?.agenda_items),
+      ...asArray(existingCategory?.agenda_item),
+      ...asArray(existingCategory?.topics),
+    ].map(agendaTopicKey));
 
     for (const topic of topics) {
+      const topicKey = agendaTopicKey(topic);
+      if (existingTopicKeys.has(topicKey)) {
+        existingTopics += 1;
+        continue;
+      }
       const topicWithCategory = compactPayload({
         ...topic,
-        meeting_category_id: createdCategoryId,
-        category_id: createdCategoryId,
+        meeting_category_id: targetCategoryId,
       });
       const topicAttachmentIds = parseIds(topic.upload_ids || topic.attachments || topic.attachment_ids);
-      const exactMeetingTopicPayload = compactPayload({
-        ...topicWithCategory,
-        upload_ids: parseIds(topicWithCategory.upload_ids || topicWithCategory.attachments || topicWithCategory.attachment_ids),
+      const topicAttempt = await procoreJson({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meeting_topics`,
+        method: "POST",
+        body: {
+          meeting_id: params.targetMeetingId,
+          meeting_topic: topicWithCategory,
+          ...(topicAttachmentIds.length > 0 ? { attachments: topicAttachmentIds } : {}),
+        },
+        allowStatuses: [400, 404, 405, 422],
       });
-
-      const scopedTopicPaths = createdCategoryId !== undefined
-        ? [
-            ...topicPaths,
-            `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories/${encodeURIComponent(String(createdCategoryId))}/meeting_topics`,
-            `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/meetings/${encodeURIComponent(String(params.targetMeetingId))}/meeting_categories/${encodeURIComponent(String(createdCategoryId))}/meeting_topics`,
-            `/rest/v1.0/meeting_topics?project_id=${encodeURIComponent(params.projectId)}&meeting_id=${encodeURIComponent(String(params.targetMeetingId))}&meeting_category_id=${encodeURIComponent(String(createdCategoryId))}`,
-          ]
-        : topicPaths;
-
-      let created = false;
-      for (const path of scopedTopicPaths) {
-        const bodyVariants = [
-          {
-            meeting_id: params.targetMeetingId,
-            meeting_topic: exactMeetingTopicPayload,
-            ...(topicAttachmentIds.length > 0 ? { attachments: topicAttachmentIds } : {}),
-          },
-          { meeting_topic: topicWithCategory },
-          { topic: topicWithCategory },
-          { agenda_item: topicWithCategory },
-        ];
-
-        for (const body of bodyVariants) {
-          const bodyWithIds = {
-            project_id: params.projectId,
-            meeting_id: params.targetMeetingId,
-            ...body,
-          };
-          const topicAttempt = await procoreJson({
-            accessToken: params.accessToken,
-            companyId: params.companyId,
-            path,
-            method: "POST",
-            body: bodyWithIds,
-            allowStatuses: [400, 404, 405, 422],
-          });
-          if (topicAttempt.ok) {
-            createdTopics += 1;
-            created = true;
-            break;
-          }
-        }
-
-        if (created) break;
-      }
-
-      if (!created) {
-        topicErrors.push({ topic, categoryTitle: readStr(category.title), error: "topic_create_not_supported" });
+      if (topicAttempt.ok) {
+        createdTopics += 1;
+      } else {
+        topicErrors.push({ topic, categoryTitle, error: "topic_create_failed", response: topicAttempt.payload });
       }
     }
-  }
-
-  if (createdTopics > 0) {
-    return {
-      ok: topicErrors.length === 0,
-      method: "category_topic_fallback",
-      sourceCategories: categoryPayloads.length,
-      sourceTopics: sourceTopicCount,
-      createdTopics,
-      createdCategories,
-      patchError: patchAttempt.payload,
-      errors: topicErrors,
-    };
   }
 
   return {
     ok: topicErrors.length === 0,
-    method: "agenda_clone_failed",
+    method: "official_meeting_topic_endpoint",
     sourceCategories: categoryPayloads.length,
     sourceTopics: sourceTopicCount,
     createdTopics,
     createdCategories,
-    patchError: patchAttempt.payload,
+    existingTopics,
     errors: topicErrors,
   };
 }
@@ -1038,6 +982,9 @@ async function retryableCreate<T>(operation: () => Promise<T>, maxAttempts = 3):
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
+      // procoreJson already honored Retry-After/retried the HTTP request. Repeating
+      // the whole create here turns one 429 into another burst of create attempts.
+      if (/\(429\)/.test(message)) throw error;
       if (attempt >= maxAttempts || !/\((429|502|503|504)\)/.test(message)) throw error;
       await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
     }
@@ -1061,6 +1008,7 @@ export async function POST(request: Request) {
     const maxPages = Math.max(1, Math.min(50, Math.trunc(readNum(body.maxPages) || 10)));
     const meetingIds = parseIds(body.meetingIds || body.meetingIdsText);
     const attendeeMap = buildStringMap(body.attendeeMap || body.attendeeMapText);
+    const cloneAttendees = body.cloneAttendees !== false;
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId) {
       return NextResponse.json({ error: "Missing required fields: sourceCompanyId, sourceProjectId, targetCompanyId, targetProjectId." }, { status: 400 });
@@ -1076,37 +1024,112 @@ export async function POST(request: Request) {
     // Target-side lookups are helpful but non-critical and frequently throttled.
     let targetMeetingsRaw: UnknownRecord[] = [];
     try {
-      targetMeetingsRaw = await fetchAllMeetings({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
+      targetMeetingsRaw = await fetchAllMeetings({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages, maxRetries: 0 });
     } catch (error) {
       targetMeetingLookupWarning = error instanceof Error ? error.message : String(error);
       targetMeetingsRaw = [];
     }
 
-    let projectUsers: UnknownRecord[] = [];
-    try {
-      projectUsers = await fetchProjectUsers({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
-    } catch (error) {
-      projectUserLookupWarning = error instanceof Error ? error.message : String(error);
-      projectUsers = [];
+    if (/\(429\)/.test(targetMeetingLookupWarning)) {
+      const selectedSourceMeetings = sourceMeetingsRaw.filter((meeting) => (
+        meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))
+      ));
+      return NextResponse.json({
+        success: false,
+        dryRun,
+        tokenSource,
+        error: "Target Procore rate limit is already exhausted.",
+        details: targetMeetingLookupWarning,
+        source: { companyId: sourceCompanyId, projectId: sourceProjectId },
+        target: { companyId: targetCompanyId, projectId: targetProjectId },
+        counts: {
+          sourceMeetings: selectedSourceMeetings.length,
+          createOffset,
+          createLimit,
+          nextCreateOffset: createOffset,
+          hasMoreCreatableRows: selectedSourceMeetings.length > createOffset,
+          created: 0,
+          failed: 0,
+        },
+        readyForLiveClone: false,
+        diagnostics: {
+          cloneAttendees,
+          targetUsers: [],
+          missingMappings: [],
+          warnings: [{ type: "target_meeting_lookup_rate_limited", message: targetMeetingLookupWarning }],
+        },
+        meetings: [],
+        createResults: [],
+        nextStep: `Wait for Procore's target-company rate limit to reset, then retry the same create offset (${createOffset}). No user-directory or create requests were attempted.`,
+      }, { status: 429 });
     }
 
-    let companyUsers: UnknownRecord[] = [];
+    const projectUsers: UnknownRecord[] = [];
+    const companyUsers: UnknownRecord[] = [];
+    let uniqueAttendeeLookups = 0;
+    let targetedUserRequests = 0;
 
     const sourceMeetings = sourceMeetingsRaw
       .filter((meeting) => (meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))))
       .map((meeting) => readStr(meeting.id))
       .filter(Boolean);
 
-    const sourceMeetingDetails = await Promise.all(
-      sourceMeetings.map((meetingId) =>
-        fetchMeetingDetail({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, meetingId })
-      )
-    );
+    const sourceMeetingDetails: UnknownRecord[] = [];
+    for (const meetingId of sourceMeetings) {
+      const detail = await fetchMeetingDetail({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, meetingId });
+      sourceMeetingDetails.push(detail);
+    }
 
     const sourceMeetingById = new Map<string, UnknownRecord>();
     for (const meeting of sourceMeetingDetails) {
       const id = readStr(meeting.id);
       if (id) sourceMeetingById.set(id, meeting);
+    }
+
+    if (cloneAttendees) {
+      const attendeesByKey = new Map<string, { id: string; login: string; name: string; status: string }>();
+      for (const meeting of sourceMeetingDetails) {
+        for (const rawAttendee of asArray(meeting.attendees)) {
+          const attendee = attendeeIdentity(rawAttendee);
+          const key = normalize(attendee.login) || normalize(attendee.name);
+          if (!key || attendeesByKey.has(key)) continue;
+          if (resolveTargetUserId(attendee, attendeeMap, []) !== undefined) continue;
+          attendeesByKey.set(key, attendee);
+        }
+      }
+      uniqueAttendeeLookups = attendeesByKey.size;
+
+      for (const attendee of attendeesByKey.values()) {
+        try {
+          targetedUserRequests += 1;
+          const projectMatches = await searchTargetUsers({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            attendee,
+          });
+          if (projectMatches.length === 1) {
+            projectUsers.push(projectMatches[0]);
+            continue;
+          }
+        } catch (error) {
+          projectUserLookupWarning = error instanceof Error ? error.message : String(error);
+          if (/\(429\)/.test(projectUserLookupWarning)) break;
+        }
+
+        try {
+          targetedUserRequests += 1;
+          const companyMatches = await searchTargetUsers({
+            accessToken,
+            companyId: targetCompanyId,
+            attendee,
+          });
+          if (companyMatches.length === 1) companyUsers.push(companyMatches[0]);
+        } catch (error) {
+          companyUserLookupWarning = error instanceof Error ? error.message : String(error);
+          if (/\(429\)/.test(companyUserLookupWarning)) break;
+        }
+      }
     }
 
     const targetMeetingIdByKey = new Map<string, number>();
@@ -1131,34 +1154,30 @@ export async function POST(request: Request) {
       }
     }
 
-    let targetUsers = buildTargetUsers(projectUsers, []);
+    const targetUsers = buildTargetUsers(projectUsers, companyUsers);
     const existingTargetKeys = new Set(targetMeetingsRaw.map((meeting) => normalizeMeetingKey(meeting)));
     const buildRows = (users: TargetUserLookup[]) => sourceMeetingDetails.map((meeting) => buildMeetingCloneRow({
       meeting,
-      attendeeMap,
+      attendeeMap: cloneAttendees ? attendeeMap : {},
       targetUsers: users,
       existingTargetKeys,
     }));
 
     let meetingRows = buildRows(targetUsers);
 
-    // Only load full company users when project users + attendee map cannot resolve attendees.
-    const attendeeMapProvided = Object.keys(attendeeMap).length > 0;
-    if (!attendeeMapProvided && meetingRows.some((row) => row.missingAttendees.length > 0)) {
-      try {
-        companyUsers = await fetchCompanyUsers({ accessToken, companyId: targetCompanyId, maxPages: 5 });
-        targetUsers = buildTargetUsers(projectUsers, companyUsers);
-        meetingRows = buildRows(targetUsers);
-      } catch (error) {
-        companyUserLookupWarning = error instanceof Error ? error.message : String(error);
-      }
+    const attendeeLookupInterrupted = cloneAttendees && Boolean(projectUserLookupWarning || companyUserLookupWarning);
+    if (!cloneAttendees) {
+      meetingRows = meetingRows.map((row) => ({
+        ...row,
+        issues: row.issues.filter((issue) => issue !== "missing_target_attendees"),
+      }));
     }
 
     const missingMappings = meetingRows.flatMap((row) => [
       ...(row.issues.includes("missing_position") ? [{ type: "meeting_position", sourceId: row.sourceId, title: row.sourceTitle }] : []),
       ...(row.issues.includes("missing_starts_at") ? [{ type: "meeting_starts_at", sourceId: row.sourceId, title: row.sourceTitle }] : []),
       ...(row.issues.includes("missing_ends_at") ? [{ type: "meeting_ends_at", sourceId: row.sourceId, title: row.sourceTitle }] : []),
-      ...(row.issues.includes("missing_target_attendees")
+      ...(cloneAttendees && row.issues.includes("missing_target_attendees")
         ? row.missingAttendees.map((attendee) => ({
             type: "meeting_attendee",
             sourceId: row.sourceId,
@@ -1173,68 +1192,14 @@ export async function POST(request: Request) {
     let pausedBeforeTimeout = false;
     let pauseReason = "";
     const createStartedAt = Date.now();
+    const eligibleRows = meetingRows
+      .filter((row) => row.issues.length === 0)
+      .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
 
     if (!dryRun) {
-      if (updateExistingMeetings && createOffset === 0) {
-        const existingRows = meetingRows
-          .filter((row) => row.issues.length === 0 && row.existingTargetMeeting)
-          .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
-
-        for (const row of existingRows) {
-          const sourceMeeting = sourceMeetingById.get(row.sourceId);
-          if (!sourceMeeting) continue;
-
-          const targetMeetingId = targetMeetingIdByKey.get(normalizeMeetingKey(sourceMeeting));
-          if (targetMeetingId === undefined) continue;
-
-          try {
-            const agendaClone = await retryableCreate(() =>
-              cloneMeetingAgenda({
-                accessToken,
-                companyId: targetCompanyId,
-                projectId: targetProjectId,
-                targetMeetingId,
-                sourceMeeting,
-              })
-            );
-
-            const attendanceClone = await retryableCreate(() =>
-              cloneMeetingAttendance({
-                accessToken,
-                companyId: targetCompanyId,
-                projectId: targetProjectId,
-                targetMeetingId,
-                mappedAttendance: row.mappedAttendance,
-              })
-            );
-
-            createResults.push({
-              type: "meeting_update_existing",
-              sourceId: row.sourceId,
-              targetMeetingId,
-              ok: true,
-              agendaClone,
-              attendanceClone,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            createResults.push({
-              type: "meeting_update_existing",
-              sourceId: row.sourceId,
-              targetMeetingId,
-              ok: false,
-              error: message,
-            });
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 350));
-        }
-      }
-
-      const rowsToCreate = meetingRows
-        .filter((row) => row.issues.length === 0 && !row.existingTargetMeeting)
-        .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
-      const slice = rowsToCreate.slice(createOffset, createOffset + createLimit);
+      // Slice the stable eligible list, including existing meetings. Filtering out
+      // meetings created by a prior batch shifts indexes and silently skips rows.
+      const slice = eligibleRows.slice(createOffset, createOffset + createLimit);
       const addedProjectUserIds = new Set<number>();
       const createdTargetIdBySourceId = new Map<string, number>();
       const createdSeriesRootByKey = new Map<string, number>();
@@ -1246,11 +1211,11 @@ export async function POST(request: Request) {
           break;
         }
 
+        let targetMeetingIdForRow: number | undefined;
         try {
-          attemptedCreateRows += 1;
           for (const attendeeId of row.mappedAttendees) {
             if (addedProjectUserIds.has(attendeeId)) continue;
-            const projectUser = projectUsers.find((user) => readNum(user.id) === attendeeId);
+            const projectUser = projectUsers.find((user) => targetUserIdentity(user).id === attendeeId);
             if (projectUser) {
               addedProjectUserIds.add(attendeeId);
               continue;
@@ -1264,6 +1229,54 @@ export async function POST(request: Request) {
               return null;
             });
             addedProjectUserIds.add(attendeeId);
+          }
+
+          const sourceMeeting = sourceMeetingById.get(row.sourceId);
+          if (!sourceMeeting) throw new Error(`Source meeting ${row.sourceId} detail is unavailable.`);
+
+          if (row.existingTargetMeeting) {
+            targetMeetingIdForRow = targetMeetingIdByKey.get(normalizeMeetingKey(sourceMeeting));
+            if (targetMeetingIdForRow === undefined) throw new Error(`Target meeting match for ${row.sourceId} is unavailable.`);
+            createdTargetIdBySourceId.set(row.sourceId, targetMeetingIdForRow);
+
+            let agendaClone: UnknownRecord | null = null;
+            let attendanceClone: UnknownRecord | null = null;
+            if (updateExistingMeetings) {
+              const existingTargetMeeting = await fetchMeetingDetail({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                meetingId: String(targetMeetingIdForRow),
+              });
+              agendaClone = await retryableCreate(() => cloneMeetingAgenda({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                targetMeetingId: targetMeetingIdForRow as number,
+                sourceMeeting,
+                existingTargetMeeting,
+              }));
+              if (agendaClone.ok === false) throw new Error(`Agenda clone incomplete: ${JSON.stringify(agendaClone.errors || [])}`);
+              attendanceClone = await retryableCreate(() => cloneMeetingAttendance({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                targetMeetingId: targetMeetingIdForRow as number,
+                mappedAttendance: row.mappedAttendance,
+              }));
+            }
+
+            createResults.push({
+              type: "meeting_update_existing",
+              sourceId: row.sourceId,
+              targetMeetingId: targetMeetingIdForRow,
+              ok: true,
+              skipped: !updateExistingMeetings,
+              agendaClone,
+              attendanceClone,
+            });
+            attemptedCreateRows += 1;
+            continue;
           }
 
           const payload: UnknownRecord = { ...row.payload };
@@ -1295,6 +1308,7 @@ export async function POST(request: Request) {
           );
           const createdPayload = isRecord(result.payload) ? result.payload : {};
           const createdId = readNum(createdPayload.id || (isRecord(createdPayload.data) ? createdPayload.data.id : undefined));
+          targetMeetingIdForRow = createdId;
           let agendaClone: UnknownRecord | null = null;
           let attendanceClone: UnknownRecord | null = null;
           if (createdId !== undefined) {
@@ -1305,18 +1319,14 @@ export async function POST(request: Request) {
             if (!targetSeriesRootByKey.has(row.seriesKey)) {
               targetSeriesRootByKey.set(row.seriesKey, createdId);
             }
-            const sourceMeeting = sourceMeetingById.get(row.sourceId);
-            if (sourceMeeting) {
-              agendaClone = await retryableCreate(() =>
-                cloneMeetingAgenda({
-                  accessToken,
-                  companyId: targetCompanyId,
-                  projectId: targetProjectId,
-                  targetMeetingId: createdId,
-                  sourceMeeting,
-                })
-              );
-            }
+            agendaClone = await retryableCreate(() => cloneMeetingAgenda({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              targetMeetingId: createdId,
+              sourceMeeting,
+            }));
+            if (agendaClone.ok === false) throw new Error(`Agenda clone incomplete: ${JSON.stringify(agendaClone.errors || [])}`);
             attendanceClone = await retryableCreate(() =>
               cloneMeetingAttendance({
                 accessToken,
@@ -1328,9 +1338,14 @@ export async function POST(request: Request) {
             );
           }
           createResults.push({ type: "meeting", sourceId: row.sourceId, ok: true, result, agendaClone, attendanceClone });
+          attemptedCreateRows += 1;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          createResults.push({ type: "meeting", sourceId: row.sourceId, ok: false, error: message, payload: row.payload });
+          createResults.push({ type: "meeting", sourceId: row.sourceId, targetMeetingId: targetMeetingIdForRow, ok: false, error: message, payload: row.payload });
+          pauseReason = /\(429\)/.test(message)
+            ? `Stopped after Procore rate limiting. Retry at create offset ${createOffset + attemptedCreateRows} after the limit resets.`
+            : `Stopped after a meeting create failed. Retry at create offset ${createOffset + attemptedCreateRows}.`;
+          break;
         }
 
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1356,19 +1371,35 @@ export async function POST(request: Request) {
         createOffset,
         createLimit,
         nextCreateOffset: dryRun ? null : createOffset + attemptedCreateRows,
-        hasMoreCreatableRows: dryRun ? false : createOffset + attemptedCreateRows < creatableMeetings,
+        hasMoreCreatableRows: dryRun ? false : createOffset + attemptedCreateRows < eligibleRows.length,
         pausedBeforeTimeout,
         created,
         failed,
       },
       readyForLiveClone: missingMappings.length === 0,
       diagnostics: {
+        cloneAttendees,
+        userLookupMode: cloneAttendees ? "targeted_exact_match" : "disabled",
+        uniqueAttendeeLookups,
+        targetedUserRequests,
         targetUsers: targetUsers.slice(0, 200),
         missingMappings,
         warnings: [
           ...(targetMeetingLookupWarning ? [{ type: "target_meeting_lookup_failed", message: targetMeetingLookupWarning }] : []),
           ...(projectUserLookupWarning ? [{ type: "project_user_lookup_failed", message: projectUserLookupWarning }] : []),
           ...(companyUserLookupWarning ? [{ type: "company_user_lookup_failed", message: companyUserLookupWarning }] : []),
+          ...(!cloneAttendees && meetingRows.some((row) => row.sourceAttendees.length > 0)
+            ? [{
+                type: "attendee_cloning_disabled",
+                message: "Attendees were skipped. Enable attendee cloning only when user-directory matching is required.",
+              }]
+            : []),
+          ...(attendeeLookupInterrupted
+            ? [{
+                type: "attendee_mapping_incomplete_due_to_lookup_failure",
+                message: "Targeted attendee matching was interrupted. Meetings with unresolved attendees remain blocked instead of silently dropping those attendees.",
+              }]
+            : []),
         ],
       },
       meetings: meetingRows.map((row) => ({

@@ -833,7 +833,11 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
 
     const sourceBudgetRow = sourceBudgetByWbsId.get(oldWbsId);
     if (sourceBudgetRow) {
-      const directTargetWbs = resolveTargetWbsId(sourceBudgetRow, targetIndex);
+      const directTargetWbs = resolveTargetWbsId({
+        "Cost Code": budgetLineCostCode(sourceBudgetRow),
+        "Cost code type": budgetLineCostType(sourceBudgetRow),
+        Description: budgetLineDescription(sourceBudgetRow),
+      }, targetIndex);
       if (directTargetWbs.wbsCodeId) {
         params.maps.wbsCodeIdMap[oldWbsId] = directTargetWbs.wbsCodeId;
         summary.applied = Number(summary.applied) + 1;
@@ -902,7 +906,7 @@ async function autoMapPotentialChangeOrderParentContracts(params: {
 
   summary.enabled = true;
 
-  const [sourceContractsResult, targetContractsResult] = await Promise.all([
+  const [sourceContractsResult, targetContractsResult, sourcePrimeContractsResult, targetPrimeContractsResult] = await Promise.all([
     fetchPaged({
       accessToken: params.accessToken,
       companyId: params.sourceCompanyId,
@@ -923,17 +927,37 @@ async function autoMapPotentialChangeOrderParentContracts(params: {
           params.targetProjectId
         )}/commitment_contracts?page=${page}&per_page=100`,
     }),
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.sourceCompanyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["data", "prime_contracts"],
+      pathForPage: (page) =>
+        `/rest/v1.0/prime_contracts?company_id=${encodeURIComponent(params.sourceCompanyId)}&project_id=${encodeURIComponent(
+          params.sourceProjectId
+        )}&page=${page}&per_page=100`,
+    }),
+    fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.targetCompanyId,
+      maxPages: params.maxPages,
+      arrayKeys: ["data", "prime_contracts"],
+      pathForPage: (page) =>
+        `/rest/v1.0/prime_contracts?company_id=${encodeURIComponent(params.targetCompanyId)}&project_id=${encodeURIComponent(
+          params.targetProjectId
+        )}&page=${page}&per_page=100`,
+    }),
   ]);
 
   const sourceById = new Map<string, UnknownRecord>();
-  for (const row of sourceContractsResult.records) {
+  for (const row of [...sourceContractsResult.records, ...sourcePrimeContractsResult.records]) {
     const id = readStr(row.id);
     if (id && !sourceById.has(id)) sourceById.set(id, row);
   }
 
   const targetBySourceId = new Map<string, string>();
   const targetByNumberTitle = new Map<string, string[]>();
-  for (const row of targetContractsResult.records) {
+  for (const row of [...targetContractsResult.records, ...targetPrimeContractsResult.records]) {
     const targetId = readStr(row.id);
     if (!targetId) continue;
     const originSourceId = readStr(row.origin_id || row.originId);
@@ -976,6 +1000,17 @@ async function autoMapPotentialChangeOrderParentContracts(params: {
       }
     }
 
+    const isSourcePrimeContract = sourcePrimeContractsResult.records.some((row) => readStr(row.id) === sourceParentId);
+    if (isSourcePrimeContract && targetPrimeContractsResult.records.length === 1) {
+      const onlyTargetPrimeId = readStr(targetPrimeContractsResult.records[0].id);
+      if (onlyTargetPrimeId) {
+        params.contractIdMap[sourceParentId] = onlyTargetPrimeId;
+        summary.applied = Number(summary.applied) + 1;
+        summary.singlePrimeContractFallbacks = Number(summary.singlePrimeContractFallbacks || 0) + 1;
+        continue;
+      }
+    }
+
     (summary.issues as UnknownRecord[]).push({
       type: "missing_parent_contract_match",
       sourceParentId,
@@ -984,6 +1019,8 @@ async function autoMapPotentialChangeOrderParentContracts(params: {
 
   if (sourceContractsResult.errors.length) summary.sourceContractWarnings = sourceContractsResult.errors.slice(0, 12);
   if (targetContractsResult.errors.length) summary.targetContractWarnings = targetContractsResult.errors.slice(0, 12);
+  if (sourcePrimeContractsResult.errors.length) summary.sourcePrimeContractWarnings = sourcePrimeContractsResult.errors.slice(0, 12);
+  if (targetPrimeContractsResult.errors.length) summary.targetPrimeContractWarnings = targetPrimeContractsResult.errors.slice(0, 12);
   return summary;
 }
 

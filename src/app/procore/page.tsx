@@ -7082,9 +7082,21 @@ function ProcoreContent() {
     const missing = Array.isArray(commitmentCloneResult?.result?.missingMappings)
       ? commitmentCloneResult.result.missingMappings
       : [];
+    const uniqueMissing = Array.from(
+      missing.reduce((grouped: Map<string, any>, row: any) => {
+        const key = `${String(row.field || "")}:${String(row.oldId || "")}`;
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.occurrences += 1;
+          return grouped;
+        }
+        grouped.set(key, { ...row, occurrences: 1 });
+        return grouped;
+      }, new Map<string, any>()).values()
+    );
     setCommitmentCloneMappingRows(
-      missing.map((row: any, index: number) => ({
-        rowKey: `${row.field || "field"}:${row.oldId || "old"}:${index}`,
+      uniqueMissing.map((row: any) => ({
+        rowKey: `${row.field || "field"}:${row.oldId || "old"}`,
         field: String(row.field || ""),
         mapName: commitmentMapNameForField(String(row.field || "")),
         oldId: String(row.oldId || ""),
@@ -7095,7 +7107,7 @@ function ProcoreContent() {
         contractTitle: String(row.contractTitle || ""),
         vendorName: String(row.vendorName || ""),
         lineItemId: String(row.lineItemId || ""),
-        description: String(row.description || ""),
+        description: `${String(row.description || "")}${row.occurrences > 1 ? ` (${row.occurrences} occurrences)` : ""}`,
       }))
     );
   };
@@ -13441,7 +13453,7 @@ function ProcoreContent() {
                       <strong>Budget Patch Result:</strong>{" "}
                       {commitmentBudgetPatchResult.result?.dryRun
                         ? `${commitmentBudgetPatchResult.result?.counts?.patchable ?? 0} budget line(s) can be patched; ${commitmentBudgetPatchResult.result?.counts?.missingWbsCodes ?? 0} missing WBS code(s) can be created; ${commitmentBudgetPatchResult.result?.counts?.blocked ?? 0} blocked.`
-                        : `Patched ${commitmentBudgetPatchResult.result?.counts?.patched ?? 0}; failed ${commitmentBudgetPatchResult.result?.counts?.failed ?? 0}.`}
+                        : `Created ${commitmentBudgetPatchResult.result?.counts?.ensuredWbsCodes ?? 0} WBS code(s); patched ${commitmentBudgetPatchResult.result?.counts?.patched ?? 0} budget line(s); failed ${commitmentBudgetPatchResult.result?.counts?.failed ?? 0}; unresolved ${commitmentBudgetPatchResult.result?.counts?.unresolvedMissingWbsCodes ?? 0}.`}
                     </div>
                     <CollapsibleJson value={commitmentBudgetPatchResult} />
                   </div>

@@ -1680,18 +1680,6 @@ async function createLineItem(params: {
         path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items?project_id=${encodeURIComponent(
           params.projectId
         )}`,
-        body: params.payload,
-      },
-      {
-        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_item_contract_details?project_id=${encodeURIComponent(
-          params.projectId
-        )}`,
-        body: params.payload,
-      },
-      {
-        path: `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.contractId)}/line_items?project_id=${encodeURIComponent(
-          params.projectId
-        )}`,
         body: { line_item: params.payload },
       },
       {
@@ -2259,6 +2247,16 @@ export async function POST(request: Request) {
     const projectVendorAdds: UnknownRecord[] = [];
     for (const entry of plan) {
       try {
+        const sourceEndpoint = readStr(entry.sourceEndpoint);
+        const allEntryLineItems = Array.isArray(entry.lineItems) ? entry.lineItems as UnknownRecord[] : [];
+        const entryContractPayload = entry.contractPayload as UnknownRecord;
+        const entryChangeOrder = isRecord(entryContractPayload.change_order) ? entryContractPayload.change_order : {};
+        const desiredPcoStatus = sourceEndpoint === "potential_change_orders" ? readStr(entryChangeOrder.status) : "";
+        const stagePcoAsDraft = sourceEndpoint === "potential_change_orders" && cloneLineItems && allEntryLineItems.length > 0;
+        const createPayload = stagePcoAsDraft
+          ? { ...entryContractPayload, change_order: { ...entryChangeOrder, status: "draft" } }
+          : entryContractPayload;
+        const errorsBeforeEntry = errors.length;
         const existingTarget = findExistingTargetContract(
           {
             id: entry.sourceContractId,
@@ -2303,16 +2301,46 @@ export async function POST(request: Request) {
               accessToken,
               companyId: targetCompanyId,
               projectId: targetProjectId,
-              payload: entry.contractPayload as UnknownRecord,
-              sourceEndpoint: readStr(entry.sourceEndpoint),
+              payload: createPayload,
+              sourceEndpoint,
             });
         const createdRecord = isRecord(created) ? created : {};
         const createdContractId = existingTargetId || readStr(createdRecord.id);
+        if (existingTargetId && createdContractId && stagePcoAsDraft) {
+          const staged = await updateContract({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            contractId: createdContractId,
+            payload: compactPayload({
+              project_id: readNum(targetProjectId) ?? targetProjectId,
+              contract_id: entryContractPayload.contract_id ?? existingTarget?.contract_id,
+              change_order: { status: "draft" },
+            }),
+            sourceEndpoint,
+          });
+          contractUpdateResults.push({
+            sourceContractId: entry.sourceContractId,
+            sourceNumber: entry.number,
+            targetContractId: createdContractId,
+            updateMode: "stage_draft_for_line_items",
+            ok: staged.ok,
+            updated: staged,
+          });
+          if (!staged.ok) {
+            errors.push({
+              sourceContractId: entry.sourceContractId,
+              error: "Unable to move the target PCO to draft before adding line items.",
+              update: staged,
+            });
+          }
+        }
         if (existingTargetId && updateExisting && isRecord(entry.contractPayload)) {
           let updatePayload: unknown;
           if (readStr(entry.sourceEndpoint) === "potential_change_orders") {
             const sourcePayload = entry.contractPayload as UnknownRecord;
-            const sourceChange = isRecord(sourcePayload.change_order) ? sourcePayload.change_order : {};
+            const rawSourceChange = isRecord(sourcePayload.change_order) ? sourcePayload.change_order : {};
+            const sourceChange = stagePcoAsDraft ? { ...rawSourceChange, status: "draft" } : rawSourceChange;
             const mergedChange = updateOnlyBlankFields
               ? mergeMissingFields(sourceChange, existingTarget)
               : sourceChange;
@@ -2370,7 +2398,6 @@ export async function POST(request: Request) {
             }).then((result) => result.records).catch(() => [] as UnknownRecord[])
           : [];
 
-        const allEntryLineItems = Array.isArray(entry.lineItems) ? entry.lineItems as UnknownRecord[] : [];
         const lineItemsForBatch = allEntryLineItems.slice(lineItemCreateOffset, lineItemCreateOffset + lineItemCreateLimit);
         if (cloneLineItems && createdContractId && allEntryLineItems.length > 0) {
           for (const line of lineItemsForBatch) {
@@ -2442,6 +2469,43 @@ export async function POST(request: Request) {
                 attemptedPayload: line.payload,
               });
             }
+          }
+        }
+
+        const finishedEntryLineItems = lineItemCreateOffset + lineItemCreateLimit >= allEntryLineItems.length;
+        if (
+          stagePcoAsDraft &&
+          finishedEntryLineItems &&
+          desiredPcoStatus &&
+          desiredPcoStatus.toLowerCase() !== "draft" &&
+          errors.length === errorsBeforeEntry
+        ) {
+          const restored = await updateContract({
+            accessToken,
+            companyId: targetCompanyId,
+            projectId: targetProjectId,
+            contractId: createdContractId,
+            payload: compactPayload({
+              project_id: readNum(targetProjectId) ?? targetProjectId,
+              contract_id: entryContractPayload.contract_id ?? existingTarget?.contract_id,
+              change_order: { status: desiredPcoStatus },
+            }),
+            sourceEndpoint,
+          });
+          contractUpdateResults.push({
+            sourceContractId: entry.sourceContractId,
+            sourceNumber: entry.number,
+            targetContractId: createdContractId,
+            updateMode: "restore_status_after_line_items",
+            ok: restored.ok,
+            updated: restored,
+          });
+          if (!restored.ok) {
+            errors.push({
+              sourceContractId: entry.sourceContractId,
+              error: `Line items were created, but the target PCO status could not be restored to ${desiredPcoStatus}.`,
+              update: restored,
+            });
           }
         }
 

@@ -221,6 +221,25 @@ function normalizeDate(value: unknown): string {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(readStr).filter(Boolean);
+  }
+  return readStr(value)
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function compareStableSourceIds(a: string, b: string): number {
+  const aNum = Number(a);
+  const bNum = Number(b);
+  const aIsNum = Number.isFinite(aNum);
+  const bIsNum = Number.isFinite(bNum);
+  if (aIsNum && bIsNum && aNum !== bNum) return aNum - bNum;
+  return a.localeCompare(b);
+}
+
 function unwrapArray(value: unknown): UnknownRecord[] {
   if (Array.isArray(value)) return value.filter((item): item is UnknownRecord => isRecord(item));
   if (isRecord(value)) {
@@ -1520,6 +1539,8 @@ export async function POST(request: Request) {
     const timecardTimeTypeMap = isRecord(body.timecardTimeTypeMap) ? body.timecardTimeTypeMap : {};
     const partyMap = isRecord(body.partyMap) ? body.partyMap : {};
     const timecardClassificationMap = isRecord(body.timecardClassificationMap) ? body.timecardClassificationMap : {};
+    const productivitySourceIds = parseStringArray(body.productivitySourceIds || body.sourceProductivityIds);
+    const productivitySourceIdSet = new Set(productivitySourceIds);
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId || !startDate || !endDate) {
       return NextResponse.json(
@@ -1590,6 +1611,16 @@ export async function POST(request: Request) {
       ...timecards.filter((row) => !row.mapped).map((row) => ({ type: "timecard_entry", ...row })),
     ];
 
+    const creatableProductivityRows = productivity
+      .filter((row) => row.mapped)
+      .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
+    const selectedCreatableProductivityRows = productivitySourceIdSet.size > 0
+      ? creatableProductivityRows.filter((row) => productivitySourceIdSet.has(row.sourceId))
+      : creatableProductivityRows;
+    const creatableTimecardRows = timecards
+      .filter((row) => row.mapped && !row.existingTargetTimecard)
+      .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
+
     const createResults: UnknownRecord[] = [];
     const createStartedAt = Date.now();
     let attemptedCreateRows = 0;
@@ -1598,7 +1629,7 @@ export async function POST(request: Request) {
     let pauseReason = "";
     if (!dryRun) {
       const addedProjectUserIds = new Set<number>();
-      for (const row of productivity.filter((item) => item.mapped).slice(createOffset, createOffset + createLimit)) {
+      for (const row of selectedCreatableProductivityRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
           pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
@@ -1626,7 +1657,7 @@ export async function POST(request: Request) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      for (const row of timecards.filter((item) => item.mapped && !item.existingTargetTimecard).slice(createOffset, createOffset + createLimit)) {
+      for (const row of creatableTimecardRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
           pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
@@ -1683,6 +1714,7 @@ export async function POST(request: Request) {
         allowProductivityFallback,
         allowPartyNameFallback,
         allowBuiltInPartyFallback,
+        productivitySourceIds,
         productivityLineItemMap,
         timecardTimeTypeMap,
         partyMap,
@@ -1692,10 +1724,10 @@ export async function POST(request: Request) {
         sourceProductivity: sourceProductivity.length,
         sourceTimecards: sourceTimecards.length,
         targetProductivityLineItems: targetLookups.productivityLineItems.length,
-        mappedProductivity: productivity.filter((row) => row.mapped).length,
+        mappedProductivity: creatableProductivityRows.length,
         mappedTimecards: timecards.filter((row) => row.mapped).length,
-        creatableProductivity: productivity.filter((row) => row.mapped).length,
-        creatableTimecards: timecards.filter((row) => row.mapped && !row.existingTargetTimecard).length,
+        creatableProductivity: selectedCreatableProductivityRows.length,
+        creatableTimecards: creatableTimecardRows.length,
         skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
         missingMappings: missingMappings.length,
         createOffset,
@@ -1705,8 +1737,8 @@ export async function POST(request: Request) {
           ? false
           : createOffset + attemptedCreateRows < (
               includeTimecards
-                ? timecards.filter((row) => row.mapped && !row.existingTargetTimecard).length
-                : productivity.filter((row) => row.mapped).length
+                ? creatableTimecardRows.length
+                : selectedCreatableProductivityRows.length
             ),
         pausedBeforeTimeout,
         rateLimited,

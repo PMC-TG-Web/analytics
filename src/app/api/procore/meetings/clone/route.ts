@@ -102,6 +102,11 @@ function normalize(value: unknown): string {
   return readStr(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function hasAlreadyTakenError(payload: unknown): boolean {
+  const text = JSON.stringify(payload || {}).toLowerCase();
+  return /has already been taken|already exists|already taken|duplicate/.test(text);
+}
+
 function compactPayload(value: UnknownRecord) {
   const out: UnknownRecord = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -700,7 +705,7 @@ async function cloneMeetingAgenda(params: {
   let createdTopics = 0;
   let createdCategories = 0;
   let existingTopics = 0;
-  const existingCategories = params.existingTargetMeeting
+  let existingCategories = params.existingTargetMeeting
     ? collectAgendaCategories(params.existingTargetMeeting)
     : [];
 
@@ -708,10 +713,15 @@ async function cloneMeetingAgenda(params: {
     const topics = Array.isArray(category.meeting_topic) ? category.meeting_topic : [];
     const categoryTitle = readStr(category.title);
     const categoryPosition = readNum(category.position);
-    const existingCategory = existingCategories.find((candidate) => (
+    let existingCategory = existingCategories.find((candidate) => (
       normalize(candidate.title || candidate.name) === normalize(categoryTitle) &&
       (categoryPosition === undefined || readNum(candidate.position) === categoryPosition)
     ));
+    if (!existingCategory) {
+      existingCategory = existingCategories.find((candidate) => (
+        normalize(candidate.title || candidate.name) === normalize(categoryTitle)
+      ));
+    }
     let targetCategoryId = readNum(existingCategory?.id);
 
     if (targetCategoryId === undefined) {
@@ -728,13 +738,38 @@ async function cloneMeetingAgenda(params: {
         allowStatuses: [400, 404, 405, 422],
       });
       if (!categoryAttempt.ok) {
-        topicErrors.push({ categoryTitle, error: "category_create_failed", response: categoryAttempt.payload });
-        continue;
+        if (hasAlreadyTakenError(categoryAttempt.payload)) {
+          const refreshedMeeting = await fetchMeetingDetail({
+            accessToken: params.accessToken,
+            companyId: params.companyId,
+            projectId: params.projectId,
+            meetingId: String(params.targetMeetingId),
+          });
+          existingCategories = collectAgendaCategories(refreshedMeeting);
+          existingCategory = existingCategories.find((candidate) => (
+            normalize(candidate.title || candidate.name) === normalize(categoryTitle)
+          ));
+          targetCategoryId = readNum(existingCategory?.id);
+        }
+
+        if (targetCategoryId === undefined) {
+          topicErrors.push({ categoryTitle, error: "category_create_failed", response: categoryAttempt.payload });
+          continue;
+        }
+      } else {
+        const payloadRecord = isRecord(categoryAttempt.payload) ? categoryAttempt.payload : null;
+        const categoryRecord = payloadRecord ? firstRecord(payloadRecord.meeting_category, payloadRecord.data) : null;
+        targetCategoryId = readNum(categoryRecord?.id || payloadRecord?.id);
+        createdCategories += 1;
+        if (targetCategoryId !== undefined) {
+          existingCategories.push({
+            id: targetCategoryId,
+            title: categoryTitle,
+            position: categoryPosition,
+            meeting_topics: [],
+          });
+        }
       }
-      const payloadRecord = isRecord(categoryAttempt.payload) ? categoryAttempt.payload : null;
-      const categoryRecord = payloadRecord ? firstRecord(payloadRecord.meeting_category, payloadRecord.data) : null;
-      targetCategoryId = readNum(categoryRecord?.id || payloadRecord?.id);
-      createdCategories += 1;
     }
 
     const existingTopicKeys = new Set([
@@ -770,7 +805,13 @@ async function cloneMeetingAgenda(params: {
       });
       if (topicAttempt.ok) {
         createdTopics += 1;
+        existingTopicKeys.add(topicKey);
       } else {
+        if (hasAlreadyTakenError(topicAttempt.payload)) {
+          existingTopics += 1;
+          existingTopicKeys.add(topicKey);
+          continue;
+        }
         topicErrors.push({ topic, categoryTitle, error: "topic_create_failed", response: topicAttempt.payload });
       }
     }

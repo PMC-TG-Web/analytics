@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import { resolveCommitmentMappingContext } from "@/lib/commitmentMappingContext";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -431,12 +432,9 @@ function scoreCommitmentMapping(
     }
   }
 
-  const context = `${suffixNorm} ${contractContext}`;
-  if (context.trim()) {
-    const wantsFoundation = /foundation|footing|spread footing|stem wall/.test(context);
-    const wantsWall = /\bwall\b|vertical/.test(context);
-    const wantsSog = /\bsog\b|slab|interior floor|floor/.test(context);
-    const wantsSite = /\bsite\b|sidewalk|patio|porch|landing|turndown|exterior/.test(context);
+  const mappingContext = resolveCommitmentMappingContext(suffixNorm, contractContext);
+  if (mappingContext.context) {
+    const { wantsFoundation, wantsWall, wantsSog, wantsSite } = mappingContext;
 
     if (wantsFoundation) {
       if (/foundation/.test(oldCostName)) score += 10;

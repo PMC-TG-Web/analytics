@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { normalizeProcoreCostItemUnit, normalizeProcoreLaborTimeUnit } from "@/lib/procoreUnits";
 import { PROCORE_PERMANENT_COST_TYPE_BY_CODE } from "@/lib/procorePermanentCostTypeLookup";
+import { canRunLiveBudgetCodePatch } from "@/lib/budgetCodePatchMatching";
 
 const CLONE_PROPOSAL_CONTINUATION_STORAGE_KEY = "procore.cloneProposal.continuation";
 
@@ -6825,7 +6826,10 @@ function ProcoreContent() {
       setCommitmentBudgetPatchError("Target company/project are required.");
       return;
     }
-    if (!dryRun && !options?.skipConfirm && !window.confirm(`Patch blank target budget codes in project ${targetProjectId}?`)) {
+    const liveAction = commitmentBudgetEnsureMissingCodes
+      ? "Create missing WBS codes and patch target budget codes"
+      : "Patch target budget codes";
+    if (!dryRun && !options?.skipConfirm && !window.confirm(`${liveAction} in project ${targetProjectId}?`)) {
       return;
     }
 
@@ -13386,7 +13390,13 @@ function ProcoreContent() {
                   <button
                     type="button"
                     onClick={() => handlePatchCommitmentBudgetCodes(false)}
-                    disabled={commitmentBudgetPatchBusy || !commitmentBudgetPatchResult?.result?.counts?.patchable}
+                    disabled={
+                      commitmentBudgetPatchBusy ||
+                      !canRunLiveBudgetCodePatch(
+                        commitmentBudgetPatchResult?.result?.counts,
+                        commitmentBudgetEnsureMissingCodes
+                      )
+                    }
                     className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-1.5 px-3 rounded text-xs"
                   >
                     {commitmentBudgetPatchBusy ? "Working..." : "Patch Budget Codes"}
@@ -13430,7 +13440,7 @@ function ProcoreContent() {
                     }`}>
                       <strong>Budget Patch Result:</strong>{" "}
                       {commitmentBudgetPatchResult.result?.dryRun
-                        ? `${commitmentBudgetPatchResult.result?.counts?.patchable ?? 0} budget line(s) can be patched; ${commitmentBudgetPatchResult.result?.counts?.blocked ?? 0} blocked.`
+                        ? `${commitmentBudgetPatchResult.result?.counts?.patchable ?? 0} budget line(s) can be patched; ${commitmentBudgetPatchResult.result?.counts?.missingWbsCodes ?? 0} missing WBS code(s) can be created; ${commitmentBudgetPatchResult.result?.counts?.blocked ?? 0} blocked.`
                         : `Patched ${commitmentBudgetPatchResult.result?.counts?.patched ?? 0}; failed ${commitmentBudgetPatchResult.result?.counts?.failed ?? 0}.`}
                     </div>
                     <CollapsibleJson value={commitmentBudgetPatchResult} />

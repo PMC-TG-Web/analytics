@@ -42,3 +42,12 @@ export function procoreFlatCostType(value: unknown) {
   if (["o", "other"].includes(normalized)) return "O";
   return String(value || "").trim().toUpperCase();
 }
+
+export function canRunLiveBudgetCodePatch(
+  counts: { patchable?: unknown; missingWbsCodes?: unknown } | null | undefined,
+  ensureMissingCodes: boolean
+) {
+  const patchable = Number(counts?.patchable || 0);
+  const missingWbsCodes = Number(counts?.missingWbsCodes || 0);
+  return patchable > 0 || (ensureMissingCodes && missingWbsCodes > 0);
+}

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  canRunLiveBudgetCodePatch,
   fixedBudgetCodeMappingForDescription,
   procoreFlatCostType,
   uniqueByIdentity,
@@ -35,4 +36,10 @@ test('workbook subcontractor type S remains S in Procore flat codes', () => {
   assert.equal(procoreFlatCostType('S'), 'S');
   assert.equal(procoreFlatCostType('Subcontractors'), 'S');
   assert.equal(procoreFlatCostType('C'), 'C');
+});
+
+test('live patch is enabled when missing WBS codes will be created first', () => {
+  assert.equal(canRunLiveBudgetCodePatch({ patchable: 0, missingWbsCodes: 1 }, true), true);
+  assert.equal(canRunLiveBudgetCodePatch({ patchable: 0, missingWbsCodes: 1 }, false), false);
+  assert.equal(canRunLiveBudgetCodePatch({ patchable: 1, missingWbsCodes: 0 }, false), true);
 });

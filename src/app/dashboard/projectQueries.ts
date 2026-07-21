@@ -19,7 +19,8 @@ type ProjectsApiResponse = {
 };
 
 async function fetchProjectsPage(params: URLSearchParams): Promise<ProjectsApiResponse> {
-  const response = await fetch(`/api/projects?${params.toString()}`);
+  params.delete('mode');
+  const response = await fetch(`/api/estimating-dashboard?${params.toString()}`);
   if (!response.ok) {
     throw new Error(`Failed projects API call: ${response.status}`);
   }
@@ -155,10 +156,15 @@ export async function getAllProjectsForDashboard(): Promise<Project[]> {
 export async function getProjectLineItems(
   projectNumber: string,
   projectName: string,
-  customer: string
+  customer: string,
+  bidBoardId?: string,
 ): Promise<Project[]> {
   const params = new URLSearchParams();
-  params.set('mode', 'dashboard');
+  if (bidBoardId) {
+    params.set('details', 'true');
+    params.set('bidBoardId', bidBoardId);
+    return fetchAllProjects(params);
+  }
   if (projectNumber) params.set('projectNumber', projectNumber);
   if (projectName) params.set('projectName', projectName);
   if (customer) params.set('customer', customer);

@@ -45,7 +45,8 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
         const projectRows = await getProjectLineItems(
           project.projectNumber || "",
           project.projectName || "",
-          project.customer || ""
+          project.customer || "",
+          project.bidBoardId || project.customFields?.bidBoardId,
         );
 
         const filteredRows = projectRows.filter((row) => {
@@ -274,6 +275,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                   { l: "Estimator", v: project.estimator },
                   { l: "Project Manager", v: project.projectManager },
                   { l: "Project Stage", v: project.projectStage },
+                  { l: "Estimate", v: project.proposalName || project.customFields?.proposalName },
                   { l: "Created", v: formatDate(project.dateCreated) },
                   { l: "Updated", v: formatDate(project.dateUpdated) },
                 ].map(item => (
@@ -285,8 +287,14 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
               </div>
 
               <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-[#15616D] font-bold mb-4 uppercase text-xs tracking-widest">Update Status</h3>
-                <div className="space-y-3">
+                {project.dataSource === "procore-estimating" ? (
+                  <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-xs font-medium text-teal-800">
+                    Status and estimate values are read from Procore.
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-[#15616D] font-bold mb-4 uppercase text-xs tracking-widest">Update Status</h3>
+                    <div className="space-y-3">
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
@@ -314,7 +322,9 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                       {updateMessage.text}
                     </div>
                   )}
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

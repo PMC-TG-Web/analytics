@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
-import { getAllProjectsForDashboard, getDashboardSummary, getProjectsByCustomer, type Project, type DashboardSummary } from "./projectQueries";
+import { getAllProjectsForDashboard, getDashboardSummary, type Project, type DashboardSummary } from "./projectQueries";
 import { 
   calculateAggregated, 
   getProjectDate, 
@@ -127,12 +127,12 @@ function DashboardContent() {
     let customerProjects: Project[] = [];
     
     if (useSummary) {
-      // Lazy load projects for this customer
+      // Aggregate the full opportunity set before filtering by contractor so
+      // multi-GC bids reconcile with the de-duplicated summary totals.
       setLoading(true);
-      const rawCustomerProjects = await getProjectsByCustomer(customerName);
-      // We must apply the same aggregation logic to these raw records
+      const rawProjects = await getAllProjectsForDashboard();
       const { aggregated } = calculateAggregated(
-        rawCustomerProjects.filter(p => !isExcludedFromDashboard(p))
+        rawProjects.filter(p => !isExcludedFromDashboard(p))
       );
       customerProjects = aggregated;
       setLoading(false);
@@ -394,6 +394,9 @@ function DashboardContent() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-teal-800 text-3xl font-black tracking-tight uppercase italic">Paradise Estimating Dashboard</h1>
+          <p className="mt-1 text-xs font-semibold text-gray-500">
+            Procore bid board · baseline estimate where available · current opportunity status
+          </p>
           <button 
             onClick={handleExportCSV}
             className="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded shadow transition-colors flex items-center gap-1"
@@ -508,9 +511,9 @@ function DashboardContent() {
                           if (useSummary) {
                             setLoading(true);
                             const raw = await getAllProjectsForDashboard(); 
-                            const filtered = raw.filter(p => !p.projectArchived && p.status === status);
+                            const filtered = raw.filter(p => !isExcludedFromDashboard(p));
                             const { aggregated } = calculateAggregated(filtered);
-                            setJobsListData(aggregated);
+                            setJobsListData(aggregated.filter(p => p.status === status));
                             setLoading(false);
                           } else {
                             const group = aggregatedProjects.filter(p => p.status === status);

@@ -220,7 +220,20 @@ export async function GET(request: NextRequest) {
               '01-300-10-20' AS scope_code,
               'Project Management' AS labor_description,
               NULL::text AS cost_code_id,
-              c.adjustment_quantity::double precision AS actual_hours,
+              LEAST(
+                c.adjustment_quantity,
+                GREATEST(
+                  c.expected_quantity - COALESCE((
+                    SELECT SUM(COALESCE(t2.hours, t2."totalHoursWorked", 0))
+                    FROM "TimecardEntry" t2
+                    WHERE t2."procoreCompanyId" = c.company_id
+                      AND t2."procoreProjectId" = c.procore_project_id
+                      AND UPPER(BTRIM(COALESCE(t2."costCodeFullCode", ''))) = '01-300-10-20'
+                      AND t2."procoreDeletedAt" IS NULL
+                  ), 0),
+                  0
+                )
+              )::double precision AS actual_hours,
               1::bigint AS entry_count,
               c.accounting_date::timestamp AS entry_date
             FROM forms_productivity_closeouts c

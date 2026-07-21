@@ -124,7 +124,7 @@ type TimecardEntryDetail = {
   createdByName: string | null;
   subJobName: string | null;
   billable: boolean | null;
-  source: "timecard" | "administrative_closeout";
+  source: "timecard" | "productivity_closeout";
 };
 
 type TimecardEntryResponse = {
@@ -493,7 +493,7 @@ function TimecardEntryDrilldown({
               <td className="whitespace-nowrap px-2 py-2.5 text-xs font-bold text-slate-700">{formatDate(entry.date)}</td>
               <td className="max-w-52 px-2 py-2.5">
                 <p className="text-xs font-bold text-slate-700">{entry.employeeName || "—"}</p>
-                {entry.source === "administrative_closeout" && <span className="mt-1 inline-block rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-800">Administrative</span>}
+                {entry.source === "productivity_closeout" && <span className="mt-1 inline-block rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-800">Productivity</span>}
                 {entry.subJobName && <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{entry.subJobName}</p>}
               </td>
               <td className="whitespace-nowrap px-2 py-2.5 text-right text-xs font-black text-indigo-700">{formatNumber(entry.hours)}</td>

@@ -85,12 +85,25 @@ export async function GET(request: NextRequest) {
           'admin-pm-' || c.id::text AS id,
           NULL::text AS procore_id,
           c.accounting_date::timestamp AS date,
-          c.adjustment_quantity::double precision AS hours,
-          'Administrative PM Closeout'::text AS employee_name,
+          LEAST(
+            c.adjustment_quantity,
+            GREATEST(
+              c.expected_quantity - COALESCE((
+                SELECT SUM(COALESCE(t2.hours, t2."totalHoursWorked", 0))
+                FROM "TimecardEntry" t2
+                WHERE t2."procoreCompanyId" = c.company_id
+                  AND t2."procoreProjectId" = c.procore_project_id
+                  AND UPPER(BTRIM(COALESCE(t2."costCodeFullCode", ''))) = '01-300-10-20'
+                  AND t2."procoreDeletedAt" IS NULL
+              ), 0),
+              0
+            )
+          )::double precision AS hours,
+          'PM Productivity Closeout'::text AS employee_name,
           'Project Management'::text AS labor_description,
           '01-300-10-20'::text AS cost_code,
           c.notes_marker AS notes,
-          'Administrative Adjustment'::text AS time_type,
+          'Procore Productivity Adjustment'::text AS time_type,
           c.status,
           NULL::text AS time_in,
           NULL::text AS time_out,
@@ -98,7 +111,7 @@ export async function GET(request: NextRequest) {
           'PMC Analytics'::text AS created_by_name,
           NULL::text AS sub_job_name,
           NULL::boolean AS billable,
-          'administrative_closeout'::text AS source
+          'productivity_closeout'::text AS source
         FROM forms_productivity_closeouts c
         WHERE c.company_id = $1
           AND c.procore_project_id = $2

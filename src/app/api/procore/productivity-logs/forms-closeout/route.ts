@@ -190,7 +190,10 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
             b.timecard_hours
             + CASE
                 WHEN c.status IN ('created', 'detected_existing') AND c.procore_log_id IS NOT NULL
-                  THEN COALESCE(c.adjustment_quantity, 0)
+                  THEN LEAST(
+                    COALESCE(c.adjustment_quantity, 0),
+                    GREATEST(COALESCE(c.expected_quantity, b.expected_quantity) - b.timecard_hours, 0)
+                  )
                 ELSE 0
               END
           )::numeric AS used_quantity,

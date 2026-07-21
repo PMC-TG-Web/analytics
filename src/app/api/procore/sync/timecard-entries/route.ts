@@ -7,6 +7,9 @@ import {
   type ProcoreTimecardEntry,
 } from "@/lib/procoreTimecardEntries";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 type ProcoreProject = Record<string, unknown>;
 
 function parseCsv(value: unknown): string[] {

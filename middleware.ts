@@ -344,8 +344,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow cron/sync — protected by its own CRON_SECRET header check inside the route.
-  if (pathname === '/api/cron/sync' || pathname.startsWith('/api/cron/sync/')) {
+  // Allow cron sync routes — each validates CRON_SECRET/PROCORE_SYNC_SECRET
+  // internally before it can read from Procore or write synchronized data.
+  if (
+    pathname === '/api/cron/sync' ||
+    pathname.startsWith('/api/cron/sync/') ||
+    pathname === '/api/cron/actuals' ||
+    pathname.startsWith('/api/cron/actuals/')
+  ) {
     return NextResponse.next();
   }
 

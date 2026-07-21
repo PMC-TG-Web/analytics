@@ -9,6 +9,9 @@ import {
 } from "@/lib/procorePurchaseOrderLineItemDetails";
 import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 type ProcoreProject = Record<string, unknown>;
 
 const RATE_LIMIT_MAX_RETRIES = 6;

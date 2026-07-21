@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import FormsCloseoutPanel from "./FormsCloseoutPanel";
 
 type ProductivityLine = {
   companyId: string;
@@ -637,6 +638,7 @@ export default function ProductivityAnalyticsPage() {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedPos, setExpandedPos] = useState<Set<string>>(new Set());
   const [expandedLogRows, setExpandedLogRows] = useState<Set<string>>(new Set());
+  const [formsCloseoutOpen, setFormsCloseoutOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -838,6 +840,13 @@ export default function ProductivityAnalyticsPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormsCloseoutOpen(true)}
+                  className="rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20"
+                >
+                  Forms Closeout
+                </button>
                 <button
                   type="button"
                   onClick={() => void loadData()}
@@ -1227,6 +1236,13 @@ export default function ProductivityAnalyticsPage() {
           </div>
         </section>
       </div>
+      <FormsCloseoutPanel
+        open={formsCloseoutOpen}
+        companyId={lines[0]?.companyId || DEFAULT_COMPANY_ID}
+        initialProjectId={projectFilter}
+        onClose={() => setFormsCloseoutOpen(false)}
+        onCompleted={loadData}
+      />
     </main>
   );
 }

@@ -80,8 +80,170 @@ function notesFromLog(log: UnknownRecord): string {
 }
 
 async function loadPreview(companyId: string, projectId: string | null, kind: AdministrativeCloseoutKind) {
+  if (kind === "project_management_closeout") {
+    const managementRows = await prisma.$queryRawUnsafe<DbRow[]>(
+      `
+        WITH budget AS (
+          SELECT
+            b.company_id,
+            b.project_id,
+            SUM(COALESCE(b.quantity, 0))::numeric AS original_expected_hours
+          FROM budgetlineitems b
+          WHERE b.company_id = $1
+            AND ($2::text IS NULL OR b.project_id = $2)
+            AND UPPER(REGEXP_REPLACE(BTRIM(b.cost_code), '\\.L$', '', 'i')) = '01-300-10-20'
+            AND b.cost_code ~* '\\.L$'
+          GROUP BY b.company_id, b.project_id
+        ),
+        approved_changes AS (
+          SELECT
+            c.company_id,
+            c.project_id,
+            SUM(COALESCE(c.labor_hours, 0))::numeric AS approved_change_hours
+          FROM procore_change_order_package_lines c
+          WHERE c.company_id = $1
+            AND ($2::text IS NULL OR c.project_id = $2)
+            AND LOWER(COALESCE(c.package_status, '')) IN ('approved', 'executed', 'complete', 'completed')
+            AND UPPER(
+              COALESCE(
+                NULLIF(REGEXP_REPLACE(BTRIM(c.cost_code), '\\.L$', '', 'i'), ''),
+                NULLIF(REGEXP_REPLACE(BTRIM(c.wbs_code), '\\.L$', '', 'i'), '')
+              )
+            ) = '01-300-10-20'
+          GROUP BY c.company_id, c.project_id
+        ),
+        timecards AS (
+          SELECT
+            t."procoreCompanyId" AS company_id,
+            t."procoreProjectId" AS project_id,
+            SUM(COALESCE(t.hours, t."totalHoursWorked", 0))::numeric AS used_hours,
+            COUNT(*)::bigint AS log_count
+          FROM "TimecardEntry" t
+          WHERE t."procoreCompanyId" = $1
+            AND ($2::text IS NULL OR t."procoreProjectId" = $2)
+            AND UPPER(BTRIM(COALESCE(t."costCodeFullCode", ''))) = '01-300-10-20'
+            AND t."procoreDeletedAt" IS NULL
+          GROUP BY t."procoreCompanyId", t."procoreProjectId"
+        ),
+        scope_projects AS (
+          SELECT company_id, project_id FROM budget
+          UNION
+          SELECT company_id, project_id FROM approved_changes
+        ),
+        management_po AS (
+          SELECT DISTINCT ON (v.company_id, v.project_id)
+            v.company_id,
+            v.project_id,
+            v.contract_id,
+            v.po_number,
+            v.po_title,
+            v.po_status,
+            v.vendor_name,
+            v.line_item_id,
+            v.position
+          FROM analytics_po_line_productivity_v v
+          WHERE v.company_id = $1
+            AND ($2::text IS NULL OR v.project_id = $2)
+            AND UPPER(REGEXP_REPLACE(BTRIM(COALESCE(v.cost_code, '')), '\\.(L|M|S|O)$', '', 'i')) = '01-300-10-20'
+            AND COALESCE(v.description, '') ~* '^\\s*(project\\s+)?management\\s*$'
+          ORDER BY v.company_id, v.project_id, v.position NULLS LAST, v.line_item_id
+        ),
+        base AS (
+          SELECT
+            s.company_id,
+            s.project_id,
+            p.project_number,
+            COALESCE(p.project_name, s.project_id) AS project_name,
+            po.contract_id,
+            po.po_number,
+            po.po_title,
+            COALESCE(po.po_status, 'Approved') AS po_status,
+            po.vendor_name,
+            COALESCE(po.line_item_id, 'labor:01-300-10-20') AS line_item_id,
+            po.position,
+            'Project Management'::text AS description,
+            '01-300-10-20'::text AS cost_code,
+            'hrs'::text AS uom,
+            (COALESCE(b.original_expected_hours, 0) + COALESCE(ch.approved_change_hours, 0))::numeric AS expected_quantity,
+            COALESCE(t.used_hours, 0)::numeric AS timecard_hours,
+            COALESCE(t.log_count, 0)::bigint AS timecard_log_count
+          FROM scope_projects s
+          LEFT JOIN budget b
+            ON b.company_id = s.company_id
+           AND b.project_id = s.project_id
+          LEFT JOIN approved_changes ch
+            ON ch.company_id = s.company_id
+           AND ch.project_id = s.project_id
+          LEFT JOIN timecards t
+            ON t.company_id = s.company_id
+           AND t.project_id = s.project_id
+          LEFT JOIN pmc_projects p
+            ON p.company_id = s.company_id
+           AND p.procore_project_id = s.project_id
+          LEFT JOIN management_po po
+            ON po.company_id = s.company_id
+           AND po.project_id = s.project_id
+        )
+        SELECT
+          b.*,
+          (
+            b.timecard_hours
+            + CASE
+                WHEN c.status IN ('created', 'detected_existing') AND c.procore_log_id IS NOT NULL
+                  THEN COALESCE(c.adjustment_quantity, 0)
+                ELSE 0
+              END
+          )::numeric AS used_quantity,
+          (b.timecard_log_count + CASE WHEN c.status IN ('created', 'detected_existing') AND c.procore_log_id IS NOT NULL THEN 1 ELSE 0 END)::bigint AS productivity_log_count,
+          c.status AS closeout_status,
+          c.procore_log_id,
+          c.expected_quantity AS closeout_expected_quantity,
+          c.adjustment_quantity AS closeout_adjustment_quantity,
+          c.accounting_date AS closeout_accounting_date,
+          c.error AS closeout_error
+        FROM base b
+        LEFT JOIN forms_productivity_closeouts c
+          ON c.company_id = b.company_id
+         AND c.procore_project_id = b.project_id
+         AND c.line_item_id = b.line_item_id
+         AND c.kind = 'project_management_closeout'
+        WHERE b.expected_quantity > 0
+        ORDER BY b.project_name, b.project_id
+      `,
+      companyId,
+      projectId
+    );
+    return mapPreviewRows(managementRows, kind);
+  }
+
   const rows = await prisma.$queryRawUnsafe<DbRow[]>(
     `
+      WITH management_timecards AS (
+        SELECT
+          t."procoreCompanyId" AS company_id,
+          t."procoreProjectId" AS project_id,
+          SUM(COALESCE(t.hours, t."totalHoursWorked", 0))::numeric AS used_hours,
+          COUNT(*)::bigint AS log_count
+        FROM "TimecardEntry" t
+        WHERE t."procoreCompanyId" = $1
+          AND ($2::text IS NULL OR t."procoreProjectId" = $2)
+          AND UPPER(BTRIM(COALESCE(t."costCodeFullCode", ''))) = '01-300-10-20'
+          AND t."procoreDeletedAt" IS NULL
+        GROUP BY t."procoreCompanyId", t."procoreProjectId"
+      ),
+      management_adjustments AS (
+        SELECT
+          c.company_id,
+          c.procore_project_id AS project_id,
+          SUM(c.adjustment_quantity)::numeric AS used_hours,
+          COUNT(*)::bigint AS log_count
+        FROM forms_productivity_closeouts c
+        WHERE c.company_id = $1
+          AND ($2::text IS NULL OR c.procore_project_id = $2)
+          AND c.kind = 'project_management_closeout'
+          AND c.status IN ('created', 'detected_existing')
+        GROUP BY c.company_id, c.procore_project_id
+      )
       SELECT
         v.company_id,
         v.project_id,
@@ -98,8 +260,16 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
         v.cost_code,
         v.uom,
         v.expected_quantity,
-        v.used_quantity,
-        v.productivity_log_count,
+        CASE
+          WHEN $3 = 'project_management_closeout'
+            THEN COALESCE(mt.used_hours, 0) + COALESCE(ma.used_hours, 0)
+          ELSE v.used_quantity
+        END AS used_quantity,
+        CASE
+          WHEN $3 = 'project_management_closeout'
+            THEN COALESCE(mt.log_count, 0) + COALESCE(ma.log_count, 0)
+          ELSE v.productivity_log_count
+        END AS productivity_log_count,
         c.status AS closeout_status,
         c.procore_log_id,
         c.expected_quantity AS closeout_expected_quantity,
@@ -115,6 +285,12 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
        AND c.procore_project_id = v.project_id
        AND c.line_item_id = v.line_item_id
        AND c.kind = $3
+      LEFT JOIN management_timecards mt
+        ON mt.company_id = v.company_id
+       AND mt.project_id = v.project_id
+      LEFT JOIN management_adjustments ma
+        ON ma.company_id = v.company_id
+       AND ma.project_id = v.project_id
       WHERE v.company_id = $1
         AND ($2::text IS NULL OR v.project_id = $2)
         AND COALESCE(v.expected_quantity, 0) > 0
@@ -142,12 +318,17 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
     [...FORMS_COST_CODES]
   );
 
-  const lines = rows.map((row) => {
-    const seeded = ["created", "detected_existing"].includes(String(row.closeout_status || ""));
+  return mapPreviewRows(rows, kind);
+}
+
+function mapPreviewRows(rows: DbRow[], kind: AdministrativeCloseoutKind) {
+  return rows.map((row) => {
+    const seeded = ["created", "detected_existing"].includes(String(row.closeout_status || ""))
+      && (kind !== "project_management_closeout" || Boolean(toText(row.procore_log_id)));
     const classifier = kind === "project_management_closeout"
       ? classifyProjectManagementCloseoutLine
       : classifyFormsCloseoutLine;
-    const classification = classifier({
+    let classification = classifier({
       poStatus: toText(row.po_status),
       costCode: toText(row.cost_code),
       description: toText(row.description),
@@ -156,6 +337,13 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
       usedQuantity: toNumber(row.used_quantity),
       seeded,
     });
+    if (kind === "project_management_closeout" && String(row.line_item_id).startsWith("labor:")) {
+      classification = {
+        ...classification,
+        disposition: "review",
+        reason: "No approved Project Management PO line is available for the required Procore productivity entry.",
+      };
+    }
 
     return {
       companyId: String(row.company_id),
@@ -191,7 +379,6 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
     };
   });
 
-  return lines;
 }
 
 function summarize(lines: Awaited<ReturnType<typeof loadPreview>>) {
@@ -395,7 +582,11 @@ export async function POST(request: NextRequest) {
 
       for (const line of candidates) {
         const state = liveState.get(line.lineItemId) || { used: 0, markerLog: null };
-        const liveUsed = roundQuantity(state.used);
+        const liveUsed = roundQuantity(
+          kind === "project_management_closeout"
+            ? line.usedQuantity + state.used
+            : state.used
+        );
         const adjustment = roundQuantity(line.expectedQuantity - liveUsed);
         const marker = administrativeCloseoutMarker(kind, line.lineItemId);
 
@@ -404,7 +595,7 @@ export async function POST(request: NextRequest) {
           await recordCloseout({
             kind,
             companyId, projectId, lineItemId: line.lineItemId, expectedQuantity: line.expectedQuantity,
-            usedBefore: liveUsed, adjustmentQuantity: 0, uom: line.uom, accountingDate,
+            usedBefore: Math.max(0, liveUsed - quantityUsedFromLog(state.markerLog)), adjustmentQuantity: quantityUsedFromLog(state.markerLog), uom: line.uom, accountingDate,
             status: "detected_existing", procoreLogId, payload: state.markerLog,
           });
           results.push({ lineItemId: line.lineItemId, status: "skipped", reason: "Existing marked closeout log found in Procore.", procoreLogId });

@@ -56,7 +56,8 @@ export async function GET(request: NextRequest) {
           WHERE t."procoreCompanyId" = $1
             AND t."procoreProjectId" = $2
             AND t."procoreDeletedAt" IS NULL
-        )
+        ),
+        labor_logs AS (
         SELECT
           id,
           "procoreId" AS procore_id,
@@ -73,10 +74,42 @@ export async function GET(request: NextRequest) {
           "lunchTime" AS lunch_time,
           NULLIF(BTRIM("createdByName"), '') AS created_by_name,
           NULLIF(BTRIM("subJobName"), '') AS sub_job_name,
-          billable
+          billable,
+          'timecard'::text AS source
         FROM timecards
         WHERE scope_code = $3
-        ORDER BY date DESC, employee_name NULLS LAST, "procoreId" NULLS LAST, id
+
+        UNION ALL
+
+        SELECT
+          'admin-pm-' || c.id::text AS id,
+          NULL::text AS procore_id,
+          c.accounting_date::timestamp AS date,
+          c.adjustment_quantity::double precision AS hours,
+          'Administrative PM Closeout'::text AS employee_name,
+          'Project Management'::text AS labor_description,
+          '01-300-10-20'::text AS cost_code,
+          c.notes_marker AS notes,
+          'Administrative Adjustment'::text AS time_type,
+          c.status,
+          NULL::text AS time_in,
+          NULL::text AS time_out,
+          NULL::double precision AS lunch_time,
+          'PMC Analytics'::text AS created_by_name,
+          NULL::text AS sub_job_name,
+          NULL::boolean AS billable,
+          'administrative_closeout'::text AS source
+        FROM forms_productivity_closeouts c
+        WHERE c.company_id = $1
+          AND c.procore_project_id = $2
+          AND $3 = '01-300-10-20'
+          AND c.kind = 'project_management_closeout'
+          AND c.status IN ('created', 'detected_existing')
+          AND c.procore_log_id IS NOT NULL
+        )
+        SELECT *
+        FROM labor_logs
+        ORDER BY date DESC, employee_name NULLS LAST, procore_id NULLS LAST, id
       `,
       companyId,
       projectId,
@@ -100,6 +133,7 @@ export async function GET(request: NextRequest) {
       createdByName: toText(row.created_by_name),
       subJobName: toText(row.sub_job_name),
       billable: typeof row.billable === 'boolean' ? row.billable : null,
+      source: toText(row.source) || 'timecard',
     }));
 
     return NextResponse.json({

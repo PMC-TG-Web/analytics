@@ -191,33 +191,61 @@ export async function GET(request: NextRequest) {
                 )
               )
           ),
-          actual AS (
+          actual_entries AS (
             SELECT
               t."procoreCompanyId" AS company_id,
               t."procoreProjectId" AS project_id,
               UPPER(COALESCE(NULLIF(BTRIM(t."costCodeFullCode"), ''), '(UNASSIGNED)')) AS scope_code,
-              MAX(
-                COALESCE(
-                  NULLIF(BTRIM(t."costCodeName"), ''),
-                  NULLIF(BTRIM(t.description), ''),
-                  NULLIF(BTRIM(t."costCodeFullCode"), ''),
-                  'Uncategorized Labor'
-                )
+              COALESCE(
+                NULLIF(BTRIM(t."costCodeName"), ''),
+                NULLIF(BTRIM(t.description), ''),
+                NULLIF(BTRIM(t."costCodeFullCode"), ''),
+                'Uncategorized Labor'
               ) AS labor_description,
-              MAX(NULLIF(BTRIM(t."costCodeId"), '')) AS cost_code_id,
-              SUM(COALESCE(t.hours, t."totalHoursWorked", 0))::double precision AS actual_hours,
-              COUNT(*)::bigint AS entry_count,
-              MIN(t.date) AS first_entry_date,
-              MAX(t.date) AS last_entry_date
+              NULLIF(BTRIM(t."costCodeId"), '') AS cost_code_id,
+              COALESCE(t.hours, t."totalHoursWorked", 0)::double precision AS actual_hours,
+              1::bigint AS entry_count,
+              t.date AS entry_date
             FROM "TimecardEntry" t
             WHERE t."procoreCompanyId" = $1
               AND ($2::text IS NULL OR t."procoreProjectId" = $2)
               AND t."procoreProjectId" IS NOT NULL
               AND t."procoreDeletedAt" IS NULL
+
+            UNION ALL
+
+            SELECT
+              c.company_id,
+              c.procore_project_id AS project_id,
+              '01-300-10-20' AS scope_code,
+              'Project Management' AS labor_description,
+              NULL::text AS cost_code_id,
+              c.adjustment_quantity::double precision AS actual_hours,
+              1::bigint AS entry_count,
+              c.accounting_date::timestamp AS entry_date
+            FROM forms_productivity_closeouts c
+            WHERE c.company_id = $1
+              AND ($2::text IS NULL OR c.procore_project_id = $2)
+              AND c.kind = 'project_management_closeout'
+              AND c.status IN ('created', 'detected_existing')
+              AND c.procore_log_id IS NOT NULL
+          ),
+          actual AS (
+            SELECT
+              company_id,
+              project_id,
+              scope_code,
+              MAX(labor_description) AS labor_description,
+              MAX(cost_code_id) AS cost_code_id,
+              SUM(actual_hours)::double precision AS actual_hours,
+              SUM(entry_count)::bigint AS entry_count,
+              MIN(entry_date) AS first_entry_date,
+              MAX(entry_date) AS last_entry_date
+            FROM actual_entries
             GROUP BY
-              t."procoreCompanyId",
-              t."procoreProjectId",
-              UPPER(COALESCE(NULLIF(BTRIM(t."costCodeFullCode"), ''), '(UNASSIGNED)'))
+              company_id,
+              project_id,
+              scope_code
           ),
           scope_keys AS (
             SELECT company_id, project_id, scope_code FROM budget

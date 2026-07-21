@@ -124,6 +124,7 @@ type TimecardEntryDetail = {
   createdByName: string | null;
   subJobName: string | null;
   billable: boolean | null;
+  source: "timecard" | "administrative_closeout";
 };
 
 type TimecardEntryResponse = {
@@ -492,6 +493,7 @@ function TimecardEntryDrilldown({
               <td className="whitespace-nowrap px-2 py-2.5 text-xs font-bold text-slate-700">{formatDate(entry.date)}</td>
               <td className="max-w-52 px-2 py-2.5">
                 <p className="text-xs font-bold text-slate-700">{entry.employeeName || "—"}</p>
+                {entry.source === "administrative_closeout" && <span className="mt-1 inline-block rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-800">Administrative</span>}
                 {entry.subJobName && <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{entry.subJobName}</p>}
               </td>
               <td className="whitespace-nowrap px-2 py-2.5 text-right text-xs font-black text-indigo-700">{formatNumber(entry.hours)}</td>
@@ -538,7 +540,7 @@ function LaborDrilldown({ projectId, groups }: { projectId: string; groups: Labo
           <div>
             <p className="text-sm font-black text-slate-900">Labor</p>
             <p className="mt-1 text-xs font-semibold text-slate-500">
-              {groups.length} description{groups.length === 1 ? "" : "s"} · {formatNumber(entryCount)} timecard {entryCount === 1 ? "entry" : "entries"}
+              {groups.length} description{groups.length === 1 ? "" : "s"} · {formatNumber(entryCount)} labor {entryCount === 1 ? "log" : "logs"}
             </p>
           </div>
         </div>
@@ -550,7 +552,7 @@ function LaborDrilldown({ projectId, groups }: { projectId: string; groups: Labo
       {open && (
         groups.length === 0 ? (
           <div className="border-t border-indigo-100 px-4 py-5 text-xs font-bold text-slate-500">
-            No labor budget lines or timecards are stored for this project.
+            No labor budget lines or labor logs are stored for this project.
           </div>
         ) : (
           <div className="overflow-x-auto border-t border-indigo-100">

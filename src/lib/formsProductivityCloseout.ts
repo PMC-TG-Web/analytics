@@ -152,13 +152,13 @@ export function classifyProjectManagementCloseoutLine(
   if (!/^(?:project\s+)?management$/i.test(description)) {
     return { disposition: "review", reason: "The description is not an exact Management or Project Management line.", remainingQuantity, normalizedCostCode, normalizedUom };
   }
-  if (normalizedUom !== "EA") {
-    return { disposition: "review", reason: `Unit ${normalizedUom || "(blank)"} needs review; Project Management closeout requires EA.`, remainingQuantity, normalizedCostCode, normalizedUom };
+  if (!new Set(["EA", "HR", "HRS", "HOUR", "HOURS"]).has(normalizedUom)) {
+    return { disposition: "review", reason: `Unit ${normalizedUom || "(blank)"} needs review; Project Management closeout requires hours.`, remainingQuantity, normalizedCostCode, normalizedUom };
   }
 
   return {
     disposition: "ready",
-    reason: "Ready to add the unaccounted expected Project Management quantity.",
+    reason: "Ready to add the unaccounted expected Project Management hours in Procore.",
     remainingQuantity,
     normalizedCostCode,
     normalizedUom,

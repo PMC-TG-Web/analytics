@@ -137,7 +137,8 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
   const runProject = async () => {
     if (!projectId || !accountingDate || readyLines.length === 0) return;
     const project = projects.find((item) => item.id === projectId);
-    if (!window.confirm(`Create ${readyLines.length} ${closeoutLabel} closeout log${readyLines.length === 1 ? "" : "s"} for ${project?.label || projectId} on ${accountingDate}?`)) return;
+    const measurement = closeoutType === "project_management_closeout" ? "hour" : "quantity";
+    if (!window.confirm(`Create ${readyLines.length} ${closeoutLabel} closeout ${measurement} log${readyLines.length === 1 ? "" : "s"} for ${project?.label || projectId} on ${accountingDate}?`)) return;
 
     setRunning(true);
     setError(null);
@@ -176,7 +177,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-teal-300">Administrative productivity</p>
             <h2 className="mt-1 text-xl font-black">Administrative Closeout</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-300">Adds only the difference between expected and live used quantity. Review lines are never created automatically.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-300">Adds only the difference between expected and currently used amounts. Review lines are never created automatically.</p>
           </div>
           <button type="button" onClick={onClose} disabled={running} className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-black uppercase tracking-wider hover:bg-white/10 disabled:opacity-50">Close</button>
         </div>
@@ -218,7 +219,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
           <button type="button" onClick={() => void runProject()} disabled={running || loading || !accountingDate || readyLines.length === 0} className="rounded-lg bg-teal-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50">
             {running ? "Creating…" : `Run ${readyLines.length} ready lines`}
           </button>
-          <p className="text-[11px] font-semibold text-slate-500 md:col-span-3">Selected {closeoutLabel} project: {formatQuantity(readyQuantity)} total units proposed. Choose a deliberate administrative date; the tool does not default to today.</p>
+          <p className="text-[11px] font-semibold text-slate-500 md:col-span-3">Selected {closeoutLabel} project: {formatQuantity(readyQuantity)} total {closeoutType === "project_management_closeout" ? "hours" : "units"} proposed. Choose a deliberate administrative date; the tool does not default to today.</p>
         </div>
 
         {(error || message) && <div className={`mx-4 mt-4 rounded-lg border px-3 py-2 text-sm font-bold ${error ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error || message}</div>}
@@ -233,7 +234,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
                     <tr key={line.lineItemId} className="align-top">
                       <td className="whitespace-nowrap px-3 py-3 text-xs font-bold text-slate-700"><p>{line.poNumber || line.poTitle || "No PO"} · {line.position ?? "—"}</p><p className="mt-1 font-mono text-[9px] text-slate-400">{line.lineItemId}</p></td>
                       <td className="max-w-sm px-3 py-3 text-xs font-bold text-slate-800">{line.description || "No description"}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-600">{line.costCode || "—"}<br /><span className="text-[10px] text-slate-400">{line.uom || "No UOM"}</span></td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-600">{line.costCode || "—"}<br /><span className="text-[10px] text-slate-400">{closeoutType === "project_management_closeout" ? "HRS" : (line.uom || "No UOM")}</span></td>
                       <td className="px-3 py-3 text-right text-xs font-black text-slate-800">{formatQuantity(line.expectedQuantity)}</td>
                       <td className="px-3 py-3 text-right text-xs font-black text-teal-700">{formatQuantity(line.usedQuantity)}</td>
                       <td className="px-3 py-3 text-right text-xs font-black text-slate-800">{line.disposition === "ready" ? formatQuantity(line.proposedQuantity) : "—"}</td>

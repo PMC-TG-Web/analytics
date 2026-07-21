@@ -231,7 +231,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
                 <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2">PO / Line</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Code</th><th className="px-3 py-2 text-right">Expected</th><th className="px-3 py-2 text-right">Used</th><th className="px-3 py-2 text-right">Proposed</th><th className="px-3 py-2">Status</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {visibleLines.map((line) => (
-                    <tr key={line.lineItemId} className="align-top">
+                    <tr key={`${line.projectId}:${line.lineItemId}`} className="align-top">
                       <td className="whitespace-nowrap px-3 py-3 text-xs font-bold text-slate-700"><p>{line.poNumber || line.poTitle || "No PO"} · {line.position ?? "—"}</p><p className="mt-1 font-mono text-[9px] text-slate-400">{line.lineItemId}</p></td>
                       <td className="max-w-sm px-3 py-3 text-xs font-bold text-slate-800">{line.description || "No description"}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-600">{line.costCode || "—"}<br /><span className="text-[10px] text-slate-400">{closeoutType === "project_management_closeout" ? "HRS" : (line.uom || "No UOM")}</span></td>

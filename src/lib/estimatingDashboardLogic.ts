@@ -9,6 +9,8 @@ export type EstimateProposalCandidate = {
 export type EstimateAmountLine = {
   name?: string | null;
   costCode?: string | null;
+  uom?: string | null;
+  quantity?: unknown;
   itemCost?: unknown;
   itemSales?: unknown;
   laborCost?: unknown;
@@ -109,6 +111,47 @@ export function classifyLaborGroup(line: Pick<EstimateAmountLine, "name" | "cost
   if (/\b(site\s+concrete|bollard|waterstop|stone\s+grad)\b/.test(text)) return "Site Concrete Labor";
   if (/\btravel\b/.test(text)) return "Travel Labor";
   return "Other Labor";
+}
+
+export const CONCRETE_GROUPS = [
+  "Slab On Grade",
+  "Site",
+  "Wall",
+  "Foundation",
+] as const;
+
+export type ConcreteGroup = typeof CONCRETE_GROUPS[number];
+
+export function concreteYardQuantity(line: Pick<EstimateAmountLine, "name" | "uom" | "quantity">): number {
+  const name = String(line.name ?? "").trim().toLowerCase();
+  const uom = String(line.uom ?? "").trim().toUpperCase();
+  const supportedUom = ["CU_YD", "CU YD", "CY", "CYD", "CUBIC YARD", "CUBIC YARDS", "EA"].includes(uom);
+  if (!supportedUom || !name.includes("concrete")) return 0;
+
+  // These are concrete-adjacent costs or measured scopes, not ready-mix yards.
+  if (/\b(labor|form|pump|fee|wash\s*out|washout|epoxy|repair|subcontract|saw|sealer|joint|infill)\b/.test(name)) {
+    return 0;
+  }
+
+  const quantity = numericValue(line.quantity);
+  return quantity > 0 ? quantity : 0;
+}
+
+export function classifyConcreteGroup(
+  line: Pick<EstimateAmountLine, "name">,
+  scopeLaborGroup?: string | null,
+): ConcreteGroup | null {
+  const name = String(line.name ?? "").trim().toLowerCase();
+  if (/\b(slab\s+on\s+grade|sog)\b/.test(name)) return "Slab On Grade";
+  if (/\bwall\b/.test(name)) return "Wall";
+  if (/\b(foundation|footing|spreadfooting|pier)\b/.test(name)) return "Foundation";
+  if (/\b(site|bollard|curb|sidewalk|apron)\b/.test(name)) return "Site";
+
+  if (scopeLaborGroup === "Slab On Grade Labor") return "Slab On Grade";
+  if (scopeLaborGroup === "Site Concrete Labor") return "Site";
+  if (scopeLaborGroup === "Wall Labor") return "Wall";
+  if (scopeLaborGroup === "Foundation Labor") return "Foundation";
+  return null;
 }
 
 export function classifyEstimateCostType(line: EstimateAmountLine): string {

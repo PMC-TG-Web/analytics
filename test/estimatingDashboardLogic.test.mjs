@@ -4,13 +4,29 @@ import assert from 'node:assert/strict';
 import {
   addEstimateLineAmounts,
   canonicalBidBoardId,
+  classifyConcreteGroup,
   classifyLaborGroup,
+  concreteYardQuantity,
   selectEstimateProposal,
 } from '../src/lib/estimatingDashboardLogic.ts';
 
 test('legacy company-prefixed and current bid-board IDs resolve to one identity', () => {
   assert.equal(canonicalBidBoardId('598134325805519:562949955854696'), '562949955854696');
   assert.equal(canonicalBidBoardId('562949955854696'), '562949955854696');
+});
+
+test('ready-mix counts in both CU_YD and legacy EA units are treated as yards', () => {
+  assert.equal(concreteYardQuantity({ name: '4000 PSI Concrete', uom: 'CU_YD', quantity: '30.5' }), 30.5);
+  assert.equal(concreteYardQuantity({ name: '3000 PSI Rohrers Concrete', uom: 'EA', quantity: '545' }), 545);
+  assert.equal(concreteYardQuantity({ name: 'Concrete Wash Out Fee', uom: 'CU_YD', quantity: '2' }), 0);
+  assert.equal(concreteYardQuantity({ name: 'Concrete Repair Epoxy', uom: 'EA', quantity: '12' }), 0);
+});
+
+test('generic concrete inherits the placement category from labor in its estimate group', () => {
+  assert.equal(classifyConcreteGroup({ name: '4000 PSI Heritage Concrete' }, 'Site Concrete Labor'), 'Site');
+  assert.equal(classifyConcreteGroup({ name: '3500 PSI Concrete' }, 'Foundation Labor'), 'Foundation');
+  assert.equal(classifyConcreteGroup({ name: 'Wall Concrete' }, 'Site Concrete Labor'), 'Wall');
+  assert.equal(classifyConcreteGroup({ name: 'Slab On Grade Concrete' }, 'Site Concrete Labor'), 'Slab On Grade');
 });
 
 test('baseline estimate wins over a newer revision or change order', () => {

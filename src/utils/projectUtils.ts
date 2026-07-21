@@ -188,6 +188,24 @@ export function calculateAggregated(projects: Project[]): { aggregated: Project[
       baseProject.pmcBreakdown = mergedPmcGroup;
     }
 
+    const mergedConcreteGroup: Record<string, number> = {};
+    let anyHasConcreteGroup = false;
+    for (const p of rowsToSum) {
+      const concrete = p.concreteGroup;
+      if (concrete && typeof concrete === 'object' && !Array.isArray(concrete)) {
+        anyHasConcreteGroup = true;
+        for (const [category, yards] of Object.entries(concrete)) {
+          const quantity = Number(yards) || 0;
+          if (quantity > 0) {
+            mergedConcreteGroup[category] = (mergedConcreteGroup[category] || 0) + quantity;
+          }
+        }
+      }
+    }
+    if (anyHasConcreteGroup) {
+      baseProject.concreteGroup = mergedConcreteGroup;
+    }
+
     const mostRecentProject = rowsToSum.reduce((latest, current) => {
       const latestDate = getProjectDate(latest);
       const currentDate = getProjectDate(current);

@@ -177,7 +177,7 @@ function DashboardContent() {
       if (isExcludedFromDashboard(p)) return;
       
       if (!groups[status]) {
-        groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {} };
+        groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {}, concreteByGroup: {} };
       }
       
       groups[status].sales += (p.sales ?? 0);
@@ -208,6 +208,16 @@ function DashboardContent() {
         if (h > 0) {
           groups[status].laborByGroup['Unassigned'] = (groups[status].laborByGroup['Unassigned'] || 0) + h;
         }
+      }
+
+      const concreteSource = p.concreteGroup && typeof p.concreteGroup === 'object'
+        ? p.concreteGroup as Record<string, number>
+        : null;
+      if (concreteSource) {
+        Object.entries(concreteSource).forEach(([group, yards]) => {
+          const value = Number(yards) || 0;
+          if (value > 0) groups[status].concreteByGroup[group] = (groups[status].concreteByGroup[group] || 0) + value;
+        });
       }
     });
     
@@ -253,6 +263,19 @@ function DashboardContent() {
     }));
 
     return { totalHours, breakdown };
+  }, [displayStatusGroups]);
+
+  const bidSubmittedConcrete = useMemo(() => {
+    const labels = ['Slab On Grade', 'Site', 'Wall', 'Foundation'];
+    const concreteByGroup = (displayStatusGroups['Bid Submitted']?.concreteByGroup ?? {}) as Record<string, number>;
+    const totals = Object.fromEntries(labels.map(label => [label, Number(concreteByGroup[label]) || 0]));
+    const totalYards = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    const breakdown = Object.entries(totals).map(([label, yards]) => ({
+      label,
+      yards,
+      percent: totalYards > 0 ? (yards / totalYards) * 100 : 0,
+    }));
+    return { totalYards, breakdown };
   }, [displayStatusGroups]);
 
   // All status labor breakdown (across all project statuses)
@@ -618,6 +641,40 @@ function DashboardContent() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Bid Submitted Concrete Card */}
+            <div className="bg-teal-900 rounded-3xl p-6 shadow-xl shadow-teal-900/10 flex flex-col border border-teal-800">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="font-black text-xl text-white uppercase tracking-tight italic">Estimated Concrete Distro</h3>
+                <div className="px-2 py-1 bg-white/10 rounded text-[9px] font-black text-orange-300 uppercase tracking-widest leading-none">Pre-Con</div>
+              </div>
+
+              <div className="mb-6 bg-white/5 rounded-2xl p-4 border border-white/5">
+                <span className="text-[10px] font-black text-teal-200 uppercase tracking-widest block mb-1">Total Estimated Concrete</span>
+                <span className="text-3xl font-black text-orange-300">
+                  {bidSubmittedConcrete.totalYards.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                  <span className="ml-1 text-sm text-orange-200/60">CY</span>
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[9px] font-black text-teal-300/60 uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                  Backlog Breakdown
+                </div>
+                {bidSubmittedConcrete.breakdown.map((item) => (
+                  <div key={item.label} className="bg-white/5 rounded-xl px-3 py-2 border border-white/5 group hover:bg-white/10 transition-colors">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] text-teal-100/70 font-bold uppercase tracking-tight">{item.label}</span>
+                      <span className="text-[10px] text-orange-300 font-black">{item.percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</span>
+                    </div>
+                    <div className="text-sm font-black text-white">
+                      {item.yards.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-[10px] opacity-40">CY</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

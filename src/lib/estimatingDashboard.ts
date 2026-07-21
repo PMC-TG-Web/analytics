@@ -3,8 +3,10 @@ import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import {
   addEstimateLineAmounts,
   canonicalBidBoardId,
+  classifyConcreteGroup,
   classifyEstimateCostType,
   classifyLaborGroup,
+  concreteYardQuantity,
   numericValue,
   selectEstimateProposal,
 } from "@/lib/estimatingDashboardLogic";
@@ -30,6 +32,7 @@ export type EstimatingDashboardProject = {
   laborCost: number;
   pmcGroup: Record<string, number>;
   pmcBreakdown: Record<string, number>;
+  concreteGroup: Record<string, number>;
   dateCreated?: string | null;
   dateUpdated?: string | null;
   estimator?: string | null;
@@ -50,6 +53,7 @@ type DashboardSummary = {
     hours: number;
     count: number;
     laborByGroup: Record<string, number>;
+    concreteByGroup: Record<string, number>;
   }>;
   contractors: Record<string, {
     sales: number;
@@ -112,7 +116,10 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         bidBoardProjectId: true,
         proposalId: true,
         name: true,
+        groupId: true,
         costCode: true,
+        uom: true,
+        quantity: true,
         itemCost: true,
         itemSales: true,
         laborCost: true,
@@ -162,12 +169,36 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     laborCost: number;
     lineCount: number;
     laborByGroup: Record<string, number>;
+    concreteByGroup: Record<string, number>;
   }>();
 
-  for (const line of lineRows) {
+  const selectedLines = lineRows.filter((line) => {
     const boardId = canonicalBidBoardId(line.bidBoardProjectId);
-    const selected = selectedByBoard.get(boardId);
-    if (!selected || selected.proposalId !== line.proposalId) continue;
+    return selectedByBoard.get(boardId)?.proposalId === line.proposalId;
+  });
+
+  // A generic mix name such as "4000 PSI Concrete" inherits its placement
+  // category from the production labor in the same Procore estimate group.
+  const scopeLaborWeights = new Map<string, Record<string, number>>();
+  for (const line of selectedLines) {
+    const hours = numericValue(line.laborHours);
+    if (hours <= 0 || !line.groupId) continue;
+    const laborGroup = classifyLaborGroup(line);
+    if (!["Slab On Grade Labor", "Site Concrete Labor", "Wall Labor", "Foundation Labor"].includes(laborGroup)) continue;
+    const scopeKey = `${canonicalBidBoardId(line.bidBoardProjectId)}:${line.proposalId}:${line.groupId}`;
+    const weights = scopeLaborWeights.get(scopeKey) ?? {};
+    weights[laborGroup] = (weights[laborGroup] ?? 0) + hours;
+    scopeLaborWeights.set(scopeKey, weights);
+  }
+
+  const scopeLaborGroup = new Map<string, string>();
+  for (const [key, weights] of scopeLaborWeights) {
+    const selected = Object.entries(weights).sort((left, right) => right[1] - left[1])[0]?.[0];
+    if (selected) scopeLaborGroup.set(key, selected);
+  }
+
+  for (const line of selectedLines) {
+    const boardId = canonicalBidBoardId(line.bidBoardProjectId);
 
     const totals = totalsByBoard.get(boardId) ?? {
       sales: 0,
@@ -177,6 +208,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       laborCost: 0,
       lineCount: 0,
       laborByGroup: {},
+      concreteByGroup: {},
     };
     addEstimateLineAmounts(totals, line);
     totals.lineCount += 1;
@@ -184,6 +216,14 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     if (hours > 0) {
       const group = classifyLaborGroup(line);
       totals.laborByGroup[group] = (totals.laborByGroup[group] ?? 0) + hours;
+    }
+    const yards = concreteYardQuantity(line);
+    if (yards > 0) {
+      const scopeKey = line.groupId ? `${boardId}:${line.proposalId}:${line.groupId}` : "";
+      const concreteGroup = classifyConcreteGroup(line, scopeLaborGroup.get(scopeKey));
+      if (concreteGroup) {
+        totals.concreteByGroup[concreteGroup] = (totals.concreteByGroup[concreteGroup] ?? 0) + yards;
+      }
     }
     totalsByBoard.set(boardId, totals);
   }
@@ -209,6 +249,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       laborCost: 0,
       lineCount: 0,
       laborByGroup: {},
+      concreteByGroup: {},
     };
     const linked = (board.procoreProjectId ? pmcByProcore.get(board.procoreProjectId) : undefined) ?? pmcByBoard.get(boardId);
     const fallbackSales = numericValue(proposalPayload.total) || numericValue(recordValue(payload.stats).total);
@@ -230,6 +271,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       laborCost: totals.laborCost,
       pmcGroup: totals.laborByGroup,
       pmcBreakdown: totals.laborByGroup,
+      concreteGroup: totals.concreteByGroup,
       dateCreated: newestDate(payload.created_on, board.createdAt),
       dateUpdated: newestDate(payload.updated_at, selected?.sourceUpdatedAt, board.syncedAt, board.updatedAt),
       estimator: estimatorByUserId.get(clean(payload.estimator_user_id)) || linked?.estimator || null,
@@ -243,6 +285,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         selectedProposalId: selected?.proposalId ?? null,
         proposalName: selected?.proposalName ?? null,
         pmcGroup: totals.laborByGroup,
+        concreteGroup: totals.concreteByGroup,
         estimateLineCount: totals.lineCount,
         estimatingSource: totals.lineCount > 0 ? "normalized estimate lines" : fallbackSales > 0 ? "bid-board total" : "no estimate",
       },
@@ -280,6 +323,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       hours: 0,
       count: 0,
       laborByGroup: {},
+      concreteByGroup: {},
     };
     statusGroup.sales += project.sales;
     statusGroup.cost += project.cost;
@@ -289,6 +333,9 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       statusGroup.laborByGroup[group] = (statusGroup.laborByGroup[group] ?? 0) + hours;
       summary.pmcGroupHours[group] = (summary.pmcGroupHours[group] ?? 0) + hours;
       summary.laborBreakdown[group] = (summary.laborBreakdown[group] ?? 0) + hours;
+    }
+    for (const [group, yards] of Object.entries(project.concreteGroup)) {
+      statusGroup.concreteByGroup[group] = (statusGroup.concreteByGroup[group] ?? 0) + yards;
     }
     summary.statusGroups[status] = statusGroup;
 

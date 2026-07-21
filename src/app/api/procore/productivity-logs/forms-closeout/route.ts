@@ -146,6 +146,7 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
             AND ($2::text IS NULL OR v.project_id = $2)
             AND UPPER(REGEXP_REPLACE(BTRIM(COALESCE(v.cost_code, '')), '\\.(L|M|S|O)$', '', 'i')) = '01-300-10-20'
             AND COALESCE(v.description, '') ~* '^\\s*(project\\s+)?management\\s*$'
+            AND COALESCE(v.po_title, '') NOT ILIKE '%Billing File%'
           ORDER BY v.company_id, v.project_id, v.position NULLS LAST, v.line_item_id
         ),
         base AS (
@@ -296,6 +297,7 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
        AND ma.project_id = v.project_id
       WHERE v.company_id = $1
         AND ($2::text IS NULL OR v.project_id = $2)
+        AND COALESCE(v.po_title, '') NOT ILIKE '%Billing File%'
         AND COALESCE(v.expected_quantity, 0) > 0
         AND (
           (

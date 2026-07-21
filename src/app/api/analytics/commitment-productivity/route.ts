@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
            AND a.target_line_item_id = v.line_item_id
           WHERE v.company_id = $1
             AND ($2::text IS NULL OR v.project_id = $2)
+            AND COALESCE(v.po_title, '') NOT ILIKE '%Billing File%'
           ORDER BY
             COALESCE(pp.project_name, v.project_id),
             COALESCE(v.po_number, v.contract_id),
@@ -113,6 +114,8 @@ export async function GET(request: NextRequest) {
              AND a.source_line_item_id = p."lineItemId"
             WHERE p."procoreCompanyId" = $1
               AND ($2::text IS NULL OR p."procoreProjectId" = $2)
+              AND p."procoreDeletedAt" IS NULL
+              AND COALESCE(p."lineItemHolderTitle", '') NOT ILIKE '%Billing File%'
           )
           SELECT
             COUNT(*)::bigint AS productivity_count,
@@ -242,6 +245,14 @@ export async function GET(request: NextRequest) {
               AND c.kind = 'project_management_closeout'
               AND c.status IN ('created', 'detected_existing')
               AND c.procore_log_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "ProductivityLog" p
+                WHERE p."procoreCompanyId" = c.company_id
+                  AND p."procoreProjectId" = c.procore_project_id
+                  AND p."procoreId" = c.procore_log_id
+                  AND COALESCE(p."lineItemHolderTitle", '') ILIKE '%Billing File%'
+              )
           ),
           actual AS (
             SELECT

@@ -30,6 +30,14 @@ export async function GET(request: NextRequest) {
           FROM "PurchaseOrderLineItemContractDetail" li
           WHERE li."procoreCompanyId" = $1
             AND ($2::text IS NULL OR li."procoreProjectId" = $2)
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "PurchaseOrderContract" po
+              WHERE po."procoreCompanyId" = li."procoreCompanyId"
+                AND po."procoreProjectId" = li."procoreProjectId"
+                AND po."procoreId" = li."procorePurchaseOrderContractId"
+                AND COALESCE(po.title, '') ILIKE '%Billing File%'
+            )
         ),
         productivity AS (
           SELECT
@@ -42,6 +50,8 @@ export async function GET(request: NextRequest) {
            AND a.source_line_item_id = p."lineItemId"
           WHERE p."procoreCompanyId" = $1
             AND ($2::text IS NULL OR p."procoreProjectId" = $2)
+            AND p."procoreDeletedAt" IS NULL
+            AND COALESCE(p."lineItemHolderTitle", '') NOT ILIKE '%Billing File%'
         ),
         timecards AS (
           SELECT t.*

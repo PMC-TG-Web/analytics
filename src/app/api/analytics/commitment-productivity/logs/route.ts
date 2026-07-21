@@ -59,6 +59,8 @@ export async function GET(request: NextRequest) {
            AND a.source_line_item_id = p."lineItemId"
           WHERE p."procoreCompanyId" = $1
             AND p."procoreProjectId" = $2
+            AND p."procoreDeletedAt" IS NULL
+            AND COALESCE(p."lineItemHolderTitle", '') NOT ILIKE '%Billing File%'
         )
         SELECT
           "procoreId" AS log_id,

@@ -119,6 +119,14 @@ export async function GET(request: NextRequest) {
           AND c.kind = 'project_management_closeout'
           AND c.status IN ('created', 'detected_existing')
           AND c.procore_log_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "ProductivityLog" p
+            WHERE p."procoreCompanyId" = c.company_id
+              AND p."procoreProjectId" = c.procore_project_id
+              AND p."procoreId" = c.procore_log_id
+              AND COALESCE(p."lineItemHolderTitle", '') ILIKE '%Billing File%'
+          )
         )
         SELECT *
         FROM labor_logs

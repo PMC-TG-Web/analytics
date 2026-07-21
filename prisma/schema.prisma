@@ -1412,6 +1412,191 @@ model procore_proposal_line_items_live {
   @@index([synced_at(sort: Desc)])
 }
 
+/// Normalized estimating proposal header used by commitment/productivity analytics.
+model ProcoreEstimateProposal {
+  id                  BigInt    @id @default(autoincrement())
+  companyId           String    @map("company_id")
+  bidBoardProjectId   String    @map("bid_board_project_id")
+  proposalId          String    @map("proposal_id")
+  procoreProjectId    String?   @map("procore_project_id")
+  projectName         String?   @map("project_name")
+  customerName        String?   @map("customer_name")
+  proposalName        String?   @map("proposal_name")
+  status              String?
+  isBaselineCandidate Boolean   @default(false) @map("is_baseline_candidate")
+  payload             Json
+  sourceUpdatedAt     DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  syncedAt            DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, bidBoardProjectId, proposalId])
+  @@index([companyId, procoreProjectId])
+  @@index([companyId, bidBoardProjectId])
+  @@index([isBaselineCandidate])
+  @@map("procore_estimate_proposals")
+}
+
+/// Normalized estimating line. laborHours is populated only for hour-based lines.
+model ProcoreEstimateLineItem {
+  id                BigInt    @id @default(autoincrement())
+  companyId         String    @map("company_id")
+  bidBoardProjectId String    @map("bid_board_project_id")
+  proposalId        String    @map("proposal_id")
+  lineItemId        String    @map("line_item_id")
+  procoreProjectId  String?   @map("procore_project_id")
+  groupId           String?   @map("group_id")
+  groupName         String?   @map("group_name")
+  name              String?
+  status            String?
+  costCodeId        String?   @map("cost_code_id")
+  costCode          String?   @map("cost_code")
+  wbsCode           String?   @map("wbs_code")
+  costItemId        String?   @map("cost_item_id")
+  uom               String?
+  quantity          Decimal?  @map("quantity") @db.Decimal(18, 4)
+  laborFactor       Decimal?  @map("labor_factor") @db.Decimal(18, 4)
+  itemCost          Decimal?  @map("item_cost") @db.Decimal(18, 4)
+  itemSales         Decimal?  @map("item_sales") @db.Decimal(18, 4)
+  laborCost         Decimal?  @map("labor_cost") @db.Decimal(18, 4)
+  laborSales        Decimal?  @map("labor_sales") @db.Decimal(18, 4)
+  laborHours        Decimal?  @map("labor_hours") @db.Decimal(18, 4)
+  payload           Json
+  sourceUpdatedAt   DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  syncedAt          DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, bidBoardProjectId, proposalId, lineItemId])
+  @@index([companyId, procoreProjectId])
+  @@index([companyId, bidBoardProjectId, proposalId])
+  @@index([costCode])
+  @@index([laborHours])
+  @@map("procore_estimate_line_items")
+}
+
+/// Prime/customer change-order package header.
+model ProcoreChangeOrderPackage {
+  companyId       String    @map("company_id")
+  projectId       String    @map("project_id")
+  contractId      String    @map("contract_id")
+  packageId       String    @map("package_id")
+  number          String?
+  title           String?
+  status          String?
+  description     String?
+  revision        String?
+  amount          Decimal?  @db.Decimal(18, 4)
+  executedOn      DateTime? @map("executed_on") @db.Timestamptz(6)
+  sourceCreatedAt DateTime? @map("source_created_at") @db.Timestamptz(6)
+  sourceUpdatedAt DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  payload         Json
+  syncedAt        DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+
+  @@id([companyId, projectId, packageId])
+  @@index([companyId, projectId])
+  @@index([status])
+  @@map("procore_change_order_packages")
+}
+
+/// Normalized prime/customer change-order package line.
+model ProcoreChangeOrderPackageLine {
+  id               BigInt    @id @default(autoincrement())
+  companyId        String    @map("company_id")
+  projectId        String    @map("project_id")
+  contractId       String    @map("contract_id")
+  packageId        String    @map("package_id")
+  lineItemId       String    @map("line_item_id")
+  packageStatus    String?   @map("package_status")
+  description      String?
+  costCodeId       String?   @map("cost_code_id")
+  costCode         String?   @map("cost_code")
+  wbsCode          String?   @map("wbs_code")
+  lineItemTypeCode String?   @map("line_item_type_code")
+  uom              String?
+  quantity         Decimal?  @db.Decimal(18, 4)
+  unitCost         Decimal?  @map("unit_cost") @db.Decimal(18, 4)
+  amount           Decimal?  @db.Decimal(18, 4)
+  laborHours       Decimal?  @map("labor_hours") @db.Decimal(18, 4)
+  payload          Json
+  sourceCreatedAt  DateTime? @map("source_created_at") @db.Timestamptz(6)
+  sourceUpdatedAt  DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  syncedAt         DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, projectId, packageId, lineItemId])
+  @@index([companyId, projectId])
+  @@index([packageId])
+  @@index([costCode])
+  @@index([packageStatus])
+  @@index([laborHours])
+  @@map("procore_change_order_package_lines")
+}
+
+/// Canonical work scope where estimate, CO, timecard, productivity, and PO sources meet.
+model AnalyticsWorkScope {
+  id               String                        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String                        @map("company_id")
+  procoreProjectId String                        @map("procore_project_id")
+  scopeCode        String                        @map("scope_code")
+  title            String
+  uom              String?
+  isActive         Boolean                       @default(true) @map("is_active")
+  createdAt        DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  mappings         AnalyticsScopeSourceMapping[]
+
+  @@unique([companyId, procoreProjectId, scopeCode])
+  @@index([companyId, procoreProjectId])
+  @@map("analytics_work_scopes")
+}
+
+/// Explicit source-to-scope mapping. Multiple rows support controlled allocations.
+model AnalyticsScopeSourceMapping {
+  id            String             @id @default(dbgenerated("(gen_random_uuid())::text"))
+  scopeId       String             @map("scope_id")
+  sourceType    String             @map("source_type")
+  sourceId      String             @map("source_id")
+  mappingMethod String             @default("manual") @map("mapping_method")
+  confidence    Decimal?           @db.Decimal(5, 4)
+  allocationPct Decimal            @default(1) @map("allocation_pct") @db.Decimal(7, 6)
+  isActive      Boolean            @default(true) @map("is_active")
+  notes         String?
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  scope         AnalyticsWorkScope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+
+  @@unique([scopeId, sourceType, sourceId])
+  @@index([sourceType, sourceId])
+  @@index([scopeId, isActive])
+  @@map("analytics_scope_source_mappings")
+}
+
+/// Maps historical productivity line IDs to a current PO line without rewriting raw Procore data.
+model AnalyticsPoLineAlias {
+  id                BigInt   @id @default(autoincrement())
+  companyId         String   @map("company_id")
+  procoreProjectId  String   @map("procore_project_id")
+  sourceLineItemId  String   @map("source_line_item_id")
+  sourceHolderId    String?  @map("source_holder_id")
+  sourcePoNumber    String?  @map("source_po_number")
+  targetLineItemId  String   @map("target_line_item_id")
+  targetHolderId    String?  @map("target_holder_id")
+  sourceDescription String?  @map("source_description")
+  targetDescription String?  @map("target_description")
+  matchMethod       String   @map("match_method")
+  confidence        Decimal  @default(1) @db.Decimal(5, 4)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, procoreProjectId, sourceLineItemId])
+  @@index([companyId, procoreProjectId, targetLineItemId])
+  @@index([sourceHolderId])
+  @@index([targetHolderId])
+  @@map("analytics_po_line_aliases")
+}
+
 model procore_trades {
   id                 BigInt    @id @default(autoincrement())
   company_id         String
@@ -1841,20 +2026,20 @@ model PmcProject {
 /// Some estimating jobs do not have a Procore project ID yet, so they live here
 /// until Procore links them to a project.
 model PmcBidBoardProject {
-  id               String   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  companyId        String   @default("598134325805519") @map("company_id")
-  bidBoardId       String   @map("bid_board_id")
-  procoreProjectId String?  @map("procore_project_id")
-  projectNumber    String?  @map("project_number")
-  projectName      String   @map("project_name")
-  customer         String?
-  customerCompanyId String? @map("customer_company_id")
-  status           String?
-  statusRaw        String?  @map("status_raw")
-  payload          Json?
-  syncedAt         DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId         String   @default("598134325805519") @map("company_id")
+  bidBoardId        String   @map("bid_board_id")
+  procoreProjectId  String?  @map("procore_project_id")
+  projectNumber     String?  @map("project_number")
+  projectName       String   @map("project_name")
+  customer          String?
+  customerCompanyId String?  @map("customer_company_id")
+  status            String?
+  statusRaw         String?  @map("status_raw")
+  payload           Json?
+  syncedAt          DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([companyId, bidBoardId])
   @@index([companyId])

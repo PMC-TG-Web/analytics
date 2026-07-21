@@ -25,6 +25,9 @@ export type CronSyncResult = {
     endDate: string;
     lookbackDays: number;
     maxProjects: number;
+    estimatingBatchSize: number;
+    estimatingBatchOffset: number;
+    estimatingProjectCount: number;
   };
   totalMs: number;
 };
@@ -78,8 +81,20 @@ export function buildSyncWindow(options?: {
   return { startDate, endDate, lookbackDays, maxProjects };
 }
 
-function buildSyncSteps(options: { startDate: string; endDate: string; maxProjects: number }): SyncStep[] {
-  const { startDate, endDate, maxProjects } = options;
+function buildSyncSteps(options: {
+  startDate: string;
+  endDate: string;
+  maxProjects: number;
+  estimatingBatchSize: number;
+  estimatingBatchOffset: number;
+}): SyncStep[] {
+  const {
+    startDate,
+    endDate,
+    maxProjects,
+    estimatingBatchSize,
+    estimatingBatchOffset,
+  } = options;
   return [
     {
       name: 'projects',
@@ -103,6 +118,31 @@ function buildSyncSteps(options: { startDate: string; endDate: string; maxProjec
       },
     },
     {
+      name: 'change-order-packages',
+      path: '/api/procore/sync/change-order-packages',
+      body: {
+        forceUserOAuth: false,
+        limitProjects: maxProjects > 0 ? maxProjects : 10000,
+        perPage: 100,
+      },
+    },
+    {
+      name: 'estimate-proposal-line-items',
+      path: '/api/procore/estimating/proposal-line-items-bulk',
+      body: {
+        fetchAll: true,
+        persist: true,
+        includeProjectSummaries: false,
+        includeLineItems: false,
+        perPage: 100,
+        'filters[by_status]': 'All',
+        maxBidBoardProjects: estimatingBatchSize,
+        bidBoardProjectOffset: estimatingBatchOffset,
+        maxProposalsPerProject: 50,
+        maxLineItemsPages: 100,
+      },
+    },
+    {
       name: 'budget-line-items',
       path: '/api/procore/sync/budget-line-items',
       body: {
@@ -114,6 +154,15 @@ function buildSyncSteps(options: { startDate: string; endDate: string; maxProjec
     {
       name: 'commitment-contracts',
       path: '/api/procore/sync/commitment-contracts',
+      body: {
+        forceUserOAuth: false,
+        fetchAll: true,
+        ...(maxProjects > 0 ? { maxProjects } : {}),
+      },
+    },
+    {
+      name: 'commitment-change-order-line-items',
+      path: '/api/procore/sync/commitment-change-order-line-items',
       body: {
         forceUserOAuth: false,
         fetchAll: true,
@@ -231,11 +280,35 @@ export async function runProcoreCronSync(options: {
 }): Promise<CronSyncResult> {
   const origin = options.origin.replace(/\/$/, '');
   const startTime = Date.now();
-  const syncWindow = buildSyncWindow({
+  const baseSyncWindow = buildSyncWindow({
     now: startTime,
     lookbackDays: options.lookbackDays,
     maxProjects: options.maxProjects,
   });
+  const estimatingBatchSize = Math.min(
+    25,
+    Math.max(1, baseSyncWindow.maxProjects > 0 ? baseSyncWindow.maxProjects : 25)
+  );
+  let estimatingProjectCount = 0;
+  try {
+    estimatingProjectCount = await prisma.pmcBidBoardProject.count({
+      where: { companyId: options.companyId },
+    });
+  } catch (error) {
+    console.error('[cron/sync] Failed to count estimating projects:', error);
+  }
+  const estimatingBatchCount = Math.max(
+    1,
+    Math.ceil(estimatingProjectCount / estimatingBatchSize)
+  );
+  const estimatingBatchIndex = Math.floor(startTime / (24 * 60 * 60 * 1000)) % estimatingBatchCount;
+  const estimatingBatchOffset = estimatingBatchIndex * estimatingBatchSize;
+  const syncWindow = {
+    ...baseSyncWindow,
+    estimatingBatchSize,
+    estimatingBatchOffset,
+    estimatingProjectCount,
+  };
   const syncSteps = buildSyncSteps(syncWindow);
   let logId: bigint | null = null;
 

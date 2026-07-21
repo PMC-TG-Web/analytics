@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { procoreConfig } from "@/lib/procore";
+import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
@@ -34,6 +34,249 @@ function isMissingTableError(error: unknown): boolean {
 
 async function assertProposalLineItemsLiveTableExists() {
   await prisma.$queryRawUnsafe(`SELECT 1 FROM procore_proposal_line_items_live LIMIT 1`);
+  await prisma.$queryRawUnsafe(`SELECT 1 FROM procore_estimate_proposals LIMIT 1`);
+  await prisma.$queryRawUnsafe(`SELECT 1 FROM procore_estimate_line_items LIMIT 1`);
+}
+
+function readText(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeTimestamp(value: unknown): string | null {
+  const text = readText(value);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function nestedObject(value: unknown): UnknownRecord {
+  return isRecord(value) ? value : {};
+}
+
+function firstText(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = readText(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function isBaselineProposalName(name: string | null): boolean {
+  if (!name) return false;
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return normalized === "original estimate" || normalized === "base estimate" || normalized === "baseline estimate";
+}
+
+function laborHoursForLine(lineItem: UnknownRecord): number | null {
+  const costItem = nestedObject(lineItem.cost_item);
+  const unit = firstText(costItem.unit, costItem.uom, lineItem.unit, lineItem.uom)?.toUpperCase();
+  if (!unit || !["HOUR", "HOURS", "HR", "HRS"].includes(unit)) return null;
+  return readNumber(lineItem.count ?? lineItem.quantity);
+}
+
+async function resolveProcoreProjectId(
+  companyId: string,
+  bidBoardProjectId: string,
+  projectRecord: UnknownRecord
+): Promise<string | null> {
+  const direct = firstText(
+    projectRecord.procore_project_id,
+    projectRecord.project_id,
+    nestedObject(projectRecord.project).id
+  );
+  if (direct) return direct;
+
+  const rows = await prisma.$queryRawUnsafe<Array<{ procore_project_id: string | null }>>(
+    `
+      SELECT procore_project_id
+      FROM pmc_bid_board_projects
+      WHERE company_id = $1 AND bid_board_id = $2
+      LIMIT 1
+    `,
+    companyId,
+    bidBoardProjectId
+  );
+  return readText(rows[0]?.procore_project_id);
+}
+
+async function upsertEstimateProposal(params: {
+  companyId: string;
+  bidBoardProjectId: string;
+  procoreProjectId: string | null;
+  projectName: string | null;
+  customerName: string | null;
+  proposalId: string;
+  proposalName: string | null;
+  proposal: UnknownRecord;
+}) {
+  const {
+    companyId,
+    bidBoardProjectId,
+    procoreProjectId,
+    projectName,
+    customerName,
+    proposalId,
+    proposalName,
+    proposal,
+  } = params;
+  const status = firstText(proposal.status, proposal.state);
+  const sourceUpdatedAt = normalizeTimestamp(proposal.updated_at);
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_estimate_proposals (
+        company_id, bid_board_project_id, proposal_id, procore_project_id,
+        project_name, customer_name, proposal_name, status,
+        is_baseline_candidate, payload, source_updated_at, synced_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::timestamptz, NOW(), NOW())
+      ON CONFLICT (company_id, bid_board_project_id, proposal_id)
+      DO UPDATE SET
+        procore_project_id = EXCLUDED.procore_project_id,
+        project_name = EXCLUDED.project_name,
+        customer_name = EXCLUDED.customer_name,
+        proposal_name = EXCLUDED.proposal_name,
+        status = EXCLUDED.status,
+        is_baseline_candidate = EXCLUDED.is_baseline_candidate,
+        payload = EXCLUDED.payload,
+        source_updated_at = EXCLUDED.source_updated_at,
+        synced_at = NOW(),
+        updated_at = NOW()
+    `,
+    companyId,
+    bidBoardProjectId,
+    proposalId,
+    procoreProjectId,
+    projectName,
+    customerName,
+    proposalName,
+    status,
+    isBaselineProposalName(proposalName),
+    JSON.stringify(proposal),
+    sourceUpdatedAt
+  );
+}
+
+async function upsertNormalizedEstimateLine(params: {
+  companyId: string;
+  bidBoardProjectId: string;
+  proposalId: string;
+  procoreProjectId: string | null;
+  lineItem: unknown;
+}) {
+  const { companyId, bidBoardProjectId, proposalId, procoreProjectId, lineItem } = params;
+  const item = isRecord(lineItem) ? lineItem : {};
+  const costItem = nestedObject(item.cost_item);
+  const costCodeObject = nestedObject(item.cost_code);
+  const costItemCostCode = nestedObject(costItem.cost_code);
+  const budgetCode = nestedObject(item.budget_code);
+  const group = nestedObject(item.group);
+  const lineItemId = getLineItemId(lineItem, bidBoardProjectId, proposalId);
+  const costCode = firstText(
+    costCodeObject.full_code,
+    costCodeObject.code,
+    costItemCostCode.full_code,
+    costItemCostCode.code,
+    budgetCode.flat_code,
+    item.cost_code
+  );
+  const wbsCode = firstText(item.wbs_code, budgetCode.flat_code, costCode);
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_estimate_line_items (
+        company_id, bid_board_project_id, proposal_id, line_item_id, procore_project_id,
+        group_id, group_name, name, status, cost_code_id, cost_code, wbs_code,
+        cost_item_id, uom, quantity, labor_factor, item_cost, item_sales,
+        labor_cost, labor_sales, labor_hours, payload, source_updated_at,
+        synced_at, updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb,
+        $23::timestamptz, NOW(), NOW()
+      )
+      ON CONFLICT (company_id, bid_board_project_id, proposal_id, line_item_id)
+      DO UPDATE SET
+        procore_project_id = EXCLUDED.procore_project_id,
+        group_id = EXCLUDED.group_id,
+        group_name = EXCLUDED.group_name,
+        name = EXCLUDED.name,
+        status = EXCLUDED.status,
+        cost_code_id = EXCLUDED.cost_code_id,
+        cost_code = EXCLUDED.cost_code,
+        wbs_code = EXCLUDED.wbs_code,
+        cost_item_id = EXCLUDED.cost_item_id,
+        uom = EXCLUDED.uom,
+        quantity = EXCLUDED.quantity,
+        labor_factor = EXCLUDED.labor_factor,
+        item_cost = EXCLUDED.item_cost,
+        item_sales = EXCLUDED.item_sales,
+        labor_cost = EXCLUDED.labor_cost,
+        labor_sales = EXCLUDED.labor_sales,
+        labor_hours = EXCLUDED.labor_hours,
+        payload = EXCLUDED.payload,
+        source_updated_at = EXCLUDED.source_updated_at,
+        synced_at = NOW(),
+        updated_at = NOW()
+    `,
+    companyId,
+    bidBoardProjectId,
+    proposalId,
+    lineItemId,
+    procoreProjectId,
+    firstText(item.group_id, group.id),
+    firstText(item.group_name, item.group_title, group.name, group.title),
+    firstText(item.name, item.description, item.title),
+    firstText(item.status),
+    firstText(costCodeObject.id, costItemCostCode.id, budgetCode.cost_code_id),
+    costCode,
+    wbsCode,
+    firstText(costItem.id, item.cost_item_id),
+    firstText(costItem.unit, costItem.uom, item.unit, item.uom),
+    readNumber(item.count ?? item.quantity),
+    readNumber(item.labor_factor),
+    readNumber(item.item_cost),
+    readNumber(item.item_sales),
+    readNumber(item.labor_cost),
+    readNumber(item.labor_sales),
+    laborHoursForLine(item),
+    JSON.stringify(lineItem ?? {}),
+    normalizeTimestamp(item.updated_at)
+  );
+}
+
+async function reconcileNormalizedEstimateLines(params: {
+  companyId: string;
+  bidBoardProjectId: string;
+  proposalId: string;
+  lineItemIds: string[];
+}) {
+  const { companyId, bidBoardProjectId, proposalId, lineItemIds } = params;
+  await prisma.$executeRawUnsafe(
+    `
+      DELETE FROM procore_estimate_line_items
+      WHERE company_id = $1
+        AND bid_board_project_id = $2
+        AND proposal_id = $3
+        AND NOT (line_item_id = ANY($4::text[]))
+    `,
+    companyId,
+    bidBoardProjectId,
+    proposalId,
+    lineItemIds
+  );
 }
 
 function getLineItemId(lineItem: unknown, bidBoardProjectId: string, proposalId: string): string {
@@ -104,13 +347,16 @@ export async function POST(request: Request) {
 
     const bodyToken = String(body.accessToken || "").trim();
     const cookieToken = String(cookieStore.get("procore_access_token")?.value || "").trim();
-    const accessToken = cookieToken || bodyToken;
-
+    let accessToken = cookieToken || bodyToken;
     if (!accessToken) {
-      return NextResponse.json(
-        { error: "Missing access token. Authenticate with Procore first or provide accessToken." },
-        { status: 401 }
-      );
+      try {
+        accessToken = await getClientCredentialsToken();
+      } catch {
+        return NextResponse.json(
+          { error: "Missing access token. Authenticate with Procore or configure client credentials." },
+          { status: 401 }
+        );
+      }
     }
 
     const companyId = String(
@@ -133,6 +379,17 @@ export async function POST(request: Request) {
     const bidBoardStatusFilter = String(body["filters[by_status]"] || body.bidBoardStatusFilter || "All").trim() || "All";
 
     const maxBidBoardProjects = Math.min(5000, Math.max(1, Number.parseInt(String(body.maxBidBoardProjects || "100"), 10) || 100));
+    const bidBoardProjectOffset = Math.max(
+      0,
+      Number.parseInt(String(body.bidBoardProjectOffset || "0"), 10) || 0
+    );
+    const explicitBidBoardProjectIds = new Set(
+      (Array.isArray(body.bidBoardProjectIds)
+        ? body.bidBoardProjectIds
+        : String(body.bidBoardProjectIds || "").split(","))
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    );
     const maxProposalsPerProject = Math.min(500, Math.max(1, Number.parseInt(String(body.maxProposalsPerProject || "50"), 10) || 50));
     const maxLineItemsPages = Math.min(100, Math.max(1, Number.parseInt(String(body.maxLineItemsPages || "10"), 10) || 10));
 
@@ -222,11 +479,24 @@ export async function POST(request: Request) {
           if (pageItems.length === 0) break;
 
           bidBoardProjects.push(...pageItems);
-          if (!fetchAll || pageItems.length < perPage || bidBoardProjects.length >= maxBidBoardProjects) break;
+          const fetchTarget = explicitBidBoardProjectIds.size > 0
+            ? Number.POSITIVE_INFINITY
+            : bidBoardProjectOffset + maxBidBoardProjects;
+          if (!fetchAll || pageItems.length < perPage || bidBoardProjects.length >= fetchTarget) break;
           page += 1;
         }
 
-        const limitedBidBoardProjects = bidBoardProjects.slice(0, maxBidBoardProjects);
+        const selectedBidBoardProjects = explicitBidBoardProjectIds.size > 0
+          ? bidBoardProjects.filter((project) => {
+              const record = isRecord(project) ? project : {};
+              const id = String(record.id || record.bid_board_project_id || "").trim();
+              return explicitBidBoardProjectIds.has(id);
+            })
+          : bidBoardProjects;
+        const limitedBidBoardProjects = selectedBidBoardProjects.slice(
+          bidBoardProjectOffset,
+          bidBoardProjectOffset + maxBidBoardProjects
+        );
         const lineItems: unknown[] = [];
         const projectSummaries: Array<{
           bidBoardProjectId: string;
@@ -245,6 +515,11 @@ export async function POST(request: Request) {
               ? String(projectRecord.customer_company.name || "").trim()
               : "") ||
             null
+          );
+          const procoreProjectId = await resolveProcoreProjectId(
+            companyId,
+            bidBoardProjectId,
+            projectRecord
           );
 
           const proposals: unknown[] = [];
@@ -279,7 +554,23 @@ export async function POST(request: Request) {
             const proposalName =
               String(proposalRecord.name || proposalRecord.title || proposalRecord.proposal_number || "").trim() || null;
 
+            if (persist) {
+              await upsertEstimateProposal({
+                companyId,
+                bidBoardProjectId,
+                procoreProjectId,
+                projectName,
+                customerName,
+                proposalId,
+                proposalName,
+                proposal: proposalRecord,
+              });
+            }
+
             let lineItemPage = 1;
+            const failedBeforeProposal = persistence.failed;
+            const persistedLineItemIds: string[] = [];
+            let lineItemsAuthoritative = true;
             while (true) {
               try {
                 const lineItemsPayload = await getJson(
@@ -313,6 +604,14 @@ export async function POST(request: Request) {
                         proposalName,
                         lineItem: item,
                       });
+                      await upsertNormalizedEstimateLine({
+                        companyId,
+                        bidBoardProjectId,
+                        proposalId,
+                        procoreProjectId,
+                        lineItem: item,
+                      });
+                      persistedLineItemIds.push(getLineItemId(item, bidBoardProjectId, proposalId));
                       persistence.persisted += 1;
                     } catch (persistError) {
                       if (isMissingTableError(persistError)) {
@@ -334,9 +633,21 @@ export async function POST(request: Request) {
                 lineItemPage += 1;
               } catch (error) {
                 const status = Number((error as { status?: number })?.status || 0);
-                if (status === 404) break;
+                if (status === 404) {
+                  lineItemsAuthoritative = false;
+                  break;
+                }
                 throw error;
               }
+            }
+
+            if (persist && lineItemsAuthoritative && persistence.failed === failedBeforeProposal) {
+              await reconcileNormalizedEstimateLines({
+                companyId,
+                bidBoardProjectId,
+                proposalId,
+                lineItemIds: persistedLineItemIds,
+              });
             }
           }
 
@@ -359,6 +670,8 @@ export async function POST(request: Request) {
             fetchAll,
             perPage,
             maxBidBoardProjects,
+            bidBoardProjectOffset,
+            explicitBidBoardProjectIds: explicitBidBoardProjectIds.size,
             maxProposalsPerProject,
             maxLineItemsPages,
           },

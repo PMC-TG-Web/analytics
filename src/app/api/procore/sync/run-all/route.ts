@@ -189,6 +189,14 @@ export async function POST(request: Request) {
     const chunkSize = parsePositiveInt(body.chunkSize, 3, 1);
     const chunkGapMs = parsePositiveInt(body.chunkGapMs, 800, 0);
     const maxChunkProjects = Math.max(0, parsePositiveInt(body.maxChunkProjects, 0, 0));
+    const estimatingBatchSize = Math.min(
+      50,
+      parsePositiveInt(body.estimatingBatchSize, 25, 1)
+    );
+    const estimatingBatchOffset = Math.max(
+      0,
+      Math.floor(readNum(body.estimatingBatchOffset) ?? 0)
+    );
 
     // Rolling date window: 90 days back → today (covers timecards & productivity)
     const today = new Date().toISOString().split('T')[0];
@@ -211,6 +219,21 @@ export async function POST(request: Request) {
 
     // 6. Bids (company-wide)
     results.push(await callSync(origin, '/api/procore/sync/bids', { companyId, companyWide: true, fetchAll: true }, accessToken, companyId));
+
+    // 6b. Estimating proposals and normalized line items (baseline labor source)
+    results.push(await callSync(origin, '/api/procore/estimating/proposal-line-items-bulk', {
+      companyId,
+      fetchAll: true,
+      persist: true,
+      includeProjectSummaries: false,
+      includeLineItems: false,
+      perPage: 100,
+      'filters[by_status]': 'All',
+      maxBidBoardProjects: estimatingBatchSize,
+      bidBoardProjectOffset: estimatingBatchOffset,
+      maxProposalsPerProject: 50,
+      maxLineItemsPages: 100,
+    }, accessToken, companyId));
 
     let chunkProjectIds: string[] = [];
     if (chunkHeavySync) {

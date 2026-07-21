@@ -4,7 +4,9 @@ import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/pro
 import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 import {
   ensureChangeOrderPackagesTable,
+  reconcileChangeOrderPackageLines,
   upsertChangeOrderPackage,
+  upsertChangeOrderPackageLine,
 } from '@/lib/procoreChangeOrderPackages';
 
 export const dynamic = 'force-dynamic';
@@ -127,6 +129,24 @@ async function fetchChangeOrderPackagesPage(
   return unwrapArray(data);
 }
 
+async function fetchChangeOrderPackage(
+  accessToken: string,
+  companyId: string,
+  projectId: string,
+  contractId: string,
+  packageId: string
+): Promise<JsonObject> {
+  const qs = new URLSearchParams({ project_id: projectId, contract_id: contractId });
+  const data = await makeRequest(
+    `/rest/v1.0/change_order_packages/${encodeURIComponent(packageId)}?${qs.toString()}`,
+    accessToken,
+    { method: 'GET', cache: 'no-store' },
+    companyId,
+    [404]
+  );
+  return data && typeof data === 'object' && !Array.isArray(data) ? (data as JsonObject) : {};
+}
+
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -193,11 +213,14 @@ export async function POST(request: Request) {
     let projectsWithPackages = 0;
     let totalPackagesFetched = 0;
     let totalPackagesUpserted = 0;
+    let totalPackageLinesFetched = 0;
+    let totalPackageLinesUpserted = 0;
     const activeProjects: Array<{
       projectId: string;
       contractId: string;
       packageCount: number;
       upsertedCount: number;
+      lineItemCount: number;
       status: string;
     }> = [];
     const warnings: string[] = [];
@@ -233,6 +256,8 @@ export async function POST(request: Request) {
       let page = 1;
       let projectFetched = 0;
       let projectUpserted = 0;
+      let projectLineItemsFetched = 0;
+      let projectLineItemsUpserted = 0;
       let hadError = false;
 
       while (true) {
@@ -265,12 +290,67 @@ export async function POST(request: Request) {
 
         for (const item of items) {
           try {
+            const packageId = readText(item.id);
+            if (!packageId) continue;
+            let packageRecord = item;
+            let packageLineItemsAuthoritative = Array.isArray(item.line_items);
+            try {
+              const showRecord = await fetchChangeOrderPackage(
+                accessToken,
+                companyId,
+                projectId,
+                contractId,
+                packageId
+              );
+              if (Object.keys(showRecord).length > 0) {
+                packageRecord = showRecord;
+                packageLineItemsAuthoritative = Array.isArray(showRecord.line_items);
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (warnings.length < 25) {
+                warnings.push(`project:${projectId} package:${packageId} show skipped: ${message}`);
+              }
+            }
+
             await upsertChangeOrderPackage({
               companyId,
               projectId,
               contractId,
-              record: item,
+              record: packageRecord,
             });
+
+            const lineItems = unwrapArray(packageRecord.line_items);
+            projectLineItemsFetched += lineItems.length;
+            const persistedLineItemIds: string[] = [];
+            let linePersistenceFailed = false;
+            for (let index = 0; index < lineItems.length; index += 1) {
+              try {
+                const lineItemId = await upsertChangeOrderPackageLine({
+                  companyId,
+                  projectId,
+                  contractId,
+                  packageId,
+                  packageStatus: readText(packageRecord.status),
+                  record: lineItems[index],
+                  index,
+                });
+                persistedLineItemIds.push(lineItemId);
+                projectLineItemsUpserted += 1;
+              } catch (err) {
+                linePersistenceFailed = true;
+                const message = err instanceof Error ? err.message : String(err);
+                errors.push(`project:${projectId} package:${packageId} line:${index + 1} => ${message}`);
+              }
+            }
+            if (packageLineItemsAuthoritative && !linePersistenceFailed) {
+              await reconcileChangeOrderPackageLines({
+                companyId,
+                projectId,
+                packageId,
+                lineItemIds: persistedLineItemIds,
+              });
+            }
             projectUpserted += 1;
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -287,6 +367,8 @@ export async function POST(request: Request) {
       if (!hadError || projectFetched > 0) {
         totalPackagesFetched += projectFetched;
         totalPackagesUpserted += projectUpserted;
+        totalPackageLinesFetched += projectLineItemsFetched;
+        totalPackageLinesUpserted += projectLineItemsUpserted;
 
         if (projectFetched > 0) {
           projectsWithPackages += 1;
@@ -295,6 +377,7 @@ export async function POST(request: Request) {
             contractId,
             packageCount: projectFetched,
             upsertedCount: projectUpserted,
+            lineItemCount: projectLineItemsUpserted,
             status: 'synced',
           });
         }
@@ -310,6 +393,8 @@ export async function POST(request: Request) {
       projectsSkippedAccess,
       totalPackagesFetched,
       totalPackagesUpserted,
+      totalPackageLinesFetched,
+      totalPackageLinesUpserted,
       errors: errors.slice(0, 50),
       warnings: warnings.slice(0, 25),
       activeProjects: activeProjects.slice(0, 100),

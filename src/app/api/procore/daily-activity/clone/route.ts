@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import {
+  allocateExistingProductivityRows,
+  countProductivityFingerprints,
+  productivityCloneFingerprint,
+} from "@/lib/procore/dailyProductivityClone";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -19,7 +24,10 @@ type ProductivityTargetLineItem = {
 
 type TargetLookups = {
   productivityLineItems: ProductivityTargetLineItem[];
+  existingProductivityCounts: Map<string, number>;
+  existingProductivityRows: number;
   existingTimecardKeys: Set<string>;
+  existingTimecardRows: number;
   timeTypes: UnknownRecord[];
   people: UnknownRecord[];
   peopleById: Map<string, UnknownRecord>;
@@ -98,7 +106,7 @@ function normalizeDescriptionKey(value: unknown): string {
     .trim();
 
   text = text.replace(/^#\s*\d+\s*-\s*/i, "");
-  text = text.replace(/\s*-\s*-?\d+(?:\.\d+)?\s*(?:ea|cy|sf|sq\s*ft|sq_ft|lf|ft|hr|hrs|hours|bag|bags|sheet|sheets|gal|gals|pc|pcs)\s*$/i, "");
+  text = text.replace(/\s*-\s*-?\d+(?:\.\d+)?\s*(?:ea|cy|sf|sq\s*ft|sq_ft|lf|ft|hr|hrs|hours|bag|bags|sheet|sheets|gal|gals|pc|pcs|day|days|month|months|ls)\s*$/i, "");
   text = text.replace(/\s+/g, " ").trim();
 
   return normalizeKey(text);
@@ -520,6 +528,17 @@ function timecardEntryKey(entry: UnknownRecord) {
   });
 }
 
+function productivityEntryFingerprint(entry: UnknownRecord) {
+  return productivityCloneFingerprint({
+    date: entry.log_date || entry.date,
+    contractNumber: contractNumberFromLog(entry),
+    lineItemDescription: lineItemDescriptionFromLog(entry),
+    quantityDelivered: entry.quantity_delivered,
+    quantityUsed: entry.quantity_used,
+    notes: entry.notes,
+  });
+}
+
 function productivityCandidateTargets(params: {
   lineItemDescription: string;
   contractNumber: string;
@@ -592,6 +611,7 @@ async function procoreFetch(params: {
     },
     body: params.body === undefined ? undefined : JSON.stringify(params.body),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   const text = await response.text();
@@ -857,16 +877,37 @@ async function fetchTargetLookups(params: {
   accessToken: string;
   companyId: string;
   projectId: string;
+  startDate: string;
+  endDate: string;
+  includeProductivity: boolean;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, existingTimecards, users, companyUsers, people, timeTypes, workClassifications, costCodes] = await Promise.all([
+  const [productivityLineItems, existingProductivity, existingTimecards, users, companyUsers, people, timeTypes, workClassifications, costCodes] = await Promise.all([
     fetchTargetProductivityLineItems(params),
+    params.includeProductivity
+      ? fetchSourceProductivityLogs({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          projectId: params.projectId,
+          startDate: params.startDate,
+          endDate: params.endDate,
+          maxPages: 100,
+        })
+      : Promise.resolve([]),
     fetchPaged({
       accessToken: params.accessToken,
       companyId: params.companyId,
       maxPages: 25,
-      pathForPage: (page) =>
-        `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?company_id=${encodeURIComponent(params.companyId)}&page=${page}&per_page=100`,
-    }).catch(() => []),
+      pathForPage: (page) => {
+        const query = new URLSearchParams({
+          company_id: params.companyId,
+          start_date: params.startDate,
+          end_date: params.endDate,
+          page: String(page),
+          per_page: "100",
+        });
+        return `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timecard_entries?${query.toString()}`;
+      },
+    }),
     procoreFetch({
       accessToken: params.accessToken,
       companyId: params.companyId,
@@ -968,10 +1009,16 @@ async function fetchTargetLookups(params: {
   }
 
   const existingTimecardKeys = new Set(existingTimecards.map(timecardEntryKey).filter(Boolean));
+  const existingProductivityCounts = countProductivityFingerprints(
+    existingProductivity.map(productivityEntryFingerprint).filter(Boolean)
+  );
 
   return {
     productivityLineItems,
+    existingProductivityCounts,
+    existingProductivityRows: existingProductivity.length,
     existingTimecardKeys,
+    existingTimecardRows: existingTimecards.length,
     timeTypes,
     people,
     peopleById,
@@ -1169,6 +1216,16 @@ function mapProductivityLog(
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined || payload[key] === "" ? delete payload[key] : undefined);
   if (target) payload.line_item_id = target.id;
+  const productivityFingerprint = target
+    ? productivityCloneFingerprint({
+        date: payload.date,
+        contractNumber: target.contractNumber || contractNumber,
+        lineItemDescription: target.description || lineItemDescription,
+        quantityDelivered: payload.quantity_delivered,
+        quantityUsed: payload.quantity_used,
+        notes: payload.notes,
+      })
+    : "";
 
   return {
     sourceId: readStr(log.id),
@@ -1179,6 +1236,7 @@ function mapProductivityLog(
     lineItemDescription,
     lineNumber,
     mapped: Boolean(target),
+    productivityFingerprint,
     matchStrategy: matchStrategy || null,
     targetLineItem: target || null,
     payload,
@@ -1541,6 +1599,8 @@ export async function POST(request: Request) {
     const timecardClassificationMap = isRecord(body.timecardClassificationMap) ? body.timecardClassificationMap : {};
     const productivitySourceIds = parseStringArray(body.productivitySourceIds || body.sourceProductivityIds);
     const productivitySourceIdSet = new Set(productivitySourceIds);
+    const repairMode = productivitySourceIdSet.size > 0;
+    const effectiveIncludeTimecards = includeTimecards && !repairMode;
 
     if (!sourceCompanyId || !sourceProjectId || !targetCompanyId || !targetProjectId || !startDate || !endDate) {
       return NextResponse.json(
@@ -1549,18 +1609,37 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!dryRun && includeProductivity && effectiveIncludeTimecards) {
+      return NextResponse.json(
+        {
+          error: "Run productivity and timecards separately for live clones so each data set has an independent continuation offset.",
+          nextStep: "Uncheck either Productivity or Timecards, then rerun the live clone at createOffset 0.",
+        },
+        { status: 400 }
+      );
+    }
+
     const [sourceProductivity, sourceTimecards, targetLookups] = await Promise.all([
       includeProductivity
         ? fetchSourceProductivityLogs({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, startDate, endDate, maxPages })
         : Promise.resolve([]),
-      includeTimecards
+      effectiveIncludeTimecards
         ? fetchSourceTimecards({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, startDate, endDate, maxPages })
         : Promise.resolve([]),
-      fetchTargetLookups({ accessToken, companyId: targetCompanyId, projectId: targetProjectId }),
+      fetchTargetLookups({
+        accessToken,
+        companyId: targetCompanyId,
+        projectId: targetProjectId,
+        startDate,
+        endDate,
+        includeProductivity,
+      }),
     ]);
 
     const lookupHealth = {
       targetProductivityLineItems: targetLookups.productivityLineItems.length,
+      targetProductivityLogs: targetLookups.existingProductivityRows,
+      targetTimecards: targetLookups.existingTimecardRows,
       targetPeople: targetLookups.peopleById.size,
       targetCostCodes: targetLookups.costCodesByFullCode.size,
       targetTimeTypes: targetLookups.timeTypes.length,
@@ -1570,7 +1649,7 @@ export async function POST(request: Request) {
     // When target lookups come back empty, mapping would incorrectly show everything as missing.
     // Return a retryable infrastructure-style response instead of a misleading mapping response.
     if (
-      (includeTimecards && sourceTimecards.length > 0 && lookupHealth.targetPeople === 0 && lookupHealth.targetCostCodes === 0) ||
+      (effectiveIncludeTimecards && sourceTimecards.length > 0 && lookupHealth.targetPeople === 0 && lookupHealth.targetCostCodes === 0) ||
       (includeProductivity && sourceProductivity.length > 0 && lookupHealth.targetProductivityLineItems === 0)
     ) {
       return NextResponse.json(
@@ -1588,11 +1667,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const productivity = sourceProductivity.map((log) =>
-      mapProductivityLog(log, targetLookups, {
-        allowFallbackMatch: allowProductivityFallback,
-        productivityLineItemMap,
-      })
+    const mappedProductivity = sourceProductivity
+      .map((log) =>
+        mapProductivityLog(log, targetLookups, {
+          allowFallbackMatch: allowProductivityFallback,
+          productivityLineItemMap,
+        })
+      )
+      .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
+    const productivity = allocateExistingProductivityRows(
+      mappedProductivity,
+      targetLookups.existingProductivityCounts,
+      productivitySourceIdSet
     );
     const timecards = sourceTimecards.map((entry) =>
       mapTimecardEntry(
@@ -1611,15 +1697,44 @@ export async function POST(request: Request) {
       ...timecards.filter((row) => !row.mapped).map((row) => ({ type: "timecard_entry", ...row })),
     ];
 
-    const creatableProductivityRows = productivity
+    const requestedProductivityRows = repairMode
+      ? productivity.filter((row) => productivitySourceIdSet.has(row.sourceId))
+      : [];
+    const foundRequestedProductivityIds = new Set(requestedProductivityRows.map((row) => row.sourceId));
+    const unresolvedProductivitySourceIds = repairMode
+      ? productivitySourceIds.filter((id) => !foundRequestedProductivityIds.has(id))
+      : [];
+    const requestedMissingMappings = requestedProductivityRows.filter((row) => !row.mapped);
+
+    if (!dryRun && repairMode && (unresolvedProductivitySourceIds.length > 0 || requestedMissingMappings.length > 0)) {
+      return NextResponse.json(
+        {
+          error: "Productivity repair validation failed before any live creates were attempted.",
+          source: { companyId: sourceCompanyId, projectId: sourceProjectId, startDate, endDate },
+          target: { companyId: targetCompanyId, projectId: targetProjectId },
+          repair: {
+            requested: productivitySourceIds.length,
+            found: requestedProductivityRows.length,
+            unresolvedProductivitySourceIds,
+            missingMappings: requestedMissingMappings,
+          },
+          nextStep: "Correct the requested source IDs or target line-item mappings, then rerun the repair dry run.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const mappedProductivityRows = productivity.filter((row) => row.mapped);
+    const selectedProductivityRows = productivitySourceIdSet.size > 0
+      ? mappedProductivityRows.filter((row) => productivitySourceIdSet.has(row.sourceId))
+      : mappedProductivityRows;
+    const selectedCreatableProductivityRows = selectedProductivityRows.filter(
+      (row) => !row.existingTargetProductivity
+    );
+    const selectedTimecardRows = (repairMode ? [] : timecards)
       .filter((row) => row.mapped)
       .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
-    const selectedCreatableProductivityRows = productivitySourceIdSet.size > 0
-      ? creatableProductivityRows.filter((row) => productivitySourceIdSet.has(row.sourceId))
-      : creatableProductivityRows;
-    const creatableTimecardRows = timecards
-      .filter((row) => row.mapped && !row.existingTargetTimecard)
-      .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
+    const creatableTimecardRows = selectedTimecardRows.filter((row) => !row.existingTargetTimecard);
 
     const createResults: UnknownRecord[] = [];
     const createStartedAt = Date.now();
@@ -1629,14 +1744,24 @@ export async function POST(request: Request) {
     let pauseReason = "";
     if (!dryRun) {
       const addedProjectUserIds = new Set<number>();
-      for (const row of selectedCreatableProductivityRows.slice(createOffset, createOffset + createLimit)) {
+      for (const row of selectedProductivityRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
           pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
           break;
         }
+        attemptedCreateRows += 1;
+        if (row.existingTargetProductivity) {
+          createResults.push({
+            type: "productivity_log",
+            sourceId: row.sourceId,
+            ok: true,
+            skipped: true,
+            reason: "Matching target productivity row already exists.",
+          });
+          continue;
+        }
         try {
-          attemptedCreateRows += 1;
           const result = await retryProcoreCreate(() =>
             createProductivityLog({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
@@ -1657,14 +1782,24 @@ export async function POST(request: Request) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      for (const row of creatableTimecardRows.slice(createOffset, createOffset + createLimit)) {
+      for (const row of selectedTimecardRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
           pauseReason = `Stopped before gateway timeout. Continue at create offset ${createOffset + attemptedCreateRows}.`;
           break;
         }
+        attemptedCreateRows += 1;
+        if (row.existingTargetTimecard) {
+          createResults.push({
+            type: "timecard_entry",
+            sourceId: row.sourceId,
+            ok: true,
+            skipped: true,
+            reason: "Matching target timecard already exists.",
+          });
+          continue;
+        }
         try {
-          attemptedCreateRows += 1;
           const targetParty = isRecord(row.targetParty) ? row.targetParty : null;
           const shouldAddProjectUser = readStr(targetParty?.source) === "company_user";
           const partyId = readNum(row.payload.party_id);
@@ -1714,6 +1849,7 @@ export async function POST(request: Request) {
         allowProductivityFallback,
         allowPartyNameFallback,
         allowBuiltInPartyFallback,
+        repairMode,
         productivitySourceIds,
         productivityLineItemMap,
         timecardTimeTypeMap,
@@ -1724,11 +1860,19 @@ export async function POST(request: Request) {
         sourceProductivity: sourceProductivity.length,
         sourceTimecards: sourceTimecards.length,
         targetProductivityLineItems: targetLookups.productivityLineItems.length,
-        mappedProductivity: creatableProductivityRows.length,
+        mappedProductivity: mappedProductivityRows.length,
         mappedTimecards: timecards.filter((row) => row.mapped).length,
+        selectedProductivity: selectedProductivityRows.length,
         creatableProductivity: selectedCreatableProductivityRows.length,
+        selectedTimecards: selectedTimecardRows.length,
         creatableTimecards: creatableTimecardRows.length,
+        skippedExistingProductivity: productivity.filter((row) => row.existingTargetProductivity).length,
         skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
+        requestedProductivitySourceIds: productivitySourceIds.length,
+        foundRequestedProductivitySourceIds: requestedProductivityRows.length,
+        unresolvedProductivitySourceIds: unresolvedProductivitySourceIds.length,
+        requestedExistingProductivity: requestedProductivityRows.filter((row) => row.existingTargetProductivity).length,
+        requestedMissingProductivityMappings: requestedMissingMappings.length,
         missingMappings: missingMappings.length,
         createOffset,
         createLimit,
@@ -1736,13 +1880,14 @@ export async function POST(request: Request) {
         hasMoreCreatableRows: dryRun
           ? false
           : createOffset + attemptedCreateRows < (
-              includeTimecards
-                ? creatableTimecardRows.length
-                : selectedCreatableProductivityRows.length
+              effectiveIncludeTimecards
+                ? selectedTimecardRows.length
+                : selectedProductivityRows.length
             ),
         pausedBeforeTimeout,
         rateLimited,
-        created: createResults.filter((row) => row.ok === true).length,
+        created: createResults.filter((row) => row.ok === true && row.skipped !== true).length,
+        skippedExistingInBatch: createResults.filter((row) => row.skipped === true).length,
         failed: errors.length,
         lookupHealth,
       },

@@ -221,12 +221,12 @@ async function fetchLineItemContractDetailsForContract(
   function candidateEndpoints(page: number) {
     const encCompanyId = encodeURIComponent(companyId);
     return [
-      `/rest/v1.0/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&project_id=${encProjectId}&page=${page}&per_page=${perPage}`,
-      `/rest/v1.0/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
-      `/rest/v1.0/projects/${encProjectId}/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
       `/rest/v1.0/purchase_order_contracts/${encContractId}/line_items?company_id=${encCompanyId}&project_id=${encProjectId}&page=${page}&per_page=${perPage}`,
       `/rest/v1.0/purchase_order_contracts/${encContractId}/line_items?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
       `/rest/v1.0/projects/${encProjectId}/purchase_order_contracts/${encContractId}/line_items?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
+      `/rest/v1.0/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&project_id=${encProjectId}&page=${page}&per_page=${perPage}`,
+      `/rest/v1.0/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
+      `/rest/v1.0/projects/${encProjectId}/purchase_order_contracts/${encContractId}/line_item_contract_details?company_id=${encCompanyId}&page=${page}&per_page=${perPage}`,
       `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encProjectId}/commitment_contracts/${encContractId}/line_items?page=${page}&per_page=${perPage}`,
     ];
   }

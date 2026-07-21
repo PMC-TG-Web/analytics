@@ -624,11 +624,12 @@ function ProcoreContent() {
   const [dailyCloneEndDate, setDailyCloneEndDate] = useState("");
   const [dailyCloneDefaultTimeTypeId, setDailyCloneDefaultTimeTypeId] = useState("");
   const [dailyCloneCreateOffset, setDailyCloneCreateOffset] = useState("0");
+  const [dailyCloneProductivitySourceIdsText, setDailyCloneProductivitySourceIdsText] = useState("");
   const [dailyCloneTimeTypeMapText, setDailyCloneTimeTypeMapText] = useState("{}");
   const [dailyClonePartyMapText, setDailyClonePartyMapText] = useState("{}");
   const [dailyCloneClassificationMapText, setDailyCloneClassificationMapText] = useState("{}");
   const [dailyCloneIncludeProductivity, setDailyCloneIncludeProductivity] = useState(true);
-  const [dailyCloneIncludeTimecards, setDailyCloneIncludeTimecards] = useState(true);
+  const [dailyCloneIncludeTimecards, setDailyCloneIncludeTimecards] = useState(false);
   const [dailyCloneBusy, setDailyCloneBusy] = useState(false);
   const [dailyCloneError, setDailyCloneError] = useState<string | null>(null);
   const [dailyCloneResult, setDailyCloneResult] = useState<any>(null);
@@ -2959,6 +2960,8 @@ function ProcoreContent() {
 
       const maxAutoBatches = dryRun ? 1 : 200;
       let currentOffset = Number.parseInt(options?.createOffset ?? (dailyCloneCreateOffset.trim() || "0"), 10) || 0;
+      const productivitySourceIds = dailyCloneProductivitySourceIdsText.trim();
+      const productivityRepairMode = productivitySourceIds.length > 0;
       const batchResults: any[] = [];
       let lastStatus = 0;
       let lastOk = false;
@@ -2976,7 +2979,8 @@ function ProcoreContent() {
             startDate: dailyCloneStartDate.trim(),
             endDate: dailyCloneEndDate.trim() || dailyCloneStartDate.trim(),
             includeProductivity: dailyCloneIncludeProductivity,
-            includeTimecards: dailyCloneIncludeTimecards,
+            includeTimecards: productivityRepairMode ? false : dailyCloneIncludeTimecards,
+            productivitySourceIds: productivitySourceIds || undefined,
             defaultTimecardTimeTypeId: dailyCloneDefaultTimeTypeId.trim() || undefined,
             createOffset: String(currentOffset),
             timecardTimeTypeMap,
@@ -10902,10 +10906,29 @@ function ProcoreContent() {
                   <input
                     type="checkbox"
                     checked={Boolean(dailyCloneIncludeTimecards)}
+                    disabled={Boolean(dailyCloneProductivitySourceIdsText.trim())}
                     onChange={(e) => setDailyCloneIncludeTimecards(e.target.checked)}
                   />
                   Timecards
                 </label>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Productivity Source IDs (repair only)</label>
+                <textarea
+                  value={dailyCloneProductivitySourceIdsText}
+                  onChange={(e) => {
+                    setDailyCloneProductivitySourceIdsText(e.target.value);
+                    setDailyCloneCreateOffset("0");
+                  }}
+                  rows={4}
+                  className="w-full border border-emerald-300 rounded px-3 py-2 text-xs font-mono"
+                  spellCheck={false}
+                  placeholder="Optional: paste the exact missing source productivity-log IDs, separated by commas or whitespace."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  When populated, the clone runs productivity only, validates every requested ID, and skips matching target rows before creating anything.
+                </p>
               </div>
 
               <div className="mb-4">
@@ -10980,14 +11003,22 @@ function ProcoreContent() {
                   disabled={dailyCloneBusy}
                   className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {dailyCloneBusy ? "Working..." : "Dry Run Clone"}
+                  {dailyCloneBusy
+                    ? "Working..."
+                    : dailyCloneProductivitySourceIdsText.trim()
+                      ? "Dry Run Productivity Repair"
+                      : "Dry Run Clone"}
                 </button>
                 <button
                   onClick={() => runDailyActivityClone(false)}
                   disabled={dailyCloneBusy}
                   className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded text-sm"
                 >
-                  {dailyCloneBusy ? "Working..." : "Live Clone Ready Rows"}
+                  {dailyCloneBusy
+                    ? "Working..."
+                    : dailyCloneProductivitySourceIdsText.trim()
+                      ? "Live Repair Selected Productivity"
+                      : "Live Clone Ready Rows"}
                 </button>
                 {dailyCloneResult?.result?.counts?.nextCreateOffset !== null && dailyCloneResult?.result?.counts?.nextCreateOffset !== undefined && (
                   <button

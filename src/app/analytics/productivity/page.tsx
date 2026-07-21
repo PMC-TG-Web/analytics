@@ -1,0 +1,959 @@
+"use client";
+
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+
+type ProductivityLine = {
+  companyId: string;
+  projectId: string;
+  projectNumber: string | null;
+  projectName: string;
+  customer: string | null;
+  projectStatus: string | null;
+  contractId: string | null;
+  poNumber: string | null;
+  poTitle: string | null;
+  poStatus: string | null;
+  vendorName: string | null;
+  lineItemId: string;
+  position: number | null;
+  description: string | null;
+  costCode: string | null;
+  costType: string | null;
+  wbsCode: string | null;
+  uom: string | null;
+  expectedQuantity: number;
+  usedQuantity: number;
+  remainingQuantity: number;
+  quantityCompleteRatio: number | null;
+  productivityLogCount: number;
+  firstActivityDate: string | null;
+  lastActivityDate: string | null;
+  aliasCount: number;
+  reviewedAliasCount: number;
+};
+
+type ApiSummary = {
+  projectCount: number;
+  poCount: number;
+  lineCount: number;
+  activeLineCount: number;
+  productivityCount: number;
+  matchedProductivityCount: number;
+  unmatchedProductivityCount: number;
+  productivityMatchRate: number;
+  sourceLineCount: number;
+  aliasCount: number;
+  reviewedAliasCount: number;
+};
+
+type ApiResponse = {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  generatedAt?: string;
+  summary?: ApiSummary;
+  lines?: ProductivityLine[];
+};
+
+type ProductivityLogDetail = {
+  logId: string | null;
+  projectId: string;
+  sourceLineItemId: string | null;
+  lineItemId: string;
+  aliasApplied: boolean;
+  date: string | null;
+  status: string | null;
+  position: number | null;
+  poNumber: string | null;
+  poTitle: string | null;
+  lineDescription: string | null;
+  quantityUsed: number;
+  createdByName: string | null;
+  foreman: string | null;
+  crew: string | null;
+  hours: number | null;
+  notes: string | null;
+};
+
+type ProductivityLogResponse = {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  logs?: ProductivityLogDetail[];
+};
+
+type QuantityTotals = {
+  uom: string;
+  expected: number;
+  used: number;
+  lineCount: number;
+};
+
+type PoGroup = {
+  key: string;
+  contractId: string | null;
+  poNumber: string | null;
+  poTitle: string | null;
+  poStatus: string | null;
+  vendorName: string | null;
+  lines: ProductivityLine[];
+};
+
+type ProjectGroup = {
+  projectId: string;
+  projectNumber: string | null;
+  projectName: string;
+  customer: string | null;
+  projectStatus: string | null;
+  pos: PoGroup[];
+};
+
+type DescriptionGroup = {
+  key: string;
+  companyId: string;
+  projectId: string;
+  description: string;
+  uom: string;
+  expectedQuantity: number;
+  usedQuantity: number;
+  remainingQuantity: number;
+  quantityCompleteRatio: number | null;
+  productivityLogCount: number;
+  lastActivityDate: string | null;
+  lineCount: number;
+  lineItemIds: string[];
+  poLabels: string[];
+  costCodes: string[];
+};
+
+const DEFAULT_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID || "";
+
+function formatNumber(value: number): string {
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function summarizeQuantities(lines: ProductivityLine[]): QuantityTotals[] {
+  const totals = new Map<string, QuantityTotals>();
+  for (const line of lines) {
+    const uom = (line.uom || "units").trim().toUpperCase();
+    const current = totals.get(uom) || { uom, expected: 0, used: 0, lineCount: 0 };
+    current.expected += line.expectedQuantity;
+    current.used += line.usedQuantity;
+    current.lineCount += 1;
+    totals.set(uom, current);
+  }
+  return [...totals.values()].sort((a, b) => b.used - a.used || a.uom.localeCompare(b.uom));
+}
+
+function groupLinesByDescription(lines: ProductivityLine[]): DescriptionGroup[] {
+  type MutableDescriptionGroup = Omit<DescriptionGroup, "lineItemIds" | "poLabels" | "costCodes" | "quantityCompleteRatio"> & {
+    lineItemIds: Set<string>;
+    poLabels: Set<string>;
+    costCodes: Set<string>;
+  };
+
+  const groups = new Map<string, MutableDescriptionGroup>();
+  for (const line of lines) {
+    const description = (line.description || "No description").trim().replace(/\s+/g, " ");
+    const normalizedDescription = description.toLocaleLowerCase();
+    const uom = (line.uom || "units").trim().toUpperCase();
+    const key = `${normalizedDescription}:${uom}`;
+    const current = groups.get(key) || {
+      key,
+      companyId: line.companyId,
+      projectId: line.projectId,
+      description,
+      uom,
+      expectedQuantity: 0,
+      usedQuantity: 0,
+      remainingQuantity: 0,
+      productivityLogCount: 0,
+      lastActivityDate: null,
+      lineCount: 0,
+      lineItemIds: new Set<string>(),
+      poLabels: new Set<string>(),
+      costCodes: new Set<string>(),
+    };
+
+    current.expectedQuantity += line.expectedQuantity;
+    current.usedQuantity += line.usedQuantity;
+    current.remainingQuantity += line.remainingQuantity;
+    current.productivityLogCount += line.productivityLogCount;
+    current.lineCount += 1;
+    current.lineItemIds.add(line.lineItemId);
+    const poLabel = line.poNumber || line.poTitle || "Unassigned PO";
+    current.poLabels.add(poLabel);
+    const costCode = line.costCode || line.wbsCode;
+    if (costCode) current.costCodes.add(costCode);
+    if (line.lastActivityDate && (!current.lastActivityDate || line.lastActivityDate > current.lastActivityDate)) {
+      current.lastActivityDate = line.lastActivityDate;
+    }
+    groups.set(key, current);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      quantityCompleteRatio:
+        group.expectedQuantity === 0 ? null : group.usedQuantity / group.expectedQuantity,
+      lineItemIds: [...group.lineItemIds].sort((a, b) => a.localeCompare(b)),
+      poLabels: [...group.poLabels].sort((a, b) => a.localeCompare(b)),
+      costCodes: [...group.costCodes].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => a.description.localeCompare(b.description) || a.uom.localeCompare(b.uom));
+}
+
+function QuantityChips({ totals, limit = 4 }: { totals: QuantityTotals[]; limit?: number }) {
+  const visible = totals.slice(0, limit);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {visible.map((total) => {
+        const ratio = total.expected > 0 ? total.used / total.expected : null;
+        return (
+          <span
+            key={total.uom}
+            className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700"
+            title={`${formatNumber(total.used)} used across ${total.lineCount} lines`}
+          >
+            {formatNumber(total.used)} / {formatNumber(total.expected)} {total.uom}
+            {ratio !== null ? ` · ${formatPercent(ratio)}` : ""}
+          </span>
+        );
+      })}
+      {totals.length > limit && (
+        <span className="text-[11px] font-bold text-slate-500">+{totals.length - limit} UOM</span>
+      )}
+    </div>
+  );
+}
+
+function ProgressBar({ ratio }: { ratio: number | null }) {
+  if (ratio === null) return <span className="text-[11px] font-bold text-amber-700">No budget qty</span>;
+  const width = Math.min(100, Math.max(0, ratio * 100));
+  const color = ratio > 1 ? "bg-rose-500" : ratio >= 0.85 ? "bg-emerald-500" : "bg-teal-600";
+  return (
+    <div className="min-w-28">
+      <div className="mb-1 flex justify-between text-[11px] font-black text-slate-700">
+        <span>{formatPercent(ratio)}</span>
+        {ratio > 1 && <span className="text-rose-700">Over</span>}
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ProductivityLogDrilldown({
+  companyId,
+  projectId,
+  lineItemIdsCsv,
+}: {
+  companyId: string;
+  projectId: string;
+  lineItemIdsCsv: string;
+}) {
+  const [logs, setLogs] = useState<ProductivityLogDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadLogs = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const url = new URL("/api/analytics/commitment-productivity/logs", window.location.origin);
+        url.searchParams.set("companyId", companyId);
+        url.searchParams.set("projectId", projectId);
+        url.searchParams.set("lineItemIds", lineItemIdsCsv);
+        const response = await fetch(url.toString(), {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        const data = (await response.json()) as ProductivityLogResponse;
+        if (!response.ok || !data.success) {
+          throw new Error(data.details || data.error || `Request failed (${response.status})`);
+        }
+        setLogs(Array.isArray(data.logs) ? data.logs : []);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+
+    void loadLogs();
+    return () => controller.abort();
+  }, [companyId, lineItemIdsCsv, projectId]);
+
+  if (loading) {
+    return <div className="px-4 py-5 text-xs font-bold text-slate-500">Loading productivity logs…</div>;
+  }
+  if (error) {
+    return <div className="px-4 py-4 text-xs font-bold text-rose-700">{error}</div>;
+  }
+  if (logs.length === 0) {
+    return <div className="px-4 py-4 text-xs font-bold text-slate-500">No productivity logs are stored for this row.</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto border-y border-teal-100 bg-teal-50/50 px-3 py-3">
+      <table className="w-full min-w-[980px] border-collapse text-left">
+        <thead className="text-[9px] font-black uppercase tracking-widest text-teal-800">
+          <tr>
+            <th className="px-2 py-2">Date</th>
+            <th className="px-2 py-2">PO</th>
+            <th className="px-2 py-2">Log Line</th>
+            <th className="px-2 py-2 text-right">Used</th>
+            <th className="px-2 py-2">Created By</th>
+            <th className="px-2 py-2">Status</th>
+            <th className="px-2 py-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-teal-100 bg-white/80">
+          {logs.map((log, index) => (
+            <tr key={log.logId || `${log.lineItemId}:${log.date}:${index}`} className="align-top">
+              <td className="whitespace-nowrap px-2 py-2.5 text-xs font-bold text-slate-700">{formatDate(log.date)}</td>
+              <td className="max-w-44 px-2 py-2.5 text-xs font-bold text-slate-600">
+                <p>{log.poNumber || "—"}</p>
+                {log.poTitle && <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">{log.poTitle}</p>}
+              </td>
+              <td className="max-w-sm px-2 py-2.5">
+                <p className="text-xs font-bold text-slate-700">{log.lineDescription || "No description"}</p>
+                <div className="mt-0.5 flex flex-wrap gap-1.5 text-[9px] font-semibold text-slate-400">
+                  {log.logId && <span className="font-mono">{log.logId}</span>}
+                  {log.aliasApplied && <span className="rounded bg-sky-100 px-1 text-sky-700">Alias mapped</span>}
+                </div>
+              </td>
+              <td className="whitespace-nowrap px-2 py-2.5 text-right text-xs font-black text-teal-700">{formatNumber(log.quantityUsed)}</td>
+              <td className="whitespace-nowrap px-2 py-2.5 text-xs font-semibold text-slate-600">{log.createdByName || log.foreman || "—"}</td>
+              <td className="px-2 py-2.5">
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${String(log.status || "").toLowerCase() === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                  {log.status || "Unknown"}
+                </span>
+              </td>
+              <td className="max-w-xs px-2 py-2.5 text-xs font-semibold text-slate-500">{log.notes || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function ProductivityAnalyticsPage() {
+  const [lines, setLines] = useState<ProductivityLine[]>([]);
+  const [summary, setSummary] = useState<ApiSummary | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Approved");
+  const [activityFilter, setActivityFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<"po" | "description">("po");
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedPos, setExpandedPos] = useState<Set<string>>(new Set());
+  const [expandedLogRows, setExpandedLogRows] = useState<Set<string>>(new Set());
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const url = new URL("/api/analytics/commitment-productivity", window.location.origin);
+      if (DEFAULT_COMPANY_ID) url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
+      const response = await fetch(url.toString(), { cache: "no-store", credentials: "include" });
+      const data = (await response.json()) as ApiResponse;
+      if (!response.ok || !data.success) {
+        throw new Error(data.details || data.error || `Request failed (${response.status})`);
+      }
+      setLines(Array.isArray(data.lines) ? data.lines : []);
+      setSummary(data.summary || null);
+      setGeneratedAt(data.generatedAt || null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const projectOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; label: string }>();
+    for (const line of lines) {
+      byId.set(line.projectId, {
+        id: line.projectId,
+        label: [line.projectNumber, line.projectName].filter(Boolean).join(" · "),
+      });
+    }
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [lines]);
+
+  const statusOptions = useMemo(
+    () => [...new Set(lines.map((line) => line.poStatus).filter((value): value is string => Boolean(value)))].sort(),
+    [lines]
+  );
+
+  const filteredLines = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return lines.filter((line) => {
+      if (projectFilter && line.projectId !== projectFilter) return false;
+      if (statusFilter && line.poStatus !== statusFilter) return false;
+      if (activityFilter === "active" && line.productivityLogCount === 0) return false;
+      if (activityFilter === "remaining" && line.remainingQuantity <= 0) return false;
+      if (activityFilter === "over" && line.remainingQuantity >= 0) return false;
+      if (!needle) return true;
+      return [
+        line.projectNumber,
+        line.projectName,
+        line.customer,
+        line.poNumber,
+        line.poTitle,
+        line.vendorName,
+        line.description,
+        line.costCode,
+        line.wbsCode,
+      ].some((value) => String(value || "").toLowerCase().includes(needle));
+    });
+  }, [activityFilter, lines, projectFilter, search, statusFilter]);
+
+  const projects = useMemo<ProjectGroup[]>(() => {
+    const projectMap = new Map<string, ProjectGroup>();
+    for (const line of filteredLines) {
+      let project = projectMap.get(line.projectId);
+      if (!project) {
+        project = {
+          projectId: line.projectId,
+          projectNumber: line.projectNumber,
+          projectName: line.projectName,
+          customer: line.customer,
+          projectStatus: line.projectStatus,
+          pos: [],
+        };
+        projectMap.set(line.projectId, project);
+      }
+      const poKey = `${line.projectId}:${line.contractId || line.poNumber || "unassigned"}`;
+      let po = project.pos.find((entry) => entry.key === poKey);
+      if (!po) {
+        po = {
+          key: poKey,
+          contractId: line.contractId,
+          poNumber: line.poNumber,
+          poTitle: line.poTitle,
+          poStatus: line.poStatus,
+          vendorName: line.vendorName,
+          lines: [],
+        };
+        project.pos.push(po);
+      }
+      po.lines.push(line);
+    }
+
+    return [...projectMap.values()]
+      .map((project) => ({
+        ...project,
+        pos: project.pos
+          .map((po) => ({
+            ...po,
+            lines: [...po.lines].sort(
+              (a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
+            ),
+          }))
+          .sort((a, b) => String(a.poNumber || a.poTitle || "").localeCompare(String(b.poNumber || b.poTitle || ""))),
+      }))
+      .sort((a, b) => a.projectName.localeCompare(b.projectName));
+  }, [filteredLines]);
+
+  useEffect(() => {
+    if (!projectFilter) return;
+    setExpandedProjects((current) => new Set(current).add(projectFilter));
+  }, [projectFilter]);
+
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
+
+  const togglePo = (poKey: string) => {
+    setExpandedPos((current) => {
+      const next = new Set(current);
+      if (next.has(poKey)) next.delete(poKey);
+      else next.add(poKey);
+      return next;
+    });
+  };
+
+  const toggleLogRow = (rowKey: string) => {
+    setExpandedLogRows((current) => {
+      const next = new Set(current);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    setExpandedProjects(new Set(projects.map((project) => project.projectId)));
+    setExpandedPos(new Set(projects.flatMap((project) => project.pos.map((po) => po.key))));
+  };
+
+  const collapseAll = () => {
+    setExpandedProjects(new Set());
+    setExpandedPos(new Set());
+    setExpandedLogRows(new Set());
+  };
+
+  const filteredPoCount = useMemo(
+    () => projects.reduce((sum, project) => sum + project.pos.length, 0),
+    [projects]
+  );
+
+  const filteredDescriptionCount = useMemo(
+    () =>
+      projects.reduce(
+        (sum, project) => sum + groupLinesByDescription(project.pos.flatMap((po) => po.lines)).length,
+        0
+      ),
+    [projects]
+  );
+
+  return (
+    <main className="min-h-screen bg-slate-100">
+      <div className="mx-auto w-full max-w-[1800px] px-3 py-6 xl:px-6">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-teal-900 px-5 py-5 text-white">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-teal-200">
+                  <span>Analytics</span>
+                  <span className="text-slate-500">/</span>
+                  <span>Productivity</span>
+                </div>
+                <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Field Productivity</h1>
+                <p className="mt-1 max-w-3xl text-sm font-medium text-slate-300">
+                  Drill from projects to purchase orders and exact PO lines. Quantities are kept separate by unit of measure.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadData()}
+                  disabled={loading}
+                  className="rounded-lg bg-teal-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-950 hover:bg-teal-300 disabled:opacity-60"
+                >
+                  {loading ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+            </div>
+            {generatedAt && (
+              <p className="mt-3 text-[11px] font-semibold text-slate-400">
+                Data calculated {new Date(generatedAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <div className="m-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 p-5 lg:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Projects</p>
+              <p className="mt-1 text-2xl font-black text-slate-800">{summary ? formatNumber(summary.projectCount) : "—"}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">with PO lines</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Purchase Orders</p>
+              <p className="mt-1 text-2xl font-black text-slate-800">{summary ? formatNumber(summary.poCount) : "—"}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">canonical headers</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">PO Lines</p>
+              <p className="mt-1 text-2xl font-black text-slate-800">{summary ? formatNumber(summary.lineCount) : "—"}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {summary ? `${formatNumber(summary.activeLineCount)} with activity` : "Loading"}
+              </p>
+            </div>
+            <div className={`rounded-xl border p-4 ${summary?.unmatchedProductivityCount ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Exceptions</p>
+              <p className={`mt-1 text-2xl font-black ${summary?.unmatchedProductivityCount ? "text-amber-700" : "text-emerald-700"}`}>
+                {summary ? formatNumber(summary.unmatchedProductivityCount) : "—"}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {summary ? `${summary.aliasCount} aliases · ${summary.reviewedAliasCount} reviewed` : "Loading"}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-y border-slate-200 bg-slate-50 px-5 py-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Project</label>
+                <select
+                  value={projectFilter}
+                  onChange={(event) => setProjectFilter(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <option value="">All projects</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>{project.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">PO Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <option value="">All statuses</option>
+                  {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Line Activity</label>
+                <select
+                  value={activityFilter}
+                  onChange={(event) => setActivityFilter(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <option value="all">All lines</option>
+                  <option value="active">With productivity</option>
+                  <option value="remaining">Quantity remaining</option>
+                  <option value="over">Over expected quantity</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Search</label>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Project, PO, vendor, line, or cost code"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-500">
+                {viewMode === "po"
+                  ? `Showing ${formatNumber(filteredLines.length)} lines in ${formatNumber(filteredPoCount)} POs across ${formatNumber(projects.length)} projects`
+                  : `Showing ${formatNumber(filteredDescriptionCount)} descriptions from ${formatNumber(filteredLines.length)} lines across ${formatNumber(projects.length)} projects`}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("po")}
+                    aria-pressed={viewMode === "po"}
+                    className={`rounded-md px-3 py-1 text-[11px] font-black uppercase tracking-wider ${viewMode === "po" ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                  >
+                    By PO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("description")}
+                    aria-pressed={viewMode === "description"}
+                    className={`rounded-md px-3 py-1 text-[11px] font-black uppercase tracking-wider ${viewMode === "description" ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                  >
+                    By Description
+                  </button>
+                </div>
+                <button type="button" onClick={expandAll} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100">
+                  Expand all
+                </button>
+                <button type="button" onClick={collapseAll} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100">
+                  Collapse all
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 sm:p-5">
+            {loading && lines.length === 0 ? (
+              <div className="py-16 text-center text-sm font-bold text-slate-500">Loading productivity quantities…</div>
+            ) : projects.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center text-sm font-bold text-slate-500">
+                No PO lines match the current filters.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {projects.map((project) => {
+                  const projectOpen = expandedProjects.has(project.projectId);
+                  const projectLines = project.pos.flatMap((po) => po.lines);
+                  const projectTotals = summarizeQuantities(projectLines);
+                  const activeLines = projectLines.filter((line) => line.productivityLogCount > 0).length;
+                  const descriptionGroups = groupLinesByDescription(projectLines);
+                  const activeDescriptions = descriptionGroups.filter((group) => group.productivityLogCount > 0).length;
+                  return (
+                    <section key={project.projectId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => toggleProject(project.projectId)}
+                        className="flex w-full flex-col gap-3 bg-slate-800 px-4 py-4 text-left text-white hover:bg-slate-750 lg:flex-row lg:items-center lg:justify-between"
+                      >
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className="mt-0.5 text-lg font-black text-teal-300">{projectOpen ? "▾" : "▸"}</span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {project.projectNumber && <span className="text-xs font-black text-teal-300">{project.projectNumber}</span>}
+                              <h2 className="truncate text-base font-black">{project.projectName}</h2>
+                              {project.projectStatus && <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">{project.projectStatus}</span>}
+                            </div>
+                            <p className="mt-1 text-xs font-semibold text-slate-300">
+                              {viewMode === "po"
+                                ? `${project.customer || "No customer"} · ${project.pos.length} POs · ${projectLines.length} lines · ${activeLines} active`
+                                : `${project.customer || "No customer"} · ${descriptionGroups.length} descriptions · ${projectLines.length} lines · ${activeDescriptions} active`}
+                            </p>
+                          </div>
+                        </div>
+                        <QuantityChips totals={projectTotals} />
+                      </button>
+
+                      {projectOpen && (
+                        <div className="space-y-2 bg-slate-100 p-2 sm:p-3">
+                          {viewMode === "description" ? (
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                              <table className="w-full min-w-[1060px] border-collapse text-left">
+                                <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                  <tr>
+                                    <th className="px-3 py-2.5">Description</th>
+                                    <th className="px-3 py-2.5">Purchase Orders</th>
+                                    <th className="px-3 py-2.5">Cost Code</th>
+                                    <th className="px-3 py-2.5 text-right">Expected</th>
+                                    <th className="px-3 py-2.5 text-right">Used</th>
+                                    <th className="px-3 py-2.5 text-right">Remaining</th>
+                                    <th className="px-3 py-2.5">Progress</th>
+                                    <th className="px-3 py-2.5">Activity</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {descriptionGroups.map((group) => {
+                                    const isOver = group.remainingQuantity < 0;
+                                    const visiblePos = group.poLabels.slice(0, 3);
+                                    const logRowKey = `description:${group.projectId}:${group.key}`;
+                                    const logsOpen = expandedLogRows.has(logRowKey);
+                                    return (
+                                      <Fragment key={group.key}>
+                                        <tr className="align-top hover:bg-teal-50/40">
+                                          <td className="max-w-md px-3 py-3">
+                                            <p className="text-sm font-bold text-slate-800">{group.description}</p>
+                                            <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                                              {group.lineCount} PO line{group.lineCount === 1 ? "" : "s"} across {group.poLabels.length} PO{group.poLabels.length === 1 ? "" : "s"}
+                                            </p>
+                                          </td>
+                                          <td className="max-w-xs px-3 py-3">
+                                            <div className="flex flex-wrap gap-1">
+                                              {visiblePos.map((poLabel) => (
+                                                <span key={poLabel} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                                                  {poLabel}
+                                                </span>
+                                              ))}
+                                              {group.poLabels.length > visiblePos.length && (
+                                                <span className="px-1 py-0.5 text-[10px] font-bold text-slate-400">
+                                                  +{group.poLabels.length - visiblePos.length}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-3 text-xs font-bold text-slate-600">
+                                            {group.costCodes.length ? group.costCodes.join(", ") : "—"}
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-black text-slate-800">
+                                            {formatNumber(group.expectedQuantity)} <span className="text-[10px] text-slate-400">{group.uom}</span>
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-black text-teal-700">
+                                            {formatNumber(group.usedQuantity)}
+                                          </td>
+                                          <td className={`whitespace-nowrap px-3 py-3 text-right text-sm font-black ${isOver ? "text-rose-700" : "text-slate-700"}`}>
+                                            {formatNumber(group.remainingQuantity)}
+                                          </td>
+                                          <td className="px-3 py-3"><ProgressBar ratio={group.quantityCompleteRatio} /></td>
+                                          <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-500">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleLogRow(logRowKey)}
+                                              disabled={group.productivityLogCount === 0}
+                                              className="font-black text-teal-700 hover:text-teal-900 disabled:cursor-default disabled:text-slate-400"
+                                            >
+                                              {group.productivityLogCount > 0 ? `${logsOpen ? "▾" : "▸"} ${group.productivityLogCount} logs` : "0 logs"}
+                                            </button>
+                                            <p className="mt-1">{formatDate(group.lastActivityDate)}</p>
+                                          </td>
+                                        </tr>
+                                        {logsOpen && (
+                                          <tr>
+                                            <td colSpan={8} className="p-0">
+                                              <ProductivityLogDrilldown
+                                                companyId={group.companyId}
+                                                projectId={group.projectId}
+                                                lineItemIdsCsv={group.lineItemIds.join(",")}
+                                              />
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : project.pos.map((po) => {
+                            const poOpen = expandedPos.has(po.key);
+                            const poTotals = summarizeQuantities(po.lines);
+                            const poLogCount = po.lines.reduce((sum, line) => sum + line.productivityLogCount, 0);
+                            return (
+                              <div key={po.key} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                                <button
+                                  type="button"
+                                  onClick={() => togglePo(po.key)}
+                                  className="flex w-full flex-col gap-3 px-4 py-3 text-left hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
+                                >
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <span className="text-base font-black text-teal-700">{poOpen ? "▾" : "▸"}</span>
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm font-black text-slate-900">{po.poNumber || "Unnumbered PO"}</span>
+                                        <span className="truncate text-sm font-bold text-slate-600">{po.poTitle || "Untitled"}</span>
+                                        {po.poStatus && (
+                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${po.poStatus.toLowerCase() === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                                            {po.poStatus}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                                        {po.vendorName || "No vendor"} · {po.lines.length} lines · {poLogCount} productivity logs
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <QuantityChips totals={poTotals} limit={3} />
+                                </button>
+
+                                {poOpen && (
+                                  <div className="overflow-x-auto border-t border-slate-200">
+                                    <table className="w-full min-w-[1060px] border-collapse text-left">
+                                      <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                        <tr>
+                                          <th className="px-3 py-2.5">Line</th>
+                                          <th className="px-3 py-2.5">Description</th>
+                                          <th className="px-3 py-2.5">Cost Code</th>
+                                          <th className="px-3 py-2.5 text-right">Expected</th>
+                                          <th className="px-3 py-2.5 text-right">Used</th>
+                                          <th className="px-3 py-2.5 text-right">Remaining</th>
+                                          <th className="px-3 py-2.5">Progress</th>
+                                          <th className="px-3 py-2.5">Activity</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {po.lines.map((line) => {
+                                          const isOver = line.remainingQuantity < 0;
+                                          const logRowKey = `line:${line.projectId}:${line.lineItemId}`;
+                                          const logsOpen = expandedLogRows.has(logRowKey);
+                                          return (
+                                            <Fragment key={line.lineItemId}>
+                                            <tr className="align-top hover:bg-teal-50/40">
+                                              <td className="whitespace-nowrap px-3 py-3 text-xs font-black text-slate-500">
+                                                {line.position ?? "—"}
+                                              </td>
+                                              <td className="max-w-md px-3 py-3">
+                                                <p className="text-sm font-bold text-slate-800">{line.description || "No description"}</p>
+                                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                                  <span className="font-mono text-[10px] text-slate-400">{line.lineItemId}</span>
+                                                  {line.aliasCount > 0 && (
+                                                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${line.reviewedAliasCount > 0 ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
+                                                      {line.reviewedAliasCount > 0 ? "Reviewed alias" : `${line.aliasCount} alias${line.aliasCount === 1 ? "" : "es"}`}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </td>
+                                              <td className="px-3 py-3 text-xs font-bold text-slate-600">
+                                                {line.costCode || line.wbsCode || "—"}
+                                              </td>
+                                              <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-black text-slate-800">
+                                                {formatNumber(line.expectedQuantity)} <span className="text-[10px] text-slate-400">{(line.uom || "units").toUpperCase()}</span>
+                                              </td>
+                                              <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-black text-teal-700">{formatNumber(line.usedQuantity)}</td>
+                                              <td className={`whitespace-nowrap px-3 py-3 text-right text-sm font-black ${isOver ? "text-rose-700" : "text-slate-700"}`}>
+                                                {formatNumber(line.remainingQuantity)}
+                                              </td>
+                                              <td className="px-3 py-3"><ProgressBar ratio={line.quantityCompleteRatio} /></td>
+                                              <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-500">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => toggleLogRow(logRowKey)}
+                                                  disabled={line.productivityLogCount === 0}
+                                                  className="font-black text-teal-700 hover:text-teal-900 disabled:cursor-default disabled:text-slate-400"
+                                                >
+                                                  {line.productivityLogCount > 0 ? `${logsOpen ? "▾" : "▸"} ${line.productivityLogCount} logs` : "0 logs"}
+                                                </button>
+                                                <p className="mt-1">{formatDate(line.lastActivityDate)}</p>
+                                              </td>
+                                            </tr>
+                                            {logsOpen && (
+                                              <tr>
+                                                <td colSpan={8} className="p-0">
+                                                  <ProductivityLogDrilldown
+                                                    companyId={line.companyId}
+                                                    projectId={line.projectId}
+                                                    lineItemIdsCsv={line.lineItemId}
+                                                  />
+                                                </td>
+                                              </tr>
+                                            )}
+                                            </Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}

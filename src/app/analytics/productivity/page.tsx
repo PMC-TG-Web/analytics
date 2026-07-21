@@ -44,6 +44,29 @@ type ApiSummary = {
   sourceLineCount: number;
   aliasCount: number;
   reviewedAliasCount: number;
+  timecardEntryCount: number;
+  timecardHours: number;
+  expectedLaborHours: number;
+  laborProjectCount: number;
+};
+
+type LaborGroup = {
+  companyId: string;
+  projectId: string;
+  key: string;
+  scopeCode: string;
+  description: string;
+  costCodeId: string | null;
+  costCode: string | null;
+  originalExpectedHours: number;
+  approvedChangeHours: number;
+  expectedHours: number;
+  totalHours: number;
+  remainingHours: number;
+  laborBurnRatio: number | null;
+  entryCount: number;
+  firstEntryDate: string | null;
+  lastEntryDate: string | null;
 };
 
 type ApiResponse = {
@@ -53,6 +76,7 @@ type ApiResponse = {
   generatedAt?: string;
   summary?: ApiSummary;
   lines?: ProductivityLine[];
+  laborGroups?: LaborGroup[];
 };
 
 type ProductivityLogDetail = {
@@ -80,6 +104,32 @@ type ProductivityLogResponse = {
   error?: string;
   details?: string;
   logs?: ProductivityLogDetail[];
+};
+
+type TimecardEntryDetail = {
+  id: string;
+  procoreId: string | null;
+  date: string | null;
+  hours: number;
+  employeeName: string | null;
+  laborDescription: string;
+  costCode: string | null;
+  notes: string | null;
+  timeType: string | null;
+  status: string | null;
+  timeIn: string | null;
+  timeOut: string | null;
+  lunchTime: number | null;
+  createdByName: string | null;
+  subJobName: string | null;
+  billable: boolean | null;
+};
+
+type TimecardEntryResponse = {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  entries?: TimecardEntryDetail[];
 };
 
 type QuantityTotals = {
@@ -249,8 +299,8 @@ function QuantityChips({ totals, limit = 4 }: { totals: QuantityTotals[]; limit?
   );
 }
 
-function ProgressBar({ ratio }: { ratio: number | null }) {
-  if (ratio === null) return <span className="text-[11px] font-bold text-amber-700">No budget qty</span>;
+function ProgressBar({ ratio, missingLabel = "No budget qty" }: { ratio: number | null; missingLabel?: string }) {
+  if (ratio === null) return <span className="text-[11px] font-bold text-amber-700">{missingLabel}</span>;
   const width = Math.min(100, Math.max(0, ratio * 100));
   const color = ratio > 1 ? "bg-rose-500" : ratio >= 0.85 ? "bg-emerald-500" : "bg-teal-600";
   return (
@@ -366,8 +416,215 @@ function ProductivityLogDrilldown({
   );
 }
 
+function TimecardEntryDrilldown({
+  companyId,
+  projectId,
+  scopeCode,
+}: {
+  companyId: string;
+  projectId: string;
+  scopeCode: string;
+}) {
+  const [entries, setEntries] = useState<TimecardEntryDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadEntries = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const url = new URL("/api/analytics/commitment-productivity/timecards", window.location.origin);
+        url.searchParams.set("companyId", companyId);
+        url.searchParams.set("projectId", projectId);
+        url.searchParams.set("scopeCode", scopeCode);
+        const response = await fetch(url.toString(), {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        const data = (await response.json()) as TimecardEntryResponse;
+        if (!response.ok || !data.success) {
+          throw new Error(data.details || data.error || `Request failed (${response.status})`);
+        }
+        setEntries(Array.isArray(data.entries) ? data.entries : []);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+
+    void loadEntries();
+    return () => controller.abort();
+  }, [companyId, projectId, scopeCode]);
+
+  if (loading) {
+    return <div className="px-4 py-5 text-xs font-bold text-slate-500">Loading timecard entries…</div>;
+  }
+  if (error) {
+    return <div className="px-4 py-4 text-xs font-bold text-rose-700">{error}</div>;
+  }
+  if (entries.length === 0) {
+    return <div className="px-4 py-4 text-xs font-bold text-slate-500">No timecard entries are stored for this labor description.</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto border-y border-indigo-100 bg-indigo-50/50 px-3 py-3">
+      <table className="w-full min-w-[980px] border-collapse text-left">
+        <thead className="text-[9px] font-black uppercase tracking-widest text-indigo-800">
+          <tr>
+            <th className="px-2 py-2">Date</th>
+            <th className="px-2 py-2">Employee</th>
+            <th className="px-2 py-2 text-right">Hours</th>
+            <th className="px-2 py-2">Time</th>
+            <th className="px-2 py-2">Type</th>
+            <th className="px-2 py-2">Status</th>
+            <th className="px-2 py-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-indigo-100 bg-white/80">
+          {entries.map((entry) => (
+            <tr key={entry.id} className="align-top">
+              <td className="whitespace-nowrap px-2 py-2.5 text-xs font-bold text-slate-700">{formatDate(entry.date)}</td>
+              <td className="max-w-52 px-2 py-2.5">
+                <p className="text-xs font-bold text-slate-700">{entry.employeeName || "—"}</p>
+                {entry.subJobName && <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{entry.subJobName}</p>}
+              </td>
+              <td className="whitespace-nowrap px-2 py-2.5 text-right text-xs font-black text-indigo-700">{formatNumber(entry.hours)}</td>
+              <td className="whitespace-nowrap px-2 py-2.5 text-xs font-semibold text-slate-600">
+                {entry.timeIn || entry.timeOut ? `${entry.timeIn || "—"} – ${entry.timeOut || "—"}` : "—"}
+              </td>
+              <td className="px-2 py-2.5 text-xs font-semibold text-slate-600">{entry.timeType || "—"}</td>
+              <td className="px-2 py-2.5 text-xs font-semibold text-slate-600">{entry.status || "—"}</td>
+              <td className="max-w-sm px-2 py-2.5 text-xs font-semibold text-slate-500">{entry.notes || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LaborDrilldown({ projectId, groups }: { projectId: string; groups: LaborGroup[] }) {
+  const [open, setOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const totalHours = groups.reduce((sum, group) => sum + group.totalHours, 0);
+  const expectedHours = groups.reduce((sum, group) => sum + group.expectedHours, 0);
+  const entryCount = groups.reduce((sum, group) => sum + group.entryCount, 0);
+  const laborRatio = expectedHours > 0 ? totalHours / expectedHours : null;
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-indigo-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left hover:bg-indigo-50/60 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-3">
+          <span className="text-base font-black text-indigo-700">{open ? "▾" : "▸"}</span>
+          <div>
+            <p className="text-sm font-black text-slate-900">Labor</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {groups.length} description{groups.length === 1 ? "" : "s"} · {formatNumber(entryCount)} timecard {entryCount === 1 ? "entry" : "entries"}
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-800">
+          {formatNumber(totalHours)} / {formatNumber(expectedHours)} hrs{laborRatio !== null ? ` · ${formatPercent(laborRatio)}` : ""}
+        </span>
+      </button>
+
+      {open && (
+        groups.length === 0 ? (
+          <div className="border-t border-indigo-100 px-4 py-5 text-xs font-bold text-slate-500">
+            No labor budget lines or timecards are stored for this project.
+          </div>
+        ) : (
+          <div className="overflow-x-auto border-t border-indigo-100">
+            <table className="w-full min-w-[1080px] border-collapse text-left">
+              <thead className="bg-indigo-50 text-[10px] font-black uppercase tracking-widest text-indigo-800">
+                <tr>
+                  <th className="px-3 py-2.5">Labor Description</th>
+                  <th className="px-3 py-2.5">Budget Code</th>
+                  <th className="px-3 py-2.5 text-right">Expected</th>
+                  <th className="px-3 py-2.5 text-right">Used</th>
+                  <th className="px-3 py-2.5 text-right">Remaining</th>
+                  <th className="px-3 py-2.5">Progress</th>
+                  <th className="px-3 py-2.5">Last Entry</th>
+                  <th className="px-3 py-2.5">Logs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {groups.map((group) => {
+                  const rowKey = `${projectId}:${group.key}`;
+                  const entriesOpen = expandedGroups.has(rowKey);
+                  const isOver = group.remainingHours < 0;
+                  return (
+                    <Fragment key={group.key}>
+                      <tr className="align-top hover:bg-indigo-50/30">
+                        <td className="max-w-md px-3 py-3 text-sm font-bold text-slate-800">{group.description}</td>
+                        <td className="px-3 py-3 text-xs font-bold text-slate-600">{group.costCode || "—"}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                          <p className="text-sm font-black text-slate-800">{formatNumber(group.expectedHours)}</p>
+                          <p className="mt-0.5 text-[9px] font-semibold text-slate-400">
+                            {formatNumber(group.originalExpectedHours)} budget{group.approvedChangeHours !== 0 ? ` + ${formatNumber(group.approvedChangeHours)} CO` : ""}
+                          </p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-black text-indigo-700">{formatNumber(group.totalHours)}</td>
+                        <td className={`whitespace-nowrap px-3 py-3 text-right text-sm font-black ${isOver ? "text-rose-700" : "text-slate-700"}`}>
+                          {formatNumber(group.remainingHours)}
+                        </td>
+                        <td className="px-3 py-3"><ProgressBar ratio={group.laborBurnRatio} missingLabel="No expected hrs" /></td>
+                        <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-500">{formatDate(group.lastEntryDate)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(rowKey)}
+                            disabled={group.entryCount === 0}
+                            className="font-black text-indigo-700 hover:text-indigo-900 disabled:cursor-default disabled:text-slate-400"
+                          >
+                            {group.entryCount > 0 ? `${entriesOpen ? "▾" : "▸"} ${group.entryCount} logs` : "0 logs"}
+                          </button>
+                        </td>
+                      </tr>
+                      {entriesOpen && (
+                        <tr>
+                          <td colSpan={8} className="p-0">
+                            <TimecardEntryDrilldown
+                              companyId={group.companyId}
+                              projectId={group.projectId}
+                              scopeCode={group.scopeCode}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function ProductivityAnalyticsPage() {
   const [lines, setLines] = useState<ProductivityLine[]>([]);
+  const [laborGroups, setLaborGroups] = useState<LaborGroup[]>([]);
   const [summary, setSummary] = useState<ApiSummary | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -393,6 +650,7 @@ export default function ProductivityAnalyticsPage() {
         throw new Error(data.details || data.error || `Request failed (${response.status})`);
       }
       setLines(Array.isArray(data.lines) ? data.lines : []);
+      setLaborGroups(Array.isArray(data.laborGroups) ? data.laborGroups : []);
       setSummary(data.summary || null);
       setGeneratedAt(data.generatedAt || null);
     } catch (loadError) {
@@ -492,6 +750,19 @@ export default function ProductivityAnalyticsPage() {
       .sort((a, b) => a.projectName.localeCompare(b.projectName));
   }, [filteredLines]);
 
+  const laborGroupsByProject = useMemo(() => {
+    const byProject = new Map<string, LaborGroup[]>();
+    for (const group of laborGroups) {
+      const current = byProject.get(group.projectId) || [];
+      current.push(group);
+      byProject.set(group.projectId, current);
+    }
+    for (const groups of byProject.values()) {
+      groups.sort((a, b) => a.description.localeCompare(b.description) || String(a.costCode || "").localeCompare(String(b.costCode || "")));
+    }
+    return byProject;
+  }, [laborGroups]);
+
   useEffect(() => {
     if (!projectFilter) return;
     setExpandedProjects((current) => new Set(current).add(projectFilter));
@@ -563,7 +834,7 @@ export default function ProductivityAnalyticsPage() {
                 </div>
                 <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Field Productivity</h1>
                 <p className="mt-1 max-w-3xl text-sm font-medium text-slate-300">
-                  Drill from projects to purchase orders and exact PO lines. Quantities are kept separate by unit of measure.
+                  Drill from projects into PO quantities, productivity logs, labor descriptions, and individual timecard entries.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -719,6 +990,7 @@ export default function ProductivityAnalyticsPage() {
                   const activeLines = projectLines.filter((line) => line.productivityLogCount > 0).length;
                   const descriptionGroups = groupLinesByDescription(projectLines);
                   const activeDescriptions = descriptionGroups.filter((group) => group.productivityLogCount > 0).length;
+                  const projectLaborGroups = laborGroupsByProject.get(project.projectId) || [];
                   return (
                     <section key={project.projectId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                       <button
@@ -944,6 +1216,7 @@ export default function ProductivityAnalyticsPage() {
                               </div>
                             );
                           })}
+                          <LaborDrilldown projectId={project.projectId} groups={projectLaborGroups} />
                         </div>
                       )}
                     </section>

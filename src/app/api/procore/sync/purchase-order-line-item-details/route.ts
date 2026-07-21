@@ -327,6 +327,7 @@ export async function POST(request: Request) {
 
     const perPage = Math.min(200, Math.max(1, Number.parseInt(String(body.perPage || "100"), 10) || 100));
     const concurrency = Math.min(8, Math.max(1, Number.parseInt(String(body.concurrency || "2"), 10) || 2));
+    const requestDelayMs = Math.min(10_000, Math.max(0, Number.parseInt(String(body.requestDelayMs || "0"), 10) || 0));
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
@@ -449,6 +450,9 @@ export async function POST(request: Request) {
         let projectCreated = false;
 
         for (const contract of contracts) {
+          if (requestDelayMs > 0) {
+            await sleep(requestDelayMs);
+          }
           const contractId = String(asObject(contract).id ?? "").trim();
           if (!contractId) continue;
           const { records: details, notEnabled: contractDetailsNotEnabled } = await fetchLineItemContractDetailsForContract(

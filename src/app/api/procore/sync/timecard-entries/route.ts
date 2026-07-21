@@ -29,6 +29,23 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function unwrapArray(value: unknown): ProcoreTimecardEntry[] {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is ProcoreTimecardEntry => Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+  const record = asObject(value);
+  for (const candidate of [record.data, record.results]) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is ProcoreTimecardEntry => Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+  }
+  return [];
+}
+
 function firstText(...values: unknown[]) {
   for (const value of values) {
     const text = String(value || "").trim();
@@ -73,7 +90,7 @@ async function fetchAllTimecardEntriesForProject(params: {
   dailyLogSegmentId?: string;
   perPage: number;
 }) {
-  const entries: ProcoreTimecardEntry[] = [];
+  const directEntries: ProcoreTimecardEntry[] = [];
   let page = 1;
 
   while (true) {
@@ -95,14 +112,72 @@ async function fetchAllTimecardEntriesForProject(params: {
     const pageEntries = Array.isArray(response) ? (response as ProcoreTimecardEntry[]) : [];
 
     if (!pageEntries.length) break;
-    entries.push(...pageEntries);
+    directEntries.push(...pageEntries);
     if (pageEntries.length < params.perPage) break;
     page += 1;
     if (page > 100) break;
     await new Promise((r) => setTimeout(r, 150));
   }
 
-  return entries;
+  const timesheetEntries: ProcoreTimecardEntry[] = [];
+  page = 1;
+  while (true) {
+    const query = new URLSearchParams({
+      company_id: params.companyId,
+      page: String(page),
+      per_page: String(params.perPage),
+    });
+    const endpoint = `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/timesheets?${query.toString()}`;
+    const response = await makeRequest(endpoint, params.accessToken, undefined, params.companyId);
+    const timesheets = unwrapArray(response);
+
+    for (const timesheet of timesheets) {
+      const fallbackDate = normalizeDate(timesheet.date);
+      const nestedEntries = unwrapArray(timesheet.timecard_entries || timesheet.timecardEntries);
+      for (const entry of nestedEntries) {
+        const entryDate = normalizeDate(entry.date || fallbackDate);
+        const rangeStart = params.logDate || params.startDate;
+        const rangeEnd = params.logDate || params.endDate;
+        if (rangeStart && (!entryDate || entryDate < rangeStart)) continue;
+        if (rangeEnd && (!entryDate || entryDate > rangeEnd)) continue;
+
+        if (params.createdByIds?.length) {
+          const createdById = firstText(asObject(entry.created_by).id, entry.created_by_id);
+          if (!params.createdByIds.includes(createdById)) continue;
+        }
+        if (params.dailyLogSegmentId) {
+          const segmentId = firstText(entry.daily_log_segment_id, asObject(entry.daily_log_segment).id);
+          if (segmentId !== params.dailyLogSegmentId) continue;
+        }
+
+        timesheetEntries.push({
+          ...entry,
+          date: entry.date || fallbackDate,
+          _timesheet_id: timesheet.id,
+        });
+      }
+    }
+
+    if (timesheets.length < params.perPage) break;
+    page += 1;
+    if (page > 100) break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+
+  // Timesheet-nested records are authoritative when both endpoints return the
+  // same entry. They include current budget-code assignments that the direct
+  // timecard_entries endpoint can omit or return stale.
+  const entriesById = new Map<string, ProcoreTimecardEntry>();
+  for (const entry of directEntries) {
+    const id = firstText(entry.id);
+    if (id) entriesById.set(id, entry);
+  }
+  for (const entry of timesheetEntries) {
+    const id = firstText(entry.id);
+    if (id) entriesById.set(id, entry);
+  }
+
+  return [...entriesById.values()];
 }
 
 async function mapWithConcurrency<T, R>(

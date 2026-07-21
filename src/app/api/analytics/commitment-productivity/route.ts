@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing companyId.' }, { status: 400 });
     }
 
-    const [rows, actualSummaryRows] = await Promise.all([
+    const [rows, actualSummaryRows, laborRows] = await Promise.all([
       prisma.$queryRawUnsafe<DbRow[]>(
         `
           WITH alias_counts AS (
@@ -140,6 +140,121 @@ export async function GET(request: NextRequest) {
         companyId,
         projectId
       ),
+      prisma.$queryRawUnsafe<DbRow[]>(
+        `
+          WITH budget AS (
+            SELECT
+              b.company_id,
+              b.project_id,
+              UPPER(REGEXP_REPLACE(BTRIM(b.cost_code), '\\.L$', '', 'i')) AS scope_code,
+              MAX(
+                NULLIF(
+                  BTRIM(REGEXP_REPLACE(COALESCE(b.cost_code_description, ''), '\\.Labor$', '', 'i')),
+                  ''
+                )
+              ) AS labor_description,
+              SUM(COALESCE(b.quantity, 0))::double precision AS original_expected_hours
+            FROM budgetlineitems b
+            WHERE b.company_id = $1
+              AND ($2::text IS NULL OR b.project_id = $2)
+              AND b.cost_code ~* '\\.L$'
+            GROUP BY
+              b.company_id,
+              b.project_id,
+              UPPER(REGEXP_REPLACE(BTRIM(b.cost_code), '\\.L$', '', 'i'))
+          ),
+          approved_change_orders AS (
+            SELECT
+              c.company_id,
+              c.project_id,
+              UPPER(
+                COALESCE(
+                  NULLIF(REGEXP_REPLACE(BTRIM(c.cost_code), '\\.L$', '', 'i'), ''),
+                  NULLIF(REGEXP_REPLACE(BTRIM(c.wbs_code), '\\.L$', '', 'i'), ''),
+                  '(UNASSIGNED)'
+                )
+              ) AS scope_code,
+              SUM(COALESCE(c.labor_hours, 0))::double precision AS approved_change_hours
+            FROM procore_change_order_package_lines c
+            WHERE c.company_id = $1
+              AND ($2::text IS NULL OR c.project_id = $2)
+              AND LOWER(COALESCE(c.package_status, '')) IN ('approved', 'executed', 'complete', 'completed')
+              AND c.labor_hours IS NOT NULL
+            GROUP BY
+              c.company_id,
+              c.project_id,
+              UPPER(
+                COALESCE(
+                  NULLIF(REGEXP_REPLACE(BTRIM(c.cost_code), '\\.L$', '', 'i'), ''),
+                  NULLIF(REGEXP_REPLACE(BTRIM(c.wbs_code), '\\.L$', '', 'i'), ''),
+                  '(UNASSIGNED)'
+                )
+              )
+          ),
+          actual AS (
+            SELECT
+              t."procoreCompanyId" AS company_id,
+              t."procoreProjectId" AS project_id,
+              UPPER(COALESCE(NULLIF(BTRIM(t."costCodeFullCode"), ''), '(UNASSIGNED)')) AS scope_code,
+              MAX(
+                COALESCE(
+                  NULLIF(BTRIM(t."costCodeName"), ''),
+                  NULLIF(BTRIM(t.description), ''),
+                  NULLIF(BTRIM(t."costCodeFullCode"), ''),
+                  'Uncategorized Labor'
+                )
+              ) AS labor_description,
+              MAX(NULLIF(BTRIM(t."costCodeId"), '')) AS cost_code_id,
+              SUM(COALESCE(t.hours, t."totalHoursWorked", 0))::double precision AS actual_hours,
+              COUNT(*)::bigint AS entry_count,
+              MIN(t.date) AS first_entry_date,
+              MAX(t.date) AS last_entry_date
+            FROM "TimecardEntry" t
+            WHERE t."procoreCompanyId" = $1
+              AND ($2::text IS NULL OR t."procoreProjectId" = $2)
+              AND t."procoreProjectId" IS NOT NULL
+              AND t."procoreDeletedAt" IS NULL
+            GROUP BY
+              t."procoreCompanyId",
+              t."procoreProjectId",
+              UPPER(COALESCE(NULLIF(BTRIM(t."costCodeFullCode"), ''), '(UNASSIGNED)'))
+          ),
+          scope_keys AS (
+            SELECT company_id, project_id, scope_code FROM budget
+            UNION
+            SELECT company_id, project_id, scope_code FROM approved_change_orders
+            UNION
+            SELECT company_id, project_id, scope_code FROM actual
+          )
+          SELECT
+            k.company_id,
+            k.project_id,
+            'code:' || k.scope_code AS labor_group_key,
+            k.scope_code,
+            COALESCE(a.labor_description, b.labor_description, k.scope_code) AS labor_description,
+            a.cost_code_id,
+            COALESCE(b.original_expected_hours, 0)::double precision AS original_expected_hours,
+            COALESCE(c.approved_change_hours, 0)::double precision AS approved_change_hours,
+            (COALESCE(b.original_expected_hours, 0) + COALESCE(c.approved_change_hours, 0))::double precision AS expected_hours,
+            COALESCE(a.actual_hours, 0)::double precision AS actual_hours,
+            (COALESCE(b.original_expected_hours, 0) + COALESCE(c.approved_change_hours, 0) - COALESCE(a.actual_hours, 0))::double precision AS remaining_hours,
+            CASE
+              WHEN COALESCE(b.original_expected_hours, 0) + COALESCE(c.approved_change_hours, 0) = 0 THEN NULL
+              ELSE COALESCE(a.actual_hours, 0) /
+                (COALESCE(b.original_expected_hours, 0) + COALESCE(c.approved_change_hours, 0))
+            END::double precision AS labor_burn_ratio,
+            COALESCE(a.entry_count, 0)::bigint AS entry_count,
+            a.first_entry_date,
+            a.last_entry_date
+          FROM scope_keys k
+          LEFT JOIN budget b USING (company_id, project_id, scope_code)
+          LEFT JOIN approved_change_orders c USING (company_id, project_id, scope_code)
+          LEFT JOIN actual a USING (company_id, project_id, scope_code)
+          ORDER BY k.project_id, labor_description, k.scope_code
+        `,
+        companyId,
+        projectId
+      ),
     ]);
 
     const lines = rows.map((row) => ({
@@ -177,6 +292,24 @@ export async function GET(request: NextRequest) {
     const actualSummary = actualSummaryRows[0] ?? {};
     const productivityCount = toNumber(actualSummary.productivity_count);
     const matchedCount = toNumber(actualSummary.matched_count);
+    const laborGroups = laborRows.map((row) => ({
+      companyId: String(row.company_id),
+      projectId: String(row.project_id),
+      key: String(row.labor_group_key),
+      scopeCode: String(row.scope_code),
+      description: toText(row.labor_description) || 'Uncategorized Labor',
+      costCodeId: toText(row.cost_code_id),
+      costCode: String(row.scope_code) === '(UNASSIGNED)' ? null : String(row.scope_code),
+      originalExpectedHours: toNumber(row.original_expected_hours),
+      approvedChangeHours: toNumber(row.approved_change_hours),
+      expectedHours: toNumber(row.expected_hours),
+      totalHours: toNumber(row.actual_hours),
+      remainingHours: toNumber(row.remaining_hours),
+      laborBurnRatio: row.labor_burn_ratio === null ? null : toNumber(row.labor_burn_ratio),
+      entryCount: toNumber(row.entry_count),
+      firstEntryDate: toIso(row.first_entry_date),
+      lastEntryDate: toIso(row.last_entry_date),
+    }));
 
     return NextResponse.json({
       success: true,
@@ -195,8 +328,15 @@ export async function GET(request: NextRequest) {
         sourceLineCount: toNumber(actualSummary.source_line_count),
         aliasCount: lines.reduce((sum, line) => sum + line.aliasCount, 0),
         reviewedAliasCount: lines.reduce((sum, line) => sum + line.reviewedAliasCount, 0),
+        timecardEntryCount: laborGroups.reduce((sum, group) => sum + group.entryCount, 0),
+        timecardHours: laborGroups.reduce((sum, group) => sum + group.totalHours, 0),
+        expectedLaborHours: laborGroups.reduce((sum, group) => sum + group.expectedHours, 0),
+        laborProjectCount: new Set(
+          laborGroups.filter((group) => group.entryCount > 0).map((group) => group.projectId)
+        ).size,
       },
       lines,
+      laborGroups,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

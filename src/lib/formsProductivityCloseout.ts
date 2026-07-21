@@ -1,4 +1,7 @@
 export const FORMS_CLOSEOUT_MARKER = "[PMC AUTO FORMS CLOSEOUT]";
+export const PROJECT_MANAGEMENT_CLOSEOUT_MARKER = "[PMC AUTO PROJECT MANAGEMENT CLOSEOUT]";
+
+export type AdministrativeCloseoutKind = "forms_closeout" | "project_management_closeout";
 
 export const FORMS_COST_CODES = [
   "03-100-10-20",
@@ -45,8 +48,28 @@ export function hasFormsCloseoutMarker(notes: unknown): boolean {
   return String(notes ?? "").toUpperCase().includes(FORMS_CLOSEOUT_MARKER);
 }
 
+export function hasProjectManagementCloseoutMarker(notes: unknown): boolean {
+  return String(notes ?? "").toUpperCase().includes(PROJECT_MANAGEMENT_CLOSEOUT_MARKER);
+}
+
 export function formsCloseoutMarker(lineItemId: string): string {
   return `${FORMS_CLOSEOUT_MARKER} line_item_id=${lineItemId}`;
+}
+
+export function projectManagementCloseoutMarker(lineItemId: string): string {
+  return `${PROJECT_MANAGEMENT_CLOSEOUT_MARKER} line_item_id=${lineItemId}`;
+}
+
+export function administrativeCloseoutMarker(kind: AdministrativeCloseoutKind, lineItemId: string): string {
+  return kind === "project_management_closeout"
+    ? projectManagementCloseoutMarker(lineItemId)
+    : formsCloseoutMarker(lineItemId);
+}
+
+export function hasAdministrativeCloseoutMarker(kind: AdministrativeCloseoutKind, notes: unknown): boolean {
+  return kind === "project_management_closeout"
+    ? hasProjectManagementCloseoutMarker(notes)
+    : hasFormsCloseoutMarker(notes);
 }
 
 export function classifyFormsCloseoutLine(
@@ -97,3 +120,47 @@ export function classifyFormsCloseoutLine(
   };
 }
 
+export function classifyProjectManagementCloseoutLine(
+  input: FormsCloseoutInput,
+  tolerance = 0.005
+): FormsCloseoutClassification {
+  const normalizedCostCode = normalizeFormsCostCode(input.costCode);
+  const normalizedUom = normalizeFormsUom(input.uom);
+  const expected = Number(input.expectedQuantity ?? 0);
+  const used = Number(input.usedQuantity ?? 0);
+  const remainingQuantity = Number.isFinite(expected) && Number.isFinite(used)
+    ? expected - used
+    : 0;
+  const description = String(input.description ?? "").trim();
+  const approved = String(input.poStatus ?? "").trim().toLowerCase() === "approved";
+
+  if (input.seeded) {
+    return { disposition: "seeded", reason: "A Project Management closeout log has already been recorded.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (!approved) {
+    return { disposition: "review", reason: "The purchase order is not approved.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (!Number.isFinite(expected) || expected <= tolerance) {
+    return { disposition: "review", reason: "The expected quantity is missing or zero.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (remainingQuantity <= tolerance) {
+    return { disposition: "complete", reason: used > expected + tolerance ? "Used quantity is already over expected." : "Expected quantity is already accounted for.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (normalizedCostCode !== "01-300-10-20") {
+    return { disposition: "review", reason: "The line is not assigned to the configured Project Management cost code.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (!/^(?:project\s+)?management$/i.test(description)) {
+    return { disposition: "review", reason: "The description is not an exact Management or Project Management line.", remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+  if (normalizedUom !== "EA") {
+    return { disposition: "review", reason: `Unit ${normalizedUom || "(blank)"} needs review; Project Management closeout requires EA.`, remainingQuantity, normalizedCostCode, normalizedUom };
+  }
+
+  return {
+    disposition: "ready",
+    reason: "Ready to add the unaccounted expected Project Management quantity.",
+    remainingQuantity,
+    normalizedCostCode,
+    normalizedUom,
+  };
+}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   classifyFormsCloseoutLine,
+  classifyProjectManagementCloseoutLine,
   formsCloseoutMarker,
   hasFormsCloseoutMarker,
 } from '../src/lib/formsProductivityCloseout.ts';
@@ -47,3 +48,26 @@ test('the closeout note marker is stable and detectable', () => {
   assert.equal(hasFormsCloseoutMarker('ordinary field log'), false);
 });
 
+test('an approved Management line on the configured code is ready in EA', () => {
+  const result = classifyProjectManagementCloseoutLine({
+    poStatus: 'Approved',
+    costCode: '01-300-10-20',
+    description: 'Management',
+    uom: 'ea',
+    expectedQuantity: 35,
+    usedQuantity: 5,
+  });
+  assert.equal(result.disposition, 'ready');
+  assert.equal(result.remainingQuantity, 30);
+});
+
+test('Project Management matching rejects adjacent labor lines', () => {
+  assert.equal(classifyProjectManagementCloseoutLine({
+    poStatus: 'Approved',
+    costCode: '01-300-10-20',
+    description: 'Superintendent',
+    uom: 'ea',
+    expectedQuantity: 10,
+    usedQuantity: 0,
+  }).disposition, 'review');
+});

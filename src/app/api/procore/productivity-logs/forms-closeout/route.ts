@@ -5,9 +5,12 @@ import { prisma } from "@/lib/prisma";
 import {
   FORMS_CLOSEOUT_MARKER,
   FORMS_COST_CODES,
+  PROJECT_MANAGEMENT_CLOSEOUT_MARKER,
+  administrativeCloseoutMarker,
   classifyFormsCloseoutLine,
-  formsCloseoutMarker,
-  hasFormsCloseoutMarker,
+  classifyProjectManagementCloseoutLine,
+  hasAdministrativeCloseoutMarker,
+  type AdministrativeCloseoutKind,
 } from "@/lib/formsProductivityCloseout";
 import {
   getClientCredentialsToken,
@@ -24,6 +27,12 @@ type DbRow = Record<string, DbValue>;
 type UnknownRecord = Record<string, unknown>;
 
 const TOLERANCE = 0.005;
+
+function normalizeCloseoutKind(value: unknown): AdministrativeCloseoutKind {
+  return String(value ?? "").trim().toLowerCase() === "project_management_closeout"
+    ? "project_management_closeout"
+    : "forms_closeout";
+}
 
 function toNumber(value: unknown): number {
   const parsed = Number(value ?? 0);
@@ -70,7 +79,7 @@ function notesFromLog(log: UnknownRecord): string {
   return String(log.notes ?? "").trim();
 }
 
-async function loadPreview(companyId: string, projectId: string | null) {
+async function loadPreview(companyId: string, projectId: string | null, kind: AdministrativeCloseoutKind) {
   const rows = await prisma.$queryRawUnsafe<DbRow[]>(
     `
       SELECT
@@ -105,24 +114,40 @@ async function loadPreview(companyId: string, projectId: string | null) {
         ON c.company_id = v.company_id
        AND c.procore_project_id = v.project_id
        AND c.line_item_id = v.line_item_id
-       AND c.kind = 'forms_closeout'
+       AND c.kind = $3
       WHERE v.company_id = $1
         AND ($2::text IS NULL OR v.project_id = $2)
         AND COALESCE(v.expected_quantity, 0) > 0
         AND (
-          REGEXP_REPLACE(UPPER(BTRIM(COALESCE(v.cost_code, ''))), '\\.(L|M|S|O)$', '', 'i') = ANY($3::text[])
-          OR COALESCE(v.description, '') ILIKE '%form%'
+          (
+            $3 = 'forms_closeout'
+            AND (
+              REGEXP_REPLACE(UPPER(BTRIM(COALESCE(v.cost_code, ''))), '\\.(L|M|S|O)$', '', 'i') = ANY($4::text[])
+              OR COALESCE(v.description, '') ILIKE '%form%'
+            )
+          )
+          OR (
+            $3 = 'project_management_closeout'
+            AND (
+              REGEXP_REPLACE(UPPER(BTRIM(COALESCE(v.cost_code, ''))), '\\.(L|M|S|O)$', '', 'i') = '01-300-10-20'
+              OR COALESCE(v.description, '') ~* '^\\s*(project\\s+)?management\\s*$'
+            )
+          )
         )
       ORDER BY COALESCE(p.project_name, v.project_id), COALESCE(v.po_number, v.contract_id), v.position NULLS LAST
     `,
     companyId,
     projectId,
+    kind,
     [...FORMS_COST_CODES]
   );
 
   const lines = rows.map((row) => {
     const seeded = ["created", "detected_existing"].includes(String(row.closeout_status || ""));
-    const classification = classifyFormsCloseoutLine({
+    const classifier = kind === "project_management_closeout"
+      ? classifyProjectManagementCloseoutLine
+      : classifyFormsCloseoutLine;
+    const classification = classifier({
       poStatus: toText(row.po_status),
       costCode: toText(row.cost_code),
       description: toText(row.description),
@@ -200,20 +225,21 @@ async function fetchAllLiveLogs(accessToken: string, companyId: string, projectI
   return logs;
 }
 
-function liveStateByLine(logs: UnknownRecord[]) {
+function liveStateByLine(logs: UnknownRecord[], kind: AdministrativeCloseoutKind) {
   const state = new Map<string, { used: number; markerLog: UnknownRecord | null }>();
   for (const log of logs) {
     const lineItemId = lineItemIdFromLog(log);
     if (!lineItemId) continue;
     const current = state.get(lineItemId) || { used: 0, markerLog: null };
     current.used += quantityUsedFromLog(log);
-    if (hasFormsCloseoutMarker(notesFromLog(log))) current.markerLog = log;
+    if (hasAdministrativeCloseoutMarker(kind, notesFromLog(log))) current.markerLog = log;
     state.set(lineItemId, current);
   }
   return state;
 }
 
 async function recordCloseout(params: {
+  kind: AdministrativeCloseoutKind;
   companyId: string;
   projectId: string;
   lineItemId: string;
@@ -227,21 +253,21 @@ async function recordCloseout(params: {
   error?: string | null;
   payload?: unknown;
 }) {
-  const marker = formsCloseoutMarker(params.lineItemId);
+  const marker = administrativeCloseoutMarker(params.kind, params.lineItemId);
   await prisma.formsProductivityCloseout.upsert({
     where: {
       companyId_procoreProjectId_lineItemId_kind: {
         companyId: params.companyId,
         procoreProjectId: params.projectId,
         lineItemId: params.lineItemId,
-        kind: "forms_closeout",
+        kind: params.kind,
       },
     },
     create: {
       companyId: params.companyId,
       procoreProjectId: params.projectId,
       lineItemId: params.lineItemId,
-      kind: "forms_closeout",
+      kind: params.kind,
       expectedQuantity: params.expectedQuantity,
       usedBefore: params.usedBefore,
       adjustmentQuantity: params.adjustmentQuantity,
@@ -269,6 +295,7 @@ async function recordCloseout(params: {
 }
 
 async function claimCloseout(params: {
+  kind: AdministrativeCloseoutKind;
   companyId: string;
   projectId: string;
   lineItemId: string;
@@ -284,7 +311,7 @@ async function claimCloseout(params: {
         company_id, procore_project_id, line_item_id, kind,
         expected_quantity, used_before, adjustment_quantity, uom,
         accounting_date, status, notes_marker, created_at, updated_at
-      ) VALUES ($1, $2, $3, 'forms_closeout', $4, $5, $6, $7, $8::date, 'creating', $9, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, 'creating', $10, NOW(), NOW())
       ON CONFLICT (company_id, procore_project_id, line_item_id, kind)
       DO UPDATE SET
         expected_quantity = EXCLUDED.expected_quantity,
@@ -305,12 +332,13 @@ async function claimCloseout(params: {
     params.companyId,
     params.projectId,
     params.lineItemId,
+    params.kind,
     params.expectedQuantity,
     params.usedBefore,
     params.adjustmentQuantity,
     params.uom,
     params.accountingDate,
-    formsCloseoutMarker(params.lineItemId)
+    administrativeCloseoutMarker(params.kind, params.lineItemId)
   );
   return claimed.length > 0;
 }
@@ -319,11 +347,12 @@ export async function GET(request: NextRequest) {
   try {
     const companyId = String(request.nextUrl.searchParams.get("companyId") || procoreConfig.companyId || "").trim();
     const projectId = String(request.nextUrl.searchParams.get("projectId") || "").trim() || null;
+    const kind = normalizeCloseoutKind(request.nextUrl.searchParams.get("closeoutType"));
     if (!companyId) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
     }
-    const lines = await loadPreview(companyId, projectId);
-    return NextResponse.json({ success: true, generatedAt: new Date().toISOString(), summary: summarize(lines), lines });
+    const lines = await loadPreview(companyId, projectId, kind);
+    return NextResponse.json({ success: true, closeoutType: kind, generatedAt: new Date().toISOString(), summary: summarize(lines), lines });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ success: false, error: "Failed to preview forms closeout.", details: message }, { status: 500 });
@@ -338,6 +367,7 @@ export async function POST(request: NextRequest) {
       const companyId = String(body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || "").trim();
       const projectId = String(body.projectId || "").trim();
       const accountingDate = validAccountingDate(body.accountingDate);
+      const kind = normalizeCloseoutKind(body.closeoutType);
       const selectedLineItemIds = Array.isArray(body.lineItemIds)
         ? new Set(body.lineItemIds.map((value) => String(value).trim()).filter(Boolean))
         : null;
@@ -349,7 +379,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const preview = await loadPreview(companyId, projectId);
+      const preview = await loadPreview(companyId, projectId, kind);
       const candidates = preview.filter((line) =>
         line.disposition === "ready" && (!selectedLineItemIds || selectedLineItemIds.has(line.lineItemId))
       );
@@ -360,18 +390,19 @@ export async function POST(request: NextRequest) {
       const cookieToken = String(cookieStore.get("procore_access_token")?.value || "").trim();
       const accessToken = cookieToken || await getClientCredentialsToken();
       const liveLogs = await fetchAllLiveLogs(accessToken, companyId, projectId);
-      const liveState = liveStateByLine(liveLogs);
+      const liveState = liveStateByLine(liveLogs, kind);
       const results: Array<Record<string, unknown>> = [];
 
       for (const line of candidates) {
         const state = liveState.get(line.lineItemId) || { used: 0, markerLog: null };
         const liveUsed = roundQuantity(state.used);
         const adjustment = roundQuantity(line.expectedQuantity - liveUsed);
-        const marker = formsCloseoutMarker(line.lineItemId);
+        const marker = administrativeCloseoutMarker(kind, line.lineItemId);
 
         if (state.markerLog) {
           const procoreLogId = String(state.markerLog.id ?? "").trim() || null;
           await recordCloseout({
+            kind,
             companyId, projectId, lineItemId: line.lineItemId, expectedQuantity: line.expectedQuantity,
             usedBefore: liveUsed, adjustmentQuantity: 0, uom: line.uom, accountingDate,
             status: "detected_existing", procoreLogId, payload: state.markerLog,
@@ -386,6 +417,7 @@ export async function POST(request: NextRequest) {
         }
 
         const claimed = await claimCloseout({
+          kind,
           companyId,
           projectId,
           lineItemId: line.lineItemId,
@@ -400,7 +432,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const notes = `${marker} Administrative forms quantity adjustment. Expected ${roundQuantity(line.expectedQuantity)} ${line.uom || ""}; existing used ${liveUsed}; adjustment ${adjustment}.`;
+        const closeoutLabel = kind === "project_management_closeout" ? "Project Management" : "forms";
+        const notes = `${marker} Administrative ${closeoutLabel} quantity adjustment. Expected ${roundQuantity(line.expectedQuantity)} ${line.uom || ""}; existing used ${liveUsed}; adjustment ${adjustment}.`;
         const payload = {
           date: accountingDate,
           line_item_id: Number(line.lineItemId),
@@ -419,6 +452,7 @@ export async function POST(request: NextRequest) {
           const createdRecord = isRecord(created) ? created : {};
           const procoreLogId = String(createdRecord.id ?? "").trim() || null;
           await recordCloseout({
+            kind,
             companyId, projectId, lineItemId: line.lineItemId, expectedQuantity: line.expectedQuantity,
             usedBefore: liveUsed, adjustmentQuantity: adjustment, uom: line.uom, accountingDate,
             status: "created", procoreLogId, payload: created,
@@ -436,6 +470,7 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           await recordCloseout({
+            kind,
             companyId, projectId, lineItemId: line.lineItemId, expectedQuantity: line.expectedQuantity,
             usedBefore: liveUsed, adjustmentQuantity: adjustment, uom: line.uom, accountingDate,
             status: "failed", error: message, payload,
@@ -450,8 +485,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         projectId,
+        closeoutType: kind,
         accountingDate,
-        marker: FORMS_CLOSEOUT_MARKER,
+        marker: kind === "project_management_closeout" ? PROJECT_MANAGEMENT_CLOSEOUT_MARKER : FORMS_CLOSEOUT_MARKER,
         createdCount: results.filter((result) => result.status === "created").length,
         skippedCount: results.filter((result) => result.status === "skipped").length,
         failedCount: results.filter((result) => result.status === "failed").length,

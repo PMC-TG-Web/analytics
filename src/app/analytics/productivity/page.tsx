@@ -845,7 +845,7 @@ export default function ProductivityAnalyticsPage() {
                   onClick={() => setFormsCloseoutOpen(true)}
                   className="rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20"
                 >
-                  Forms Closeout
+                  Admin Closeout
                 </button>
                 <button
                   type="button"

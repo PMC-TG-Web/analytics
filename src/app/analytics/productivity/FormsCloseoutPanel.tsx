@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type CloseoutDisposition = "ready" | "review" | "complete" | "seeded";
+type CloseoutType = "forms_closeout" | "project_management_closeout";
 
 type CloseoutLine = {
   companyId: string;
@@ -66,6 +67,8 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
   const [message, setMessage] = useState<string | null>(null);
   const [projectId, setProjectId] = useState(initialProjectId || "");
   const [accountingDate, setAccountingDate] = useState("");
+  const [closeoutType, setCloseoutType] = useState<CloseoutType>("forms_closeout");
+  const closeoutLabel = closeoutType === "project_management_closeout" ? "Project Management" : "Forms";
 
   const loadPreview = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
     try {
       const url = new URL("/api/procore/productivity-logs/forms-closeout", window.location.origin);
       if (companyId) url.searchParams.set("companyId", companyId);
+      url.searchParams.set("closeoutType", closeoutType);
       const response = await fetch(url.toString(), { credentials: "include", cache: "no-store" });
       const data = (await response.json()) as PreviewResponse;
       if (!response.ok || !data.success) throw new Error(data.details || data.error || `Preview failed (${response.status})`);
@@ -82,14 +86,18 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [closeoutType, companyId]);
 
   useEffect(() => {
     if (!open) return;
     setProjectId(initialProjectId || "");
     setMessage(null);
+  }, [initialProjectId, open]);
+
+  useEffect(() => {
+    if (!open) return;
     void loadPreview();
-  }, [initialProjectId, loadPreview, open]);
+  }, [loadPreview, open]);
 
   const projects = useMemo(() => {
     const map = new Map<string, { id: string; label: string; ready: number; review: number }>();
@@ -129,7 +137,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
   const runProject = async () => {
     if (!projectId || !accountingDate || readyLines.length === 0) return;
     const project = projects.find((item) => item.id === projectId);
-    if (!window.confirm(`Create ${readyLines.length} forms closeout log${readyLines.length === 1 ? "" : "s"} for ${project?.label || projectId} on ${accountingDate}?`)) return;
+    if (!window.confirm(`Create ${readyLines.length} ${closeoutLabel} closeout log${readyLines.length === 1 ? "" : "s"} for ${project?.label || projectId} on ${accountingDate}?`)) return;
 
     setRunning(true);
     setError(null);
@@ -143,6 +151,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
           companyId,
           projectId,
           accountingDate,
+          closeoutType,
           lineItemIds: readyLines.map((line) => line.lineItemId),
         }),
       });
@@ -161,15 +170,31 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3" role="dialog" aria-modal="true" aria-label="Forms productivity closeout">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3" role="dialog" aria-modal="true" aria-label="Administrative productivity closeout">
       <div className="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 bg-slate-900 px-5 py-4 text-white">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-teal-300">Administrative productivity</p>
-            <h2 className="mt-1 text-xl font-black">Forms Closeout</h2>
+            <h2 className="mt-1 text-xl font-black">Administrative Closeout</h2>
             <p className="mt-1 text-xs font-semibold text-slate-300">Adds only the difference between expected and live used quantity. Review lines are never created automatically.</p>
           </div>
           <button type="button" onClick={onClose} disabled={running} className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-black uppercase tracking-wider hover:bg-white/10 disabled:opacity-50">Close</button>
+        </div>
+
+        <div className="flex gap-2 border-b border-slate-200 bg-white px-4 pt-3">
+          {([
+            ["forms_closeout", "Forms"],
+            ["project_management_closeout", "Project Management"],
+          ] as Array<[CloseoutType, string]>).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setCloseoutType(value); setProjectId(""); setMessage(null); }}
+              className={`rounded-t-lg border-x border-t px-4 py-2 text-xs font-black uppercase tracking-wider ${closeoutType === value ? "border-teal-300 bg-teal-50 text-teal-800" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50 p-4 sm:grid-cols-4">
@@ -193,13 +218,13 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
           <button type="button" onClick={() => void runProject()} disabled={running || loading || !accountingDate || readyLines.length === 0} className="rounded-lg bg-teal-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50">
             {running ? "Creating…" : `Run ${readyLines.length} ready lines`}
           </button>
-          <p className="text-[11px] font-semibold text-slate-500 md:col-span-3">Selected project: {formatQuantity(readyQuantity)} total units proposed. Choose a deliberate administrative date; the tool does not default to today.</p>
+          <p className="text-[11px] font-semibold text-slate-500 md:col-span-3">Selected {closeoutLabel} project: {formatQuantity(readyQuantity)} total units proposed. Choose a deliberate administrative date; the tool does not default to today.</p>
         </div>
 
         {(error || message) && <div className={`mx-4 mt-4 rounded-lg border px-3 py-2 text-sm font-bold ${error ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error || message}</div>}
 
         <div className="min-h-0 flex-1 overflow-auto p-4">
-          {loading ? <p className="py-12 text-center text-sm font-bold text-slate-500">Loading forms candidates…</p> : (
+          {loading ? <p className="py-12 text-center text-sm font-bold text-slate-500">Loading {closeoutLabel} candidates…</p> : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="min-w-full divide-y divide-slate-200 text-left">
                 <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2">PO / Line</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Code</th><th className="px-3 py-2 text-right">Expected</th><th className="px-3 py-2 text-right">Used</th><th className="px-3 py-2 text-right">Proposed</th><th className="px-3 py-2">Status</th></tr></thead>
@@ -215,7 +240,7 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
                       <td className="max-w-xs px-3 py-3"><span className={`rounded px-2 py-1 text-[9px] font-black uppercase tracking-wider ${dispositionStyle(line.disposition)}`}>{line.disposition}</span><p className="mt-1.5 text-[10px] font-semibold leading-4 text-slate-500">{line.reason}</p></td>
                     </tr>
                   ))}
-                  {visibleLines.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-sm font-bold text-slate-500">No forms candidates found for this project.</td></tr>}
+                  {visibleLines.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-sm font-bold text-slate-500">No {closeoutLabel} candidates found for this project.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -225,4 +250,3 @@ export default function FormsCloseoutPanel({ open, companyId, initialProjectId, 
     </div>
   );
 }
-

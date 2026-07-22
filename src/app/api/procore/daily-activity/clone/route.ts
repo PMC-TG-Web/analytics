@@ -882,7 +882,9 @@ async function fetchTargetLookups(params: {
   includeProductivity: boolean;
 }): Promise<TargetLookups> {
   const [productivityLineItems, existingProductivity, existingTimecards, users, companyUsers, people, timeTypes, workClassifications, costCodes] = await Promise.all([
-    fetchTargetProductivityLineItems(params),
+    params.includeProductivity
+      ? fetchTargetProductivityLineItems(params)
+      : Promise.resolve([]),
     params.includeProductivity
       ? fetchSourceProductivityLogs({
           accessToken: params.accessToken,

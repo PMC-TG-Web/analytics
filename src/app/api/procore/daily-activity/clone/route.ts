@@ -1680,7 +1680,7 @@ export async function POST(request: Request) {
       targetLookups.existingProductivityCounts,
       productivitySourceIdSet
     );
-    const timecards = sourceTimecards.map((entry) =>
+    const mappedTimecards = sourceTimecards.map((entry) =>
       mapTimecardEntry(
         entry,
         targetLookups,
@@ -1691,6 +1691,13 @@ export async function POST(request: Request) {
         { allowPartyNameFallback, defaultPartyId, allowBuiltInPartyFallback }
       )
     );
+    const sourceTimecardKeys = new Set<string>();
+    const timecards = mappedTimecards.map((row) => {
+      const targetKey = row.mapped ? timecardPayloadKey(row.payload) : "";
+      const duplicateSourceTimecard = Boolean(targetKey && sourceTimecardKeys.has(targetKey));
+      if (targetKey && !duplicateSourceTimecard) sourceTimecardKeys.add(targetKey);
+      return { ...row, duplicateSourceTimecard };
+    });
 
     const missingMappings = [
       ...productivity.filter((row) => !row.mapped).map((row) => ({ type: "productivity_line_item", ...row })),
@@ -1732,7 +1739,7 @@ export async function POST(request: Request) {
       (row) => !row.existingTargetProductivity
     );
     const selectedTimecardRows = (repairMode ? [] : timecards)
-      .filter((row) => row.mapped)
+      .filter((row) => row.mapped && !row.duplicateSourceTimecard)
       .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
     const creatableTimecardRows = selectedTimecardRows.filter((row) => !row.existingTargetTimecard);
 
@@ -1744,6 +1751,7 @@ export async function POST(request: Request) {
     let pauseReason = "";
     if (!dryRun) {
       const addedProjectUserIds = new Set<number>();
+      const liveTimecardKeys = new Set(targetLookups.existingTimecardKeys);
       for (const row of selectedProductivityRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
@@ -1789,7 +1797,8 @@ export async function POST(request: Request) {
           break;
         }
         attemptedCreateRows += 1;
-        if (row.existingTargetTimecard) {
+        const targetTimecardKey = timecardPayloadKey(row.payload);
+        if (row.existingTargetTimecard || liveTimecardKeys.has(targetTimecardKey)) {
           createResults.push({
             type: "timecard_entry",
             sourceId: row.sourceId,
@@ -1817,6 +1826,7 @@ export async function POST(request: Request) {
           const result = await retryProcoreCreate(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
+          liveTimecardKeys.add(targetTimecardKey);
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -1868,6 +1878,7 @@ export async function POST(request: Request) {
         creatableTimecards: creatableTimecardRows.length,
         skippedExistingProductivity: productivity.filter((row) => row.existingTargetProductivity).length,
         skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
+        skippedDuplicateSourceTimecards: timecards.filter((row) => row.duplicateSourceTimecard).length,
         requestedProductivitySourceIds: productivitySourceIds.length,
         foundRequestedProductivitySourceIds: requestedProductivityRows.length,
         unresolvedProductivitySourceIds: unresolvedProductivitySourceIds.length,

@@ -1260,6 +1260,51 @@ function getWebhookWorkKey(event: {
   ].join(':');
 }
 
+function affectsProjectHeaders(resourceName: string | null): boolean {
+  const resource = String(resourceName || '').trim().toLowerCase();
+  return resource === 'projects'
+    || resource === 'project'
+    || resource.includes('bid board')
+    || (resource.includes('estimating') && resource.includes('project'));
+}
+
+async function refreshBidBoardHeaders(request: NextRequest, companyId: string) {
+  try {
+    const response = await fetch(
+      `${request.nextUrl.origin.replace(/\/$/, '')}/api/procore/sync/bid-board-projects`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-sync-secret': getSyncSecretFromRequest(request),
+        },
+        body: JSON.stringify({ companyId }),
+        signal: AbortSignal.timeout(4 * 60_000),
+      }
+    );
+    const detail = await response.json().catch(() => null);
+    return {
+      attempted: true,
+      success: response.ok && detail?.success !== false,
+      status: response.status,
+      companyId,
+      fetched: detail?.fetched ?? null,
+      persisted: detail?.persisted ?? null,
+      error: response.ok ? null : detail?.error || 'Bid Board header refresh failed',
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      success: false,
+      status: 0,
+      companyId,
+      fetched: null,
+      persisted: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function findRecentOrActiveSyncLog(windowMinutes: number) {
   const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000);
   return prisma.syncLog.findFirst({
@@ -1365,6 +1410,7 @@ export async function POST(request: NextRequest) {
   let deferredDuplicates = 0;
   const completedWorkKeys = new Set<string>();
   const failedWorkKeys = new Map<string, string>();
+  const projectHeaderCompanies = new Set<string>();
 
   for (const queueItem of candidates) {
     const workKey = getWebhookWorkKey(queueItem.event);
@@ -1454,6 +1500,10 @@ export async function POST(request: NextRequest) {
       ]);
       processed += 1;
       completedWorkKeys.add(workKey);
+      if (affectsProjectHeaders(queueItem.event.resourceName)) {
+        const companyId = String(queueItem.event.companyId || procoreConfig.companyId || '').trim();
+        if (companyId) projectHeaderCompanies.add(companyId);
+      }
     } catch (error) {
       const attempted = queueItem.attempts + 1;
       const shouldFailPermanently = attempted >= queueItem.maxAttempts;
@@ -1480,6 +1530,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const projectHeaderRefreshes = [];
+  for (const companyId of projectHeaderCompanies) {
+    projectHeaderRefreshes.push(await refreshBidBoardHeaders(request, companyId));
+  }
+
   return NextResponse.json({
     success: true,
     requestedBatchSize: batchSize,
@@ -1489,6 +1544,7 @@ export async function POST(request: NextRequest) {
     failed,
     coalesced,
     deferredDuplicates,
+    projectHeaderRefreshes,
   });
   });
 }

@@ -41,7 +41,11 @@ const handler = async (request: Request) => {
         maxProjects = Math.min(configuredCap, Math.max(maxProjects, Math.ceil(recommended)));
       }
     }
-    if (!response.ok || result?.success === false || result?.skipped) break;
+    const rateLimited = Array.isArray(result?.steps)
+      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+    // A slow or malformed project should be retried on its own schedule without
+    // preventing the worker from advancing to the next due project.
+    if (!response.ok || result?.skipped || rateLimited) break;
   }
   return Response.json({ success: true, results });
 };

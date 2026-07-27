@@ -5,7 +5,6 @@ import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, getDashboardSummary, type Project, type DashboardSummary } from "./projectQueries";
 import { 
-  calculateAggregated, 
   getProjectDate, 
   getProjectKey,
   isExcludedFromDashboard
@@ -110,9 +109,10 @@ function DashboardContent() {
     });
   }, [projects, isFullScan, startDate, endDate]);
 
-  const { aggregated: aggregatedProjects, dedupedByCustomer } = useMemo(() => {
-    return calculateAggregated(filteredProjects);
-  }, [filteredProjects]);
+  // Each row is one current Procore Bid Board project. Do not collapse rows by
+  // project name: Procore counts every Bid Board record in its status totals.
+  const aggregatedProjects = filteredProjects;
+  const dedupedByCustomer = filteredProjects;
 
   // Calculate summary metrics
   const useSummary = !!summary && !startDate && !endDate && !isFullScan;
@@ -127,14 +127,11 @@ function DashboardContent() {
     let customerProjects: Project[] = [];
     
     if (useSummary) {
-      // Aggregate the full opportunity set before filtering by contractor so
-      // multi-GC bids reconcile with the de-duplicated summary totals.
+      // Use the same live Bid Board rows as the summary so the drill-through
+      // reconciles to the displayed Procore count and sales total.
       setLoading(true);
       const rawProjects = await getAllProjectsForDashboard();
-      const { aggregated } = calculateAggregated(
-        rawProjects.filter(p => !isExcludedFromDashboard(p))
-      );
-      customerProjects = aggregated;
+      customerProjects = rawProjects.filter(p => !isExcludedFromDashboard(p));
       setLoading(false);
     } else {
       customerProjects = aggregatedProjects;
@@ -535,8 +532,7 @@ function DashboardContent() {
                             setLoading(true);
                             const raw = await getAllProjectsForDashboard(); 
                             const filtered = raw.filter(p => !isExcludedFromDashboard(p));
-                            const { aggregated } = calculateAggregated(filtered);
-                            setJobsListData(aggregated.filter(p => p.status === status));
+                            setJobsListData(filtered.filter(p => p.status === status));
                             setLoading(false);
                           } else {
                             const group = aggregatedProjects.filter(p => p.status === status);

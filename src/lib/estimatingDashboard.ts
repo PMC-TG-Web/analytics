@@ -134,17 +134,14 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     }),
   ]);
 
-  // Older imports prefixed the company ID to bid-board IDs. Prefer the current,
-  // unprefixed row so a single Procore job is never counted twice.
+  // Older imports prefixed the company ID to bid-board IDs. Those rows are
+  // historical snapshots and can remain after a project leaves the live Bid
+  // Board. Only unprefixed IDs are current Procore Bid Board records.
   const boardsById = new Map<string, typeof boardRows[number]>();
   for (const row of boardRows) {
     const id = canonicalBidBoardId(row.bidBoardId);
-    const existing = boardsById.get(id);
-    const rowIsCurrent = row.bidBoardId === id;
-    const existingIsCurrent = existing?.bidBoardId === id;
-    if (!existing || (rowIsCurrent && !existingIsCurrent) || (rowIsCurrent === existingIsCurrent && row.updatedAt > existing.updatedAt)) {
-      boardsById.set(id, row);
-    }
+    if (row.bidBoardId !== id) continue;
+    boardsById.set(id, row);
   }
 
   const proposalsByBoard = new Map<string, typeof proposals>();
@@ -252,7 +249,10 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       concreteByGroup: {},
     };
     const linked = (board.procoreProjectId ? pmcByProcore.get(board.procoreProjectId) : undefined) ?? pmcByBoard.get(boardId);
-    const fallbackSales = numericValue(proposalPayload.total) || numericValue(recordValue(payload.stats).total);
+    const bidBoardStats = recordValue(payload.stats);
+    const hasBidBoardTotal = Object.prototype.hasOwnProperty.call(bidBoardStats, "total");
+    const bidBoardSales = hasBidBoardTotal ? numericValue(bidBoardStats.total) : null;
+    const proposalSales = numericValue(proposalPayload.total);
     const archived = Boolean(payload.archived || payload.deleted || payload.is_template);
     const project: EstimatingDashboardProject = {
       id: `bid:${boardId}`,
@@ -264,7 +264,10 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       projectName: clean(board.projectName || selected?.projectName || linked?.projectName) || "Unnamed Project",
       customer: clean(board.customer || selected?.customerName || linked?.customer) || "Unknown",
       status: clean(board.status || linked?.bidBoardStatus || linked?.status) || "Unknown",
-      sales: totals.lineCount > 0 ? totals.sales : fallbackSales,
+      // Procore's Bid Board header is calculated from stats.total. Use that as
+      // the dashboard sales source so each status count and amount reconciles
+      // exactly to Procore; normalized lines still supply cost and labor.
+      sales: bidBoardSales ?? (totals.lineCount > 0 ? totals.sales : proposalSales),
       cost: totals.cost,
       hours: totals.hours,
       laborSales: totals.laborSales,
@@ -287,7 +290,13 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         pmcGroup: totals.laborByGroup,
         concreteGroup: totals.concreteByGroup,
         estimateLineCount: totals.lineCount,
-        estimatingSource: totals.lineCount > 0 ? "normalized estimate lines" : fallbackSales > 0 ? "bid-board total" : "no estimate",
+        estimatingSource: hasBidBoardTotal
+          ? "bid-board total"
+          : totals.lineCount > 0
+            ? "normalized estimate lines"
+            : proposalSales > 0
+              ? "proposal total"
+              : "no estimate",
       },
     };
     if (!isExcludedProject(project)) projects.push(project);

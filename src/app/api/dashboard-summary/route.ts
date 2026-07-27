@@ -3,9 +3,7 @@ import { NextResponse } from "next/server";
 import {
   buildEstimatingDashboardSummary,
   loadEstimatingDashboardProjects,
-  type EstimatingDashboardProject,
 } from "@/lib/estimatingDashboard";
-import { calculateAggregated } from "@/utils/projectUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +21,9 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const projects = await loadEstimatingDashboardProjects({ force: searchParams.get("force") === "true" });
-    // Match the full-scan dashboard behavior: the same opportunity may be bid
-    // to several contractors, but its estimate and labor backlog count once.
-    const { aggregated } = calculateAggregated(projects);
     const payload = {
       success: true,
-      data: buildEstimatingDashboardSummary(aggregated as unknown as EstimatingDashboardProject[]),
+      data: buildEstimatingDashboardSummary(projects),
     };
     const etag = buildETag(payload);
 

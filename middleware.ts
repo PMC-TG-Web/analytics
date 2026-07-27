@@ -206,6 +206,9 @@ export async function middleware(request: NextRequest) {
   const isPublicVersionRoute = pathname === '/api/public/version';
   const isProcoreWebhookReceiverRoute = pathname === '/api/webhooks/procore';
   const isProcoreWebhookProcessRoute = pathname === '/api/webhooks/procore/process';
+  const isProcoreBackgroundSyncRoute =
+    pathname === '/api/background/actuals-sync' ||
+    pathname === '/api/background/nightly-structure-sync';
   const isNetlifyScheduledSyncFunctionRoute =
     pathname === '/.netlify/functions/scheduled-sync' ||
     pathname.startsWith('/.netlify/functions/scheduled-sync/');
@@ -336,6 +339,12 @@ export async function middleware(request: NextRequest) {
 
   // Allow worker trigger calls from server-to-server callers with sync secret.
   if (isProcoreWebhookProcessRoute && hasValidSyncSecret(request)) {
+    return NextResponse.next();
+  }
+
+  // Netlify background workers have explicit routes and validate the same
+  // server-to-server secret inside the function.
+  if (isProcoreBackgroundSyncRoute && hasValidSyncSecret(request)) {
     return NextResponse.next();
   }
 

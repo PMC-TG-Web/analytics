@@ -37,7 +37,6 @@ const handler = async (request: Request) => {
 export default handler;
 
 export const config: Config = {
-  background: true,
   path: "/api/background/actuals-sync",
   method: "POST",
 };

@@ -33,7 +33,6 @@ const handler = async (request: Request) => {
 export default handler;
 
 export const config: Config = {
-  background: true,
   path: "/api/background/nightly-structure-sync",
   method: "POST",
 };

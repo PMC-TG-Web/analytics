@@ -350,7 +350,9 @@ export async function middleware(request: NextRequest) {
     pathname === '/api/cron/sync' ||
     pathname.startsWith('/api/cron/sync/') ||
     pathname === '/api/cron/actuals' ||
-    pathname.startsWith('/api/cron/actuals/')
+    pathname.startsWith('/api/cron/actuals/') ||
+    pathname === '/api/cron/nightly-structure' ||
+    pathname.startsWith('/api/cron/nightly-structure/')
   ) {
     return NextResponse.next();
   }

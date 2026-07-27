@@ -23,6 +23,13 @@ function firstText(...values: unknown[]) {
   return "";
 }
 
+function parseCsvIds(value: unknown): string[] {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function unwrapArray(response: unknown): unknown[] {
   if (Array.isArray(response)) return response;
   if (response && typeof response === "object") {
@@ -150,7 +157,12 @@ export async function POST(request: Request) {
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
 
-    const projects = await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
+    const explicitProjectIds = Array.isArray(body.projectIds)
+      ? body.projectIds.map((value) => String(value || "").trim()).filter(Boolean)
+      : parseCsvIds(body.projectIds);
+    const projects = explicitProjectIds.length
+      ? explicitProjectIds.map((id) => ({ id }))
+      : await fetchAllProjects(accessToken, companyId, maxProjects || undefined);
 
     const summary = {
       success: true,

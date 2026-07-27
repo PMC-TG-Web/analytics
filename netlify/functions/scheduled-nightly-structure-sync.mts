@@ -9,22 +9,19 @@ function easternHour() {
 }
 
 const handler = async () => {
-  const syncSecret = (process.env.PROCORE_SYNC_SECRET || "").trim();
+  const hour = easternHour();
+  if (hour < 2 || hour >= 6) {
+    return Response.json({ success: true, skipped: true, reason: "outside_nightly_window" });
+  }
+  const secret = (process.env.PROCORE_SYNC_SECRET || "").trim();
   const baseUrl = (process.env.APP_BASE_URL || process.env.URL || "").replace(/\/$/, "");
-  if (!syncSecret || !baseUrl) {
+  if (!secret || !baseUrl) {
     return Response.json({ success: false, error: "Missing sync configuration." }, { status: 500 });
   }
-
-  // Reserve the overnight maintenance window for the nightly structural queue.
-  const hour = easternHour();
-  if (hour >= 2 && hour < 6) {
-    return Response.json({ success: true, skipped: true, reason: "nightly_structure_window" });
-  }
-
-  const response = await fetch(`${baseUrl}/.netlify/functions/actuals-sync-background`, {
+  const response = await fetch(`${baseUrl}/.netlify/functions/nightly-structure-sync-background`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sync-secret": syncSecret },
-    body: JSON.stringify({}),
+    headers: { "content-type": "application/json", "x-sync-secret": secret },
+    body: "{}",
   });
   return Response.json({ success: response.ok, dispatchStatus: response.status }, { status: response.ok ? 200 : 500 });
 };
@@ -32,5 +29,6 @@ const handler = async () => {
 export default handler;
 
 export const config: Config = {
-  schedule: "*/2 * * * *",
+  // The handler enforces 2:00–6:00 AM America/New_York, including DST.
+  schedule: "*/2 6-11 * * *",
 };

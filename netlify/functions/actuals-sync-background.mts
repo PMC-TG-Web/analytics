@@ -16,7 +16,11 @@ const handler = async (request: Request) => {
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK || "8", 10) || 8)
   );
-  let maxProjects = reconciliation ? 1 : 3;
+  const reconciliationCap = Math.min(
+    3,
+    Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "2", 10) || 2)
+  );
+  let maxProjects = reconciliation ? reconciliationCap : 3;
   for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
     const response = await fetch(`${baseUrl}/api/cron/actuals`, {
       method: "POST",

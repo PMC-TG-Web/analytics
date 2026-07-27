@@ -8,6 +8,7 @@ import {
   releaseProcoreWorker,
   seedEstimatingSyncQueue,
   seedProjectSyncQueue,
+  seedSingletonSyncQueue,
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
@@ -17,6 +18,8 @@ export const maxDuration = 300;
 
 const DATASET = "nightly_structure";
 const ESTIMATING_DATASET = "nightly_estimates";
+const BID_BOARD_DATASET = "nightly_bid_board_headers";
+const BID_BOARD_QUEUE_ID = "__company_bid_board__";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 
 type StepResult = {
@@ -123,11 +126,80 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  let bidBoardProject: QueuedProject | null = null;
   let project: QueuedProject | null = null;
   const estimatingProjects: QueuedProject[] = [];
   let logId: bigint | null = null;
   const startedAt = Date.now();
   try {
+    await seedSingletonSyncQueue({
+      companyId: COMPANY_ID,
+      dataset: BID_BOARD_DATASET,
+      projectId: BID_BOARD_QUEUE_ID,
+      projectName: "Company Bid Board headers",
+    });
+    bidBoardProject = await claimDueProject({
+      companyId: COMPANY_ID,
+      dataset: BID_BOARD_DATASET,
+      leaseId: worker.leaseId,
+    });
+    if (bidBoardProject) {
+      const selection = {
+        step: "select-company-dataset",
+        status: "ok",
+        projectId: BID_BOARD_QUEUE_ID,
+        projectName: bidBoardProject.projectName,
+        dataset: BID_BOARD_DATASET,
+      };
+      const log = await prisma.syncLog.create({
+        data: { companyId: COMPANY_ID, triggeredBy: "nightly-bid-board-headers", steps: [selection] },
+        select: { id: true },
+      }).catch(() => null);
+      logId = log?.id ?? null;
+
+      const step = await runStep({
+        origin: request.nextUrl.origin.replace(/\/$/, ""),
+        secret,
+        projectId: BID_BOARD_QUEUE_ID,
+        step: "bid-board-projects",
+        path: "/api/procore/sync/bid-board-projects",
+      });
+      const success = step.status === "ok";
+      const error = success ? null : JSON.stringify(step.detail || "Bid Board header sync failed").slice(0, 4_000);
+      if (step.rateLimited && step.rateLimitUntil) {
+        await setProcoreRateLimit({
+          companyId: COMPANY_ID,
+          until: new Date(step.rateLimitUntil),
+          error,
+        });
+      }
+      await finishProjectSync({
+        project: bidBoardProject,
+        success,
+        nextRunMinutes: step.rateLimitUntil
+          ? Math.max(15, Math.ceil((new Date(step.rateLimitUntil).getTime() - Date.now()) / 60_000))
+          : success ? 24 * 60 : 30,
+        error,
+        result: { selection, step },
+      });
+
+      const totalMs = Date.now() - startedAt;
+      if (logId !== null) {
+        await prisma.syncLog.update({
+          where: { id: logId },
+          data: { finishedAt: new Date(), success, totalMs, steps: [selection, step] as object[], error },
+        }).catch(() => undefined);
+      }
+      return NextResponse.json({
+        success,
+        companyId: COMPANY_ID,
+        dataset: BID_BOARD_DATASET,
+        logId: logId?.toString() || null,
+        totalMs,
+        steps: [step],
+      }, { status: success ? 200 : 207 });
+    }
+
     await seedProjectSyncQueue(COMPANY_ID, DATASET);
     project = await claimDueProject({ companyId: COMPANY_ID, dataset: DATASET, leaseId: worker.leaseId });
     if (!project) {
@@ -266,6 +338,15 @@ export async function POST(request: NextRequest) {
       steps,
     }, { status: success ? 200 : 207 });
   } finally {
+    if (bidBoardProject) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE procore_sync_project_states SET locked_by = NULL, locked_until = NULL, updated_at = NOW() WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,
+        COMPANY_ID,
+        bidBoardProject.projectId,
+        BID_BOARD_DATASET,
+        worker.leaseId
+      ).catch(() => undefined);
+    }
     if (project) {
       await prisma.$executeRawUnsafe(
         `UPDATE procore_sync_project_states SET locked_by = NULL, locked_until = NULL, updated_at = NOW() WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,

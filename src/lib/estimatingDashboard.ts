@@ -253,7 +253,12 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     const hasBidBoardTotal = Object.prototype.hasOwnProperty.call(bidBoardStats, "total");
     const bidBoardSales = hasBidBoardTotal ? numericValue(bidBoardStats.total) : null;
     const proposalSales = numericValue(proposalPayload.total);
-    const archived = Boolean(payload.archived || payload.deleted || payload.is_template);
+    const archived = Boolean(
+      payload.archived
+      || payload.deleted
+      || payload.is_template
+      || payload.sync_missing_from_procore
+    );
     const project: EstimatingDashboardProject = {
       id: `bid:${boardId}`,
       bidBoardId: boardId,

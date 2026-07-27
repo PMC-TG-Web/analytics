@@ -61,7 +61,7 @@ export async function seedProjectSyncQueue(companyId: string, dataset: string) {
 }
 
 export async function seedEstimatingSyncQueue(companyId: string, dataset: string) {
-  return prisma.$executeRawUnsafe(
+  const seeded = await prisma.$executeRawUnsafe(
     `
       INSERT INTO procore_sync_project_states (
         company_id, project_id, dataset, project_number, project_name,
@@ -78,14 +78,80 @@ export async function seedEstimatingSyncQueue(companyId: string, dataset: string
         NOW()
       FROM pmc_bid_board_projects
       WHERE company_id = $1
+        AND POSITION(':' IN bid_board_id) = 0
+        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"archived":true}'::jsonb)
+        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"deleted":true}'::jsonb)
+        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"is_template":true}'::jsonb)
+        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"sync_missing_from_procore":true}'::jsonb)
       ON CONFLICT (company_id, project_id, dataset)
       DO UPDATE SET
         project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
         project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.last_error LIKE 'Excluded because the Bid Board row is legacy,%'
+          THEN NOW()
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        last_error = CASE
+          WHEN procore_sync_project_states.last_error LIKE 'Excluded because the Bid Board row is legacy,%'
+          THEN NULL
+          ELSE procore_sync_project_states.last_error
+        END,
         updated_at = NOW()
     `,
     companyId,
     dataset
+  );
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states state
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          last_error = 'Excluded because the Bid Board row is legacy, archived, deleted, a template, or no longer returned by Procore.',
+          updated_at = NOW()
+      WHERE state.company_id = $1
+        AND state.dataset = $2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pmc_bid_board_projects board
+          WHERE board.company_id = state.company_id
+            AND board.bid_board_id = state.project_id
+            AND POSITION(':' IN board.bid_board_id) = 0
+            AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"archived":true}'::jsonb)
+            AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"deleted":true}'::jsonb)
+            AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"is_template":true}'::jsonb)
+            AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"sync_missing_from_procore":true}'::jsonb)
+        )
+    `,
+    companyId,
+    dataset
+  );
+  return seeded;
+}
+
+export async function seedSingletonSyncQueue(params: {
+  companyId: string;
+  dataset: string;
+  projectId: string;
+  projectName: string;
+}) {
+  return prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_name,
+        next_run_at, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_name = EXCLUDED.project_name,
+        updated_at = NOW()
+    `,
+    params.companyId,
+    params.projectId,
+    params.dataset,
+    params.projectName
   );
 }
 

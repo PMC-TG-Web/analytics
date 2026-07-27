@@ -49,6 +49,12 @@ function readNum(value: unknown): number | null {
   return null;
 }
 
+function readDate(value: unknown): Date | null {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function normalizeBidBoardStatus(status: string | null | undefined): string | null {
   const raw = String(status || '').trim();
   const normalized = raw
@@ -196,6 +202,147 @@ async function upsertCanonicalProjectFromWebhook(params: {
         source: 'procore_webhook',
         syncedAt: nowIso,
       },
+    },
+  });
+}
+
+async function upsertPmcProjectFromWebhook(params: {
+  companyId: string;
+  procoreProjectId: string;
+  projectName: string;
+  bidBoardId?: string | null;
+  projectNumber?: string | null;
+  customer?: string | null;
+  status?: string | null;
+  bidBoardStatus?: string | null;
+  projectManager?: string | null;
+  estimator?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  procoreCreatedAt?: Date | null;
+  procoreUpdatedAt?: Date | null;
+}): Promise<void> {
+  const {
+    companyId,
+    procoreProjectId,
+    projectName,
+    bidBoardId,
+    projectNumber,
+    customer,
+    status,
+    bidBoardStatus,
+    projectManager,
+    estimator,
+    address,
+    city,
+    state,
+    zip,
+    procoreCreatedAt,
+    procoreUpdatedAt,
+  } = params;
+  const now = new Date();
+
+  await prisma.pmcProject.upsert({
+    where: {
+      companyId_procoreProjectId: {
+        companyId,
+        procoreProjectId,
+      },
+    },
+    create: {
+      companyId,
+      procoreProjectId,
+      projectName,
+      bidBoardId: bidBoardId || null,
+      projectNumber: projectNumber || null,
+      customer: isMeaningfulCustomer(customer) ? customer : null,
+      status: status || null,
+      bidBoardStatus: bidBoardStatus || null,
+      projectManager: projectManager || null,
+      estimator: estimator || null,
+      address: address || null,
+      city: city || null,
+      state: state || null,
+      zip: zip || null,
+      procoreCreatedAt: procoreCreatedAt || null,
+      procoreUpdatedAt: procoreUpdatedAt || null,
+      syncedAt: now,
+    },
+    update: {
+      projectName,
+      syncedAt: now,
+      ...(bidBoardId ? { bidBoardId } : {}),
+      ...(projectNumber ? { projectNumber } : {}),
+      ...(isMeaningfulCustomer(customer) ? { customer } : {}),
+      ...(status ? { status } : {}),
+      ...(bidBoardStatus ? { bidBoardStatus } : {}),
+      ...(projectManager ? { projectManager } : {}),
+      ...(estimator ? { estimator } : {}),
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+      ...(state ? { state } : {}),
+      ...(zip ? { zip } : {}),
+      ...(procoreCreatedAt ? { procoreCreatedAt } : {}),
+      ...(procoreUpdatedAt ? { procoreUpdatedAt } : {}),
+    },
+  });
+}
+
+async function upsertPmcBidBoardProjectFromWebhook(params: {
+  companyId: string;
+  bidBoardId: string;
+  projectName: string;
+  procoreProjectId?: string | null;
+  projectNumber?: string | null;
+  customer?: string | null;
+  status?: string | null;
+  statusRaw?: string | null;
+  payload: unknown;
+}): Promise<void> {
+  const {
+    companyId,
+    bidBoardId,
+    projectName,
+    procoreProjectId,
+    projectNumber,
+    customer,
+    status,
+    statusRaw,
+    payload,
+  } = params;
+  const now = new Date();
+  const payloadValue = JSON.parse(JSON.stringify(payload ?? null));
+
+  await prisma.pmcBidBoardProject.upsert({
+    where: {
+      companyId_bidBoardId: {
+        companyId,
+        bidBoardId,
+      },
+    },
+    create: {
+      companyId,
+      bidBoardId,
+      projectName,
+      procoreProjectId: procoreProjectId || null,
+      projectNumber: projectNumber || null,
+      customer: isMeaningfulCustomer(customer) ? customer : null,
+      status: status || null,
+      statusRaw: statusRaw || null,
+      payload: payloadValue,
+      syncedAt: now,
+    },
+    update: {
+      projectName,
+      payload: payloadValue,
+      syncedAt: now,
+      ...(procoreProjectId ? { procoreProjectId } : {}),
+      ...(projectNumber ? { projectNumber } : {}),
+      ...(isMeaningfulCustomer(customer) ? { customer } : {}),
+      ...(status ? { status } : {}),
+      ...(statusRaw ? { statusRaw } : {}),
     },
   });
 }
@@ -562,6 +709,9 @@ async function handleProjectsEvent(event: {
   const procoreProjectId =
     readStr((project as Record<string, unknown>).id) ||
     ((project as Record<string, unknown>).id != null ? String((project as Record<string, unknown>).id) : resourceId);
+  const projectNumber =
+    readStr(project.project_number) ||
+    (project.project_number != null ? String(project.project_number) : null);
   const displayName = readStr(project.display_name) || projectName;
   const projectOwnerTypeObj = asObj(project.project_owner_type);
   const projectOwnerType =
@@ -587,13 +737,29 @@ async function handleProjectsEvent(event: {
 
   await upsertCanonicalProjectFromWebhook({
     procoreId: resourceId,
-    projectNumber:
-      readStr(project.project_number) ||
-      (project.project_number ? String(project.project_number) : null),
+    projectNumber,
     projectName,
     status,
     statusRaw,
     customer,
+  });
+
+  await upsertPmcProjectFromWebhook({
+    companyId,
+    procoreProjectId,
+    projectNumber,
+    projectName,
+    customer,
+    status,
+    bidBoardStatus,
+    projectManager: firstStr(project.project_manager, asObj(project.project_manager)?.name),
+    estimator: firstStr(project.project_estimator, asObj(project.project_estimator)?.name),
+    address: firstStr(project.address, asObj(project.address)?.street_address),
+    city: firstStr(project.city, asObj(project.address)?.city),
+    state: firstStr(project.state_code, project.state, asObj(project.address)?.state_code),
+    zip: firstStr(project.zip, project.zip_code, asObj(project.address)?.zip),
+    procoreCreatedAt: readDate(project.created_at),
+    procoreUpdatedAt: readDate(project.updated_at),
   });
 
   await prisma.$executeRawUnsafe(
@@ -664,7 +830,7 @@ async function handleProjectsEvent(event: {
     JSON.stringify(project),
     procoreProjectId,
     displayName,
-    readStr(project.project_number) || (project.project_number != null ? String(project.project_number) : null),
+    projectNumber,
     projectOwnerType,
     projectOwnerTypeId,
     procoreCreatedAt,
@@ -732,6 +898,7 @@ async function handleBidBoardProjectsEvent(event: {
 
   const bidBoardId = firstStr(project.id, project.bid_board_project_id, resourceId) || resourceId;
   const procoreProjectId = firstStr(project.project_id, project.procore_project_id) || null;
+  const projectNumber = firstStr(project.project_number, project.number) || null;
   const projectName = firstStr(project.name, project.display_name, project.title) || 'Untitled Bid Board Project';
   const statusRaw =
     firstStr(
@@ -766,6 +933,30 @@ async function handleBidBoardProjectsEvent(event: {
     customer: isMeaningfulCustomer(customer) ? customer : null,
     payload: project,
   });
+
+  await upsertPmcBidBoardProjectFromWebhook({
+    companyId,
+    bidBoardId,
+    procoreProjectId,
+    projectNumber,
+    projectName,
+    customer,
+    status: bidBoardStatus,
+    statusRaw,
+    payload: project,
+  });
+
+  if (procoreProjectId) {
+    await upsertPmcProjectFromWebhook({
+      companyId,
+      procoreProjectId,
+      bidBoardId,
+      projectNumber,
+      projectName,
+      customer,
+      bidBoardStatus,
+    });
+  }
 
   await upsertCanonicalProjectFromBidBoardWebhook({
     companyId,

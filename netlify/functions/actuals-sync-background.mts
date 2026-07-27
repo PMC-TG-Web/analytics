@@ -12,6 +12,30 @@ const handler = async (request: Request) => {
   const deadline = Date.now() + 12 * 60_000;
   const results: unknown[] = [];
   const reconciliation = String(body?.mode || "") === "reconcile";
+  let onboarding: unknown = null;
+  if (!reconciliation && Date.now() < deadline) {
+    const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": expected },
+      body: "{}",
+    });
+    const result = await response.json().catch(() => null);
+    onboarding = { status: response.status, result };
+    console.log(JSON.stringify({
+      event: "project-onboarding-background",
+      status: response.status,
+      success: result?.success,
+      skipped: result?.skipped,
+      reason: result?.reason,
+      projectId: result?.projectId,
+      totalMs: result?.totalMs,
+    }));
+    const rateLimited = Array.isArray(result?.steps)
+      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+    if (!response.ok || rateLimited) {
+      return Response.json({ success: false, onboarding, results });
+    }
+  }
   const configuredCap = Math.min(
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK || "8", 10) || 8)
@@ -51,7 +75,7 @@ const handler = async (request: Request) => {
     // preventing the worker from advancing to the next due project.
     if (!response.ok || result?.skipped || rateLimited) break;
   }
-  return Response.json({ success: true, results });
+  return Response.json({ success: true, onboarding, results });
 };
 
 export default handler;

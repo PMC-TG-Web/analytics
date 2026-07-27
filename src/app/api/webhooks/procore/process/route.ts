@@ -1260,49 +1260,49 @@ function getWebhookWorkKey(event: {
   ].join(':');
 }
 
-function affectsProjectHeaders(resourceName: string | null): boolean {
-  const resource = String(resourceName || '').trim().toLowerCase();
-  return resource === 'projects'
-    || resource === 'project'
-    || resource.includes('bid board')
-    || (resource.includes('estimating') && resource.includes('project'));
+function projectIdForOnboarding(event: {
+  projectId: string | null;
+  resourceName: string | null;
+  resourceId: string | null;
+}): string | null {
+  const resource = String(event.resourceName || '').trim().toLowerCase();
+  if (resource !== 'projects' && resource !== 'project') return null;
+  return String(event.resourceId || event.projectId || '').trim() || null;
 }
 
-async function refreshBidBoardHeaders(request: NextRequest, companyId: string) {
-  try {
-    const response = await fetch(
-      `${request.nextUrl.origin.replace(/\/$/, '')}/api/procore/sync/bid-board-projects`,
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-sync-secret': getSyncSecretFromRequest(request),
-        },
-        body: JSON.stringify({ companyId }),
-        signal: AbortSignal.timeout(4 * 60_000),
-      }
-    );
-    const detail = await response.json().catch(() => null);
-    return {
-      attempted: true,
-      success: response.ok && detail?.success !== false,
-      status: response.status,
-      companyId,
-      fetched: detail?.fetched ?? null,
-      persisted: detail?.persisted ?? null,
-      error: response.ok ? null : detail?.error || 'Bid Board header refresh failed',
-    };
-  } catch (error) {
-    return {
-      attempted: true,
-      success: false,
-      status: 0,
-      companyId,
-      fetched: null,
-      persisted: null,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+async function queueProjectOnboarding(companyId: string, projectId: string) {
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT
+        $1,
+        $2,
+        'project_onboarding',
+        project_number,
+        project_name,
+        NOW(),
+        NOW(),
+        NOW()
+      FROM pmc_projects
+      WHERE company_id = $1
+        AND procore_project_id = $2
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.last_success_at IS NULL
+          THEN LEAST(procore_sync_project_states.next_run_at, NOW())
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        updated_at = NOW()
+    `,
+    companyId,
+    projectId
+  );
 }
 
 async function findRecentOrActiveSyncLog(windowMinutes: number) {
@@ -1408,9 +1408,9 @@ export async function POST(request: NextRequest) {
   let failed = 0;
   let coalesced = 0;
   let deferredDuplicates = 0;
+  let onboardingQueued = 0;
   const completedWorkKeys = new Set<string>();
   const failedWorkKeys = new Map<string, string>();
-  const projectHeaderCompanies = new Set<string>();
 
   for (const queueItem of candidates) {
     const workKey = getWebhookWorkKey(queueItem.event);
@@ -1484,6 +1484,15 @@ export async function POST(request: NextRequest) {
         payload: queueItem.event.payload,
       });
 
+      const onboardingProjectId = projectIdForOnboarding(queueItem.event);
+      if (onboardingProjectId) {
+        const companyId = String(queueItem.event.companyId || procoreConfig.companyId || '').trim();
+        if (companyId) {
+          await queueProjectOnboarding(companyId, onboardingProjectId);
+          onboardingQueued += 1;
+        }
+      }
+
       await prisma.$transaction([
         prisma.procoreWebhookQueue.update({
           where: { id: queueItem.id },
@@ -1500,10 +1509,6 @@ export async function POST(request: NextRequest) {
       ]);
       processed += 1;
       completedWorkKeys.add(workKey);
-      if (affectsProjectHeaders(queueItem.event.resourceName)) {
-        const companyId = String(queueItem.event.companyId || procoreConfig.companyId || '').trim();
-        if (companyId) projectHeaderCompanies.add(companyId);
-      }
     } catch (error) {
       const attempted = queueItem.attempts + 1;
       const shouldFailPermanently = attempted >= queueItem.maxAttempts;
@@ -1530,11 +1535,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const projectHeaderRefreshes = [];
-  for (const companyId of projectHeaderCompanies) {
-    projectHeaderRefreshes.push(await refreshBidBoardHeaders(request, companyId));
-  }
-
   return NextResponse.json({
     success: true,
     requestedBatchSize: batchSize,
@@ -1544,7 +1544,7 @@ export async function POST(request: NextRequest) {
     failed,
     coalesced,
     deferredDuplicates,
-    projectHeaderRefreshes,
+    onboardingQueued,
   });
   });
 }

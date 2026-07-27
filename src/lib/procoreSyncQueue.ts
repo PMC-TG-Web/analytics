@@ -25,6 +25,106 @@ type ControlRow = {
   rate_limit_until: Date | null;
 };
 
+export async function seedAllProjectSyncQueue(companyId: string, dataset: string) {
+  const seeded = await prisma.$executeRawUnsafe(
+    `
+      WITH source_projects AS (
+        SELECT
+          company_id,
+          procore_project_id AS project_id,
+          project_number,
+          project_name
+        FROM pmc_projects
+        WHERE company_id = $1
+          AND NULLIF(BTRIM(procore_project_id), '') IS NOT NULL
+          AND LOWER(BTRIM(project_name)) NOT LIKE '%template%'
+
+        UNION ALL
+
+        SELECT
+          budget.company_id,
+          budget.project_id,
+          MAX(project.project_number),
+          MAX(project.project_name)
+        FROM budgetlineitems budget
+        LEFT JOIN pmc_projects project
+          ON project.company_id = budget.company_id
+         AND project.procore_project_id = budget.project_id
+        WHERE budget.company_id = $1
+          AND NULLIF(BTRIM(budget.project_id), '') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM pmc_projects current_project
+            WHERE current_project.company_id = budget.company_id
+              AND current_project.procore_project_id = budget.project_id
+          )
+        GROUP BY budget.company_id, budget.project_id
+      )
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT
+        company_id,
+        project_id,
+        $2,
+        project_number,
+        project_name,
+        NOW(),
+        NOW(),
+        NOW()
+      FROM source_projects
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.last_error LIKE 'Excluded because the project is no longer in the master actuals scope.%'
+          THEN NOW()
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        last_error = CASE
+          WHEN procore_sync_project_states.last_error LIKE 'Excluded because the project is no longer in the master actuals scope.%'
+          THEN NULL
+          ELSE procore_sync_project_states.last_error
+        END,
+        updated_at = NOW()
+    `,
+    companyId,
+    dataset
+  );
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states state
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          last_error = 'Excluded because the project is no longer in the master actuals scope.',
+          updated_at = NOW()
+      WHERE state.company_id = $1
+        AND state.dataset = $2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pmc_projects project
+          WHERE project.company_id = state.company_id
+            AND project.procore_project_id = state.project_id
+            AND NULLIF(BTRIM(project.procore_project_id), '') IS NOT NULL
+            AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM budgetlineitems budget
+          WHERE budget.company_id = state.company_id
+            AND budget.project_id = state.project_id
+            AND NULLIF(BTRIM(budget.project_id), '') IS NOT NULL
+        )
+    `,
+    companyId,
+    dataset
+  );
+  return seeded;
+}
+
 export async function seedProjectSyncQueue(companyId: string, dataset: string) {
   return prisma.$executeRawUnsafe(
     `
@@ -58,6 +158,34 @@ export async function seedProjectSyncQueue(companyId: string, dataset: string) {
     companyId,
     dataset
   );
+}
+
+export async function getSyncQueueStats(companyId: string, dataset: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    project_count: number;
+    due_projects: number;
+    never_succeeded: number;
+    failed_projects: number;
+  }>>(
+    `
+      SELECT
+        COUNT(*)::int AS project_count,
+        COUNT(*) FILTER (WHERE next_run_at <= NOW())::int AS due_projects,
+        COUNT(*) FILTER (WHERE last_success_at IS NULL)::int AS never_succeeded,
+        COUNT(*) FILTER (WHERE failure_count > 0)::int AS failed_projects
+      FROM procore_sync_project_states
+      WHERE company_id = $1
+        AND dataset = $2
+    `,
+    companyId,
+    dataset
+  );
+  return rows[0] || {
+    project_count: 0,
+    due_projects: 0,
+    never_succeeded: 0,
+    failed_projects: 0,
+  };
 }
 
 export async function seedEstimatingSyncQueue(companyId: string, dataset: string) {

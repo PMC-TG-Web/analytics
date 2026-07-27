@@ -5,8 +5,9 @@ import {
   acquireProcoreWorker,
   claimDueProject,
   finishProjectSync,
+  getSyncQueueStats,
   releaseProcoreWorker,
-  seedProjectSyncQueue,
+  seedAllProjectSyncQueue,
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
@@ -70,6 +71,65 @@ function dateWindow(body: Record<string, unknown>, reconciliation: boolean) {
   return {
     startDate: explicitStart || dateKey(new Date(now - lookbackDays * 86_400_000)),
     endDate: explicitEnd || dateKey(new Date(now)),
+  };
+}
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  return Math.min(maximum, Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback));
+}
+
+async function pollingCadence(companyId: string, projectId: string, reconciliation: boolean) {
+  if (reconciliation) {
+    return { class: "weekly-reconciliation", nextRunMinutes: 7 * 24 * 60, latestActivity: null, projectStatus: null };
+  }
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    latest_activity: Date | null;
+    project_status: string | null;
+  }>>(
+    `
+      SELECT
+        (
+          SELECT MAX(activity_date)
+          FROM (
+            SELECT MAX(date) AS activity_date
+            FROM "TimecardEntry"
+            WHERE "procoreProjectId" = $2
+              AND ("procoreCompanyId" = $1 OR "procoreCompanyId" IS NULL)
+              AND "procoreDeletedAt" IS NULL
+            UNION ALL
+            SELECT MAX(date) AS activity_date
+            FROM "ProductivityLog"
+            WHERE "procoreProjectId" = $2
+              AND ("procoreCompanyId" = $1 OR "procoreCompanyId" IS NULL)
+              AND "procoreDeletedAt" IS NULL
+          ) activity
+        ) AS latest_activity,
+        (
+          SELECT COALESCE(NULLIF(BTRIM(bid_board_status), ''), NULLIF(BTRIM(status), ''))
+          FROM pmc_projects
+          WHERE company_id = $1
+            AND procore_project_id = $2
+          LIMIT 1
+        ) AS project_status
+    `,
+    companyId,
+    projectId
+  );
+  const row = rows[0] || { latest_activity: null, project_status: null };
+  const activeDays = boundedNumber(process.env.PROCORE_ACTUALS_ACTIVE_DAYS, 14, 1, 120);
+  const activeInterval = boundedNumber(process.env.PROCORE_ACTUALS_ACTIVE_INTERVAL_MINUTES, 90, 15, 24 * 60);
+  const idleInterval = boundedNumber(process.env.PROCORE_ACTUALS_IDLE_INTERVAL_MINUTES, 24 * 60, 60, 7 * 24 * 60);
+  const status = String(row.project_status || "").trim().toLowerCase();
+  const recentThreshold = Date.now() - activeDays * 86_400_000;
+  const recentlyActive = Boolean(row.latest_activity && row.latest_activity.getTime() >= recentThreshold);
+  const activeStatus = status === "in progress" || status === "active" || status === "course of construction";
+  const active = recentlyActive || activeStatus;
+  return {
+    class: active ? "active" : "idle",
+    nextRunMinutes: active ? activeInterval : idleInterval,
+    latestActivity: row.latest_activity?.toISOString() || null,
+    projectStatus: row.project_status,
   };
 }
 
@@ -138,7 +198,7 @@ async function runStep(params: {
 }
 
 async function ensureExplicitProject(companyId: string, projectId: string, dataset: string) {
-  await seedProjectSyncQueue(companyId, dataset);
+  await seedAllProjectSyncQueue(companyId, dataset);
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO procore_sync_project_states (
@@ -187,7 +247,7 @@ export async function POST(request: NextRequest) {
   let logId: bigint | null = null;
   try {
     if (explicitProjectId) await ensureExplicitProject(companyId, explicitProjectId, dataset);
-    else await seedProjectSyncQueue(companyId, dataset);
+    else await seedAllProjectSyncQueue(companyId, dataset);
     project = await claimDueProject({
       companyId,
       dataset,
@@ -249,6 +309,9 @@ export async function POST(request: NextRequest) {
     const success = steps.length === 2 && steps.every((step) => step.status === "ok");
     const limited = steps.find((step) => step.rateLimited);
     const error = success ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Actuals sync failed").slice(0, 4_000);
+    const polling = success
+      ? await pollingCadence(companyId, project.projectId, reconciliation)
+      : null;
     if (limited?.rateLimitUntil) {
       await setProcoreRateLimit({ companyId, until: new Date(limited.rateLimitUntil), error });
     }
@@ -257,11 +320,17 @@ export async function POST(request: NextRequest) {
       success,
       nextRunMinutes: limited?.rateLimitUntil
         ? Math.max(15, Math.ceil((new Date(limited.rateLimitUntil).getTime() - Date.now()) / 60_000))
-        : success ? (reconciliation ? 7 * 24 * 60 : 90) : 15,
+        : success ? polling?.nextRunMinutes || 90 : 15,
       error,
-      result: { selection, startDate, endDate, steps },
+      result: { selection, startDate, endDate, polling, steps },
     });
 
+    const queueStats = await getSyncQueueStats(companyId, dataset);
+    const batchCap = boundedNumber(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK, 8, 3, 12);
+    const recommendedBatchSize = Math.min(
+      batchCap,
+      Math.max(3, Math.ceil(queueStats.due_projects / 12))
+    );
     const totalMs = Date.now() - startedAt;
     if (logId !== null) {
       await prisma.syncLog.update({
@@ -275,6 +344,15 @@ export async function POST(request: NextRequest) {
       projectId: project.projectId,
       dataset,
       syncWindow: { startDate, endDate },
+      polling,
+      queue: {
+        projectCount: queueStats.project_count,
+        dueProjects: queueStats.due_projects,
+        neverSucceeded: queueStats.never_succeeded,
+        failedProjects: queueStats.failed_projects,
+        recommendedBatchSize,
+        maxBatchSize: batchCap,
+      },
       logId: logId?.toString() || null,
       totalMs,
       steps,

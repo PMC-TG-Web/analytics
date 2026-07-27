@@ -66,8 +66,11 @@ const handler = async () => {
     const workerName = isNightlyWindow
       ? "nightly-structure-sync-background"
       : "actuals-sync-background";
+    const workerPath = isNightlyWindow
+      ? "/api/background/nightly-structure-sync"
+      : "/api/background/actuals-sync";
     const workerBody = isReconciliationWindow ? { mode: "reconcile" } : {};
-    const dispatch = await fetch(`${baseUrl}/.netlify/functions/${workerName}`, {
+    const dispatch = await fetch(`${baseUrl}${workerPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

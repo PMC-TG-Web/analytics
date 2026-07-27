@@ -1,3 +1,5 @@
+import type { Config } from "@netlify/functions";
+
 const handler = async (request: Request) => {
   const expected = (process.env.PROCORE_SYNC_SECRET || "").trim();
   const provided = request.headers.get("x-sync-secret")?.trim() || "";
@@ -33,3 +35,9 @@ const handler = async (request: Request) => {
 };
 
 export default handler;
+
+export const config: Config = {
+  background: true,
+  path: "/api/background/actuals-sync",
+  method: "POST",
+};

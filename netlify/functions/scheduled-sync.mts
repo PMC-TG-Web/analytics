@@ -53,8 +53,38 @@ const handler = async () => {
     const ok = response.ok;
     console.log(`[scheduled-sync] Webhook queue processing ${ok ? "completed" : "failed"} - status=${response.status} scanned=${body?.scanned ?? "?"} processed=${body?.processed ?? "?"} failed=${body?.failed ?? "?"}`);
 
-    return new Response(JSON.stringify({ ok, processStatus: response.status, body }), {
-      status: ok ? 200 : 500,
+    const nowParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+    const weekday = nowParts.find((part) => part.type === "weekday")?.value;
+    const hour = Number(nowParts.find((part) => part.type === "hour")?.value || 0);
+    const isNightlyWindow = hour >= 2 && hour < 6;
+    const isReconciliationWindow = weekday === "Sun" && hour >= 6 && hour < 12;
+    const workerName = isNightlyWindow
+      ? "nightly-structure-sync-background"
+      : "actuals-sync-background";
+    const workerBody = isReconciliationWindow ? { mode: "reconcile" } : {};
+    const dispatch = await fetch(`${baseUrl}/.netlify/functions/${workerName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-sync-secret": syncSecret,
+      },
+      body: JSON.stringify(workerBody),
+    });
+    console.log(`[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`);
+
+    return new Response(JSON.stringify({
+      ok: ok && dispatch.ok,
+      processStatus: response.status,
+      dispatchStatus: dispatch.status,
+      workerName,
+      body,
+    }), {
+      status: ok && dispatch.ok ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

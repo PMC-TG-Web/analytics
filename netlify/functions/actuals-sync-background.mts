@@ -7,22 +7,29 @@ const handler = async (request: Request) => {
 
   const baseUrl = (process.env.APP_BASE_URL || process.env.URL || "").replace(/\/$/, "");
   const body = await request.json().catch(() => ({}));
-  const response = await fetch(`${baseUrl}/api/cron/actuals`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-sync-secret": expected },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json().catch(() => null);
-  console.log(JSON.stringify({
-    event: "actuals-sync-background",
-    status: response.status,
-    success: result?.success,
-    skipped: result?.skipped,
-    reason: result?.reason,
-    projectId: result?.projectId,
-    totalMs: result?.totalMs,
-  }));
-  return Response.json({ status: response.status, result }, { status: response.ok ? 200 : 207 });
+  const deadline = Date.now() + 12 * 60_000;
+  const results: unknown[] = [];
+  const maxProjects = String(body?.mode || "") === "reconcile" ? 1 : 3;
+  for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
+    const response = await fetch(`${baseUrl}/api/cron/actuals`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": expected },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => null);
+    results.push({ status: response.status, result });
+    console.log(JSON.stringify({
+      event: "actuals-sync-background",
+      status: response.status,
+      success: result?.success,
+      skipped: result?.skipped,
+      reason: result?.reason,
+      projectId: result?.projectId,
+      totalMs: result?.totalMs,
+    }));
+    if (!response.ok || result?.success === false || result?.skipped) break;
+  }
+  return Response.json({ success: true, results });
 };
 
 export default handler;

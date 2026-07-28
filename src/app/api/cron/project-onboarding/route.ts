@@ -108,22 +108,70 @@ async function runStep(params: {
 }
 
 async function linkedBidBoardIds(companyId: string, projectId: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ bid_board_id: string }>>(
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    bid_board_id: string;
+    procore_project_id: string | null;
+  }>>(
     `
-      SELECT bid_board_id
-      FROM pmc_bid_board_projects
-      WHERE company_id = $1
-        AND procore_project_id = $2
-        AND POSITION(':' IN bid_board_id) = 0
-        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"archived":true}'::jsonb)
-        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"deleted":true}'::jsonb)
-        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"is_template":true}'::jsonb)
-        AND NOT (COALESCE(payload, '{}'::jsonb) @> '{"sync_missing_from_procore":true}'::jsonb)
-      ORDER BY synced_at DESC, bid_board_id
+      SELECT board.bid_board_id, board.procore_project_id
+      FROM pmc_bid_board_projects board
+      JOIN pmc_projects project
+        ON project.company_id = board.company_id
+       AND project.procore_project_id = $2
+      WHERE board.company_id = $1
+        AND (
+          board.procore_project_id = $2
+          OR (
+            board.procore_project_id IS NULL
+            AND project.project_number IS NOT NULL
+            AND LOWER(BTRIM(board.project_number)) = LOWER(BTRIM(project.project_number))
+            AND (
+              SELECT COUNT(*)
+              FROM pmc_bid_board_projects candidate
+              WHERE candidate.company_id = board.company_id
+                AND LOWER(BTRIM(candidate.project_number)) = LOWER(BTRIM(project.project_number))
+                AND POSITION(':' IN candidate.bid_board_id) = 0
+            ) = 1
+          )
+        )
+        AND POSITION(':' IN board.bid_board_id) = 0
+        AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"archived":true}'::jsonb)
+        AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"deleted":true}'::jsonb)
+        AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"is_template":true}'::jsonb)
+        AND NOT (COALESCE(board.payload, '{}'::jsonb) @> '{"sync_missing_from_procore":true}'::jsonb)
+      ORDER BY board.synced_at DESC, board.bid_board_id
     `,
     companyId,
     projectId
   );
+
+  const inferred = rows.filter((row) => !row.procore_project_id);
+  if (inferred.length === 1) {
+    const bidBoardId = inferred[0].bid_board_id;
+    await prisma.$transaction([
+      prisma.pmcBidBoardProject.updateMany({
+        where: { companyId, bidBoardId, procoreProjectId: null },
+        data: { procoreProjectId: projectId },
+      }),
+      prisma.pmcProject.updateMany({
+        where: { companyId, procoreProjectId: projectId },
+        data: { bidBoardId },
+      }),
+      prisma.$executeRawUnsafe(
+        `
+          UPDATE procore_bid_board_live
+          SET procore_project_id = $2, synced_at = NOW()
+          WHERE company_id = $1
+            AND bid_board_id = $3
+            AND procore_project_id IS NULL
+        `,
+        companyId,
+        projectId,
+        bidBoardId
+      ),
+    ]);
+  }
+
   return rows.map((row) => row.bid_board_id);
 }
 

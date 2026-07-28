@@ -289,6 +289,7 @@ export async function POST(request: NextRequest) {
       concurrency: 1,
       forceUserOAuth: false,
       persist: true,
+      persistUnpackedFields: false,
     };
     const steps: StepResult[] = [];
     for (const stage of [

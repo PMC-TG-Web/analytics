@@ -12,6 +12,7 @@ type PersistParams = {
   projectName?: string;
   projectNumber?: string;
   createProjectIfMissing?: boolean;
+  persistUnpackedFields?: boolean;
 };
 
 let detailUnpackedTableReady: Promise<void> | null = null;
@@ -213,8 +214,14 @@ export async function persistPurchaseOrderLineItemDetails(
 
   let saved = 0;
   let skipped = 0;
+  let cursor = 0;
+  const workerCount = Math.min(6, Math.max(1, details.length));
 
-  for (const record of details) {
+  async function persistNextDetail() {
+    while (cursor < details.length) {
+      const index = cursor;
+      cursor += 1;
+      const record = details[index];
     try {
       const rawId = toNullableString(asObject(record).id);
       if (!rawId) {
@@ -246,13 +253,18 @@ export async function persistPurchaseOrderLineItemDetails(
         await prisma.purchaseOrderLineItemContractDetail.create({ data: { id: uid, ...sharedFields } });
       }
 
-      await persistDetailUnpackedFields(finalId, record);
+      if (params.persistUnpackedFields !== false) {
+        await persistDetailUnpackedFields(finalId, record);
+      }
       saved += 1;
     } catch (err) {
       console.error(`[POLineItemDetails] persist error:`, err);
       skipped += 1;
     }
   }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => persistNextDetail()));
 
   return { saved, skipped, linkedProjectId, projectCreated, contractDbId };
 }

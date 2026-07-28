@@ -269,6 +269,8 @@ export async function POST(request: Request) {
       Number.parseInt(String(body.maxProjects || "0"), 10) || 0
     );
     const persist = body.persist === undefined ? true : Boolean(body.persist);
+    const persistUnpackedFields =
+      body.persistUnpackedFields === undefined ? true : Boolean(body.persistUnpackedFields);
 
     const explicitProjectIds = Array.isArray(body.projectIds)
       ? body.projectIds.map((v) => String(v || "").trim()).filter(Boolean)
@@ -345,6 +347,7 @@ export async function POST(request: Request) {
             projectName,
             projectNumber: projectNumber || undefined,
             createProjectIfMissing: true,
+            persistUnpackedFields,
           });
           savedCount = result.saved;
           skippedCount = result.skipped;

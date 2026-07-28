@@ -155,12 +155,40 @@ async function fetchAllBidBoardProjects(params: {
   throw lastError || Object.assign(new Error("Procore returned no Bid Board projects."), { status: 502 });
 }
 
+async function resolveProcoreProjectId(params: {
+  companyId: string;
+  projectNumber: string | null;
+  suppliedProjectId: string | null;
+}) {
+  if (params.suppliedProjectId) return params.suppliedProjectId;
+  if (!params.projectNumber) return null;
+
+  const matches = await prisma.$queryRawUnsafe<Array<{ procore_project_id: string }>>(
+    `
+      SELECT procore_project_id
+      FROM pmc_projects
+      WHERE company_id = $1
+        AND LOWER(BTRIM(project_number)) = LOWER(BTRIM($2))
+      ORDER BY updated_at DESC
+      LIMIT 2
+    `,
+    params.companyId,
+    params.projectNumber
+  );
+
+  return matches.length === 1 ? matches[0].procore_project_id : null;
+}
+
 async function upsertProject(companyId: string, project: UnknownRecord) {
   const bidBoardId = text(project.id || project.bid_board_project_id);
   if (!bidBoardId) return null;
   const raw = isRecord(project.raw) ? project.raw : {};
-  const procoreProjectId = text(project.project_id || project.procore_project_id) || null;
   const projectNumber = text(project.project_number) || null;
+  const procoreProjectId = await resolveProcoreProjectId({
+    companyId,
+    projectNumber,
+    suppliedProjectId: text(project.project_id || project.procore_project_id) || null,
+  });
   const projectName = text(project.name || project.title) || "Untitled Bid";
   const customer = customerFromProject(project);
   const customerCompanyId =
@@ -188,7 +216,7 @@ async function upsertProject(companyId: string, project: UnknownRecord) {
         syncedAt: new Date(),
       },
       update: {
-        procoreProjectId,
+        ...(procoreProjectId ? { procoreProjectId } : {}),
         projectNumber,
         projectName,
         customer,
@@ -209,7 +237,7 @@ async function upsertProject(companyId: string, project: UnknownRecord) {
         ON CONFLICT (bid_board_id)
         DO UPDATE SET
           company_id = EXCLUDED.company_id,
-          procore_project_id = EXCLUDED.procore_project_id,
+          procore_project_id = COALESCE(EXCLUDED.procore_project_id, procore_bid_board_live.procore_project_id),
           name = EXCLUDED.name,
           status = EXCLUDED.status,
           status_raw = EXCLUDED.status_raw,
@@ -226,6 +254,18 @@ async function upsertProject(companyId: string, project: UnknownRecord) {
       customer,
       JSON.stringify(project)
     ),
+    ...(procoreProjectId
+      ? [
+          prisma.pmcProject.updateMany({
+            where: { companyId, procoreProjectId },
+            data: {
+              bidBoardId,
+              bidBoardStatus: status,
+              syncedAt: new Date(),
+            },
+          }),
+        ]
+      : []),
   ]);
 
   return { bidBoardId, status, sales: numeric(isRecord(project.stats) ? project.stats.total : 0), active: projectIsActive(project) };

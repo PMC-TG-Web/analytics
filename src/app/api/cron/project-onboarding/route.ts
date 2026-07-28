@@ -285,6 +285,7 @@ export async function POST(request: NextRequest) {
       perPage: 100,
       concurrency: 1,
       persist: true,
+      persistUnpackedFields: false,
       forceUserOAuth: false,
     };
     const now = Date.now();

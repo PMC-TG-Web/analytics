@@ -11,6 +11,7 @@ type PersistTimecardEntriesParams = {
   projectName?: string;
   projectNumber?: string;
   createProjectIfMissing?: boolean;
+  persistUnpackedFields?: boolean;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -325,8 +326,14 @@ export async function persistTimecardEntries(
 
   let saved = 0;
   let skipped = 0;
+  let cursor = 0;
+  const workerCount = Math.min(8, Math.max(1, entries.length));
 
-  for (const entry of entries) {
+  async function persistNextEntry() {
+    while (cursor < entries.length) {
+      const index = cursor;
+      cursor += 1;
+      const entry = entries[index];
     const procoreId = String(entry.id ?? "").trim();
     if (!procoreId) { skipped += 1; continue; }
 
@@ -376,12 +383,17 @@ export async function persistTimecardEntries(
         select: { id: true },
       });
 
-      await syncUnpackedFieldsForEntry(savedEntry.id, unpacked.jsonFields);
+      if (params.persistUnpackedFields !== false) {
+        await syncUnpackedFieldsForEntry(savedEntry.id, unpacked.jsonFields);
+      }
       saved += 1;
     } catch {
       skipped += 1;
     }
   }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => persistNextEntry()));
 
   return {
     attempted: entries.length,

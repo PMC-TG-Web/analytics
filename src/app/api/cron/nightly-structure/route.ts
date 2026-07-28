@@ -82,6 +82,7 @@ async function runStep(params: {
         perPage: 100,
         concurrency: 1,
         persist: true,
+        persistUnpackedFields: false,
         forceUserOAuth: false,
       }),
       signal: AbortSignal.timeout(4 * 60_000),
@@ -115,6 +116,8 @@ export async function POST(request: NextRequest) {
   if (!secret) {
     return NextResponse.json({ success: false, error: "Missing PROCORE_SYNC_SECRET" }, { status: 503 });
   }
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const estimateOnly = String(body.mode || "").trim().toLowerCase() === "estimates";
 
   const worker = await acquireProcoreWorker(COMPANY_ID);
   if (!worker.acquired) {
@@ -132,6 +135,7 @@ export async function POST(request: NextRequest) {
   let logId: bigint | null = null;
   const startedAt = Date.now();
   try {
+    if (!estimateOnly) {
     await seedSingletonSyncQueue({
       companyId: COMPANY_ID,
       dataset: BID_BOARD_DATASET,
@@ -202,6 +206,7 @@ export async function POST(request: NextRequest) {
 
     await seedProjectSyncQueue(COMPANY_ID, DATASET);
     project = await claimDueProject({ companyId: COMPANY_ID, dataset: DATASET, leaseId: worker.leaseId });
+    }
     if (!project) {
       await seedEstimatingSyncQueue(COMPANY_ID, ESTIMATING_DATASET);
       for (let index = 0; index < 5; index += 1) {

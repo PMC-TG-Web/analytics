@@ -26,15 +26,6 @@ function asArray(payload: unknown, keys: string[] = []): unknown[] {
   return [];
 }
 
-function asRecord(payload: unknown, keys: string[] = []): UnknownRecord | null {
-  if (!isRecord(payload)) return null;
-  for (const key of keys) {
-    const nested = payload[key];
-    if (isRecord(nested)) return nested;
-  }
-  return payload;
-}
-
 function isMissingTableError(error: unknown): boolean {
   const code = String((error as { code?: string })?.code || "").toUpperCase();
   const message = error instanceof Error ? error.message : String(error);
@@ -518,23 +509,7 @@ export async function POST(request: Request) {
           }).filter(Boolean));
           for (const bidBoardProjectId of explicitBidBoardProjectIds) {
             if (fetchedIds.has(bidBoardProjectId)) continue;
-            try {
-              const payload = await getJson(
-                `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(
-                  bidBoardProjectId
-                )}`
-              );
-              const directProject = asRecord(payload, ["data", "project", "bid_board_project"]);
-              if (directProject) {
-                bidBoardProjects.push({
-                  ...directProject,
-                  id: directProject.id || directProject.bid_board_project_id || bidBoardProjectId,
-                });
-              }
-            } catch (error) {
-              const status = Number((error as { status?: number })?.status || 0);
-              if (status !== 404) throw error;
-            }
+            bidBoardProjects.push({ id: bidBoardProjectId });
           }
         }
 

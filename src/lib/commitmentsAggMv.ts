@@ -1,7 +1,23 @@
+import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const DEBOUNCE_SECONDS = 120;
 const VIEW_NAME = "commitments_agg_mv";
+const globalForCommitmentsMv = globalThis as unknown as {
+  commitmentsMvPrisma?: PrismaClient;
+};
+
+function refreshClient(): PrismaClient {
+  const directUrl = String(process.env.DIRECT_DATABASE_URL || "").trim();
+  if (!directUrl) return prisma;
+  if (!globalForCommitmentsMv.commitmentsMvPrisma) {
+    globalForCommitmentsMv.commitmentsMvPrisma = new PrismaClient({
+      datasources: { db: { url: directUrl } },
+      log: ["warn", "error"],
+    });
+  }
+  return globalForCommitmentsMv.commitmentsMvPrisma;
+}
 
 function isMissingRelationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -47,9 +63,10 @@ async function acquireRefreshSlot(): Promise<boolean> {
 export async function refreshCommitmentsAggMaterializedView(): Promise<void> {
   const shouldRefresh = await acquireRefreshSlot();
   if (!shouldRefresh) return;
+  const refreshPrisma = refreshClient();
 
   try {
-    await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${VIEW_NAME}`);
+    await refreshPrisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${VIEW_NAME}`);
     return;
   } catch (error) {
     // Fallback for environments where concurrent refresh cannot run.
@@ -57,7 +74,7 @@ export async function refreshCommitmentsAggMaterializedView(): Promise<void> {
   }
 
   try {
-    await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW ${VIEW_NAME}`);
+    await refreshPrisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW ${VIEW_NAME}`);
   } catch (error) {
     if (!isMissingRelationError(error)) {
       console.error("[commitmentsAggMv] refresh failed:", error);

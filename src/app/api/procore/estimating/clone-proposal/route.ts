@@ -446,9 +446,9 @@ function guessGroupCostNameHint(groupName: string): string {
   const value = norm(groupName);
   if (!value) return "";
   if (/\bsog\b|slab on grade/.test(value)) return "sog rebar material";
-  if (/\bsite\b/.test(value)) return "site rebar material";
   if (/\bwall\b|wf\d/.test(value)) return "wall rebar material";
-  if (/\bfooting\b|\bspread\b|\bmat\b|foundation/.test(value)) return "foundation rebar material";
+  if (/\bfootings?\b|\bfooters?\b|\bspread\b|\bmat\b|\bfoundations?\b/.test(value)) return "foundation rebar material";
+  if (/\bsite\b|\bexterior\b.*\bslabs?\b|\bslabs?\b.*\bexterior\b/.test(value)) return "site rebar material";
   return "";
 }
 

@@ -60,6 +60,22 @@ function normalizeTimestamp(value: unknown): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await worker(item);
+    }
+  }));
+}
+
 function nestedObject(value: unknown): UnknownRecord {
   return isRecord(value) ? value : {};
 }
@@ -592,7 +608,10 @@ export async function POST(request: Request) {
                     lineItem: item,
                   });
 
-                  if (persist) {
+                }
+
+                if (persist) {
+                  await runWithConcurrency(proposalLineItems, 8, async (item) => {
                     persistence.attempted += 1;
                     try {
                       await upsertProposalLineItemLive({
@@ -624,7 +643,7 @@ export async function POST(request: Request) {
                         persistence.errors.push(`${bidBoardProjectId}/${proposalId}: ${msg}`);
                       }
                     }
-                  }
+                  });
                 }
 
                 projectLineItemCount += proposalLineItems.length;

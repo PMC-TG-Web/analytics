@@ -20,6 +20,25 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
   const [newStatus, setNewStatus] = useState(project?.status || "");
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{type: "success" | "error"; text: string} | null>(null);
+  const onboarding = project?.customFields?.onboarding as {
+    status?: "queued" | "waiting_for_bid_board" | "waiting_for_estimate" | "retrying" | "complete";
+    complete?: boolean;
+    nextRunAt?: string | null;
+  } | null | undefined;
+
+  const onboardingMessage = onboarding && !onboarding.complete
+    ? onboarding.status === "waiting_for_estimate"
+      ? "Waiting for Procore to make the estimate line items available."
+      : onboarding.status === "waiting_for_bid_board"
+        ? "Waiting for the project to appear on Procore's Bid Board."
+        : onboarding.status === "retrying"
+          ? "A Procore sync step did not finish. It will retry automatically."
+          : "The project is queued for its first Procore data sync."
+    : null;
+
+  const nextOnboardingAttempt = onboardingMessage && onboarding?.nextRunAt
+    ? new Date(onboarding.nextRunAt)
+    : null;
 
   const statusOptions = [
     "Estimating",
@@ -348,7 +367,21 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
               {loading ? (
                 <div className="py-20 text-center text-gray-400 font-medium italic">Loading line items...</div>
               ) : Object.keys(groupedItems).length === 0 ? (
-                <div className="py-20 text-center text-gray-400 font-medium italic">No line items found.</div>
+                onboardingMessage ? (
+                  <div className="mx-auto my-16 max-w-lg rounded-xl border border-cyan-200 bg-cyan-50 px-6 py-5 text-center">
+                    <p className="font-bold text-[#15616D]">Procore project setup is still syncing</p>
+                    <p className="mt-2 text-sm text-slate-600">{onboardingMessage}</p>
+                    {nextOnboardingAttempt && !Number.isNaN(nextOnboardingAttempt.getTime()) ? (
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        Next automatic attempt: {nextOnboardingAttempt.toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="py-20 text-center text-gray-400 font-medium italic">
+                    No estimate line items are available in Procore.
+                  </div>
+                )
               ) : (
                 <div className="space-y-4">
                   {Object.entries(groupedItems as Record<string, any[]>).sort().map(([type, items]) => {

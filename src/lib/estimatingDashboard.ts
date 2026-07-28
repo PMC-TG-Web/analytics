@@ -107,7 +107,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     if (cached) return cached;
   }
 
-  const [boardRows, proposals, lineRows, pmcProjects, companyUsers] = await Promise.all([
+  const [boardRows, proposals, lineRows, pmcProjects, companyUsers, onboardingStates] = await Promise.all([
     prisma.pmcBidBoardProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procoreEstimateProposal.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procoreEstimateLineItem.findMany({
@@ -131,6 +131,20 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     prisma.procore_company_users_live.findMany({
       where: { company_id: COMPANY_ID },
       select: { user_id: true, name: true },
+    }),
+    prisma.procoreSyncProjectState.findMany({
+      where: {
+        companyId: COMPANY_ID,
+        dataset: "project_onboarding",
+      },
+      select: {
+        projectId: true,
+        lastAttemptAt: true,
+        lastSuccessAt: true,
+        nextRunAt: true,
+        failureCount: true,
+        lastError: true,
+      },
     }),
   ]);
 
@@ -232,6 +246,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       .map((project) => [canonicalBidBoardId(project.bidBoardId), project]),
   );
   const estimatorByUserId = new Map(companyUsers.map((user) => [user.user_id, clean(user.name)]));
+  const onboardingByProjectId = new Map(onboardingStates.map((state) => [state.projectId, state]));
 
   const projects: EstimatingDashboardProject[] = [];
   for (const [boardId, board] of boardsById) {
@@ -259,10 +274,22 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       || payload.is_template
       || payload.sync_missing_from_procore
     );
+    const procoreProjectId = board.procoreProjectId ?? selected?.procoreProjectId ?? linked?.procoreProjectId ?? null;
+    const onboarding = procoreProjectId ? onboardingByProjectId.get(procoreProjectId) : undefined;
+    const onboardingError = clean(onboarding?.lastError).toLowerCase();
+    const onboardingStatus = onboarding?.lastSuccessAt
+      ? "complete"
+      : onboardingError.includes("estimate proposal line items")
+        ? "waiting_for_estimate"
+        : onboardingError.includes("bid board")
+          ? "waiting_for_bid_board"
+          : onboarding?.failureCount
+            ? "retrying"
+            : "queued";
     const project: EstimatingDashboardProject = {
       id: `bid:${boardId}`,
       bidBoardId: boardId,
-      procoreProjectId: board.procoreProjectId ?? selected?.procoreProjectId ?? linked?.procoreProjectId ?? null,
+      procoreProjectId,
       selectedProposalId: selected?.proposalId ?? null,
       proposalName: selected?.proposalName ?? null,
       projectNumber: clean(board.projectNumber || linked?.projectNumber),
@@ -302,6 +329,16 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
             : proposalSales > 0
               ? "proposal total"
               : "no estimate",
+        onboarding: onboarding
+          ? {
+              status: onboardingStatus,
+              complete: Boolean(onboarding.lastSuccessAt),
+              lastAttemptAt: onboarding.lastAttemptAt?.toISOString() ?? null,
+              lastSuccessAt: onboarding.lastSuccessAt?.toISOString() ?? null,
+              nextRunAt: onboarding.nextRunAt.toISOString(),
+              failureCount: onboarding.failureCount,
+            }
+          : null,
       },
     };
     if (!isExcludedProject(project)) projects.push(project);

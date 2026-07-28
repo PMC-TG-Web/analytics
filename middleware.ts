@@ -360,6 +360,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/cron/sync/') ||
     pathname === '/api/cron/actuals' ||
     pathname.startsWith('/api/cron/actuals/') ||
+    pathname === '/api/cron/project-onboarding' ||
+    pathname.startsWith('/api/cron/project-onboarding/') ||
     pathname === '/api/cron/nightly-structure' ||
     pathname.startsWith('/api/cron/nightly-structure/')
   ) {

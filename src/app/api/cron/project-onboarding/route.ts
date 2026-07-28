@@ -127,6 +127,30 @@ async function linkedBidBoardIds(companyId: string, projectId: string) {
   return rows.map((row) => row.bid_board_id);
 }
 
+function estimateReadiness(detail: unknown) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+    return { ready: false, proposalCount: 0, lineItemCount: 0 };
+  }
+  const value = detail as Record<string, unknown>;
+  const summaries = Array.isArray(value.projectSummaries)
+    ? value.projectSummaries as Array<Record<string, unknown>>
+    : [];
+  const proposalCount = summaries.reduce(
+    (total, summary) => total + (Number(summary.proposalCount) || 0),
+    0
+  );
+  const counts = value.counts && typeof value.counts === "object" && !Array.isArray(value.counts)
+    ? value.counts as Record<string, unknown>
+    : {};
+  const lineItemCount = Number(counts.lineItems)
+    || summaries.reduce((total, summary) => total + (Number(summary.lineItemCount) || 0), 0);
+  return {
+    ready: proposalCount > 0 && lineItemCount > 0,
+    proposalCount,
+    lineItemCount,
+  };
+}
+
 async function markRelatedQueuesCurrent(params: {
   companyId: string;
   project: QueuedProject;
@@ -291,7 +315,7 @@ export async function POST(request: NextRequest) {
           detail: "The project is not linked to a current Procore Bid Board record yet.",
         });
       } else {
-        steps.push(await runStep({
+        const estimateStep = await runStep({
           origin,
           secret,
           step: "estimate-proposal-line-items",
@@ -309,7 +333,19 @@ export async function POST(request: NextRequest) {
             maxProposalsPerProject: 50,
             maxLineItemsPages: 100,
           },
-        }));
+        });
+        if (estimateStep.status === "ok") {
+          const readiness = estimateReadiness(estimateStep.detail);
+          if (!readiness.ready) {
+            estimateStep.status = "error";
+            estimateStep.httpStatus = 202;
+            estimateStep.detail = {
+              waitingFor: "Procore estimate proposal line items",
+              ...readiness,
+            };
+          }
+        }
+        steps.push(estimateStep);
       }
     }
 
@@ -328,6 +364,7 @@ export async function POST(request: NextRequest) {
     const success = steps.length === 8 && steps.every((step) => step.status === "ok");
     const limited = steps.find((step) => step.rateLimited);
     const failedStep = steps.find((step) => step.status === "error");
+    const waitingForProcore = failedStep?.httpStatus === 202 || failedStep?.httpStatus === 404;
     const error = success ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
     if (limited?.rateLimitUntil) {
       await setProcoreRateLimit({
@@ -348,7 +385,7 @@ export async function POST(request: NextRequest) {
       success,
       nextRunMinutes: limited?.rateLimitUntil
         ? Math.max(15, Math.ceil((new Date(limited.rateLimitUntil).getTime() - Date.now()) / 60_000))
-        : success ? 365 * 24 * 60 : 15,
+        : success ? 365 * 24 * 60 : waitingForProcore ? 30 : 15,
       error,
       result: { selection, bidBoardIds, steps },
     });

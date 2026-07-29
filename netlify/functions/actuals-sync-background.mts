@@ -12,8 +12,25 @@ const handler = async (request: Request) => {
   const deadline = Date.now() + 12 * 60_000;
   const results: unknown[] = [];
   const reconciliation = String(body?.mode || "") === "reconcile";
+  let bidBoardHeaders: unknown = null;
   let onboarding: unknown = null;
   if (!reconciliation && Date.now() < deadline) {
+    const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": expected },
+      body: JSON.stringify({ mode: "bid-board-headers" }),
+    });
+    const headerResult = await headerResponse.json().catch(() => null);
+    bidBoardHeaders = { status: headerResponse.status, result: headerResult };
+    console.log(JSON.stringify({
+      event: "bid-board-header-sync-background",
+      status: headerResponse.status,
+      success: headerResult?.success,
+      skipped: headerResult?.skipped,
+      reason: headerResult?.reason,
+      totalMs: headerResult?.totalMs,
+    }));
+
     const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": expected },
@@ -33,7 +50,7 @@ const handler = async (request: Request) => {
     const rateLimited = Array.isArray(result?.steps)
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     if (!response.ok || rateLimited) {
-      return Response.json({ success: false, onboarding, results });
+      return Response.json({ success: false, bidBoardHeaders, onboarding, results });
     }
   }
   const configuredCap = Math.min(
@@ -75,7 +92,7 @@ const handler = async (request: Request) => {
     // preventing the worker from advancing to the next due project.
     if (!response.ok || result?.skipped || rateLimited) break;
   }
-  return Response.json({ success: true, onboarding, results });
+  return Response.json({ success: true, bidBoardHeaders, onboarding, results });
 };
 
 export default handler;

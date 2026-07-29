@@ -21,6 +21,10 @@ const ESTIMATING_DATASET = "nightly_estimates";
 const BID_BOARD_DATASET = "nightly_bid_board_headers";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
+const BID_BOARD_SYNC_INTERVAL_MINUTES = Math.min(
+  360,
+  Math.max(15, Number.parseInt(process.env.PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES || "15", 10) || 15)
+);
 
 type StepResult = {
   step: string;
@@ -117,7 +121,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Missing PROCORE_SYNC_SECRET" }, { status: 503 });
   }
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const estimateOnly = String(body.mode || "").trim().toLowerCase() === "estimates";
+  const mode = String(body.mode || "").trim().toLowerCase();
+  const estimateOnly = mode === "estimates";
+  const bidBoardOnly = mode === "bid-board-headers" || mode === "headers";
 
   const worker = await acquireProcoreWorker(COMPANY_ID);
   if (!worker.acquired) {
@@ -182,7 +188,7 @@ export async function POST(request: NextRequest) {
         success,
         nextRunMinutes: step.rateLimitUntil
           ? Math.max(15, Math.ceil((new Date(step.rateLimitUntil).getTime() - Date.now()) / 60_000))
-          : success ? 24 * 60 : 30,
+          : success ? BID_BOARD_SYNC_INTERVAL_MINUTES : Math.min(BID_BOARD_SYNC_INTERVAL_MINUTES, 30),
         error,
         result: { selection, step },
       });
@@ -202,6 +208,15 @@ export async function POST(request: NextRequest) {
         totalMs,
         steps: [step],
       }, { status: success ? 200 : 207 });
+    }
+
+    if (bidBoardOnly) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: "bid_board_headers_not_due",
+        dataset: BID_BOARD_DATASET,
+      });
     }
 
     await seedProjectSyncQueue(COMPANY_ID, DATASET);

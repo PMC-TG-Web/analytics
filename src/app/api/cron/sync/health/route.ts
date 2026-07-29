@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
             OR (dataset = 'actuals' AND next_run_at < NOW() - INTERVAL '30 minutes')
             OR (dataset = 'actuals_reconciliation' AND next_run_at < NOW() - INTERVAL '6 hours')
             OR (dataset = 'nightly_structure' AND last_success_at < NOW() - INTERVAL '30 hours')
-            OR (dataset = 'nightly_bid_board_headers' AND last_success_at < NOW() - INTERVAL '30 hours')
+            OR (dataset = 'nightly_bid_board_headers' AND last_success_at < NOW() - INTERVAL '1 hour')
           )
         ORDER BY failure_count DESC, last_success_at NULLS FIRST, project_id
         LIMIT 200

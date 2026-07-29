@@ -8,6 +8,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
+import { shouldStopBidBoardPagination } from "@/lib/procoreBidBoardPagination";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -110,6 +111,7 @@ async function fetchAllBidBoardProjects(params: {
   for (const host of hostCandidates.candidates) {
     const projects = new Map<string, UnknownRecord>();
     let hostWorked = false;
+    let pagesFetched = 0;
     for (let page = 1; page <= 20; page += 1) {
       const search = new URLSearchParams({
         page: String(page),
@@ -138,16 +140,25 @@ async function fetchAllBidBoardProjects(params: {
       }
 
       hostWorked = true;
+      pagesFetched = page;
       const pageProjects = asProjects(await response.json());
+      let newProjectCount = 0;
       for (const value of pageProjects) {
         if (!isRecord(value)) continue;
         const id = text(value.id || value.bid_board_project_id);
-        if (id) projects.set(id, value);
+        if (!id) continue;
+        if (!projects.has(id)) newProjectCount += 1;
+        projects.set(id, value);
       }
-      if (pageProjects.length < 100) break;
+      // Procore can return a short page before the final page. Continue until
+      // it returns no rows (or repeats a page without adding any new IDs).
+      if (shouldStopBidBoardPagination({
+        pageItemCount: pageProjects.length,
+        newProjectCount,
+      })) break;
     }
     if (hostWorked && projects.size > 0) {
-      return { host, projects: Array.from(projects.values()) };
+      return { host, projects: Array.from(projects.values()), pagesFetched };
     }
     if (lastError?.status === 429) throw lastError;
   }
@@ -378,6 +389,7 @@ export async function POST(request: Request) {
         .filter((value): value is NonNullable<typeof value> => Boolean(value));
       const currentIds = persisted.map((project) => project.bidBoardId);
       const markedMissing = await markMissingCurrentRows(companyId, currentIds);
+      const completeCoverage = !markedMissing.skipped;
 
       const statusGroups: Record<string, { count: number; sales: number }> = {};
       for (const project of persisted) {
@@ -389,14 +401,16 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        success: true,
+        success: completeCoverage,
+        partialCoverage: !completeCoverage,
         companyId,
         host: fetched.host,
+        pagesFetched: fetched.pagesFetched,
         fetched: fetched.projects.length,
         persisted: persisted.length,
         markedMissing,
         statusGroups,
-      });
+      }, { status: completeCoverage ? 200 : 206 });
     } catch (error) {
       const typed = error as Error & { status?: number; responseHeaders?: Headers };
       const status = typed.status && typed.status >= 400 && typed.status <= 599 ? typed.status : 500;

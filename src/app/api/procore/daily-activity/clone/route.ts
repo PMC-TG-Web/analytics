@@ -4,8 +4,11 @@ import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 import {
   allocateExistingProductivityRows,
   countProductivityFingerprints,
+  guardExpectedProductivityQuantities,
+  isBillingFileCommitment,
   productivityCloneFingerprint,
 } from "@/lib/procore/dailyProductivityClone";
+import { classifyFormsCloseoutLine } from "@/lib/formsProductivityCloseout";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -20,13 +23,19 @@ type ProductivityTargetLineItem = {
   contractNumber: string;
   contractTitle: string;
   contractType: "commitment_contract" | "purchase_order_contract" | "work_order_contract";
+  expectedQuantity: number | null;
+  uom: string;
+  costCode: string;
+  enforceExpectedQuantityCeiling: boolean;
 };
 
 type TargetLookups = {
   productivityLineItems: ProductivityTargetLineItem[];
   existingProductivityCounts: Map<string, number>;
+  existingProductivityUsedByLineItem: Map<string, number>;
   existingProductivityRows: number;
   existingTimecardKeys: Set<string>;
+  existingTimecardIdentityKeys: Set<string>;
   existingTimecardRows: number;
   timeTypes: UnknownRecord[];
   people: UnknownRecord[];
@@ -515,11 +524,36 @@ function timecardPayloadKey(payload: UnknownRecord) {
   ].join("|");
 }
 
+function timecardPayloadIdentityKey(payload: UnknownRecord) {
+  const hours = readNum(payload.hours);
+  return [
+    normalizeDate(payload.date),
+    readStr(payload.party_id),
+    readStr(payload.cost_code_id),
+    readStr(payload.time_in),
+    readStr(payload.time_out),
+    hours === undefined ? "" : String(hours),
+    typeof payload.billable === "boolean" ? String(payload.billable) : "",
+  ].join("|");
+}
+
 function timecardEntryKey(entry: UnknownRecord) {
   return timecardPayloadKey({
     date: entry.date,
     party_id: entry.party_id || firstRecord(entry.party)?.id,
     timecard_time_type_id: entry.timecard_time_type_id || firstRecord(entry.timecard_time_type)?.id,
+    cost_code_id: entry.cost_code_id || firstRecord(entry.cost_code)?.id,
+    time_in: entry.time_in,
+    time_out: entry.time_out,
+    hours: entry.hours,
+    billable: entry.billable,
+  });
+}
+
+function timecardEntryIdentityKey(entry: UnknownRecord) {
+  return timecardPayloadIdentityKey({
+    date: entry.date,
+    party_id: entry.party_id || firstRecord(entry.party)?.id,
     cost_code_id: entry.cost_code_id || firstRecord(entry.cost_code)?.id,
     time_in: entry.time_in,
     time_out: entry.time_out,
@@ -537,6 +571,40 @@ function productivityEntryFingerprint(entry: UnknownRecord) {
     quantityUsed: entry.quantity_used,
     notes: entry.notes,
   });
+}
+
+function productivityLineItemId(entry: UnknownRecord) {
+  return readStr(entry.line_item_id || entry.lineItemId || firstRecord(entry.line_item)?.id);
+}
+
+function targetQuantityAttributes(item: UnknownRecord) {
+  const wbsCode = firstRecord(item.wbs_code);
+  const costCode = firstRecord(item.cost_code);
+  const expectedQuantity = readNum(item.quantity);
+  const description = readStr(item.description || item.name);
+  const uom = readStr(item.uom || item.unit_of_measure);
+  const normalizedCostCode = readStr(
+    wbsCode?.flat_code ||
+      wbsCode?.code ||
+      costCode?.full_code ||
+      costCode?.code ||
+      item.cost_code_full_code
+  );
+  const classification = classifyFormsCloseoutLine({
+    poStatus: "Approved",
+    costCode: normalizedCostCode,
+    description,
+    uom,
+    expectedQuantity,
+    usedQuantity: 0,
+  });
+
+  return {
+    expectedQuantity: expectedQuantity ?? null,
+    uom,
+    costCode: normalizedCostCode,
+    enforceExpectedQuantityCeiling: classification.disposition === "ready",
+  };
 }
 
 function productivityCandidateTargets(params: {
@@ -571,22 +639,27 @@ function resolveProductivityFallbackTarget(params: {
   lineItemDescription: string;
   contractNumber: string;
   contractTitle: string;
+  sourceContractId: string;
   lookups: TargetLookups;
 }) {
-  const candidates = productivityCandidateTargets(params);
+  const candidates = productivityCandidateTargets(params).filter((candidate) => {
+    const target = params.lookups.productivityLineItems.find((item) => item.id === candidate.id);
+    return Boolean(
+      target &&
+      (
+        candidate.sameContractNumber ||
+        candidate.sameContractTitle ||
+        (params.sourceContractId && target.sourceContractIds.includes(params.sourceContractId))
+      )
+    );
+  });
   const top = candidates[0];
   const second = candidates[1];
   if (!top) return null;
 
-  const sameContract = top.sameContractNumber || top.sameContractTitle;
   const clearlyBest = !second || top.canonicalScore - second.canonicalScore >= 0.15 || top.tokenScore - second.tokenScore >= 0.2;
 
-  if (sameContract && top.canonicalScore >= 0.25 && clearlyBest) {
-    const target = params.lookups.productivityLineItems.find((item) => item.id === top.id);
-    return target || null;
-  }
-
-  if (top.canonicalScore >= 0.8 && clearlyBest) {
+  if (top.canonicalScore >= 0.25 && clearlyBest) {
     const target = params.lookups.productivityLineItems.find((item) => item.id === top.id);
     return target || null;
   }
@@ -601,32 +674,63 @@ async function procoreFetch(params: {
   method?: string;
   body?: unknown;
 }) {
-  const response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
-    method: params.method || "GET",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "Procore-Company-Id": params.companyId,
-    },
-    body: params.body === undefined ? undefined : JSON.stringify(params.body),
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
+  const method = params.method || "GET";
+  const maxAttempts = 8;
 
-  const text = await response.text();
-  let parsed: unknown = text;
-  try {
-    parsed = text ? JSON.parse(text) : {};
-  } catch {
-    parsed = text;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Procore-Company-Id": params.companyId,
+      },
+      body: params.body === undefined ? undefined : JSON.stringify(params.body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    const text = await response.text();
+    let parsed: unknown = text;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = text;
+    }
+
+    const remaining = Number(response.headers.get("x-rate-limit-remaining"));
+    const resetAtSeconds = Number(response.headers.get("x-rate-limit-reset"));
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const resetDelayMs = Number.isFinite(resetAtSeconds) && resetAtSeconds > 0
+      ? resetAtSeconds * 1000 - Date.now() + 1_500
+      : 0;
+    const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : 0;
+
+    if (response.status === 429 && attempt < maxAttempts) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(2_000, resetDelayMs, retryAfterMs))
+      );
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Procore ${method} ${params.path} failed (${response.status}): ${text}`);
+    }
+
+    // Large comparisons make many sequential reads. Let the current bucket
+    // replenish before the next request instead of aborting and restarting
+    // the entire project after the first 429.
+    if (Number.isFinite(remaining) && remaining <= 3 && resetDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, resetDelayMs));
+    }
+
+    return parsed;
   }
 
-  if (!response.ok) {
-    throw new Error(`Procore ${params.method || "GET"} ${params.path} failed (${response.status}): ${text}`);
-  }
-
-  return parsed;
+  throw new Error(`Procore ${method} ${params.path} exhausted rate-limit retries.`);
 }
 
 async function fetchPaged(params: {
@@ -807,6 +911,10 @@ async function fetchTargetProductivityLineItems(params: {
   const commitmentContracts = preferApprovedContracts(commitmentContractRows);
 
   for (const contract of commitmentContracts) {
+    if (isBillingFileCommitment({
+      contractNumber: contract.number,
+      contractTitle: contract.title || contract.name,
+    })) continue;
     const contractId = readStr(contract.id);
     if (!contractId) continue;
     const lineItems = await fetchFirstNonEmpty([
@@ -830,6 +938,7 @@ async function fetchTargetProductivityLineItems(params: {
         contractNumber: readStr(contract.number),
         contractTitle: readStr(contract.title || contract.name),
         contractType: "commitment_contract",
+        ...targetQuantityAttributes(item),
       });
     }
   }
@@ -842,6 +951,10 @@ async function fetchTargetProductivityLineItems(params: {
     const contracts = preferApprovedContracts(contractRows);
 
     for (const contract of contracts) {
+      if (isBillingFileCommitment({
+        contractNumber: contract.number,
+        contractTitle: contract.title || contract.name,
+      })) continue;
       const contractId = readStr(contract.id);
       if (!contractId) continue;
       const contractSourceIds = targetContractSourceIds(contract);
@@ -865,12 +978,13 @@ async function fetchTargetProductivityLineItems(params: {
           contractNumber: readStr(contract.number),
           contractTitle: readStr(contract.title || contract.name),
           contractType: contractPath === "purchase_order_contracts" ? "purchase_order_contract" : "work_order_contract",
+          ...targetQuantityAttributes(item),
         });
       }
     }
   }
 
-  return out;
+  return Array.from(new Map(out.map((item) => [String(item.id), item])).values());
 }
 
 async function fetchTargetLookups(params: {
@@ -881,7 +995,18 @@ async function fetchTargetLookups(params: {
   endDate: string;
   includeProductivity: boolean;
 }): Promise<TargetLookups> {
-  const [productivityLineItems, existingProductivity, existingTimecards, users, companyUsers, people, timeTypes, workClassifications, costCodes] = await Promise.all([
+  const [
+    productivityLineItems,
+    existingProductivity,
+    allExistingProductivity,
+    existingTimecards,
+    users,
+    companyUsers,
+    people,
+    timeTypes,
+    workClassifications,
+    costCodes,
+  ] = await Promise.all([
     params.includeProductivity
       ? fetchTargetProductivityLineItems(params)
       : Promise.resolve([]),
@@ -892,6 +1017,16 @@ async function fetchTargetLookups(params: {
           projectId: params.projectId,
           startDate: params.startDate,
           endDate: params.endDate,
+          maxPages: 100,
+        })
+      : Promise.resolve([]),
+    params.includeProductivity
+      ? fetchSourceProductivityLogs({
+          accessToken: params.accessToken,
+          companyId: params.companyId,
+          projectId: params.projectId,
+          startDate: "2000-01-01",
+          endDate: new Date().toISOString().slice(0, 10),
           maxPages: 100,
         })
       : Promise.resolve([]),
@@ -1011,15 +1146,30 @@ async function fetchTargetLookups(params: {
   }
 
   const existingTimecardKeys = new Set(existingTimecards.map(timecardEntryKey).filter(Boolean));
+  const existingTimecardIdentityKeys = new Set(
+    existingTimecards.map(timecardEntryIdentityKey).filter(Boolean),
+  );
   const existingProductivityCounts = countProductivityFingerprints(
     existingProductivity.map(productivityEntryFingerprint).filter(Boolean)
   );
+  const existingProductivityUsedByLineItem = new Map<string, number>();
+  for (const entry of allExistingProductivity) {
+    const lineItemId = productivityLineItemId(entry);
+    const quantityUsed = readNum(entry.quantity_used);
+    if (!lineItemId || quantityUsed === undefined) continue;
+    existingProductivityUsedByLineItem.set(
+      lineItemId,
+      (existingProductivityUsedByLineItem.get(lineItemId) || 0) + quantityUsed
+    );
+  }
 
   return {
     productivityLineItems,
     existingProductivityCounts,
+    existingProductivityUsedByLineItem,
     existingProductivityRows: existingProductivity.length,
     existingTimecardKeys,
+    existingTimecardIdentityKeys,
     existingTimecardRows: existingTimecards.length,
     timeTypes,
     people,
@@ -1116,15 +1266,6 @@ function mapProductivityLog(
     }
   }
   if (!target && cleanDescriptionKey) {
-    const cleanMatches = lookups.productivityLineItems.filter(
-      (item) => normalizeDescriptionKey(item.description) === cleanDescriptionKey
-    );
-    if (cleanMatches.length === 1) {
-      target = cleanMatches[0];
-      matchStrategy = "unique_clean_description";
-    }
-  }
-  if (!target && cleanDescriptionKey) {
     const sourceContractId = contractIdFromLog(log);
     const sourceContractMatches = lookups.productivityLineItems
       .map((item) => ({
@@ -1185,28 +1326,14 @@ function mapProductivityLog(
       }
     }
   }
-  if (!target && cleanDescriptionKey) {
-    const globalMatches = lookups.productivityLineItems
-      .map((item) => ({
-        item,
-        score: canonicalMaterialOverlap(lineItemDescription, item.description),
-        tokenScore: descriptionOverlapScore(lineItemDescription, item.description),
-        cleanMatch: normalizeDescriptionKey(item.description) === cleanDescriptionKey,
-      }))
-      .filter(({ score }) => score >= 0.75)
-    const best = bestDescriptionMatch(globalMatches);
-    if (best) {
-      target = best.item;
-      matchStrategy = "unique_canonical_description";
-    }
-  }
-  if (!target) {
-    target = lookups.productivityLineItems.find((item) => normalizeKey(item.description) === descriptionKey);
-    if (target) matchStrategy = "description_only";
-  }
-
   if (!target && options?.allowFallbackMatch) {
-    target = resolveProductivityFallbackTarget({ lineItemDescription, contractNumber, contractTitle, lookups }) || undefined;
+    target = resolveProductivityFallbackTarget({
+      lineItemDescription,
+      contractNumber,
+      contractTitle,
+      sourceContractId,
+      lookups,
+    }) || undefined;
     if (target) matchStrategy = "fallback_best_candidate";
   }
 
@@ -1331,7 +1458,16 @@ function mapTimecardEntry(
     work_classification_id: targetClassificationId,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined || payload[key] === "" ? delete payload[key] : undefined);
-  const existingTargetTimecard = Boolean(payload.party_id && lookups.existingTimecardKeys.has(timecardPayloadKey(payload)));
+  const existingTargetTimecardExact = Boolean(
+    payload.party_id && lookups.existingTimecardKeys.has(timecardPayloadKey(payload)),
+  );
+  const existingTargetTimecardIdentityConflict = Boolean(
+    payload.party_id &&
+      !existingTargetTimecardExact &&
+      lookups.existingTimecardIdentityKeys.has(timecardPayloadIdentityKey(payload)),
+  );
+  const existingTargetTimecard =
+    existingTargetTimecardExact || existingTargetTimecardIdentityConflict;
 
   const issues = [
     payload.party_id ? "" : "missing_target_party",
@@ -1341,10 +1477,13 @@ function mapTimecardEntry(
   const warnings = [
     sourceTimeTypeBlank || payload.timecard_time_type_id ? "" : "missing_target_time_type",
     classification.id || classification.name ? (payload.work_classification_id ? "" : "missing_target_classification") : "",
+    existingTargetTimecardIdentityConflict ? "target_time_type_conflict" : "",
   ].filter(Boolean);
 
   return {
     sourceId: readStr(entry.id),
+    existingTargetTimecardExact,
+    existingTargetTimecardIdentityConflict,
     sourceParty: party,
     targetPartyFallbackUsed:
       (options?.allowPartyNameFallback && !exactPerson && (Boolean(compactPerson) || Boolean(tokenPerson))) ||
@@ -1669,7 +1808,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const mappedProductivity = sourceProductivity
+    const excludedBillingFileProductivity = sourceProductivity.filter((log) =>
+      isBillingFileCommitment({
+        contractNumber: contractNumberFromLog(log),
+        contractTitle: contractTitleFromLog(log),
+      })
+    );
+    const sourceProductivityForClone = sourceProductivity.filter((log) =>
+      !isBillingFileCommitment({
+        contractNumber: contractNumberFromLog(log),
+        contractTitle: contractTitleFromLog(log),
+      })
+    );
+    const mappedProductivity = sourceProductivityForClone
       .map((log) =>
         mapProductivityLog(log, targetLookups, {
           allowFallbackMatch: allowProductivityFallback,
@@ -1677,10 +1828,13 @@ export async function POST(request: Request) {
         })
       )
       .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
-    const productivity = allocateExistingProductivityRows(
-      mappedProductivity,
-      targetLookups.existingProductivityCounts,
-      productivitySourceIdSet
+    const productivity = guardExpectedProductivityQuantities(
+      allocateExistingProductivityRows(
+        mappedProductivity,
+        targetLookups.existingProductivityCounts,
+        productivitySourceIdSet
+      ),
+      targetLookups.existingProductivityUsedByLineItem
     );
     const mappedTimecards = sourceTimecards.map((entry) =>
       mapTimecardEntry(
@@ -1715,6 +1869,23 @@ export async function POST(request: Request) {
       : [];
     const requestedMissingMappings = requestedProductivityRows.filter((row) => !row.mapped);
 
+    const missingProductivityMappings = productivity.filter((row) => !row.mapped);
+    if (!dryRun && includeProductivity && !repairMode && missingProductivityMappings.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Productivity clone blocked before any live creates because one or more source rows do not have a contract-scoped target line.",
+          source: { companyId: sourceCompanyId, projectId: sourceProjectId, startDate, endDate },
+          target: { companyId: targetCompanyId, projectId: targetProjectId },
+          createOffset,
+          createLimit,
+          missingMappings: missingProductivityMappings,
+          excludedBillingFileRows: excludedBillingFileProductivity.length,
+          nextStep: "Finish cloning the target commitments and line items, then rerun the productivity dry run. Use an explicit productivityLineItemMap only for intentional cross-PO mappings.",
+        },
+        { status: 409 }
+      );
+    }
+
     if (!dryRun && repairMode && (unresolvedProductivitySourceIds.length > 0 || requestedMissingMappings.length > 0)) {
       return NextResponse.json(
         {
@@ -1738,7 +1909,7 @@ export async function POST(request: Request) {
       ? mappedProductivityRows.filter((row) => productivitySourceIdSet.has(row.sourceId))
       : mappedProductivityRows;
     const selectedCreatableProductivityRows = selectedProductivityRows.filter(
-      (row) => !row.existingTargetProductivity
+      (row) => !row.existingTargetProductivity && !row.expectedQuantityGuard?.blocked
     );
     const selectedTimecardRows = (repairMode ? [] : timecards)
       .filter((row) => row.mapped && !row.duplicateSourceTimecard)
@@ -1768,6 +1939,17 @@ export async function POST(request: Request) {
             ok: true,
             skipped: true,
             reason: "Matching target productivity row already exists.",
+          });
+          continue;
+        }
+        if (row.expectedQuantityGuard?.blocked) {
+          createResults.push({
+            type: "productivity_log",
+            sourceId: row.sourceId,
+            ok: true,
+            skipped: true,
+            reason: row.expectedQuantityGuard.reason,
+            expectedQuantityGuard: row.expectedQuantityGuard,
           });
           continue;
         }
@@ -1870,6 +2052,7 @@ export async function POST(request: Request) {
       },
       counts: {
         sourceProductivity: sourceProductivity.length,
+        excludedBillingFileProductivity: excludedBillingFileProductivity.length,
         sourceTimecards: sourceTimecards.length,
         targetProductivityLineItems: targetLookups.productivityLineItems.length,
         mappedProductivity: mappedProductivityRows.length,
@@ -1879,6 +2062,9 @@ export async function POST(request: Request) {
         selectedTimecards: selectedTimecardRows.length,
         creatableTimecards: creatableTimecardRows.length,
         skippedExistingProductivity: productivity.filter((row) => row.existingTargetProductivity).length,
+        blockedFormsExpectedQuantity: productivity.filter(
+          (row) => row.expectedQuantityGuard?.blocked
+        ).length,
         skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
         skippedDuplicateSourceTimecards: timecards.filter((row) => row.duplicateSourceTimecard).length,
         requestedProductivitySourceIds: productivitySourceIds.length,

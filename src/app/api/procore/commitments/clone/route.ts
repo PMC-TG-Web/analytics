@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
 import { resolveCommitmentMappingContext } from "@/lib/commitmentMappingContext";
+import { validateCommitmentVendorAssignments } from "@/lib/procore/commitmentVendorValidation";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -1619,6 +1620,39 @@ async function fetchTargetContractsForDuplicateCheck(params: {
   return records;
 }
 
+async function fetchTargetCompanyVendors(params: {
+  accessToken: string;
+  companyId: string;
+}) {
+  const paths = [
+    (page: number) =>
+      `/rest/v1.0/vendors?company_id=${encodeURIComponent(params.companyId)}&page=${page}&per_page=100`,
+    (page: number) =>
+      `/rest/v1.0/companies/${encodeURIComponent(params.companyId)}/vendors?page=${page}&per_page=100`,
+  ];
+  const errors: UnknownRecord[] = [];
+
+  for (const pathForPage of paths) {
+    try {
+      const result = await fetchPaged({
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        maxPages: 50,
+        arrayKeys: ["vendors", "data"],
+        pathForPage,
+      });
+      errors.push(...result.errors);
+      if (result.records.length > 0) return { records: result.records, errors };
+    } catch (error) {
+      errors.push({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { records: [] as UnknownRecord[], errors };
+}
+
 function findExistingTargetContract(sourceContract: UnknownRecord, targetContracts: UnknownRecord[]) {
   const sourceKeys = contractMatchKeys({
     number: sourceContract.number,
@@ -2173,9 +2207,44 @@ export async function POST(request: Request) {
       });
     }
 
+    const vendorAssignments = passthroughIds
+      ? []
+      : selectedContracts
+        .filter((contract) => !isPotentialChangeOrderSource(contract))
+        .map((contract) => {
+          const vendor = isRecord(contract.vendor) ? contract.vendor : {};
+          const sourceVendorId = readStr(contract.vendor_id ?? vendor.id);
+          const targetVendorId = targetVendorIdOverride || readStr(maps.vendorIdMap[sourceVendorId]);
+          return {
+            sourceContractId: readStr(contract.id),
+            sourceNumber: readStr(contract.number),
+            sourceTitle: readStr(contract.title),
+            sourceVendorId,
+            sourceVendorName: readStr(vendor.name ?? contract.vendor_name),
+            targetVendorId,
+          };
+        })
+        .filter((assignment) => Boolean(assignment.targetVendorId));
+    const targetVendorFetch = vendorAssignments.length > 0
+      ? await fetchTargetCompanyVendors({
+        accessToken,
+        companyId: targetCompanyId,
+      })
+      : { records: [] as UnknownRecord[], errors: [] as UnknownRecord[] };
+    const vendorValidationIssues = validateCommitmentVendorAssignments(
+      vendorAssignments,
+      targetVendorFetch.records
+    );
+    missingMappings.push(...vendorValidationIssues);
+
     const criticalMissingMappings = missingMappings.filter((mapping) => {
       const field = readStr(mapping.field);
-      return field === "wbs_code_id" || field === "budget_line_item_id" || readStr(mapping.type) === "invalid_id_mapping";
+      return (
+        field === "wbs_code_id" ||
+        field === "budget_line_item_id" ||
+        field === "vendor_id" ||
+        readStr(mapping.type) === "invalid_id_mapping"
+      );
     });
     const readyForLiveClone = passthroughIds || missingMappings.length === 0 || (allowUnmappedIds && criticalMissingMappings.length === 0);
 
@@ -2203,6 +2272,11 @@ export async function POST(request: Request) {
         maps: Object.fromEntries(Object.entries(maps).map(([key, value]) => [key, Object.keys(value).length])),
         crosswalkAutoMappings,
         parentContractAutoMappings,
+        vendorValidation: {
+          assignments: vendorAssignments,
+          issues: vendorValidationIssues,
+          fetchWarnings: targetVendorFetch.errors,
+        },
         missingMappings,
         sourceFetchWarnings: sourceFetch.errors,
         plan,
@@ -2221,6 +2295,11 @@ export async function POST(request: Request) {
           options: { passthroughIds },
           crosswalkAutoMappings,
           parentContractAutoMappings,
+          vendorValidation: {
+            assignments: vendorAssignments,
+            issues: vendorValidationIssues,
+            fetchWarnings: targetVendorFetch.errors,
+          },
           missingMappings,
           plan,
         },

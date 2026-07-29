@@ -258,6 +258,45 @@ export async function seedEstimatingSyncQueue(companyId: string, dataset: string
   return seeded;
 }
 
+export async function queueEstimatingSyncProjects(
+  companyId: string,
+  dataset: string,
+  bidBoardProjectIds: string[]
+) {
+  const projectIds = Array.from(new Set(bidBoardProjectIds.map((value) => value.trim()).filter(Boolean)));
+  if (!projectIds.length) return 0;
+
+  return prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT
+        company_id,
+        bid_board_id,
+        $2,
+        project_number,
+        project_name,
+        NOW(),
+        NOW(),
+        NOW()
+      FROM pmc_bid_board_projects
+      WHERE company_id = $1
+        AND bid_board_id = ANY($3::text[])
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = LEAST(procore_sync_project_states.next_run_at, NOW()),
+        updated_at = NOW()
+    `,
+    companyId,
+    dataset,
+    projectIds
+  );
+}
+
 export async function seedSingletonSyncQueue(params: {
   companyId: string;
   dataset: string;

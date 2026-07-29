@@ -14,6 +14,7 @@ const handler = async (request: Request) => {
   const reconciliation = String(body?.mode || "") === "reconcile";
   let bidBoardHeaders: unknown = null;
   let onboarding: unknown = null;
+  let estimateDetails: unknown = null;
   if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -51,6 +52,29 @@ const handler = async (request: Request) => {
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     if (!response.ok || rateLimited) {
       return Response.json({ success: false, bidBoardHeaders, onboarding, results });
+    }
+
+    if (Date.now() < deadline) {
+      const estimateResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: JSON.stringify({ mode: "estimates" }),
+      });
+      const estimateResult = await estimateResponse.json().catch(() => null);
+      estimateDetails = { status: estimateResponse.status, result: estimateResult };
+      console.log(JSON.stringify({
+        event: "estimate-detail-sync-background",
+        status: estimateResponse.status,
+        success: estimateResult?.success,
+        skipped: estimateResult?.skipped,
+        reason: estimateResult?.reason,
+        projectIds: estimateResult?.projectIds,
+      }));
+      const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
+        || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
+      if (!estimateResponse.ok || estimateResult?.success === false || estimateRateLimited) {
+        return Response.json({ success: false, bidBoardHeaders, onboarding, estimateDetails, results });
+      }
     }
   }
   const configuredCap = Math.min(
@@ -92,7 +116,7 @@ const handler = async (request: Request) => {
     // preventing the worker from advancing to the next due project.
     if (!response.ok || result?.skipped || rateLimited) break;
   }
-  return Response.json({ success: true, bidBoardHeaders, onboarding, results });
+  return Response.json({ success: true, bidBoardHeaders, onboarding, estimateDetails, results });
 };
 
 export default handler;

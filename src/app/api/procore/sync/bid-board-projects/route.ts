@@ -9,11 +9,14 @@ import { prisma } from "@/lib/prisma";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 import { shouldStopBidBoardPagination } from "@/lib/procoreBidBoardPagination";
+import { bidBoardPayloadChanged } from "@/lib/procoreBidBoardChange";
+import { queueEstimatingSyncProjects } from "@/lib/procoreSyncQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const DEFAULT_ESTIMATING_BASE_URL = "https://api.procore.com";
+const ESTIMATING_DATASET = "nightly_estimates";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -190,7 +193,13 @@ async function resolveProcoreProjectId(params: {
   return matches.length === 1 ? matches[0].procore_project_id : null;
 }
 
-async function upsertProject(companyId: string, project: UnknownRecord) {
+async function upsertProject(params: {
+  companyId: string;
+  project: UnknownRecord;
+  previousPayload?: unknown;
+  hasEstimateQueueRecord: boolean;
+}) {
+  const { companyId, project, previousPayload, hasEstimateQueueRecord } = params;
   const bidBoardId = text(project.id || project.bid_board_project_id);
   if (!bidBoardId) return null;
   const raw = isRecord(project.raw) ? project.raw : {};
@@ -279,7 +288,13 @@ async function upsertProject(companyId: string, project: UnknownRecord) {
       : []),
   ]);
 
-  return { bidBoardId, status, sales: numeric(isRecord(project.stats) ? project.stats.total : 0), active: projectIsActive(project) };
+  return {
+    bidBoardId,
+    status,
+    sales: numeric(isRecord(project.stats) ? project.stats.total : 0),
+    active: projectIsActive(project),
+    estimateDetailsDue: !hasEstimateQueueRecord || bidBoardPayloadChanged(previousPayload, project),
+  };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -385,8 +400,46 @@ export async function POST(request: Request) {
         accessToken,
         baseUrl: body.baseUrl || process.env.PROCORE_ESTIMATING_API_URL || DEFAULT_ESTIMATING_BASE_URL,
       });
-      const persisted = (await mapWithConcurrency(fetched.projects, 8, (project) => upsertProject(companyId, project)))
+      const fetchedIds = fetched.projects
+        .map((project) => isRecord(project) ? text(project.id || project.bid_board_project_id) : "")
+        .filter(Boolean);
+      const [existingProjects, existingEstimateQueue] = await Promise.all([
+        prisma.pmcBidBoardProject.findMany({
+          where: { companyId, bidBoardId: { in: fetchedIds } },
+          select: { bidBoardId: true, payload: true },
+        }),
+        prisma.procoreSyncProjectState.findMany({
+          where: {
+            companyId,
+            dataset: ESTIMATING_DATASET,
+            projectId: { in: fetchedIds },
+          },
+          select: { projectId: true },
+        }),
+      ]);
+      const previousPayloadById = new Map(
+        existingProjects.map((project) => [project.bidBoardId, project.payload]),
+      );
+      const queuedEstimateIds = new Set(existingEstimateQueue.map((state) => state.projectId));
+
+      const persisted = (await mapWithConcurrency(fetched.projects, 8, (project) => {
+        const bidBoardId = isRecord(project) ? text(project.id || project.bid_board_project_id) : "";
+        return upsertProject({
+          companyId,
+          project: isRecord(project) ? project : {},
+          previousPayload: previousPayloadById.get(bidBoardId),
+          hasEstimateQueueRecord: queuedEstimateIds.has(bidBoardId),
+        });
+      }))
         .filter((value): value is NonNullable<typeof value> => Boolean(value));
+      const estimateDetailsDue = persisted
+        .filter((project) => project.active && project.estimateDetailsDue)
+        .map((project) => project.bidBoardId);
+      const estimateDetailsQueued = await queueEstimatingSyncProjects(
+        companyId,
+        ESTIMATING_DATASET,
+        estimateDetailsDue,
+      );
       const currentIds = persisted.map((project) => project.bidBoardId);
       const markedMissing = await markMissingCurrentRows(companyId, currentIds);
       const completeCoverage = !markedMissing.skipped;
@@ -408,6 +461,8 @@ export async function POST(request: Request) {
         pagesFetched: fetched.pagesFetched,
         fetched: fetched.projects.length,
         persisted: persisted.length,
+        estimateDetailsQueued,
+        estimateDetailProjectIds: estimateDetailsDue,
         markedMissing,
         statusGroups,
       }, { status: completeCoverage ? 200 : 206 });

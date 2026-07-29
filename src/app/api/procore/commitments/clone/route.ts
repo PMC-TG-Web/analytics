@@ -59,6 +59,23 @@ function normCode(value: unknown): string {
   return readStr(value).replace(/\s+/g, "").toLowerCase();
 }
 
+function isBillingFileContract(contract: UnknownRecord) {
+  return /\bbilling[\s_-]*file\b/i.test(
+    `${readStr(contract.number)} ${readStr(contract.title)} ${readStr(contract.description)}`
+  );
+}
+
+function sourceVendorName(source: UnknownRecord) {
+  const vendor = isRecord(source.vendor) ? source.vendor : {};
+  return readStr(
+    vendor.name ??
+    vendor.company ??
+    vendor.company_name ??
+    source.vendor_name ??
+    source.contract_company_name
+  );
+}
+
 function nonUniqueKey(row: UnknownRecord): string {
   return [row.Name, row.Description, row["Cost Name"]].map(norm).join("|");
 }
@@ -1263,7 +1280,7 @@ function buildContractPayload(params: {
     contractId: readStr(params.source.id),
     contractNumber: readStr(params.source.number),
     contractTitle: readStr(params.source.title),
-    vendorName: readStr(vendor.name ?? params.source.vendor_name),
+    vendorName: sourceVendorName(params.source),
   };
 
   payload.type = sourceContractType(params.source);
@@ -1604,6 +1621,17 @@ async function fetchTargetContractsForDuplicateCheck(params: {
       )}/commitment_contracts?page=${page}&per_page=100`,
   });
   const records = [...result.records];
+  const v1Result = await fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    maxPages: params.maxPages,
+    arrayKeys: ["data", "purchase_order_contracts"],
+    pathForPage: (page) =>
+      `/rest/v1.0/purchase_order_contracts?company_id=${encodeURIComponent(
+        params.companyId
+      )}&project_id=${encodeURIComponent(params.projectId)}&page=${page}&per_page=100`,
+  });
+  records.push(...v1Result.records);
 
   if (params.includePotentialChangeOrders) {
     const pcoResult = await fetchPaged({
@@ -1617,7 +1645,12 @@ async function fetchTargetContractsForDuplicateCheck(params: {
     records.push(...pcoResult.records.map((record) => ({ ...record, _cloneSourceEndpoint: "potential_change_orders" })));
   }
 
-  return records;
+  const deduped = new Map<string, UnknownRecord>();
+  for (const contract of records) {
+    const key = readStr(contract.id) || `${norm(contract.number)}|${norm(contract.title)}`;
+    if (key && !deduped.has(key)) deduped.set(key, contract);
+  }
+  return [...deduped.values()];
 }
 
 async function fetchTargetCompanyVendors(params: {
@@ -2198,7 +2231,7 @@ export async function POST(request: Request) {
         status: readStr(contract.status),
         type: sourceContractType(contract),
         vendorId: readStr(contract.vendor_id ?? (isRecord(contract.vendor) ? contract.vendor.id : "")),
-        vendorName: readStr(isRecord(contract.vendor) ? contract.vendor.name : contract.vendor_name),
+        vendorName: sourceVendorName(contract),
         lineItemCount: lineFetch.records.length,
         contractPayload,
         lineItems: lineItemPlans,
@@ -2220,8 +2253,9 @@ export async function POST(request: Request) {
             sourceNumber: readStr(contract.number),
             sourceTitle: readStr(contract.title),
             sourceVendorId,
-            sourceVendorName: readStr(vendor.name ?? contract.vendor_name),
+            sourceVendorName: sourceVendorName(contract),
             targetVendorId,
+            allowVendorDifference: isBillingFileContract(contract),
           };
         })
         .filter((assignment) => Boolean(assignment.targetVendorId));

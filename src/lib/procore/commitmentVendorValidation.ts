@@ -5,6 +5,7 @@ export type CommitmentVendorAssignment = {
   sourceVendorId?: unknown;
   sourceVendorName?: unknown;
   targetVendorId?: unknown;
+  allowVendorDifference?: boolean;
 };
 
 export type TargetVendor = {
@@ -53,6 +54,7 @@ export function validateCommitmentVendorAssignments(
   const targetIdsBySourceVendorName = new Map<string, Set<string>>();
 
   for (const assignment of assignments) {
+    if (assignment.allowVendorDifference) continue;
     const sourceNameKey = normalizeCommitmentVendorName(assignment.sourceVendorName);
     const targetVendorId = text(assignment.targetVendorId);
     if (!sourceNameKey || !targetVendorId) continue;
@@ -89,7 +91,12 @@ export function validateCommitmentVendorAssignments(
     const targetVendorName = text(targetVendor.name);
     const sourceNameKey = normalizeCommitmentVendorName(sourceVendorName);
     const targetNameKey = normalizeCommitmentVendorName(targetVendorName);
-    if (sourceNameKey && targetNameKey && sourceNameKey !== targetNameKey) {
+    if (
+      !assignment.allowVendorDifference &&
+      sourceNameKey &&
+      targetNameKey &&
+      sourceNameKey !== targetNameKey
+    ) {
       issues.push({
         type: "vendor_name_mismatch",
         field: "vendor_id",
@@ -103,7 +110,7 @@ export function validateCommitmentVendorAssignments(
       });
     }
 
-    const mappedTargetVendorIds = sourceNameKey
+    const mappedTargetVendorIds = sourceNameKey && !assignment.allowVendorDifference
       ? Array.from(targetIdsBySourceVendorName.get(sourceNameKey) || [])
       : [];
     if (mappedTargetVendorIds.length > 1) {

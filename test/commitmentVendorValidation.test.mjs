@@ -74,3 +74,27 @@ test('consistent same-name mappings pass validation', () => {
 
   assert.deepEqual(issues, []);
 });
+
+test('billing file assignments may intentionally use a different vendor', () => {
+  const issues = validateCommitmentVendorAssignments(
+    [
+      {
+        sourceContractId: 'billing-file',
+        sourceVendorName: 'Paradise Masonry LLC',
+        targetVendorId: 'pmc-direct-costs',
+        allowVendorDifference: true,
+      },
+      {
+        sourceContractId: 'production-po',
+        sourceVendorName: 'Paradise Masonry LLC',
+        targetVendorId: 'paradise',
+      },
+    ],
+    [
+      { id: 'pmc-direct-costs', name: 'PMC Procore Direct Costs' },
+      { id: 'paradise', name: 'Paradise Masonry LLC' },
+    ]
+  );
+
+  assert.deepEqual(issues, []);
+});

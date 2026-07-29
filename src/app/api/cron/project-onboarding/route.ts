@@ -9,6 +9,7 @@ import {
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
+import { procoreLookbackWindow } from "@/lib/procoreDateWindow";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -32,10 +33,6 @@ function authorized(request: NextRequest) {
   const syncSecret = getRequiredSyncSecret();
   const cronSecret = (process.env.CRON_SECRET || "").trim();
   return Boolean(provided) && (provided === syncSecret || (!!cronSecret && provided === cronSecret));
-}
-
-function dateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function hasErrors(detail: unknown) {
@@ -336,11 +333,10 @@ export async function POST(request: NextRequest) {
       persistUnpackedFields: false,
       forceUserOAuth: false,
     };
-    const now = Date.now();
+    const actualsWindow = procoreLookbackWindow(new Date(), 45);
     const actualsBody = {
       ...commonProjectBody,
-      startDate: dateKey(new Date(now - 45 * 86_400_000)),
-      endDate: dateKey(new Date(now)),
+      ...actualsWindow,
     };
     const steps: StepResult[] = [];
 

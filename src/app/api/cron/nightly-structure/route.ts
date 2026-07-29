@@ -209,7 +209,9 @@ export async function POST(request: NextRequest) {
     }
     if (!project) {
       await seedEstimatingSyncQueue(COMPANY_ID, ESTIMATING_DATASET);
-      for (let index = 0; index < 5; index += 1) {
+      // Process estimates one project per request. This keeps a timeout or
+      // project-level 403 from failing unrelated queue records in the batch.
+      for (let index = 0; index < 1; index += 1) {
         const estimateProject = await claimDueProject({
           companyId: COMPANY_ID,
           dataset: ESTIMATING_DATASET,

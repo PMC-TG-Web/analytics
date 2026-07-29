@@ -11,6 +11,7 @@ import {
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
+import { procoreLookbackWindow } from "@/lib/procoreDateWindow";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -49,10 +50,6 @@ function parseProjectIds(value: unknown) {
   return values.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
-function dateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function dateWindow(body: Record<string, unknown>, reconciliation: boolean) {
   const valid = (value: unknown) => {
     const text = String(value || "").trim();
@@ -67,10 +64,10 @@ function dateWindow(body: Record<string, unknown>, reconciliation: boolean) {
         || (reconciliation ? process.env.PROCORE_RECONCILIATION_LOOKBACK_DAYS || 400 : process.env.PROCORE_ACTUALS_SYNC_LOOKBACK_DAYS || 45)
     ) || (reconciliation ? 400 : 45))
   );
-  const now = Date.now();
+  const window = procoreLookbackWindow(new Date(), lookbackDays);
   return {
-    startDate: explicitStart || dateKey(new Date(now - lookbackDays * 86_400_000)),
-    endDate: explicitEnd || dateKey(new Date(now)),
+    startDate: explicitStart || window.startDate,
+    endDate: explicitEnd || window.endDate,
   };
 }
 

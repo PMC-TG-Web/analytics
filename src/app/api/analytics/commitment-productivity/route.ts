@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { normalizeProductivityCompletionUom } from '@/lib/productivityWeightedCompletion';
 
 export const dynamic = 'force-dynamic';
 
@@ -309,7 +310,10 @@ export async function GET(request: NextRequest) {
       ),
     ]);
 
-    const lines = rows.map((row) => ({
+    const lines = rows.map((row) => {
+      const costCode = toText(row.cost_code);
+      const sourceUom = toText(row.uom);
+      return {
       companyId: String(row.company_id),
       projectId: String(row.project_id),
       projectNumber: toText(row.project_number),
@@ -324,10 +328,10 @@ export async function GET(request: NextRequest) {
       lineItemId: String(row.line_item_id),
       position: row.position === null ? null : toNumber(row.position),
       description: toText(row.description),
-      costCode: toText(row.cost_code),
+      costCode,
       costType: toText(row.cost_type),
       wbsCode: toText(row.wbs_code),
-      uom: toText(row.uom),
+      uom: normalizeProductivityCompletionUom({ costCode, uom: sourceUom }),
       expectedQuantity: toNumber(row.expected_quantity),
       usedQuantity: toNumber(row.used_quantity),
       deliveredQuantity: toNumber(row.delivered_quantity),
@@ -339,7 +343,8 @@ export async function GET(request: NextRequest) {
       lastActivityDate: toIso(row.last_activity_date),
       aliasCount: toNumber(row.alias_count),
       reviewedAliasCount: toNumber(row.reviewed_alias_count),
-    }));
+      };
+    });
 
     const actualSummary = actualSummaryRows[0] ?? {};
     const productivityCount = toNumber(actualSummary.productivity_count);

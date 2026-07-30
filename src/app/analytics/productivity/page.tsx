@@ -2,6 +2,14 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import FormsCloseoutPanel from "./FormsCloseoutPanel";
+import {
+  calculateWeightedCompletion,
+  type WeightedCompletion,
+} from "@/lib/productivityWeightedCompletion";
+
+const PROJECT_REVIEW_EMAILS = [
+  "ProjectEnd@pmcdecor.com",
+];
 
 type ProductivityLine = {
   companyId: string;
@@ -79,6 +87,50 @@ type ApiResponse = {
   lines?: ProductivityLine[];
   laborGroups?: LaborGroup[];
 };
+
+type ProjectReview = {
+  projectId: string;
+  projectNumber: string | null;
+  projectName: string;
+  status: string;
+  reviewedAt: string | null;
+  reviewedByEmail: string | null;
+  notificationEmail: string | null;
+  notificationStatus: "not_sent" | "pending" | "sent" | "failed";
+  notificationError: string | null;
+  weightedCompletion: number | null;
+  updatedAt: string;
+};
+
+type ReviewApiResponse = {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  alreadyCompleted?: boolean;
+  reviews?: ProjectReview[];
+  review?: ProjectReview;
+};
+
+type ReviewDialogState = {
+  project: ProjectGroup;
+  completion: WeightedCompletion;
+};
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    throw new Error(
+      `The server returned an empty response (${response.status} ${response.statusText || "Unknown error"}).`,
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(
+      `The server returned an invalid response (${response.status} ${response.statusText || "Unknown error"}).`,
+    );
+  }
+}
 
 type ProductivityLogDetail = {
   logId: string | null;
@@ -315,6 +367,57 @@ function ProgressBar({ ratio, missingLabel = "No budget qty" }: { ratio: number 
         <div className={`h-full rounded-full ${color}`} style={{ width: `${width}%` }} />
       </div>
     </div>
+  );
+}
+
+const COMPLETION_LABELS = {
+  concrete: "Concrete",
+  rebar: "Rebar",
+  labor: "Labor",
+  other: "Other",
+} as const;
+
+function WeightedCompletionBadge({
+  completion,
+  dark = false,
+}: {
+  completion: WeightedCompletion;
+  dark?: boolean;
+}) {
+  const title = completion.breakdown.length
+    ? completion.breakdown
+        .map((item) => `${COMPLETION_LABELS[item.category]} ${formatPercent(item.ratio)} × ${formatPercent(item.weight)}`)
+        .join(" + ")
+    : "No expected quantities or labor hours";
+
+  return (
+    <span
+      title={title}
+      className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-black ${
+        dark
+          ? "border-white/20 bg-white/10 text-white"
+          : "border-teal-200 bg-teal-50 text-teal-800"
+      }`}
+    >
+      Weighted {completion.ratio === null ? "—" : formatPercent(completion.ratio)}
+    </span>
+  );
+}
+
+function LaborCompletionChip({ groups }: { groups: LaborGroup[] }) {
+  if (!groups.length) return null;
+  const expected = groups.reduce((sum, group) => sum + group.expectedHours, 0);
+  const used = groups.reduce((sum, group) => sum + group.totalHours, 0);
+  const ratio = expected > 0 ? used / expected : null;
+
+  return (
+    <span
+      className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800"
+      title={`${formatNumber(used)} labor hours used across ${groups.length} labor description${groups.length === 1 ? "" : "s"}`}
+    >
+      Labor {formatNumber(used)} / {formatNumber(expected)} HRS
+      {ratio !== null ? ` · ${formatPercent(ratio)}` : ""}
+    </span>
   );
 }
 
@@ -641,6 +744,10 @@ export default function ProductivityAnalyticsPage() {
   const [expandedPos, setExpandedPos] = useState<Set<string>>(new Set());
   const [expandedLogRows, setExpandedLogRows] = useState<Set<string>>(new Set());
   const [formsCloseoutOpen, setFormsCloseoutOpen] = useState(false);
+  const [reviewsByProject, setReviewsByProject] = useState<Record<string, ProjectReview>>({});
+  const [reviewDialog, setReviewDialog] = useState<ReviewDialogState | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -648,15 +755,31 @@ export default function ProductivityAnalyticsPage() {
     try {
       const url = new URL("/api/analytics/commitment-productivity", window.location.origin);
       if (DEFAULT_COMPANY_ID) url.searchParams.set("companyId", DEFAULT_COMPANY_ID);
-      const response = await fetch(url.toString(), { cache: "no-store", credentials: "include" });
-      const data = (await response.json()) as ApiResponse;
+      const reviewsUrl = new URL("/api/analytics/commitment-productivity/reviews", window.location.origin);
+      if (DEFAULT_COMPANY_ID) reviewsUrl.searchParams.set("companyId", DEFAULT_COMPANY_ID);
+      const [response, reviewsResponse] = await Promise.all([
+        fetch(url.toString(), { cache: "no-store", credentials: "include" }),
+        fetch(reviewsUrl.toString(), { cache: "no-store", credentials: "include" }),
+      ]);
+      const data = await readJsonResponse<ApiResponse>(response);
       if (!response.ok || !data.success) {
         throw new Error(data.details || data.error || `Request failed (${response.status})`);
+      }
+      const reviewsData = await readJsonResponse<ReviewApiResponse>(reviewsResponse);
+      if (!reviewsResponse.ok || !reviewsData.success) {
+        throw new Error(
+          reviewsData.details
+          || reviewsData.error
+          || `Review status request failed (${reviewsResponse.status})`,
+        );
       }
       setLines(Array.isArray(data.lines) ? data.lines : []);
       setLaborGroups(Array.isArray(data.laborGroups) ? data.laborGroups : []);
       setSummary(data.summary || null);
       setGeneratedAt(data.generatedAt || null);
+      setReviewsByProject(
+        Object.fromEntries((reviewsData.reviews || []).map((review) => [review.projectId, review])),
+      );
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
@@ -667,6 +790,11 @@ export default function ProductivityAnalyticsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const requestedProjectId = new URLSearchParams(window.location.search).get("projectId");
+    if (requestedProjectId) setProjectFilter(requestedProjectId);
+  }, []);
 
   const projectOptions = useMemo(() => {
     const byId = new Map<string, { id: string; label: string }>();
@@ -810,6 +938,94 @@ export default function ProductivityAnalyticsPage() {
     setExpandedLogRows(new Set());
   };
 
+  const openReview = (project: ProjectGroup, completion: WeightedCompletion) => {
+    setReviewError(null);
+    setReviewDialog({ project, completion });
+  };
+
+  const submitReview = async () => {
+    if (!reviewDialog || reviewSubmitting) return;
+
+    setReviewSubmitting(true);
+    setReviewError(null);
+    const currentReview = reviewsByProject[reviewDialog.project.projectId];
+    try {
+      const response = await fetch("/api/analytics/commitment-productivity/reviews", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          companyId: lines[0]?.companyId || DEFAULT_COMPANY_ID,
+          projectId: reviewDialog.project.projectId,
+          weightedCompletion: reviewDialog.completion.ratio,
+          completionSnapshot: {
+            weightedCompletion: reviewDialog.completion.ratio,
+            breakdown: reviewDialog.completion.breakdown,
+          },
+          retryNotification:
+            currentReview?.status === "completed"
+            && currentReview.notificationStatus !== "sent",
+        }),
+      });
+      const data = await readJsonResponse<ReviewApiResponse>(response);
+      if (data.review) {
+        setReviewsByProject((current) => ({
+          ...current,
+          [data.review!.projectId]: data.review!,
+        }));
+      }
+      if (!response.ok || !data.success) {
+        throw new Error(data.details || data.error || `Request failed (${response.status})`);
+      }
+
+      setReviewDialog(null);
+    } catch (submitError) {
+      setReviewError(submitError instanceof Error ? submitError.message : String(submitError));
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const unreviewProject = async (project: ProjectGroup) => {
+    const review = reviewsByProject[project.projectId];
+    if (review?.status !== "completed") return;
+    const confirmed = window.confirm(
+      `Un-review ${[project.projectNumber, project.projectName].filter(Boolean).join(" · ")}?\n\n`
+      + "The email already delivered to the office cannot be recalled. The project can be reviewed again later.",
+    );
+    if (!confirmed) return;
+
+    setReviewSubmitting(true);
+    setReviewError(null);
+    try {
+      const response = await fetch("/api/analytics/commitment-productivity/reviews", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          companyId: lines[0]?.companyId || DEFAULT_COMPANY_ID,
+          projectId: project.projectId,
+        }),
+      });
+      const data = await readJsonResponse<ReviewApiResponse>(response);
+      if (!response.ok || !data.success || !data.review) {
+        throw new Error(data.details || data.error || `Request failed (${response.status})`);
+      }
+      setReviewsByProject((current) => ({
+        ...current,
+        [data.review!.projectId]: data.review!,
+      }));
+    } catch (unreviewError) {
+      window.alert(
+        unreviewError instanceof Error
+          ? unreviewError.message
+          : "The project could not be un-reviewed.",
+      );
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   const filteredPoCount = useMemo(
     () => projects.reduce((sum, project) => sum + project.pos.length, 0),
     [projects]
@@ -845,7 +1061,7 @@ export default function ProductivityAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setFormsCloseoutOpen(true)}
-                  className="hidden rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20 sm:inline-flex"
+                  className="hidden rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20 lg:inline-flex"
                 >
                   Admin Closeout
                 </button>
@@ -872,7 +1088,7 @@ export default function ProductivityAnalyticsPage() {
             </div>
           )}
 
-          <div className="hidden grid-cols-2 gap-3 p-5 sm:grid lg:grid-cols-4">
+          <div className="hidden grid-cols-2 gap-3 p-5 lg:grid lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Projects</p>
               <p className="mt-1 text-2xl font-black text-slate-800">{summary ? formatNumber(summary.projectCount) : "—"}</p>
@@ -1002,14 +1218,30 @@ export default function ProductivityAnalyticsPage() {
                   const descriptionGroups = groupLinesByDescription(projectLines);
                   const activeDescriptions = descriptionGroups.filter((group) => group.productivityLogCount > 0).length;
                   const projectLaborGroups = laborGroupsByProject.get(project.projectId) || [];
+                  const projectCompletion = calculateWeightedCompletion({
+                    lines: projectLines,
+                    labor: projectLaborGroups,
+                  });
+                  const projectReview = reviewsByProject[project.projectId];
+                  const reviewSent =
+                    projectReview?.status === "completed"
+                    && projectReview.notificationStatus === "sent";
+                  const reviewFailed =
+                    projectReview?.status === "completed"
+                    && projectReview.notificationStatus === "failed";
+                  const reviewPending =
+                    projectReview?.status === "completed"
+                    && projectReview.notificationStatus === "pending";
                   return (
                     <section key={project.projectId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleProject(project.projectId)}
+                      <div
                         className="flex w-full flex-col gap-3 bg-slate-800 px-4 py-4 text-left text-white hover:bg-slate-750 lg:flex-row lg:items-center lg:justify-between"
                       >
-                        <div className="flex min-w-0 items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleProject(project.projectId)}
+                          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                        >
                           <span className="mt-0.5 text-lg font-black text-teal-300">{projectOpen ? "▾" : "▸"}</span>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1023,9 +1255,47 @@ export default function ProductivityAnalyticsPage() {
                                 : `${project.customer || "No customer"} · ${descriptionGroups.length} descriptions · ${projectLines.length} lines · ${activeDescriptions} active`}
                             </p>
                           </div>
+                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <WeightedCompletionBadge completion={projectCompletion} dark />
+                          <LaborCompletionChip groups={projectLaborGroups} />
+                          <QuantityChips totals={projectTotals} />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (reviewSent) void unreviewProject(project);
+                              else openReview(project, projectCompletion);
+                            }}
+                            disabled={reviewSubmitting}
+                            title={
+                              reviewSent
+                                ? `Reviewed by ${projectReview.reviewedByEmail || "unknown"}${projectReview.reviewedAt ? ` on ${new Date(projectReview.reviewedAt).toLocaleString()}` : ""}. Click to un-review.`
+                                : reviewFailed
+                                  ? "The review is saved, but the notification email needs to be retried."
+                                  : reviewPending
+                                    ? "The office notification is being sent."
+                                  : "Mark this project reviewed and notify the office."
+                            }
+                            className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider transition ${
+                              reviewSent
+                                ? "border-emerald-300/50 bg-emerald-400/20 text-emerald-100 hover:bg-emerald-400/30"
+                                : reviewFailed
+                                  ? "border-rose-300/60 bg-rose-400/20 text-rose-100 hover:bg-rose-400/30"
+                                  : reviewPending
+                                    ? "border-amber-300/60 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
+                                  : "border-white/30 bg-white/10 text-white hover:bg-white/20"
+                            }`}
+                          >
+                            {reviewSent
+                              ? `✓ Reviewed${projectReview.reviewedAt ? ` ${formatDate(projectReview.reviewedAt)}` : ""}`
+                              : reviewFailed
+                                ? "! Email failed"
+                                : reviewPending
+                                  ? "◷ Email sending"
+                                  : "□ Mark reviewed"}
+                          </button>
                         </div>
-                        <QuantityChips totals={projectTotals} />
-                      </button>
+                      </div>
 
                       {projectOpen && (
                         <div className="space-y-2 bg-slate-100 p-2 sm:p-3">
@@ -1119,6 +1389,7 @@ export default function ProductivityAnalyticsPage() {
                             const poOpen = expandedPos.has(po.key);
                             const poTotals = summarizeQuantities(po.lines);
                             const poLogCount = po.lines.reduce((sum, line) => sum + line.productivityLogCount, 0);
+                            const poCompletion = calculateWeightedCompletion({ lines: po.lines });
                             return (
                               <div key={po.key} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                                 <button
@@ -1143,7 +1414,10 @@ export default function ProductivityAnalyticsPage() {
                                       </p>
                                     </div>
                                   </div>
-                                  <QuantityChips totals={poTotals} limit={3} />
+                                  <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <WeightedCompletionBadge completion={poCompletion} />
+                                    <QuantityChips totals={poTotals} limit={3} />
+                                  </div>
                                 </button>
 
                                 {poOpen && (
@@ -1245,6 +1519,76 @@ export default function ProductivityAnalyticsPage() {
         onClose={() => setFormsCloseoutOpen(false)}
         onCompleted={loadData}
       />
+      {reviewDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !reviewSubmitting) setReviewDialog(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-review-title"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="bg-slate-800 px-5 py-4 text-white">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-teal-300">Office handoff</p>
+              <h2 id="project-review-title" className="mt-1 text-xl font-black">Mark project reviewed</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-300">
+                {[reviewDialog.project.projectNumber, reviewDialog.project.projectName].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-bold text-emerald-950">
+                  ✓ I reviewed this project&apos;s field productivity information and it is ready for the office team.
+                </p>
+                <p className="mt-1 text-xs font-semibold text-emerald-800">
+                  Your signed-in email and the completion time will be saved with this review.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Office notifications</p>
+                <div className="mt-1 space-y-0.5">
+                  {PROJECT_REVIEW_EMAILS.map((email) => (
+                    <p key={email} className="text-sm font-black text-slate-900">{email}</p>
+                  ))}
+                </div>
+              </div>
+              {reviewError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+                  {reviewError}
+                </div>
+              )}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setReviewDialog(null)}
+                  disabled={reviewSubmitting}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submitReview()}
+                  disabled={reviewSubmitting}
+                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-black text-white hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {reviewSubmitting
+                    ? "Saving and sending…"
+                    : reviewsByProject[reviewDialog.project.projectId]?.status === "completed"
+                      && reviewsByProject[reviewDialog.project.projectId]?.notificationStatus !== "sent"
+                      ? "Retry office email"
+                      : "Complete review and email"}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

@@ -2213,3 +2213,31 @@ model PmcSyncLog {
   @@index([syncedAt(sort: Desc)])
   @@map("pmc_sync_logs")
 }
+
+/// Durable office handoff for a reviewed Field Productivity project.
+/// The notification fields make email delivery visible and retryable without
+/// sending duplicate messages for the same completed review.
+model ProductivityProjectReview {
+  id                 String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId          String    @map("company_id")
+  projectId          String    @map("project_id")
+  projectNumber      String?   @map("project_number")
+  projectName        String    @map("project_name")
+  status             String    @default("open")
+  reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewedByEmail    String?   @map("reviewed_by_email")
+  notificationEmail  String?   @map("notification_email")
+  notificationStatus String    @default("not_sent") @map("notification_status")
+  notificationId     String?   @map("notification_id")
+  notificationError  String?   @map("notification_error")
+  weightedCompletion Decimal?  @map("weighted_completion") @db.Decimal(7, 6)
+  completionSnapshot Json?     @map("completion_snapshot")
+  completionCount    Int       @default(0) @map("completion_count")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, projectId])
+  @@index([companyId, status])
+  @@index([reviewedAt(sort: Desc)])
+  @@map("productivity_project_reviews")
+}

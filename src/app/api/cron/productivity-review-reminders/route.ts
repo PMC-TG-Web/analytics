@@ -7,8 +7,14 @@ import {
   isCompleteBidBoardStatus,
   parseBidBoardStatusChangedAt,
 } from "@/lib/productivityReviewCooldown";
-import { buildProductivityReadyEmail } from "@/lib/productivityReviewEmail";
-import { getProductivityReviewNotificationConfig } from "@/lib/productivityReviewNotifications";
+import {
+  buildProductivityCompleteEmail,
+  buildProductivityReadyEmail,
+} from "@/lib/productivityReviewEmail";
+import {
+  getProductivityCompleteNotificationConfig,
+  getProductivityReviewNotificationConfig,
+} from "@/lib/productivityReviewNotifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -88,6 +94,7 @@ async function processReminders(request: NextRequest) {
   let scheduled = 0;
   let canceled = 0;
   let grandfathered = 0;
+  let completionNoticesScheduled = 0;
 
   for (const [projectId, bidBoard] of canonicalByProject) {
     const existing = existingByProject.get(projectId);
@@ -120,11 +127,13 @@ async function processReminders(request: NextRequest) {
             cooldownStartedAt: completedAt,
             reviewEligibleAt,
             reminderStatus: "scheduled",
+            completionNoticeStatus: "scheduled",
             status: "open",
           },
         });
         existingByProject.set(projectId, created);
         scheduled += 1;
+        completionNoticesScheduled += 1;
       } else if (!sameCycle) {
         const updated = await prisma.productivityProjectReview.update({
           where: { id: existing.id },
@@ -136,6 +145,10 @@ async function processReminders(request: NextRequest) {
             reminderSentAt: null,
             reminderId: null,
             reminderError: null,
+            completionNoticeStatus: "scheduled",
+            completionNoticeSentAt: null,
+            completionNoticeId: null,
+            completionNoticeError: null,
             ...(!reviewedThisCycle
               ? {
                   status: "open",
@@ -148,6 +161,7 @@ async function processReminders(request: NextRequest) {
         existingByProject.set(projectId, updated);
         if (reviewedThisCycle) grandfathered += 1;
         else scheduled += 1;
+        completionNoticesScheduled += 1;
       } else {
         if (projectMetadataChanged(existing, baseData)) {
           await prisma.productivityProjectReview.update({
@@ -166,6 +180,7 @@ async function processReminders(request: NextRequest) {
           projectId,
           ...baseData,
           reminderStatus: "not_scheduled",
+          completionNoticeStatus: "not_scheduled",
           status: "open",
         },
       });
@@ -187,6 +202,10 @@ async function processReminders(request: NextRequest) {
                   reminderSentAt: null,
                   reminderId: null,
                   reminderError: null,
+                  completionNoticeStatus: "not_scheduled",
+                  completionNoticeSentAt: null,
+                  completionNoticeId: null,
+                  completionNoticeError: null,
                   notificationStatus: "not_sent",
                   notificationError: null,
                 }
@@ -201,6 +220,18 @@ async function processReminders(request: NextRequest) {
 
   const now = new Date();
   const stalePendingBefore = new Date(now.getTime() - 10 * 60 * 1000);
+  const completionNoticesDue = await prisma.productivityProjectReview.findMany({
+    where: {
+      companyId,
+      bidBoardStatus: "Complete",
+      OR: [
+        { completionNoticeStatus: { in: ["scheduled", "failed"] } },
+        { completionNoticeStatus: "pending", updatedAt: { lte: stalePendingBefore } },
+      ],
+    },
+    orderBy: { cooldownStartedAt: "asc" },
+    take: 20,
+  });
   const due = await prisma.productivityProjectReview.findMany({
     where: {
       companyId,
@@ -216,11 +247,77 @@ async function processReminders(request: NextRequest) {
     take: 20,
   });
 
-  const notification = getProductivityReviewNotificationConfig();
-  const resend = new Resend(notification.apiKey);
+  const completionNotification = getProductivityCompleteNotificationConfig();
+  const reviewNotification = getProductivityReviewNotificationConfig();
+  const completionResend = new Resend(completionNotification.apiKey);
+  const reviewResend = new Resend(reviewNotification.apiKey);
   const baseUrl = String(process.env.APP_BASE_URL || request.nextUrl.origin).replace(/\/$/, "");
+  let completionNoticesSent = 0;
+  let completionNoticesFailed = 0;
   let sent = 0;
   let failed = 0;
+
+  for (const review of completionNoticesDue) {
+    const claimed = await prisma.productivityProjectReview.updateMany({
+      where: {
+        id: review.id,
+        OR: [
+          { completionNoticeStatus: { in: ["scheduled", "failed"] } },
+          { completionNoticeStatus: "pending", updatedAt: { lte: stalePendingBefore } },
+        ],
+      },
+      data: {
+        completionNoticeStatus: "pending",
+        completionNoticeError: null,
+      },
+    });
+    if (!claimed.count) continue;
+
+    const completedAt = review.cooldownStartedAt || now;
+    const eligibleAt = review.reviewEligibleAt || calculateReviewEligibleAt(completedAt);
+    const projectUrl = new URL("/analytics/productivity", baseUrl);
+    projectUrl.searchParams.set("projectId", review.projectId);
+    const email = buildProductivityCompleteEmail({
+      projectNumber: review.projectNumber,
+      projectName: review.projectName,
+      completedAt,
+      eligibleAt,
+      projectUrl: projectUrl.toString(),
+    });
+
+    try {
+      if (!completionNotification.apiKey) throw new Error("RESEND_API_KEY is not configured.");
+      const result = await completionResend.emails.send({
+        from: completionNotification.from,
+        to: completionNotification.to,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+      }, {
+        idempotencyKey: `pmc-productivity-complete-${review.projectId}-${completedAt.getTime()}`,
+      });
+      if (result.error) throw new Error(result.error.message);
+      await prisma.productivityProjectReview.update({
+        where: { id: review.id },
+        data: {
+          completionNoticeStatus: "sent",
+          completionNoticeSentAt: new Date(),
+          completionNoticeId: result.data?.id || null,
+          completionNoticeError: null,
+        },
+      });
+      completionNoticesSent += 1;
+    } catch (error) {
+      await prisma.productivityProjectReview.update({
+        where: { id: review.id },
+        data: {
+          completionNoticeStatus: "failed",
+          completionNoticeError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
+        },
+      });
+      completionNoticesFailed += 1;
+    }
+  }
 
   for (const review of due) {
     const claimed = await prisma.productivityProjectReview.updateMany({
@@ -249,13 +346,15 @@ async function processReminders(request: NextRequest) {
     });
 
     try {
-      if (!notification.apiKey) throw new Error("RESEND_API_KEY is not configured.");
-      const result = await resend.emails.send({
-        from: notification.from,
-        to: notification.to,
+      if (!reviewNotification.apiKey) throw new Error("RESEND_API_KEY is not configured.");
+      const result = await reviewResend.emails.send({
+        from: reviewNotification.from,
+        to: reviewNotification.to,
         subject: email.subject,
         text: email.text,
         html: email.html,
+      }, {
+        idempotencyKey: `pmc-productivity-ready-${review.projectId}-${(review.reviewEligibleAt || now).getTime()}`,
       });
       if (result.error) throw new Error(result.error.message);
       await prisma.productivityProjectReview.update({
@@ -281,15 +380,19 @@ async function processReminders(request: NextRequest) {
   }
 
   return NextResponse.json({
-    success: failed === 0,
+    success: failed === 0 && completionNoticesFailed === 0,
     scanned: canonicalByProject.size,
     scheduled,
     canceled,
     grandfathered,
+    completionNoticesScheduled,
+    completionNoticesDue: completionNoticesDue.length,
+    completionNoticesSent,
+    completionNoticesFailed,
     due: due.length,
     sent,
     failed,
-  }, { status: failed === 0 ? 200 : 502 });
+  }, { status: failed === 0 && completionNoticesFailed === 0 ? 200 : 502 });
 }
 
 export async function POST(request: NextRequest) {

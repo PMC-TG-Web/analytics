@@ -71,7 +71,10 @@ const handler = async () => {
       + ` scheduled=${reminderBody?.scheduled ?? "?"}`
       + ` due=${reminderBody?.due ?? "?"}`
       + ` sent=${reminderBody?.sent ?? "?"}`
-      + ` failed=${reminderBody?.failed ?? "?"}`,
+      + ` failed=${reminderBody?.failed ?? "?"}`
+      + ` completeDue=${reminderBody?.completionNoticesDue ?? "?"}`
+      + ` completeSent=${reminderBody?.completionNoticesSent ?? "?"}`
+      + ` completeFailed=${reminderBody?.completionNoticesFailed ?? "?"}`,
     );
 
     const nowParts = new Intl.DateTimeFormat("en-US", {

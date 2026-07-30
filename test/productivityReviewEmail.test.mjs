@@ -17,6 +17,7 @@ function loadModule() {
 }
 
 const {
+  buildProductivityCompleteEmail,
   buildProductivityReadyEmail,
   buildProductivityReviewEmail,
   isValidNotificationEmail,
@@ -57,4 +58,17 @@ test("builds the thirty-day ready-for-review reminder", () => {
   assert.match(email.subject, /ready for review/i);
   assert.match(email.text, /30-day review date/i);
   assert.match(email.html, /Review Field Productivity/);
+});
+
+test("builds the immediate Bid Board Complete notification", () => {
+  const email = buildProductivityCompleteEmail({
+    projectNumber: "2601",
+    projectName: "Completed Project",
+    completedAt: new Date("2026-07-30T14:00:00Z"),
+    eligibleAt: new Date("2026-08-29T14:00:00Z"),
+    projectUrl: "https://example.com/analytics/productivity?projectId=123",
+  });
+  assert.match(email.subject, /marked Complete/i);
+  assert.match(email.text, /Procore Bid Board/i);
+  assert.match(email.text, /Field Productivity review date/i);
 });

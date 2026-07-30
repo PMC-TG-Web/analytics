@@ -92,6 +92,12 @@ type ProjectReview = {
   projectId: string;
   projectNumber: string | null;
   projectName: string;
+  bidBoardId: string | null;
+  bidBoardStatus: string | null;
+  cooldownStartedAt: string | null;
+  reviewEligibleAt: string | null;
+  reminderStatus: string;
+  reminderSentAt: string | null;
   status: string;
   reviewedAt: string | null;
   reviewedByEmail: string | null;
@@ -1232,6 +1238,31 @@ export default function ProductivityAnalyticsPage() {
                   const reviewPending =
                     projectReview?.status === "completed"
                     && projectReview.notificationStatus === "pending";
+                  const reviewEligibleAt = projectReview?.reviewEligibleAt
+                    ? new Date(projectReview.reviewEligibleAt)
+                    : null;
+                  const reviewEligible =
+                    projectReview?.bidBoardStatus?.trim().toLowerCase() === "complete"
+                    && Boolean(reviewEligibleAt)
+                    && Number.isFinite(reviewEligibleAt!.getTime())
+                    && reviewEligibleAt! <= new Date();
+                  const reviewCoolingDown =
+                    projectReview?.bidBoardStatus?.trim().toLowerCase() === "complete"
+                    && Boolean(reviewEligibleAt)
+                    && Number.isFinite(reviewEligibleAt!.getTime())
+                    && reviewEligibleAt! > new Date();
+                  const reviewLocked = !reviewSent && !reviewFailed && !reviewPending && !reviewEligible;
+                  const reviewTitle = reviewSent
+                    ? `Reviewed by ${projectReview.reviewedByEmail || "unknown"}${projectReview.reviewedAt ? ` on ${new Date(projectReview.reviewedAt).toLocaleString()}` : ""}. Click to un-review.`
+                    : reviewFailed
+                      ? "The review is saved, but the notification email needs to be retried."
+                      : reviewPending
+                        ? "The office notification is being sent."
+                        : reviewCoolingDown
+                          ? `Review available ${formatDate(projectReview?.reviewEligibleAt || null)}, 30 days after the Bid Board was marked Complete.`
+                          : reviewEligible
+                            ? "Mark this project reviewed and notify the office."
+                            : "This project must be marked Complete on the Procore Bid Board before the 30-day cooldown starts.";
                   return (
                     <section key={project.projectId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                       <div
@@ -1264,18 +1295,10 @@ export default function ProductivityAnalyticsPage() {
                             type="button"
                             onClick={() => {
                               if (reviewSent) void unreviewProject(project);
-                              else openReview(project, projectCompletion);
+                              else if (!reviewLocked) openReview(project, projectCompletion);
                             }}
-                            disabled={reviewSubmitting}
-                            title={
-                              reviewSent
-                                ? `Reviewed by ${projectReview.reviewedByEmail || "unknown"}${projectReview.reviewedAt ? ` on ${new Date(projectReview.reviewedAt).toLocaleString()}` : ""}. Click to un-review.`
-                                : reviewFailed
-                                  ? "The review is saved, but the notification email needs to be retried."
-                                  : reviewPending
-                                    ? "The office notification is being sent."
-                                  : "Mark this project reviewed and notify the office."
-                            }
+                            disabled={reviewSubmitting || reviewLocked}
+                            title={reviewTitle}
                             className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider transition ${
                               reviewSent
                                 ? "border-emerald-300/50 bg-emerald-400/20 text-emerald-100 hover:bg-emerald-400/30"
@@ -1283,7 +1306,11 @@ export default function ProductivityAnalyticsPage() {
                                   ? "border-rose-300/60 bg-rose-400/20 text-rose-100 hover:bg-rose-400/30"
                                   : reviewPending
                                     ? "border-amber-300/60 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
-                                  : "border-white/30 bg-white/10 text-white hover:bg-white/20"
+                                    : reviewCoolingDown
+                                      ? "cursor-not-allowed border-sky-300/40 bg-sky-400/10 text-sky-100"
+                                      : reviewEligible
+                                        ? "border-white/30 bg-white/10 text-white hover:bg-white/20"
+                                        : "cursor-not-allowed border-slate-400/30 bg-slate-500/10 text-slate-400"
                             }`}
                           >
                             {reviewSent
@@ -1292,7 +1319,11 @@ export default function ProductivityAnalyticsPage() {
                                 ? "! Email failed"
                                 : reviewPending
                                   ? "◷ Email sending"
-                                  : "□ Mark reviewed"}
+                                  : reviewCoolingDown
+                                    ? `◷ Review ${formatDate(projectReview?.reviewEligibleAt || null)}`
+                                    : reviewEligible
+                                      ? "□ Mark reviewed"
+                                      : "Waiting for Complete"}
                           </button>
                         </div>
                       </div>

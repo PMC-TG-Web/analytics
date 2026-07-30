@@ -16,7 +16,11 @@ function loadModule() {
   return module.exports;
 }
 
-const { buildProductivityReviewEmail, isValidNotificationEmail } = loadModule();
+const {
+  buildProductivityReadyEmail,
+  buildProductivityReviewEmail,
+  isValidNotificationEmail,
+} = loadModule();
 
 test("validates notification email addresses", () => {
   assert.equal(isValidNotificationEmail("office@example.com"), true);
@@ -40,4 +44,17 @@ test("builds a review email and escapes project content", () => {
   assert.match(email.text, /91\.3%/);
   assert.doesNotMatch(email.html, /<Unsafe/);
   assert.match(email.html, /&lt;Unsafe &amp; Project&gt;/);
+});
+
+test("builds the thirty-day ready-for-review reminder", () => {
+  const email = buildProductivityReadyEmail({
+    projectNumber: "2601",
+    projectName: "Ready Project",
+    completedAt: new Date("2026-07-01T12:00:00Z"),
+    eligibleAt: new Date("2026-07-31T12:00:00Z"),
+    projectUrl: "https://example.com/analytics/productivity?projectId=123",
+  });
+  assert.match(email.subject, /ready for review/i);
+  assert.match(email.text, /30-day review date/i);
+  assert.match(email.html, /Review Field Productivity/);
 });

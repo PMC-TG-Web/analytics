@@ -1,7 +1,7 @@
 /**
- * Netlify Scheduled Function. Runs every 15 minutes and drains queued Procore
- * webhook events. Full Procore syncs are intentionally manual/bootstrap-only
- * because broad polling can exceed Procore rate limits and Netlify timeouts.
+ * Netlify Scheduled Function. Runs every 5 minutes, drains queued Procore
+ * webhook events, reconciles productivity-review cooldowns, and dispatches the
+ * appropriate incremental sync worker.
  *
  * Required environment variables:
  *   PROCORE_SYNC_SECRET
@@ -53,6 +53,27 @@ const handler = async () => {
     const ok = response.ok;
     console.log(`[scheduled-sync] Webhook queue processing ${ok ? "completed" : "failed"} - status=${response.status} scanned=${body?.scanned ?? "?"} processed=${body?.processed ?? "?"} failed=${body?.failed ?? "?"}`);
 
+    const reminderResponse = await fetch(
+      `${baseUrl}/api/cron/productivity-review-reminders`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+      },
+    );
+    const reminderBody = await reminderResponse.json().catch(() => null) as Record<string, unknown> | null;
+    console.log(
+      `[scheduled-sync] Productivity review cooldowns ${reminderResponse.ok ? "reconciled" : "failed"}`
+      + ` - status=${reminderResponse.status}`
+      + ` scanned=${reminderBody?.scanned ?? "?"}`
+      + ` scheduled=${reminderBody?.scheduled ?? "?"}`
+      + ` due=${reminderBody?.due ?? "?"}`
+      + ` sent=${reminderBody?.sent ?? "?"}`
+      + ` failed=${reminderBody?.failed ?? "?"}`,
+    );
+
     const nowParts = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
       weekday: "short",
@@ -81,13 +102,15 @@ const handler = async () => {
     console.log(`[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`);
 
     return new Response(JSON.stringify({
-      ok: ok && dispatch.ok,
+      ok: ok && reminderResponse.ok && dispatch.ok,
       processStatus: response.status,
+      reminderStatus: reminderResponse.status,
       dispatchStatus: dispatch.status,
       workerName,
       body,
+      reminderBody,
     }), {
-      status: ok && dispatch.ok ? 200 : 500,
+      status: ok && reminderResponse.ok && dispatch.ok ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

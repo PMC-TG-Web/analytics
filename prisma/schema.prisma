@@ -2223,6 +2223,14 @@ model ProductivityProjectReview {
   projectId          String    @map("project_id")
   projectNumber      String?   @map("project_number")
   projectName        String    @map("project_name")
+  bidBoardId         String?   @map("bid_board_id")
+  bidBoardStatus     String?   @map("bid_board_status")
+  cooldownStartedAt  DateTime? @map("cooldown_started_at") @db.Timestamptz(6)
+  reviewEligibleAt   DateTime? @map("review_eligible_at") @db.Timestamptz(6)
+  reminderStatus     String    @default("not_scheduled") @map("reminder_status")
+  reminderSentAt     DateTime? @map("reminder_sent_at") @db.Timestamptz(6)
+  reminderId         String?   @map("reminder_id")
+  reminderError      String?   @map("reminder_error")
   status             String    @default("open")
   reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
   reviewedByEmail    String?   @map("reviewed_by_email")
@@ -2238,6 +2246,7 @@ model ProductivityProjectReview {
 
   @@unique([companyId, projectId])
   @@index([companyId, status])
+  @@index([companyId, reminderStatus, reviewEligibleAt])
   @@index([reviewedAt(sort: Desc)])
   @@map("productivity_project_reviews")
 }

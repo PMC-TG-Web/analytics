@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { getRequestUserEmail } from "@/lib/requestUser";
 import {
   buildProductivityReviewEmail,
-  isValidNotificationEmail,
 } from "@/lib/productivityReviewEmail";
+import { getProductivityReviewNotificationConfig } from "@/lib/productivityReviewNotifications";
+import { isReviewEligible } from "@/lib/productivityReviewCooldown";
 
 export const dynamic = "force-dynamic";
 
@@ -22,23 +23,16 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function configuredNotificationEmails(): string[] {
-  const configured = text(
-    process.env.PRODUCTIVITY_REVIEW_TO_EMAILS
-    || "ProjectEnd@pmcdecor.com",
-  );
-  return [...new Set(
-    configured
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  )];
-}
-
 function serializeReview(review: {
   projectId: string;
   projectNumber: string | null;
   projectName: string;
+  bidBoardId: string | null;
+  bidBoardStatus: string | null;
+  cooldownStartedAt: Date | null;
+  reviewEligibleAt: Date | null;
+  reminderStatus: string;
+  reminderSentAt: Date | null;
   status: string;
   reviewedAt: Date | null;
   reviewedByEmail: string | null;
@@ -52,6 +46,12 @@ function serializeReview(review: {
     projectId: review.projectId,
     projectNumber: review.projectNumber,
     projectName: review.projectName,
+    bidBoardId: review.bidBoardId,
+    bidBoardStatus: review.bidBoardStatus,
+    cooldownStartedAt: review.cooldownStartedAt?.toISOString() ?? null,
+    reviewEligibleAt: review.reviewEligibleAt?.toISOString() ?? null,
+    reminderStatus: review.reminderStatus,
+    reminderSentAt: review.reminderSentAt?.toISOString() ?? null,
     status: review.status,
     reviewedAt: review.reviewedAt?.toISOString() ?? null,
     reviewedByEmail: review.reviewedByEmail,
@@ -119,7 +119,8 @@ async function completeReview(request: NextRequest) {
 
   const companyId = text(body.companyId || process.env.PROCORE_COMPANY_ID);
   const projectId = text(body.projectId);
-  const notificationEmails = configuredNotificationEmails();
+  const notificationConfig = getProductivityReviewNotificationConfig();
+  const notificationEmails = notificationConfig.to;
   const notificationEmail = notificationEmails.join(", ");
   const retryNotification = body.retryNotification === true;
   if (!companyId || !projectId) {
@@ -128,13 +129,6 @@ async function completeReview(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (!notificationEmails.length || notificationEmails.some((email) => !isValidNotificationEmail(email))) {
-    return NextResponse.json(
-      { success: false, error: "PRODUCTIVITY_REVIEW_TO_EMAIL is not configured correctly." },
-      { status: 500 },
-    );
-  }
-
   const project = await prisma.pmcProject.findUnique({
     where: {
       companyId_procoreProjectId: { companyId, procoreProjectId: projectId },
@@ -188,6 +182,20 @@ async function completeReview(request: NextRequest) {
       review: serializeReview(existing),
     });
   }
+  if (!retryNotification && !isReviewEligible({
+    bidBoardStatus: existing?.bidBoardStatus,
+    reviewEligibleAt: existing?.reviewEligibleAt,
+  })) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: existing?.bidBoardStatus === "Complete"
+          ? `This project cannot be reviewed until ${existing.reviewEligibleAt?.toLocaleDateString("en-US") || "its cooldown is complete"}.`
+          : "This project must be marked Complete on the Procore Bid Board before it can be reviewed.",
+      },
+      { status: 409 },
+    );
+  }
   if (retryNotification && existing?.status !== "completed") {
     return NextResponse.json(
       { success: false, error: "Only a completed review can retry its notification." },
@@ -231,6 +239,8 @@ async function completeReview(request: NextRequest) {
         notificationStatus: "pending",
         notificationId: null,
         notificationError: null,
+        reminderStatus: "not_needed",
+        reminderError: null,
         weightedCompletion,
         completionSnapshot,
         completionCount: retryNotification ? existing.completionCount : { increment: 1 },
@@ -258,6 +268,7 @@ async function completeReview(request: NextRequest) {
           reviewedByEmail: reviewerEmail,
           notificationEmail,
           notificationStatus: "pending",
+          reminderStatus: "not_needed",
           weightedCompletion,
           completionSnapshot,
           completionCount: 1,
@@ -274,12 +285,8 @@ async function completeReview(request: NextRequest) {
     }
   }
 
-  const apiKey = text(process.env.RESEND_API_KEY);
-  const fromEmail = text(
-    process.env.PRODUCTIVITY_REVIEW_FROM_EMAIL
-    || process.env.RESEND_FROM_EMAIL
-    || "Field Productivity <notifications@pmcdecor.com>",
-  );
+  const apiKey = notificationConfig.apiKey;
+  const fromEmail = notificationConfig.from;
   const appBaseUrl = text(process.env.APP_BASE_URL) || request.nextUrl.origin;
   const projectUrl = new URL("/analytics/productivity", appBaseUrl);
   projectUrl.searchParams.set("projectId", projectId);

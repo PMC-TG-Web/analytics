@@ -158,6 +158,21 @@ function hasProcoreAccessTokenCookie(request: NextRequest): boolean {
   return request.cookies.has('procore_access_token');
 }
 
+function isMobileOrTabletRequest(request: NextRequest): boolean {
+  const userAgent = (request.headers.get('user-agent') || '').toLowerCase();
+  if (!userAgent) return false;
+
+  return /iphone|ipod|ipad|android|mobile|tablet|silk|kindle|opera mini|iemobile/.test(userAgent);
+}
+
+function isAnalyticsMobileBypassPath(pathname: string): boolean {
+  if (pathname === '/analytics' || pathname.startsWith('/analytics/')) {
+    return true;
+  }
+
+  return pathname === '/api/analytics/commitment-productivity' || pathname.startsWith('/api/analytics/commitment-productivity/');
+}
+
 async function checkDatabasePermission(request: NextRequest, permissions: string[]): Promise<PermissionCheckResult> {
   try {
     const cookie = request.headers.get('cookie');
@@ -306,6 +321,24 @@ export async function middleware(request: NextRequest) {
         { status: 405, headers: { Allow: 'POST' } }
       );
     }
+  }
+
+  const allowAnalyticsMobileWithoutAuth0 =
+    request.method.toUpperCase() === 'GET' &&
+    isAnalyticsMobileBypassPath(pathname) &&
+    isMobileOrTabletRequest(request) &&
+    hasProcoreAccessTokenCookie(request);
+
+  if (allowAnalyticsMobileWithoutAuth0) {
+    if (isApiRoute && apiRateLimit) {
+      const response = NextResponse.next();
+      response.headers.set('X-RateLimit-Limit', String(apiRateLimit.limit));
+      response.headers.set('X-RateLimit-Remaining', String(apiRateLimit.remaining));
+      response.headers.set('X-RateLimit-Reset', String(Math.floor(apiRateLimit.resetAt / 1000)));
+      return response;
+    }
+
+    return NextResponse.next();
   }
 
   if (isApiRoute && isHeavyApiRoutePath(pathname) && request.method.toUpperCase() === 'POST' && hasValidSyncSecret(request)) {

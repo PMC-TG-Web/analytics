@@ -403,6 +403,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow trusted server-side clone repairs without requiring an interactive
+  // Auth0 browser session. The shared sync secret is validated above.
+  if (pathname === '/api/procore/daily-activity/clone' && hasValidSyncSecret(request)) {
+    return NextResponse.next();
+  }
+
   // Allow Netlify scheduled function route without Auth0 session redirects.
   if (isNetlifyScheduledSyncFunctionRoute) {
     return NextResponse.next();

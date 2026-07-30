@@ -845,7 +845,7 @@ export default function ProductivityAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setFormsCloseoutOpen(true)}
-                  className="rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20"
+                  className="hidden rounded-lg border border-teal-300/50 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-teal-100 hover:bg-white/20 sm:inline-flex"
                 >
                   Admin Closeout
                 </button>
@@ -872,7 +872,7 @@ export default function ProductivityAnalyticsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 p-5 lg:grid-cols-4">
+          <div className="hidden grid-cols-2 gap-3 p-5 sm:grid lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Projects</p>
               <p className="mt-1 text-2xl font-black text-slate-800">{summary ? formatNumber(summary.projectCount) : "—"}</p>

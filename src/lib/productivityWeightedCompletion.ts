@@ -43,12 +43,20 @@ function clampRatio(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+function isFiberLine(description: unknown): boolean {
+  return /\bfib(?:er|re)/.test(clean(description));
+}
+
 export function classifyProductivityCompletionLine(
   line: Pick<ProductivityCompletionLine, "description" | "costCode" | "uom">,
 ): Exclude<CompletionCategory, "labor"> {
   const description = clean(line.description);
   const costCode = clean(line.costCode);
   const uom = clean(line.uom);
+
+  // Fiber is purchased and tracked by each even when it shares a concrete
+  // material cost code. It must not contribute to the concrete CY rollup.
+  if (isFiberLine(description)) return "other";
 
   // These are concrete quantity codes even when legacy Procore commitments
   // carry EA instead of CY.
@@ -69,8 +77,9 @@ export function classifyProductivityCompletionLine(
 }
 
 export function normalizeProductivityCompletionUom(
-  line: Pick<ProductivityCompletionLine, "costCode" | "uom">,
+  line: Pick<ProductivityCompletionLine, "description" | "costCode" | "uom">,
 ): string | null {
+  if (isFiberLine(line.description)) return "EA";
   if (CONCRETE_COST_CODES.has(clean(line.costCode))) return "CY";
   const uom = String(line.uom ?? "").trim();
   return uom || null;

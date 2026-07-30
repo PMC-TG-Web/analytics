@@ -313,6 +313,7 @@ export async function GET(request: NextRequest) {
     const lines = rows.map((row) => {
       const costCode = toText(row.cost_code);
       const sourceUom = toText(row.uom);
+      const description = toText(row.description);
       return {
       companyId: String(row.company_id),
       projectId: String(row.project_id),
@@ -327,11 +328,11 @@ export async function GET(request: NextRequest) {
       vendorName: toText(row.vendor_name),
       lineItemId: String(row.line_item_id),
       position: row.position === null ? null : toNumber(row.position),
-      description: toText(row.description),
+      description,
       costCode,
       costType: toText(row.cost_type),
       wbsCode: toText(row.wbs_code),
-      uom: normalizeProductivityCompletionUom({ costCode, uom: sourceUom }),
+      uom: normalizeProductivityCompletionUom({ description, costCode, uom: sourceUom }),
       expectedQuantity: toNumber(row.expected_quantity),
       usedQuantity: toNumber(row.used_quantity),
       deliveredQuantity: toNumber(row.delivered_quantity),

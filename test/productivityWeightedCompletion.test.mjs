@@ -42,6 +42,18 @@ test("known concrete cost codes override inconsistent EA units", () => {
   }
 });
 
+test("fiber remains eaches and is excluded from concrete yards", () => {
+  for (const [description, sourceUom, costCode] of [
+    ["Fiber - SOG", "ea", "03-300-20-20"],
+    ["Fiber - Site", "CY", "03-300-30-20"],
+    ["non-taxable SOG fiber", "ls", "03-300-20-20"],
+  ]) {
+    const fiber = line(description, 100, 50, sourceUom, costCode);
+    assert.equal(classifyProductivityCompletionLine(fiber), "other", description);
+    assert.equal(normalizeProductivityCompletionUom(fiber), "EA", description);
+  }
+});
+
 test("EA sealers and repair products are not production concrete by description alone", () => {
   assert.equal(
     classifyProductivityCompletionLine(line("Concrete Repair Epoxy", 10, 0, "EA", "03-150-10-85")),

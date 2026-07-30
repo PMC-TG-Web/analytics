@@ -413,6 +413,13 @@ export async function middleware(request: NextRequest) {
 
   const session = await auth0.getSession(request);
   if (!session) {
+    if (request.method.toUpperCase() === 'GET' && (pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
+      const procoreLoginUrl = new URL('/api/auth/procore/login', request.url);
+      const returnTo = `${pathname}${request.nextUrl.search}`;
+      procoreLoginUrl.searchParams.set('returnTo', returnTo);
+      return NextResponse.redirect(procoreLoginUrl);
+    }
+
     if (isApiRoute) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated' },

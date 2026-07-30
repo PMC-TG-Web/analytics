@@ -418,7 +418,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/api/cron/project-onboarding' ||
     pathname.startsWith('/api/cron/project-onboarding/') ||
     pathname === '/api/cron/nightly-structure' ||
-    pathname.startsWith('/api/cron/nightly-structure/')
+    pathname.startsWith('/api/cron/nightly-structure/') ||
+    pathname === '/api/cron/productivity-review-reminders'
   ) {
     return NextResponse.next();
   }

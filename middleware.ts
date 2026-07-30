@@ -208,6 +208,14 @@ export async function middleware(request: NextRequest) {
     !auth0Secret;
 
   const { pathname } = request.nextUrl;
+  const requestHost = (request.nextUrl.host || '').toLowerCase();
+
+  if (requestHost.endsWith('--analyticspmc.netlify.app')) {
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.host = 'analyticspmc.netlify.app';
+    return NextResponse.redirect(canonicalUrl, 307);
+  }
+
   const isApiRoute = pathname.startsWith('/api/');
   const isAuthApiRoute = pathname.startsWith('/api/auth/');
   const isInternalPermissionCheckRoute = pathname === INTERNAL_PERMISSION_CHECK_ROUTE;

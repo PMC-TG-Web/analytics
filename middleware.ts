@@ -19,6 +19,7 @@ const API_RATE_WINDOW_MS = 60 * 1000;
 const HEAVY_API_RATE_LIMIT = 6;
 const HEAVY_API_RATE_WINDOW_MS = 10 * 60 * 1000;
 const INTERNAL_PERMISSION_CHECK_ROUTE = '/api/internal/permission-check';
+const ANALYTICS_PROCORE_LINK_COOKIE = 'analytics_procore_link_access';
 
 const HEAVY_API_ROUTE_PREFIXES = [
   '/api/procore/sync',
@@ -156,6 +157,27 @@ function hasValidSyncSecret(request: NextRequest): boolean {
 
 function hasProcoreAccessTokenCookie(request: NextRequest): boolean {
   return request.cookies.has('procore_access_token');
+}
+
+function hasAnalyticsProcoreLinkCookie(request: NextRequest): boolean {
+  return request.cookies.get(ANALYTICS_PROCORE_LINK_COOKIE)?.value === '1';
+}
+
+function isTrustedProcoreEntryRequest(request: NextRequest): boolean {
+  const source = String(request.nextUrl.searchParams.get('source') || '').trim().toLowerCase();
+  if (source === 'procore' || source === 'procore-mobile') {
+    return true;
+  }
+
+  const refererHeader = String(request.headers.get('referer') || '').trim();
+  if (!refererHeader) return false;
+
+  try {
+    const refererHost = new URL(refererHeader).host.toLowerCase();
+    return refererHost === 'procore.com' || refererHost.endsWith('.procore.com');
+  } catch {
+    return false;
+  }
 }
 
 function isAnalyticsMobileBypassPath(pathname: string): boolean {
@@ -327,7 +349,7 @@ export async function middleware(request: NextRequest) {
   const allowAnalyticsWithoutAuth0ViaProcoreSession =
     request.method.toUpperCase() === 'GET' &&
     isAnalyticsMobileBypassPath(pathname) &&
-    hasProcoreAccessTokenCookie(request);
+    (hasProcoreAccessTokenCookie(request) || hasAnalyticsProcoreLinkCookie(request));
 
   if (allowAnalyticsWithoutAuth0ViaProcoreSession) {
     if (isApiRoute && apiRateLimit) {
@@ -422,6 +444,18 @@ export async function middleware(request: NextRequest) {
   const session = await auth0.getSession(request);
   if (!session) {
     if (request.method.toUpperCase() === 'GET' && (pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
+      if (isTrustedProcoreEntryRequest(request)) {
+        const response = NextResponse.next();
+        response.cookies.set(ANALYTICS_PROCORE_LINK_COOKIE, '1', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 12 * 60 * 60,
+        });
+        return response;
+      }
+
       const procoreLoginUrl = new URL('/api/auth/procore/login', request.url);
       const returnTo = `${pathname}${request.nextUrl.search}`;
       procoreLoginUrl.searchParams.set('returnTo', returnTo);

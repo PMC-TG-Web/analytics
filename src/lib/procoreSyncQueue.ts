@@ -160,6 +160,70 @@ export async function seedProjectSyncQueue(companyId: string, dataset: string) {
   );
 }
 
+export async function seedMissingPurchaseOrderLineQueue(companyId: string, dataset: string) {
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states state
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          last_error = NULL,
+          updated_at = NOW()
+      WHERE state.company_id = $1
+        AND state.dataset = $2
+        AND EXISTS (
+          SELECT 1
+          FROM "PurchaseOrderLineItemContractDetail" line
+          WHERE line."procoreCompanyId" = state.company_id
+            AND line."procoreProjectId" = state.project_id
+        )
+    `,
+    companyId,
+    dataset
+  );
+
+  return prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT
+        project.company_id,
+        project.procore_project_id,
+        $2,
+        project.project_number,
+        project.project_name,
+        NOW(),
+        NOW(),
+        NOW()
+      FROM pmc_projects project
+      WHERE project.company_id = $1
+        AND NULLIF(BTRIM(project.procore_project_id), '') IS NOT NULL
+        AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "PurchaseOrderLineItemContractDetail" line
+          WHERE line."procoreCompanyId" = project.company_id
+            AND line."procoreProjectId" = project.procore_project_id
+        )
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.next_run_at > NOW() + INTERVAL '1 year'
+          THEN NOW()
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        last_error = NULL,
+        updated_at = NOW()
+    `,
+    companyId,
+    dataset
+  );
+}
+
 export async function getSyncQueueStats(companyId: string, dataset: string) {
   const rows = await prisma.$queryRawUnsafe<Array<{
     project_count: number;
@@ -406,6 +470,7 @@ export async function claimDueProject(params: {
   leaseId: string;
   leaseMinutes?: number;
   projectId?: string;
+  newestFirst?: boolean;
 }) {
   const rows = await prisma.$queryRawUnsafe<DbProjectRow[]>(
     `
@@ -419,6 +484,7 @@ export async function claimDueProject(params: {
           AND (locked_until IS NULL OR locked_until <= NOW())
         ORDER BY
           CASE WHEN last_success_at IS NULL THEN 0 ELSE 1 END,
+          CASE WHEN last_success_at IS NULL AND $6::boolean THEN project_id END DESC,
           next_run_at,
           project_id
         FOR UPDATE SKIP LOCKED
@@ -437,7 +503,8 @@ export async function claimDueProject(params: {
     params.dataset,
     params.leaseId,
     params.leaseMinutes ?? 8,
-    params.projectId || null
+    params.projectId || null,
+    params.newestFirst === true
   );
   const row = rows[0];
   if (!row) return null;

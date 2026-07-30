@@ -7,6 +7,7 @@ import {
   finishProjectSync,
   releaseProcoreWorker,
   seedEstimatingSyncQueue,
+  seedMissingPurchaseOrderLineQueue,
   seedProjectSyncQueue,
   seedSingletonSyncQueue,
   setProcoreRateLimit,
@@ -19,6 +20,7 @@ export const maxDuration = 300;
 const DATASET = "nightly_structure";
 const ESTIMATING_DATASET = "nightly_estimates";
 const BID_BOARD_DATASET = "nightly_bid_board_headers";
+const PO_DISCOVERY_DATASET = "purchase_order_discovery";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 const BID_BOARD_SYNC_INTERVAL_MINUTES = Math.min(
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
   const mode = String(body.mode || "").trim().toLowerCase();
   const estimateOnly = mode === "estimates";
   const bidBoardOnly = mode === "bid-board-headers" || mode === "headers";
+  const poDiscoveryOnly = mode === "po-discovery" || mode === "purchase-orders";
 
   const worker = await acquireProcoreWorker(COMPANY_ID);
   if (!worker.acquired) {
@@ -136,11 +139,108 @@ export async function POST(request: NextRequest) {
   }
 
   let bidBoardProject: QueuedProject | null = null;
+  let poDiscoveryProject: QueuedProject | null = null;
   let project: QueuedProject | null = null;
   const estimatingProjects: QueuedProject[] = [];
   let logId: bigint | null = null;
   const startedAt = Date.now();
   try {
+    if (poDiscoveryOnly) {
+      await seedMissingPurchaseOrderLineQueue(COMPANY_ID, PO_DISCOVERY_DATASET);
+      poDiscoveryProject = await claimDueProject({
+        companyId: COMPANY_ID,
+        dataset: PO_DISCOVERY_DATASET,
+        leaseId: worker.leaseId,
+        newestFirst: true,
+      });
+      if (!poDiscoveryProject) {
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          reason: "no_purchase_order_discovery_project_due",
+          dataset: PO_DISCOVERY_DATASET,
+        });
+      }
+
+      const selection = {
+        step: "select-project",
+        status: "ok",
+        projectId: poDiscoveryProject.projectId,
+        projectNumber: poDiscoveryProject.projectNumber,
+        projectName: poDiscoveryProject.projectName,
+        dataset: PO_DISCOVERY_DATASET,
+      };
+      const log = await prisma.syncLog.create({
+        data: { companyId: COMPANY_ID, triggeredBy: "purchase-order-discovery", steps: [selection] },
+        select: { id: true },
+      }).catch(() => null);
+      logId = log?.id ?? null;
+
+      const step = await runStep({
+        origin: request.nextUrl.origin.replace(/\/$/, ""),
+        secret,
+        projectId: poDiscoveryProject.projectId,
+        step: "purchase-order-line-item-details",
+        path: "/api/procore/sync/purchase-order-line-item-details",
+      });
+      const countRows = await prisma.$queryRawUnsafe<Array<{ line_count: number }>>(
+        `
+          SELECT COUNT(*)::int AS line_count
+          FROM "PurchaseOrderLineItemContractDetail"
+          WHERE "procoreCompanyId" = $1
+            AND "procoreProjectId" = $2
+        `,
+        COMPANY_ID,
+        poDiscoveryProject.projectId
+      );
+      const lineCount = Number(countRows[0]?.line_count || 0);
+      const success = step.status === "ok";
+      const error = success
+        ? null
+        : JSON.stringify(step.detail || "Purchase order discovery failed").slice(0, 4_000);
+      if (step.rateLimited && step.rateLimitUntil) {
+        await setProcoreRateLimit({
+          companyId: COMPANY_ID,
+          until: new Date(step.rateLimitUntil),
+          error,
+        });
+      }
+      await finishProjectSync({
+        project: poDiscoveryProject,
+        success,
+        nextRunMinutes: step.rateLimitUntil
+          ? Math.max(15, Math.ceil((new Date(step.rateLimitUntil).getTime() - Date.now()) / 60_000))
+          : success && lineCount > 0 ? 365 * 24 * 60 : 30,
+        error,
+        result: { selection, step, lineCount },
+      });
+
+      const totalMs = Date.now() - startedAt;
+      if (logId !== null) {
+        await prisma.syncLog.update({
+          where: { id: logId },
+          data: {
+            finishedAt: new Date(),
+            success,
+            totalMs,
+            steps: [selection, step, { step: "cached-line-count", status: "ok", lineCount }] as object[],
+            error,
+          },
+        }).catch(() => undefined);
+      }
+      return NextResponse.json({
+        success,
+        companyId: COMPANY_ID,
+        projectId: poDiscoveryProject.projectId,
+        projectNumber: poDiscoveryProject.projectNumber,
+        projectName: poDiscoveryProject.projectName,
+        dataset: PO_DISCOVERY_DATASET,
+        lineCount,
+        totalMs,
+        steps: [step],
+      }, { status: success ? 200 : 207 });
+    }
+
     if (!estimateOnly) {
     await seedSingletonSyncQueue({
       companyId: COMPANY_ID,
@@ -366,6 +466,15 @@ export async function POST(request: NextRequest) {
         COMPANY_ID,
         bidBoardProject.projectId,
         BID_BOARD_DATASET,
+        worker.leaseId
+      ).catch(() => undefined);
+    }
+    if (poDiscoveryProject) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE procore_sync_project_states SET locked_by = NULL, locked_until = NULL, updated_at = NOW() WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,
+        COMPANY_ID,
+        poDiscoveryProject.projectId,
+        PO_DISCOVERY_DATASET,
         worker.leaseId
       ).catch(() => undefined);
     }

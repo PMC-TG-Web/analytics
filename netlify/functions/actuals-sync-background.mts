@@ -14,6 +14,7 @@ const handler = async (request: Request) => {
   const reconciliation = String(body?.mode || "") === "reconcile";
   let bidBoardHeaders: unknown = null;
   let onboarding: unknown = null;
+  const purchaseOrderDiscovery: unknown[] = [];
   let estimateDetails: unknown = null;
   if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
@@ -51,7 +52,40 @@ const handler = async (request: Request) => {
     const rateLimited = Array.isArray(result?.steps)
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     if (!response.ok || rateLimited) {
-      return Response.json({ success: false, bidBoardHeaders, onboarding, results });
+      return Response.json({ success: false, bidBoardHeaders, onboarding, purchaseOrderDiscovery, results });
+    }
+
+    for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
+      const poResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: JSON.stringify({ mode: "po-discovery" }),
+      });
+      const poResult = await poResponse.json().catch(() => null);
+      purchaseOrderDiscovery.push({ status: poResponse.status, result: poResult });
+      console.log(JSON.stringify({
+        event: "purchase-order-discovery-background",
+        status: poResponse.status,
+        success: poResult?.success,
+        skipped: poResult?.skipped,
+        reason: poResult?.reason,
+        projectId: poResult?.projectId,
+        projectNumber: poResult?.projectNumber,
+        lineCount: poResult?.lineCount,
+        totalMs: poResult?.totalMs,
+      }));
+      const poRateLimited = Array.isArray(poResult?.steps)
+        && poResult.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+      if (!poResponse.ok || poResult?.success === false || poRateLimited) {
+        return Response.json({
+          success: false,
+          bidBoardHeaders,
+          onboarding,
+          purchaseOrderDiscovery,
+          results,
+        });
+      }
+      if (poResult?.skipped) break;
     }
 
     if (Date.now() < deadline) {
@@ -73,7 +107,14 @@ const handler = async (request: Request) => {
       const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
         || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
       if (!estimateResponse.ok || estimateResult?.success === false || estimateRateLimited) {
-        return Response.json({ success: false, bidBoardHeaders, onboarding, estimateDetails, results });
+        return Response.json({
+          success: false,
+          bidBoardHeaders,
+          onboarding,
+          purchaseOrderDiscovery,
+          estimateDetails,
+          results,
+        });
       }
     }
   }
@@ -116,7 +157,14 @@ const handler = async (request: Request) => {
     // preventing the worker from advancing to the next due project.
     if (!response.ok || result?.skipped || rateLimited) break;
   }
-  return Response.json({ success: true, bidBoardHeaders, onboarding, estimateDetails, results });
+  return Response.json({
+    success: true,
+    bidBoardHeaders,
+    onboarding,
+    purchaseOrderDiscovery,
+    estimateDetails,
+    results,
+  });
 };
 
 export default handler;

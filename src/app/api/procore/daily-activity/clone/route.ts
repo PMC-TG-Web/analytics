@@ -8,6 +8,10 @@ import {
   isBillingFileCommitment,
   productivityCloneFingerprint,
 } from "@/lib/procore/dailyProductivityClone";
+import {
+  allocateExistingTimecardRows,
+  countTimecardOccurrences,
+} from "@/lib/procore/dailyTimecardClone";
 import { classifyFormsCloseoutLine } from "@/lib/formsProductivityCloseout";
 
 type UnknownRecord = Record<string, unknown>;
@@ -36,6 +40,8 @@ type TargetLookups = {
   existingProductivityRows: number;
   existingTimecardKeys: Set<string>;
   existingTimecardIdentityKeys: Set<string>;
+  existingTimecardCounts: Map<string, number>;
+  existingTimecardIdentityCounts: Map<string, number>;
   existingTimecardRows: number;
   timeTypes: UnknownRecord[];
   people: UnknownRecord[];
@@ -1149,6 +1155,12 @@ async function fetchTargetLookups(params: {
   const existingTimecardIdentityKeys = new Set(
     existingTimecards.map(timecardEntryIdentityKey).filter(Boolean),
   );
+  const existingTimecardCounts = countTimecardOccurrences(
+    existingTimecards.map(timecardEntryKey).filter(Boolean),
+  );
+  const existingTimecardIdentityCounts = countTimecardOccurrences(
+    existingTimecards.map(timecardEntryIdentityKey).filter(Boolean),
+  );
   const existingProductivityCounts = countProductivityFingerprints(
     existingProductivity.map(productivityEntryFingerprint).filter(Boolean)
   );
@@ -1170,6 +1182,8 @@ async function fetchTargetLookups(params: {
     existingProductivityRows: existingProductivity.length,
     existingTimecardKeys,
     existingTimecardIdentityKeys,
+    existingTimecardCounts,
+    existingTimecardIdentityCounts,
     existingTimecardRows: existingTimecards.length,
     timeTypes,
     people,
@@ -1468,6 +1482,8 @@ function mapTimecardEntry(
   );
   const existingTargetTimecard =
     existingTargetTimecardExact || existingTargetTimecardIdentityConflict;
+  const timecardExactKey = timecardPayloadKey(payload);
+  const timecardIdentityKey = timecardPayloadIdentityKey(payload);
 
   const issues = [
     payload.party_id ? "" : "missing_target_party",
@@ -1518,6 +1534,8 @@ function mapTimecardEntry(
     targetClassificationFallbackUsed: !targetClassification && mappedClassificationId !== undefined,
     targetClassification: targetClassification || (mappedClassificationId !== undefined ? { id: mappedClassificationId, mapped: true } : null),
     mapped: issues.length === 0,
+    timecardExactKey,
+    timecardIdentityKey,
     existingTargetTimecard,
     payload,
     issues,
@@ -1836,16 +1854,20 @@ export async function POST(request: Request) {
       ),
       targetLookups.existingProductivityUsedByLineItem
     );
-    const mappedTimecards = sourceTimecards.map((entry) =>
-      mapTimecardEntry(
-        entry,
-        targetLookups,
-        defaultTimecardTimeTypeId,
-        timecardTimeTypeMap,
-        partyMap,
-        timecardClassificationMap,
-        { allowPartyNameFallback, defaultPartyId, allowBuiltInPartyFallback }
-      )
+    const mappedTimecards = allocateExistingTimecardRows(
+      sourceTimecards.map((entry) =>
+        mapTimecardEntry(
+          entry,
+          targetLookups,
+          defaultTimecardTimeTypeId,
+          timecardTimeTypeMap,
+          partyMap,
+          timecardClassificationMap,
+          { allowPartyNameFallback, defaultPartyId, allowBuiltInPartyFallback }
+        )
+      ),
+      targetLookups.existingTimecardCounts,
+      targetLookups.existingTimecardIdentityCounts,
     );
     const sourceTimecardKeys = new Set<string>();
     const timecards = mappedTimecards.map((row) => {
@@ -1912,7 +1934,7 @@ export async function POST(request: Request) {
       (row) => !row.existingTargetProductivity && !row.expectedQuantityGuard?.blocked
     );
     const selectedTimecardRows = (repairMode ? [] : timecards)
-      .filter((row) => row.mapped && !row.duplicateSourceTimecard)
+      .filter((row) => row.mapped)
       .sort((a, b) => compareStableSourceIds(a.sourceId, b.sourceId));
     const creatableTimecardRows = selectedTimecardRows.filter((row) => !row.existingTargetTimecard);
 
@@ -1924,7 +1946,6 @@ export async function POST(request: Request) {
     let pauseReason = "";
     if (!dryRun) {
       const addedProjectUserIds = new Set<number>();
-      const liveTimecardKeys = new Set(targetLookups.existingTimecardKeys);
       for (const row of selectedProductivityRows.slice(createOffset, createOffset + createLimit)) {
         if (Date.now() - createStartedAt > maxCreateMs) {
           pausedBeforeTimeout = true;
@@ -1981,8 +2002,7 @@ export async function POST(request: Request) {
           break;
         }
         attemptedCreateRows += 1;
-        const targetTimecardKey = timecardPayloadKey(row.payload);
-        if (row.existingTargetTimecard || liveTimecardKeys.has(targetTimecardKey)) {
+        if (row.existingTargetTimecard) {
           createResults.push({
             type: "timecard_entry",
             sourceId: row.sourceId,
@@ -2010,7 +2030,6 @@ export async function POST(request: Request) {
           const result = await retryProcoreCreate(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })
           );
-          liveTimecardKeys.add(targetTimecardKey);
           createResults.push({ type: "timecard_entry", sourceId: row.sourceId, ok: true, result });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -2066,7 +2085,8 @@ export async function POST(request: Request) {
           (row) => row.expectedQuantityGuard?.blocked
         ).length,
         skippedExistingTimecards: timecards.filter((row) => row.existingTargetTimecard).length,
-        skippedDuplicateSourceTimecards: timecards.filter((row) => row.duplicateSourceTimecard).length,
+        skippedDuplicateSourceTimecards: 0,
+        preservedDuplicateSourceTimecards: timecards.filter((row) => row.duplicateSourceTimecard).length,
         requestedProductivitySourceIds: productivitySourceIds.length,
         foundRequestedProductivitySourceIds: requestedProductivityRows.length,
         unresolvedProductivitySourceIds: unresolvedProductivitySourceIds.length,

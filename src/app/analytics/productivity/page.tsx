@@ -122,6 +122,28 @@ type ReviewDialogState = {
   completion: WeightedCompletion;
 };
 
+type ReviewFilter = "all" | "not_reviewed" | "waiting" | "cooldown" | "ready" | "reviewed";
+
+function projectMatchesReviewFilter(
+  review: ProjectReview | undefined,
+  filter: ReviewFilter,
+  now = new Date(),
+): boolean {
+  if (filter === "all") return true;
+  const reviewed = review?.status === "completed";
+  if (filter === "reviewed") return reviewed;
+  if (filter === "not_reviewed") return !reviewed;
+  if (reviewed) return false;
+
+  const complete = review?.bidBoardStatus?.trim().toLowerCase() === "complete";
+  const eligibleAt = review?.reviewEligibleAt ? new Date(review.reviewEligibleAt) : null;
+  const validEligibleAt = Boolean(eligibleAt) && Number.isFinite(eligibleAt!.getTime());
+  if (filter === "waiting") return !complete;
+  if (filter === "cooldown") return complete && validEligibleAt && eligibleAt! > now;
+  if (filter === "ready") return complete && validEligibleAt && eligibleAt! <= now;
+  return true;
+}
+
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
   if (!raw.trim()) {
@@ -745,6 +767,7 @@ export default function ProductivityAnalyticsPage() {
   const [projectFilter, setProjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("Approved");
   const [activityFilter, setActivityFilter] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
   const [viewMode, setViewMode] = useState<"po" | "description">("po");
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedPos, setExpandedPos] = useState<Set<string>>(new Set());
@@ -823,6 +846,7 @@ export default function ProductivityAnalyticsPage() {
     return lines.filter((line) => {
       if (projectFilter && line.projectId !== projectFilter) return false;
       if (statusFilter && line.poStatus !== statusFilter) return false;
+      if (!projectMatchesReviewFilter(reviewsByProject[line.projectId], reviewFilter)) return false;
       if (activityFilter === "active" && line.productivityLogCount === 0) return false;
       if (activityFilter === "remaining" && line.remainingQuantity <= 0) return false;
       if (activityFilter === "over" && line.remainingQuantity >= 0) return false;
@@ -839,7 +863,7 @@ export default function ProductivityAnalyticsPage() {
         line.wbsCode,
       ].some((value) => String(value || "").toLowerCase().includes(needle));
     });
-  }, [activityFilter, lines, projectFilter, search, statusFilter]);
+  }, [activityFilter, lines, projectFilter, reviewFilter, reviewsByProject, search, statusFilter]);
 
   const projects = useMemo<ProjectGroup[]>(() => {
     const projectMap = new Map<string, ProjectGroup>();
@@ -1124,7 +1148,7 @@ export default function ProductivityAnalyticsPage() {
           </div>
 
           <div className="border-y border-slate-200 bg-slate-50 px-5 py-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <div>
                 <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Project</label>
                 <select
@@ -1160,6 +1184,21 @@ export default function ProductivityAnalyticsPage() {
                   <option value="active">With productivity</option>
                   <option value="remaining">Quantity remaining</option>
                   <option value="over">Over expected quantity</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Review Status</label>
+                <select
+                  value={reviewFilter}
+                  onChange={(event) => setReviewFilter(event.target.value as ReviewFilter)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <option value="all">All review statuses</option>
+                  <option value="not_reviewed">Not reviewed</option>
+                  <option value="waiting">Waiting for Complete</option>
+                  <option value="cooldown">30-day cooldown</option>
+                  <option value="ready">Ready for review</option>
+                  <option value="reviewed">Reviewed</option>
                 </select>
               </div>
               <div className="md:col-span-2">

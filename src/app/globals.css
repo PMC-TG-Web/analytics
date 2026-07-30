@@ -80,6 +80,17 @@ textarea::placeholder {
   padding-top: 0.5rem;
 }
 
+/* For analytics routes, nav is hidden on mobile/tablet and shown on desktop. */
+.app-content-with-nav-analytics {
+  padding-top: 0;
+}
+
+@media (min-width: 1024px) {
+  .app-content-with-nav-analytics {
+    padding-top: 0.5rem;
+  }
+}
+
 /* Concrete orders schedule scrollbar */
 .lt-visible-scrollbar {
   scrollbar-width: auto;

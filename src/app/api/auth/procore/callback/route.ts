@@ -13,10 +13,15 @@ export async function GET(request: Request) {
   const returnToCookie = cookieStore.get("procore_oauth_return_to")?.value;
   const expectedState = cookieStore.get("procore_oauth_state")?.value;
   const redirectUriCookie = cookieStore.get("procore_oauth_redirect_uri")?.value;
+  const oauthOriginCookie = cookieStore.get("procore_oauth_origin")?.value;
   const redirectUri =
     redirectUriCookie && redirectUriCookie.startsWith("http")
       ? redirectUriCookie
       : getProcoreRedirectUri(requestUrl.origin);
+  const callbackOrigin =
+    oauthOriginCookie && oauthOriginCookie.startsWith("http")
+      ? oauthOriginCookie
+      : new URL(redirectUri).origin;
   const returnToPath = returnToCookie && returnToCookie.startsWith("/") ? returnToCookie : "/procore";
 
   // Check for errors from Procore
@@ -24,14 +29,14 @@ export async function GET(request: Request) {
     console.error("Procore OAuth error:", error);
     cookieStore.delete("procore_oauth_state");
     return NextResponse.redirect(
-      new URL(`${returnToPath}?error=${encodeURIComponent(error)}`, request.url)
+      new URL(`${returnToPath}?error=${encodeURIComponent(error)}`, callbackOrigin)
     );
   }
 
   if (!state || !expectedState || state !== expectedState) {
     cookieStore.delete("procore_oauth_state");
     return NextResponse.redirect(
-      new URL(`${returnToPath}?error=invalid_state`, request.url)
+      new URL(`${returnToPath}?error=invalid_state`, callbackOrigin)
     );
   }
 
@@ -39,7 +44,7 @@ export async function GET(request: Request) {
   if (!code) {
     cookieStore.delete("procore_oauth_state");
     return NextResponse.redirect(
-      new URL(`${returnToPath}?error=missing_code`, request.url)
+      new URL(`${returnToPath}?error=missing_code`, callbackOrigin)
     );
   }
 
@@ -95,9 +100,10 @@ export async function GET(request: Request) {
 
     cookieStore.delete("procore_oauth_return_to");
     cookieStore.delete("procore_oauth_redirect_uri");
+    cookieStore.delete("procore_oauth_origin");
     cookieStore.delete("procore_oauth_state");
 
-    const redirectUrl = new URL(returnToPath, request.url);
+    const redirectUrl = new URL(returnToPath, callbackOrigin);
     redirectUrl.searchParams.set("status", "authenticated");
 
     // Redirect back to the originating Procore page with success.
@@ -106,9 +112,10 @@ export async function GET(request: Request) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("OAuth callback error:", message);
     cookieStore.delete("procore_oauth_state");
+    cookieStore.delete("procore_oauth_origin");
     
     return NextResponse.redirect(
-      new URL(`${returnToPath}?error=${encodeURIComponent(message)}`, request.url)
+      new URL(`${returnToPath}?error=${encodeURIComponent(message)}`, callbackOrigin)
     );
   }
 }

@@ -53,6 +53,13 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: 10 * 60,
     });
+    cookieStore.set("procore_oauth_origin", requestUrl.origin, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: 10 * 60,
+    });
     
     // Get the OAuth authorization URL
     const authUrl = getAuthorizationUrl(state, redirectUri);

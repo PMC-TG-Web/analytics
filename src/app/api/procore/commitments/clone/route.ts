@@ -572,9 +572,50 @@ async function fetchProjectBudgetLineItems(params: {
   return { records, errors };
 }
 
+async function fetchProjectWbsCodes(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  maxPages: number;
+}) {
+  const records: UnknownRecord[] = [];
+  const errors: UnknownRecord[] = [];
+
+  for (let page = 1; page <= params.maxPages; page += 1) {
+    const endpoints = [
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes?page=${page}&per_page=100`,
+      `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/work_breakdown_structure/wbs_codes?company_id=${encodeURIComponent(params.companyId)}&page=${page}&per_page=100`,
+    ];
+
+    let pageRecords: UnknownRecord[] = [];
+    let pageOk = false;
+    for (const endpoint of endpoints) {
+      const response = await procoreJson({
+        path: endpoint,
+        accessToken: params.accessToken,
+        companyId: params.companyId,
+        allowStatuses: [400, 403, 404, 405],
+      });
+      if (!response.ok) {
+        errors.push({ path: endpoint, status: response.status, response: response.payload });
+        continue;
+      }
+      pageRecords = asArray(response.payload, ["data", "wbs_codes", "codes"]).filter(isRecord);
+      pageOk = true;
+      break;
+    }
+
+    if (!pageOk || pageRecords.length === 0) break;
+    records.push(...pageRecords);
+    if (pageRecords.length < 100) break;
+  }
+
+  return { records, errors };
+}
+
 function budgetLineWbsId(item: UnknownRecord) {
   const wbsCode = isRecord(item.wbs_code) ? item.wbs_code : {};
-  return readStr(wbsCode.id ?? item.wbs_code_id);
+  return readStr(wbsCode.id ?? item.wbs_code_id ?? (budgetLineFlatCode(item) ? item.id : ""));
 }
 
 function budgetLineCostCode(item: UnknownRecord) {
@@ -632,11 +673,14 @@ function buildTargetWbsIndex(items: UnknownRecord[]) {
   const byCode = new Map<string, UnknownRecord[]>();
   const byFlatCode = new Map<string, UnknownRecord>();
   const byDescription = new Map<string, UnknownRecord[]>();
+  const seenWbsIds = new Set<string>();
   for (const item of items) {
     const wbsCodeId = budgetLineWbsId(item);
     const flatCode = normCode(budgetLineFlatCode(item));
     const costCode = costCodeBaseKey(budgetLineCostCode(item) || flatCode);
     if (!wbsCodeId || !costCode) continue;
+    if (seenWbsIds.has(wbsCodeId)) continue;
+    seenWbsIds.add(wbsCodeId);
     const costType = normCode(budgetLineCostType(item)) || flatCodeSuffix(flatCode);
     const normalized = {
       item,
@@ -803,6 +847,7 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
     issues: [] as UnknownRecord[],
     crosswalk: null,
     targetBudgetLineItems: 0,
+    targetWbsCodes: 0,
   };
 
   let crosswalk: ReturnType<typeof buildCommitmentCrosswalkFromWorkbook> | null = null;
@@ -831,6 +876,19 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
   summary.sourceBudgetLineItems = sourceBudget.records.length;
   if (sourceBudget.errors.length) summary.sourceBudgetWarnings = sourceBudget.errors.slice(0, 12);
 
+  const sourceWbs = await fetchProjectWbsCodes({
+    accessToken: params.accessToken,
+    companyId: params.sourceCompanyId,
+    projectId: params.sourceProjectId,
+    maxPages: params.maxPages,
+  });
+  for (const row of sourceWbs.records) {
+    const wbsId = budgetLineWbsId(row);
+    if (wbsId && !sourceBudgetByWbsId.has(wbsId)) sourceBudgetByWbsId.set(wbsId, row);
+  }
+  summary.sourceWbsCodes = sourceWbs.records.length;
+  if (sourceWbs.errors.length) summary.sourceWbsWarnings = sourceWbs.errors.slice(0, 12);
+
   const targetBudget = await fetchProjectBudgetLineItems({
     accessToken: params.accessToken,
     companyId: params.targetCompanyId,
@@ -839,7 +897,15 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
   });
   summary.targetBudgetLineItems = targetBudget.records.length;
   if (targetBudget.errors.length) summary.targetBudgetWarnings = targetBudget.errors.slice(0, 12);
-  const targetIndex = buildTargetWbsIndex(targetBudget.records);
+  const targetWbs = await fetchProjectWbsCodes({
+    accessToken: params.accessToken,
+    companyId: params.targetCompanyId,
+    projectId: params.targetProjectId,
+    maxPages: params.maxPages,
+  });
+  summary.targetWbsCodes = targetWbs.records.length;
+  if (targetWbs.errors.length) summary.targetWbsWarnings = targetWbs.errors.slice(0, 12);
+  const targetIndex = buildTargetWbsIndex([...targetBudget.records, ...targetWbs.records]);
 
   for (const lineItem of params.sourceLineItems) {
     const oldWbsId = sourceLineItemWbsId(lineItem);
@@ -852,7 +918,7 @@ async function applyCommitmentCrosswalkWbsMappings(params: {
     const sourceBudgetRow = sourceBudgetByWbsId.get(oldWbsId);
     if (sourceBudgetRow) {
       const directTargetWbs = resolveTargetWbsId({
-        "Cost Code": budgetLineCostCode(sourceBudgetRow),
+        "Cost Code": budgetLineCostCode(sourceBudgetRow) || costCodeBaseKey(budgetLineFlatCode(sourceBudgetRow)),
         "Cost code type": budgetLineCostType(sourceBudgetRow),
         Description: budgetLineDescription(sourceBudgetRow),
       }, targetIndex);

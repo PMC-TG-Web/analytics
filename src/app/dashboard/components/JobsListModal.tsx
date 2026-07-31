@@ -134,13 +134,17 @@ export function JobsListModal({
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">Approved PCOs</div>
+                      <div className="text-xs text-gray-500 mb-1">Approved COs</div>
                       <div className="text-sm font-semibold text-blue-600">
                         ${(project.approvedChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </div>
+                      <div className="text-[9px] text-gray-400">
+                        PCO ${(project.approvedPotentialChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {' · '}Prime ${(project.approvedPrimeChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">PCO Hours</div>
+                      <div className="text-xs text-gray-500 mb-1">CO Hours</div>
                       <div className="text-sm font-semibold text-blue-600">
                         {(project.approvedChangeOrderHours ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                       </div>

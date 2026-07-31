@@ -8,6 +8,13 @@ import {
   upsertChangeOrderPackage,
   upsertChangeOrderPackageLine,
 } from '@/lib/procoreChangeOrderPackages';
+import {
+  ensurePotentialChangeOrderTables,
+  reconcilePotentialChangeOrderLines,
+  reconcilePotentialChangeOrders,
+  upsertPotentialChangeOrder,
+  upsertPotentialChangeOrderLine,
+} from '@/lib/procorePotentialChangeOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,8 +62,9 @@ function unwrapArray(response: unknown): JsonObject[] {
   }
   if (response && typeof response === 'object') {
     const r = response as Record<string, unknown>;
-    if (Array.isArray(r.data)) {
-      return r.data.filter(
+    for (const key of ['data', 'potential_change_orders', 'line_items', 'line_item_contract_details']) {
+      if (!Array.isArray(r[key])) continue;
+      return (r[key] as unknown[]).filter(
         (v): v is JsonObject => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
       );
     }
@@ -147,6 +155,61 @@ async function fetchChangeOrderPackage(
   return data && typeof data === 'object' && !Array.isArray(data) ? (data as JsonObject) : {};
 }
 
+async function fetchPotentialChangeOrdersPage(
+  accessToken: string,
+  companyId: string,
+  projectId: string,
+  page: number,
+  perPage: number
+): Promise<JsonObject[]> {
+  const qs = new URLSearchParams({
+    project_id: projectId,
+    page: String(page),
+    per_page: String(perPage),
+  });
+  const data = await makeRequest(
+    `/rest/v1.0/potential_change_orders?${qs.toString()}`,
+    accessToken,
+    { method: 'GET', cache: 'no-store' },
+    companyId,
+    [404]
+  );
+  return unwrapArray(data);
+}
+
+async function fetchPotentialChangeOrderLines(
+  accessToken: string,
+  companyId: string,
+  projectId: string,
+  changeOrderId: string,
+  perPage: number
+): Promise<JsonObject[]> {
+  const endpointNames = ['line_items', 'line_item_contract_details'];
+  for (const endpointName of endpointNames) {
+    const records: JsonObject[] = [];
+    for (let page = 1; page <= 50; page += 1) {
+      const qs = new URLSearchParams({
+        project_id: projectId,
+        page: String(page),
+        per_page: String(perPage),
+      });
+      const data = await makeRequest(
+        `/rest/v1.0/potential_change_orders/${encodeURIComponent(changeOrderId)}/${endpointName}?${qs.toString()}`,
+        accessToken,
+        { method: 'GET', cache: 'no-store' },
+        companyId,
+        [404]
+      );
+      const pageRecords = unwrapArray(data);
+      if (pageRecords.length === 0) break;
+      records.push(...pageRecords);
+      if (pageRecords.length < perPage) break;
+    }
+    if (records.length > 0) return records;
+  }
+  return [];
+}
+
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -188,7 +251,10 @@ export async function POST(request: Request) {
       );
     }
 
-    await ensureChangeOrderPackagesTable();
+    await Promise.all([
+      ensureChangeOrderPackagesTable(),
+      ensurePotentialChangeOrderTables(),
+    ]);
 
     const explicitProjectIds = Array.isArray(body.projectIds)
       ? body.projectIds.map((v) => readText(v)).filter((v) => v.length > 0)
@@ -215,6 +281,11 @@ export async function POST(request: Request) {
     let totalPackagesUpserted = 0;
     let totalPackageLinesFetched = 0;
     let totalPackageLinesUpserted = 0;
+    let projectsWithPotentialChangeOrders = 0;
+    let totalPotentialChangeOrdersFetched = 0;
+    let totalPotentialChangeOrdersUpserted = 0;
+    let totalPotentialChangeOrderLinesFetched = 0;
+    let totalPotentialChangeOrderLinesUpserted = 0;
     const activeProjects: Array<{
       projectId: string;
       contractId: string;
@@ -251,6 +322,115 @@ export async function POST(request: Request) {
         }
         continue;
       }
+
+      // Potential Change Orders are synced separately from Prime Contract
+      // Change Orders. The dashboard uses the PCO IDs carried by PCCO lines
+      // to prevent the same approved change from being counted twice.
+      let potentialPage = 1;
+      let potentialFetchComplete = true;
+      const projectPotentialIds: string[] = [];
+      let projectPotentialFetched = 0;
+      let projectPotentialUpserted = 0;
+      let projectPotentialLinesFetched = 0;
+      let projectPotentialLinesUpserted = 0;
+      while (true) {
+        let potentialItems: JsonObject[];
+        try {
+          potentialItems = await fetchPotentialChangeOrdersPage(
+            accessToken,
+            companyId,
+            projectId,
+            potentialPage,
+            perPage
+          );
+        } catch (err) {
+          potentialFetchComplete = false;
+          const message = err instanceof Error ? err.message : String(err);
+          if (isAccessSkippedError(message)) {
+            if (warnings.length < 25) warnings.push(`project:${projectId} potential_change_orders skipped: ${message}`);
+          } else {
+            errors.push(`project:${projectId} potential_change_orders => ${message}`);
+          }
+          break;
+        }
+        if (potentialItems.length === 0) break;
+        projectPotentialFetched += potentialItems.length;
+
+        for (const potentialItem of potentialItems) {
+          const changeOrderId = readText(potentialItem.id);
+          if (!changeOrderId) continue;
+          try {
+            const persistedId = await upsertPotentialChangeOrder({
+              companyId,
+              projectId,
+              record: potentialItem,
+            });
+            if (!persistedId) continue;
+            projectPotentialIds.push(persistedId);
+            projectPotentialUpserted += 1;
+
+            const potentialLines = await fetchPotentialChangeOrderLines(
+              accessToken,
+              companyId,
+              projectId,
+              changeOrderId,
+              perPage
+            );
+            projectPotentialLinesFetched += potentialLines.length;
+            const persistedLineIds: string[] = [];
+            let linePersistenceFailed = false;
+            for (let index = 0; index < potentialLines.length; index += 1) {
+              try {
+                const lineId = await upsertPotentialChangeOrderLine({
+                  companyId,
+                  projectId,
+                  changeOrderId,
+                  changeOrderStatus: readText(potentialItem.status),
+                  record: potentialLines[index],
+                  index,
+                });
+                persistedLineIds.push(lineId);
+                projectPotentialLinesUpserted += 1;
+              } catch (err) {
+                linePersistenceFailed = true;
+                const message = err instanceof Error ? err.message : String(err);
+                errors.push(`project:${projectId} potential:${changeOrderId} line:${index + 1} => ${message}`);
+              }
+            }
+            if (!linePersistenceFailed) {
+              await reconcilePotentialChangeOrderLines({
+                companyId,
+                projectId,
+                changeOrderId,
+                lineItemIds: persistedLineIds,
+              });
+            }
+          } catch (err) {
+            potentialFetchComplete = false;
+            const message = err instanceof Error ? err.message : String(err);
+            errors.push(`project:${projectId} potential:${changeOrderId} => ${message}`);
+          }
+        }
+
+        if (potentialItems.length < perPage) break;
+        potentialPage += 1;
+        if (potentialPage > 50) {
+          potentialFetchComplete = false;
+          break;
+        }
+      }
+      if (potentialFetchComplete) {
+        await reconcilePotentialChangeOrders({
+          companyId,
+          projectId,
+          changeOrderIds: projectPotentialIds,
+        });
+      }
+      totalPotentialChangeOrdersFetched += projectPotentialFetched;
+      totalPotentialChangeOrdersUpserted += projectPotentialUpserted;
+      totalPotentialChangeOrderLinesFetched += projectPotentialLinesFetched;
+      totalPotentialChangeOrderLinesUpserted += projectPotentialLinesUpserted;
+      if (projectPotentialFetched > 0) projectsWithPotentialChangeOrders += 1;
 
       // Fetch change order packages (all pages)
       let page = 1;
@@ -395,6 +575,11 @@ export async function POST(request: Request) {
       totalPackagesUpserted,
       totalPackageLinesFetched,
       totalPackageLinesUpserted,
+      projectsWithPotentialChangeOrders,
+      totalPotentialChangeOrdersFetched,
+      totalPotentialChangeOrdersUpserted,
+      totalPotentialChangeOrderLinesFetched,
+      totalPotentialChangeOrderLinesUpserted,
       errors: errors.slice(0, 50),
       warnings: warnings.slice(0, 25),
       activeProjects: activeProjects.slice(0, 100),

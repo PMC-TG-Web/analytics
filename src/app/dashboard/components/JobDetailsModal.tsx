@@ -225,8 +225,12 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
 
   const metrics = [
     { label: "Sales", value: project.sales, prefix: "$", decimals: 0 },
-    { label: "Approved PCOs", value: project.approvedChangeOrderAmount, prefix: "$", decimals: 0 },
-    { label: "Approved PCO Hours", value: project.approvedChangeOrderHours, decimals: 1 },
+    { label: "Approved COs", value: project.approvedChangeOrderAmount, prefix: "$", decimals: 0 },
+    { label: "Approved CO Hours", value: project.approvedChangeOrderHours, decimals: 1 },
+    { label: "Standalone PCOs", value: project.approvedPotentialChangeOrderAmount, prefix: "$", decimals: 0 },
+    { label: "Standalone PCO Hrs", value: project.approvedPotentialChangeOrderHours, decimals: 1 },
+    { label: "Prime COs", value: project.approvedPrimeChangeOrderAmount, prefix: "$", decimals: 0 },
+    { label: "Prime CO Hours", value: project.approvedPrimeChangeOrderHours, decimals: 1 },
     { label: "Cost", value: project.cost, prefix: "$", decimals: 0 },
     { label: "Profit", value: (project.sales ?? 0) - (project.cost ?? 0), prefix: "$", decimals: 0 },
     { label: "Markup %", value: project.cost && project.cost > 0 ? (((project.sales ?? 0) - project.cost) / project.cost * 100) : 0, suffix: "%", decimals: 1 },

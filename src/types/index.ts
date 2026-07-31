@@ -8,6 +8,12 @@ export interface Project {
   approvedChangeOrderAmount?: number;
   approvedChangeOrderHours?: number;
   approvedChangeOrderCount?: number;
+  approvedPotentialChangeOrderAmount?: number;
+  approvedPotentialChangeOrderHours?: number;
+  approvedPotentialChangeOrderCount?: number;
+  approvedPrimeChangeOrderAmount?: number;
+  approvedPrimeChangeOrderHours?: number;
+  approvedPrimeChangeOrderCount?: number;
   cost?: number;
   hours?: number;
   laborSales?: number;

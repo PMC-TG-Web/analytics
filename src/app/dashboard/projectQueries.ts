@@ -63,6 +63,12 @@ export type Project = {
   approvedChangeOrderAmount?: number;
   approvedChangeOrderHours?: number;
   approvedChangeOrderCount?: number;
+  approvedPotentialChangeOrderAmount?: number;
+  approvedPotentialChangeOrderHours?: number;
+  approvedPotentialChangeOrderCount?: number;
+  approvedPrimeChangeOrderAmount?: number;
+  approvedPrimeChangeOrderHours?: number;
+  approvedPrimeChangeOrderCount?: number;
   cost?: number;
   hours?: number;
   laborSales?: number;
@@ -79,12 +85,20 @@ export type DashboardSummary = {
   totalSales: number;
   totalApprovedChangeOrders: number;
   totalApprovedChangeOrderHours: number;
+  totalApprovedPotentialChangeOrders: number;
+  totalApprovedPotentialChangeOrderHours: number;
+  totalApprovedPrimeChangeOrders: number;
+  totalApprovedPrimeChangeOrderHours: number;
   totalCost: number;
   totalHours: number;
   statusGroups: Record<string, { 
     sales: number;
     approvedChangeOrders?: number;
     approvedChangeOrderHours?: number;
+    approvedPotentialChangeOrders?: number;
+    approvedPotentialChangeOrderHours?: number;
+    approvedPrimeChangeOrders?: number;
+    approvedPrimeChangeOrderHours?: number;
     cost: number; 
     hours: number; 
     count: number;

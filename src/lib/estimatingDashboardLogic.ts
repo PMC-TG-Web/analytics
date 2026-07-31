@@ -34,9 +34,77 @@ function recordValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export function potentialChangeOrderHolderId(payload: unknown): string | null {
+  const holder = recordValue(recordValue(payload).holder);
+  const holderType = String(holder.holder_type ?? holder.type ?? "")
+    .replace(/[^a-z]/gi, "")
+    .toLowerCase();
+  if (holderType !== "potentialchangeorder") return null;
+  const id = String(holder.id ?? "").trim();
+  return id || null;
+}
+
 export function numericValue(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export type ApprovedChangeOrderTotals = {
+  potentialAmount: number;
+  potentialHours: number;
+  potentialCount: number;
+  primeAmount: number;
+  primeHours: number;
+  primeCount: number;
+};
+
+export function aggregateApprovedChangeOrders(params: {
+  primeChangeOrders: Array<{ projectId: string; amount?: unknown }>;
+  primeChangeOrderLines: Array<{ projectId: string; laborHours?: unknown; payload?: unknown }>;
+  potentialChangeOrders: Array<{ projectId: string; changeOrderId: string; amount?: unknown }>;
+  potentialChangeOrderLines: Array<{ projectId: string; changeOrderId: string; laborHours?: unknown }>;
+}): Map<string, ApprovedChangeOrderTotals> {
+  const empty = (): ApprovedChangeOrderTotals => ({
+    potentialAmount: 0,
+    potentialHours: 0,
+    potentialCount: 0,
+    primeAmount: 0,
+    primeHours: 0,
+    primeCount: 0,
+  });
+  const totalsByProject = new Map<string, ApprovedChangeOrderTotals>();
+  const representedPotentialIds = new Set<string>();
+  const potentialKey = (projectId: string, changeOrderId: string) => `${projectId}:${changeOrderId}`;
+
+  for (const line of params.primeChangeOrderLines) {
+    const potentialId = potentialChangeOrderHolderId(line.payload);
+    if (potentialId) representedPotentialIds.add(potentialKey(line.projectId, potentialId));
+  }
+  for (const changeOrder of params.primeChangeOrders) {
+    const totals = totalsByProject.get(changeOrder.projectId) ?? empty();
+    totals.primeAmount += numericValue(changeOrder.amount);
+    totals.primeCount += 1;
+    totalsByProject.set(changeOrder.projectId, totals);
+  }
+  for (const line of params.primeChangeOrderLines) {
+    const totals = totalsByProject.get(line.projectId) ?? empty();
+    totals.primeHours += numericValue(line.laborHours);
+    totalsByProject.set(line.projectId, totals);
+  }
+  for (const changeOrder of params.potentialChangeOrders) {
+    if (representedPotentialIds.has(potentialKey(changeOrder.projectId, changeOrder.changeOrderId))) continue;
+    const totals = totalsByProject.get(changeOrder.projectId) ?? empty();
+    totals.potentialAmount += numericValue(changeOrder.amount);
+    totals.potentialCount += 1;
+    totalsByProject.set(changeOrder.projectId, totals);
+  }
+  for (const line of params.potentialChangeOrderLines) {
+    if (representedPotentialIds.has(potentialKey(line.projectId, line.changeOrderId))) continue;
+    const totals = totalsByProject.get(line.projectId) ?? empty();
+    totals.potentialHours += numericValue(line.laborHours);
+    totalsByProject.set(line.projectId, totals);
+  }
+  return totalsByProject;
 }
 
 function dateValue(value: unknown): number {

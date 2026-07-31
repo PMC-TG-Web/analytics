@@ -124,6 +124,12 @@ function DashboardContent() {
   const totalApprovedChangeOrderHours = useSummary
     ? summary.totalApprovedChangeOrderHours
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedChangeOrderHours ?? 0), 0);
+  const totalApprovedPotentialChangeOrders = useSummary
+    ? summary.totalApprovedPotentialChangeOrders
+    : aggregatedProjects.reduce((sum, p) => sum + (p.approvedPotentialChangeOrderAmount ?? 0), 0);
+  const totalApprovedPrimeChangeOrders = useSummary
+    ? summary.totalApprovedPrimeChangeOrders
+    : aggregatedProjects.reduce((sum, p) => sum + (p.approvedPrimeChangeOrderAmount ?? 0), 0);
   const totalCost = useSummary ? summary.totalCost : aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
   const totalHours = useSummary ? summary.totalHours : aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
@@ -180,12 +186,29 @@ function DashboardContent() {
       if (isExcludedFromDashboard(p)) return;
       
       if (!groups[status]) {
-        groups[status] = { sales: 0, approvedChangeOrders: 0, approvedChangeOrderHours: 0, cost: 0, hours: 0, count: 0, laborByGroup: {}, concreteByGroup: {} };
+        groups[status] = {
+          sales: 0,
+          approvedChangeOrders: 0,
+          approvedChangeOrderHours: 0,
+          approvedPotentialChangeOrders: 0,
+          approvedPotentialChangeOrderHours: 0,
+          approvedPrimeChangeOrders: 0,
+          approvedPrimeChangeOrderHours: 0,
+          cost: 0,
+          hours: 0,
+          count: 0,
+          laborByGroup: {},
+          concreteByGroup: {},
+        };
       }
       
       groups[status].sales += (p.sales ?? 0);
       groups[status].approvedChangeOrders += (p.approvedChangeOrderAmount ?? 0);
       groups[status].approvedChangeOrderHours += (p.approvedChangeOrderHours ?? 0);
+      groups[status].approvedPotentialChangeOrders += (p.approvedPotentialChangeOrderAmount ?? 0);
+      groups[status].approvedPotentialChangeOrderHours += (p.approvedPotentialChangeOrderHours ?? 0);
+      groups[status].approvedPrimeChangeOrders += (p.approvedPrimeChangeOrderAmount ?? 0);
+      groups[status].approvedPrimeChangeOrderHours += (p.approvedPrimeChangeOrderHours ?? 0);
       groups[status].cost += (p.cost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
@@ -475,10 +498,12 @@ function DashboardContent() {
         )}
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-12">
+      <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-10 gap-4 mb-12">
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
-        <SummaryCard label="Approved PCOs" value={totalApprovedChangeOrders} prefix="$" large />
-        <SummaryCard label="Approved PCO Hours" value={totalApprovedChangeOrderHours} large />
+        <SummaryCard label="Approved COs" value={totalApprovedChangeOrders} prefix="$" large />
+        <SummaryCard label="Approved CO Hours" value={totalApprovedChangeOrderHours} large />
+        <SummaryCard label="Standalone PCOs" value={totalApprovedPotentialChangeOrders} prefix="$" large />
+        <SummaryCard label="Prime COs" value={totalApprovedPrimeChangeOrders} prefix="$" large />
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
         <SummaryCard label="Hours" value={totalHours} large />
         <SummaryCard label="RPH" value={rph} prefix="$" decimals={2} large />
@@ -513,7 +538,16 @@ function DashboardContent() {
                 return idxA - idxB;
               })
               .map(([status, metrics]) => {
-                const { sales, approvedChangeOrders = 0, approvedChangeOrderHours = 0, cost, hours, laborByGroup } = metrics;
+                const {
+                  sales,
+                  approvedChangeOrders = 0,
+                  approvedChangeOrderHours = 0,
+                  approvedPotentialChangeOrders = 0,
+                  approvedPrimeChangeOrders = 0,
+                  cost,
+                  hours,
+                  laborByGroup,
+                } = metrics;
               const rph = hours ? sales / hours : 0;
               const markup = cost ? ((sales - cost) / cost) * 100 : 0;
               const excludedGroupPatterns = ['part', 'equipment', 'subcontract'];
@@ -559,15 +593,30 @@ function DashboardContent() {
 
                     <div className="grid grid-cols-2 gap-4 border-t border-gray-50 pt-2">
                       <div>
-                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">Approved PCOs</span>
+                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">Approved COs</span>
                         <span className="text-sm font-black text-blue-600">
                           {`$${Number(approvedChangeOrders).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">PCO Hours</span>
+                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">CO Hours</span>
                         <span className="text-sm font-black text-blue-600">
                           {Number(approvedChangeOrderHours).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 border-t border-gray-50 pt-2">
+                      <div>
+                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">Standalone PCOs</span>
+                        <span className="text-xs font-black text-slate-600">
+                          {`$${Number(approvedPotentialChangeOrders).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">Prime COs</span>
+                        <span className="text-xs font-black text-slate-600">
+                          {`$${Number(approvedPrimeChangeOrders).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                         </span>
                       </div>
                     </div>

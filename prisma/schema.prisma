@@ -1571,6 +1571,63 @@ model ProcoreChangeOrderPackageLine {
   @@map("procore_change_order_package_lines")
 }
 
+/// Potential Change Order header from Procore's Prime Contracts workflow.
+model ProcorePotentialChangeOrder {
+  companyId       String    @map("company_id")
+  projectId       String    @map("project_id")
+  changeOrderId   String    @map("change_order_id")
+  contractId      String?   @map("contract_id")
+  packageId       String?   @map("package_id")
+  number          String?
+  title           String?
+  status          String?
+  description     String?
+  amount          Decimal?  @db.Decimal(18, 4)
+  sourceCreatedAt DateTime? @map("source_created_at") @db.Timestamptz(6)
+  sourceUpdatedAt DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  payload         Json
+  syncedAt        DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+
+  @@id([companyId, projectId, changeOrderId])
+  @@index([companyId, projectId])
+  @@index([status])
+  @@index([packageId])
+  @@map("procore_potential_change_orders")
+}
+
+/// Normalized Potential Change Order line.
+model ProcorePotentialChangeOrderLine {
+  id                BigInt    @id @default(autoincrement())
+  companyId         String    @map("company_id")
+  projectId         String    @map("project_id")
+  changeOrderId     String    @map("change_order_id")
+  lineItemId        String    @map("line_item_id")
+  changeOrderStatus String?   @map("change_order_status")
+  description       String?
+  costCodeId        String?   @map("cost_code_id")
+  costCode          String?   @map("cost_code")
+  wbsCode           String?   @map("wbs_code")
+  lineItemTypeCode  String?   @map("line_item_type_code")
+  uom               String?
+  quantity          Decimal?  @db.Decimal(18, 4)
+  unitCost          Decimal?  @map("unit_cost") @db.Decimal(18, 4)
+  amount            Decimal?  @db.Decimal(18, 4)
+  laborHours        Decimal?  @map("labor_hours") @db.Decimal(18, 4)
+  payload           Json
+  sourceCreatedAt   DateTime? @map("source_created_at") @db.Timestamptz(6)
+  sourceUpdatedAt   DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  syncedAt          DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, projectId, changeOrderId, lineItemId])
+  @@index([companyId, projectId])
+  @@index([changeOrderId])
+  @@index([changeOrderStatus])
+  @@index([laborHours])
+  @@map("procore_potential_change_order_lines")
+}
+
 /// Canonical work scope where estimate, CO, timecard, productivity, and PO sources meet.
 model AnalyticsWorkScope {
   id               String                        @id @default(dbgenerated("(gen_random_uuid())::text"))

@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 
 import {
   addEstimateLineAmounts,
+  aggregateApprovedChangeOrders,
   canonicalBidBoardId,
   classifyConcreteGroup,
   classifyLaborGroup,
   concreteYardQuantity,
+  potentialChangeOrderHolderId,
   selectEstimateProposal,
 } from '../src/lib/estimatingDashboardLogic.ts';
 
@@ -27,6 +29,47 @@ test('generic concrete inherits the placement category from labor in its estimat
   assert.equal(classifyConcreteGroup({ name: '3500 PSI Concrete' }, 'Foundation Labor'), 'Foundation');
   assert.equal(classifyConcreteGroup({ name: 'Wall Concrete' }, 'Site Concrete Labor'), 'Wall');
   assert.equal(classifyConcreteGroup({ name: 'Slab On Grade Concrete' }, 'Site Concrete Labor'), 'Slab On Grade');
+});
+
+test('PCCO lines expose their originating Potential Change Order ID', () => {
+  assert.equal(
+    potentialChangeOrderHolderId({ holder: { id: 598134327315816, holder_type: 'PotentialChangeOrder' } }),
+    '598134327315816',
+  );
+  assert.equal(
+    potentialChangeOrderHolderId({ holder: { id: 123, holder_type: 'PrimeContractChangeOrder' } }),
+    null,
+  );
+});
+
+test('approved PCOs represented by a PCCO are excluded from sales and hours', () => {
+  const totals = aggregateApprovedChangeOrders({
+    primeChangeOrders: [{ projectId: 'project-1', amount: 150 }],
+    primeChangeOrderLines: [
+      {
+        projectId: 'project-1',
+        laborHours: 5,
+        payload: { holder: { id: 'pco-1', holder_type: 'PotentialChangeOrder' } },
+      },
+    ],
+    potentialChangeOrders: [
+      { projectId: 'project-1', changeOrderId: 'pco-1', amount: 100 },
+      { projectId: 'project-1', changeOrderId: 'pco-2', amount: 25 },
+    ],
+    potentialChangeOrderLines: [
+      { projectId: 'project-1', changeOrderId: 'pco-1', laborHours: 5 },
+      { projectId: 'project-1', changeOrderId: 'pco-2', laborHours: 2 },
+    ],
+  }).get('project-1');
+
+  assert.deepEqual(totals, {
+    potentialAmount: 25,
+    potentialHours: 2,
+    potentialCount: 1,
+    primeAmount: 150,
+    primeHours: 5,
+    primeCount: 1,
+  });
 });
 
 test('baseline estimate wins over a newer revision or change order', () => {

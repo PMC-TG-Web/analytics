@@ -10,6 +10,7 @@ import {
   classifyLaborGroup,
   concreteYardQuantity,
   numericValue,
+  selectClosestPopulatedEstimate,
   selectEstimateProposal,
 } from "@/lib/estimatingDashboardLogic";
 
@@ -326,7 +327,8 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         && Math.abs(numericValue(recordValue(proposal.payload).total) - primaryTotal) < 0.01,
       normalizedLineCount: lineCountsByProposal.get(`${id}:${proposal.proposalId}`) ?? 0,
     }));
-    const selected = selectEstimateProposal(candidates, { requirePrimary: hasPrimaryTotal });
+    const selected = selectEstimateProposal(candidates, { requirePrimary: hasPrimaryTotal })
+      ?? (hasPrimaryTotal ? selectClosestPopulatedEstimate(candidates, primaryTotal) : null);
     if (selected) selectedByBoard.set(id, selected);
   }
 

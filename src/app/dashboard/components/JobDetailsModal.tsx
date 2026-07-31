@@ -225,21 +225,18 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
 
   const metrics = [
     { label: "Sales", value: project.sales, prefix: "$", decimals: 0 },
-    { label: "Approved COs", value: project.approvedChangeOrderAmount, prefix: "$", decimals: 0 },
-    { label: "Approved CO Hours", value: project.approvedChangeOrderHours, decimals: 1 },
-    { label: "Standalone PCOs", value: project.approvedPotentialChangeOrderAmount, prefix: "$", decimals: 0 },
-    { label: "Standalone PCO Hrs", value: project.approvedPotentialChangeOrderHours, decimals: 1 },
-    { label: "Prime COs", value: project.approvedPrimeChangeOrderAmount, prefix: "$", decimals: 0 },
-    { label: "Prime CO Hours", value: project.approvedPrimeChangeOrderHours, decimals: 1 },
     { label: "Cost", value: project.cost, prefix: "$", decimals: 0 },
     { label: "Profit", value: (project.sales ?? 0) - (project.cost ?? 0), prefix: "$", decimals: 0 },
     { label: "Markup %", value: project.cost && project.cost > 0 ? (((project.sales ?? 0) - project.cost) / project.cost * 100) : 0, suffix: "%", decimals: 1 },
     { label: "Profit/Hr (net)", value: hoursWithoutPM > 0 ? ((project.sales ?? 0) - (project.cost ?? 0)) / hoursWithoutPM : 0, prefix: "$", decimals: 2 },
     { label: "Total Labor Hrs", value: project.hours, decimals: 0 },
-    { label: "Labor Markup %", value: laborAgg.cost && laborAgg.cost > 0 ? (((laborAgg.sales ?? 0) - laborAgg.cost) / laborAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
-    { label: "Subs Markup %", value: subsAgg.cost && subsAgg.cost > 0 ? (((subsAgg.sales ?? 0) - subsAgg.cost) / subsAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
-    { label: "Parts Markup %", value: partsAgg.cost && partsAgg.cost > 0 ? (((partsAgg.sales ?? 0) - partsAgg.cost) / partsAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
-    { label: "Equip Markup %", value: equipmentAgg.cost && equipmentAgg.cost > 0 ? (((equipmentAgg.sales ?? 0) - equipmentAgg.cost) / equipmentAgg.cost * 100) : 0, suffix: "%", decimals: 1 },
+  ];
+
+  const tradeMarkups = [
+    { label: "Labor", value: laborAgg.cost > 0 ? ((laborAgg.sales - laborAgg.cost) / laborAgg.cost * 100) : 0 },
+    { label: "Subs", value: subsAgg.cost > 0 ? ((subsAgg.sales - subsAgg.cost) / subsAgg.cost * 100) : 0 },
+    { label: "Parts", value: partsAgg.cost > 0 ? ((partsAgg.sales - partsAgg.cost) / partsAgg.cost * 100) : 0 },
+    { label: "Equip", value: equipmentAgg.cost > 0 ? ((equipmentAgg.sales - equipmentAgg.cost) / equipmentAgg.cost * 100) : 0 },
   ];
 
   return (
@@ -278,8 +275,8 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
-            {metrics.map((m) => (
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4 mb-10">
+            {metrics.slice(0, 1).map((m) => (
               <div key={m.label} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1 whitespace-nowrap overflow-hidden text-ellipsis">{m.label}</div>
                 <div className="text-lg font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -290,6 +287,52 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
                 </div>
               </div>
             ))}
+
+            <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Approved COs</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-bold text-gray-900">
+                  ${(project.approvedChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+                <span className="text-xs font-bold text-blue-600">
+                  {(project.approvedChangeOrderHours ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-3 border-t border-gray-100 pt-2 text-[10px] font-semibold text-gray-500">
+                <span>
+                  PCO ${(project.approvedPotentialChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {" · "}{(project.approvedPotentialChangeOrderHours ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs
+                </span>
+                <span>
+                  Prime ${(project.approvedPrimeChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {" · "}{(project.approvedPrimeChangeOrderHours ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs
+                </span>
+              </div>
+            </div>
+
+            {metrics.slice(1).map((m) => (
+              <div key={m.label} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1 whitespace-nowrap overflow-hidden text-ellipsis">{m.label}</div>
+                <div className="text-lg font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">
+                  {m.prefix}{(m.value ?? 0).toLocaleString(undefined, {
+                    minimumFractionDigits: m.decimals,
+                    maximumFractionDigits: m.decimals
+                  })}{m.suffix}
+                </div>
+              </div>
+            ))}
+
+            <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Trade Markups</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {tradeMarkups.map((markup) => (
+                  <div key={markup.label}>
+                    <div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{markup.label}</div>
+                    <div className="text-sm font-bold text-gray-900">{markup.value.toFixed(1)}%</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8 mb-10">

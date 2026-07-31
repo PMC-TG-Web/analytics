@@ -165,6 +165,25 @@ export function selectEstimateProposal<T extends EstimateProposalCandidate>(
   return [...candidates].sort(compareEstimateProposals)[0] ?? null;
 }
 
+export function selectClosestPopulatedEstimate<T extends EstimateProposalCandidate>(
+  proposals: T[],
+  primaryTotal: unknown,
+): T | null {
+  const target = numericValue(primaryTotal);
+  const populatedEstimates = proposals.filter((proposal) => (
+    proposalType(proposal) === "ESTIMATE"
+    && Number(proposal.normalizedLineCount ?? 0) > 0
+  ));
+  if (populatedEstimates.length === 0) return null;
+
+  return [...populatedEstimates].sort((left, right) => {
+    const leftDelta = Math.abs(numericValue(recordValue(left.payload).total) - target);
+    const rightDelta = Math.abs(numericValue(recordValue(right.payload).total) - target);
+    if (leftDelta !== rightDelta) return leftDelta - rightDelta;
+    return compareEstimateProposals(left, right);
+  })[0] ?? null;
+}
+
 const LABOR_CODE_GROUPS: Record<string, string> = {
   "01-300-10-20": "PM",
   "01-300-10-30": "Travel Labor",

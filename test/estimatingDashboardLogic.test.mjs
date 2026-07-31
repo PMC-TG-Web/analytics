@@ -9,6 +9,7 @@ import {
   classifyLaborGroup,
   concreteYardQuantity,
   potentialChangeOrderHolderId,
+  selectClosestPopulatedEstimate,
   selectEstimateProposal,
 } from '../src/lib/estimatingDashboardLogic.ts';
 
@@ -181,6 +182,27 @@ test('requiring the primary estimate does not fall back to a stale proposal', ()
   ], { requirePrimary: true });
 
   assert.equal(selected, null);
+});
+
+test('the closest populated estimate is used when the Bid Board total does not match to the penny', () => {
+  const selected = selectClosestPopulatedEstimate([
+    {
+      proposalId: '4420523',
+      isBaselineCandidate: true,
+      normalizedLineCount: 320,
+      sourceUpdatedAt: '2026-07-30T14:49:01Z',
+      payload: { type: 'ESTIMATE', total: 1455469.81 },
+    },
+    {
+      proposalId: '4434280',
+      isBaselineCandidate: false,
+      normalizedLineCount: 198,
+      sourceUpdatedAt: '2026-07-31T13:31:22Z',
+      payload: { type: 'ESTIMATE', total: 562538.30 },
+    },
+  ], 561139.42);
+
+  assert.equal(selected?.proposalId, '4434280');
 });
 
 test('project totals add item and labor amounts once', () => {

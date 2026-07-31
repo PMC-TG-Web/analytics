@@ -265,7 +265,7 @@ export async function seedEstimatingSyncQueue(companyId: string, dataset: string
         $2,
         project_number,
         project_name,
-        NOW(),
+        TIMESTAMPTZ '1970-01-01 00:00:00+00',
         NOW(),
         NOW()
       FROM pmc_bid_board_projects
@@ -342,7 +342,7 @@ export async function queueEstimatingSyncProjects(
         $2,
         project_number,
         project_name,
-        NOW(),
+        TIMESTAMPTZ '1970-01-01 00:00:00+00',
         NOW(),
         NOW()
       FROM pmc_bid_board_projects
@@ -352,7 +352,10 @@ export async function queueEstimatingSyncProjects(
       DO UPDATE SET
         project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
         project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
-        next_run_at = LEAST(procore_sync_project_states.next_run_at, NOW()),
+        -- A Bid Board edit is more urgent than routine daily refreshes already
+        -- waiting in this queue. The worker orders by next_run_at, so an epoch
+        -- due date gives changed/new estimates priority without another schema.
+        next_run_at = TIMESTAMPTZ '1970-01-01 00:00:00+00',
         updated_at = NOW()
     `,
     companyId,

@@ -15,7 +15,7 @@ const handler = async (request: Request) => {
   let bidBoardHeaders: unknown = null;
   let onboarding: unknown = null;
   const purchaseOrderDiscovery: unknown[] = [];
-  let estimateDetails: unknown = null;
+  const estimateDetails: unknown[] = [];
   if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -88,16 +88,17 @@ const handler = async (request: Request) => {
       if (poResult?.skipped) break;
     }
 
-    if (Date.now() < deadline) {
+    for (let index = 0; index < 3 && Date.now() < deadline; index += 1) {
       const estimateResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-sync-secret": expected },
         body: JSON.stringify({ mode: "estimates" }),
       });
       const estimateResult = await estimateResponse.json().catch(() => null);
-      estimateDetails = { status: estimateResponse.status, result: estimateResult };
+      estimateDetails.push({ status: estimateResponse.status, result: estimateResult });
       console.log(JSON.stringify({
         event: "estimate-detail-sync-background",
+        batch: index + 1,
         status: estimateResponse.status,
         success: estimateResult?.success,
         skipped: estimateResult?.skipped,
@@ -116,6 +117,7 @@ const handler = async (request: Request) => {
           results,
         });
       }
+      if (estimateResult?.skipped) break;
     }
   }
   const configuredCap = Math.min(

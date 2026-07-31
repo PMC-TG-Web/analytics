@@ -1687,6 +1687,26 @@ async function addCompanyUserToProject(params: {
   });
 }
 
+async function findProjectPersonIdByUserId(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  userId: number;
+}) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const people = await procoreFetch({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/people?company_id=${encodeURIComponent(params.companyId)}&page=1&per_page=1000`,
+    }).then(unwrapArray);
+    const person = people.find((row) => readStr(row.user_id) === String(params.userId));
+    const personId = getTargetPartyId(person);
+    if (personId !== undefined) return personId;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return undefined;
+}
+
 function retryDelayMsFromError(message: string) {
   const retryAfterMatch = message.match(/"retry_after"\s*:\s*(\d+)/i);
   const retryAfterSeconds = retryAfterMatch ? Number.parseInt(retryAfterMatch[1], 10) : 0;
@@ -2026,6 +2046,16 @@ export async function POST(request: Request) {
             });
             addedProjectUserIds.add(partyId);
             await new Promise((resolve) => setTimeout(resolve, 500));
+            const projectPersonId = await findProjectPersonIdByUserId({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              userId: partyId,
+            });
+            if (projectPersonId === undefined) {
+              throw new Error(`Target project person was not available after adding company user ${partyId}.`);
+            }
+            row.payload.party_id = projectPersonId;
           }
           const result = await retryProcoreCreate(() =>
             createTimecardEntry({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload: row.payload })

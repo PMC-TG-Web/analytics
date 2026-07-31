@@ -16,6 +16,9 @@ const handler = async () => {
     1,
     Number.parseInt(process.env.PROCORE_WEBHOOK_PROCESS_BATCH_SIZE || "25", 10) || 25
   );
+  const actualsPaused = ["true", "1", "yes"].includes(
+    String(process.env.PROCORE_ACTUALS_SYNC_PAUSED || "").trim().toLowerCase(),
+  );
 
   if (!syncSecret) {
     console.error("[scheduled-sync] PROCORE_SYNC_SECRET is not configured.");
@@ -94,15 +97,22 @@ const handler = async () => {
       ? "/api/background/nightly-structure-sync"
       : "/api/background/actuals-sync";
     const workerBody = isReconciliationWindow ? { mode: "reconcile" } : {};
-    const dispatch = await fetch(`${baseUrl}${workerPath}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-sync-secret": syncSecret,
-      },
-      body: JSON.stringify(workerBody),
-    });
-    console.log(`[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`);
+    const skipActualsDispatch = actualsPaused && workerName === "actuals-sync-background";
+    const dispatch = skipActualsDispatch
+      ? new Response(null, { status: 204 })
+      : await fetch(`${baseUrl}${workerPath}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-sync-secret": syncSecret,
+          },
+          body: JSON.stringify(workerBody),
+        });
+    console.log(
+      skipActualsDispatch
+        ? `[scheduled-sync] Skipped ${workerName} because PROCORE_ACTUALS_SYNC_PAUSED is enabled.`
+        : `[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`,
+    );
 
     return new Response(JSON.stringify({
       ok: ok && reminderResponse.ok && dispatch.ok,
@@ -110,6 +120,7 @@ const handler = async () => {
       reminderStatus: reminderResponse.status,
       dispatchStatus: dispatch.status,
       workerName,
+      actualsPaused,
       body,
       reminderBody,
     }), {

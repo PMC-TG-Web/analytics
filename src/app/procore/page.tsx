@@ -2996,7 +2996,22 @@ function ProcoreContent() {
         lastStatus = response.status;
         lastOk = response.ok;
         lastResult = result;
-        batchResults.push({ batchIndex: batchIndex + 1, createOffset: currentOffset, status: response.status, ok: response.ok, result });
+        batchResults.push({
+          batchIndex: batchIndex + 1,
+          createOffset: currentOffset,
+          status: response.status,
+          ok: response.ok,
+          result: {
+            success: result?.success,
+            counts: result?.counts,
+            nextStep: result?.nextStep,
+            error: result?.error,
+            details: result?.details,
+            createResults: Array.isArray(result?.createResults)
+              ? result.createResults.filter((row: any) => row?.ok === false)
+              : [],
+          },
+        });
 
         const aggregateResult = {
           ...result,

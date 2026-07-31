@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import {
@@ -37,6 +37,57 @@ const estimateDashboardLineSelect = {
 type EstimateDashboardLine = Prisma.ProcoreEstimateLineItemGetPayload<{
   select: typeof estimateDashboardLineSelect;
 }>;
+
+const globalForEstimatingDashboard = globalThis as unknown as {
+  potentialChangeOrderPrisma?: PrismaClient;
+};
+
+function potentialChangeOrderReadClient(): PrismaClient {
+  const directUrl = String(process.env.DIRECT_DATABASE_URL || "").trim();
+  if (!directUrl) return prisma;
+  if (!globalForEstimatingDashboard.potentialChangeOrderPrisma) {
+    globalForEstimatingDashboard.potentialChangeOrderPrisma = new PrismaClient({
+      datasources: { db: { url: directUrl } },
+      log: ["warn", "error"],
+    });
+  }
+  return globalForEstimatingDashboard.potentialChangeOrderPrisma;
+}
+
+async function loadApprovedPotentialChangeOrderData() {
+  const client = potentialChangeOrderReadClient();
+  try {
+    const [changeOrders, lines] = await Promise.all([
+      client.procorePotentialChangeOrder.findMany({
+        where: {
+          companyId: COMPANY_ID,
+          status: { equals: "approved", mode: "insensitive" },
+        },
+        select: {
+          projectId: true,
+          changeOrderId: true,
+          amount: true,
+        },
+      }),
+      client.procorePotentialChangeOrderLine.findMany({
+        where: {
+          companyId: COMPANY_ID,
+          changeOrderStatus: { equals: "approved", mode: "insensitive" },
+          laborHours: { not: null },
+        },
+        select: {
+          projectId: true,
+          changeOrderId: true,
+          laborHours: true,
+        },
+      }),
+    ]);
+    return { changeOrders, lines };
+  } catch (error) {
+    console.error("Failed to load approved Potential Change Orders; continuing without PCO detail:", error);
+    return { changeOrders: [], lines: [] };
+  }
+}
 
 async function loadEstimateDashboardLines(): Promise<EstimateDashboardLine[]> {
   const lines: EstimateDashboardLine[] = [];
@@ -179,8 +230,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     lineRows,
     approvedPrimeChangeOrders,
     approvedPrimeChangeOrderLines,
-    approvedPotentialChangeOrders,
-    approvedPotentialChangeOrderLines,
+    approvedPotentialChangeOrderData,
     pmcProjects,
     companyUsers,
     onboardingStates,
@@ -210,29 +260,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         payload: true,
       },
     }),
-    prisma.procorePotentialChangeOrder.findMany({
-      where: {
-        companyId: COMPANY_ID,
-        status: { equals: "approved", mode: "insensitive" },
-      },
-      select: {
-        projectId: true,
-        changeOrderId: true,
-        amount: true,
-      },
-    }),
-    prisma.procorePotentialChangeOrderLine.findMany({
-      where: {
-        companyId: COMPANY_ID,
-        changeOrderStatus: { equals: "approved", mode: "insensitive" },
-        laborHours: { not: null },
-      },
-      select: {
-        projectId: true,
-        changeOrderId: true,
-        laborHours: true,
-      },
-    }),
+    loadApprovedPotentialChangeOrderData(),
     prisma.pmcProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procore_company_users_live.findMany({
       where: { company_id: COMPANY_ID },
@@ -253,6 +281,8 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       },
     }),
   ]);
+  const approvedPotentialChangeOrders = approvedPotentialChangeOrderData.changeOrders;
+  const approvedPotentialChangeOrderLines = approvedPotentialChangeOrderData.lines;
 
   // Older imports prefixed the company ID to bid-board IDs. Those rows are
   // historical snapshots and can remain after a project leaves the live Bid

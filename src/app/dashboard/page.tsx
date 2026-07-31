@@ -119,16 +119,16 @@ function DashboardContent() {
 
   const totalSales = useSummary ? summary.totalSales : aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
   const totalApprovedChangeOrders = useSummary
-    ? summary.totalApprovedChangeOrders
+    ? (summary.totalApprovedChangeOrders ?? 0)
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedChangeOrderAmount ?? 0), 0);
   const totalApprovedChangeOrderHours = useSummary
-    ? summary.totalApprovedChangeOrderHours
+    ? (summary.totalApprovedChangeOrderHours ?? 0)
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedChangeOrderHours ?? 0), 0);
   const totalApprovedPotentialChangeOrders = useSummary
-    ? summary.totalApprovedPotentialChangeOrders
+    ? (summary.totalApprovedPotentialChangeOrders ?? 0)
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedPotentialChangeOrderAmount ?? 0), 0);
   const totalApprovedPrimeChangeOrders = useSummary
-    ? summary.totalApprovedPrimeChangeOrders
+    ? (summary.totalApprovedPrimeChangeOrders ?? 0)
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedPrimeChangeOrderAmount ?? 0), 0);
   const totalCost = useSummary ? summary.totalCost : aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
   const totalHours = useSummary ? summary.totalHours : aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
@@ -498,12 +498,22 @@ function DashboardContent() {
         )}
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-10 gap-4 mb-12">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-12">
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
-        <SummaryCard label="Approved COs" value={totalApprovedChangeOrders} prefix="$" large />
-        <SummaryCard label="Approved CO Hours" value={totalApprovedChangeOrderHours} large />
-        <SummaryCard label="Standalone PCOs" value={totalApprovedPotentialChangeOrders} prefix="$" large />
-        <SummaryCard label="Prime COs" value={totalApprovedPrimeChangeOrders} prefix="$" large />
+        <div className="flex w-full flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-4 text-center shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+          <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Approved COs</div>
+          <div className="text-2xl font-black tracking-tight text-teal-800 md:text-3xl">
+            ${totalApprovedChangeOrders.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+          <div className="mt-1 text-[11px] font-bold text-blue-600">
+            {totalApprovedChangeOrderHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs
+          </div>
+          <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">
+            PCO ${totalApprovedPotentialChangeOrders.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            <span className="mx-1 text-gray-300">·</span>
+            Prime ${totalApprovedPrimeChangeOrders.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+        </div>
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
         <SummaryCard label="Hours" value={totalHours} large />
         <SummaryCard label="RPH" value={rph} prefix="$" decimals={2} large />

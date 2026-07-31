@@ -111,7 +111,7 @@ export function JobsListModal({
                       {project.projectName || "N/A"}
                     </div>
                   </div>
-                  <div className="grid grid-cols-5 gap-4 mb-2">
+                  <div className="grid grid-cols-6 gap-4 mb-2">
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Status</div>
                       <div
@@ -137,6 +137,12 @@ export function JobsListModal({
                       <div className="text-xs text-gray-500 mb-1">Approved PCOs</div>
                       <div className="text-sm font-semibold text-blue-600">
                         ${(project.approvedChangeOrderAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">PCO Hours</div>
+                      <div className="text-sm font-semibold text-blue-600">
+                        {(project.approvedChangeOrderHours ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                       </div>
                     </div>
                     <div>

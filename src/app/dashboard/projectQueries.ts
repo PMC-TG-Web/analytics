@@ -61,6 +61,7 @@ export type Project = {
   status?: string;
   sales?: number;
   approvedChangeOrderAmount?: number;
+  approvedChangeOrderHours?: number;
   approvedChangeOrderCount?: number;
   cost?: number;
   hours?: number;
@@ -77,11 +78,13 @@ export type Project = {
 export type DashboardSummary = {
   totalSales: number;
   totalApprovedChangeOrders: number;
+  totalApprovedChangeOrderHours: number;
   totalCost: number;
   totalHours: number;
   statusGroups: Record<string, { 
     sales: number;
     approvedChangeOrders?: number;
+    approvedChangeOrderHours?: number;
     cost: number; 
     hours: number; 
     count: number;

@@ -71,6 +71,7 @@ export type EstimatingDashboardProject = {
   status?: string;
   sales: number;
   approvedChangeOrderAmount: number;
+  approvedChangeOrderHours: number;
   approvedChangeOrderCount: number;
   cost: number;
   hours: number;
@@ -92,11 +93,13 @@ export type EstimatingDashboardProject = {
 type DashboardSummary = {
   totalSales: number;
   totalApprovedChangeOrders: number;
+  totalApprovedChangeOrderHours: number;
   totalCost: number;
   totalHours: number;
   statusGroups: Record<string, {
     sales: number;
     approvedChangeOrders: number;
+    approvedChangeOrderHours: number;
     cost: number;
     hours: number;
     count: number;
@@ -155,7 +158,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     if (cached) return cached;
   }
 
-  const [boardRows, proposals, lineRows, approvedChangeOrders, pmcProjects, companyUsers, onboardingStates] = await Promise.all([
+  const [boardRows, proposals, lineRows, approvedChangeOrders, approvedChangeOrderLines, pmcProjects, companyUsers, onboardingStates] = await Promise.all([
     prisma.pmcBidBoardProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procoreEstimateProposal.findMany({ where: { companyId: COMPANY_ID } }),
     loadEstimateDashboardLines(),
@@ -168,6 +171,17 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         projectId: true,
         packageId: true,
         amount: true,
+      },
+    }),
+    prisma.procoreChangeOrderPackageLine.findMany({
+      where: {
+        companyId: COMPANY_ID,
+        packageStatus: { equals: "approved", mode: "insensitive" },
+        laborHours: { not: null },
+      },
+      select: {
+        projectId: true,
+        laborHours: true,
       },
     }),
     prisma.pmcProject.findMany({ where: { companyId: COMPANY_ID } }),
@@ -312,12 +326,17 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
   );
   const estimatorByUserId = new Map(companyUsers.map((user) => [user.user_id, clean(user.name)]));
   const onboardingByProjectId = new Map(onboardingStates.map((state) => [state.projectId, state]));
-  const approvedChangeOrdersByProject = new Map<string, { amount: number; count: number }>();
+  const approvedChangeOrdersByProject = new Map<string, { amount: number; hours: number; count: number }>();
   for (const changeOrder of approvedChangeOrders) {
-    const totals = approvedChangeOrdersByProject.get(changeOrder.projectId) ?? { amount: 0, count: 0 };
+    const totals = approvedChangeOrdersByProject.get(changeOrder.projectId) ?? { amount: 0, hours: 0, count: 0 };
     totals.amount += numericValue(changeOrder.amount);
     totals.count += 1;
     approvedChangeOrdersByProject.set(changeOrder.projectId, totals);
+  }
+  for (const line of approvedChangeOrderLines) {
+    const totals = approvedChangeOrdersByProject.get(line.projectId) ?? { amount: 0, hours: 0, count: 0 };
+    totals.hours += numericValue(line.laborHours);
+    approvedChangeOrdersByProject.set(line.projectId, totals);
   }
 
   const projects: EstimatingDashboardProject[] = [];
@@ -376,6 +395,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       // exactly to Procore; normalized lines still supply cost and labor.
       sales: bidBoardSales ?? (totals.lineCount > 0 ? totals.sales : proposalSales),
       approvedChangeOrderAmount: approvedChangeOrderTotals?.amount ?? 0,
+      approvedChangeOrderHours: approvedChangeOrderTotals?.hours ?? 0,
       approvedChangeOrderCount: approvedChangeOrderTotals?.count ?? 0,
       cost: totals.cost,
       hours: totals.hours,
@@ -397,6 +417,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         selectedProposalId: selected?.proposalId ?? null,
         proposalName: selected?.proposalName ?? null,
         approvedChangeOrderAmount: approvedChangeOrderTotals?.amount ?? 0,
+        approvedChangeOrderHours: approvedChangeOrderTotals?.hours ?? 0,
         approvedChangeOrderCount: approvedChangeOrderTotals?.count ?? 0,
         pmcGroup: totals.laborByGroup,
         concreteGroup: totals.concreteByGroup,
@@ -432,6 +453,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
   const summary: DashboardSummary = {
     totalSales: 0,
     totalApprovedChangeOrders: 0,
+    totalApprovedChangeOrderHours: 0,
     totalCost: 0,
     totalHours: 0,
     statusGroups: {},
@@ -445,6 +467,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
   for (const project of projects) {
     summary.totalSales += project.sales;
     summary.totalApprovedChangeOrders += project.approvedChangeOrderAmount;
+    summary.totalApprovedChangeOrderHours += project.approvedChangeOrderHours;
     summary.totalCost += project.cost;
     summary.totalHours += project.hours;
 
@@ -452,6 +475,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     const statusGroup = summary.statusGroups[status] ?? {
       sales: 0,
       approvedChangeOrders: 0,
+      approvedChangeOrderHours: 0,
       cost: 0,
       hours: 0,
       count: 0,
@@ -460,6 +484,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     };
     statusGroup.sales += project.sales;
     statusGroup.approvedChangeOrders += project.approvedChangeOrderAmount;
+    statusGroup.approvedChangeOrderHours += project.approvedChangeOrderHours;
     statusGroup.cost += project.cost;
     statusGroup.hours += project.hours;
     statusGroup.count += 1;

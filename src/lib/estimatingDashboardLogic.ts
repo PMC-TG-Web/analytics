@@ -1,6 +1,8 @@
 export type EstimateProposalCandidate = {
   proposalId: string;
+  isPrimaryEstimate?: boolean | null;
   isBaselineCandidate?: boolean | null;
+  normalizedLineCount?: number | null;
   sourceUpdatedAt?: Date | string | null;
   syncedAt?: Date | string | null;
   payload?: unknown;
@@ -51,8 +53,30 @@ export function compareEstimateProposals(
   left: EstimateProposalCandidate,
   right: EstimateProposalCandidate,
 ): number {
-  const leftPriority = left.isBaselineCandidate ? 3 : proposalType(left) === "ESTIMATE" ? 2 : 1;
-  const rightPriority = right.isBaselineCandidate ? 3 : proposalType(right) === "ESTIMATE" ? 2 : 1;
+  if (Boolean(left.isPrimaryEstimate) !== Boolean(right.isPrimaryEstimate)) {
+    return right.isPrimaryEstimate ? 1 : -1;
+  }
+
+  const leftIsEstimate = left.isBaselineCandidate || proposalType(left) === "ESTIMATE";
+  const rightIsEstimate = right.isBaselineCandidate || proposalType(right) === "ESTIMATE";
+  if (leftIsEstimate !== rightIsEstimate) return rightIsEstimate ? 1 : -1;
+
+  // Procore can leave an auto-created "Original Estimate" with no lines after
+  // the actual estimate is cloned or revised. Prefer a populated estimate in
+  // that case, but retain the baseline preference when both contain data (or
+  // when line-count information is not available to the caller).
+  const leftHasLines = left.normalizedLineCount === undefined
+    ? null
+    : Number(left.normalizedLineCount || 0) > 0;
+  const rightHasLines = right.normalizedLineCount === undefined
+    ? null
+    : Number(right.normalizedLineCount || 0) > 0;
+  if (leftIsEstimate && leftHasLines !== null && rightHasLines !== null && leftHasLines !== rightHasLines) {
+    return rightHasLines ? 1 : -1;
+  }
+
+  const leftPriority = left.isBaselineCandidate ? 3 : leftIsEstimate ? 2 : 1;
+  const rightPriority = right.isBaselineCandidate ? 3 : rightIsEstimate ? 2 : 1;
   if (leftPriority !== rightPriority) return rightPriority - leftPriority;
 
   const leftUpdated = dateValue(left.sourceUpdatedAt) || dateValue(left.syncedAt);
@@ -62,9 +86,15 @@ export function compareEstimateProposals(
   return String(right.proposalId).localeCompare(String(left.proposalId), undefined, { numeric: true });
 }
 
-export function selectEstimateProposal<T extends EstimateProposalCandidate>(proposals: T[]): T | null {
-  if (proposals.length === 0) return null;
-  return [...proposals].sort(compareEstimateProposals)[0] ?? null;
+export function selectEstimateProposal<T extends EstimateProposalCandidate>(
+  proposals: T[],
+  options: { requirePrimary?: boolean } = {},
+): T | null {
+  const candidates = options.requirePrimary
+    ? proposals.filter((proposal) => proposal.isPrimaryEstimate)
+    : proposals;
+  if (candidates.length === 0) return null;
+  return [...candidates].sort(compareEstimateProposals)[0] ?? null;
 }
 
 const LABOR_CODE_GROUPS: Record<string, string> = {

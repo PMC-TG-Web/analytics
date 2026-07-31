@@ -194,9 +194,31 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     proposalsByBoard.set(id, values);
   }
 
+  const lineCountsByProposal = new Map<string, number>();
+  for (const line of lineRows) {
+    const key = `${canonicalBidBoardId(line.bidBoardProjectId)}:${line.proposalId}`;
+    lineCountsByProposal.set(key, (lineCountsByProposal.get(key) ?? 0) + 1);
+  }
+
   const selectedByBoard = new Map<string, typeof proposals[number]>();
   for (const [id, values] of proposalsByBoard) {
-    const selected = selectEstimateProposal(values);
+    const boardPayload = recordValue(boardsById.get(id)?.payload);
+    const boardStats = recordValue(boardPayload.stats);
+    const hasPrimaryTotal = Object.prototype.hasOwnProperty.call(boardStats, "total");
+    const primaryTotal = numericValue(boardStats.total);
+    const candidates = values.map((proposal) => ({
+      ...proposal,
+      // The proposals endpoint does not expose an explicit `is_primary`
+      // boolean. Procore's Bid Board `stats.total` is the authoritative
+      // primary-estimate total; `include_in_primary_estimate` instead marks
+      // alternates that roll into that primary estimate. Match those two
+      // source fields so stale revisions cannot override the current primary.
+      isPrimaryEstimate: hasPrimaryTotal
+        && String(recordValue(proposal.payload).type || "").trim().toUpperCase() === "ESTIMATE"
+        && Math.abs(numericValue(recordValue(proposal.payload).total) - primaryTotal) < 0.01,
+      normalizedLineCount: lineCountsByProposal.get(`${id}:${proposal.proposalId}`) ?? 0,
+    }));
+    const selected = selectEstimateProposal(candidates, { requirePrimary: hasPrimaryTotal });
     if (selected) selectedByBoard.set(id, selected);
   }
 

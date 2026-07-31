@@ -295,6 +295,57 @@ async function reconcileNormalizedEstimateLines(params: {
   );
 }
 
+async function reconcileEstimateProposals(params: {
+  companyId: string;
+  bidBoardProjectId: string;
+  proposalIds: string[];
+}) {
+  const { companyId, bidBoardProjectId, proposalIds } = params;
+  const staleRows = await prisma.$queryRawUnsafe<Array<{ proposal_id: string }>>(
+    `
+      SELECT DISTINCT proposal_id
+      FROM (
+        SELECT proposal_id FROM procore_estimate_proposals
+        WHERE company_id = $1 AND bid_board_project_id = $2
+        UNION
+        SELECT proposal_id FROM procore_estimate_line_items
+        WHERE company_id = $1 AND bid_board_project_id = $2
+        UNION
+        SELECT proposal_id FROM procore_proposal_line_items_live
+        WHERE company_id = $1 AND bid_board_project_id = $2
+      ) stored
+      WHERE NOT (proposal_id = ANY($3::text[]))
+    `,
+    companyId,
+    bidBoardProjectId,
+    proposalIds
+  );
+  const staleProposalIds = staleRows.map((row) => row.proposal_id).filter(Boolean);
+  if (staleProposalIds.length === 0) return 0;
+
+  await Promise.all([
+    prisma.$executeRawUnsafe(
+      `DELETE FROM procore_estimate_line_items WHERE company_id = $1 AND bid_board_project_id = $2 AND proposal_id = ANY($3::text[])`,
+      companyId,
+      bidBoardProjectId,
+      staleProposalIds
+    ),
+    prisma.$executeRawUnsafe(
+      `DELETE FROM procore_proposal_line_items_live WHERE company_id = $1 AND bid_board_project_id = $2 AND proposal_id = ANY($3::text[])`,
+      companyId,
+      bidBoardProjectId,
+      staleProposalIds
+    ),
+    prisma.$executeRawUnsafe(
+      `DELETE FROM procore_estimate_proposals WHERE company_id = $1 AND bid_board_project_id = $2 AND proposal_id = ANY($3::text[])`,
+      companyId,
+      bidBoardProjectId,
+      staleProposalIds
+    ),
+  ]);
+  return staleProposalIds.length;
+}
+
 function getLineItemId(lineItem: unknown, bidBoardProjectId: string, proposalId: string): string {
   if (isRecord(lineItem)) {
     const directId = String(lineItem.id || lineItem.line_item_id || "").trim();
@@ -448,6 +499,7 @@ export async function POST(request: Request) {
         attempted: 0,
         persisted: 0,
         failed: 0,
+        staleProposalsRemoved: 0,
         errors: [] as string[],
       };
 
@@ -529,6 +581,7 @@ export async function POST(request: Request) {
           bidBoardProjectId: string;
           proposalCount: number;
           lineItemCount: number;
+          staleProposalCount: number;
         }> = [];
 
         for (const project of limitedBidBoardProjects) {
@@ -551,6 +604,7 @@ export async function POST(request: Request) {
 
           const proposals: unknown[] = [];
           let proposalPage = 1;
+          let proposalsAuthoritative = fetchAll;
 
           while (true) {
             try {
@@ -562,11 +616,26 @@ export async function POST(request: Request) {
               const proposalItems = asArray(proposalPayload, ["data", "proposals"]);
               if (proposalItems.length === 0) break;
               proposals.push(...proposalItems);
-              if (!fetchAll || proposalItems.length < perPage || proposals.length >= maxProposalsPerProject) break;
+              if (!fetchAll) {
+                proposalsAuthoritative = proposalItems.length < perPage;
+                break;
+              }
+              if (proposals.length > maxProposalsPerProject) {
+                proposalsAuthoritative = false;
+                break;
+              }
+              if (proposalItems.length < perPage) break;
+              if (proposals.length >= maxProposalsPerProject) {
+                proposalsAuthoritative = false;
+                break;
+              }
               proposalPage += 1;
             } catch (error) {
               const status = Number((error as { status?: number })?.status || 0);
-              if (status === 404) break;
+              if (status === 404) {
+                proposalsAuthoritative = false;
+                break;
+              }
               throw error;
             }
           }
@@ -681,10 +750,26 @@ export async function POST(request: Request) {
             }
           }
 
+          const currentProposalIds = limitedProposals
+            .map((proposal) => {
+              const record = isRecord(proposal) ? proposal : {};
+              return String(record.id || record.proposal_id || "").trim();
+            })
+            .filter(Boolean);
+          const staleProposalCount = persist && proposalsAuthoritative
+            ? await reconcileEstimateProposals({
+                companyId,
+                bidBoardProjectId,
+                proposalIds: currentProposalIds,
+              })
+            : 0;
+          persistence.staleProposalsRemoved += staleProposalCount;
+
           projectSummaries.push({
             bidBoardProjectId,
             proposalCount: limitedProposals.length,
             lineItemCount: projectLineItemCount,
+            staleProposalCount,
           });
         }
 

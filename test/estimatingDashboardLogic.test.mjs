@@ -54,6 +54,92 @@ test('baseline estimate wins over a newer revision or change order', () => {
   assert.equal(selected?.proposalId, '1');
 });
 
+test('a populated estimate wins over an empty auto-created baseline', () => {
+  const selected = selectEstimateProposal([
+    {
+      proposalId: '3',
+      isBaselineCandidate: false,
+      normalizedLineCount: 5,
+      sourceUpdatedAt: '2026-07-20T00:00:00Z',
+      payload: { type: 'CHANGE_ORDER' },
+    },
+    {
+      proposalId: '2',
+      isBaselineCandidate: false,
+      normalizedLineCount: 71,
+      sourceUpdatedAt: '2026-07-19T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+    {
+      proposalId: '1',
+      isBaselineCandidate: true,
+      normalizedLineCount: 0,
+      sourceUpdatedAt: '2026-06-01T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+  ]);
+
+  assert.equal(selected?.proposalId, '2');
+});
+
+test('a populated baseline still wins over a newer populated revision', () => {
+  const selected = selectEstimateProposal([
+    {
+      proposalId: '2',
+      isBaselineCandidate: false,
+      normalizedLineCount: 71,
+      sourceUpdatedAt: '2026-07-19T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+    {
+      proposalId: '1',
+      isBaselineCandidate: true,
+      normalizedLineCount: 42,
+      sourceUpdatedAt: '2026-06-01T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+  ]);
+
+  assert.equal(selected?.proposalId, '1');
+});
+
+test('the Procore primary estimate wins over baseline-name and recency fallbacks', () => {
+  const selected = selectEstimateProposal([
+    {
+      proposalId: '2',
+      isPrimaryEstimate: true,
+      isBaselineCandidate: false,
+      normalizedLineCount: 71,
+      sourceUpdatedAt: '2026-07-19T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+    {
+      proposalId: '1',
+      isPrimaryEstimate: false,
+      isBaselineCandidate: true,
+      normalizedLineCount: 72,
+      sourceUpdatedAt: '2026-07-20T00:00:00Z',
+      payload: { type: 'ESTIMATE' },
+    },
+  ]);
+
+  assert.equal(selected?.proposalId, '2');
+});
+
+test('requiring the primary estimate does not fall back to a stale proposal', () => {
+  const selected = selectEstimateProposal([
+    {
+      proposalId: '1',
+      isPrimaryEstimate: false,
+      isBaselineCandidate: true,
+      normalizedLineCount: 72,
+      payload: { type: 'ESTIMATE' },
+    },
+  ], { requirePrimary: true });
+
+  assert.equal(selected, null);
+});
+
 test('project totals add item and labor amounts once', () => {
   const totals = addEstimateLineAmounts(
     { sales: 0, cost: 0, hours: 0, laborSales: 0, laborCost: 0 },

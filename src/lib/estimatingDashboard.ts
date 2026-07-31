@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import {
@@ -14,6 +15,49 @@ import {
 const COMPANY_ID = process.env.PROCORE_COMPANY_ID || "598134325805519";
 const PROJECT_CACHE_KEY = `estimating-dashboard-projects:${COMPANY_ID}`;
 const PROJECT_CACHE_TTL_MS = 60_000;
+const ESTIMATE_LINE_PAGE_SIZE = 1_000;
+
+const estimateDashboardLineSelect = {
+  id: true,
+  bidBoardProjectId: true,
+  proposalId: true,
+  name: true,
+  groupId: true,
+  costCode: true,
+  uom: true,
+  quantity: true,
+  itemCost: true,
+  itemSales: true,
+  laborCost: true,
+  laborSales: true,
+  laborHours: true,
+} satisfies Prisma.ProcoreEstimateLineItemSelect;
+
+type EstimateDashboardLine = Prisma.ProcoreEstimateLineItemGetPayload<{
+  select: typeof estimateDashboardLineSelect;
+}>;
+
+async function loadEstimateDashboardLines(): Promise<EstimateDashboardLine[]> {
+  const lines: EstimateDashboardLine[] = [];
+  let lastId: bigint | null = null;
+
+  while (true) {
+    const page = await prisma.procoreEstimateLineItem.findMany({
+      where: {
+        companyId: COMPANY_ID,
+        ...(lastId === null ? {} : { id: { gt: lastId } }),
+      },
+      select: estimateDashboardLineSelect,
+      orderBy: { id: "asc" },
+      take: ESTIMATE_LINE_PAGE_SIZE,
+    });
+    lines.push(...page);
+    if (page.length < ESTIMATE_LINE_PAGE_SIZE) break;
+    lastId = page[page.length - 1].id;
+  }
+
+  return lines;
+}
 
 export type EstimatingDashboardProject = {
   id: string;
@@ -110,23 +154,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
   const [boardRows, proposals, lineRows, pmcProjects, companyUsers, onboardingStates] = await Promise.all([
     prisma.pmcBidBoardProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procoreEstimateProposal.findMany({ where: { companyId: COMPANY_ID } }),
-    prisma.procoreEstimateLineItem.findMany({
-      where: { companyId: COMPANY_ID },
-      select: {
-        bidBoardProjectId: true,
-        proposalId: true,
-        name: true,
-        groupId: true,
-        costCode: true,
-        uom: true,
-        quantity: true,
-        itemCost: true,
-        itemSales: true,
-        laborCost: true,
-        laborSales: true,
-        laborHours: true,
-      },
-    }),
+    loadEstimateDashboardLines(),
     prisma.pmcProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procore_company_users_live.findMany({
       where: { company_id: COMPANY_ID },

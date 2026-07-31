@@ -282,6 +282,10 @@ export async function GET(request: NextRequest) {
           SELECT
             k.company_id,
             k.project_id,
+            pp.project_number,
+            pp.project_name,
+            pp.customer,
+            pp.status AS project_status,
             'code:' || k.scope_code AS labor_group_key,
             k.scope_code,
             COALESCE(a.labor_description, b.labor_description, k.scope_code) AS labor_description,
@@ -303,6 +307,9 @@ export async function GET(request: NextRequest) {
           LEFT JOIN budget b USING (company_id, project_id, scope_code)
           LEFT JOIN approved_change_orders c USING (company_id, project_id, scope_code)
           LEFT JOIN actual a USING (company_id, project_id, scope_code)
+          LEFT JOIN pmc_projects pp
+            ON pp.company_id = k.company_id
+           AND pp.procore_project_id = k.project_id
           ORDER BY k.project_id, labor_description, k.scope_code
         `,
         companyId,
@@ -353,6 +360,10 @@ export async function GET(request: NextRequest) {
     const laborGroups = laborRows.map((row) => ({
       companyId: String(row.company_id),
       projectId: String(row.project_id),
+      projectNumber: toText(row.project_number),
+      projectName: toText(row.project_name) || String(row.project_id),
+      customer: toText(row.customer),
+      projectStatus: toText(row.project_status),
       key: String(row.labor_group_key),
       scopeCode: String(row.scope_code),
       description: toText(row.labor_description) || 'Uncategorized Labor',
@@ -375,7 +386,10 @@ export async function GET(request: NextRequest) {
       projectId,
       generatedAt: new Date().toISOString(),
       summary: {
-        projectCount: new Set(lines.map((line) => line.projectId)).size,
+        projectCount: new Set([
+          ...lines.map((line) => line.projectId),
+          ...laborGroups.map((group) => group.projectId),
+        ]).size,
         poCount: new Set(lines.map((line) => `${line.projectId}:${line.contractId}`)).size,
         lineCount: lines.length,
         activeLineCount: lines.filter((line) => line.productivityLogCount > 0).length,

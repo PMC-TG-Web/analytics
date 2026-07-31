@@ -62,6 +62,10 @@ type ApiSummary = {
 type LaborGroup = {
   companyId: string;
   projectId: string;
+  projectNumber: string | null;
+  projectName: string;
+  customer: string | null;
+  projectStatus: string | null;
   key: string;
   scopeCode: string;
   description: string;
@@ -833,8 +837,18 @@ export default function ProductivityAnalyticsPage() {
         label: [line.projectNumber, line.projectName].filter(Boolean).join(" · "),
       });
     }
+    for (const group of laborGroups) {
+      if (byId.has(group.projectId)) continue;
+      const review = reviewsByProject[group.projectId];
+      const projectNumber = group.projectNumber || review?.projectNumber;
+      const projectName = group.projectName || review?.projectName || group.projectId;
+      byId.set(group.projectId, {
+        id: group.projectId,
+        label: [projectNumber, projectName].filter(Boolean).join(" · "),
+      });
+    }
     return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [lines]);
+  }, [laborGroups, lines, reviewsByProject]);
 
   const statusOptions = useMemo(
     () => [...new Set(lines.map((line) => line.poStatus).filter((value): value is string => Boolean(value)))].sort(),
@@ -867,6 +881,7 @@ export default function ProductivityAnalyticsPage() {
 
   const projects = useMemo<ProjectGroup[]>(() => {
     const projectMap = new Map<string, ProjectGroup>();
+    const projectsWithPoLines = new Set(lines.map((line) => line.projectId));
     for (const line of filteredLines) {
       let project = projectMap.get(line.projectId);
       if (!project) {
@@ -897,6 +912,40 @@ export default function ProductivityAnalyticsPage() {
       po.lines.push(line);
     }
 
+    const needle = search.trim().toLowerCase();
+    for (const group of laborGroups) {
+      // Projects that have commitment lines are governed by the PO filters
+      // above. This fallback keeps labor-only projects visible until their
+      // commitments have been synced.
+      if (projectsWithPoLines.has(group.projectId)) continue;
+      if (projectFilter && group.projectId !== projectFilter) continue;
+      if (!projectMatchesReviewFilter(reviewsByProject[group.projectId], reviewFilter)) continue;
+      if (activityFilter === "active" && group.entryCount === 0) continue;
+      if (activityFilter === "remaining" && group.remainingHours <= 0) continue;
+      if (activityFilter === "over" && group.remainingHours >= 0) continue;
+      if (needle && ![
+        group.projectNumber,
+        group.projectName,
+        group.customer,
+        group.projectStatus,
+        group.description,
+        group.costCode,
+        group.scopeCode,
+      ].some((value) => String(value || "").toLowerCase().includes(needle))) continue;
+
+      if (!projectMap.has(group.projectId)) {
+        const review = reviewsByProject[group.projectId];
+        projectMap.set(group.projectId, {
+          projectId: group.projectId,
+          projectNumber: group.projectNumber || review?.projectNumber || null,
+          projectName: group.projectName || review?.projectName || group.projectId,
+          customer: group.customer,
+          projectStatus: group.projectStatus || review?.bidBoardStatus || null,
+          pos: [],
+        });
+      }
+    }
+
     return [...projectMap.values()]
       .map((project) => ({
         ...project,
@@ -910,7 +959,7 @@ export default function ProductivityAnalyticsPage() {
           .sort((a, b) => String(a.poNumber || a.poTitle || "").localeCompare(String(b.poNumber || b.poTitle || ""))),
       }))
       .sort((a, b) => a.projectName.localeCompare(b.projectName));
-  }, [filteredLines]);
+  }, [activityFilter, filteredLines, laborGroups, lines, projectFilter, reviewFilter, reviewsByProject, search]);
 
   const laborGroupsByProject = useMemo(() => {
     const byProject = new Map<string, LaborGroup[]>();
@@ -1263,6 +1312,7 @@ export default function ProductivityAnalyticsPage() {
                   const descriptionGroups = groupLinesByDescription(projectLines);
                   const activeDescriptions = descriptionGroups.filter((group) => group.productivityLogCount > 0).length;
                   const projectLaborGroups = laborGroupsByProject.get(project.projectId) || [];
+                  const projectTimecardEntries = projectLaborGroups.reduce((sum, group) => sum + group.entryCount, 0);
                   const projectCompletion = calculateWeightedCompletion({
                     lines: projectLines,
                     labor: projectLaborGroups,
@@ -1321,8 +1371,8 @@ export default function ProductivityAnalyticsPage() {
                             </div>
                             <p className="mt-1 text-xs font-semibold text-slate-300">
                               {viewMode === "po"
-                                ? `${project.customer || "No customer"} · ${project.pos.length} POs · ${projectLines.length} lines · ${activeLines} active`
-                                : `${project.customer || "No customer"} · ${descriptionGroups.length} descriptions · ${projectLines.length} lines · ${activeDescriptions} active`}
+                                ? `${project.customer || "No customer"} · ${project.pos.length} POs · ${projectLines.length} lines · ${activeLines} active · ${projectTimecardEntries} timecards`
+                                : `${project.customer || "No customer"} · ${descriptionGroups.length} descriptions · ${projectLines.length} lines · ${activeDescriptions} active · ${projectTimecardEntries} timecards`}
                             </p>
                           </div>
                         </button>

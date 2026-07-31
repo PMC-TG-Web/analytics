@@ -5,6 +5,8 @@ export interface Project {
   customer?: string;
   status?: string;
   sales?: number;
+  approvedChangeOrderAmount?: number;
+  approvedChangeOrderCount?: number;
   cost?: number;
   hours?: number;
   laborSales?: number;

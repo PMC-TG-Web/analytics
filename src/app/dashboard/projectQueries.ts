@@ -60,6 +60,8 @@ export type Project = {
   customer?: string;
   status?: string;
   sales?: number;
+  approvedChangeOrderAmount?: number;
+  approvedChangeOrderCount?: number;
   cost?: number;
   hours?: number;
   laborSales?: number;
@@ -74,10 +76,12 @@ export type Project = {
 
 export type DashboardSummary = {
   totalSales: number;
+  totalApprovedChangeOrders: number;
   totalCost: number;
   totalHours: number;
   statusGroups: Record<string, { 
-    sales: number; 
+    sales: number;
+    approvedChangeOrders?: number;
     cost: number; 
     hours: number; 
     count: number;

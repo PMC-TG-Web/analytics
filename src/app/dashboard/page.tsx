@@ -118,6 +118,9 @@ function DashboardContent() {
   const useSummary = !!summary && !startDate && !endDate && !isFullScan;
 
   const totalSales = useSummary ? summary.totalSales : aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
+  const totalApprovedChangeOrders = useSummary
+    ? summary.totalApprovedChangeOrders
+    : aggregatedProjects.reduce((sum, p) => sum + (p.approvedChangeOrderAmount ?? 0), 0);
   const totalCost = useSummary ? summary.totalCost : aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
   const totalHours = useSummary ? summary.totalHours : aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
@@ -174,10 +177,11 @@ function DashboardContent() {
       if (isExcludedFromDashboard(p)) return;
       
       if (!groups[status]) {
-        groups[status] = { sales: 0, cost: 0, hours: 0, count: 0, laborByGroup: {}, concreteByGroup: {} };
+        groups[status] = { sales: 0, approvedChangeOrders: 0, cost: 0, hours: 0, count: 0, laborByGroup: {}, concreteByGroup: {} };
       }
       
       groups[status].sales += (p.sales ?? 0);
+      groups[status].approvedChangeOrders += (p.approvedChangeOrderAmount ?? 0);
       groups[status].cost += (p.cost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
@@ -467,8 +471,9 @@ function DashboardContent() {
         )}
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-12">
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
+        <SummaryCard label="Approved PCOs" value={totalApprovedChangeOrders} prefix="$" large />
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
         <SummaryCard label="Hours" value={totalHours} large />
         <SummaryCard label="RPH" value={rph} prefix="$" decimals={2} large />
@@ -503,7 +508,7 @@ function DashboardContent() {
                 return idxA - idxB;
               })
               .map(([status, metrics]) => {
-                const { sales, cost, hours, laborByGroup } = metrics;
+                const { sales, approvedChangeOrders = 0, cost, hours, laborByGroup } = metrics;
               const rph = hours ? sales / hours : 0;
               const markup = cost ? ((sales - cost) / cost) * 100 : 0;
               const excludedGroupPatterns = ['part', 'equipment', 'subcontract'];
@@ -545,6 +550,13 @@ function DashboardContent() {
                       >
                         {`$${(sales as number).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                       </button>
+                    </div>
+
+                    <div className="flex justify-between items-center border-t border-gray-50 pt-2">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Approved PCOs</span>
+                      <span className="text-sm font-black text-blue-600">
+                        {`$${Number(approvedChangeOrders).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">

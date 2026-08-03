@@ -63,6 +63,22 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
+    const matchedProcoreProjectIds = Array.from(new Set(
+      rows
+        .map((row) => row.procoreProjectId)
+        .filter((projectId): projectId is string => Boolean(projectId)),
+    ));
+    const procoreBudgetTotals = matchedProcoreProjectIds.length
+      ? await prisma.budgetLineItem.groupBy({
+          by: ['projectId'],
+          where: { projectId: { in: matchedProcoreProjectIds } },
+          _sum: { originalBudgetAmount: true, amount: true },
+          _count: { _all: true },
+          _max: { syncedAt: true },
+        })
+      : [];
+    const procoreBudgetByProjectId = new Map(procoreBudgetTotals.map((total) => [total.projectId, total]));
+
     return noStoreJson({
       success: true,
       selectedSnapshotId: selected?.id || null,
@@ -78,28 +94,38 @@ export async function GET(request: NextRequest) {
         importedAt: snapshot.importedAt.toISOString(),
         rowCount: snapshot._count.rows,
       })),
-      rows: rows.map((row) => ({
-        id: row.id,
-        qboCustomerId: row.qboCustomerId,
-        recordType: row.recordType,
-        projectName: row.projectName,
-        fullyQualifiedName: row.fullyQualifiedName,
-        active: row.active,
-        procoreProjectId: row.procoreProjectId,
-        procoreProjectNumber: row.procoreProjectNumber,
-        procoreProjectName: row.procoreProjectName,
-        procoreMatchMethod: row.procoreMatchMethod,
-        sales: Number(row.sales),
-        costOfGoodsSold: Number(row.costOfGoodsSold),
-        operatingExpenses: Number(row.operatingExpenses),
-        otherIncome: Number(row.otherIncome),
-        otherExpenses: Number(row.otherExpenses),
-        actualCost: Number(row.actualCost),
-        profit: Number(row.profit),
-        marginPercent: row.marginPercent == null ? null : Number(row.marginPercent),
-        reportedNetIncome: Number(row.reportedNetIncome),
-        reconciliationDifference: Number(row.reconciliationDifference),
-      })),
+      rows: rows.map((row) => {
+        const budget = row.procoreProjectId ? procoreBudgetByProjectId.get(row.procoreProjectId) : null;
+        const directCostBudget = budget
+          ? budget._sum.originalBudgetAmount ?? budget._sum.amount ?? null
+          : null;
+
+        return {
+          id: row.id,
+          qboCustomerId: row.qboCustomerId,
+          recordType: row.recordType,
+          projectName: row.projectName,
+          fullyQualifiedName: row.fullyQualifiedName,
+          active: row.active,
+          procoreProjectId: row.procoreProjectId,
+          procoreProjectNumber: row.procoreProjectNumber,
+          procoreProjectName: row.procoreProjectName,
+          procoreMatchMethod: row.procoreMatchMethod,
+          procoreDirectCostBudget: directCostBudget,
+          procoreBudgetLineCount: budget?._count._all ?? 0,
+          procoreBudgetSyncedAt: budget?._max.syncedAt?.toISOString() ?? null,
+          sales: Number(row.sales),
+          costOfGoodsSold: Number(row.costOfGoodsSold),
+          operatingExpenses: Number(row.operatingExpenses),
+          otherIncome: Number(row.otherIncome),
+          otherExpenses: Number(row.otherExpenses),
+          actualCost: Number(row.actualCost),
+          profit: Number(row.profit),
+          marginPercent: row.marginPercent == null ? null : Number(row.marginPercent),
+          reportedNetIncome: Number(row.reportedNetIncome),
+          reconciliationDifference: Number(row.reconciliationDifference),
+        };
+      }),
     });
   } catch (error) {
     console.error('Failed to load QBO project profitability:', error);

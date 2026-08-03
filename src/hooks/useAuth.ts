@@ -22,6 +22,28 @@ function isCacheFresh(cachedAt: number): boolean {
   return Date.now() - cachedAt < AUTH_CACHE_TTL_MS;
 }
 
+function getSelectedDevLoginEmail(): string | null {
+  if (typeof document === 'undefined' || process.env.NODE_ENV === 'production') return null;
+
+  const cookie = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('dev_user_email='));
+  if (!cookie) return null;
+
+  try {
+    return decodeURIComponent(cookie.slice('dev_user_email='.length)).trim().toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheMatchesSelectedDevUser(state: CachedAuthState): boolean {
+  const selectedDevEmail = getSelectedDevLoginEmail();
+  if (!selectedDevEmail) return true;
+  return state.user?.email.trim().toLowerCase() === selectedDevEmail;
+}
+
 function readSessionAuthCache(): CachedAuthState | null {
   if (typeof window === 'undefined') return null;
 
@@ -34,20 +56,22 @@ function readSessionAuthCache(): CachedAuthState | null {
 
     const candidate = parsed.user;
     if (candidate === null) {
-      return { user: null, cachedAt: parsed.cachedAt };
+      const state = { user: null, cachedAt: parsed.cachedAt };
+      return cacheMatchesSelectedDevUser(state) ? state : null;
     }
 
     if (!candidate || typeof candidate !== 'object') return null;
     const userObj = candidate as { email?: unknown; name?: unknown };
     if (typeof userObj.email !== 'string' || !userObj.email.trim()) return null;
 
-    return {
+    const state = {
       user: {
         email: userObj.email,
         name: typeof userObj.name === 'string' ? userObj.name : null,
       },
       cachedAt: parsed.cachedAt,
     };
+    return cacheMatchesSelectedDevUser(state) ? state : null;
   } catch {
     return null;
   }
@@ -115,7 +139,7 @@ export function useAuth() {
     let cancelled = false;
 
     const cached = inMemoryAuthState;
-    if (cached && isCacheFresh(cached.cachedAt)) {
+    if (cached && isCacheFresh(cached.cachedAt) && cacheMatchesSelectedDevUser(cached)) {
       setUser(cached.user);
       setError(cached.user ? null : 'Not authenticated');
       setLoading(false);

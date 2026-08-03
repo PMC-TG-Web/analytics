@@ -11,7 +11,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
-    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "reporting", "analytics"
+    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "admin", "reporting", "analytics"
   ],
   "HR": [
     "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
@@ -291,11 +291,13 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/kpi', permission: 'kpi' },
   { prefix: '/wip', permission: 'wip' },
   { prefix: '/analytics', permission: 'analytics' },
+  { prefix: '/accounting/project-profitability', permission: 'admin' },
   { prefix: '/', permission: 'home' },
 ];
 
 const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/admin', permission: 'admin' },
+  { prefix: '/api/accounting/project-profitability', permission: 'admin' },
   { prefix: '/api/debug', permission: 'diagnostics' },
   { prefix: '/api/explore', permission: 'diagnostics' },
   { prefix: '/api/health', permission: 'diagnostics' },

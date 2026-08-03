@@ -40,6 +40,13 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/procore/review'), 'procore');
   assert.equal(resolvePermissionForPath('/api/procore/test'), 'diagnostics');
   assert.equal(resolvePermissionForPath('/api/procore/sync/all-projects'), 'admin');
+  assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'admin');
+  assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'admin');
+});
+
+test('QBO profitability access is included only in administrative permission groups', () => {
+  assert.equal(hasPageAccess('todd@pmcdecor.com', 'admin'), true);
+  assert.equal(hasPageAccess('david@pmcdecor.com', 'admin'), false);
 });
 
 test('resolvePermissionForPath falls back to home only for the root page', () => {

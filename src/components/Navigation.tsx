@@ -8,7 +8,7 @@ import { hasPageAccess, USER_PERMISSIONS } from "@/lib/permissions";
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
-const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:";
+const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:v2:";
 const NAV_PERMISSIONS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
 const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
@@ -41,6 +41,7 @@ const navLinks: NavLink[] = [
   { href: "/procore/commitments-live", label: "Commitments", page: "procore" },
   { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore" },
   { href: "/analytics", label: "Analytics", page: "analytics" },
+  { href: "/accounting/project-profitability", label: "QBO P&L", page: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
@@ -172,9 +173,12 @@ export default function Navigation({
         console.log('Permissions fetched:', data);
         
         // Populate USER_PERMISSIONS with the current user's assigned permissions.
-        const responsePermissions = Array.isArray(data.data?.expandedPermissions)
-          ? data.data.expandedPermissions
-          : data.data?.permissions;
+        // Store the assigned permissions and expand them locally. This keeps group
+        // definitions authoritative and prevents stale expanded lists from hiding
+        // newly added administrative pages.
+        const responsePermissions = Array.isArray(data.data?.permissions)
+          ? data.data.permissions
+          : data.data?.expandedPermissions;
 
         if (data.data?.email && Array.isArray(responsePermissions)) {
           const nextEmail = data.data.email.toLowerCase();

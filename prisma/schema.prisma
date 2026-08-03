@@ -8,6 +8,56 @@ datasource db {
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
+model QboProfitabilitySnapshot {
+  id                String                       @id @default(cuid())
+  sourceHash        String                       @unique @map("source_hash")
+  sourceGeneratedAt DateTime                     @map("source_generated_at") @db.Timestamptz(6)
+  startDate         DateTime                     @map("start_date") @db.Date
+  endDate           DateTime                     @map("end_date") @db.Date
+  accountingMethod  String                       @map("accounting_method")
+  readOnly          Boolean                      @default(true) @map("read_only")
+  summary           Json
+  sourceCounts      Json                         @map("source_counts")
+  importedAt        DateTime                     @default(now()) @map("imported_at") @db.Timestamptz(6)
+  rows              QboProjectProfitabilityRow[]
+
+  @@index([importedAt(sort: Desc)], map: "idx_qbo_profitability_snapshots_imported")
+  @@index([startDate, endDate], map: "idx_qbo_profitability_snapshots_window")
+  @@map("qbo_profitability_snapshots")
+}
+
+model QboProjectProfitabilityRow {
+  id                       String                   @id @default(cuid())
+  snapshotId               String                   @map("snapshot_id")
+  qboCustomerId            String                   @map("qbo_customer_id")
+  recordType               String                   @map("record_type")
+  projectName              String                   @map("project_name")
+  fullyQualifiedName       String                   @map("fully_qualified_name")
+  active                   Boolean                  @default(true)
+  parentCustomerId         String?                  @map("parent_customer_id")
+  procoreProjectId         String?                  @map("procore_project_id")
+  procoreProjectNumber     String?                  @map("procore_project_number")
+  procoreProjectName       String?                  @map("procore_project_name")
+  procoreMatchMethod       String                   @map("procore_match_method")
+  sales                    Decimal                  @db.Decimal(18, 2)
+  costOfGoodsSold          Decimal                  @map("cost_of_goods_sold") @db.Decimal(18, 2)
+  operatingExpenses        Decimal                  @map("operating_expenses") @db.Decimal(18, 2)
+  otherIncome              Decimal                  @map("other_income") @db.Decimal(18, 2)
+  otherExpenses            Decimal                  @map("other_expenses") @db.Decimal(18, 2)
+  actualCost               Decimal                  @map("actual_cost") @db.Decimal(18, 2)
+  profit                   Decimal                  @db.Decimal(18, 2)
+  marginPercent            Decimal?                 @map("margin_percent") @db.Decimal(9, 4)
+  reportedNetIncome        Decimal                  @map("reported_net_income") @db.Decimal(18, 2)
+  reconciliationDifference Decimal                  @map("reconciliation_difference") @db.Decimal(18, 2)
+  snapshot                 QboProfitabilitySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, qboCustomerId], map: "qbo_project_profitability_snapshot_customer_key")
+  @@index([snapshotId, recordType], map: "idx_qbo_project_profitability_record_type")
+  @@index([snapshotId, procoreMatchMethod], map: "idx_qbo_project_profitability_match")
+  @@index([snapshotId, projectName], map: "idx_qbo_project_profitability_project_name")
+  @@map("qbo_project_profitability_rows")
+}
+
 model SyncLog {
   id          BigInt    @id @default(autoincrement())
   startedAt   DateTime  @default(now()) @map("started_at")

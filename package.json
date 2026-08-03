@@ -13,6 +13,7 @@
     "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
     "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",
     "verify:headers": "node scripts/verifyIframeHeaders.mjs",
+    "qbo:profitability:import": "node scripts/importQboProjectProfitability.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

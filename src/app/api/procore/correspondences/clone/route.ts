@@ -205,27 +205,62 @@ function resolveTargetItem(
   return titleMatches.length === 1 ? titleMatches[0] : undefined;
 }
 
+function hasOriginalResponseAttribution(notes: unknown) {
+  return /^Original response by [^\r\n]+/i.test(readStr(notes));
+}
+
+function stripClonedResponseAttribution(notes: unknown) {
+  return readStr(notes).replace(/^Original response by [^\r\n]+(?:\r?\n){1,2}/i, "");
+}
+
 function responseKey(response: UnknownRecord) {
-  return `${normalizeKey(response.notes)}|${response.official === true ? "official" : "unofficial"}`;
+  return `${normalizeKey(stripClonedResponseAttribution(response.notes))}|${
+    response.official === true ? "official" : "unofficial"
+  }`;
+}
+
+function clonedResponseNotes(response: UnknownRecord) {
+  const createdBy = isRecord(response.created_by) ? response.created_by : {};
+  const responder = readStr(createdBy.name || createdBy.login) || "Unknown responder";
+  const createdAtValue = readStr(response.created_at);
+  const parsedCreatedAt = createdAtValue ? new Date(createdAtValue) : null;
+  const createdAt = parsedCreatedAt && !Number.isNaN(parsedCreatedAt.getTime())
+    ? new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(parsedCreatedAt)
+    : "unknown date";
+  const attribution = `Original response by ${responder} on ${createdAt}`;
+  const notes = readStr(response.notes);
+  return notes ? `${attribution}\n\n${notes}` : attribution;
 }
 
 function buildResponsePlans(sourceResponses: UnknownRecord[], targetResponses: UnknownRecord[]) {
-  const targetIdsByKey = new Map<string, string[]>();
+  const targetResponsesByKey = new Map<string, UnknownRecord[]>();
   for (const response of targetResponses) {
     const key = responseKey(response);
-    const ids = targetIdsByKey.get(key) || [];
-    ids.push(readStr(response.id));
-    targetIdsByKey.set(key, ids);
+    const matches = targetResponsesByKey.get(key) || [];
+    matches.push(response);
+    targetResponsesByKey.set(key, matches);
   }
 
-  const sourceOccurrences = new Map<string, number>();
+  const consumedTargetIds = new Set<string>();
   return sourceResponses.map((response) => {
+    const sourceId = readStr(response.id);
     const key = responseKey(response);
-    const occurrence = sourceOccurrences.get(key) || 0;
-    sourceOccurrences.set(key, occurrence + 1);
-    const existingTargetResponseId = targetIdsByKey.get(key)?.[occurrence] || null;
+    const contentMatch = targetResponsesByKey
+      .get(key)
+      ?.find((candidate) => !consumedTargetIds.has(readStr(candidate.id)));
+    const existingTargetResponse = contentMatch;
+    const existingTargetResponseId = readStr(existingTargetResponse?.id) || null;
+    if (existingTargetResponseId) consumedTargetIds.add(existingTargetResponseId);
     return {
-      sourceId: readStr(response.id),
+      sourceId,
       position: readNum(response.position) ?? null,
       createdAt: readStr(response.created_at) || null,
       createdBy: isRecord(response.created_by)
@@ -236,11 +271,15 @@ function buildResponsePlans(sourceResponses: UnknownRecord[], targetResponses: U
           }
         : null,
       payload: {
-        notes: readStr(response.notes),
+        notes: clonedResponseNotes(response),
         official: response.official === true,
         skip_emails: true,
       },
+      sourceNotes: readStr(response.notes),
       existingTargetResponseId,
+      needsAttributionUpdate: Boolean(
+        existingTargetResponseId && !hasOriginalResponseAttribution(existingTargetResponse?.notes)
+      ),
       skippedAttachments: unwrapArray(response.attachments).map((attachment) => ({
         id: readStr(attachment.id),
         name: readStr(attachment.name || attachment.filename),
@@ -470,7 +509,7 @@ export async function POST(request: Request) {
           const responsePlans = Array.isArray(plan.responses) ? plan.responses.filter(isRecord) : [];
           const missingResponsePlans = responsePlans.filter((responsePlan) =>
             !readStr(responsePlan.existingTargetResponseId)
-            && readStr(isRecord(responsePlan.payload) ? responsePlan.payload.notes : "")
+            && readStr(responsePlan.sourceNotes)
           );
           const desiredStatus = readStr(plan.status);
           const existingTargetStatus = readStr(plan.existingTargetStatus);
@@ -510,13 +549,14 @@ export async function POST(request: Request) {
                 sourceId: responsePlan.sourceId,
                 ok: true,
                 skippedExisting: true,
+                missingOriginalAttribution: responsePlan.needsAttributionUpdate === true,
                 targetResponseId: existingTargetResponseId,
               });
               continue;
             }
             try {
               const responsePayload = isRecord(responsePlan.payload) ? responsePlan.payload : {};
-              if (!readStr(responsePayload.notes)) {
+              if (!readStr(responsePlan.sourceNotes)) {
                 responseResults.push({ sourceId: responsePlan.sourceId, ok: true, skippedBlank: true });
                 continue;
               }
@@ -591,6 +631,12 @@ export async function POST(request: Request) {
         : 0),
       0
     );
+    const missingResponseAttributionCount = plans.reduce(
+      (sum, plan) => sum + (Array.isArray(plan.responses)
+        ? plan.responses.filter((response) => isRecord(response) && response.needsAttributionUpdate === true).length
+        : 0),
+      0
+    );
     const responseResults = createResults.flatMap((result) =>
       Array.isArray(result.responseResults) ? result.responseResults.filter(isRecord) : []
     );
@@ -616,6 +662,7 @@ export async function POST(request: Request) {
         failed: failed.length,
         responsesCreated: responseResults.filter((result) => result.ok === true && Boolean(result.created)).length,
         responsesSkippedExisting: responseResults.filter((result) => result.skippedExisting === true).length,
+        responsesMissingOriginalAttribution: missingResponseAttributionCount,
         responsesFailed: responseResults.filter((result) => result.ok === false).length,
       },
       readyForLiveClone: missingTools.length === 0,

@@ -171,6 +171,85 @@ function buildGenericToolItemPayload(item: UnknownRecord) {
   return payload;
 }
 
+function canonicalPosition(value: unknown, tool: UnknownRecord) {
+  let position = normalizeKey(value).replace(/\s+/g, "");
+  const abbreviation = normalizeKey(tool.abbreviation).replace(/\s+/g, "");
+  if (!abbreviation) return position;
+  const prefix = `${abbreviation}-`;
+  while (position.startsWith(prefix)) position = position.slice(prefix.length);
+  return position;
+}
+
+function resolveTargetItem(
+  sourceItem: UnknownRecord,
+  sourceTool: UnknownRecord,
+  targetTool: UnknownRecord,
+  targetItems: UnknownRecord[]
+) {
+  const sourceTitle = normalizeKey(sourceItem.title);
+  const sourcePosition = canonicalPosition(
+    sourceItem.position || sourceItem.unformatted_position,
+    sourceTool
+  );
+  const exact = targetItems.find((targetItem) => {
+    const targetTitle = normalizeKey(targetItem.title);
+    const targetPosition = canonicalPosition(
+      targetItem.position || targetItem.unformatted_position,
+      targetTool
+    );
+    return Boolean(sourceTitle) && targetTitle === sourceTitle && targetPosition === sourcePosition;
+  });
+  if (exact) return exact;
+
+  const titleMatches = targetItems.filter((targetItem) => normalizeKey(targetItem.title) === sourceTitle);
+  return titleMatches.length === 1 ? titleMatches[0] : undefined;
+}
+
+function responseKey(response: UnknownRecord) {
+  return `${normalizeKey(response.notes)}|${response.official === true ? "official" : "unofficial"}`;
+}
+
+function buildResponsePlans(sourceResponses: UnknownRecord[], targetResponses: UnknownRecord[]) {
+  const targetIdsByKey = new Map<string, string[]>();
+  for (const response of targetResponses) {
+    const key = responseKey(response);
+    const ids = targetIdsByKey.get(key) || [];
+    ids.push(readStr(response.id));
+    targetIdsByKey.set(key, ids);
+  }
+
+  const sourceOccurrences = new Map<string, number>();
+  return sourceResponses.map((response) => {
+    const key = responseKey(response);
+    const occurrence = sourceOccurrences.get(key) || 0;
+    sourceOccurrences.set(key, occurrence + 1);
+    const existingTargetResponseId = targetIdsByKey.get(key)?.[occurrence] || null;
+    return {
+      sourceId: readStr(response.id),
+      position: readNum(response.position) ?? null,
+      createdAt: readStr(response.created_at) || null,
+      createdBy: isRecord(response.created_by)
+        ? {
+            id: readStr(response.created_by.id),
+            name: readStr(response.created_by.name),
+            login: readStr(response.created_by.login),
+          }
+        : null,
+      payload: {
+        notes: readStr(response.notes),
+        official: response.official === true,
+        skip_emails: true,
+      },
+      existingTargetResponseId,
+      skippedAttachments: unwrapArray(response.attachments).map((attachment) => ({
+        id: readStr(attachment.id),
+        name: readStr(attachment.name || attachment.filename),
+        url: readStr(attachment.url),
+      })),
+    };
+  });
+}
+
 async function fetchGenericToolItems(params: {
   accessToken: string;
   companyId: string;
@@ -185,6 +264,25 @@ async function fetchGenericToolItems(params: {
       params.genericToolId
     )}/generic_tool_items`,
     keys: ["generic_tool_items", "items"],
+    maxPages: params.maxPages,
+  });
+}
+
+async function fetchGenericToolItemResponses(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  genericToolId: string;
+  genericToolItemId: string;
+  maxPages: number;
+}) {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/generic_tools/${encodeURIComponent(
+      params.genericToolId
+    )}/generic_tool_items/${encodeURIComponent(params.genericToolItemId)}/generic_tool_item_responses`,
+    keys: ["generic_tool_item_responses", "responses"],
     maxPages: params.maxPages,
   });
 }
@@ -204,6 +302,44 @@ async function createGenericToolItem(params: {
       params.genericToolId
     )}/generic_tool_items`,
     body: { generic_tool_item: params.payload },
+  });
+}
+
+async function updateGenericToolItem(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  genericToolId: string;
+  genericToolItemId: string;
+  payload: UnknownRecord;
+}) {
+  return procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    method: "PATCH",
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/generic_tools/${encodeURIComponent(
+      params.genericToolId
+    )}/generic_tool_items/${encodeURIComponent(params.genericToolItemId)}`,
+    body: { generic_tool_item: params.payload },
+  });
+}
+
+async function createGenericToolItemResponse(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  genericToolId: string;
+  genericToolItemId: string;
+  payload: UnknownRecord;
+}) {
+  return procoreJson({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    method: "POST",
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/generic_tools/${encodeURIComponent(
+      params.genericToolId
+    )}/generic_tool_items/${encodeURIComponent(params.genericToolItemId)}/generic_tool_item_responses`,
+    body: { generic_tool_item_response: params.payload },
   });
 }
 
@@ -255,25 +391,61 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const items = await fetchGenericToolItems({
-        accessToken,
-        companyId: sourceCompanyId,
-        projectId: sourceProjectId,
-        genericToolId: sourceToolId,
-        maxPages,
-      });
+      const [items, targetItems] = await Promise.all([
+        fetchGenericToolItems({
+          accessToken,
+          companyId: sourceCompanyId,
+          projectId: sourceProjectId,
+          genericToolId: sourceToolId,
+          maxPages,
+        }),
+        fetchGenericToolItems({
+          accessToken,
+          companyId: targetCompanyId,
+          projectId: targetProjectId,
+          genericToolId: readStr(targetTool.id),
+          maxPages,
+        }),
+      ]);
 
       for (const item of items) {
+        const sourceItemId = readStr(item.id);
+        if (!sourceItemId) continue;
+        const targetItem = resolveTargetItem(item, sourceTool, targetTool, targetItems);
+        const targetItemId = readStr(targetItem?.id);
+        const [sourceResponses, targetResponses] = await Promise.all([
+          fetchGenericToolItemResponses({
+            accessToken,
+            companyId: sourceCompanyId,
+            projectId: sourceProjectId,
+            genericToolId: sourceToolId,
+            genericToolItemId: sourceItemId,
+            maxPages,
+          }),
+          targetItemId
+            ? fetchGenericToolItemResponses({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                genericToolId: readStr(targetTool.id),
+                genericToolItemId: targetItemId,
+                maxPages,
+              })
+            : Promise.resolve([]),
+        ]);
         plans.push({
           sourceGenericToolId: sourceToolId,
           targetGenericToolId: readStr(targetTool.id),
           sourceToolTitle: readStr(sourceTool.title),
           targetToolTitle: readStr(targetTool.title),
-          sourceId: readStr(item.id),
+          sourceId: sourceItemId,
+          existingTargetId: targetItemId || null,
+          existingTargetStatus: readStr(targetItem?.status) || null,
           title: readStr(item.title),
           position: readStr(item.position || item.unformatted_position),
           status: readStr(item.status),
           payload: buildGenericToolItemPayload(item),
+          responses: buildResponsePlans(sourceResponses, targetResponses),
           skipped: {
             attachments: unwrapArray(item.attachments).map((attachment) => ({
               id: readStr(attachment.id),
@@ -292,14 +464,110 @@ export async function POST(request: Request) {
     if (!dryRun) {
       for (const plan of plans.slice(createOffset, createOffset + createLimit)) {
         try {
-          const created = await createGenericToolItem({
-            accessToken,
-            companyId: targetCompanyId,
-            projectId: targetProjectId,
-            genericToolId: readStr(plan.targetGenericToolId),
-            payload: isRecord(plan.payload) ? plan.payload : {},
+          let targetItemId = readStr(plan.existingTargetId);
+          let created: unknown = null;
+          const responseResults: UnknownRecord[] = [];
+          const responsePlans = Array.isArray(plan.responses) ? plan.responses.filter(isRecord) : [];
+          const missingResponsePlans = responsePlans.filter((responsePlan) =>
+            !readStr(responsePlan.existingTargetResponseId)
+            && readStr(isRecord(responsePlan.payload) ? responsePlan.payload.notes : "")
+          );
+          const desiredStatus = readStr(plan.status);
+          const existingTargetStatus = readStr(plan.existingTargetStatus);
+          let restoreStatus = "";
+          if (!targetItemId) {
+            const createPayload = isRecord(plan.payload) ? { ...plan.payload } : {};
+            if (missingResponsePlans.length > 0 && normalizeKey(desiredStatus) === "closed") {
+              createPayload.status = "Open";
+              restoreStatus = desiredStatus;
+            }
+            created = await createGenericToolItem({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              genericToolId: readStr(plan.targetGenericToolId),
+              payload: createPayload,
+            });
+            const createdRecord = unwrapData(created);
+            targetItemId = isRecord(createdRecord) ? readStr(createdRecord.id) : "";
+            if (!targetItemId) throw new Error("Procore created the correspondence but did not return its item id.");
+          } else if (missingResponsePlans.length > 0 && normalizeKey(existingTargetStatus) === "closed") {
+            await updateGenericToolItem({
+              accessToken,
+              companyId: targetCompanyId,
+              projectId: targetProjectId,
+              genericToolId: readStr(plan.targetGenericToolId),
+              genericToolItemId: targetItemId,
+              payload: { status: "Open", skip_emails: true },
+            });
+            restoreStatus = existingTargetStatus;
+          }
+
+          for (const responsePlan of responsePlans) {
+            const existingTargetResponseId = readStr(responsePlan.existingTargetResponseId);
+            if (existingTargetResponseId) {
+              responseResults.push({
+                sourceId: responsePlan.sourceId,
+                ok: true,
+                skippedExisting: true,
+                targetResponseId: existingTargetResponseId,
+              });
+              continue;
+            }
+            try {
+              const responsePayload = isRecord(responsePlan.payload) ? responsePlan.payload : {};
+              if (!readStr(responsePayload.notes)) {
+                responseResults.push({ sourceId: responsePlan.sourceId, ok: true, skippedBlank: true });
+                continue;
+              }
+              const responseCreated = await createGenericToolItemResponse({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                genericToolId: readStr(plan.targetGenericToolId),
+                genericToolItemId: targetItemId,
+                payload: responsePayload,
+              });
+              responseResults.push({ sourceId: responsePlan.sourceId, ok: true, created: responseCreated });
+            } catch (responseError) {
+              responseResults.push({
+                sourceId: responsePlan.sourceId,
+                ok: false,
+                error: responseError instanceof Error ? responseError.message : String(responseError),
+                attemptedPayload: responsePlan.payload,
+              });
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+          if (restoreStatus) {
+            try {
+              const restored = await updateGenericToolItem({
+                accessToken,
+                companyId: targetCompanyId,
+                projectId: targetProjectId,
+                genericToolId: readStr(plan.targetGenericToolId),
+                genericToolItemId: targetItemId,
+                payload: { status: restoreStatus, skip_emails: true },
+              });
+              responseResults.push({ ok: true, statusRestored: restoreStatus, updated: restored });
+            } catch (restoreError) {
+              responseResults.push({
+                ok: false,
+                statusRestoreFailed: true,
+                error: restoreError instanceof Error ? restoreError.message : String(restoreError),
+                attemptedStatus: restoreStatus,
+              });
+            }
+          }
+          const responseFailures = responseResults.filter((result) => result.ok === false);
+          createResults.push({
+            sourceId: plan.sourceId,
+            ok: responseFailures.length === 0,
+            skippedExisting: Boolean(plan.existingTargetId),
+            targetItemId,
+            created,
+            responseResults,
           });
-          createResults.push({ sourceId: plan.sourceId, ok: true, created });
         } catch (error) {
           createResults.push({
             sourceId: plan.sourceId,
@@ -313,6 +581,19 @@ export async function POST(request: Request) {
     }
 
     const failed = createResults.filter((result) => result.ok === false);
+    const sourceResponseCount = plans.reduce(
+      (sum, plan) => sum + (Array.isArray(plan.responses) ? plan.responses.length : 0),
+      0
+    );
+    const missingResponseCount = plans.reduce(
+      (sum, plan) => sum + (Array.isArray(plan.responses)
+        ? plan.responses.filter((response) => isRecord(response) && !readStr(response.existingTargetResponseId)).length
+        : 0),
+      0
+    );
+    const responseResults = createResults.flatMap((result) =>
+      Array.isArray(result.responseResults) ? result.responseResults.filter(isRecord) : []
+    );
     return NextResponse.json({
       success: dryRun ? true : failed.length === 0,
       dryRun,
@@ -324,10 +605,18 @@ export async function POST(request: Request) {
         targetTools: targetTools.length,
         missingTools: missingTools.length,
         sourceItems: plans.length,
+        existingTargetItems: plans.filter((plan) => readStr(plan.existingTargetId)).length,
+        sourceResponses: sourceResponseCount,
+        missingResponses: missingResponseCount,
         createOffset,
         createLimit,
-        created: createResults.filter((result) => result.ok === true).length,
+        processed: createResults.length,
+        created: createResults.filter((result) => result.ok === true && Boolean(result.created)).length,
+        skippedExisting: createResults.filter((result) => result.skippedExisting === true).length,
         failed: failed.length,
+        responsesCreated: responseResults.filter((result) => result.ok === true && Boolean(result.created)).length,
+        responsesSkippedExisting: responseResults.filter((result) => result.skippedExisting === true).length,
+        responsesFailed: responseResults.filter((result) => result.ok === false).length,
       },
       readyForLiveClone: missingTools.length === 0,
       missingTools,

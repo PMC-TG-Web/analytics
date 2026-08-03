@@ -206,11 +206,27 @@ function resolveTargetItem(
 }
 
 function hasOriginalResponseAttribution(notes: unknown) {
-  return /^Original response by [^\r\n]+/i.test(readStr(notes));
+  const value = readStr(notes);
+  return /^Original response by [^\r\n]+/i.test(value)
+    || /^<p>\s*<(?:strong|b)>\s*Original response by /i.test(value);
 }
 
 function stripClonedResponseAttribution(notes: unknown) {
-  return readStr(notes).replace(/^Original response by [^\r\n]+(?:\r?\n){1,2}/i, "");
+  return readStr(notes)
+    .replace(
+      /^<p>\s*<(?:strong|b)>\s*Original response by [^<]*<\/(?:strong|b)>\s*<\/p>\s*(?:<p>\s*(?:<br\s*\/?>|&nbsp;)?\s*<\/p>\s*)?/i,
+      ""
+    )
+    .replace(/^Original response by [^\r\n]+(?:\r?\n){1,2}/i, "");
+}
+
+function escapeHtml(value: unknown) {
+  return readStr(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function responseKey(response: UnknownRecord) {
@@ -237,7 +253,8 @@ function clonedResponseNotes(response: UnknownRecord) {
     : "unknown date";
   const attribution = `Original response by ${responder} on ${createdAt}`;
   const notes = readStr(response.notes);
-  return notes ? `${attribution}\n\n${notes}` : attribution;
+  const attributionHtml = `<p><strong>${escapeHtml(attribution)}</strong></p><p><br></p>`;
+  return notes ? `${attributionHtml}${notes}` : attributionHtml;
 }
 
 function buildResponsePlans(sourceResponses: UnknownRecord[], targetResponses: UnknownRecord[]) {

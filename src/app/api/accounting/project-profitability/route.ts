@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const COMMAND_TIMEOUT_MS = 15 * 60 * 1000;
+
+type CommandResult = {
+  stdout: string;
+  stderr: string;
+};
 
 function noStoreJson(body: unknown, status = 200) {
   const response = NextResponse.json(body, { status });
@@ -20,6 +29,62 @@ async function requireAdministrator(request: NextRequest) {
   const allowed = assigned.some((permission) => ['OWNER', 'ADMIN'].includes(permission.toUpperCase()));
   if (!allowed) return { allowed: false as const, response: noStoreJson({ error: 'Forbidden' }, 403) };
   return { allowed: true as const, email };
+}
+
+function summarizeOutput(output: string) {
+  const trimmed = String(output || '').trim();
+  if (!trimmed) return '';
+  const lines = trimmed.split(/\r?\n/);
+  const lastLines = lines.slice(-8).join('\n');
+  return lastLines.length > 2000
+    ? `${lastLines.slice(0, 2000)}...`
+    : lastLines;
+}
+
+async function runNodeCommand(cwd: string, scriptPath: string) {
+  return await new Promise<CommandResult>((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, COMMAND_TIMEOUT_MS);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`The refresh command timed out after ${Math.round(COMMAND_TIMEOUT_MS / 60000)} minutes.`));
+        return;
+      }
+      if (code !== 0) {
+        const detail = summarizeOutput(stderr) || summarizeOutput(stdout) || `Process exited with code ${code}.`;
+        reject(new Error(detail));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -112,5 +177,45 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Failed to load QBO project profitability:', error);
     return noStoreJson({ error: 'Failed to load QBO project profitability' }, 500);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const administrator = await requireAdministrator(request);
+    if (!administrator.allowed) return administrator.response;
+
+    const analyticsRoot = process.cwd();
+    const qboIntegrationRoot = process.env.QBO_INTEGRATION_ROOT?.trim()
+      || path.resolve(analyticsRoot, '..', 'QBO_1');
+
+    const qboReportScriptPath = path.join(qboIntegrationRoot, 'src', 'report-project-profitability.js');
+    const importScriptPath = path.join(analyticsRoot, 'scripts', 'importQboProjectProfitability.mjs');
+
+    const qboResult = await runNodeCommand(qboIntegrationRoot, qboReportScriptPath);
+    const importResult = await runNodeCommand(analyticsRoot, importScriptPath);
+
+    const latestSnapshot = await prisma.qboProfitabilitySnapshot.findFirst({
+      orderBy: { importedAt: 'desc' },
+      select: { id: true, importedAt: true, _count: { select: { rows: true } } },
+    });
+
+    return noStoreJson({
+      success: true,
+      message: 'Refreshed Procore and QBO profitability data and imported the latest snapshot.',
+      selectedSnapshotId: latestSnapshot?.id || null,
+      importedAt: latestSnapshot?.importedAt.toISOString() || null,
+      rowCount: latestSnapshot?._count.rows || 0,
+      details: {
+        qbo: summarizeOutput(qboResult.stdout || qboResult.stderr),
+        import: summarizeOutput(importResult.stdout || importResult.stderr),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : 'Failed to refresh Procore and QBO profitability data.';
+    console.error('Failed to refresh QBO project profitability:', error);
+    return noStoreJson({ error: message }, 500);
   }
 }

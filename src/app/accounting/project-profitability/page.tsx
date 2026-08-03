@@ -50,6 +50,15 @@ type ApiResponse = {
   error?: string;
 };
 
+type RefreshResponse = {
+  success: boolean;
+  selectedSnapshotId: string | null;
+  importedAt: string | null;
+  rowCount: number;
+  message?: string;
+  error?: string;
+};
+
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -69,7 +78,9 @@ function csvCell(value: unknown) {
 export default function QboProjectProfitabilityPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [recordType, setRecordType] = useState('project');
   const [matchFilter, setMatchFilter] = useState('all');
@@ -124,6 +135,31 @@ export default function QboProjectProfitabilityPage() {
     }),
     { sales: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0 },
   ), [filteredRows]);
+
+  async function refreshProfitability() {
+    setRefreshing(true);
+    setError('');
+    setNotice('');
+    setSelectedRow(null);
+    try {
+      const response = await fetch('/api/accounting/project-profitability', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      const body = await response.json() as RefreshResponse;
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Unable to refresh Procore and QBO data.');
+      }
+
+      setNotice(body.message || 'Refreshed Procore and QBO data.');
+      await load(body.selectedSnapshotId || undefined);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh Procore and QBO data.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   function exportCsv() {
     const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
@@ -192,6 +228,7 @@ export default function QboProjectProfitabilityPage() {
         </section>
 
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-800">{error}</div>}
+        {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800">{notice}</div>}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_260px_auto]">
@@ -221,7 +258,17 @@ export default function QboProjectProfitabilityPage() {
                 {(data?.snapshots || []).map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.startDate} → {snapshot.endDate} · {snapshot.accountingMethod}</option>)}
               </select>
             </label>
-            <button type="button" onClick={exportCsv} disabled={!filteredRows.length} className="self-end rounded-lg bg-teal-800 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300">Export view</button>
+            <div className="self-end flex gap-2">
+              <button
+                type="button"
+                onClick={() => void refreshProfitability()}
+                disabled={refreshing}
+                className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {refreshing ? 'Refreshing…' : 'Refresh costs'}
+              </button>
+              <button type="button" onClick={exportCsv} disabled={!filteredRows.length || refreshing} className="rounded-lg bg-teal-800 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300">Export view</button>
+            </div>
           </div>
         </section>
 

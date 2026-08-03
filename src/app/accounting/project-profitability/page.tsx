@@ -26,9 +26,10 @@ type ProfitabilityRow = {
   procoreProjectNumber: string | null;
   procoreProjectName: string | null;
   procoreMatchMethod: string;
-  procoreDirectCostBudget: number | null;
-  procoreBudgetLineCount: number;
-  procoreBudgetSyncedAt: string | null;
+  procoreDirectCost: number | null;
+  procoreDirectCostLineCount: number;
+  procoreDirectCostStatus: string | null;
+  qboMinusProcoreDirectCost: number | null;
   sales: number;
   costOfGoodsSold: number;
   operatingExpenses: number;
@@ -116,16 +117,16 @@ export default function QboProjectProfitabilityPage() {
       sales: totals.sales + row.sales,
       cost: totals.cost + row.actualCost,
       profit: totals.profit + row.profit,
-      procoreBudget: totals.procoreBudget + (row.procoreDirectCostBudget || 0),
+      procoreDirectCost: totals.procoreDirectCost + (row.procoreDirectCost || 0),
       costVariance: totals.costVariance + (
-        row.procoreDirectCostBudget == null ? 0 : row.actualCost - row.procoreDirectCostBudget
+        row.qboMinusProcoreDirectCost || 0
       ),
     }),
-    { sales: 0, cost: 0, profit: 0, procoreBudget: 0, costVariance: 0 },
+    { sales: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0 },
   ), [filteredRows]);
 
   function exportCsv() {
-    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct-Cost Budget', 'QBO Cost Variance', 'Profit', 'Margin %'];
+    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
     const rows = filteredRows.map((row) => [
       row.fullyQualifiedName,
       row.procoreProjectNumber,
@@ -133,8 +134,8 @@ export default function QboProjectProfitabilityPage() {
       row.procoreMatchMethod,
       row.sales,
       row.actualCost,
-      row.procoreDirectCostBudget,
-      row.procoreDirectCostBudget == null ? null : row.actualCost - row.procoreDirectCostBudget,
+      row.procoreDirectCost,
+      row.qboMinusProcoreDirectCost,
       row.profit,
       row.marginPercent,
     ]);
@@ -177,8 +178,8 @@ export default function QboProjectProfitabilityPage() {
             {[
               ['Sales', filteredTotals.sales, 'text-teal-800'],
               ['QBO actual cost', filteredTotals.cost, 'text-amber-700'],
-              ['Procore direct-cost budget', filteredTotals.procoreBudget, 'text-indigo-700'],
-              ['QBO cost variance', filteredTotals.costVariance, filteredTotals.costVariance > 0 ? 'text-red-700' : 'text-emerald-700'],
+              ['Procore direct cost', filteredTotals.procoreDirectCost, 'text-indigo-700'],
+              ['Matched QBO minus Procore', filteredTotals.costVariance, filteredTotals.costVariance > 0 ? 'text-red-700' : 'text-emerald-700'],
               ['Profit', filteredTotals.profit, filteredTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'],
               ['Rows in view', filteredRows.length, 'text-slate-800'],
             ].map(([label, value, color]) => (
@@ -241,8 +242,8 @@ export default function QboProjectProfitabilityPage() {
                     <th className="border-b border-slate-300 px-4 py-3">Procore match</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Sales</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">QBO actual cost</th>
-                    <th className="border-b border-slate-300 px-4 py-3 text-right">Procore budget</th>
-                    <th className="border-b border-slate-300 px-4 py-3 text-right">Cost variance</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">Procore direct cost</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">QBO − Procore</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Profit</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Margin</th>
                     <th className="border-b border-slate-300 px-4 py-3">Status</th>
@@ -261,9 +262,9 @@ export default function QboProjectProfitabilityPage() {
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums">{money.format(row.sales)}</td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums text-amber-800">{money.format(row.actualCost)}</td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums text-indigo-700">{row.procoreDirectCostBudget == null ? '—' : money.format(row.procoreDirectCostBudget)}</td>
-                      <td className={`border-b border-slate-100 px-4 py-3 text-right font-bold tabular-nums ${row.procoreDirectCostBudget == null ? 'text-slate-400' : row.actualCost - row.procoreDirectCostBudget > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                        {row.procoreDirectCostBudget == null ? '—' : money.format(row.actualCost - row.procoreDirectCostBudget)}
+                      <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums text-indigo-700">{row.procoreDirectCost == null ? '—' : money.format(row.procoreDirectCost)}</td>
+                      <td className={`border-b border-slate-100 px-4 py-3 text-right font-bold tabular-nums ${row.qboMinusProcoreDirectCost == null ? 'text-slate-400' : row.qboMinusProcoreDirectCost > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                        {row.qboMinusProcoreDirectCost == null ? '—' : money.format(row.qboMinusProcoreDirectCost)}
                       </td>
                       <td className={`border-b border-slate-100 px-4 py-3 text-right font-bold tabular-nums ${row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money.format(row.profit)}</td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">{row.marginPercent == null ? '—' : `${row.marginPercent.toFixed(1)}%`}</td>
@@ -291,8 +292,8 @@ export default function QboProjectProfitabilityPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
               {[
-                ['Procore direct-cost budget', selectedRow.procoreDirectCostBudget],
-                ['QBO cost variance', selectedRow.procoreDirectCostBudget == null ? null : selectedRow.actualCost - selectedRow.procoreDirectCostBudget],
+                ['Procore direct cost', selectedRow.procoreDirectCost],
+                ['QBO minus Procore', selectedRow.qboMinusProcoreDirectCost],
                 ['COGS', selectedRow.costOfGoodsSold],
                 ['Operating expenses', selectedRow.operatingExpenses],
                 ['Other income', selectedRow.otherIncome],
@@ -304,7 +305,7 @@ export default function QboProjectProfitabilityPage() {
         )}
 
         <p className="px-1 pb-4 text-xs leading-5 text-slate-500">
-          Sales are QuickBooks Income assigned to the project. QBO actual cost is assigned COGS, operating expenses, and other expenses. Procore direct-cost budget is the sum of the matched project&apos;s original budget line amounts. Cost variance is QBO actual cost minus the Procore budget, so a positive amount is over budget. Profit also includes assigned other income. Uncertain Procore matches remain flagged for review rather than being guessed.
+          Sales are QuickBooks Income assigned to the project. QBO actual cost is assigned COGS, operating expenses, and other expenses. Procore Direct Cost is the sum of the matched project&apos;s Direct Cost line-item amounts returned by Procore. The difference is QBO actual cost minus Procore Direct Cost; a positive amount means QBO contains more cost. Profit also includes assigned other income. Uncertain Procore matches remain flagged for review rather than being guessed.
         </p>
       </div>
     </main>

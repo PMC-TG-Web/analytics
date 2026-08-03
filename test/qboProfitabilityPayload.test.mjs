@@ -25,6 +25,10 @@ function payload(overrides = {}) {
       procoreProjectNumber: null,
       procoreProjectName: null,
       procoreMatchMethod: 'unmatched',
+      procoreDirectCost: 31.25,
+      procoreDirectCostLineCount: 2,
+      procoreDirectCostStatus: 'available',
+      qboMinusProcoreDirectCost: 3.75,
       sales: 100,
       costOfGoodsSold: 25,
       operatingExpenses: 10,
@@ -45,6 +49,8 @@ test('normalizes a read-only QBO profitability payload', () => {
   assert.equal(normalized.accountingMethod, 'Accrual');
   assert.equal(normalized.rows.length, 1);
   assert.equal(normalized.rows[0].actualCost, 35);
+  assert.equal(normalized.rows[0].procoreDirectCost, 31.25);
+  assert.equal(normalized.rows[0].qboMinusProcoreDirectCost, 3.75);
 });
 
 test('rejects a payload that is not explicitly read-only', () => {

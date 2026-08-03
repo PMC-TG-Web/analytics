@@ -63,22 +63,6 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
-    const matchedProcoreProjectIds = Array.from(new Set(
-      rows
-        .map((row) => row.procoreProjectId)
-        .filter((projectId): projectId is string => Boolean(projectId)),
-    ));
-    const procoreBudgetTotals = matchedProcoreProjectIds.length
-      ? await prisma.budgetLineItem.groupBy({
-          by: ['projectId'],
-          where: { projectId: { in: matchedProcoreProjectIds } },
-          _sum: { originalBudgetAmount: true, amount: true },
-          _count: { _all: true },
-          _max: { syncedAt: true },
-        })
-      : [];
-    const procoreBudgetByProjectId = new Map(procoreBudgetTotals.map((total) => [total.projectId, total]));
-
     return noStoreJson({
       success: true,
       selectedSnapshotId: selected?.id || null,
@@ -95,11 +79,6 @@ export async function GET(request: NextRequest) {
         rowCount: snapshot._count.rows,
       })),
       rows: rows.map((row) => {
-        const budget = row.procoreProjectId ? procoreBudgetByProjectId.get(row.procoreProjectId) : null;
-        const directCostBudget = budget
-          ? budget._sum.originalBudgetAmount ?? budget._sum.amount ?? null
-          : null;
-
         return {
           id: row.id,
           qboCustomerId: row.qboCustomerId,
@@ -111,9 +90,12 @@ export async function GET(request: NextRequest) {
           procoreProjectNumber: row.procoreProjectNumber,
           procoreProjectName: row.procoreProjectName,
           procoreMatchMethod: row.procoreMatchMethod,
-          procoreDirectCostBudget: directCostBudget,
-          procoreBudgetLineCount: budget?._count._all ?? 0,
-          procoreBudgetSyncedAt: budget?._max.syncedAt?.toISOString() ?? null,
+          procoreDirectCost: row.procoreDirectCost == null ? null : Number(row.procoreDirectCost),
+          procoreDirectCostLineCount: row.procoreDirectCostLineCount,
+          procoreDirectCostStatus: row.procoreDirectCostStatus,
+          qboMinusProcoreDirectCost: row.qboMinusProcoreDirectCost == null
+            ? null
+            : Number(row.qboMinusProcoreDirectCost),
           sales: Number(row.sales),
           costOfGoodsSold: Number(row.costOfGoodsSold),
           operatingExpenses: Number(row.operatingExpenses),

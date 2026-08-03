@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const RECORD_TYPES = new Set(['project', 'customer-only', 'unassigned']);
 const ACCOUNTING_METHODS = new Set(['Accrual', 'Cash']);
+const DIRECT_COST_STATUSES = new Set(['available', 'unavailable', 'not-matched']);
 const MONEY_FIELDS = [
   'sales',
   'costOfGoodsSold',
@@ -33,6 +34,11 @@ function finiteNumber(value, label) {
     throw new Error(`${label} must be a finite number within the supported range.`);
   }
   return number;
+}
+
+function optionalFiniteNumber(value, label) {
+  if (value == null || value === '') return null;
+  return finiteNumber(value, label);
 }
 
 function validDate(value, label) {
@@ -106,12 +112,32 @@ export function normalizeQboProfitabilityPayload(payload) {
       procoreProjectNumber: optionalString(row.procoreProjectNumber, `rows[${index}].procoreProjectNumber`, 128),
       procoreProjectName: optionalString(row.procoreProjectName, `rows[${index}].procoreProjectName`, 500),
       procoreMatchMethod: requiredString(row.procoreMatchMethod, `rows[${index}].procoreMatchMethod`, 64),
+      procoreDirectCost: optionalFiniteNumber(row.procoreDirectCost, `rows[${index}].procoreDirectCost`),
+      procoreDirectCostLineCount: finiteNumber(
+        row.procoreDirectCostLineCount ?? 0,
+        `rows[${index}].procoreDirectCostLineCount`,
+      ),
+      procoreDirectCostStatus: optionalString(
+        row.procoreDirectCostStatus,
+        `rows[${index}].procoreDirectCostStatus`,
+        32,
+      ),
+      qboMinusProcoreDirectCost: optionalFiniteNumber(
+        row.qboMinusProcoreDirectCost,
+        `rows[${index}].qboMinusProcoreDirectCost`,
+      ),
       marginPercent: row.marginPercent == null
         ? null
         : finiteNumber(row.marginPercent, `rows[${index}].marginPercent`),
     };
     for (const field of MONEY_FIELDS) {
       normalized[field] = finiteNumber(row[field], `rows[${index}].${field}`);
+    }
+    if (!Number.isInteger(normalized.procoreDirectCostLineCount) || normalized.procoreDirectCostLineCount < 0) {
+      throw new Error(`rows[${index}].procoreDirectCostLineCount must be a non-negative integer.`);
+    }
+    if (normalized.procoreDirectCostStatus && !DIRECT_COST_STATUSES.has(normalized.procoreDirectCostStatus)) {
+      throw new Error(`rows[${index}].procoreDirectCostStatus is unsupported.`);
     }
     return normalized;
   });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'node:child_process';
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
@@ -13,6 +14,10 @@ const COMMAND_TIMEOUT_MS = 15 * 60 * 1000;
 type CommandResult = {
   stdout: string;
   stderr: string;
+};
+
+type SpawnResult = CommandResult & {
+  executable: string;
 };
 
 function noStoreJson(body: unknown, status = 200) {
@@ -41,9 +46,30 @@ function summarizeOutput(output: string) {
     : lastLines;
 }
 
-async function runNodeCommand(cwd: string, scriptPath: string) {
-  return await new Promise<CommandResult>((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
+async function pathExists(filePath: string) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveNodeExecutables() {
+  const candidates = [
+    process.env.QBO_NODE_EXECUTABLE,
+    process.execPath,
+    'node',
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  return [...new Set(candidates)];
+}
+
+async function runProcess(executable: string, cwd: string, scriptPath: string) {
+  return await new Promise<SpawnResult>((resolve, reject) => {
+    const child = spawn(executable, [scriptPath], {
       cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -82,9 +108,26 @@ async function runNodeCommand(cwd: string, scriptPath: string) {
         reject(new Error(detail));
         return;
       }
-      resolve({ stdout, stderr });
+      resolve({ executable, stdout, stderr });
     });
   });
+}
+
+async function runNodeCommand(cwd: string, scriptPath: string) {
+  const executables = resolveNodeExecutables();
+  let lastError: unknown = null;
+
+  for (const executable of executables) {
+    try {
+      const result = await runProcess(executable, cwd, scriptPath);
+      return { stdout: result.stdout, stderr: result.stderr };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : 'Unknown spawn failure.';
+  throw new Error(`Unable to launch Node for refresh scripts. Tried: ${executables.join(', ')}. ${detail}`);
 }
 
 export async function GET(request: NextRequest) {
@@ -191,6 +234,24 @@ export async function POST(request: NextRequest) {
 
     const qboReportScriptPath = path.join(qboIntegrationRoot, 'src', 'report-project-profitability.js');
     const importScriptPath = path.join(analyticsRoot, 'scripts', 'importQboProjectProfitability.mjs');
+
+    const [hasQboReportScript, hasImportScript] = await Promise.all([
+      pathExists(qboReportScriptPath),
+      pathExists(importScriptPath),
+    ]);
+
+    if (!hasQboReportScript || !hasImportScript) {
+      return noStoreJson({
+        error: 'Refresh scripts are not available in this deployment environment. Run the protected manual refresh from the integration machine.',
+        details: {
+          qboIntegrationRoot,
+          qboReportScriptPath,
+          importScriptPath,
+          hasQboReportScript,
+          hasImportScript,
+        },
+      }, 503);
+    }
 
     const qboResult = await runNodeCommand(qboIntegrationRoot, qboReportScriptPath);
     const importResult = await runNodeCommand(analyticsRoot, importScriptPath);

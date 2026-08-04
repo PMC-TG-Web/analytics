@@ -46,6 +46,14 @@ function summarizeOutput(output: string) {
     : lastLines;
 }
 
+function normalizeHttpsUrl(value: string, label: string) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+    throw new Error(`${label} must be an HTTPS URL without embedded credentials or hash fragments.`);
+  }
+  return parsed.toString();
+}
+
 async function pathExists(filePath: string) {
   try {
     await access(filePath);
@@ -128,6 +136,56 @@ async function runNodeCommand(cwd: string, scriptPath: string) {
 
   const detail = lastError instanceof Error ? lastError.message : 'Unknown spawn failure.';
   throw new Error(`Unable to launch Node for refresh scripts. Tried: ${executables.join(', ')}. ${detail}`);
+}
+
+async function triggerRemoteRefreshWebhook() {
+  const webhookUrlRaw = String(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_URL || '').trim();
+  if (!webhookUrlRaw) {
+    return { configured: false as const };
+  }
+
+  const webhookUrl = normalizeHttpsUrl(
+    webhookUrlRaw,
+    'QBO_PROFITABILITY_REFRESH_WEBHOOK_URL',
+  );
+  const webhookSecret = String(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_SECRET || '').trim();
+  const timeoutMs = Number(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_TIMEOUT_MS || 45_000);
+
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(webhookSecret ? { 'x-qbo-refresh-secret': webhookSecret } : {}),
+    },
+    body: JSON.stringify({
+      source: 'analytics-qbo-profitability-button',
+      requestedAt: new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45_000),
+  });
+
+  const responseText = await response.text();
+  let responseBody: unknown = null;
+  try {
+    responseBody = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    responseBody = responseText;
+  }
+
+  if (!response.ok) {
+    const detail = typeof responseBody === 'string'
+      ? summarizeOutput(responseBody)
+      : summarizeOutput(JSON.stringify(responseBody || {}));
+    throw new Error(`Remote refresh webhook failed (${response.status}). ${detail}`);
+  }
+
+  return {
+    configured: true as const,
+    details: typeof responseBody === 'string'
+      ? summarizeOutput(responseBody)
+      : summarizeOutput(JSON.stringify(responseBody || {})),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -240,9 +298,33 @@ export async function POST(request: NextRequest) {
       pathExists(importScriptPath),
     ]);
 
-    if (!hasQboReportScript || !hasImportScript) {
+    if (hasQboReportScript && hasImportScript) {
+      const qboResult = await runNodeCommand(qboIntegrationRoot, qboReportScriptPath);
+      const importResult = await runNodeCommand(analyticsRoot, importScriptPath);
+
+      const latestSnapshot = await prisma.qboProfitabilitySnapshot.findFirst({
+        orderBy: { importedAt: 'desc' },
+        select: { id: true, importedAt: true, _count: { select: { rows: true } } },
+      });
+
       return noStoreJson({
-        error: 'Refresh scripts are not available in this deployment environment. Run the protected manual refresh from the integration machine.',
+        success: true,
+        message: 'Refreshed Procore and QBO profitability data and imported the latest snapshot.',
+        selectedSnapshotId: latestSnapshot?.id || null,
+        importedAt: latestSnapshot?.importedAt.toISOString() || null,
+        rowCount: latestSnapshot?._count.rows || 0,
+        details: {
+          mode: 'local-scripts',
+          qbo: summarizeOutput(qboResult.stdout || qboResult.stderr),
+          import: summarizeOutput(importResult.stdout || importResult.stderr),
+        },
+      });
+    }
+
+    const remote = await triggerRemoteRefreshWebhook();
+    if (!remote.configured) {
+      return noStoreJson({
+        error: 'Refresh is not configured for this environment. Configure QBO_PROFITABILITY_REFRESH_WEBHOOK_URL to trigger the integration-machine refresh job.',
         details: {
           qboIntegrationRoot,
           qboReportScriptPath,
@@ -253,9 +335,6 @@ export async function POST(request: NextRequest) {
       }, 503);
     }
 
-    const qboResult = await runNodeCommand(qboIntegrationRoot, qboReportScriptPath);
-    const importResult = await runNodeCommand(analyticsRoot, importScriptPath);
-
     const latestSnapshot = await prisma.qboProfitabilitySnapshot.findFirst({
       orderBy: { importedAt: 'desc' },
       select: { id: true, importedAt: true, _count: { select: { rows: true } } },
@@ -263,13 +342,13 @@ export async function POST(request: NextRequest) {
 
     return noStoreJson({
       success: true,
-      message: 'Refreshed Procore and QBO profitability data and imported the latest snapshot.',
+      message: 'Refresh started on the integration machine. The new snapshot should appear shortly.',
       selectedSnapshotId: latestSnapshot?.id || null,
       importedAt: latestSnapshot?.importedAt.toISOString() || null,
       rowCount: latestSnapshot?._count.rows || 0,
       details: {
-        qbo: summarizeOutput(qboResult.stdout || qboResult.stderr),
-        import: summarizeOutput(importResult.stdout || importResult.stderr),
+        mode: 'remote-webhook',
+        webhook: remote.details,
       },
     });
   } catch (error) {

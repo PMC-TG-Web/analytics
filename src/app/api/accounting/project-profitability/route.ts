@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '@/lib/prisma';
@@ -52,6 +53,61 @@ function normalizeHttpsUrl(value: string, label: string) {
     throw new Error(`${label} must be an HTTPS URL without embedded credentials or hash fragments.`);
   }
   return parsed.toString();
+}
+
+function decodePairingKey(value: string) {
+  let key: Buffer;
+  try {
+    key = Buffer.from(value, 'base64');
+  } catch {
+    throw new Error('QBO_PROFITABILITY_REFRESH_PAIRING_KEY_BASE64 must be a valid base64 value.');
+  }
+
+  if (key.length !== 32) {
+    throw new Error('QBO_PROFITABILITY_REFRESH_PAIRING_KEY_BASE64 must decode to exactly 32 bytes.');
+  }
+
+  return key;
+}
+
+function extractWordPressRestRoute(absoluteUrl: string) {
+  const parsed = new URL(absoluteUrl);
+  const marker = '/wp-json';
+  const markerIndex = parsed.pathname.indexOf(marker);
+  if (markerIndex === -1) {
+    return parsed.pathname;
+  }
+  const route = parsed.pathname.slice(markerIndex + marker.length);
+  return route.startsWith('/') ? route : `/${route}`;
+}
+
+function createWordPressHmacHeaders({
+  pairingKey,
+  method,
+  route,
+  bodyText,
+}: {
+  pairingKey: Buffer;
+  method: string;
+  route: string;
+  bodyText: string;
+}) {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomBytes(24).toString('base64url');
+  const canonical = [
+    timestamp,
+    nonce,
+    method.toUpperCase(),
+    route,
+    crypto.createHash('sha256').update(bodyText).digest('hex'),
+  ].join('\n');
+  const signature = crypto.createHmac('sha256', pairingKey).update(canonical).digest('hex');
+
+  return {
+    'x-pmc-timestamp': timestamp,
+    'x-pmc-nonce': nonce,
+    'x-pmc-signature': signature,
+  };
 }
 
 async function pathExists(filePath: string) {
@@ -149,7 +205,21 @@ async function triggerRemoteRefreshWebhook() {
     'QBO_PROFITABILITY_REFRESH_WEBHOOK_URL',
   );
   const webhookSecret = String(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_SECRET || '').trim();
+  const pairingKeyBase64 = String(process.env.QBO_PROFITABILITY_REFRESH_PAIRING_KEY_BASE64 || '').trim();
   const timeoutMs = Number(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_TIMEOUT_MS || 45_000);
+  const bodyText = JSON.stringify({
+    source: 'analytics-qbo-profitability-button',
+    requestedAt: new Date().toISOString(),
+  });
+
+  const hmacHeaders = pairingKeyBase64
+    ? createWordPressHmacHeaders({
+        pairingKey: decodePairingKey(pairingKeyBase64),
+        method: 'POST',
+        route: extractWordPressRestRoute(webhookUrl),
+        bodyText,
+      })
+    : {};
 
   const response = await fetch(webhookUrl, {
     method: 'POST',
@@ -157,11 +227,9 @@ async function triggerRemoteRefreshWebhook() {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       ...(webhookSecret ? { 'x-qbo-refresh-secret': webhookSecret } : {}),
+      ...hmacHeaders,
     },
-    body: JSON.stringify({
-      source: 'analytics-qbo-profitability-button',
-      requestedAt: new Date().toISOString(),
-    }),
+    body: bodyText,
     signal: AbortSignal.timeout(Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45_000),
   });
 

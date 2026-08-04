@@ -250,9 +250,78 @@ async function triggerRemoteRefreshWebhook() {
 
   return {
     configured: true as const,
+    requestId: responseBody && typeof responseBody === 'object' && 'requestId' in responseBody
+      ? String(responseBody.requestId || '')
+      : '',
+    status: responseBody && typeof responseBody === 'object' && 'status' in responseBody
+      ? String(responseBody.status || '')
+      : '',
     details: typeof responseBody === 'string'
       ? summarizeOutput(responseBody)
       : summarizeOutput(JSON.stringify(responseBody || {})),
+  };
+}
+
+async function readRemoteRefreshStatus() {
+  const webhookUrlRaw = String(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_URL || '').trim();
+  if (!webhookUrlRaw) return { configured: false as const };
+
+  const webhookUrl = new URL(normalizeHttpsUrl(
+    webhookUrlRaw,
+    'QBO_PROFITABILITY_REFRESH_WEBHOOK_URL',
+  ));
+  webhookUrl.pathname = `${webhookUrl.pathname.replace(/\/$/, '')}/status`;
+  webhookUrl.searchParams.set('_pmc_cache_bust', crypto.randomBytes(12).toString('hex'));
+
+  const pairingKeyBase64 = String(process.env.QBO_PROFITABILITY_REFRESH_PAIRING_KEY_BASE64 || '').trim();
+  if (!pairingKeyBase64) {
+    throw new Error('QBO_PROFITABILITY_REFRESH_PAIRING_KEY_BASE64 is required to read refresh status.');
+  }
+
+  const timeoutMs = Number(process.env.QBO_PROFITABILITY_REFRESH_WEBHOOK_TIMEOUT_MS || 45_000);
+  const response = await fetch(webhookUrl, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache, no-store, max-age=0',
+      Pragma: 'no-cache',
+      ...createWordPressHmacHeaders({
+        pairingKey: decodePairingKey(pairingKeyBase64),
+        method: 'GET',
+        route: extractWordPressRestRoute(webhookUrl.toString()),
+        bodyText: '',
+      }),
+    },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45_000),
+  });
+
+  const responseText = await response.text();
+  let responseBody: unknown = null;
+  try {
+    responseBody = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    responseBody = responseText;
+  }
+
+  if (!response.ok) {
+    const detail = typeof responseBody === 'string'
+      ? summarizeOutput(responseBody)
+      : summarizeOutput(JSON.stringify(responseBody || {}));
+    throw new Error(`Remote refresh status failed (${response.status}). ${detail}`);
+  }
+
+  const statusRecord = responseBody && typeof responseBody === 'object'
+    ? responseBody as Record<string, unknown>
+    : {};
+  return {
+    configured: true as const,
+    status: String(statusRecord.status || 'idle'),
+    requestId: String(statusRecord.requestId || ''),
+    createdAt: String(statusRecord.createdAt || ''),
+    startedAt: String(statusRecord.startedAt || ''),
+    completedAt: String(statusRecord.completedAt || ''),
+    message: String(statusRecord.message || ''),
   };
 }
 
@@ -260,6 +329,11 @@ export async function GET(request: NextRequest) {
   try {
     const administrator = await requireAdministrator(request);
     if (!administrator.allowed) return administrator.response;
+
+    if (request.nextUrl.searchParams.get('refreshStatus') === '1') {
+      const remote = await readRemoteRefreshStatus();
+      return noStoreJson({ success: true, refresh: remote });
+    }
 
     const requestedSnapshotId = String(request.nextUrl.searchParams.get('snapshotId') || '').trim();
     if (requestedSnapshotId.length > 128) {
@@ -377,6 +451,7 @@ export async function POST(request: NextRequest) {
 
       return noStoreJson({
         success: true,
+        refreshMode: 'local',
         message: 'Refreshed Procore and QBO profitability data and imported the latest snapshot.',
         selectedSnapshotId: latestSnapshot?.id || null,
         importedAt: latestSnapshot?.importedAt.toISOString() || null,
@@ -410,7 +485,10 @@ export async function POST(request: NextRequest) {
 
     return noStoreJson({
       success: true,
+      refreshMode: 'remote',
       message: 'Refresh started on the integration machine. The new snapshot should appear shortly.',
+      requestId: remote.requestId,
+      refreshStatus: remote.status,
       selectedSnapshotId: latestSnapshot?.id || null,
       importedAt: latestSnapshot?.importedAt.toISOString() || null,
       rowCount: latestSnapshot?._count.rows || 0,

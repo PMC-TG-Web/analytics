@@ -55,7 +55,22 @@ type RefreshResponse = {
   selectedSnapshotId: string | null;
   importedAt: string | null;
   rowCount: number;
+  refreshMode?: 'local' | 'remote';
+  requestId?: string;
+  refreshStatus?: string;
   message?: string;
+  error?: string;
+};
+
+type RefreshStatusResponse = {
+  success: boolean;
+  refresh?: {
+    configured: boolean;
+    status?: string;
+    requestId?: string;
+    completedAt?: string;
+    message?: string;
+  };
   error?: string;
 };
 
@@ -73,6 +88,10 @@ function formatDate(value: string) {
 function csvCell(value: unknown) {
   const text = value == null ? '' : String(value);
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export default function QboProjectProfitabilityPage() {
@@ -137,6 +156,7 @@ export default function QboProjectProfitabilityPage() {
   ), [filteredRows]);
 
   async function refreshProfitability() {
+    const previousSnapshotId = data?.snapshots[0]?.id || data?.selectedSnapshotId || null;
     setRefreshing(true);
     setError('');
     setNotice('');
@@ -152,8 +172,48 @@ export default function QboProjectProfitabilityPage() {
         throw new Error(body.error || 'Unable to refresh Procore and QBO data.');
       }
 
-      setNotice(body.message || 'Refreshed Procore and QBO data.');
-      await load(body.selectedSnapshotId || undefined);
+      if (body.refreshMode !== 'remote') {
+        setNotice(body.message || 'Refreshed Procore and QBO data.');
+        await load(body.selectedSnapshotId || undefined);
+        return;
+      }
+
+      setNotice('Refresh queued. Waiting for the integration machine to finish reading Procore and QuickBooks…');
+      const requestId = String(body.requestId || '');
+      const maxStatusChecks = 180;
+      for (let attempt = 0; attempt < maxStatusChecks; attempt += 1) {
+        await delay(5_000);
+        const statusResponse = await fetch('/api/accounting/project-profitability?refreshStatus=1', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        const statusBody = await statusResponse.json() as RefreshStatusResponse;
+        if (!statusResponse.ok || !statusBody.success) {
+          throw new Error(statusBody.error || 'Unable to check refresh status.');
+        }
+
+        const refreshStatus = String(statusBody.refresh?.status || 'idle');
+        const statusRequestId = String(statusBody.refresh?.requestId || '');
+        if (requestId && statusRequestId && requestId !== statusRequestId) {
+          continue;
+        }
+        if (refreshStatus === 'failed') {
+          throw new Error(statusBody.refresh?.message || 'The integration-machine refresh failed.');
+        }
+        if (refreshStatus === 'succeeded') {
+          setNotice('Refresh completed. Loading the new profitability snapshot…');
+          await load();
+          return;
+        }
+
+        setNotice(refreshStatus === 'running'
+          ? 'Reading current Procore Direct Costs and QuickBooks activity…'
+          : 'Refresh queued. Waiting for the integration machine to start…');
+      }
+
+      throw new Error(
+        `The refresh is still queued after 15 minutes. The previous snapshot ${previousSnapshotId ? 'remains available' : 'was not replaced'}.`,
+      );
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh Procore and QBO data.');
     } finally {

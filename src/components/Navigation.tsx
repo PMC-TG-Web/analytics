@@ -41,6 +41,7 @@ const navLinks: NavLink[] = [
   { href: "/procore/commitments-live", label: "Commitments", page: "procore" },
   { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore" },
   { href: "/analytics", label: "Analytics", page: "analytics" },
+  { href: "/analytics/cost-code-sales", label: "Cost Code P&L", page: "analytics" },
   { href: "/accounting/project-profitability", label: "QBO P&L", page: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },

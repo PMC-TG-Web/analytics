@@ -11,4 +11,5 @@
 
 [functions]
   directory = "netlify/functions"
+  included_files = ["config/costCodeCatalog.json"]
 

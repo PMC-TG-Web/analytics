@@ -1,0 +1,4386 @@
+{
+  "36741786": {
+    "itemName": "ADA Plate 2'x3'",
+    "costCode": "03-150-10-85",
+    "costName": "ADA Plate 2'x3'",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36741816": {
+    "itemName": "ADA Plate 2'x4'",
+    "costCode": "03-150-10-85",
+    "costName": "ADA Plate 2'x4'",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36741830": {
+    "itemName": "ADA Plate 2'x5'",
+    "costCode": "03-150-10-85",
+    "costName": "ADA Plate 2'x5'",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36741836": {
+    "itemName": "Bollard Sch 40 6\"x7'6\" (primed)",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sch 40 6\"x7'-6\" (primed)",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "36741840": {
+    "itemName": "Bollard Sch 40 6\"x78\" with cap (primed)",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sch 40 6\"x78\" with cap (primed)",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "36741917": {
+    "itemName": "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "6 ga Wire 5'x10' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36741920": {
+    "itemName": "Wire Mesh 8 ga (2.1x2.1 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "8 ga Wire 5'x10' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36741924": {
+    "itemName": "Wire Mesh 10 ga (1.4x1.4 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "10 ga Wire 5'x10' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36745175": {
+    "itemName": "Wire Mesh 6 ga  (2.9x2.9 6x6) 8'x15' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "6 ga Wire Mesh  (2.9x2.9 6x6) 8'x15' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36745253": {
+    "itemName": "Speed Dowel #4 Rebar 5/8\" x 9\"",
+    "costCode": "03-150-10-85",
+    "costName": "#4 Rebar Speed Dowel  5/8\" x 9\"",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36745260": {
+    "itemName": "Heavy Duty SOG Chair 2-1/2\" - 3\"",
+    "costCode": "03-200-50-30",
+    "costName": "Heavy Duty SOG Chair 2-1/2\" - 3\"",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "36745271": {
+    "itemName": "Heavy Duty SOG Chair 1 1/2\" - 2\"",
+    "costCode": "03-200-50-30",
+    "costName": "Heavy Duty SOG Chair 1 1/2\" - 2\"",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "36746108": {
+    "itemName": "#5 Speed Dowel Base -3/4\"",
+    "costCode": "03-150-10-85",
+    "costName": "#5 Speed Dowel Base -3/4\"",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36746141": {
+    "itemName": "Speed Dowel #5 Rebar 3/4\" x 9\"",
+    "costCode": "03-150-10-85",
+    "costName": "#5 Rebar Speed Dowel  3/4\" x 9\"",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36746405": {
+    "itemName": "Bollard Sleeve",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sleeve",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "36746408": {
+    "itemName": "Galvanized Bollard 4\"",
+    "costCode": "05-100-10-10",
+    "costName": "Galvanized Bollard 4\"",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "36746422": {
+    "itemName": "Galvanized Bollard 6\"",
+    "costCode": "05-100-10-10",
+    "costName": "Galvanized Bollard 6\"",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "36804161": {
+    "itemName": "Touch N Foam 12 oz",
+    "costCode": "03-150-10-85",
+    "costName": "Touch N Foam",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804162": {
+    "itemName": "Great Stuff Insulating Foam 12 oz",
+    "costCode": "03-150-10-85",
+    "costName": "Great Stuff Insulating Foam",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804163": {
+    "itemName": "EPS Foam Concrete Adhesive 14 oz",
+    "costCode": "03-150-10-85",
+    "costName": "EPS Foam Concrete Adhesive",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804164": {
+    "itemName": "Planitop X 50 lb Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Planitop X",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804167": {
+    "itemName": "Quikrete Concrete Mix 80 Lb bag",
+    "costCode": "03-150-10-85",
+    "costName": "Quikrete Concrete Mix",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804170": {
+    "itemName": "Pc-Concrete Repair Epoxy",
+    "costCode": "03-150-10-85",
+    "costName": "Concrete Repair Epoxy",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804177": {
+    "itemName": "Sika AnchorFix1",
+    "costCode": "03-150-10-85",
+    "costName": "Sika AnchorFix1",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804180": {
+    "itemName": "Super Air Plus 1 Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Super Air Plus 1 Bag",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804181": {
+    "itemName": "Mini Delay Set",
+    "costCode": "03-150-10-85",
+    "costName": "Mini Delay Set",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36804204": {
+    "itemName": "Non-chloride Accelerator",
+    "costCode": "03-300-40-10",
+    "costName": "General Non-chloride Accelerator",
+    "description": "Winter Concrete",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter Concrete"
+  },
+  "36804210": {
+    "itemName": "Calcium Accelerator",
+    "costCode": "03-300-40-10",
+    "costName": "Calcium Accelerator In Bags",
+    "description": "Winter Concrete",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter Concrete"
+  },
+  "36804213": {
+    "itemName": "Blankets price is 1 coverage only",
+    "costCode": "03-300-40-10",
+    "costName": "Blankets",
+    "description": "Winter Concrete",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter Concrete"
+  },
+  "36804264": {
+    "itemName": "Hot Water",
+    "costCode": "03-300-40-10",
+    "costName": "General Hot Water Charge",
+    "description": "Winter Concrete",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter Concrete"
+  },
+  "36804312": {
+    "itemName": "Somero S-15R (boom screed) (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Somero S-15R (boom screed)",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804326": {
+    "itemName": "Somero SRS4 (boom screed) (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Somero SRS4 (boom screed)",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804328": {
+    "itemName": "Somero S-840 (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Somero S-840",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804332": {
+    "itemName": "Somero Power Rake (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Somero Power Rake",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804335": {
+    "itemName": "Somero 3D Profiler (with or without screed)",
+    "costCode": "03-300-30-30",
+    "costName": "Somero 3D Profiler",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804337": {
+    "itemName": "Topping spreader (attachment on the SRS4 machine)",
+    "costCode": "03-300-30-30",
+    "costName": "Topping spreader",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36804365": {
+    "itemName": "Dump Truck",
+    "costCode": "31-100-10-40",
+    "costName": "Dump Truck",
+    "description": "Excavation Sub",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "36836739": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-10-30",
+    "costName": "Day Tower Light",
+    "description": "Wall Concrete Equipment",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836740": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-10-30",
+    "costName": "Day Concrete Buggy",
+    "description": "Wall Concrete Equipment",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836742": {
+    "itemName": "Hydro 8' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Day Hydro 8' Rideon Trowler",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836744": {
+    "itemName": "Hydro 10' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Day Hydro 10' Rideon Trowler",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836745": {
+    "itemName": "8' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Day 8' Rideon Trowler",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836746": {
+    "itemName": "6' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Day 6' Rideon Trowler",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836748": {
+    "itemName": "Chop Saw",
+    "costCode": "03-400-10-20",
+    "costName": "Chop Saw By The Day",
+    "description": "Concrete Sawing Equipment",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836750": {
+    "itemName": "Soffcut Saw X150",
+    "costCode": "03-400-10-20",
+    "costName": "Soffcut Saw X150 By The Day",
+    "description": "Concrete Sawing Equipment",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836751": {
+    "itemName": "Soffcut Saw X4000",
+    "costCode": "03-400-10-20",
+    "costName": "Soffcut Saw X4000 By The Day",
+    "description": "Concrete Sawing Equipment",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836752": {
+    "itemName": "18\" Floor Saw",
+    "costCode": "03-400-10-20",
+    "costName": "18\" Floor Saw By The Day",
+    "description": "Concrete Sawing Equipment",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36836757": {
+    "itemName": "Kubota Excavator KX033",
+    "costCode": "31-100-10-50",
+    "costName": "Hourly Excavator KX033 Per Hour With Labor",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "36874076": {
+    "itemName": "Fiber",
+    "costCode": "03-300-20-20",
+    "costName": "Fiber from Ready Mix Supplier",
+    "description": "SOG Concrete Material",
+    "reportingGroup": "SOG Concrete Material",
+    "topLevelGroup": "SOG"
+  },
+  "36880160": {
+    "itemName": "Line Dragon",
+    "costCode": "03-300-40-30",
+    "costName": "Line Dragon Rental (with Pump Rental)",
+    "description": "Concrete Pumping",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "36880163": {
+    "itemName": "Wire Mesh 4 ga (4.0x4.0 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "10 ga Wire 5'x10' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36880166": {
+    "itemName": "Wire Mesh 4 ga (4.0x4.0 4x4) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "10 ga Wire 5'x10' Sheet",
+    "description": "Wire Material",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "36880196": {
+    "itemName": "Mobilization",
+    "costCode": "01-300-10-35",
+    "costName": "Mobilization to and from Jobsites",
+    "description": "Mobilization",
+    "reportingGroup": "Mobilization",
+    "topLevelGroup": "Job Cost"
+  },
+  "37227306": {
+    "itemName": "TK Gold Form Release",
+    "costCode": "03-100-20-20",
+    "costName": "5 Gal. Pail TK Gold",
+    "description": "Wall Forms Material",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "37273723": {
+    "itemName": "1/4\" QuicDiamond Flat Plate (includes Plate and Sleeve)",
+    "costCode": "03-150-10-85",
+    "costName": "QuicDiamond Flat Plate",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "37378503": {
+    "itemName": "Quickbooks Over and Under Adjustments",
+    "costCode": "90-100-10-10",
+    "costName": "",
+    "description": "Overhead & Profit",
+    "reportingGroup": "Overhead & Profit",
+    "topLevelGroup": "Overhead & Profit"
+  },
+  "37675711": {
+    "itemName": "2\" Popcorn Brick Chairs",
+    "costCode": "03-200-50-30",
+    "costName": "",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job Cost"
+  },
+  "38333614": {
+    "itemName": "2B Stone",
+    "costCode": "31-100-10-30",
+    "costName": "2b Stone per Ton",
+    "description": "Aggregate",
+    "reportingGroup": "Aggregate",
+    "topLevelGroup": "Job Cost"
+  },
+  "38333618": {
+    "itemName": "2A Modified",
+    "costCode": "31-100-10-30",
+    "costName": "2A Modified per Ton",
+    "description": "Aggregate",
+    "reportingGroup": "Aggregate",
+    "topLevelGroup": "Job Cost"
+  },
+  "38334038": {
+    "itemName": "Trackhoe Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Any size trackhoe rental",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38334049": {
+    "itemName": "Roller Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Any size roller rental",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38334054": {
+    "itemName": "Skidloader Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Any skidloader rental",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38347537": {
+    "itemName": "Kubota Excavator KX033",
+    "costCode": "31-100-10-50",
+    "costName": "Hourly Excavator KX033 Per Hour Without Labor",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38920770": {
+    "itemName": "Demo Labor",
+    "costCode": "02-400-10-10",
+    "costName": "Demo Labor Per Hour",
+    "description": "Demo Labor",
+    "reportingGroup": "Demo Labor",
+    "topLevelGroup": "Job Cost"
+  },
+  "38920782": {
+    "itemName": "Demo Equipment",
+    "costCode": "02-400-10-20",
+    "costName": "Rental Equipment for Demo",
+    "description": "Demo Equipment",
+    "reportingGroup": "Demo Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38920789": {
+    "itemName": "Remediation Labor",
+    "costCode": "02-500-10-10",
+    "costName": "Concrete Remediation Per Hour",
+    "description": "Labor Remediation",
+    "reportingGroup": "Labor Remediation",
+    "topLevelGroup": "Job Cost"
+  },
+  "38920790": {
+    "itemName": "Remediation Equipment",
+    "costCode": "02-500-10-20",
+    "costName": "Rental Equipment For Remediation",
+    "description": "Remediation Equipment",
+    "reportingGroup": "Remediation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38920807": {
+    "itemName": "Foundation Labor",
+    "costCode": "03-300-00-10",
+    "costName": "General Labor for Concrete foundations",
+    "description": "Foundation Concrete Labor",
+    "reportingGroup": "Foundation Concrete Labor",
+    "topLevelGroup": "Foundations"
+  },
+  "38920816": {
+    "itemName": "Foundation Concrete",
+    "costCode": "03-300-00-20",
+    "costName": "Ready Mix Concrete For Foundations",
+    "description": "Foundation Concrete Material",
+    "reportingGroup": "Foundation Concrete Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38920838": {
+    "itemName": "Foundation Forms Labor",
+    "costCode": "03-100-10-10",
+    "costName": "Labor To Form Foundations",
+    "description": "Labor Foundation Forms",
+    "reportingGroup": "Labor Foundation Forms",
+    "topLevelGroup": "Foundations"
+  },
+  "38930516": {
+    "itemName": "Foundation Wood Forms",
+    "costCode": "03-100-10-20",
+    "costName": "Any Wood Forming For Footers and Piers Etc.",
+    "description": "Foundation Forms Material",
+    "reportingGroup": "Foundation Forms Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930525": {
+    "itemName": "Foundation Aluminum Forms",
+    "costCode": "03-100-10-20",
+    "costName": "In House Aluminum Wall Forms Used For Footers And Piers Etc.",
+    "description": "Foundation Forms Material",
+    "reportingGroup": "Foundation Forms Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930602": {
+    "itemName": "Foundation Form Rentals",
+    "costCode": "03-100-10-40",
+    "costName": "Any Form Rentals For Footers And Piers",
+    "description": "Foundation Forms Rental",
+    "reportingGroup": "Foundation Forms Rental",
+    "topLevelGroup": "Equipment"
+  },
+  "38930617": {
+    "itemName": "Foundation Rebar Labor",
+    "costCode": "03-200-10-10",
+    "costName": "General Labor To Place Rebar",
+    "description": "Labor Foundation Rebar",
+    "reportingGroup": "Labor Foundation Rebar",
+    "topLevelGroup": "Foundations"
+  },
+  "38930637": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#4 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930638": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#3 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930643": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#5 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930647": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#6 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930648": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#7 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930652": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#8 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930660": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#9 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930666": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#11 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38930667": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "#10 Rebar By The Piece",
+    "description": "Foundation Rebar Material",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38935026": {
+    "itemName": "Wall Forms Labor",
+    "costCode": "03-100-20-10",
+    "costName": "General Labor To Form And Strip Poured Walls",
+    "description": "Labor Wall Forms",
+    "reportingGroup": "Labor Wall Forms",
+    "topLevelGroup": "Wall"
+  },
+  "38935032": {
+    "itemName": "Wall Labor",
+    "costCode": "03-300-10-10",
+    "costName": "General Labor For Poured Walls",
+    "description": "Wall Concrete Labor",
+    "reportingGroup": "Wall Concrete Labor",
+    "topLevelGroup": "Wall"
+  },
+  "38935037": {
+    "itemName": "Wall Concrete",
+    "costCode": "03-300-10-20",
+    "costName": "Ready Mix Concrete For Walls",
+    "description": "Wall Concrete Material",
+    "reportingGroup": "Wall Concrete Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935047": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#4 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935048": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#3 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935049": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#5 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935050": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#6 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935051": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#7 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935052": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#8 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935053": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#9 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935054": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#11 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935055": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "#10 Rebar By The Piece",
+    "description": "Wall Rebar Material",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935078": {
+    "itemName": "Dumbbell Waterstop Type DB-2 PVC 6\"X 3/8\"X 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Dumbbell WaterstopType DB-2 PVC 6\"X 3/8\"X 50'",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935079": {
+    "itemName": "Box Expand-Tite 100 (100' per carton)",
+    "costCode": "03-150-10-05",
+    "costName": "Box Expand-Tite 100 (100' per carton)",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935080": {
+    "itemName": "Box Expand-Tite 200 (100' per carton)",
+    "costCode": "03-150-10-05",
+    "costName": "Box Expand-Tite 200 (100' per carton)",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935081": {
+    "itemName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 50'",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935082": {
+    "itemName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 100'",
+    "costCode": "03-150-10-05",
+    "costName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 100'",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935083": {
+    "itemName": "Water Stop Type 4B Ribbed - w/Center bulb - Tapered 6\"x 3/16\" x 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Water Stop Type 4B Ribbed - w/Center bulb - Tapered 6\"x 3/16\" x 50'",
+    "description": "Waterstop",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "38935099": {
+    "itemName": "Boom Pump Rental w/Operator",
+    "costCode": "03-300-40-30",
+    "costName": "Boom Pump",
+    "description": "Concrete Pumping",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38935100": {
+    "itemName": "Telebelt (4 hr minimum)",
+    "costCode": "03-300-40-30",
+    "costName": "Telebelt",
+    "description": "Concrete Pumping",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38935101": {
+    "itemName": "Trailer Pump (Includes 3 hr)",
+    "costCode": "03-300-40-30",
+    "costName": "Trailer Pump",
+    "description": "Concrete Pumping",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38935167": {
+    "itemName": "Waterstop Labor",
+    "costCode": "03-150-10-10",
+    "costName": "Labor To Install Waterstop",
+    "description": "Labor Waterstop",
+    "reportingGroup": "Labor Waterstop",
+    "topLevelGroup": "Job Cost"
+  },
+  "38935175": {
+    "itemName": "Wall Rebar Labor",
+    "costCode": "03-200-20-10",
+    "costName": "Labor To Install Rebar In Walls",
+    "description": "Labor Wall Rebar",
+    "reportingGroup": "Labor Wall Rebar",
+    "topLevelGroup": "Wall"
+  },
+  "38935910": {
+    "itemName": "Wall Forms",
+    "costCode": "03-100-20-20",
+    "costName": "Sq. Ft. Aluminum Wall Forms In House",
+    "description": "Wall Forms Material",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935915": {
+    "itemName": "Wood Wall Forms",
+    "costCode": "03-100-20-20",
+    "costName": "Sq Ft. Of Wood Wall Forms",
+    "description": "Wall Forms Material",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935922": {
+    "itemName": "Wall Form Rentals",
+    "costCode": "03-100-20-20",
+    "costName": "Sq Ft. Of Wall Form Rentals",
+    "description": "Wall Forms Material",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935924": {
+    "itemName": "8\" Wall Tie",
+    "costCode": "03-100-20-20",
+    "costName": "8\" Aluminum Wall Tie",
+    "description": "Wall Forms Material",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "38935988": {
+    "itemName": "Precision Non-Shrink Grout 50lb",
+    "costCode": "03-150-10-85",
+    "costName": "Precision Non-Shrink Grout 50lb",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38936001": {
+    "itemName": "Poured Wall Subcontractor",
+    "costCode": "03-300-10-50",
+    "costName": "Poured Wall Subcontractor",
+    "description": "Wall Subcontractor",
+    "reportingGroup": "Wall Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38936046": {
+    "itemName": "Labor Slab On Grade",
+    "costCode": "03-300-20-10",
+    "costName": "General Labor For Slabs On Grade",
+    "description": "Labor SOG Concrete",
+    "reportingGroup": "Labor SOG Concrete",
+    "topLevelGroup": "SOG"
+  },
+  "38936047": {
+    "itemName": "Slab On Grade Concrete",
+    "costCode": "03-300-20-20",
+    "costName": "Ready Mix Concrete For Slabs On Grade",
+    "description": "SOG Concrete Material",
+    "reportingGroup": "SOG Concrete Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936048": {
+    "itemName": "Slab On Grade Forms Labor",
+    "costCode": "03-100-30-10",
+    "costName": "Labor To Wood Form Slabs On Grade",
+    "description": "Labor SOG Forms",
+    "reportingGroup": "Labor SOG Forms",
+    "topLevelGroup": "SOG"
+  },
+  "38936049": {
+    "itemName": "Slab On Grade Wood Forms",
+    "costCode": "03-100-30-20",
+    "costName": "Any Wood Forming For Slabs On Grade",
+    "description": "SOG Forms Material",
+    "reportingGroup": "SOG Forms Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936050": {
+    "itemName": "Slab on Grade Rebar Labor",
+    "costCode": "03-200-30-10",
+    "costName": "General Labor To Place Rebar",
+    "description": "Labor SOG Rebar",
+    "reportingGroup": "Labor SOG Rebar",
+    "topLevelGroup": "SOG"
+  },
+  "38936051": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#4 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936052": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#3 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936053": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#5 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936054": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#6 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936055": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#7 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936056": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#8 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936057": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#9 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936058": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#11 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38936059": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "#10 Rebar By The Piece",
+    "description": "SOG Rebar Material",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "38938591": {
+    "itemName": "Site Concrete Labor",
+    "costCode": "03-300-30-10",
+    "costName": "General Labor For Site Concrete",
+    "description": "Labor Site Concrete",
+    "reportingGroup": "Labor Site Concrete",
+    "topLevelGroup": "Site"
+  },
+  "38938592": {
+    "itemName": "Site Concrete",
+    "costCode": "03-300-30-20",
+    "costName": "Ready Mix Concrete For Site Concrete",
+    "description": "Site Concrete Material",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "38938593": {
+    "itemName": "Site Concrete Forms Labor",
+    "costCode": "03-100-30-10",
+    "costName": "Labor To Form Site Concrete",
+    "description": "Labor SOG Forms",
+    "reportingGroup": "Labor SOG Forms",
+    "topLevelGroup": "SOG"
+  },
+  "38938594": {
+    "itemName": "Site Concrete Wood Forms",
+    "costCode": "03-100-30-20",
+    "costName": "Any Wood Forming For Site Concrete",
+    "description": "SOG Forms Material",
+    "reportingGroup": "SOG Forms Material",
+    "topLevelGroup": "SOG"
+  },
+  "38938595": {
+    "itemName": "Site Rebar Labor",
+    "costCode": "03-200-40-10",
+    "costName": "General Labor To Place Rebar",
+    "description": "Labor Site Rebar",
+    "reportingGroup": "Labor Site Rebar",
+    "topLevelGroup": "Site"
+  },
+  "38938596": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#4 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938597": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#3 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938598": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#5 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938599": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#6 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938600": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#7 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938601": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#8 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938602": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#9 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938603": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#11 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38938604": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "#10 Rebar By The Piece",
+    "description": "Site Rebar Material",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "38940753": {
+    "itemName": "Chairs 1.5\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Metal Bar Chairs",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "38940754": {
+    "itemName": "Chairs 3/4\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Metal Bar Chairs",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "38940755": {
+    "itemName": "Chairs 2\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Metal Bar Chairs",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "38940756": {
+    "itemName": "Chairs 3\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Metal Bar Chairs",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "38940757": {
+    "itemName": "Chairs 4\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Metal Bar Chairs",
+    "description": "Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "38970800": {
+    "itemName": "Fiber 3/4\" Length 1 LB.Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Fiber 3/4\" Length 1 LB.Bag Added On Site",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38970802": {
+    "itemName": "Fiber",
+    "costCode": "03-300-00-20",
+    "costName": "Fiber from Ready Mix Supplier",
+    "description": "Foundation Concrete Material",
+    "reportingGroup": "Foundation Concrete Material",
+    "topLevelGroup": "Foundations"
+  },
+  "38970804": {
+    "itemName": "Fiber",
+    "costCode": "03-300-10-20",
+    "costName": "Fiber from Ready Mix Supplier",
+    "description": "Wall Concrete Material",
+    "reportingGroup": "Wall Concrete Material",
+    "topLevelGroup": "Wall"
+  },
+  "38975377": {
+    "itemName": "Fiber",
+    "costCode": "03-300-30-20",
+    "costName": "Fiber from Ready Mix Supplier",
+    "description": "Site Concrete Material",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "38975489": {
+    "itemName": "Standard Wall Construction 18\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "18\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975490": {
+    "itemName": "Standard Wall Construction 30\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "30\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975491": {
+    "itemName": "Standard Wall Construction 12\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "12\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975492": {
+    "itemName": "Standard Wall Construction 16\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "16\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975493": {
+    "itemName": "Standard Wall Construction 20\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "20\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975494": {
+    "itemName": "Standard Wall Construction 24\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "24\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975495": {
+    "itemName": "Standard Wall Construction 36\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "36\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975496": {
+    "itemName": "Standard Wall Construction 22\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "22\" x 12' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975497": {
+    "itemName": "Standard Wall Construction 12\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "12\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975498": {
+    "itemName": "Standard Wall Construction 20\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "20\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975499": {
+    "itemName": "Standard Wall Construction 36\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "36\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975500": {
+    "itemName": "Standard Wall Construction 16\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "16\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975501": {
+    "itemName": "Standard Wall Construction 18\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "18\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975502": {
+    "itemName": "Standard Wall Construction 24\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "24\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975503": {
+    "itemName": "Standard Wall Construction 30\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "30\" x 6' Standard Wall Construction",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975508": {
+    "itemName": "Powder Release 5 Gal",
+    "costCode": "03-150-10-85",
+    "costName": "Powder Release 5 Gal",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975509": {
+    "itemName": "Color Hardener 5 Gal",
+    "costCode": "03-150-10-85",
+    "costName": "Color Hardener 5 Gal",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975510": {
+    "itemName": "Integral Color",
+    "costCode": "03-150-10-85",
+    "costName": "Integral Color",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975519": {
+    "itemName": "Expansion Noma-Flex 6\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "6\" Rigid Foam Expansion",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975520": {
+    "itemName": "Expansion Noma-Flex 12\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "12\" Rigid Foam Expansion",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975521": {
+    "itemName": "Foam Expansion Roll 1/4\"x4\"x100'",
+    "costCode": "03-150-10-85",
+    "costName": "1/4\"x4\"x100' Foam Expansion Roll",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975522": {
+    "itemName": "Foam Expansion Roll 1/2\"x4\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x4\"x50' Foam Expansion Roll",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975523": {
+    "itemName": "Foam Expansion Roll 1/2\"x6\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x6\"x50' Foam Expansion Roll",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975524": {
+    "itemName": "Foam Expansion Roll 1/2\"x8\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x8\"x50' Foam Expansion Roll",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975525": {
+    "itemName": "Rubber Expansion Pc. 1/2\"x4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x4\"x10' Rubber Expansion",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975526": {
+    "itemName": "Rubber Expansion Pc. 1/2\"x6\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x6\"x10' Rubber Expansion",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975527": {
+    "itemName": "Expansion Noma-Flex 4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "4\" Rigid Foam Expansion",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975533": {
+    "itemName": "GreenGuard Scoreboard 2\"x4'x8'",
+    "costCode": "03-150-10-85",
+    "costName": "2\"x4'x8' GreenGuard Scoreboard",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975534": {
+    "itemName": "GreenGuard Scoreboard 1.5\"x4'x8",
+    "costCode": "03-150-10-85",
+    "costName": "1.5\"x4'x8 GreenGuard Scoreboard",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975535": {
+    "itemName": "GreenGuard Scoreboard 1\"x4'x8'",
+    "costCode": "03-150-10-85",
+    "costName": "1\"x4'x8' GreenGuard Scoreboard",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975881": {
+    "itemName": "Expansion Cap (snap cap) 1/2\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "1/2\"x10' Expansion Cap (snap cap)",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975882": {
+    "itemName": "Keyway- Screed Key Pc. 3.5\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "3.5\"x10' Keyway- Screed Key",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975883": {
+    "itemName": "Keyway- Screed Key Pc. 5.5\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "5.5\"x10' Keyway- Screed Key",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975884": {
+    "itemName": "Quick Joint zip strip Pc. 1\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Quick Joint zip strip Pc. 1\"x10'",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975885": {
+    "itemName": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "38975897": {
+    "itemName": "Certi-Vex 244 OW Aim  5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Certi-Vex 244 OW Aim  5 gal",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975898": {
+    "itemName": "HS 200LV Penetrating Sealer  5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "HS 200LV Penetrating Sealer  5 gal / 150 Sq Ft. per Gal.",
+    "description": "Concrete Exterior Sealers",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975959": {
+    "itemName": "L&M Curing Compound",
+    "costCode": "03-300-40-60",
+    "costName": "L&M Curing Compound 55 Gal. / 350 Sq Ft. per Gal.",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975960": {
+    "itemName": "V-Seal 102 5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "V-Seal 102 5 gal / 250 Sq Ft. per Gal.",
+    "description": "Concrete Exterior Sealers",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975961": {
+    "itemName": "TK-Floor Hardner and Densifier 55 gal",
+    "costCode": "03-300-40-60",
+    "costName": "TK-Floor Hardner and Densifier 55 gal / 250 Sq Ft. per gal.",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975962": {
+    "itemName": "TK Kure & Seal WB  5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "TK Kure & Seal WB  5 gal / 300 Sq Ft. per Gal.",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975963": {
+    "itemName": "V-Seal 101 5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "V-Seal 101 5 gal / 250 Sq Ft. per Gal.",
+    "description": "Concrete Exterior Sealers",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975964": {
+    "itemName": "L&M Cure 55 gal",
+    "costCode": "03-300-40-60",
+    "costName": "L&M Cure 55 gal / 350 Sq Ft. per Ga.",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975965": {
+    "itemName": "L&M Curing Compound",
+    "costCode": "03-300-40-60",
+    "costName": "L&M Curing Compound 5 Gal. / 350 Sq Ft. per Gal.",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38975966": {
+    "itemName": "L&M Dress Seal WB 5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "L&M Dress Seal WB 5 gal",
+    "description": "Concrete Interior Sealers",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job Cost"
+  },
+  "38976056": {
+    "itemName": "Vapor Barrier 6 mil 20'x100'",
+    "costCode": "03-150-10-35",
+    "costName": "Vapor Barrier 6 mil 20'x100'",
+    "description": "Vapor Barrier 6-10mil",
+    "reportingGroup": "Vapor Barrier 6-10mil",
+    "topLevelGroup": "Job cost"
+  },
+  "38976057": {
+    "itemName": "Viper Tape 4\" x 180'",
+    "costCode": "03-150-10-45",
+    "costName": "Viper Tape 4\" x 180'  ( 2 rolls per 1960 Sq. Ft. )",
+    "description": "Vapor Barrier 20mil",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "38976058": {
+    "itemName": "Vapor Barrier 15 mil Viper II Class A Roll (14'x140')",
+    "costCode": "03-150-10-45",
+    "costName": "15 mil Viper II Plastic Class A Roll (14'x140')",
+    "description": "Vapor Barrier 20mil",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "38976059": {
+    "itemName": "Vapor Barrier 10 mil 20'x100'",
+    "costCode": "03-150-10-35",
+    "costName": "Vapor Barrier 10 mil 20'x100'",
+    "description": "Vapor Barrier 6-10mil",
+    "reportingGroup": "Vapor Barrier 6-10mil",
+    "topLevelGroup": "Job cost"
+  },
+  "38976060": {
+    "itemName": "Vapor Barrier 20 mil 14'x105'",
+    "costCode": "03-150-10-45",
+    "costName": "Vapor Barrier 20 mil 14'x105'",
+    "description": "Vapor Barrier 20mil",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "38977375": {
+    "itemName": "Masonry Subcontractor",
+    "costCode": "04-100-10-20",
+    "costName": "Masonry Subcontractor",
+    "description": "Masonry Sub",
+    "reportingGroup": "Masonry Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38977378": {
+    "itemName": "Bollards Labor",
+    "costCode": "05-100-10-30",
+    "costName": "Labor To Set And Pour Bollards",
+    "description": "Labor Bollards",
+    "reportingGroup": "Labor Bollards",
+    "topLevelGroup": "Job Cost"
+  },
+  "38977380": {
+    "itemName": "Bollards Concrete",
+    "costCode": "05-100-10-20",
+    "costName": "Concrete Set And Fill Bollards",
+    "description": "Bollards Concrete",
+    "reportingGroup": "Bollards Concrete",
+    "topLevelGroup": "Job Cost"
+  },
+  "38981316": {
+    "itemName": "Concrete Sawing Labor",
+    "costCode": "03-400-10-10",
+    "costName": "Labor To Cut Concrete",
+    "description": "Labor Concrete Sawing",
+    "reportingGroup": "Labor Concrete Sawing",
+    "topLevelGroup": "Job Cost"
+  },
+  "38982887": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-00-30",
+    "costName": "Telehandler (In-House) Rate per Hour With Labor",
+    "description": "Foundation Concrete Equipment",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982888": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-00-40",
+    "costName": "Telehandler (Rental) Rate per Hour",
+    "description": "Foundation Concrete Rental",
+    "reportingGroup": "Foundation Concrete Rental",
+    "topLevelGroup": "Foundations"
+  },
+  "38982889": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-00-30",
+    "costName": "Telehandler (In-House) Rate per Hour Without Labor",
+    "description": "Foundation Concrete Equipment",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982890": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-00-40",
+    "costName": "Any Size Scissor Lift Rental",
+    "description": "Foundation Concrete Rental",
+    "reportingGroup": "Foundation Concrete Rental",
+    "topLevelGroup": "Foundations"
+  },
+  "38982892": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-10-30",
+    "costName": "Telehandler (In-House) Rate per Hour With Labor",
+    "description": "Wall Concrete Equipment",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982893": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-10-40",
+    "costName": "Telehandler (Rental) Rate per Hour",
+    "description": "Wall Concrete Rental",
+    "reportingGroup": "Wall Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38982894": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-10-30",
+    "costName": "Telehandler (In-House) Rate per Hour Without Labor",
+    "description": "Wall Concrete Equipment",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982895": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-10-40",
+    "costName": "Any Size Scissor Lift Rental",
+    "description": "Wall Concrete Rental",
+    "reportingGroup": "Wall Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38982897": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-20-30",
+    "costName": "Telehandler (In-House) Rate per Hour With Labor",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982898": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-20-40",
+    "costName": "Telehandler (Rental) Rate per Hour",
+    "description": "SOG Concrete Rental",
+    "reportingGroup": "SOG Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38982899": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-20-30",
+    "costName": "Telehandler (In-House) Rate per Hour Without Labor",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982900": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-20-40",
+    "costName": "Any Size Scissor Lift Rental",
+    "description": "SOG Concrete Rental",
+    "reportingGroup": "SOG Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38982918": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-30-30",
+    "costName": "Telehandler (In-House) Rate per Hour With Labor",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982919": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-30-40",
+    "costName": "Telehandler (Rental) Rate per Hour",
+    "description": "Site Concrete Rental",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38982920": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-30-30",
+    "costName": "Telehandler (In-House) Rate per Hour Without Labor",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38982921": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-30-40",
+    "costName": "Any Size Scissor Lift Rental",
+    "description": "Site Concrete Rental",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38984120": {
+    "itemName": "Somero S-15R (boom screed) (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "Somero S-15R (boom screed)",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38984121": {
+    "itemName": "Somero SRS4 (boom screed) (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "Somero SRS4 (boom screed)",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38984122": {
+    "itemName": "Somero S-840 (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "Somero S-840",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38984123": {
+    "itemName": "Somero Power Rake (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "Somero Power Rake",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38984124": {
+    "itemName": "Somero 3D Profiler (with or without screed)",
+    "costCode": "03-300-20-30",
+    "costName": "Somero 3D Profiler",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38984125": {
+    "itemName": "Topping spreader (attachment on the SRS4 machine)",
+    "costCode": "03-300-20-30",
+    "costName": "Topping spreader",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38992393": {
+    "itemName": "Bobcat 595 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Hourly 595 Skidloader with Labor",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38992394": {
+    "itemName": "Bobcat 595 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Hourly 595 Skidloader without Labor",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38992395": {
+    "itemName": "Bobcat 450 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Hourly 450 Skidloader Without Labor",
+    "description": "Excavation Equipment",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "38992470": {
+    "itemName": "Supervision",
+    "costCode": "01-300-10-10",
+    "costName": "1 Hr. Per 14 Manhours",
+    "description": "Supervision",
+    "reportingGroup": "Supervision",
+    "topLevelGroup": "Job Cost"
+  },
+  "38992490": {
+    "itemName": "Management",
+    "costCode": "01-300-10-20",
+    "costName": "1 Hr. Per 30 Manhours, 1 In 50 With a Supervisor",
+    "description": "Project Management",
+    "reportingGroup": "Project Management",
+    "topLevelGroup": "PM"
+  },
+  "38992493": {
+    "itemName": "Shop Drawings",
+    "costCode": "01-300-10-40",
+    "costName": "Rebar Shop Drawings Lump Sum",
+    "description": "Shop Drawings",
+    "reportingGroup": "Shop Drawings",
+    "topLevelGroup": "Job cost"
+  },
+  "38992504": {
+    "itemName": "Shop Drawings",
+    "costCode": "01-300-10-40",
+    "costName": "Rebar Shop Drawings Per Ton",
+    "description": "Shop Drawings",
+    "reportingGroup": "Shop Drawings",
+    "topLevelGroup": "Job cost"
+  },
+  "38992513": {
+    "itemName": "Travel Labor",
+    "costCode": "01-300-10-30",
+    "costName": "Travel Labor Hourly",
+    "description": "Labor Travel",
+    "reportingGroup": "Labor Travel",
+    "topLevelGroup": "Job Cost"
+  },
+  "38993987": {
+    "itemName": "Excavation Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Footer digs, Backfills, Slab grading",
+    "description": "Excavation Sub",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38993988": {
+    "itemName": "Trackhoe Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Subcontractors trackhoe by the hour",
+    "description": "Excavation Sub",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38993989": {
+    "itemName": "Skidloader Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Subcontractors skidloader by the hour",
+    "description": "Excavation Sub",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "38994009": {
+    "itemName": "Stone Grading Labor",
+    "costCode": "31-100-10-10",
+    "costName": "Labor To Grade Stone",
+    "description": "Labor Grading",
+    "reportingGroup": "Labor Grading",
+    "topLevelGroup": "Job Cost"
+  },
+  "38994011": {
+    "itemName": "Excavation And Backfill Labor",
+    "costCode": "31-100-10-20",
+    "costName": "Labor To Excavate And Backfill Foundations",
+    "description": "Labor Excavation & Fill",
+    "reportingGroup": "Labor Excavation & Fill",
+    "topLevelGroup": "Job Cost"
+  },
+  "38994020": {
+    "itemName": "Continuous Footing Labor",
+    "costCode": "03-300-00-12",
+    "costName": "Labor To Prep And Pour Continuous Footings / 150 Ft. = 36 Hrs.",
+    "description": "Labor Continuous Footing",
+    "reportingGroup": "Labor Continuous Footing",
+    "topLevelGroup": "Foundations"
+  },
+  "38994021": {
+    "itemName": "Spreadfooting Labor",
+    "costCode": "03-300-00-16",
+    "costName": "Labor To Prep And Pour Spreadfootings / 1 = 6 hrs.",
+    "description": "Labor Spread Footing",
+    "reportingGroup": "Labor Spread Footing",
+    "topLevelGroup": "Foundations"
+  },
+  "38994023": {
+    "itemName": "Pier Labor",
+    "costCode": "03-300-00-14",
+    "costName": "Labor To Prep And Pour Piers / 1 = 8 Hrs.",
+    "description": "Labor Pier",
+    "reportingGroup": "Labor Pier",
+    "topLevelGroup": "Foundations"
+  },
+  "39414012": {
+    "itemName": "Surface Deactivator",
+    "costCode": "03-150-10-85",
+    "costName": "5 Gal. Surface Retarder / 250 Sq Ft. per Gal.",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "39433395": {
+    "itemName": "Decorative Mockups",
+    "costCode": "03-300-30-20",
+    "costName": "Small Mockups to Show Finish",
+    "description": "Site Concrete Material",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "39581777": {
+    "itemName": "Bonding",
+    "costCode": "01-200-10-10",
+    "costName": "Bond Insurance Cost",
+    "description": "Bonding",
+    "reportingGroup": "Bonding",
+    "topLevelGroup": "Job Cost"
+  },
+  "39582162": {
+    "itemName": "Foundation Subcontractor",
+    "costCode": "03-300-00-50",
+    "costName": "Subcontractor For Foundations",
+    "description": "Foundation Subcontractor",
+    "reportingGroup": "Foundation Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "39582179": {
+    "itemName": "Slab on Grade Subcontractor",
+    "costCode": "03-300-20-50",
+    "costName": "Subcontractor For Slabs On Grade",
+    "description": "SOG Subcontractor",
+    "reportingGroup": "SOG Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "39582183": {
+    "itemName": "Site Concrete Subcontractor",
+    "costCode": "03-300-30-50",
+    "costName": "Subcontractor For Site Concrete",
+    "description": "Site Subcontractor",
+    "reportingGroup": "Site Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "39582221": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-00-30",
+    "costName": "Day Tower Light",
+    "description": "Foundation Concrete Equipment",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39582222": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-00-30",
+    "costName": "Day Concrete Buggy",
+    "description": "Foundation Concrete Equipment",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39583304": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-20-30",
+    "costName": "Day Tower Light",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39583305": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-20-30",
+    "costName": "Day Concrete Buggy",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39583319": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-30-30",
+    "costName": "Day Tower Light",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39583320": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-30-30",
+    "costName": "Day Concrete Buggy",
+    "description": "Site Concrete Equipment",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39591872": {
+    "itemName": "Hydro 8' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "Day Hydro 8' Rideon Trowler",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39591873": {
+    "itemName": "Hydro 10' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "Day Hydro 10' Rideon Trowler",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39591874": {
+    "itemName": "8' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "Day 8' Rideon Trowler",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "39591875": {
+    "itemName": "6' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "Day 6' Rideon Trowler",
+    "description": "SOG Concrete Equipment",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "40573062": {
+    "itemName": "Interior Sealer Labor",
+    "costCode": "03-300-40-70",
+    "costName": "Labor to seal interior concrete",
+    "description": "Labor Concrete Interior",
+    "reportingGroup": "Labor Concrete Interior",
+    "topLevelGroup": "Job Cost"
+  },
+  "41843783": {
+    "itemName": "Eco-stain",
+    "costCode": "03-150-10-85",
+    "costName": "Surecrete Waterbased Stain",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "41897929": {
+    "itemName": "Over/Under",
+    "costCode": "90-100-10-10",
+    "costName": "Item used to match estimate with contract line.",
+    "description": "Overhead & Profit",
+    "reportingGroup": "Overhead & Profit",
+    "topLevelGroup": "Overhead & Profit"
+  },
+  "42192615": {
+    "itemName": "Bollard Sch 40 4\" x 7' Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sch 40 4\" x 7' Stainless Steel with Cap",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "42193975": {
+    "itemName": "Stamp Rental",
+    "costCode": "03-150-10-85",
+    "costName": "Stamp Rentals From PCS",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "42359745": {
+    "itemName": "Curb Form Rentals",
+    "costCode": "03-300-30-40",
+    "costName": "50 ft. of curb form rentals per day",
+    "description": "Site Concrete Rental",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "43288331": {
+    "itemName": "Non Metallic Floor Hardener 50 lb. Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "43882022": {
+    "itemName": "Bollard Sch 40 4\" x 80\" Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sch 40 4\" x 80\" Stainless Steel with Cap / Gap Repair",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "43882030": {
+    "itemName": "Bollard Sch 40 6\" x 80\" Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sch 40 6\" x 80\" Stainless Steel with Cap / Gap Repair",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "43882036": {
+    "itemName": "Bollard Sleeve Sch 40 6\" Stainless Steel",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sleeve Sch 40 6\" Stainless Steel / Gap Repair",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "43882038": {
+    "itemName": "Bollard Sleeve Sch 40 8\" Stainless Steel",
+    "costCode": "05-100-10-10",
+    "costName": "Bollard Sleeve Sch 40 8\" Stainless Steel / Gap Repair",
+    "description": "Bollards Materials",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job Cost"
+  },
+  "44497848": {
+    "itemName": "#6 (3/4\") X 18\" Smooth Dowels",
+    "costCode": "03-150-10-85",
+    "costName": "#6 (3/4\") X 18\" Smooth Dowels",
+    "description": "Accessories Material",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "45284523": {
+    "itemName": "Winter Concrete",
+    "costCode": "03-300-40-10",
+    "costName": "Use during winter months only for added Concrete cost of Material",
+    "description": "Winter Concrete",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter Concrete"
+  },
+  "45634630": {
+    "itemName": "Shop Time",
+    "costCode": "01-300-10-70",
+    "costName": "Used for Shop Time and Office Meetings",
+    "description": "Shop and Office Time",
+    "reportingGroup": "Shop and Office Time",
+    "topLevelGroup": "Job Cost"
+  },
+  "45852711": {
+    "itemName": "Non Contracted Labor",
+    "costCode": "03-300-20-70",
+    "costName": "Non Contracted Labor",
+    "description": "Non Contracted Labor",
+    "reportingGroup": "Non Contracted Labor",
+    "topLevelGroup": "Job Cost"
+  },
+  "45901569": {
+    "itemName": "Rebar Fabrication Time",
+    "costCode": "05-100-10-60",
+    "costName": "Rebar Fabrication Time",
+    "description": "Rebar Fabrication Time",
+    "reportingGroup": "Rebar Fabrication Time",
+    "topLevelGroup": "Job Cost"
+  },
+  "48458345": {
+    "itemName": "Food Cost",
+    "costCode": "01-300-10-80",
+    "costName": "",
+    "description": "Food Cost",
+    "reportingGroup": "Food Cost",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482116": {
+    "itemName": "Bollard Sch 40 6\"x7'6\" (primed)",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sch 40 6\"x7'-6\" (primed)",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482117": {
+    "itemName": "Bollard Sch 40 6\"x78\" with cap (primed)",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sch 40 6\"x78\" with cap (primed)",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482118": {
+    "itemName": "Bollard Sleeve",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sleeve",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482119": {
+    "itemName": "Galvanized Bollard 4\"",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Galvanized Bollard 4\"",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482120": {
+    "itemName": "Galvanized Bollard 6\"",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Galvanized Bollard 6\"",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482121": {
+    "itemName": "Bollards Concrete",
+    "costCode": "05-100-10-20",
+    "costName": "Bollards Concrete",
+    "description": "Concrete Set And Fill Bollards",
+    "reportingGroup": "Bollards Concrete",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482122": {
+    "itemName": "Bollard Sch 40 4\" x 7' Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sch 40 4\" x 7' Stainless Steel with Cap",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482123": {
+    "itemName": "Bollard Sch 40 4\" x 80\" Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sch 40 4\" x 80\" Stainless Steel with Cap / Gap Repair",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482124": {
+    "itemName": "Bollard Sch 40 6\" x 80\" Stainless Steel with Cap",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sch 40 6\" x 80\" Stainless Steel with Cap / Gap Repair",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482125": {
+    "itemName": "Bollard Sleeve Sch 40 6\" Stainless Steel",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sleeve Sch 40 6\" Stainless Steel / Gap Repair",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482126": {
+    "itemName": "Bollard Sleeve Sch 40 8\" Stainless Steel",
+    "costCode": "05-100-10-10",
+    "costName": "Bollards Materials",
+    "description": "Bollard Sleeve Sch 40 8\" Stainless Steel / Gap Repair",
+    "reportingGroup": "Bollards Materials",
+    "topLevelGroup": "Job cost"
+  },
+  "51482130": {
+    "itemName": "Quickbooks Over and Under Adjustments",
+    "costCode": "90-100-10-10",
+    "costName": "Overhead & Profit",
+    "description": "",
+    "reportingGroup": "Overhead & Profit",
+    "topLevelGroup": "Overhead & Profit"
+  },
+  "51482131": {
+    "itemName": "Bonding",
+    "costCode": "01-200-10-10",
+    "costName": "Bonding",
+    "description": "Bond Insurance Cost",
+    "reportingGroup": "Bonding",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482132": {
+    "itemName": "Foundation Concrete",
+    "costCode": "03-300-00-20",
+    "costName": "Foundation Concrete Material",
+    "description": "Ready Mix Concrete For Foundations",
+    "reportingGroup": "Foundation Concrete Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482133": {
+    "itemName": "Foundation Wood Forms",
+    "costCode": "03-100-10-20",
+    "costName": "Foundation Forms Material",
+    "description": "Any Wood Forming For Footers and Piers Etc.",
+    "reportingGroup": "Foundation Forms Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482134": {
+    "itemName": "Foundation Aluminum Forms",
+    "costCode": "03-100-10-20",
+    "costName": "Foundation Forms Material",
+    "description": "In House Aluminum Wall Forms Used For Footers And Piers Etc.",
+    "reportingGroup": "Foundation Forms Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482135": {
+    "itemName": "Foundation Form Rentals",
+    "costCode": "03-100-10-40",
+    "costName": "Foundation Forms Rental",
+    "description": "Any Form Rentals For Footers And Piers",
+    "reportingGroup": "Foundation Forms Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482136": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#4 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482137": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#3 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482138": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#5 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482139": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#6 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482140": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#7 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482141": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#8 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482142": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#9 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482143": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#11 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482144": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-10-20",
+    "costName": "Foundation Rebar Material",
+    "description": "#10 Rebar By The Piece",
+    "reportingGroup": "Foundation Rebar Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482145": {
+    "itemName": "Fiber",
+    "costCode": "03-300-00-20",
+    "costName": "Foundation Concrete Material",
+    "description": "Fiber from Ready Mix Supplier",
+    "reportingGroup": "Foundation Concrete Material",
+    "topLevelGroup": "Foundations"
+  },
+  "51482146": {
+    "itemName": "TK Gold Form Release",
+    "costCode": "03-100-20-20",
+    "costName": "Wall Forms Material",
+    "description": "5 Gal. Pail TK Gold",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482147": {
+    "itemName": "Wall Concrete",
+    "costCode": "03-300-10-20",
+    "costName": "Wall Concrete Material",
+    "description": "Ready Mix Concrete For Walls",
+    "reportingGroup": "Wall Concrete Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482148": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#4 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482149": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#3 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482150": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#5 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482151": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#6 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482152": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#7 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482153": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#8 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482154": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#9 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482155": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#11 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482156": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-20-20",
+    "costName": "Wall Rebar Material",
+    "description": "#10 Rebar By The Piece",
+    "reportingGroup": "Wall Rebar Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482157": {
+    "itemName": "Wall Forms",
+    "costCode": "03-100-20-20",
+    "costName": "Wall Forms Material",
+    "description": "Sq. Ft. Aluminum Wall Forms In House",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482158": {
+    "itemName": "Wood Wall Forms",
+    "costCode": "03-100-20-20",
+    "costName": "Wall Forms Material",
+    "description": "Sq Ft. Of Wood Wall Forms",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482159": {
+    "itemName": "8\" Wall Tie",
+    "costCode": "03-100-20-20",
+    "costName": "Wall Forms Material",
+    "description": "8\" Aluminum Wall Tie",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482160": {
+    "itemName": "Fiber",
+    "costCode": "03-300-10-20",
+    "costName": "Wall Concrete Material",
+    "description": "Fiber from Ready Mix Supplier",
+    "reportingGroup": "Wall Concrete Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482161": {
+    "itemName": "Fiber",
+    "costCode": "03-300-20-20",
+    "costName": "SOG Concrete Material",
+    "description": "Fiber from Ready Mix Supplier",
+    "reportingGroup": "SOG Concrete Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482162": {
+    "itemName": "Slab On Grade Concrete",
+    "costCode": "03-300-20-20",
+    "costName": "SOG Concrete Material",
+    "description": "Ready Mix Concrete For Slabs On Grade",
+    "reportingGroup": "SOG Concrete Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482163": {
+    "itemName": "Slab On Grade Wood Forms",
+    "costCode": "03-100-30-20",
+    "costName": "SOG Forms Material",
+    "description": "Any Wood Forming For Slabs On Grade",
+    "reportingGroup": "SOG Forms Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482164": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#4 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482165": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#3 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482166": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#5 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482167": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#6 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482168": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#7 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482169": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#8 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482170": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#9 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482171": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#11 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482172": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-30-20",
+    "costName": "SOG Rebar Material",
+    "description": "#10 Rebar By The Piece",
+    "reportingGroup": "SOG Rebar Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482173": {
+    "itemName": "Site Concrete",
+    "costCode": "03-300-30-20",
+    "costName": "Site Concrete Material",
+    "description": "Ready Mix Concrete For Site Concrete",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "51482174": {
+    "itemName": "Site Concrete Wood Forms",
+    "costCode": "03-100-30-20",
+    "costName": "SOG Forms Material",
+    "description": "Any Wood Forming For Site Concrete",
+    "reportingGroup": "SOG Forms Material",
+    "topLevelGroup": "SOG"
+  },
+  "51482175": {
+    "itemName": "#4 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#4 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482176": {
+    "itemName": "#3 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#3 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482177": {
+    "itemName": "#5 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#5 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482178": {
+    "itemName": "#6 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#6 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482179": {
+    "itemName": "#7 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#7 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482180": {
+    "itemName": "#8 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#8 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482181": {
+    "itemName": "#9 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#9 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482182": {
+    "itemName": "#11 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#11 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482183": {
+    "itemName": "#10 Rebar - 20' Pc",
+    "costCode": "03-200-40-20",
+    "costName": "Site Rebar Material",
+    "description": "#10 Rebar By The Piece",
+    "reportingGroup": "Site Rebar Material",
+    "topLevelGroup": "Site"
+  },
+  "51482184": {
+    "itemName": "Fiber",
+    "costCode": "03-300-30-20",
+    "costName": "Site Concrete Material",
+    "description": "Fiber from Ready Mix Supplier",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "51482185": {
+    "itemName": "Decorative Mockups",
+    "costCode": "03-300-30-20",
+    "costName": "Site Concrete Material",
+    "description": "Small Mockups to Show Finish",
+    "reportingGroup": "Site Concrete Material",
+    "topLevelGroup": "Site"
+  },
+  "51482186": {
+    "itemName": "EPS Foam Concrete Adhesive 14 oz",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "EPS Foam Concrete Adhesive",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482187": {
+    "itemName": "Planitop X 50 lb Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Planitop X",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482188": {
+    "itemName": "Quikrete Concrete Mix 80 Lb bag",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Quikrete Concrete Mix",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482189": {
+    "itemName": "Pc-Concrete Repair Epoxy",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Concrete Repair Epoxy",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482190": {
+    "itemName": "Sika AnchorFix1",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Sika AnchorFix1",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482191": {
+    "itemName": "Super Air Plus 1 Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Super Air Plus 1 Bag",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482192": {
+    "itemName": "Mini Delay Set",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Mini Delay Set",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482193": {
+    "itemName": "Precision Non-Shrink Grout 50lb",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Precision Non-Shrink Grout 50lb",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482194": {
+    "itemName": "Fiber 3/4\" Length 1 LB.Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Fiber 3/4\" Length 1 LB.Bag Added On Site",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482195": {
+    "itemName": "Keyway- Screed Key Pc. 3.5\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "3.5\"x10' Keyway- Screed Key",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482196": {
+    "itemName": "Keyway- Screed Key Pc. 5.5\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "5.5\"x10' Keyway- Screed Key",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482197": {
+    "itemName": "Quick Joint zip strip Pc. 1\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Quick Joint zip strip Pc. 1\"x10'",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482198": {
+    "itemName": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Wood Chamfer Pc. 3/4\"x3/4\"x10'",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482199": {
+    "itemName": "Non Metallic Floor Hardener 50 lb. Bag",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Sureflex Hardener For Concrete Floors 1lb. per sq. ft.",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482200": {
+    "itemName": "Mobilization",
+    "costCode": "01-300-10-35",
+    "costName": "Mobilization",
+    "description": "Mobilization to and from Jobsites",
+    "reportingGroup": "Mobilization",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482201": {
+    "itemName": "Dumbbell Waterstop Type DB-2 PVC 6\"X 3/8\"X 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Dumbbell WaterstopType DB-2 PVC 6\"X 3/8\"X 50'",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482202": {
+    "itemName": "Box Expand-Tite 100 (100' per carton)",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Box Expand-Tite 100 (100' per carton)",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482203": {
+    "itemName": "Box Expand-Tite 200 (100' per carton)",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Box Expand-Tite 200 (100' per carton)",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482204": {
+    "itemName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 50'",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482205": {
+    "itemName": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 100'",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Water Stop Type 3A Ribbed 4\"x 3/16\" x 100'",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482206": {
+    "itemName": "Water Stop Type 4B Ribbed - w/Center bulb - Tapered 6\"x 3/16\" x 50'",
+    "costCode": "03-150-10-05",
+    "costName": "Waterstop",
+    "description": "Water Stop Type 4B Ribbed - w/Center bulb - Tapered 6\"x 3/16\" x 50'",
+    "reportingGroup": "Waterstop",
+    "topLevelGroup": "Job cost"
+  },
+  "51482207": {
+    "itemName": "Vapor Barrier 6 mil 20'x100'",
+    "costCode": "03-150-10-35",
+    "costName": "Vapor Barrier 6-10mil",
+    "description": "Vapor Barrier 6 mil 20'x100'",
+    "reportingGroup": "Vapor Barrier 6-10mil",
+    "topLevelGroup": "Job cost"
+  },
+  "51482208": {
+    "itemName": "Viper Tape 4\" x 180'",
+    "costCode": "03-150-10-45",
+    "costName": "Vapor Barrier 20mil",
+    "description": "Viper Tape 4\" x 180'  ( 2 rolls per 1960 Sq. Ft. )",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "51482209": {
+    "itemName": "Vapor Barrier 15 mil Viper II Class A Roll (14'x140')",
+    "costCode": "03-150-10-45",
+    "costName": "Vapor Barrier 20mil",
+    "description": "15 mil Viper II Plastic Class A Roll (14'x140')",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "51482210": {
+    "itemName": "Vapor Barrier 10 mil 20'x100'",
+    "costCode": "03-150-10-35",
+    "costName": "Vapor Barrier 6-10mil",
+    "description": "Vapor Barrier 10 mil 20'x100'",
+    "reportingGroup": "Vapor Barrier 6-10mil",
+    "topLevelGroup": "Job cost"
+  },
+  "51482211": {
+    "itemName": "Vapor Barrier 20 mil 14'x105'",
+    "costCode": "03-150-10-45",
+    "costName": "Vapor Barrier 20mil",
+    "description": "Vapor Barrier 20 mil 14'x105'",
+    "reportingGroup": "Vapor Barrier 20mil",
+    "topLevelGroup": "Job cost"
+  },
+  "51482212": {
+    "itemName": "Standard Wall Construction 18\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "18\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482213": {
+    "itemName": "Standard Wall Construction 30\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "30\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482214": {
+    "itemName": "Standard Wall Construction 12\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "12\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482215": {
+    "itemName": "Standard Wall Construction 16\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "16\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482216": {
+    "itemName": "Standard Wall Construction 20\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "20\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482217": {
+    "itemName": "Standard Wall Construction 24\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "24\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482218": {
+    "itemName": "Standard Wall Construction 36\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "36\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482219": {
+    "itemName": "Standard Wall Construction 22\" x 12'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "22\" x 12' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482220": {
+    "itemName": "Standard Wall Construction 12\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "12\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482221": {
+    "itemName": "Standard Wall Construction 20\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "20\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482222": {
+    "itemName": "Standard Wall Construction 36\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "36\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482223": {
+    "itemName": "Standard Wall Construction 16\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "16\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482224": {
+    "itemName": "Standard Wall Construction 18\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "18\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482225": {
+    "itemName": "Standard Wall Construction 24\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "24\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482226": {
+    "itemName": "Standard Wall Construction 30\" x 6'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "30\" x 6' Standard Wall Construction",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482227": {
+    "itemName": "Expansion Noma-Flex 6\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "6\" Rigid Foam Expansion",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482228": {
+    "itemName": "Expansion Noma-Flex 12\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "12\" Rigid Foam Expansion",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482229": {
+    "itemName": "Foam Expansion Roll 1/4\"x4\"x100'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/4\"x4\"x100' Foam Expansion Roll",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482230": {
+    "itemName": "Foam Expansion Roll 1/2\"x4\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x4\"x50' Foam Expansion Roll",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482231": {
+    "itemName": "Foam Expansion Roll 1/2\"x6\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x6\"x50' Foam Expansion Roll",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482232": {
+    "itemName": "Foam Expansion Roll 1/2\"x8\"x50'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x8\"x50' Foam Expansion Roll",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482233": {
+    "itemName": "Rubber Expansion Pc. 1/2\"x4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x4\"x10' Rubber Expansion",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482234": {
+    "itemName": "Rubber Expansion Pc. 1/2\"x6\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x6\"x10' Rubber Expansion",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482235": {
+    "itemName": "Expansion Noma-Flex 4\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "4\" Rigid Foam Expansion",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482236": {
+    "itemName": "Expansion Cap (snap cap) 1/2\"x10'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1/2\"x10' Expansion Cap (snap cap)",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482237": {
+    "itemName": "Touch N Foam 12 oz",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Touch N Foam",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482238": {
+    "itemName": "Great Stuff Insulating Foam 12 oz",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Great Stuff Insulating Foam",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482239": {
+    "itemName": "GreenGuard Scoreboard 2\"x4'x8'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "2\"x4'x8' GreenGuard Scoreboard",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482240": {
+    "itemName": "GreenGuard Scoreboard 1.5\"x4'x8",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1.5\"x4'x8 GreenGuard Scoreboard",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482241": {
+    "itemName": "GreenGuard Scoreboard 1\"x4'x8'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "1\"x4'x8' GreenGuard Scoreboard",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482242": {
+    "itemName": "Powder Release 5 Gal",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Powder Release 5 Gal",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482243": {
+    "itemName": "Color Hardener 5 Gal",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Color Hardener 5 Gal",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482244": {
+    "itemName": "Integral Color",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Integral Color",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482245": {
+    "itemName": "Surface Deactivator",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "5 Gal. Surface Retarder / 250 Sq Ft. per Gal.",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482246": {
+    "itemName": "Eco-stain",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Surecrete Waterbased Stain",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482247": {
+    "itemName": "Stamp Rental",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "Stamp Rentals From PCS",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482248": {
+    "itemName": "ADA Plate 2'x3'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "ADA Plate 2'x3'",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482249": {
+    "itemName": "ADA Plate 2'x4'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "ADA Plate 2'x4'",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482250": {
+    "itemName": "ADA Plate 2'x5'",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "ADA Plate 2'x5'",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482251": {
+    "itemName": "Heavy Duty SOG Chair 2-1/2\" - 3\"",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Heavy Duty SOG Chair 2-1/2\" - 3\"",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482252": {
+    "itemName": "Heavy Duty SOG Chair 1 1/2\" - 2\"",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Heavy Duty SOG Chair 1 1/2\" - 2\"",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482253": {
+    "itemName": "2\" Popcorn Brick Chairs",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "2\" Popcorn Brick Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482254": {
+    "itemName": "Chairs 1.5\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Metal Bar Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482255": {
+    "itemName": "Chairs 3/4\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Metal Bar Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482256": {
+    "itemName": "Chairs 2\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Metal Bar Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482257": {
+    "itemName": "Chairs 3\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Metal Bar Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482258": {
+    "itemName": "Chairs 4\" (5' section)",
+    "costCode": "03-200-50-30",
+    "costName": "Chairs",
+    "description": "Metal Bar Chairs",
+    "reportingGroup": "Chairs",
+    "topLevelGroup": "Job cost"
+  },
+  "51482259": {
+    "itemName": "Speed Dowel #4 Rebar 5/8\" x 9\"",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "#4 Rebar Speed Dowel  5/8\" x 9\"",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482260": {
+    "itemName": "#5 Speed Dowel Base -3/4\"",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "#5 Speed Dowel Base -3/4\"",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482261": {
+    "itemName": "Speed Dowel #5 Rebar 3/4\" x 9\"",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "#5 Rebar Speed Dowel  3/4\" x 9\"",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482262": {
+    "itemName": "1/4\" QuicDiamond Flat Plate (includes Plate and Sleeve)",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "QuicDiamond Flat Plate",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482263": {
+    "itemName": "#6 (3/4\") X 18\" Smooth Dowels",
+    "costCode": "03-150-10-85",
+    "costName": "Accessories Material",
+    "description": "#6 (3/4\") X 18\" Smooth Dowels",
+    "reportingGroup": "Accessories Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482264": {
+    "itemName": "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "6 ga Wire 5'x10' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482265": {
+    "itemName": "Wire Mesh 8 ga (2.1x2.1 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "8 ga Wire 5'x10' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482266": {
+    "itemName": "Wire Mesh 10 ga (1.4x1.4 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "10 ga Wire 5'x10' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482267": {
+    "itemName": "Wire Mesh 6 ga  (2.9x2.9 6x6) 8'x15' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "6 ga Wire Mesh  (2.9x2.9 6x6) 8'x15' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482268": {
+    "itemName": "Wire Mesh 4 ga (4.0x4.0 6x6) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "10 ga Wire 5'x10' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482269": {
+    "itemName": "Wire Mesh 4 ga (4.0x4.0 4x4) 5'x10' Sheet",
+    "costCode": "03-200-50-20",
+    "costName": "Wire Material",
+    "description": "10 ga Wire 5'x10' Sheet",
+    "reportingGroup": "Wire Material",
+    "topLevelGroup": "Job cost"
+  },
+  "51482270": {
+    "itemName": "Certi-Vex 244 OW Aim  5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "Certi-Vex 244 OW Aim  5 gal",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482271": {
+    "itemName": "HS 200LV Penetrating Sealer  5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "Concrete Exterior Sealers",
+    "description": "HS 200LV Penetrating Sealer  5 gal / 150 Sq Ft. per Gal.",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482272": {
+    "itemName": "L&M Curing Compound",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "L&M Curing Compound 55 Gal. / 350 Sq Ft. per Gal.",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482273": {
+    "itemName": "V-Seal 102 5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "Concrete Exterior Sealers",
+    "description": "V-Seal 102 5 gal",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482274": {
+    "itemName": "TK-Floor Hardner and Densifier 55 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "TK-Floor Hardner and Densifier 55 gal / 250 Sq Ft. per gal.",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482275": {
+    "itemName": "TK Kure & Seal WB  5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "TK Kure & Seal WB  5 gal / 300 Sq Ft. per Gal.",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482276": {
+    "itemName": "V-Seal 101 5 gal",
+    "costCode": "03-300-40-40",
+    "costName": "Concrete Exterior Sealers",
+    "description": "V-Seal 101 5 gal / 250 Sq Ft. per Gal.",
+    "reportingGroup": "Concrete Exterior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482277": {
+    "itemName": "L&M Cure 55 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "L&M Cure 55 gal / 350 Sq Ft. per Ga.",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482278": {
+    "itemName": "L&M Curing Compound",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "L&M Curing Compound 5 Gal. / 350 Sq Ft. per Gal.",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482279": {
+    "itemName": "L&M Dress Seal WB 5 gal",
+    "costCode": "03-300-40-60",
+    "costName": "Concrete Interior Sealers",
+    "description": "L&M Dress Seal WB 5 gal",
+    "reportingGroup": "Concrete Interior Sealers",
+    "topLevelGroup": "Job cost"
+  },
+  "51482280": {
+    "itemName": "Non-chloride Accelerator",
+    "costCode": "03-300-40-10",
+    "costName": "Winter Concrete",
+    "description": "General Non-chloride Accelerator",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter"
+  },
+  "51482281": {
+    "itemName": "Calcium Accelerator",
+    "costCode": "03-300-40-10",
+    "costName": "Winter Concrete",
+    "description": "Calcium Accelerator In Bags",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter"
+  },
+  "51482282": {
+    "itemName": "Blankets price is 1 coverage only",
+    "costCode": "03-300-40-10",
+    "costName": "Winter Concrete",
+    "description": "Blankets",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter"
+  },
+  "51482283": {
+    "itemName": "Hot Water",
+    "costCode": "03-300-40-10",
+    "costName": "Winter Concrete",
+    "description": "General Hot Water Charge",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter"
+  },
+  "51482284": {
+    "itemName": "Winter Concrete",
+    "costCode": "03-300-40-10",
+    "costName": "Winter Concrete",
+    "description": "Use during winter months only for added Concrete cost of Material",
+    "reportingGroup": "Winter Concrete",
+    "topLevelGroup": "Winter"
+  },
+  "51482285": {
+    "itemName": "2B Stone",
+    "costCode": "31-100-10-30",
+    "costName": "Aggregate",
+    "description": "2b Stone per Ton",
+    "reportingGroup": "Aggregate",
+    "topLevelGroup": "Job cost"
+  },
+  "51482286": {
+    "itemName": "2A Modified",
+    "costCode": "31-100-10-30",
+    "costName": "Aggregate",
+    "description": "2A Modified per Ton",
+    "reportingGroup": "Aggregate",
+    "topLevelGroup": "Job cost"
+  },
+  "51482287": {
+    "itemName": "Over/Under",
+    "costCode": "90-100-10-10",
+    "costName": "Overhead & Profit",
+    "description": "Item used to match estimate with contract line.",
+    "reportingGroup": "Overhead & Profit",
+    "topLevelGroup": "Overhead & Profit"
+  },
+  "51482288": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-00-30",
+    "costName": "Foundation Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour With Labor",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482289": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-00-40",
+    "costName": "Foundation Concrete Rental",
+    "description": "Telehandler (Rental) Rate per Hour",
+    "reportingGroup": "Foundation Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482290": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-00-30",
+    "costName": "Foundation Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour Without Labor",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482291": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-00-40",
+    "costName": "Foundation Concrete Rental",
+    "description": "Any Size Scissor Lift Rental",
+    "reportingGroup": "Foundation Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482292": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-00-30",
+    "costName": "Foundation Concrete Equipment",
+    "description": "Day Tower Light",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482293": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-00-30",
+    "costName": "Foundation Concrete Equipment",
+    "description": "Day Concrete Buggy",
+    "reportingGroup": "Foundation Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482294": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-10-30",
+    "costName": "Wall Concrete Equipment",
+    "description": "Day Tower Light",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Wall"
+  },
+  "51482295": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-10-30",
+    "costName": "Wall Concrete Equipment",
+    "description": "Day Concrete Buggy",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Wall"
+  },
+  "51482296": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-10-30",
+    "costName": "Wall Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour With Labor",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Wall"
+  },
+  "51482297": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-10-40",
+    "costName": "Wall Concrete Rental",
+    "description": "Telehandler (Rental) Rate per Hour",
+    "reportingGroup": "Wall Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482298": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-10-30",
+    "costName": "Wall Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour Without Labor",
+    "reportingGroup": "Wall Concrete Equipment",
+    "topLevelGroup": "Wall"
+  },
+  "51482299": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-10-40",
+    "costName": "Wall Concrete Rental",
+    "description": "Any Size Scissor Lift Rental",
+    "reportingGroup": "Wall Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482300": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour With Labor",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482301": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-20-40",
+    "costName": "SOG Concrete Rental",
+    "description": "Telehandler (Rental) Rate per Hour",
+    "reportingGroup": "SOG Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482302": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour Without Labor",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482303": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-20-40",
+    "costName": "SOG Concrete Rental",
+    "description": "Any Size Scissor Lift Rental",
+    "reportingGroup": "SOG Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482304": {
+    "itemName": "Topping spreader (attachment on the SRS4 machine)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Topping spreader",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482305": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day Tower Light",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482306": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day Concrete Buggy",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482307": {
+    "itemName": "Hydro 8' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day Hydro 8' Rideon Trowler",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482308": {
+    "itemName": "Hydro 10' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day Hydro 10' Rideon Trowler",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482309": {
+    "itemName": "8' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day 8' Rideon Trowler",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482310": {
+    "itemName": "6' Rideon Trowler",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Day 6' Rideon Trowler",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482311": {
+    "itemName": "Topping spreader (attachment on the SRS4 machine)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Topping spreader",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482312": {
+    "itemName": "Hydro 8' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day Hydro 8' Rideon Trowler",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482313": {
+    "itemName": "Hydro 10' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day Hydro 10' Rideon Trowler",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482314": {
+    "itemName": "8' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day 8' Rideon Trowler",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482315": {
+    "itemName": "6' Rideon Trowler",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day 6' Rideon Trowler",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482316": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour With Labor",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482317": {
+    "itemName": "Telehandler 8000 lb (Rental)",
+    "costCode": "03-300-30-40",
+    "costName": "Site Concrete Rental",
+    "description": "Telehandler (Rental) Rate per Hour",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482318": {
+    "itemName": "Telehandler 8000 lb (In-House)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Telehandler (In-House) Rate per Hour Without Labor",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482319": {
+    "itemName": "Scissor Lift Rental",
+    "costCode": "03-300-30-40",
+    "costName": "Site Concrete Rental",
+    "description": "Any Size Scissor Lift Rental",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482320": {
+    "itemName": "Tower Light",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day Tower Light",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482321": {
+    "itemName": "Concrete Buggy",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Day Concrete Buggy",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482322": {
+    "itemName": "Demo Equipment",
+    "costCode": "02-400-10-20",
+    "costName": "Demo Equipment",
+    "description": "Rental Equipment for Demo",
+    "reportingGroup": "Demo Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482323": {
+    "itemName": "Chop Saw",
+    "costCode": "03-400-10-20",
+    "costName": "Concrete Sawing Equipment",
+    "description": "Chop Saw By The Day",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482324": {
+    "itemName": "Soffcut Saw X150",
+    "costCode": "03-400-10-20",
+    "costName": "Concrete Sawing Equipment",
+    "description": "Soffcut Saw X150 By The Day",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482325": {
+    "itemName": "Soffcut Saw X4000",
+    "costCode": "03-400-10-20",
+    "costName": "Concrete Sawing Equipment",
+    "description": "Soffcut Saw X4000 By The Day",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482326": {
+    "itemName": "18\" Floor Saw",
+    "costCode": "03-400-10-20",
+    "costName": "Concrete Sawing Equipment",
+    "description": "18\" Floor Saw By The Day",
+    "reportingGroup": "Concrete Sawing Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482327": {
+    "itemName": "Remediation Equipment",
+    "costCode": "02-500-10-20",
+    "costName": "Remediation Equipment",
+    "description": "Rental Equipment For Remediation",
+    "reportingGroup": "Remediation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482328": {
+    "itemName": "Kubota Excavator KX033",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Hourly Excavator KX033 Per Hour With Labor",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482329": {
+    "itemName": "Kubota Excavator KX033",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Hourly Excavator KX033 Per Hour Without Labor",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482330": {
+    "itemName": "Bobcat 595 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Hourly 595 Skidloader with Labor",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482331": {
+    "itemName": "Bobcat 595 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Hourly 595 Skidloader without Labor",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482332": {
+    "itemName": "Bobcat 450 Skidloader",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Hourly 450 Skidloader Without Labor",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482333": {
+    "itemName": "Trackhoe Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Any size trackhoe rental",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482334": {
+    "itemName": "Roller Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Any size roller rental",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482335": {
+    "itemName": "Skidloader Rental",
+    "costCode": "31-100-10-50",
+    "costName": "Excavation Equipment",
+    "description": "Any skidloader rental",
+    "reportingGroup": "Excavation Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482336": {
+    "itemName": "Foundation Subcontractor",
+    "costCode": "03-300-00-50",
+    "costName": "Foundation Subcontractor",
+    "description": "Subcontractor For Foundations",
+    "reportingGroup": "Foundation Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482337": {
+    "itemName": "Wall Form Rentals",
+    "costCode": "03-100-20-20",
+    "costName": "Wall Forms Material",
+    "description": "Sq Ft. Of Wall Form Rentals",
+    "reportingGroup": "Wall Forms Material",
+    "topLevelGroup": "Wall"
+  },
+  "51482338": {
+    "itemName": "Poured Wall Subcontractor",
+    "costCode": "03-300-10-50",
+    "costName": "Wall Subcontractor",
+    "description": "Poured Wall Subcontractor",
+    "reportingGroup": "Wall Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482339": {
+    "itemName": "Somero S-15R (boom screed) (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Somero S-15R (boom screed)",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482340": {
+    "itemName": "Somero SRS4 (boom screed) (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Somero SRS4 (boom screed)",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482341": {
+    "itemName": "Somero S-840 (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Somero S-840",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482342": {
+    "itemName": "Somero Power Rake (8 hr minimum)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Somero Power Rake",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482343": {
+    "itemName": "Somero 3D Profiler (with or without screed)",
+    "costCode": "03-300-20-30",
+    "costName": "SOG Concrete Equipment",
+    "description": "Somero 3D Profiler",
+    "reportingGroup": "SOG Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482344": {
+    "itemName": "Slab on Grade Subcontractor",
+    "costCode": "03-300-20-50",
+    "costName": "SOG Subcontractor",
+    "description": "Subcontractor For Slabs On Grade",
+    "reportingGroup": "SOG Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482345": {
+    "itemName": "Somero S-15R (boom screed) (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Somero S-15R (boom screed)",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482346": {
+    "itemName": "Somero SRS4 (boom screed) (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Somero SRS4 (boom screed)",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482347": {
+    "itemName": "Somero S-840 (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Somero S-840",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482348": {
+    "itemName": "Somero Power Rake (8 hr minimum)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Somero Power Rake",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482349": {
+    "itemName": "Somero 3D Profiler (with or without screed)",
+    "costCode": "03-300-30-30",
+    "costName": "Site Concrete Equipment",
+    "description": "Somero 3D Profiler",
+    "reportingGroup": "Site Concrete Equipment",
+    "topLevelGroup": "Equipment"
+  },
+  "51482350": {
+    "itemName": "Site Concrete Subcontractor",
+    "costCode": "03-300-30-50",
+    "costName": "Site Subcontractor",
+    "description": "Subcontractor For Site Concrete",
+    "reportingGroup": "Site Subcontractor",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482351": {
+    "itemName": "Curb Form Rentals",
+    "costCode": "03-300-30-40",
+    "costName": "Site Concrete Rental",
+    "description": "50 ft. of curb form rentals per day",
+    "reportingGroup": "Site Concrete Rental",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482352": {
+    "itemName": "Masonry Subcontractor",
+    "costCode": "04-100-10-20",
+    "costName": "Masonry Sub",
+    "description": "Masonry Subcontractor",
+    "reportingGroup": "Masonry Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482353": {
+    "itemName": "Shop Drawings",
+    "costCode": "01-300-10-40",
+    "costName": "Shop Drawings",
+    "description": "Rebar Shop Drawings Lump Sum",
+    "reportingGroup": "Shop Drawings",
+    "topLevelGroup": "Job cost"
+  },
+  "51482354": {
+    "itemName": "Shop Drawings",
+    "costCode": "01-300-10-40",
+    "costName": "Shop Drawings",
+    "description": "Rebar Shop Drawings Per Ton",
+    "reportingGroup": "Shop Drawings",
+    "topLevelGroup": "Job cost"
+  },
+  "51482355": {
+    "itemName": "Line Dragon",
+    "costCode": "03-300-40-30",
+    "costName": "Concrete Pumping",
+    "description": "Line Dragon Rental (with Pump Rental)",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482356": {
+    "itemName": "Boom Pump Rental w/Operator",
+    "costCode": "03-300-40-30",
+    "costName": "Concrete Pumping",
+    "description": "Boom Pump",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482357": {
+    "itemName": "Telebelt (4 hr minimum)",
+    "costCode": "03-300-40-30",
+    "costName": "Concrete Pumping",
+    "description": "Telebelt",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482358": {
+    "itemName": "Trailer Pump (Includes 3 hr)",
+    "costCode": "03-300-40-30",
+    "costName": "Concrete Pumping",
+    "description": "Trailer Pump",
+    "reportingGroup": "Concrete Pumping",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482359": {
+    "itemName": "Dump Truck",
+    "costCode": "31-100-10-40",
+    "costName": "Excavation Sub",
+    "description": "Dump Truck",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482360": {
+    "itemName": "Excavation Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Excavation Sub",
+    "description": "Footer digs, Backfills, Slab grading",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482361": {
+    "itemName": "Trackhoe Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Excavation Sub",
+    "description": "Subcontractors trackhoe by the hour",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482362": {
+    "itemName": "Skidloader Subcontractor",
+    "costCode": "31-100-10-40",
+    "costName": "Excavation Sub",
+    "description": "Subcontractors skidloader by the hour",
+    "reportingGroup": "Excavation Sub",
+    "topLevelGroup": "Sub Contractor"
+  },
+  "51482363": {
+    "itemName": "Rebar Fabrication Time",
+    "costCode": "05-100-10-60",
+    "costName": "Rebar Fabrication Time",
+    "description": "Rebar Fabrication Time",
+    "reportingGroup": "Rebar Fabrication Time",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482364": {
+    "itemName": "Labor Bollards",
+    "costCode": "05-100-10-30",
+    "costName": "Labor Bollards",
+    "description": "Labor To Set And Pour Bollards",
+    "reportingGroup": "Labor Bollards",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482365": {
+    "itemName": "Labor Foundation",
+    "costCode": "03-300-00-10",
+    "costName": "Foundation Concrete Labor",
+    "description": "General Labor for Concrete foundations",
+    "reportingGroup": "Foundation Concrete Labor",
+    "topLevelGroup": "Foundations"
+  },
+  "51482366": {
+    "itemName": "Labor Foundation Forms",
+    "costCode": "03-100-10-10",
+    "costName": "Labor Foundation Forms",
+    "description": "Labor To Form Foundations",
+    "reportingGroup": "Labor Foundation Forms",
+    "topLevelGroup": "Foundations"
+  },
+  "51482367": {
+    "itemName": "Labor Foundation Rebar",
+    "costCode": "03-200-10-10",
+    "costName": "Labor Foundation Rebar",
+    "description": "General Labor To Place Rebar",
+    "reportingGroup": "Labor Foundation Rebar",
+    "topLevelGroup": "Foundations"
+  },
+  "51482368": {
+    "itemName": "Labor Continuous Footing",
+    "costCode": "03-300-00-12",
+    "costName": "Labor Continuous Footing",
+    "description": "Labor To Prep And Pour Continuous Footings / 150 Ft. = 36 Hrs.",
+    "reportingGroup": "Labor Continuous Footing",
+    "topLevelGroup": "Foundations"
+  },
+  "51482369": {
+    "itemName": "Labor Spreadfooting",
+    "costCode": "03-300-00-16",
+    "costName": "Labor Spread Footing",
+    "description": "Labor To Prep And Pour Spreadfootings / 1 = 6 hrs.",
+    "reportingGroup": "Labor Spread Footing",
+    "topLevelGroup": "Foundations"
+  },
+  "51482370": {
+    "itemName": "Labor Pier",
+    "costCode": "03-300-00-14",
+    "costName": "Labor Pier",
+    "description": "Labor To Prep And Pour Piers / 1 = 8 Hrs.",
+    "reportingGroup": "Labor Pier",
+    "topLevelGroup": "Foundations"
+  },
+  "51482371": {
+    "itemName": "Labor Wall Forms",
+    "costCode": "03-100-20-10",
+    "costName": "Labor Wall Forms",
+    "description": "General Labor To Form And Strip Poured Walls",
+    "reportingGroup": "Labor Wall Forms",
+    "topLevelGroup": "Wall"
+  },
+  "51482372": {
+    "itemName": "Labor Wall",
+    "costCode": "03-300-10-10",
+    "costName": "Wall Concrete Labor",
+    "description": "General Labor For Poured Walls",
+    "reportingGroup": "Wall Concrete Labor",
+    "topLevelGroup": "Wall"
+  },
+  "51482373": {
+    "itemName": "Labor Wall Rebar",
+    "costCode": "03-200-20-10",
+    "costName": "Labor Wall Rebar",
+    "description": "Labor To Install Rebar In Walls",
+    "reportingGroup": "Labor Wall Rebar",
+    "topLevelGroup": "Wall"
+  },
+  "51482374": {
+    "itemName": "Labor Slab On Grade",
+    "costCode": "03-300-20-10",
+    "costName": "Labor SOG Concrete",
+    "description": "General Labor For Slabs On Grade",
+    "reportingGroup": "Labor SOG Concrete",
+    "topLevelGroup": "SOG"
+  },
+  "51482375": {
+    "itemName": "Labor Slab On Grade Forms",
+    "costCode": "03-100-30-10",
+    "costName": "Labor SOG Forms",
+    "description": "Labor To Wood Form Slabs On Grade",
+    "reportingGroup": "Labor SOG Forms",
+    "topLevelGroup": "SOG"
+  },
+  "51482376": {
+    "itemName": "Labor Slab on Grade Rebar",
+    "costCode": "03-200-30-10",
+    "costName": "Labor SOG Rebar",
+    "description": "General Labor To Place Rebar",
+    "reportingGroup": "Labor SOG Rebar",
+    "topLevelGroup": "SOG"
+  },
+  "51482377": {
+    "itemName": "Labor Non Contracted",
+    "costCode": "03-300-20-70",
+    "costName": "Non Contracted Labor",
+    "description": "Non Contracted Labor",
+    "reportingGroup": "Non Contracted Labor",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482378": {
+    "itemName": "Labor Site Concrete",
+    "costCode": "03-300-30-10",
+    "costName": "Labor Site Concrete",
+    "description": "General Labor For Site Concrete",
+    "reportingGroup": "Labor Site Concrete",
+    "topLevelGroup": "Site"
+  },
+  "51482379": {
+    "itemName": "Labor Site Concrete Forms",
+    "costCode": "03-100-30-10",
+    "costName": "Labor SOG Forms",
+    "description": "Labor To Form Site Concrete",
+    "reportingGroup": "Labor SOG Forms",
+    "topLevelGroup": "SOG"
+  },
+  "51482380": {
+    "itemName": "Labor Site Rebar",
+    "costCode": "03-200-40-10",
+    "costName": "Labor Site Rebar",
+    "description": "General Labor To Place Rebar",
+    "reportingGroup": "Labor Site Rebar",
+    "topLevelGroup": "Site"
+  },
+  "51482381": {
+    "itemName": "Labor Demo",
+    "costCode": "02-400-10-10",
+    "costName": "Demo Labor",
+    "description": "Demo Labor Per Hour",
+    "reportingGroup": "Demo Labor",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482382": {
+    "itemName": "Labor Concrete Sawing",
+    "costCode": "03-400-10-10",
+    "costName": "Labor Concrete Sawing",
+    "description": "Labor To Cut Concrete",
+    "reportingGroup": "Labor Concrete Sawing",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482383": {
+    "itemName": "Labor Remediation",
+    "costCode": "02-500-10-10",
+    "costName": "Labor Remediation",
+    "description": "Concrete Remediation Per Hour",
+    "reportingGroup": "Labor Remediation",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482384": {
+    "itemName": "Supervision",
+    "costCode": "01-300-10-10",
+    "costName": "Supervision",
+    "description": "1 Hr. Per 14 Manhours",
+    "reportingGroup": "Supervision",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482385": {
+    "itemName": "Management",
+    "costCode": "01-300-10-20",
+    "costName": "Project Management",
+    "description": "1 Hr. Per 30 Manhours, 1 In 50 With a Supervisor",
+    "reportingGroup": "Project Management",
+    "topLevelGroup": "PM"
+  },
+  "51482386": {
+    "itemName": "Labor Travel",
+    "costCode": "01-300-10-30",
+    "costName": "Labor Travel",
+    "description": "Travel Labor Hourly",
+    "reportingGroup": "Labor Travel",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482387": {
+    "itemName": "Shop Time",
+    "costCode": "01-300-10-70.L",
+    "costName": "Shop and Office Time",
+    "description": "Used for Shop Time and Office Meetings",
+    "reportingGroup": "Shop and Office Time",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482388": {
+    "itemName": "Labor Waterstop",
+    "costCode": "03-150-10-10",
+    "costName": "Labor Waterstop",
+    "description": "Labor To Install Waterstop",
+    "reportingGroup": "Labor Waterstop",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482389": {
+    "itemName": "Labor Interior Sealer",
+    "costCode": "03-300-40-70",
+    "costName": "Labor Concrete Interior",
+    "description": "Labor to seal interior concrete",
+    "reportingGroup": "Labor Concrete Interior",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482390": {
+    "itemName": "Labor Stone Grading",
+    "costCode": "31-100-10-10",
+    "costName": "Labor Grading",
+    "description": "Labor To Grade Stone",
+    "reportingGroup": "Labor Grading",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482391": {
+    "itemName": "Labor Excavation And Backfill",
+    "costCode": "31-100-10-20",
+    "costName": "Labor Excavation & Fill",
+    "description": "Labor To Excavate And Backfill Foundations",
+    "reportingGroup": "Labor Excavation & Fill",
+    "topLevelGroup": "Job Cost"
+  },
+  "51482392": {
+    "itemName": "Food Cost",
+    "costCode": "01-300-10-80",
+    "costName": "Food Cost",
+    "description": "Food Cost",
+    "reportingGroup": "Food Cost",
+    "topLevelGroup": "Job Cost"
+  }
+}

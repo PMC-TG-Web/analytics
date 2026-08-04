@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth0 } from '@/lib/auth0';
 import { logAuditEvent } from '@/lib/auditLog';
 import { getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
+import { KPI_CARD_VALUE_COUNT, normalizeKpiCardValues } from '@/lib/kpiCardMonths';
 
 type KPICardRow = {
   kpi: string;
@@ -26,6 +27,8 @@ type StoredCardPayload = {
 
 const KPI_CARD_CATEGORY = 'KPI_CARDS';
 const KPI_CARD_KEY_PREFIX = 'kpi-card:';
+const KPI_CARD_HISTORY_CATEGORY = 'KPI_CARDS_HISTORY';
+const KPI_CARD_HISTORY_KEY_PREFIX = 'kpi-card-history:';
 const KPI_CARDS_CACHE_PREFIX = 'kpi-cards:';
 const KPI_CARDS_CACHE_KEY = `${KPI_CARDS_CACHE_PREFIX}list`;
 const KPI_CARDS_CACHE_TTL_MS = 60 * 1000;
@@ -36,6 +39,13 @@ function normalizeName(name: string): string {
 
 function toCardKey(cardName: string): string {
   return `${KPI_CARD_KEY_PREFIX}${normalizeName(cardName).replace(/\s+/g, '-')}`;
+}
+
+function toCardHistoryKey(cardName: string): string {
+  const normalized = normalizeName(cardName).replace(/\s+/g, '-');
+  const timestamp = Date.now();
+  const nonce = Math.random().toString(36).slice(2, 8);
+  return `${KPI_CARD_HISTORY_KEY_PREFIX}${normalized}:${timestamp}:${nonce}`;
 }
 
 function toCardRecord(cardName: string, rows: KPICardRow[], updatedAt: Date, updatedBy?: string): KPICard {
@@ -95,6 +105,23 @@ function normalizeCardRows(rows: unknown): KPICardRow[] {
     .filter((row): row is KPICardRow => row !== null);
 }
 
+function normalizeCardRowValues(rows: KPICardRow[]): { rows: KPICardRow[]; legacyRowCount: number } {
+  let legacyRowCount = 0;
+  const normalizedRows = rows.map((row) => {
+    const sourceValues = Array.isArray(row.values) ? row.values : [];
+    if (sourceValues.length < KPI_CARD_VALUE_COUNT) {
+      legacyRowCount += 1;
+    }
+
+    return {
+      kpi: row.kpi,
+      values: normalizeKpiCardValues(sourceValues),
+    };
+  });
+
+  return { rows: normalizedRows, legacyRowCount };
+}
+
 function mergeCardRowsPreserveExisting(existingRows: KPICardRow[], incomingRows: KPICardRow[]): KPICardRow[] {
   const mergedRows = existingRows.map((row) => ({ kpi: row.kpi, values: [...row.values] }));
   const indexByKpi = new Map<string, number>();
@@ -134,10 +161,34 @@ function ifNoneMatchContainsETag(ifNoneMatchHeader: string | null, etag: string)
     .includes(etag);
 }
 
+async function createCardHistorySnapshot(args: {
+  cardName: string;
+  actorEmail: string;
+  updatedBy: string;
+  previousValue: string;
+}) {
+  const { cardName, actorEmail, updatedBy, previousValue } = args;
+
+  await prisma.estimatingConstant.create({
+    data: {
+      name: toCardHistoryKey(cardName),
+      category: KPI_CARD_HISTORY_CATEGORY,
+      value: JSON.stringify({
+        cardName,
+        capturedAt: new Date().toISOString(),
+        actorEmail,
+        updatedBy,
+        snapshot: parseStoredPayload(previousValue),
+      }),
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     let data = getCachedValue<KPICard[]>(KPI_CARDS_CACHE_KEY);
     const cacheState = data ? 'HIT' : 'MISS';
+    let legacyRowsFound = 0;
 
     if (!data) {
       const rows = await prisma.estimatingConstant.findMany({
@@ -151,8 +202,10 @@ export async function GET(request: NextRequest) {
       data = rows.map((row) => {
         const payload = parseStoredPayload(row.value);
         const cardName = (payload.cardName || '').toString().trim() || row.name.replace(KPI_CARD_KEY_PREFIX, '');
-        const cardRows = Array.isArray(payload.rows) ? payload.rows : [];
-        return toCardRecord(cardName, cardRows, row.updatedAt, payload.updatedBy);
+        const cardRows = normalizeCardRows(payload.rows);
+        const normalized = normalizeCardRowValues(cardRows);
+        legacyRowsFound += normalized.legacyRowCount;
+        return toCardRecord(cardName, normalized.rows, row.updatedAt, payload.updatedBy);
       });
       setCachedValue(KPI_CARDS_CACHE_KEY, data, KPI_CARDS_CACHE_TTL_MS);
     }
@@ -171,6 +224,10 @@ export async function GET(request: NextRequest) {
       data,
       source: 'database',
       fallback: false,
+      normalization: {
+        valueCount: KPI_CARD_VALUE_COUNT,
+        legacyRowsFound,
+      },
     });
     response.headers.set('ETag', etag);
     response.headers.set('Cache-Control', 'private, max-age=60, must-revalidate');
@@ -221,17 +278,31 @@ export async function POST(request: NextRequest) {
     const rowsToPersist = allowRowDeletes
       ? incomingRows
       : mergeCardRowsPreserveExisting(previousRows, incomingRows);
+    const normalizedRowsToPersist = normalizeCardRowValues(rowsToPersist).rows;
+
+    if (existing?.value) {
+      try {
+        await createCardHistorySnapshot({
+          cardName,
+          actorEmail,
+          updatedBy,
+          previousValue: existing.value,
+        });
+      } catch (snapshotError) {
+        console.error('Failed to create KPI card history snapshot:', snapshotError);
+      }
+    }
 
     const record = await prisma.estimatingConstant.upsert({
       where: { name: toCardKey(cardName) },
       update: {
         category: KPI_CARD_CATEGORY,
-        value: JSON.stringify({ cardName, rows: rowsToPersist, updatedBy }),
+        value: JSON.stringify({ cardName, rows: normalizedRowsToPersist, updatedBy }),
       },
       create: {
         name: toCardKey(cardName),
         category: KPI_CARD_CATEGORY,
-        value: JSON.stringify({ cardName, rows: rowsToPersist, updatedBy }),
+        value: JSON.stringify({ cardName, rows: normalizedRowsToPersist, updatedBy }),
       },
     });
 
@@ -250,9 +321,9 @@ export async function POST(request: NextRequest) {
           clientUpdatedBy: clientUpdatedBy || null,
           previousUpdatedBy: previousPayload.updatedBy || null,
           rowCountBefore: Array.isArray(previousPayload.rows) ? previousPayload.rows.length : 0,
-          rowCountAfter: rowsToPersist.length,
+          rowCountAfter: normalizedRowsToPersist.length,
           revenueActualHoursBefore: findRowValues(previousPayload.rows, 'Revenue Actual Hours Worked'),
-          revenueActualHoursAfter: findRowValues(rowsToPersist, 'Revenue Actual Hours Worked'),
+          revenueActualHoursAfter: findRowValues(normalizedRowsToPersist, 'Revenue Actual Hours Worked'),
         },
       },
     });
@@ -264,13 +335,13 @@ export async function POST(request: NextRequest) {
       details: {
         cardName,
         actorEmail,
-        rowCount: rowsToPersist.length,
+        rowCount: normalizedRowsToPersist.length,
         allowRowDeletes,
         operation: existing ? 'update' : 'create',
       },
     });
 
-    const updatedCard = toCardRecord(cardName, rowsToPersist, record.updatedAt, updatedBy);
+    const updatedCard = toCardRecord(cardName, normalizedRowsToPersist, record.updatedAt, updatedBy);
     invalidateCacheByPrefix(KPI_CARDS_CACHE_PREFIX);
 
     return NextResponse.json({

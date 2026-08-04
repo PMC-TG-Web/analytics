@@ -1,6 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
 
+import {
+  getKpiCardValueIndex,
+  KPI_CARD_VALUE_COUNT,
+  KPI_CARD_YEARS,
+  normalizeKpiCardValues,
+} from "@/lib/kpiCardMonths";
 import { loadPayPeriods, distributeHours, formatPayPeriod, type PayPeriod } from "@/utils/payPeriodUtils";
 
 type KPICardRow = {
@@ -34,6 +40,10 @@ function KPICardsManagementContent() {
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   const [newRowKpi, setNewRowKpi] = useState("");
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    const currentYear = new Date().getFullYear();
+    return KPI_CARD_YEARS.includes(currentYear) ? currentYear : KPI_CARD_YEARS[0];
+  });
   
   // Pay period state
   const [payPeriods, setPayPeriods] = useState<PayPeriod[]>([]);
@@ -70,9 +80,12 @@ function KPICardsManagementContent() {
       try {
         const json = await res.json();
         const fetchedCards = json.data || [];
+        const legacyRowsFound = Number(json?.normalization?.legacyRowsFound || 0);
 
         if (json.fallback) {
           setWarning(json.message || "Using local default KPI cards. Changes may not be saved to the database.");
+        } else if (legacyRowsFound > 0) {
+          setWarning(`Detected ${legacyRowsFound} legacy KPI row${legacyRowsFound === 1 ? "" : "s"} with fewer than ${KPI_CARD_VALUE_COUNT} values. They were automatically normalized to protect year-based slots.`);
         }
         
         if (fetchedCards.length === 0 && !json.fallback) {
@@ -136,10 +149,10 @@ function KPICardsManagementContent() {
     if (!editingCard) return;
 
     const updatedCard = { ...editingCard };
-    if (!updatedCard.rows[rowIndex].values) {
-      updatedCard.rows[rowIndex].values = Array(12).fill("");
-    }
-    updatedCard.rows[rowIndex].values[monthIndex] = value;
+    updatedCard.rows[rowIndex].values = normalizeKpiCardValues(updatedCard.rows[rowIndex].values);
+    const valueIndex = getKpiCardValueIndex(selectedYear, monthIndex + 1);
+    if (valueIndex === null) return;
+    updatedCard.rows[rowIndex].values[valueIndex] = value;
     setEditingCard(updatedCard);
   };
 
@@ -165,7 +178,7 @@ function KPICardsManagementContent() {
     const updatedCard = { ...editingCard };
     updatedCard.rows.push({
       kpi: newRowKpi,
-      values: Array(12).fill(""),
+      values: Array(KPI_CARD_VALUE_COUNT).fill(""),
     });
     setEditingCard(updatedCard);
     setNewRowKpi("");
@@ -197,22 +210,21 @@ function KPICardsManagementContent() {
     
     const updatedCard = { ...editingCard };
     
-    // Update values for each month in the distribution
-    // Note: The card stores 12 months (0-11 for Jan-Dec), so we apply ALL months
-    // from the distribution regardless of year. User should edit the appropriate year's card.
+    // Update each year-month target independently.
+    // Slots 0-11 map to Jan-Dec 2026 and slots 12-23 map to Jan-Dec 2027.
     Object.entries(calculatedDistribution).forEach(([yearMonth, hours]) => {
       const [year, month] = yearMonth.split("-");
-      const monthIndex = parseInt(month) - 1; // 0-based index (0=Jan, 11=Dec)
+      const valueIndex = getKpiCardValueIndex(year, Number(month));
       
-      if (monthIndex >= 0 && monthIndex < 12) {
-        if (!updatedCard.rows[targetRowIndex].values) {
-          updatedCard.rows[targetRowIndex].values = Array(12).fill("");
-        }
-        const currentValue = parseFloat(updatedCard.rows[targetRowIndex].values[monthIndex] || "0");
+      if (valueIndex !== null) {
+        updatedCard.rows[targetRowIndex].values = normalizeKpiCardValues(
+          updatedCard.rows[targetRowIndex].values,
+        );
+        const currentValue = parseFloat(updatedCard.rows[targetRowIndex].values[valueIndex] || "0");
         const newValue = currentValue + hours;
-        updatedCard.rows[targetRowIndex].values[monthIndex] = newValue.toFixed(2);
+        updatedCard.rows[targetRowIndex].values[valueIndex] = newValue.toFixed(2);
         
-        console.log(`Updated ${yearMonth} (month index ${monthIndex}): ${currentValue} + ${hours} = ${newValue}`);
+        console.log(`Updated ${yearMonth} (value index ${valueIndex}): ${currentValue} + ${hours} = ${newValue}`);
       }
     });
     
@@ -236,7 +248,21 @@ function KPICardsManagementContent() {
   if (editingCard) {
     return (
       <div style={{ padding: "20px" }}>
-        <h1>{editingCard.cardName}</h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+          <h1>{editingCard.cardName}</h1>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            Editing year
+            <select
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(Number(event.target.value))}
+              style={{ padding: "8px 12px", border: "1px solid #ccc", borderRadius: "4px", background: "white" }}
+            >
+              {KPI_CARD_YEARS.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div style={{ marginBottom: "20px", fontSize: "14px", color: "#666" }}>
           Last updated: {editingCard.updatedAt && new Date(editingCard.updatedAt).toLocaleString()}
           {editingCard.updatedBy && ` by ${editingCard.updatedBy}`}
@@ -249,7 +275,7 @@ function KPICardsManagementContent() {
                 <th style={{ padding: "12px", border: "1px solid #ddd", textAlign: "left", minWidth: "200px" }}>KPI Name</th>
                 {monthNames.map((month) => (
                   <th key={month} style={{ padding: "12px", border: "1px solid #ddd", textAlign: "center", minWidth: "100px" }}>
-                    {month}
+                    {month} {selectedYear}
                   </th>
                 ))}
                 <th style={{ padding: "12px", border: "1px solid #ddd", textAlign: "center", minWidth: "100px" }}>Action</th>
@@ -294,7 +320,7 @@ function KPICardsManagementContent() {
                     <td key={monthIdx} style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center", minWidth: "100px" }}>
                       <input
                         type="text"
-                        value={row.values?.[monthIdx] || ""}
+                        value={row.values?.[getKpiCardValueIndex(selectedYear, monthIdx + 1) ?? monthIdx] || ""}
                         onChange={(e) => updateRowValue(rowIdx, monthIdx, e.target.value)}
                         style={{
                           width: "90px",
@@ -422,7 +448,7 @@ function KPICardsManagementContent() {
               </h2>
               <p style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.4 }}>
                 Hours will be distributed across months based on weekdays (Mon-Fri) in the pay period, excluding holidays. 
-                For pay periods spanning multiple years, all months will be updated in the current card.
+                For pay periods spanning multiple years, each month updates the matching year slot (2026 or 2027) on this card.
               </p>
               
               <div style={{ marginBottom: 16 }}>
@@ -522,7 +548,7 @@ function KPICardsManagementContent() {
                       fontSize: 12,
                       color: '#856404',
                     }}>
-                      Warning This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'}.
+                      Warning This pay period spans multiple months. All months shown will be updated in row #{targetRowIndex !== null ? targetRowIndex + 1 : '?'} using the matching year-month slots.
                     </div>
                   )}
                 </div>

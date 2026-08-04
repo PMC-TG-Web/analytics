@@ -1,6 +1,14 @@
 "use client";
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
+import {
+  getKpiCardValue,
+  getKpiCardValueIndex,
+  getKpiCardYearValues,
+  KPI_CARD_VALUE_COUNT,
+  KPI_CARD_YEARS,
+  normalizeKpiCardValues,
+} from "@/lib/kpiCardMonths";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -599,9 +607,11 @@ export default function KPIPage() {
   // Fetch KPI data separately when yearFilter changes
   useEffect(() => {
     async function fetchKpiData() {
-      const currentYear = yearFilter || new Date().getFullYear().toString();
+      const requestUrl = yearFilter
+        ? `/api/kpi?year=${yearFilter}`
+        : `/api/kpi`;
       try {
-        const kpiRes = await fetch(`/api/kpi?year=${currentYear}`, { credentials: "include", cache: "no-store" });
+        const kpiRes = await fetch(requestUrl, { credentials: "include", cache: "no-store" });
         if (!kpiRes.ok) {
           console.warn("KPI API endpoint not available");
           setKpiData([]);
@@ -609,7 +619,10 @@ export default function KPIPage() {
         }
         const kpiJson = await kpiRes.json();
         const data = kpiJson.data || [];
-        logKpiDebug(`[KPI] Fetched ${data.length} KPI entries for year ${currentYear}:`, data);
+        logKpiDebug(
+          `[KPI] Fetched ${data.length} KPI entries${yearFilter ? ` for year ${yearFilter}` : " across all years"}:`,
+          data,
+        );
         setKpiData(data);
       } catch (err) {
         console.warn("Error fetching KPI data (using empty defaults):", err);
@@ -810,6 +823,8 @@ function KPIPageContent({
   procoreAuthError,
 }: any) {
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const baseKpiTableMinWidth = `${150 + monthNames.length * 90 + 110}px`;
+  const selectedManagedYear = yearFilter || String(new Date().getFullYear());
   const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
   const estimatesActHoursOverridesByMonth: Record<string, number> = {
     '2026-03': 23783,
@@ -834,6 +849,31 @@ function KPIPageContent({
     entries: [],
   });
   const inputRef = useRef<HTMLInputElement>(null);
+  const salesTrendScrollRef = useRef<HTMLDivElement>(null);
+  const salesByMonthScrollRef = useRef<HTMLDivElement>(null);
+  const salesScrollSyncSourceRef = useRef<"chart" | "table" | null>(null);
+
+  const syncSalesScroll = useCallback((source: "chart" | "table") => {
+    const chartEl = salesTrendScrollRef.current;
+    const tableEl = salesByMonthScrollRef.current;
+    if (!chartEl || !tableEl) return;
+
+    const sourceEl = source === "chart" ? chartEl : tableEl;
+    const targetEl = source === "chart" ? tableEl : chartEl;
+
+    if (salesScrollSyncSourceRef.current && salesScrollSyncSourceRef.current !== source) {
+      return;
+    }
+
+    salesScrollSyncSourceRef.current = source;
+    targetEl.scrollLeft = sourceEl.scrollLeft;
+
+    requestAnimationFrame(() => {
+      if (salesScrollSyncSourceRef.current === source) {
+        salesScrollSyncSourceRef.current = null;
+      }
+    });
+  }, []);
 
   const renderTotalWithYtd = (totalDisplay: string, ytdDisplay: string) => {
     void ytdDisplay;
@@ -900,10 +940,10 @@ function KPIPageContent({
         const result = await response.json();
         logKpiDebug(`[KPI] Save successful:`, result);
         
-        // Refresh kpi data in background (don't block)
-        logKpiDebug(`[KPI] Refreshing data for ${year}`);
+        // Refresh full KPI data set to avoid replacing other years in local state.
+        logKpiDebug(`[KPI] Refreshing KPI data after save`);
         try {
-          const kpiRes = await fetch(`/api/kpi?year=${year}`, { credentials: "include", cache: "no-store" });
+          const kpiRes = await fetch(`/api/kpi`, { credentials: "include", cache: "no-store" });
           if (kpiRes.ok) {
             const kpiJson = await kpiRes.json();
             setKpiData(kpiJson.data || []);
@@ -926,8 +966,10 @@ function KPIPageContent({
     setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
   };
 
-  const saveSalesCardScheduledHours = (month: number, value: number | null) => {
+  const saveSalesCardScheduledHours = (year: string, month: number, value: number | null) => {
     const normalizedSalesCardName = normalizeCardName("Sales By Month");
+    const valueIndex = getKpiCardValueIndex(year, month);
+    if (valueIndex === null) return;
 
     setCardLoadData((prev) => {
       const next = { ...prev };
@@ -938,15 +980,15 @@ function KPIPageContent({
 
       const rows = existingRows.map((row) => ({
         ...row,
-        values: Array.isArray(row.values) ? [...row.values] : Array(12).fill(""),
+        values: normalizeKpiCardValues(row.values),
       }));
 
       const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rows.length;
       if (scheduledHoursIndex < 0) {
-        rows.push({ kpi: "Scheduled Hours", values: Array(12).fill("") });
+        rows.push({ kpi: "Scheduled Hours", values: Array(KPI_CARD_VALUE_COUNT).fill("") });
       }
 
-      rows[targetIndex].values[month - 1] = value === null ? "" : String(value);
+      rows[targetIndex].values[valueIndex] = value === null ? "" : String(value);
       next[normalizedSalesCardName] = rows;
       return next;
     });
@@ -956,7 +998,7 @@ function KPIPageContent({
         const normalizedCurrentRows = ensureSalesCardRows(cardLoadData[normalizedSalesCardName] || []);
         const rowsForSave = normalizedCurrentRows.map((row) => ({
           ...row,
-          values: Array.isArray(row.values) ? [...row.values] : Array(12).fill(""),
+          values: normalizeKpiCardValues(row.values),
         }));
 
         const scheduledHoursIndex = rowsForSave.findIndex(
@@ -965,10 +1007,10 @@ function KPIPageContent({
 
         const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rowsForSave.length;
         if (scheduledHoursIndex < 0) {
-          rowsForSave.push({ kpi: "Scheduled Hours", values: Array(12).fill("") });
+          rowsForSave.push({ kpi: "Scheduled Hours", values: Array(KPI_CARD_VALUE_COUNT).fill("") });
         }
 
-        rowsForSave[targetIndex].values[month - 1] = value === null ? "" : String(value);
+        rowsForSave[targetIndex].values[valueIndex] = value === null ? "" : String(value);
 
         await fetch("/api/kpi-cards", {
           method: "POST",
@@ -999,14 +1041,14 @@ function KPIPageContent({
     if (editingCell.field === "scheduledHours") {
       const raw = String(editValue ?? "").trim();
       if (!raw) {
-        saveSalesCardScheduledHours(editingCell.month, null);
+        saveSalesCardScheduledHours(editingCell.year, editingCell.month, null);
         cancelEditKpiCell();
         return;
       }
 
       const parsed = Number(raw.replace(/[$,\s]/g, ""));
       const sanitized = Number.isFinite(parsed) ? parsed : 0;
-      saveSalesCardScheduledHours(editingCell.month, sanitized);
+      saveSalesCardScheduledHours(editingCell.year, editingCell.month, sanitized);
       cancelEditKpiCell();
       return;
     }
@@ -1518,13 +1560,13 @@ function KPIPageContent({
 
     const map: Record<number, number | undefined> = {};
     monthNames.forEach((_, idx) => {
-      const raw = leadtimeHoursRow?.values?.[idx];
+      const raw = getKpiCardValue(leadtimeHoursRow?.values, selectedManagedYear, idx + 1);
       const parsed = Number(String(raw ?? "").replace(/[^0-9.-]/g, ""));
       map[idx + 1] = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
     });
 
     return map;
-  }, [cardLoadData, monthNames]);
+  }, [cardLoadData, monthNames, selectedManagedYear]);
 
   const additionalLeadtimeRows = useMemo(() => {
     const rows = cardLoadData[normalizeCardName("Leadtimes by Month")] || [];
@@ -1989,7 +2031,7 @@ function KPIPageContent({
       const rowLabel = (row.kpi || "").toLowerCase();
       const isGoalRow = rowLabel.includes("goal") || rowLabel.includes("allowance");
       const rowColor = (rowIndex + startIndex) % 2 === 0 ? "#15616D" : "#E06C00";
-      let rowValues = [...(row.values || [])]; // Default to template values
+      let rowValues = getKpiCardYearValues(row.values, selectedManagedYear);
 
       if (normalizeCardName(cardName) === normalizeCardName("Sales By Month") && rowLabel.includes("bid subm")) {
         const selectedYear = yearFilter || new Date().getFullYear().toString();
@@ -2042,6 +2084,7 @@ function KPIPageContent({
       if (isPercentage && (cardName.toLowerCase().includes("gross profit") || cardName.toLowerCase().includes("profit"))) {
         // For GP/Profit percentages, calculate weighted average using Revenue as weights
         const revenueRow = cardLoadData[normalizeCardName(cardName)]?.find((r: any) => r.kpi === "Revenue" || r.kpi.includes("Revenue"));
+        const revenueValues = getKpiCardYearValues(revenueRow?.values, selectedManagedYear);
         
         if (revenueRow) {
           let numerator = 0;
@@ -2050,7 +2093,7 @@ function KPIPageContent({
           rowValues.forEach((val: any, idx: number) => {
             const percentStr = String(val).replace("%", "").trim();
             const percent = parseFloat(percentStr);
-            const revenueStr = String(revenueRow.values[idx]).replace(/[$,]/g, "").trim();
+            const revenueStr = String(revenueValues[idx]).replace(/[$,]/g, "").trim();
             const revenue = parseFloat(revenueStr);
             
             if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
@@ -2066,7 +2109,7 @@ function KPIPageContent({
           rowValues.slice(0, ytdMonthCutoff).forEach((val: any, idx: number) => {
             const percentStr = String(val).replace("%", "").trim();
             const percent = parseFloat(percentStr);
-            const revenueStr = String(revenueRow.values[idx]).replace(/[$,]/g, "").trim();
+            const revenueStr = String(revenueValues[idx]).replace(/[$,]/g, "").trim();
             const revenue = parseFloat(revenueStr);
 
             if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
@@ -2204,14 +2247,16 @@ function KPIPageContent({
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
 
-  const managedScheduledHoursByMonth = useMemo(() => {
+  const managedScheduledHoursByYearMonth = useMemo(() => {
     const rows = cardLoadData[normalizeCardName("Sales By Month")] || [];
     const row = rows.find((entry: any) => normalizeCardName((entry?.kpi || "").toString()) === "scheduled hours");
-    const byMonth: Record<number, string> = {};
-    monthNames.forEach((_, idx) => {
-      byMonth[idx + 1] = String(row?.values?.[idx] ?? "").trim();
+    const byYearMonth: Record<string, string> = {};
+    KPI_CARD_YEARS.forEach((year) => {
+      monthNames.forEach((_, idx) => {
+        byYearMonth[`${year}-${idx + 1}`] = getKpiCardValue(row?.values, year, idx + 1).trim();
+      });
     });
-    return byMonth;
+    return byYearMonth;
   }, [cardLoadData, monthNames]);
 
   const getCardActualMonthMap = (cardName: string): Record<number, number> => {
@@ -2238,6 +2283,7 @@ function KPIPageContent({
   const combinedSalesYears = Array.from(new Set<string>([
     ...scheduledSalesYears,
     ...bidSubmittedSalesYears,
+    ...KPI_CARD_YEARS.map((year) => String(year)),
     currentYear,
   ]))
     .filter(year => year !== "2024")
@@ -2273,6 +2319,10 @@ function KPIPageContent({
   const filteredCombinedSalesYears = yearFilter 
     ? combinedSalesYears.filter(year => year === yearFilter) 
     : combinedSalesYears;
+  const salesByMonthMinWidthPx = yearFilter
+    ? (150 + monthNames.length * 90 + 110)
+    : (120 + (Math.max(filteredCombinedSalesYears.length, 1) * monthNames.length) * 96 + 120);
+  const salesByMonthMinWidth = `${salesByMonthMinWidthPx}px`;
 
   if (loading) {
     return (
@@ -2453,19 +2503,25 @@ function KPIPageContent({
       {/* Combined Sales Line Chart */}
       <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4, height: 200 }}>
         <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales Trend</h2>
-        <div style={{ height: 160 }}>
-          {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
-            <CombinedSalesLineChart
-              scheduledMonths={filteredScheduledSalesMonths}
-              scheduledSalesByMonth={filteredScheduledSalesByMonth}
-              bidSubmittedMonths={filteredBidSubmittedSalesMonths}
-              bidSubmittedSalesByMonth={filteredBidSubmittedSalesByMonth}
-            />
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#999", fontSize: 13 }}>
-              No sales data available for the selected period
-            </div>
-          )}
+        <div
+          ref={salesTrendScrollRef}
+          onScroll={() => syncSalesScroll("chart")}
+          style={{ height: 160, overflowX: "auto", overflowY: "hidden" }}
+        >
+          <div style={{ minWidth: salesByMonthMinWidth, height: "100%" }}>
+            {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
+              <CombinedSalesLineChart
+                scheduledMonths={filteredScheduledSalesMonths}
+                scheduledSalesByMonth={filteredScheduledSalesByMonth}
+                bidSubmittedMonths={filteredBidSubmittedSalesMonths}
+                bidSubmittedSalesByMonth={filteredBidSubmittedSalesByMonth}
+              />
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#999", fontSize: 13 }}>
+                No sales data available for the selected period
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2473,10 +2529,14 @@ function KPIPageContent({
       {filteredCombinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
-          <div style={{ overflowX: "auto" }}>
+          <div
+            ref={salesByMonthScrollRef}
+            onScroll={() => syncSalesScroll("table")}
+            style={{ overflowX: "auto" }}
+          >
             {yearFilter ? (
               // SINGLE YEAR MODE: Show 12 months
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
+              <table style={{ width: "100%", minWidth: salesByMonthMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #eee" }}>
                     <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
@@ -2633,7 +2693,7 @@ function KPIPageContent({
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
                         {monthNames.map((_, idx) => {
-                          const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                          const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
                           const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                           const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
                           const formatted = hasValue
@@ -2677,12 +2737,12 @@ function KPIPageContent({
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                           {(() => {
                             const total = monthNames.reduce((sum, _, idx) => {
-                              const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
                               const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                               return sum + (Number.isFinite(numericValue) ? numericValue : 0);
                             }, 0);
                             const ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
-                              const rawValue = managedScheduledHoursByMonth[idx + 1] || "";
+                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
                               const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                               return sum + (Number.isFinite(numericValue) ? numericValue : 0);
                             }, 0);
@@ -2740,7 +2800,7 @@ function KPIPageContent({
                 }, 0);
                 
                 return (
-                  <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto", fontSize: 13 }}>
+                  <table style={{ width: "100%", minWidth: salesByMonthMinWidth, borderCollapse: "collapse", tableLayout: "auto", fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid #eee" }}>
                         <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, minWidth: "100px", fontSize: 12 }}>Type</th>
@@ -2856,7 +2916,7 @@ function KPIPageContent({
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
                         {allYearMonths.map(({ year, month }, idx) => {
-                          const rawValue = managedScheduledHoursByMonth[month] || "";
+                          const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
                           const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                           const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
                           const formatted = hasValue
@@ -2899,14 +2959,14 @@ function KPIPageContent({
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                           {(() => {
-                            const total = allYearMonths.reduce((sum, { month }) => {
-                              const rawValue = managedScheduledHoursByMonth[month] || "";
+                            const total = allYearMonths.reduce((sum, { year, month }) => {
+                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
                               const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                               return sum + (Number.isFinite(numericValue) ? numericValue : 0);
                             }, 0);
-                            const ytdTotal = allYearMonths.reduce((sum, { month }) => {
+                            const ytdTotal = allYearMonths.reduce((sum, { year, month }) => {
                               if (month > ytdMonthCutoff) return sum;
-                              const rawValue = managedScheduledHoursByMonth[month] || "";
+                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
                               const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
                               return sum + (Number.isFinite(numericValue) ? numericValue : 0);
                             }, 0);
@@ -2935,7 +2995,7 @@ function KPIPageContent({
             Double-click any <strong>Bids Submitted</strong>, <strong>New Bids</strong>, or <strong>Act Hrs</strong> month cell to override that month value when a single year is selected.
           </p>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
@@ -3348,7 +3408,7 @@ function KPIPageContent({
                       );
                     } else {
                       const monthCells = monthNames.map((_, idx) => {
-                        const rawValue = managedRow.values?.[idx] || "";
+                        const rawValue = getKpiCardValue(managedRow.values, selectedManagedYear, idx + 1);
                         const numericValue = Number(String(rawValue || "").replace(/[$,\s]/g, ""));
                         const display = formatEstimateManagedValue(managedRow.kpi || "", rawValue);
                         return {
@@ -3400,7 +3460,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Sales by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", color: "#666", fontWeight: 600, width: "150px", fontSize: 12 }}>Type</th>
@@ -3439,7 +3499,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Revenue by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3462,7 +3522,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Subs by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3487,7 +3547,7 @@ function KPIPageContent({
             <h3 style={{ color: "#15616D", fontSize: 14, fontWeight: 700, margin: 0 }}>Revenue Hours by Month</h3>
           </div>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3510,7 +3570,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Gross Profit by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3533,7 +3593,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Profit by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3556,7 +3616,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Leadtimes by Month</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <th style={{ padding: "4px 6px", textAlign: "left", fontSize: 12, color: "#666", fontWeight: 600, width: "150px" }}>Type</th>
@@ -3645,7 +3705,7 @@ function KPIPageContent({
                 )}
                 {additionalLeadtimeRows.map((row: any, rowIndex: number) => {
                   const rowColor = rowIndex % 2 === 0 ? "#15616D" : "#E06C00";
-                  const rowValues = monthNames.map((_, idx) => String(row?.values?.[idx] ?? "").trim());
+                  const rowValues = monthNames.map((_, idx) => getKpiCardValue(row?.values, selectedManagedYear, idx + 1).trim());
                   const latestValue = [...rowValues].reverse().find((value) => value.length > 0) || "";
 
                   return (

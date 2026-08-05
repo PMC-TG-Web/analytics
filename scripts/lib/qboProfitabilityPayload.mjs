@@ -58,6 +58,26 @@ function validateJsonObject(value, label) {
   return value;
 }
 
+function normalizeQboCostDrillthrough(value) {
+  if (value == null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('qboCostDrillthrough must be an object when provided.');
+  }
+
+  const projects = Array.isArray(value.projects) ? value.projects : [];
+  if (projects.length > 10000) {
+    throw new Error('qboCostDrillthrough.projects exceeds the 10,000 project limit.');
+  }
+
+  return {
+    generatedAt: typeof value.generatedAt === 'string' ? value.generatedAt : null,
+    startDate: typeof value.startDate === 'string' ? value.startDate : null,
+    endDate: typeof value.endDate === 'string' ? value.endDate : null,
+    accountingMethod: typeof value.accountingMethod === 'string' ? value.accountingMethod : null,
+    projects,
+  };
+}
+
 export function hashQboProfitabilitySource(raw) {
   return createHash('sha256').update(raw).digest('hex');
 }
@@ -82,6 +102,7 @@ export function normalizeQboProfitabilityPayload(payload) {
   }
   const summary = validateJsonObject(payload.summary, 'summary');
   const sourceCounts = validateJsonObject(payload.sourceCounts, 'sourceCounts');
+  const qboCostDrillthrough = normalizeQboCostDrillthrough(payload.qboCostDrillthrough);
   if (!Array.isArray(payload.rows) || payload.rows.length > 50_000) {
     throw new Error('rows must be an array containing no more than 50,000 records.');
   }
@@ -150,6 +171,7 @@ export function normalizeQboProfitabilityPayload(payload) {
     readOnly: true,
     summary,
     sourceCounts,
+    qboCostDrillthrough,
     rows,
   };
 }

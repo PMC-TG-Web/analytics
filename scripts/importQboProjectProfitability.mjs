@@ -18,6 +18,89 @@ function parseFileArgument() {
   return argument ? argument.slice('--file='.length).trim() : '';
 }
 
+async function ensureQboDrillthroughTable(prisma) {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS qbo_profitability_drillthrough_projects (
+      id BIGSERIAL PRIMARY KEY,
+      snapshot_id TEXT NOT NULL REFERENCES qbo_profitability_snapshots(id) ON DELETE CASCADE,
+      qbo_customer_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'available',
+      total NUMERIC(18,2),
+      line_count INTEGER NOT NULL DEFAULT 0,
+      project_name TEXT,
+      fully_qualified_name TEXT,
+      breakdown JSONB NOT NULL DEFAULT '[]'::jsonb,
+      lines JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT qbo_profitability_drillthrough_snapshot_customer_key UNIQUE (snapshot_id, qbo_customer_id)
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS idx_qbo_profitability_drillthrough_snapshot
+    ON qbo_profitability_drillthrough_projects(snapshot_id)
+  `);
+}
+
+async function persistQboDrillthrough(prisma, snapshotId, qboCostDrillthrough) {
+  const projects = Array.isArray(qboCostDrillthrough?.projects) ? qboCostDrillthrough.projects : [];
+  if (!projects.length) return 0;
+
+  await ensureQboDrillthroughTable(prisma);
+  let savedCount = 0;
+  for (const project of projects) {
+    const qboCustomerId = String(project?.qboCustomerId || project?.qboCostDrillthroughKey || '').trim();
+    if (!qboCustomerId) continue;
+
+    const status = String(project?.status || 'available').trim() || 'available';
+    const lineCount = Number.isFinite(Number(project?.lineCount)) ? Number(project.lineCount) : 0;
+    const total = project?.total == null || project.total === '' ? null : Number(project.total);
+    const breakdown = Array.isArray(project?.breakdown) ? project.breakdown : [];
+    const lines = Array.isArray(project?.lines) ? project.lines : [];
+
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO qbo_profitability_drillthrough_projects (
+          snapshot_id,
+          qbo_customer_id,
+          status,
+          total,
+          line_count,
+          project_name,
+          fully_qualified_name,
+          breakdown,
+          lines,
+          updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, now()
+        )
+        ON CONFLICT (snapshot_id, qbo_customer_id)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          total = EXCLUDED.total,
+          line_count = EXCLUDED.line_count,
+          project_name = EXCLUDED.project_name,
+          fully_qualified_name = EXCLUDED.fully_qualified_name,
+          breakdown = EXCLUDED.breakdown,
+          lines = EXCLUDED.lines,
+          updated_at = now()
+      `,
+      snapshotId,
+      qboCustomerId,
+      status,
+      Number.isFinite(total) ? total : null,
+      Math.max(0, Math.trunc(lineCount)),
+      project?.projectName == null ? null : String(project.projectName),
+      project?.fullyQualifiedName == null ? null : String(project.fullyQualifiedName),
+      JSON.stringify(breakdown),
+      JSON.stringify(lines),
+    );
+    savedCount += 1;
+  }
+
+  return savedCount;
+}
+
 async function findLatestExport() {
   const reportDirectory = path.resolve(root, '..', 'QBO_1', 'reports');
   const candidates = (await readdir(reportDirectory))
@@ -51,7 +134,11 @@ async function main() {
       select: { id: true, importedAt: true },
     });
     if (existing) {
+      const existingDrillthroughCount = await persistQboDrillthrough(prisma, existing.id, payload.qboCostDrillthrough);
       console.log(`This read-only snapshot was already imported at ${existing.importedAt.toISOString()}.`);
+      if (existingDrillthroughCount > 0) {
+        console.log(`Updated ${existingDrillthroughCount} QBO drill-through project records for snapshot ${existing.id}.`);
+      }
       return;
     }
 
@@ -70,7 +157,12 @@ async function main() {
       select: { id: true, importedAt: true, _count: { select: { rows: true } } },
     });
 
+    const drillthroughSaved = await persistQboDrillthrough(prisma, snapshot.id, payload.qboCostDrillthrough);
+
     console.log(`Imported ${snapshot._count.rows} normalized profitability rows.`);
+    if (drillthroughSaved > 0) {
+      console.log(`Imported QBO drill-through details for ${drillthroughSaved} projects.`);
+    }
     console.log(`Snapshot ID: ${snapshot.id}`);
     console.log(`Imported at: ${snapshot.importedAt.toISOString()}`);
     console.log('QuickBooks and Procore business records were not changed.');

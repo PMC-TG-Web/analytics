@@ -33,6 +33,14 @@ type QboProjectDrillthrough = {
   lines?: QboLine[];
 };
 
+type PersistedDrillthroughRow = {
+  status: string;
+  total: number | string | null;
+  line_count: number;
+  breakdown: unknown;
+  lines: unknown;
+};
+
 function noStoreJson(body: unknown, status = 200) {
   const response = NextResponse.json(body, { status });
   response.headers.set('Cache-Control', 'private, no-store, max-age=0');
@@ -103,6 +111,62 @@ function normalizeLines(lines: unknown): QboLine[] {
   });
 }
 
+function normalizeBreakdown(value: unknown) {
+  if (!Array.isArray(value)) return [] as Array<{ section: string; amount: number }>;
+  return value
+    .map((entry) => {
+      const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      const section = String(record.section || '').trim();
+      const amount = Number(record.amount || 0);
+      if (!section || !Number.isFinite(amount)) return null;
+      return { section, amount };
+    })
+    .filter((entry): entry is { section: string; amount: number } => entry !== null);
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function readPersistedDrillthrough(snapshotId: string, qboCustomerId: string) {
+  try {
+    const rows = await prisma.$queryRawUnsafe<PersistedDrillthroughRow[]>(
+      `
+        SELECT
+          status,
+          total,
+          line_count,
+          breakdown,
+          lines
+        FROM qbo_profitability_drillthrough_projects
+        WHERE snapshot_id = $1
+          AND qbo_customer_id = $2
+        LIMIT 1
+      `,
+      snapshotId,
+      qboCustomerId,
+    );
+
+    if (!rows.length) return null;
+    const row = rows[0];
+    return {
+      status: String(row.status || 'available'),
+      total: normalizeNumber(row.total),
+      lineCount: Math.max(0, Number(row.line_count || 0)),
+      breakdown: normalizeBreakdown(row.breakdown),
+      items: normalizeLines(row.lines),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/does not exist|relation .*qbo_profitability_drillthrough_projects/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const administrator = await requireAdministrator(request);
@@ -126,6 +190,21 @@ export async function GET(request: NextRequest) {
 
     if (!snapshot) {
       return noStoreJson({ success: false, error: 'No profitability snapshot is available.' }, 404);
+    }
+
+    const persisted = await readPersistedDrillthrough(snapshot.id, qboCustomerId);
+    if (persisted) {
+      return noStoreJson({
+        success: true,
+        snapshotId: snapshot.id,
+        qboCustomerId,
+        projectId: qboCustomerId,
+        sourcePath: 'database:qbo_profitability_drillthrough_projects',
+        count: persisted.items.length,
+        total: persisted.total,
+        breakdown: persisted.breakdown,
+        items: persisted.items,
+      });
     }
 
     const qboRoot = resolveQboWorkspaceRoot();
@@ -152,15 +231,21 @@ export async function GET(request: NextRequest) {
     const project = projects.find((entry) => String(entry.qboCustomerId || '') === qboCustomerId || String(entry.qboCostDrillthroughKey || '') === qboCustomerId);
     if (!project) {
       return noStoreJson({
-        success: false,
-        error: 'No QBO drill-through detail file is available for this snapshot yet.',
+        success: true,
+        snapshotId: snapshot.id,
+        qboCustomerId,
+        projectId: qboCustomerId,
+        sourcePath,
+        count: 0,
+        total: null,
+        breakdown: [],
+        items: [],
+        unavailableReason: 'No QBO drill-through detail file is available for this snapshot in this environment yet.',
         details: {
-          snapshotId: snapshot.id,
           reportBasename,
-          sourcePath,
-          hint: 'Run the profitability refresh after enabling QBO drill-through generation in QBO_1.',
+          hint: 'Generate profitability with QBO drill-through enabled on the integration machine and import that snapshot.',
         },
-      }, 404);
+      });
     }
 
     const items = normalizeLines(project.lines).sort((left, right) => {
@@ -171,9 +256,7 @@ export async function GET(request: NextRequest) {
         || String(left.docNum || '').localeCompare(String(right.docNum || ''));
     });
 
-    const breakdown = Array.isArray(project.breakdown) && project.breakdown.length
-      ? project.breakdown.map((entry) => ({ section: String(entry.section || 'Uncategorized'), amount: Number(entry.amount || 0) }))
-      : [];
+    const breakdown = normalizeBreakdown(project.breakdown);
 
     return noStoreJson({
       success: true,

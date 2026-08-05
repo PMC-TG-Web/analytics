@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 
 type Snapshot = {
   id: string;
@@ -42,11 +42,33 @@ type ProfitabilityRow = {
   reconciliationDifference: number;
 };
 
+type LineItemDetail = {
+  id: string;
+  sectionPath: string[];
+  date: string | null;
+  txnType: string | null;
+  docNum: string | null;
+  name: string | null;
+  className: string | null;
+  memo: string | null;
+  splitAccount: string | null;
+  amount: number;
+};
+
 type ApiResponse = {
   success: boolean;
   selectedSnapshotId: string | null;
   snapshots: Snapshot[];
   rows: ProfitabilityRow[];
+  error?: string;
+};
+
+type LineItemResponse = {
+  success: boolean;
+  projectId: string;
+  count: number;
+  breakdown: Array<{ section: string; amount: number }>;
+  items: LineItemDetail[];
   error?: string;
 };
 
@@ -90,6 +112,10 @@ function csvCell(value: unknown) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function formatMoney(value: number | null | undefined) {
+  return value == null ? '—' : money.format(value);
+}
+
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -103,12 +129,20 @@ export default function QboProjectProfitabilityPage() {
   const [search, setSearch] = useState('');
   const [recordType, setRecordType] = useState('project');
   const [matchFilter, setMatchFilter] = useState('all');
-  const [selectedRow, setSelectedRow] = useState<ProfitabilityRow | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [lineItemsByProject, setLineItemsByProject] = useState<Record<string, LineItemDetail[]>>({});
+  const [lineItemBreakdownByProject, setLineItemBreakdownByProject] = useState<Record<string, Array<{ section: string; amount: number }>>>({});
+  const [lineItemsLoading, setLineItemsLoading] = useState<Record<string, boolean>>({});
+  const [lineItemsError, setLineItemsError] = useState<Record<string, string>>({});
 
   async function load(snapshotId?: string) {
     setLoading(true);
     setError('');
-    setSelectedRow(null);
+    setExpandedRows({});
+    setLineItemsByProject({});
+    setLineItemBreakdownByProject({});
+    setLineItemsLoading({});
+    setLineItemsError({});
     try {
       const query = snapshotId ? `?snapshotId=${encodeURIComponent(snapshotId)}` : '';
       const response = await fetch(`/api/accounting/project-profitability${query}`, {
@@ -155,12 +189,50 @@ export default function QboProjectProfitabilityPage() {
     { sales: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0 },
   ), [filteredRows]);
 
+  async function loadLineItemsForRow(row: ProfitabilityRow) {
+    if (lineItemsByProject[row.qboCustomerId] || lineItemsLoading[row.qboCustomerId]) {
+      return;
+    }
+
+    setLineItemsLoading((current) => ({ ...current, [row.qboCustomerId]: true }));
+    setLineItemsError((current) => ({ ...current, [row.qboCustomerId]: '' }));
+    try {
+      const response = await fetch(
+        `/api/accounting/project-profitability/qbo-details?snapshotId=${encodeURIComponent(data?.selectedSnapshotId || '')}&qboCustomerId=${encodeURIComponent(row.qboCustomerId)}`,
+        { credentials: 'same-origin', cache: 'no-store' },
+      );
+      const body = await response.json() as LineItemResponse;
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Unable to load QBO details.');
+      }
+      setLineItemsByProject((current) => ({ ...current, [row.qboCustomerId]: body.items }));
+      setLineItemBreakdownByProject((current) => ({ ...current, [row.qboCustomerId]: body.breakdown }));
+    } catch (loadError) {
+      setLineItemsError((current) => ({
+        ...current,
+        [row.qboCustomerId]: loadError instanceof Error ? loadError.message : 'Unable to load QBO details.',
+      }));
+    } finally {
+      setLineItemsLoading((current) => ({ ...current, [row.qboCustomerId]: false }));
+    }
+  }
+
+  async function toggleRowExpansion(row: ProfitabilityRow) {
+    const willExpand = !expandedRows[row.id];
+    setExpandedRows((current) => ({ ...current, [row.id]: willExpand }));
+    if (willExpand) {
+      await loadLineItemsForRow(row);
+    }
+  }
+
   async function refreshProfitability() {
     const previousSnapshotId = data?.snapshots[0]?.id || data?.selectedSnapshotId || null;
     setRefreshing(true);
     setError('');
     setNotice('');
-    setSelectedRow(null);
+    setExpandedRows({});
+    setLineItemsByProject({});
+    setLineItemBreakdownByProject({});
     try {
       const response = await fetch('/api/accounting/project-profitability', {
         method: 'POST',
@@ -169,16 +241,16 @@ export default function QboProjectProfitabilityPage() {
       });
       const body = await response.json() as RefreshResponse;
       if (!response.ok || !body.success) {
-        throw new Error(body.error || 'Unable to refresh Procore and QBO data.');
+        throw new Error(body.error || 'Unable to refresh QuickBooks and Procore data.');
       }
 
       if (body.refreshMode !== 'remote') {
-        setNotice(body.message || 'Refreshed Procore and QBO data.');
+        setNotice(body.message || 'Refreshed QuickBooks and Procore data.');
         await load(body.selectedSnapshotId || undefined);
         return;
       }
 
-      setNotice('Refresh queued. Waiting for the integration machine to finish reading Procore and QuickBooks…');
+      setNotice('Refresh queued. Waiting for the integration machine to finish reading QuickBooks and Procore…');
       const requestId = String(body.requestId || '');
       const maxStatusChecks = 180;
       for (let attempt = 0; attempt < maxStatusChecks; attempt += 1) {
@@ -207,7 +279,7 @@ export default function QboProjectProfitabilityPage() {
         }
 
         setNotice(refreshStatus === 'running'
-          ? 'Reading current Procore Direct Costs and QuickBooks activity…'
+          ? 'Reading current QuickBooks activity and Procore direct costs…'
           : 'Refresh queued. Waiting for the integration machine to start…');
       }
 
@@ -215,7 +287,7 @@ export default function QboProjectProfitabilityPage() {
         `The refresh is still queued after 15 minutes. The previous snapshot ${previousSnapshotId ? 'remains available' : 'was not replaced'}.`,
       );
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh Procore and QBO data.');
+      setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh QuickBooks and Procore data.');
     } finally {
       setRefreshing(false);
     }
@@ -354,13 +426,19 @@ export default function QboProjectProfitabilityPage() {
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Profit</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Margin</th>
                     <th className="border-b border-slate-300 px-4 py-3">Status</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">Drill through</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.map((row) => (
-                    <tr key={row.id} className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50 ${selectedRow?.id === row.id ? 'bg-teal-50' : ''}`} onClick={() => setSelectedRow(row)}>
+                    <Fragment key={row.id}>
+                    <tr
+                      key={row.id}
+                      className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50 ${expandedRows[row.id] ? 'bg-teal-50' : ''}`}
+                      onClick={() => { void toggleRowExpansion(row); }}
+                    >
                       <td className="border-b border-slate-100 px-4 py-3">
-                        <button type="button" className="text-left font-bold text-slate-900 hover:text-teal-800" onClick={() => setSelectedRow(row)}>{row.fullyQualifiedName}</button>
+                        <button type="button" className="text-left font-bold text-slate-900 hover:text-teal-800" onClick={() => { void toggleRowExpansion(row); }}>{row.fullyQualifiedName}</button>
                         {!row.active && <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">Inactive</span>}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3">
@@ -376,9 +454,98 @@ export default function QboProjectProfitabilityPage() {
                       <td className={`border-b border-slate-100 px-4 py-3 text-right font-bold tabular-nums ${row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money.format(row.profit)}</td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">{row.marginPercent == null ? '—' : `${row.marginPercent.toFixed(1)}%`}</td>
                       <td className="border-b border-slate-100 px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${row.procoreProjectId ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>{row.procoreProjectId ? 'Matched' : 'Review'}</span>
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${row.procoreProjectId ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                          {row.procoreProjectId ? 'Matched' : 'Review'}
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void toggleRowExpansion(row);
+                          }}
+                          className="rounded-md border border-teal-700 px-3 py-2 text-xs font-black uppercase tracking-wide text-teal-800 transition hover:bg-teal-50"
+                        >
+                          {expandedRows[row.id] ? 'Close' : 'Open'}
+                        </button>
                       </td>
                     </tr>
+                    {expandedRows[row.id] && (
+                      <>
+                        {lineItemsLoading[row.qboCustomerId] && (
+                          <tr className="bg-slate-50">
+                            <td colSpan={10} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
+                              Loading QBO line item details...
+                            </td>
+                          </tr>
+                        )}
+
+                        {lineItemsError[row.qboCustomerId] && (
+                          <tr className="bg-red-50">
+                            <td colSpan={10} className="border-b border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                              {lineItemsError[row.qboCustomerId]}
+                            </td>
+                          </tr>
+                        )}
+
+                        {!lineItemsLoading[row.qboCustomerId] && !lineItemsError[row.qboCustomerId] && !(lineItemsByProject[row.qboCustomerId] || []).length && (
+                          <tr className="bg-slate-50">
+                            <td colSpan={10} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
+                              No QBO line item details were found for this project.
+                            </td>
+                          </tr>
+                        )}
+
+                        {(lineItemsByProject[row.qboCustomerId] || []).map((item, itemIndex) => (
+                          <tr key={`${item.id}-${itemIndex}`} className="bg-slate-50/70 text-xs">
+                            <td className="border-b border-slate-100 px-4 py-2">
+                              <div className="font-semibold text-slate-800">{item.name || 'QBO detail line'}</div>
+                              <div className="text-[11px] text-slate-500">{item.date || '—'} · {item.txnType || '—'} · {item.docNum || '—'}</div>
+                            </td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-slate-700">
+                              <div>{item.sectionPath.join(' / ') || 'Uncategorized'}</div>
+                              <div className="text-[11px] text-slate-500">{item.className || item.splitAccount || ''}</div>
+                            </td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right font-bold tabular-nums text-amber-800">{formatMoney(item.amount)}</td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-100 px-4 py-2">
+                              <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-700">
+                                {item.txnType || 'Detail'}
+                              </span>
+                            </td>
+                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
+                          </tr>
+                        ))}
+
+                        {!!lineItemBreakdownByProject[row.qboCustomerId]?.length && (
+                          <tr className="bg-slate-100/80 text-xs">
+                            <td className="border-b border-slate-200 px-4 py-2 font-black text-slate-700">QBO cost section totals</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                            <td className="border-b border-slate-200 px-4 py-2">
+                              {lineItemBreakdownByProject[row.qboCustomerId].map((section) => (
+                                <div key={section.section} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
+                                  <span className="font-semibold text-slate-700">{section.section}</span>
+                                  <span className="font-bold tabular-nums text-slate-900">{formatMoney(section.amount)}</span>
+                                </div>
+                              ))}
+                            </td>
+                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
+                          </tr>
+                        )}
+                      </>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -387,32 +554,8 @@ export default function QboProjectProfitabilityPage() {
           )}
         </section>
 
-        {selectedRow && (
-          <section className="rounded-2xl border border-teal-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-xs font-black uppercase tracking-widest text-teal-700">Selected record</div>
-                <h2 className="mt-1 text-xl font-black text-slate-900">{selectedRow.fullyQualifiedName}</h2>
-                <p className="mt-1 text-sm text-slate-500">QBO ID {selectedRow.qboCustomerId} · match method: {selectedRow.procoreMatchMethod}</p>
-              </div>
-              <button type="button" onClick={() => setSelectedRow(null)} className="text-sm font-bold text-slate-500 hover:text-slate-900">Close</button>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
-              {[
-                ['Procore direct cost', selectedRow.procoreDirectCost],
-                ['QBO minus Procore', selectedRow.qboMinusProcoreDirectCost],
-                ['COGS', selectedRow.costOfGoodsSold],
-                ['Operating expenses', selectedRow.operatingExpenses],
-                ['Other income', selectedRow.otherIncome],
-                ['Other expenses', selectedRow.otherExpenses],
-                ['Reported net income', selectedRow.reportedNetIncome],
-              ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-xs font-bold uppercase text-slate-500">{label}</div><div className="mt-1 font-black text-slate-900">{value == null ? '—' : money.format(Number(value))}</div></div>)}
-            </div>
-          </section>
-        )}
-
         <p className="px-1 pb-4 text-xs leading-5 text-slate-500">
-          Sales are QuickBooks Income assigned to the project. QBO actual cost is assigned COGS, operating expenses, and other expenses. Procore Direct Cost is the sum of the matched project&apos;s Direct Cost line-item amounts returned by Procore. The difference is QBO actual cost minus Procore Direct Cost; a positive amount means QBO contains more cost. Profit also includes assigned other income. Uncertain Procore matches remain flagged for review rather than being guessed.
+          Sales are QuickBooks Income assigned to the project. Expand a row to see the QuickBooks Profit and Loss drill-through lines for that project, grouped by cost section. Procore Direct Cost is the sum of the matched project&apos;s Direct Cost line-item amounts returned by Procore. The difference is QBO actual cost minus Procore Direct Cost; a positive amount means QBO contains more cost. Profit also includes assigned other income. Uncertain Procore matches remain flagged for review rather than being guessed.
         </p>
       </div>
     </main>

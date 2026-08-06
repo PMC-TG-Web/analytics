@@ -5,20 +5,22 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
-    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics"
+    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
+    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map"
   ],
   "ADMIN": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
-    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "admin", "reporting", "analytics"
+    "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
+    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map"
   ],
   "HR": [
     "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
   ],
   "ESTIMATOR": [
     "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "project-schedule", "estimating-tools",
-    "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook", "analytics"
+    "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook", "analytics", "analytics-cost-code-sales"
   ],
   "OPERATIONS": [
     "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
@@ -279,6 +281,10 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/dashboard', permission: 'dashboard' },
   { prefix: '/projects', permission: 'projects' },
   { prefix: '/project', permission: 'project' },
+  { prefix: '/procore/timecard-entries', permission: 'procore-timecards' },
+  { prefix: '/procore/proposal-line-items-live', permission: 'procore-line-items' },
+  { prefix: '/procore/commitments-live', permission: 'procore-commitments' },
+  { prefix: '/procore/scope-mapping-review', permission: 'procore-scope-map' },
   { prefix: '/procore', permission: 'procore' },
   { prefix: '/scheduling', permission: 'scheduling' },
   { prefix: '/equipment', permission: 'equipment' },
@@ -290,14 +296,16 @@ const PATH_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/certifications', permission: 'certifications' },
   { prefix: '/kpi', permission: 'kpi' },
   { prefix: '/wip', permission: 'wip' },
+  { prefix: '/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/analytics', permission: 'analytics' },
-  { prefix: '/accounting/project-profitability', permission: 'admin' },
+  { prefix: '/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/', permission: 'home' },
 ];
 
 const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/admin', permission: 'admin' },
-  { prefix: '/api/accounting/project-profitability', permission: 'admin' },
+  { prefix: '/api/accounting/project-profitability', permission: 'accounting-project-profitability' },
+  { prefix: '/api/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/api/debug', permission: 'diagnostics' },
   { prefix: '/api/explore', permission: 'diagnostics' },
   { prefix: '/api/health', permission: 'diagnostics' },
@@ -313,6 +321,10 @@ const API_PERMISSION_RULES: Array<{ prefix: string; permission: string }> = [
   { prefix: '/api/procore/direct-costs/line-items-sync', permission: 'admin' },
   { prefix: '/api/procore/estimating/import-estimate-workbook', permission: 'admin' },
   { prefix: '/api/procore/sync', permission: 'admin' },
+  { prefix: '/api/procore/commitments-live', permission: 'procore-commitments' },
+  { prefix: '/api/procore/scope-mapping-review', permission: 'procore-scope-map' },
+  { prefix: '/api/procore/estimating/proposal-line-items-live', permission: 'procore-line-items' },
+  { prefix: '/api/procore/budget-line-items-live', permission: 'procore-line-items' },
   { prefix: '/api/weather', permission: 'home' },
   { prefix: '/api/home-snapshot', permission: 'home' },
   { prefix: '/api/gantt-v2/debug-sync', permission: 'diagnostics' },
@@ -349,6 +361,12 @@ export const NAVIGATION_PERMISSION_OPTIONS: string[] = Array.from(
   new Set([
     ...Object.values(PERMISSION_GROUPS).flat(),
     ...PATH_PERMISSION_RULES.map((rule) => rule.permission),
+    'analytics-cost-code-sales',
+    'accounting-project-profitability',
+    'procore-timecards',
+    'procore-line-items',
+    'procore-commitments',
+    'procore-scope-map',
   ])
 )
   .map((permission) => permission.trim())

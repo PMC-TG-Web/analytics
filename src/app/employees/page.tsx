@@ -49,6 +49,44 @@ interface TimeOffRequest {
   hours?: number;     // Hours off per day
 }
 
+const NAV_PERMISSION_LABELS: Record<string, string> = {
+  'home': 'Home',
+  'dashboard': 'Dashboard',
+  'projects': 'Projects',
+  'project': 'Project details',
+  'procore': 'Procore',
+  'kpi': 'KPI',
+  'wip': 'WIP',
+  'crew-management': 'Crew Management',
+  'estimating-tools': 'Estimating',
+  'constants': 'Constants',
+  'employees': 'Employees',
+  'certifications': 'Certifications',
+  'equipment': 'Equipment',
+  'holidays': 'Holidays',
+  'analytics': 'Analytics',
+  'analytics-cost-code-sales': 'Analytics: Cost Code P&L page',
+  'accounting-project-profitability': 'Accounting: QBO P&L page',
+  'reporting': 'Reporting',
+  'onboarding': 'Onboarding',
+  'handbook': 'Handbook',
+  'kpi-cards-management': 'Manage KPI Cards',
+  'scheduling': 'Schedules: WIP Schedule',
+  'project-schedule': 'Schedules: Project Gantt',
+  'long-term-schedule': 'Schedules: Long-Term',
+  'concrete-orders-schedule': 'Schedules: Concrete Orders',
+  'short-term-schedule': 'Schedules: Short-Term',
+  'crew-dispatch': 'Schedules: Crew Dispatch',
+  'procore-timecards': 'Procore: Timecards page',
+  'procore-line-items': 'Procore: Line Items page',
+  'procore-commitments': 'Procore: Commitments page',
+  'procore-scope-map': 'Procore: Scope Map page',
+};
+
+function formatPermissionOption(permission: string) {
+  return NAV_PERMISSION_LABELS[permission] || permission;
+}
+
 export default function EmployeesPage() {
   return <EmployeesContent />;
 }
@@ -1245,7 +1283,7 @@ function EmployeesContent() {
                         }}
                         className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
                       />
-                      <span className="font-mono text-xs">{permission}</span>
+                      <span className="text-xs">{formatPermissionOption(permission)}</span>
                     </label>
                   );
                 })}
@@ -1621,7 +1659,7 @@ function EmployeesContent() {
                             }}
                             className="h-4 w-4 text-teal-600 border-gray-300 rounded"
                           />
-                          <span className="font-mono text-xs">{permission}</span>
+                          <span className="text-xs">{formatPermissionOption(permission)}</span>
                         </label>
                       );
                     })}

@@ -52,7 +52,11 @@ async function requireAdministrator(request: NextRequest) {
   const email = await getRequestUserEmail(request);
   if (!email) return { allowed: false as const, response: noStoreJson({ error: 'Unauthorized' }, 401) };
   const assigned = await loadUserAssignedPermissionsFromDatabase(prisma, email);
-  const allowed = assigned.some((permission) => ['OWNER', 'ADMIN'].includes(permission.toUpperCase()));
+  const allowed = assigned.some((permission) => [
+    'OWNER',
+    'ADMIN',
+    'ACCOUNTING-PROJECT-PROFITABILITY',
+  ].includes(permission.toUpperCase()));
   if (!allowed) return { allowed: false as const, response: noStoreJson({ error: 'Forbidden' }, 403) };
   return { allowed: true as const, email };
 }

@@ -20,6 +20,7 @@ interface NavLink {
   href: string;
   label: string;
   page: string;
+  fallbackPage?: string;
 }
 
 const navLinks: NavLink[] = [
@@ -36,13 +37,13 @@ const navLinks: NavLink[] = [
   { href: "/certifications", label: "Certifications", page: "certifications" },
   { href: "/equipment", label: "Equipment", page: "equipment" },
   { href: "/holidays", label: "Holidays", page: "holidays" },
-  { href: "/procore/timecard-entries", label: "Timecards", page: "procore" },
-  { href: "/procore/proposal-line-items-live", label: "Line Items", page: "procore" },
-  { href: "/procore/commitments-live", label: "Commitments", page: "procore" },
-  { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore" },
+  { href: "/procore/timecard-entries", label: "Timecards", page: "procore-timecards", fallbackPage: "procore" },
+  { href: "/procore/proposal-line-items-live", label: "Line Items", page: "procore-line-items", fallbackPage: "procore" },
+  { href: "/procore/commitments-live", label: "Commitments", page: "procore-commitments", fallbackPage: "procore" },
+  { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore-scope-map", fallbackPage: "procore" },
   { href: "/analytics", label: "Analytics", page: "analytics" },
-  { href: "/analytics/cost-code-sales", label: "Cost Code P&L", page: "analytics" },
-  { href: "/accounting/project-profitability", label: "QBO P&L", page: "admin" },
+  { href: "/analytics/cost-code-sales", label: "Cost Code P&L", page: "analytics-cost-code-sales", fallbackPage: "analytics" },
+  { href: "/accounting/project-profitability", label: "QBO P&L", page: "accounting-project-profitability", fallbackPage: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
@@ -346,7 +347,8 @@ export default function Navigation({
     if (!permissionsLoaded && !hasResolvedPermissionsForUser) return true;
     if (permissionsFailed && !hasResolvedPermissionsForUser) return true;
 
-    return hasPageAccess(user.email, link.page);
+    return hasPageAccess(user.email, link.page)
+      || Boolean(link.fallbackPage && hasPageAccess(user.email, link.fallbackPage));
   };
 
   const visibleNavLinks = navLinks.filter(canAccessLink);

@@ -21,6 +21,15 @@ const HEAVY_API_RATE_WINDOW_MS = 10 * 60 * 1000;
 const INTERNAL_PERMISSION_CHECK_ROUTE = '/api/internal/permission-check';
 const ANALYTICS_PROCORE_LINK_COOKIE = 'analytics_procore_link_access';
 
+const PERMISSION_FALLBACKS: Record<string, string> = {
+  'accounting-project-profitability': 'admin',
+  'analytics-cost-code-sales': 'analytics',
+  'procore-timecards': 'procore',
+  'procore-line-items': 'procore',
+  'procore-commitments': 'procore',
+  'procore-scope-map': 'procore',
+};
+
 const HEAVY_API_ROUTE_PREFIXES = [
   '/api/procore/sync',
   '/api/procore/estimating/bid-board-projects',
@@ -69,6 +78,8 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
 
   if (defaultPermission) {
     permissions.add(defaultPermission);
+    const fallbackPermission = PERMISSION_FALLBACKS[defaultPermission];
+    if (fallbackPermission) permissions.add(fallbackPermission);
   }
 
   if (method === 'GET') {

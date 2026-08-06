@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getUserPermissions,
   hasPageAccess,
+  NAVIGATION_PERMISSION_OPTIONS,
   resolvePermissionForPath,
   USER_PERMISSIONS,
 } from '../src/lib/permissions.ts';
@@ -38,10 +39,28 @@ test('resolvePermissionForPath normalizes trailing slashes and protects debug pa
 test('resolvePermissionForPath uses more specific rules before broad feature prefixes', () => {
   assert.equal(resolvePermissionForPath('/procore/test'), 'diagnostics');
   assert.equal(resolvePermissionForPath('/procore/review'), 'procore');
+  assert.equal(resolvePermissionForPath('/procore/timecard-entries'), 'procore-timecards');
+  assert.equal(resolvePermissionForPath('/procore/proposal-line-items-live'), 'procore-line-items');
+  assert.equal(resolvePermissionForPath('/procore/commitments-live'), 'procore-commitments');
+  assert.equal(resolvePermissionForPath('/procore/scope-mapping-review'), 'procore-scope-map');
   assert.equal(resolvePermissionForPath('/api/procore/test'), 'diagnostics');
   assert.equal(resolvePermissionForPath('/api/procore/sync/all-projects'), 'admin');
-  assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'admin');
-  assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'admin');
+  assert.equal(resolvePermissionForPath('/analytics/cost-code-sales'), 'analytics-cost-code-sales');
+  assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'accounting-project-profitability');
+  assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
+});
+
+test('employee templates include every page-specific navigation permission', () => {
+  for (const permission of [
+    'procore-timecards',
+    'procore-line-items',
+    'procore-commitments',
+    'procore-scope-map',
+    'analytics-cost-code-sales',
+    'accounting-project-profitability',
+  ]) {
+    assert.ok(NAVIGATION_PERMISSION_OPTIONS.includes(permission), `${permission} is missing`);
+  }
 });
 
 test('QBO profitability access is included only in administrative permission groups', () => {

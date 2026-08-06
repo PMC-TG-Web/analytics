@@ -15,6 +15,11 @@ import {
   getProductivityCompleteNotificationConfig,
   getProductivityReviewNotificationConfig,
 } from "@/lib/productivityReviewNotifications";
+import {
+  getClientCredentialsToken,
+  withProcoreLiveApiBypassForSyncSecret,
+} from "@/lib/procore";
+import { ensureProductivityReviewTaskOnComplete } from "@/lib/procoreProductivityReviewTask";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,6 +59,17 @@ function projectMetadataChanged(
   );
 }
 
+function resolveReviewAnchorDate(params: {
+  projectCreatedAt: Date | null | undefined;
+  completedAt: Date;
+}): Date {
+  const createdAt = params.projectCreatedAt;
+  if (createdAt && Number.isFinite(createdAt.getTime())) {
+    return createdAt;
+  }
+  return params.completedAt;
+}
+
 async function processReminders(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -85,6 +101,22 @@ async function processReminders(request: NextRequest) {
   }
 
   const projectIds = [...canonicalByProject.keys()];
+  const pmcProjects = projectIds.length
+    ? await prisma.pmcProject.findMany({
+        where: { companyId, procoreProjectId: { in: projectIds } },
+        select: {
+          procoreProjectId: true,
+          procoreCreatedAt: true,
+          createdAt: true,
+        },
+      })
+    : [];
+  const projectCreatedAtById = new Map(
+    pmcProjects.map((project) => [
+      project.procoreProjectId,
+      project.procoreCreatedAt || project.createdAt,
+    ]),
+  );
   const existingRows = projectIds.length
     ? await prisma.productivityProjectReview.findMany({
         where: { companyId, projectId: { in: projectIds } },
@@ -108,7 +140,11 @@ async function processReminders(request: NextRequest) {
 
     if (complete) {
       const completedAt = parseBidBoardStatusChangedAt(bidBoard.payload, bidBoard.syncedAt);
-      const reviewEligibleAt = calculateReviewEligibleAt(completedAt);
+      const reviewAnchorAt = resolveReviewAnchorDate({
+        projectCreatedAt: projectCreatedAtById.get(projectId),
+        completedAt,
+      });
+      const reviewEligibleAt = calculateReviewEligibleAt(reviewAnchorAt);
       const sameCycle =
         existing
         && isCompleteBidBoardStatus(existing.bidBoardStatus)
@@ -256,6 +292,7 @@ async function processReminders(request: NextRequest) {
   let completionNoticesFailed = 0;
   let sent = 0;
   let failed = 0;
+  let procoreToken: string | null = null;
 
   for (const review of completionNoticesDue) {
     const claimed = await prisma.productivityProjectReview.updateMany({
@@ -286,6 +323,15 @@ async function processReminders(request: NextRequest) {
     });
 
     try {
+      procoreToken ||= await getClientCredentialsToken();
+      await ensureProductivityReviewTaskOnComplete({
+        token: procoreToken,
+        companyId,
+        projectId: review.projectId,
+        projectNumber: review.projectNumber,
+        projectName: review.projectName,
+        completedAt,
+      });
       if (!completionNotification.apiKey) throw new Error("RESEND_API_KEY is not configured.");
       const result = await completionResend.emails.send({
         from: completionNotification.from,
@@ -397,7 +443,7 @@ async function processReminders(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    return await processReminders(request);
+    return await withProcoreLiveApiBypassForSyncSecret(request, () => processReminders(request));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[productivity-review-reminders]", error);

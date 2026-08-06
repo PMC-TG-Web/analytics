@@ -17,6 +17,10 @@ import { persistCommitmentContracts, type ProcoreCommitmentContract } from '@/li
 import { refreshCommitmentsAggMaterializedView } from '@/lib/commitmentsAggMv';
 
 const MAX_BATCH_SIZE = 100;
+const PRODUCTIVITY_REVIEW_TASK_TITLE = 'Field Productivity Review';
+const PRODUCTIVITY_REVIEW_TASK_TAG = '[analytics:auto-productivity-review]';
+const PRODUCTIVITY_REVIEW_TASK_DUE_OFFSET_DAYS = 30;
+const PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP = 'Project Review';
 
 // ─── Helpers shared across handlers ─────────────────────────────────────────
 
@@ -49,10 +53,161 @@ function readNum(value: unknown): number | null {
   return null;
 }
 
+function normalizeLabel(value: unknown): string {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function readDate(value: unknown): Date | null {
   if (!value) return null;
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function readId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const id = String(value).trim();
+  return id || null;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatUtcDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeDateOnly(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw.slice(0, 10);
+  return formatUtcDateOnly(parsed);
+}
+
+function isCompleteProjectStatus(status: string | null | undefined): boolean {
+  return normalizeBidBoardStatus(status) === 'Complete';
+}
+
+function asTaskRows(payload: unknown): JsonObject[] {
+  if (Array.isArray(payload)) {
+    return payload
+      .map((item) => asObj(item))
+      .filter((item): item is JsonObject => Boolean(item));
+  }
+  const record = asObj(payload);
+  if (!record) return [];
+  const candidates = [record.data, record.task_items, record.items, record.results];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    return candidate
+      .map((item) => asObj(item))
+      .filter((item): item is JsonObject => Boolean(item));
+  }
+  return [];
+}
+
+function taskMatchesProductivityReviewTask(task: JsonObject, dueDate: string): boolean {
+  const title = String(task.title || '').trim().toLowerCase();
+  const due = normalizeDateOnly(task.due_date || task.dueDate);
+  const description = String(task.description || '');
+  return (
+    title === PRODUCTIVITY_REVIEW_TASK_TITLE.toLowerCase()
+    && due === dueDate
+    && description.includes(PRODUCTIVITY_REVIEW_TASK_TAG)
+  );
+}
+
+async function ensureProductivityReviewTaskOnComplete(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+  projectNumber: string | null;
+  projectName: string;
+  createdAt?: Date;
+}) {
+  const createdAt = params.createdAt || new Date();
+  const dueDate = formatUtcDateOnly(addUtcDays(createdAt, PRODUCTIVITY_REVIEW_TASK_DUE_OFFSET_DAYS));
+  const projectLabel = [params.projectNumber, params.projectName]
+    .filter((value) => Boolean(String(value || '').trim()))
+    .join(' - ');
+
+  const existingTasks = await makeRequest(
+    `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}&page=1&per_page=100`,
+    params.token,
+    undefined,
+    params.companyId,
+    [404]
+  );
+  const existingTask = asTaskRows(existingTasks).find((task) =>
+    taskMatchesProductivityReviewTask(task, dueDate)
+  );
+  if (existingTask) {
+    return {
+      created: false,
+      taskId: readId(existingTask.id),
+      dueDate,
+    };
+  }
+
+  const description = [
+    PRODUCTIVITY_REVIEW_TASK_TAG,
+    'Automatically created when this project moved to Complete.',
+    `Project: ${projectLabel || params.projectId}`,
+    `Complete date: ${formatUtcDateOnly(createdAt)}`,
+    `Review due: ${dueDate}`,
+  ].join('\n');
+
+  const distributionOptions = await makeRequest(
+    `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/task_items_project_distribution_members/options?page=1&per_page=100`,
+    params.token,
+    undefined,
+    params.companyId,
+    [404]
+  );
+  const distributionMatch = asTaskRows(distributionOptions).find((row) => {
+    const name = firstStr(row.name, row.display_name, row.label, row.full_name);
+    return normalizeLabel(name) === normalizeLabel(PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP);
+  });
+  const distributionMemberId = readNum(distributionMatch?.id);
+  if (!distributionMemberId) {
+    console.warn('[procore-webhook] productivity review distribution group not found; creating task without distribution', {
+      companyId: params.companyId,
+      projectId: params.projectId,
+      expectedGroup: PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP,
+    });
+  }
+
+  const createdTask = await makeRequest(
+    `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}`,
+    params.token,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        task_item: {
+          title: PRODUCTIVITY_REVIEW_TASK_TITLE,
+          description,
+          due_date: dueDate,
+          status: 'initiated',
+          ...(distributionMemberId ? { distribution_member_ids: [distributionMemberId] } : {}),
+        },
+      }),
+    },
+    params.companyId
+  );
+
+  const createdTaskObj = asObj(createdTask);
+  const createdTaskInner = asObj(createdTaskObj?.task_item);
+  return {
+    created: true,
+    taskId: readId(createdTaskObj?.id) || readId(createdTaskInner?.id),
+    dueDate,
+  };
 }
 
 function normalizeBidBoardStatus(status: string | null | undefined): string | null {
@@ -734,6 +889,21 @@ async function handleProjectsEvent(event: {
     readStr(asObj(project.project_stage)?.name) ||
     null;
   const bidBoardStatus = mapV1StatusToBidBoardStatus(status);
+  const existingPmcProject = await prisma.pmcProject.findUnique({
+    where: {
+      companyId_procoreProjectId: {
+        companyId,
+        procoreProjectId,
+      },
+    },
+    select: {
+      status: true,
+      bidBoardStatus: true,
+    },
+  });
+  const previouslyComplete = isCompleteProjectStatus(
+    existingPmcProject?.bidBoardStatus || existingPmcProject?.status || null
+  );
 
   await upsertCanonicalProjectFromWebhook({
     procoreId: resourceId,
@@ -761,6 +931,24 @@ async function handleProjectsEvent(event: {
     procoreCreatedAt: readDate(project.created_at),
     procoreUpdatedAt: readDate(project.updated_at),
   });
+
+  if (!previouslyComplete && isCompleteProjectStatus(bidBoardStatus || status)) {
+    const taskResult = await ensureProductivityReviewTaskOnComplete({
+      token,
+      companyId,
+      projectId: procoreProjectId,
+      projectNumber,
+      projectName,
+      createdAt: new Date(),
+    });
+    console.log('[procore-webhook] productivity review task ensured for complete project', {
+      companyId,
+      projectId: procoreProjectId,
+      taskId: taskResult.taskId,
+      dueDate: taskResult.dueDate,
+      created: taskResult.created,
+    });
+  }
 
   await prisma.$executeRawUnsafe(
     `
@@ -908,6 +1096,23 @@ async function handleBidBoardProjectsEvent(event: {
       asObj(project.project_status)?.name
     ) || null;
   const bidBoardStatus = normalizeBidBoardStatus(statusRaw);
+  const existingPmcProject = procoreProjectId
+    ? await prisma.pmcProject.findUnique({
+        where: {
+          companyId_procoreProjectId: {
+            companyId,
+            procoreProjectId,
+          },
+        },
+        select: {
+          status: true,
+          bidBoardStatus: true,
+        },
+      })
+    : null;
+  const previouslyComplete = isCompleteProjectStatus(
+    existingPmcProject?.bidBoardStatus || existingPmcProject?.status || null
+  );
 
   let customer: string | null = null;
   const customFieldCustomer = extractCustomerFromCustomFields((project as JsonObject).custom_fields);
@@ -956,6 +1161,24 @@ async function handleBidBoardProjectsEvent(event: {
       customer,
       bidBoardStatus,
     });
+
+    if (!previouslyComplete && isCompleteProjectStatus(bidBoardStatus)) {
+      const taskResult = await ensureProductivityReviewTaskOnComplete({
+        token,
+        companyId,
+        projectId: procoreProjectId,
+        projectNumber,
+        projectName,
+        createdAt: new Date(),
+      });
+      console.log('[procore-webhook] productivity review task ensured for complete bid board project', {
+        companyId,
+        projectId: procoreProjectId,
+        taskId: taskResult.taskId,
+        dueDate: taskResult.dueDate,
+        created: taskResult.created,
+      });
+    }
   }
 
   await upsertCanonicalProjectFromBidBoardWebhook({

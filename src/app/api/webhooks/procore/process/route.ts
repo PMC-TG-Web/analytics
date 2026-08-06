@@ -21,6 +21,7 @@ const PRODUCTIVITY_REVIEW_TASK_TITLE = 'Field Productivity Review';
 const PRODUCTIVITY_REVIEW_TASK_TAG = '[analytics:auto-productivity-review]';
 const PRODUCTIVITY_REVIEW_TASK_DUE_OFFSET_DAYS = 30;
 const PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP = 'Project Review';
+const PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_IDS_DEFAULT = '598134334366396,598134334639403';
 
 // ─── Helpers shared across handlers ─────────────────────────────────────────
 
@@ -51,6 +52,28 @@ function readNum(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function readConfiguredDistributionFallbackIds(): number[] {
+  const configuredList = String(
+    process.env.PROCORE_PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_IDS
+    || PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_IDS_DEFAULT
+  ).trim();
+  const legacySingle = String(process.env.PROCORE_PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_ID || '').trim();
+  const values = [
+    ...configuredList.split(',').map((value) => value.trim()).filter((value) => Boolean(value)),
+    ...(legacySingle ? [legacySingle] : []),
+  ];
+
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const value of values) {
+    const parsed = readNum(value);
+    if (parsed === null || seen.has(parsed)) continue;
+    seen.add(parsed);
+    ids.push(parsed);
+  }
+  return ids;
 }
 
 function normalizeLabel(value: unknown): string {
@@ -171,8 +194,22 @@ async function ensureProductivityReviewTaskOnComplete(params: {
     const name = firstStr(row.name, row.display_name, row.label, row.full_name);
     return normalizeLabel(name) === normalizeLabel(PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP);
   });
-  const distributionMemberId = readNum(distributionMatch?.id);
-  if (!distributionMemberId) {
+  const matchedDistributionMemberId = readNum(distributionMatch?.id);
+  const fallbackDistributionMemberIds = readConfiguredDistributionFallbackIds();
+  const distributionMemberIds = matchedDistributionMemberId
+    ? [matchedDistributionMemberId]
+    : fallbackDistributionMemberIds;
+
+  if (!matchedDistributionMemberId && fallbackDistributionMemberIds.length > 0) {
+    console.info('[procore-webhook] productivity review distribution group options missing expected label; using fallback distribution member id', {
+      companyId: params.companyId,
+      projectId: params.projectId,
+      expectedGroup: PRODUCTIVITY_REVIEW_DISTRIBUTION_GROUP,
+      fallbackDistributionMemberIds,
+    });
+  }
+
+  if (distributionMemberIds.length === 0) {
     console.warn('[procore-webhook] productivity review distribution group not found; creating task without distribution', {
       companyId: params.companyId,
       projectId: params.projectId,
@@ -194,7 +231,7 @@ async function ensureProductivityReviewTaskOnComplete(params: {
           description,
           due_date: dueDate,
           status: 'initiated',
-          ...(distributionMemberId ? { distribution_member_ids: [distributionMemberId] } : {}),
+          ...(distributionMemberIds.length > 0 ? { distribution_member_ids: distributionMemberIds } : {}),
         },
       }),
     },

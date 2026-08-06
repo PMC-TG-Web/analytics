@@ -4,7 +4,7 @@ const TASK_TITLE = 'Field Productivity Review';
 const TASK_TAG = '[analytics:auto-productivity-review]';
 const TASK_DUE_OFFSET_DAYS = 30;
 const DISTRIBUTION_GROUP = 'Project Review';
-const DISTRIBUTION_MEMBER_IDS_DEFAULT = '598134334366396,598134334639403';
+const DISTRIBUTION_MEMBER_IDS_DEFAULT = '12495259,14134125';
 
 type JsonObject = Record<string, unknown>;
 
@@ -77,6 +77,24 @@ function readDistributionMemberIds(): number[] {
   return [...new Set(ids)];
 }
 
+function readTaskDistributionMemberIds(task: JsonObject): number[] {
+  const directIds = Array.isArray(task.distribution_member_ids)
+    ? task.distribution_member_ids
+    : [];
+  const memberIds = Array.isArray(task.distribution_members)
+    ? task.distribution_members.map((member) => asObject(member)?.id)
+    : [];
+  return [...new Set([...directIds, ...memberIds]
+    .map(readNumber)
+    .filter((id): id is number => id !== null))];
+}
+
+function sameIds(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((id) => rightSet.has(id));
+}
+
 export async function ensureProductivityReviewTaskOnComplete(params: {
   token: string;
   companyId: string;
@@ -100,23 +118,42 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     && String(task.description || '').includes(TASK_TAG)
   ));
 
-  if (existingTask) {
-    return { created: false, taskId: readId(existingTask.id), dueDate };
-  }
-
-  const distributionOptions = await makeRequest(
-    `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(params.projectId)}/task_items_project_distribution_members/options?page=1&per_page=100`,
+  const distributionGroups = await makeRequest(
+    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/distribution_groups?page=1&per_page=100&view=extended&include_ancestors=true&filters%5Bsearch%5D=${encodeURIComponent(DISTRIBUTION_GROUP)}`,
     params.token,
     undefined,
     params.companyId,
     [404]
   );
-  const distributionMatch = asRows(distributionOptions).find((row) => {
-    const name = row.name || row.display_name || row.label || row.full_name;
-    return normalizeLabel(name) === normalizeLabel(DISTRIBUTION_GROUP);
-  });
-  const matchedMemberId = readNumber(distributionMatch?.id);
-  const distributionMemberIds = matchedMemberId ? [matchedMemberId] : readDistributionMemberIds();
+  const distributionGroup = asRows(distributionGroups).find((row) => (
+    normalizeLabel(row.name) === normalizeLabel(DISTRIBUTION_GROUP)
+  ));
+  const groupUsers = Array.isArray(distributionGroup?.users) ? distributionGroup.users : [];
+  const groupMemberIds = groupUsers
+    .map((user) => readNumber(asObject(user)?.id))
+    .filter((id): id is number => id !== null);
+  const distributionMemberIds = groupMemberIds.length
+    ? [...new Set(groupMemberIds)]
+    : readDistributionMemberIds();
+
+  if (existingTask) {
+    const taskId = readId(existingTask.id);
+    const currentMemberIds = readTaskDistributionMemberIds(existingTask);
+    if (taskId && distributionMemberIds.length && !sameIds(currentMemberIds, distributionMemberIds)) {
+      await makeRequest(
+        `/rest/v1.0/task_items/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(params.projectId)}`,
+        params.token,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task_item: { distribution_member_ids: distributionMemberIds } }),
+        },
+        params.companyId
+      );
+    }
+    return { created: false, taskId, dueDate };
+  }
+
   const projectLabel = [params.projectNumber, params.projectName]
     .filter((value) => Boolean(String(value || '').trim()))
     .join(' - ');

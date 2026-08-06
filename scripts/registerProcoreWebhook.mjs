@@ -176,7 +176,7 @@ async function listResourcesAll(token) {
       token,
       `/rest/v2.0/companies/${COMPANY_ID}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
     );
-    const items = Array.isArray(data?.data) ? data.data : [];
+    const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
     if (!items.length) break;
 
     for (const item of items) {
@@ -339,8 +339,10 @@ async function cmdRegister() {
     }
   }
 
-  if (!triggerPlan.length) {
-    console.warn('No valid triggers matched your desired resources. Hook was created without triggers.');
+  if (!triggerPlan.length && existingTriggers.length === 0) {
+    console.warn('No valid triggers matched your desired resources. Hook has no triggers.');
+  } else if (!triggerPlan.length) {
+    console.log(`All ${existingTriggers.length} supported trigger(s) are already registered.`);
   }
 
   let successCount = 0;
@@ -355,7 +357,7 @@ async function cmdRegister() {
     }
   }
 
-  console.log(`\nDone. Hook id=${hookId}, ${successCount} triggers registered.`);
+  console.log(`\nDone. Hook id=${hookId}, ${existingTriggers.length} existing trigger(s), ${successCount} new trigger(s).`);
   console.log('\nNext steps:');
   console.log('  1. Add PROCORE_WEBHOOK_SHARED_SECRET to Netlify environment variables.');
   console.log('  2. Add PROCORE_SYNC_SECRET to Netlify environment variables.');

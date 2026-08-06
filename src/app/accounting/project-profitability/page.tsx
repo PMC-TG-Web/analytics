@@ -11,7 +11,6 @@ type Snapshot = {
   readOnly: boolean;
   importedAt: string;
   rowCount: number;
-  summary: Record<string, number>;
   sourceCounts: Record<string, number>;
 };
 

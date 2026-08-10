@@ -15,15 +15,7 @@ function authorized(request: NextRequest) {
   return Boolean(provided) && (provided === syncSecret || (!!cronSecret && provided === cronSecret));
 }
 
-export async function POST(request: NextRequest) {
-  if (!authorized(request)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-  const syncSecret = getRequiredSyncSecret();
-  if (!syncSecret) {
-    return NextResponse.json({ success: false, error: "PROCORE_SYNC_SECRET is not configured" }, { status: 503 });
-  }
-
+async function runProjectReconciliation(request: NextRequest, syncSecret: string) {
   const startedAt = Date.now();
   const companyId = String(process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
   const log = await prisma.syncLog.create({
@@ -66,13 +58,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    return {
       success,
       companyId,
       logId: log.id.toString(),
       totalMs,
       detail,
-    }, { status: success ? 200 : 207 });
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await prisma.syncLog.update({
@@ -84,6 +76,55 @@ export async function POST(request: NextRequest) {
         error: message.slice(0, 4_000),
       },
     }).catch(() => undefined);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return { success: false, error: message };
   }
+}
+
+export async function POST(request: NextRequest) {
+  if (!authorized(request)) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const syncSecret = getRequiredSyncSecret();
+  if (!syncSecret) {
+    return NextResponse.json({ success: false, error: "PROCORE_SYNC_SECRET is not configured" }, { status: 503 });
+  }
+
+  const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const whitespace = `${" ".repeat(2_048)}\n`;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(whitespace));
+      heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(whitespace));
+        } catch {
+          if (heartbeat) clearInterval(heartbeat);
+        }
+      }, 8_000);
+
+      void runProjectReconciliation(request, syncSecret)
+        .then((result) => controller.enqueue(encoder.encode(JSON.stringify(result))))
+        .catch((error) => controller.enqueue(encoder.encode(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }))))
+        .finally(() => {
+          if (heartbeat) clearInterval(heartbeat);
+          controller.close();
+        });
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat);
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
 }

@@ -4,6 +4,7 @@ import {
   makeRequest,
   procoreConfig,
   getClientCredentialsToken,
+  hasValidProcoreSyncSecret,
   withProcoreLiveApiBypassForAuthenticatedSession,
 } from "@/lib/procore";
 import { Prisma } from "@prisma/client";
@@ -12,6 +13,8 @@ import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/pro
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 
 const DEFAULT_ESTIMATING_BASE_URL = "https://api.procore.com";
+
+export const maxDuration = 800;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -504,7 +507,7 @@ async function applyBidBoardStatusToV1Staging(params: {
   );
 }
 
-export async function POST(request: Request) {
+async function runAllProjectsSync(request: Request) {
   return withProcoreLiveApiBypassForAuthenticatedSession(request, async () => {
     try {
     const body = await request.json().catch(() => ({}));
@@ -1609,5 +1612,64 @@ export async function POST(request: Request) {
       const message = error instanceof Error ? error.message : String(error);
       return NextResponse.json({ error: message }, { status: 500 });
     }
+  });
+}
+
+export async function POST(request: Request) {
+  if (!hasValidProcoreSyncSecret(request)) {
+    return runAllProjectsSync(request);
+  }
+  const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const whitespace = `${" ".repeat(2_048)}\n`;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(whitespace));
+      heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(whitespace));
+        } catch {
+          if (heartbeat) clearInterval(heartbeat);
+        }
+      }, 8_000);
+
+      void runAllProjectsSync(request)
+        .then(async (response) => {
+          const text = await response.text();
+          if (response.ok) {
+            controller.enqueue(encoder.encode(text));
+            return;
+          }
+          let detail: unknown = text;
+          try { detail = text ? JSON.parse(text) : null; } catch { /* keep response text */ }
+          controller.enqueue(encoder.encode(JSON.stringify({
+            success: false,
+            httpStatus: response.status,
+            detail,
+          })));
+        })
+        .catch((error) => {
+          controller.enqueue(encoder.encode(JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          })));
+        })
+        .finally(() => {
+          if (heartbeat) clearInterval(heartbeat);
+          controller.close();
+        });
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat);
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
   });
 }

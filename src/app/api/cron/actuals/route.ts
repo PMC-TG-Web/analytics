@@ -203,7 +203,7 @@ async function ensureExplicitProject(companyId: string, projectId: string, datas
   );
 }
 
-export async function POST(request: NextRequest) {
+async function runActualsSync(request: NextRequest) {
   if (!hasValidSecret(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -360,4 +360,49 @@ export async function POST(request: NextRequest) {
     }
     await releaseProcoreWorker(companyId, worker.leaseId).catch(() => undefined);
   }
+}
+
+export async function POST(request: NextRequest) {
+  if (!hasValidSecret(request) || !getRequiredSyncSecret()) {
+    return runActualsSync(request);
+  }
+
+  const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const whitespace = `${" ".repeat(2_048)}\n`;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(whitespace));
+      heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(whitespace));
+        } catch {
+          if (heartbeat) clearInterval(heartbeat);
+        }
+      }, 8_000);
+
+      void runActualsSync(request)
+        .then(async (response) => controller.enqueue(encoder.encode(await response.text())))
+        .catch((error) => controller.enqueue(encoder.encode(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }))))
+        .finally(() => {
+          if (heartbeat) clearInterval(heartbeat);
+          controller.close();
+        });
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat);
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
 }

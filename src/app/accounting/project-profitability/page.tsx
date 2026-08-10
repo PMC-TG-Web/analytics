@@ -62,6 +62,13 @@ type ApiResponse = {
   error?: string;
 };
 
+type ProcoreStatusesResponse = {
+  success: boolean;
+  statuses: string[];
+  byProjectId: Record<string, string>;
+  error?: string;
+};
+
 type LineItemResponse = {
   success: boolean;
   projectId: string;
@@ -128,6 +135,9 @@ export default function QboProjectProfitabilityPage() {
   const [search, setSearch] = useState('');
   const [recordType, setRecordType] = useState('project');
   const [matchFilter, setMatchFilter] = useState('all');
+  const [procoreStatusFilter, setProcoreStatusFilter] = useState('all');
+  const [procoreStatuses, setProcoreStatuses] = useState<string[]>([]);
+  const [procoreStatusByProjectId, setProcoreStatusByProjectId] = useState<Record<string, string>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [lineItemsByProject, setLineItemsByProject] = useState<Record<string, LineItemDetail[]>>({});
   const [lineItemBreakdownByProject, setLineItemBreakdownByProject] = useState<Record<string, Array<{ section: string; amount: number }>>>({});
@@ -151,6 +161,20 @@ export default function QboProjectProfitabilityPage() {
       const body = await response.json() as ApiResponse;
       if (!response.ok || !body.success) throw new Error(body.error || 'Unable to load the report.');
       setData(body);
+
+      try {
+        const statusResponse = await fetch('/api/accounting/project-profitability/procore-statuses', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        const statusBody = await statusResponse.json() as ProcoreStatusesResponse;
+        if (statusResponse.ok && statusBody.success) {
+          setProcoreStatuses(statusBody.statuses);
+          setProcoreStatusByProjectId(statusBody.byProjectId);
+        }
+      } catch (statusError) {
+        console.error('Unable to load Procore status filters:', statusError);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load the report.');
     } finally {
@@ -169,11 +193,16 @@ export default function QboProjectProfitabilityPage() {
       if (recordType !== 'all' && row.recordType !== recordType) return false;
       if (matchFilter === 'matched' && !row.procoreProjectId) return false;
       if (matchFilter === 'unmatched' && row.procoreProjectId) return false;
+      const procoreStatus = row.procoreProjectId
+        ? procoreStatusByProjectId[row.procoreProjectId] || ''
+        : '';
+      if (procoreStatusFilter === 'none' && procoreStatus) return false;
+      if (procoreStatusFilter !== 'all' && procoreStatusFilter !== 'none' && procoreStatus !== procoreStatusFilter) return false;
       if (!term) return true;
-      return [row.fullyQualifiedName, row.procoreProjectName, row.procoreProjectNumber]
+      return [row.fullyQualifiedName, row.procoreProjectName, row.procoreProjectNumber, procoreStatus]
         .some((value) => String(value || '').toLowerCase().includes(term));
     });
-  }, [data, search, recordType, matchFilter]);
+  }, [data, search, recordType, matchFilter, procoreStatusFilter, procoreStatusByProjectId]);
 
   const filteredTotals = useMemo(() => filteredRows.reduce(
     (totals, row) => ({
@@ -293,11 +322,12 @@ export default function QboProjectProfitabilityPage() {
   }
 
   function exportCsv() {
-    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
+    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Procore Status', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
     const rows = filteredRows.map((row) => [
       row.fullyQualifiedName,
       row.procoreProjectNumber,
       row.procoreProjectName,
+      row.procoreProjectId ? procoreStatusByProjectId[row.procoreProjectId] || '' : '',
       row.procoreMatchMethod,
       row.sales,
       row.actualCost,
@@ -362,7 +392,7 @@ export default function QboProjectProfitabilityPage() {
         {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800">{notice}</div>}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_260px_auto]">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_180px_180px_200px_240px_auto]">
             <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
               Search projects
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="QBO name, Procore name, or number" className="mt-1 block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm" />
@@ -381,6 +411,14 @@ export default function QboProjectProfitabilityPage() {
                 <option value="all">All</option>
                 <option value="matched">Matched</option>
                 <option value="unmatched">Needs review</option>
+              </select>
+            </label>
+            <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
+              Procore status
+              <select value={procoreStatusFilter} onChange={(event) => setProcoreStatusFilter(event.target.value)} className="mt-1 block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm">
+                <option value="all">All statuses</option>
+                {procoreStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                <option value="none">No Procore status</option>
               </select>
             </label>
             <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
@@ -454,7 +492,9 @@ export default function QboProjectProfitabilityPage() {
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">{row.marginPercent == null ? '—' : `${row.marginPercent.toFixed(1)}%`}</td>
                       <td className="border-b border-slate-100 px-4 py-3">
                         <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${row.procoreProjectId ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                          {row.procoreProjectId ? 'Matched' : 'Review'}
+                          {row.procoreProjectId
+                            ? procoreStatusByProjectId[row.procoreProjectId] || 'Status unavailable'
+                            : 'No Procore match'}
                         </span>
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right">

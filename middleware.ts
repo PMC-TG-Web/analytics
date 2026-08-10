@@ -13,6 +13,7 @@ import {
   matchesDiagnosticsOrTestRoute,
   shouldBlockDiagnosticsInProduction,
 } from '@/lib/diagnosticsGate';
+import { validateCsrfRequest } from '@/lib/csrfProtection';
 
 const API_RATE_LIMIT = 300;
 const API_RATE_WINDOW_MS = 60 * 1000;
@@ -460,6 +461,25 @@ export async function middleware(request: NextRequest) {
           pathname === '/api/internal/export-kpi-entries' ||
           pathname === '/api/internal/import-kpi-entries') {
     return NextResponse.next();
+  }
+
+  // All server-to-server and external callback routes have already returned
+  // above. Require same-origin browser metadata before a cookie-authenticated
+  // API request is allowed to change state.
+  if (isApiRoute) {
+    const csrfValidation = validateCsrfRequest({
+      method: request.method,
+      requestUrl: request.url,
+      origin: request.headers.get('origin'),
+      referer: request.headers.get('referer'),
+    });
+
+    if (!csrfValidation.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request origin' },
+        { status: 403 }
+      );
+    }
   }
 
   const session = await auth0.getSession(request);

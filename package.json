@@ -17,25 +17,25 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@auth0/nextjs-auth0": "^4.14.1",
-    "@prisma/client": "^6",
+    "@auth0/nextjs-auth0": "4.26.0",
+    "@prisma/client": "6.19.3",
     "@prisma/extension-accelerate": "^3.0.1",
     "chart.js": "^4.4.1",
     "csv-parse": "^6.1.0",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.4",
-    "jspdf": "^4.2.0",
+    "jspdf": "4.2.1",
     "jspdf-autotable": "^5.0.7",
-    "next": "16.1.1",
+    "next": "16.3.0",
     "pdfjs-dist": "^5.4.296",
     "pg": "^8.20.0",
     "react": "19.2.3",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "19.2.3",
     "react-pdf": "^10.3.0",
-    "resend": "^6.9.2",
-    "twilio": "^5.12.2",
-    "xlsx": "^0.18.5"
+    "resend": "6.18.1",
+    "twilio": "5.13.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@netlify/functions": "^5.2.0",
@@ -46,8 +46,8 @@
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.1.1",
-    "prisma": "^6",
+    "eslint-config-next": "16.3.0",
+    "prisma": "6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

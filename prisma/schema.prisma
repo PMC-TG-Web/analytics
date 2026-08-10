@@ -20,10 +20,31 @@ model QboProfitabilitySnapshot {
   sourceCounts      Json                         @map("source_counts")
   importedAt        DateTime                     @default(now()) @map("imported_at") @db.Timestamptz(6)
   rows              QboProjectProfitabilityRow[]
+  drillthrough      QboProfitabilityDrillthroughProject[]
 
   @@index([importedAt(sort: Desc)], map: "idx_qbo_profitability_snapshots_imported")
   @@index([startDate, endDate], map: "idx_qbo_profitability_snapshots_window")
   @@map("qbo_profitability_snapshots")
+}
+
+model QboProfitabilityDrillthroughProject {
+  id                 BigInt                   @id @default(autoincrement())
+  snapshotId         String                   @map("snapshot_id")
+  qboCustomerId      String                   @map("qbo_customer_id")
+  status             String                   @default("available")
+  total              Decimal?                 @db.Decimal(18, 2)
+  lineCount          Int                      @default(0) @map("line_count")
+  projectName        String?                  @map("project_name")
+  fullyQualifiedName String?                  @map("fully_qualified_name")
+  breakdown          Json                     @default("[]")
+  lines              Json                     @default("[]")
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  snapshot           QboProfitabilitySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, qboCustomerId], map: "qbo_profitability_drillthrough_snapshot_customer_key")
+  @@index([snapshotId], map: "idx_qbo_profitability_drillthrough_snapshot")
+  @@map("qbo_profitability_drillthrough_projects")
 }
 
 model QboProjectProfitabilityRow {

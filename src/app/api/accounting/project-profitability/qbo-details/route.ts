@@ -41,6 +41,14 @@ type PersistedDrillthroughRow = {
   lines: unknown;
 };
 
+type EmbeddedDrillthroughProject = {
+  status?: unknown;
+  total?: unknown;
+  lineCount?: unknown;
+  breakdown?: unknown;
+  lines?: unknown;
+};
+
 function noStoreJson(body: unknown, status = 200) {
   const response = NextResponse.json(body, { status });
   response.headers.set('Cache-Control', 'private, no-store, max-age=0');
@@ -134,6 +142,48 @@ function normalizeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeKey(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function readEmbeddedDrillthrough(summary: unknown, qboCustomerId: string) {
+  const summaryRecord = summary && typeof summary === 'object' && !Array.isArray(summary)
+    ? summary as Record<string, unknown>
+    : null;
+  if (!summaryRecord) return null;
+
+  const projectsRaw = summaryRecord.qboCostDrillthroughProjects;
+  const projects = projectsRaw && typeof projectsRaw === 'object' && !Array.isArray(projectsRaw)
+    ? projectsRaw as Record<string, EmbeddedDrillthroughProject>
+    : null;
+  if (!projects) return null;
+
+  const requestedKey = normalizeKey(qboCustomerId);
+  if (!requestedKey) return null;
+
+  const direct = projects[qboCustomerId] || projects[requestedKey];
+  let match = direct;
+
+  if (!match) {
+    for (const [key, value] of Object.entries(projects)) {
+      if (normalizeKey(key) === requestedKey) {
+        match = value;
+        break;
+      }
+    }
+  }
+
+  if (!match) return null;
+
+  return {
+    status: String(match.status || 'available'),
+    total: normalizeNumber(match.total),
+    lineCount: Math.max(0, Number(match.lineCount || 0)),
+    breakdown: normalizeBreakdown(match.breakdown),
+    items: normalizeLines(match.lines),
+  };
+}
+
 async function readPersistedDrillthrough(snapshotId: string, qboCustomerId: string) {
   try {
     const rows = await prisma.$queryRawUnsafe<PersistedDrillthroughRow[]>(
@@ -164,7 +214,7 @@ async function readPersistedDrillthrough(snapshotId: string, qboCustomerId: stri
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/does not exist|relation .*qbo_profitability_drillthrough_projects/i.test(message)) {
+    if (/does not exist|relation .*qbo_profitability_drillthrough_projects|permission denied|Code:\s*`42501`/i.test(message)) {
       return null;
     }
     throw error;
@@ -185,11 +235,11 @@ export async function GET(request: NextRequest) {
     const snapshot = snapshotId
       ? await prisma.qboProfitabilitySnapshot.findUnique({
           where: { id: snapshotId },
-          select: { id: true, startDate: true, endDate: true, accountingMethod: true },
+          select: { id: true, startDate: true, endDate: true, accountingMethod: true, summary: true },
         })
       : await prisma.qboProfitabilitySnapshot.findFirst({
           orderBy: { importedAt: 'desc' },
-          select: { id: true, startDate: true, endDate: true, accountingMethod: true },
+          select: { id: true, startDate: true, endDate: true, accountingMethod: true, summary: true },
         });
 
     if (!snapshot) {
@@ -208,6 +258,21 @@ export async function GET(request: NextRequest) {
         total: persisted.total,
         breakdown: persisted.breakdown,
         items: persisted.items,
+      });
+    }
+
+    const embedded = readEmbeddedDrillthrough(snapshot.summary, qboCustomerId);
+    if (embedded) {
+      return noStoreJson({
+        success: true,
+        snapshotId: snapshot.id,
+        qboCustomerId,
+        projectId: qboCustomerId,
+        sourcePath: 'database:qbo_profitability_snapshots.summary.qboCostDrillthroughProjects',
+        count: embedded.items.length,
+        total: embedded.total,
+        breakdown: embedded.breakdown,
+        items: embedded.items,
       });
     }
 

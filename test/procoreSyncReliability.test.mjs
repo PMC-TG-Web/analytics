@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   procoreSyncDetailHasErrors,
@@ -61,4 +62,10 @@ test("health evaluation stays quiet when core automation is current", () => {
       last_attempt_at: "2026-08-10T15:17:00.000Z",
     },
   }, now), []);
+});
+
+test("middleware allows secret-authenticated reconciliation routes", async () => {
+  const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
+  assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
+  assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
 });

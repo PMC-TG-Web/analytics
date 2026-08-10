@@ -257,7 +257,8 @@ export async function middleware(request: NextRequest) {
   const isProcoreWebhookProcessRoute = pathname === '/api/webhooks/procore/process';
   const isProcoreBackgroundSyncRoute =
     pathname === '/api/background/actuals-sync' ||
-    pathname === '/api/background/nightly-structure-sync';
+    pathname === '/api/background/nightly-structure-sync' ||
+    pathname === '/api/background/project-reconciliation';
   const isNetlifyScheduledSyncFunctionRoute =
     pathname === '/.netlify/functions/scheduled-sync' ||
     pathname.startsWith('/.netlify/functions/scheduled-sync/');
@@ -434,6 +435,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/cron/actuals/') ||
     pathname === '/api/cron/project-onboarding' ||
     pathname.startsWith('/api/cron/project-onboarding/') ||
+    pathname === '/api/cron/project-reconciliation' ||
+    pathname.startsWith('/api/cron/project-reconciliation/') ||
     pathname === '/api/cron/nightly-structure' ||
     pathname.startsWith('/api/cron/nightly-structure/') ||
     pathname === '/api/cron/productivity-review-reminders'

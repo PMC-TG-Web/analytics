@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import {
+  annotateMeetingGroups,
+  evaluateMeetingSeriesFidelity,
+  meetingIdentityKey,
+  meetingSeriesKey,
+  mergeMeetingListMetadata,
+} from "@/lib/procoreMeetingSeries";
 
 export const dynamic = "force-dynamic";
 
@@ -156,32 +163,8 @@ function parseNumericIds(value: unknown): number[] {
     .filter((entry): entry is number => entry !== undefined);
 }
 
-function flattenMeetingGroups(payload: unknown): UnknownRecord[] {
-  if (Array.isArray(payload)) {
-    if (payload.every((entry) => isRecord(entry) && Array.isArray(entry.meetings))) {
-      return payload.flatMap((group) => asArray(group.meetings));
-    }
-    return payload.filter(isRecord);
-  }
-  if (isRecord(payload)) {
-    if (Array.isArray(payload.meetings)) return payload.meetings.filter(isRecord);
-    if (Array.isArray(payload.data)) return payload.data.filter(isRecord);
-  }
-  return [];
-}
-
 function normalizeMeetingKey(meeting: UnknownRecord) {
-  return [
-    normalize(meeting.title),
-    readStr(meeting.starts_at),
-    readStr(meeting.ends_at),
-    normalize(meeting.location),
-    normalize(meeting.mode),
-  ].join("|");
-}
-
-function meetingSeriesKey(meeting: UnknownRecord) {
-  return `${normalize(meeting.title)}|${normalize(meeting.mode || "minutes")}`;
+  return meetingIdentityKey(meeting);
 }
 
 function firstRecord(...values: unknown[]): UnknownRecord | null {
@@ -319,7 +302,7 @@ async function fetchAllMeetings(params: {
       path: `/rest/v1.1/projects/${encodeURIComponent(params.projectId)}/meetings?serializer_view=extended&page=${page}&per_page=100`,
       maxRetries: params.maxRetries,
     });
-    const pageMeetings = flattenMeetingGroups(result.payload);
+    const pageMeetings = annotateMeetingGroups(result.payload);
     if (!pageMeetings.length) break;
     rows.push(...pageMeetings);
     if (pageMeetings.length < 100) break;
@@ -969,7 +952,7 @@ function buildMeetingCloneRow(params: {
   const payloadStart = sourceStart || MEETING_FALLBACK_START_DATETIME;
   const payloadEnd = sourceEnd || MEETING_FALLBACK_END_DATETIME;
   const sourceMode = readStr(params.meeting.mode) || "minutes";
-  const seriesKey = `${normalize(sourceTitle)}|${normalize(sourceMode)}`;
+  const seriesKey = meetingSeriesKey(params.meeting);
   const sourcePosition = readNum(params.meeting.position) ?? null;
   const sourceTimeZone = readStr(params.meeting.time_zone);
   const payload = compactPayload({
@@ -1110,15 +1093,15 @@ export async function POST(request: Request) {
     let uniqueAttendeeLookups = 0;
     let targetedUserRequests = 0;
 
-    const sourceMeetings = sourceMeetingsRaw
-      .filter((meeting) => (meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))))
-      .map((meeting) => readStr(meeting.id))
-      .filter(Boolean);
+    const selectedSourceMeetingRows = sourceMeetingsRaw
+      .filter((meeting) => (meetingIds.length === 0 ? true : meetingIds.includes(readStr(meeting.id))));
 
     const sourceMeetingDetails: UnknownRecord[] = [];
-    for (const meetingId of sourceMeetings) {
+    for (const listMeeting of selectedSourceMeetingRows) {
+      const meetingId = readStr(listMeeting.id);
+      if (!meetingId) continue;
       const detail = await fetchMeetingDetail({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, meetingId });
-      sourceMeetingDetails.push(detail);
+      sourceMeetingDetails.push(mergeMeetingListMetadata(listMeeting, detail));
     }
 
     const sourceMeetingById = new Map<string, UnknownRecord>();
@@ -1206,6 +1189,12 @@ export async function POST(request: Request) {
 
     let meetingRows = buildRows(targetUsers);
 
+    const seriesFidelity = evaluateMeetingSeriesFidelity({
+      sourceMeetings: sourceMeetingsRaw,
+      targetMeetings: targetMeetingsRaw,
+      selectedSourceIds: sourceMeetingDetails.map((meeting) => readStr(meeting.id)).filter(Boolean),
+    });
+
     const attendeeLookupInterrupted = cloneAttendees && Boolean(projectUserLookupWarning || companyUserLookupWarning);
     if (!cloneAttendees) {
       meetingRows = meetingRows.map((row) => ({
@@ -1237,7 +1226,7 @@ export async function POST(request: Request) {
       .filter((row) => row.issues.length === 0)
       .sort((a, b) => (a.sourcePosition ?? Number.MAX_SAFE_INTEGER) - (b.sourcePosition ?? Number.MAX_SAFE_INTEGER));
 
-    if (!dryRun) {
+    if (!dryRun && seriesFidelity.ready) {
       // Slice the stable eligible list, including existing meetings. Filtering out
       // meetings created by a prior batch shifts indexes and silently skips rows.
       const slice = eligibleRows.slice(createOffset, createOffset + createLimit);
@@ -1397,8 +1386,10 @@ export async function POST(request: Request) {
     const failed = createResults.filter((row) => row.ok === false).length;
     const creatableMeetings = meetingRows.filter((row) => row.issues.length === 0 && !row.existingTargetMeeting).length;
 
+    const seriesFidelityBlocked = !seriesFidelity.ready;
+
     return NextResponse.json({
-      success: dryRun ? true : failed === 0,
+      success: dryRun ? true : !seriesFidelityBlocked && failed === 0,
       dryRun,
       tokenSource,
       source: { companyId: sourceCompanyId, projectId: sourceProjectId },
@@ -1417,7 +1408,7 @@ export async function POST(request: Request) {
         created,
         failed,
       },
-      readyForLiveClone: missingMappings.length === 0,
+      readyForLiveClone: missingMappings.length === 0 && seriesFidelity.ready,
       diagnostics: {
         cloneAttendees,
         userLookupMode: cloneAttendees ? "targeted_exact_match" : "disabled",
@@ -1425,7 +1416,10 @@ export async function POST(request: Request) {
         targetedUserRequests,
         targetUsers: targetUsers.slice(0, 200),
         missingMappings,
+        meetingSeries: seriesFidelity.series,
+        seriesFidelityIssues: seriesFidelity.issues,
         warnings: [
+          ...seriesFidelity.issues,
           ...(targetMeetingLookupWarning ? [{ type: "target_meeting_lookup_failed", message: targetMeetingLookupWarning }] : []),
           ...(projectUserLookupWarning ? [{ type: "project_user_lookup_failed", message: projectUserLookupWarning }] : []),
           ...(companyUserLookupWarning ? [{ type: "company_user_lookup_failed", message: companyUserLookupWarning }] : []),
@@ -1450,7 +1444,11 @@ export async function POST(request: Request) {
       })),
       createResults,
       nextStep: dryRun
-        ? "Review missingMappings. If readyForLiveClone is true, rerun with dryRun=false."
+        ? seriesFidelityBlocked
+          ? "Live clone is blocked because Procore's public Meetings API cannot create or repair recurring meeting series. Review diagnostics.seriesFidelityIssues."
+          : "Review missingMappings. If readyForLiveClone is true, rerun with dryRun=false."
+        : seriesFidelityBlocked
+          ? "No meetings were changed. Procore's public Meetings API cannot create or repair recurring meeting series; review diagnostics.seriesFidelityIssues."
         : pauseReason
           ? pauseReason
           : failed
@@ -1458,7 +1456,7 @@ export async function POST(request: Request) {
             : missingMappings.length
               ? `Live clone completed for this batch, but ${missingMappings.length} row(s) still need mappings.`
               : "Live clone completed for this batch.",
-    });
+    }, { status: !dryRun && seriesFidelityBlocked ? 409 : 200 });
   } catch (error) {
     return NextResponse.json({ error: "Meeting clone failed.", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

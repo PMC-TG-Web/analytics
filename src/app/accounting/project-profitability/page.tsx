@@ -251,7 +251,7 @@ export default function QboProjectProfitabilityPage() {
 
       setNotice('Refresh queued. Waiting for the integration machine to finish reading QuickBooks and Procore…');
       const requestId = String(body.requestId || '');
-      const maxStatusChecks = 180;
+      const maxStatusChecks = 540;
       for (let attempt = 0; attempt < maxStatusChecks; attempt += 1) {
         await delay(5_000);
         const statusResponse = await fetch('/api/accounting/project-profitability?refreshStatus=1', {
@@ -283,7 +283,7 @@ export default function QboProjectProfitabilityPage() {
       }
 
       throw new Error(
-        `The refresh is still queued after 15 minutes. The previous snapshot ${previousSnapshotId ? 'remains available' : 'was not replaced'}.`,
+        `The refresh did not complete within 45 minutes. The previous snapshot ${previousSnapshotId ? 'remains available' : 'was not replaced'}.`,
       );
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh QuickBooks and Procore data.');

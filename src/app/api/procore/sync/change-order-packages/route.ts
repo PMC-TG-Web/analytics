@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { makeRequest, procoreConfig, getClientCredentialsToken } from '@/lib/procore';
+import {
+  makeRequest,
+  procoreConfig,
+  getClientCredentialsToken,
+  withProcoreLiveApiBypassForSyncSecret,
+} from '@/lib/procore';
 import { getCanonicalProjectIdsForCompany } from '@/lib/procoreCanonicalProjectIds';
 import {
   ensureChangeOrderPackagesTable,
@@ -213,7 +218,8 @@ async function fetchPotentialChangeOrderLines(
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  try {
+  return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const cookieStore = await cookies();
 
@@ -584,13 +590,14 @@ export async function POST(request: Request) {
       warnings: warnings.slice(0, 25),
       activeProjects: activeProjects.slice(0, 100),
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to sync change order packages', details: message },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to sync change order packages', details: message },
+        { status: 500 }
+      );
+    }
+  });
 }
 
 export async function GET() {

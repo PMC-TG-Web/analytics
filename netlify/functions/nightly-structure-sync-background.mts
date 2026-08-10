@@ -26,7 +26,10 @@ const handler = async (request: Request) => {
       projectId: result?.projectId,
       totalMs: result?.totalMs,
     }));
-    if (!response.ok || result?.success === false || result?.skipped) break;
+    const rateLimited = Array.isArray(result?.steps)
+      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+    if (result?.skipped || rateLimited) break;
+    if (!response.ok || result?.success === false) continue;
   }
 
   if (Date.now() < deadline) {

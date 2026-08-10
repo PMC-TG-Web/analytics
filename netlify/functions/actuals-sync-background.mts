@@ -51,7 +51,7 @@ const handler = async (request: Request) => {
     }));
     const rateLimited = Array.isArray(result?.steps)
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-    if (!response.ok || rateLimited) {
+    if (rateLimited) {
       return Response.json({ success: false, bidBoardHeaders, onboarding, purchaseOrderDiscovery, results });
     }
 
@@ -76,7 +76,7 @@ const handler = async (request: Request) => {
       }));
       const poRateLimited = Array.isArray(poResult?.steps)
         && poResult.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-      if (!poResponse.ok || poResult?.success === false || poRateLimited) {
+      if (poRateLimited) {
         return Response.json({
           success: false,
           bidBoardHeaders,
@@ -85,6 +85,7 @@ const handler = async (request: Request) => {
           results,
         });
       }
+      if (!poResponse.ok || poResult?.success === false) continue;
       if (poResult?.skipped) break;
     }
 
@@ -107,7 +108,7 @@ const handler = async (request: Request) => {
       }));
       const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
         || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
-      if (!estimateResponse.ok || estimateResult?.success === false || estimateRateLimited) {
+      if (estimateRateLimited) {
         return Response.json({
           success: false,
           bidBoardHeaders,
@@ -117,6 +118,7 @@ const handler = async (request: Request) => {
           results,
         });
       }
+      if (!estimateResponse.ok || estimateResult?.success === false) continue;
       if (estimateResult?.skipped) break;
     }
   }
@@ -157,7 +159,8 @@ const handler = async (request: Request) => {
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     // A slow or malformed project should be retried on its own schedule without
     // preventing the worker from advancing to the next due project.
-    if (!response.ok || result?.skipped || rateLimited) break;
+    if (result?.skipped || rateLimited) break;
+    if (!response.ok || result?.success === false) continue;
   }
   return Response.json({
     success: true,

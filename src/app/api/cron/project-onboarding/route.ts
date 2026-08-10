@@ -10,6 +10,10 @@ import {
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
 import { procoreLookbackWindow } from "@/lib/procoreDateWindow";
+import {
+  procoreSyncDetailHasErrors,
+  procoreSyncResponseIsRateLimited,
+} from "@/lib/procoreSyncResponse";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -33,17 +37,6 @@ function authorized(request: NextRequest) {
   const syncSecret = getRequiredSyncSecret();
   const cronSecret = (process.env.CRON_SECRET || "").trim();
   return Boolean(provided) && (provided === syncSecret || (!!cronSecret && provided === cronSecret));
-}
-
-function hasErrors(detail: unknown) {
-  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return false;
-  const value = detail as Record<string, unknown>;
-  return value.success === false || (Array.isArray(value.errors) && value.errors.length > 0);
-}
-
-function isRateLimited(status: number, detail: unknown) {
-  return status === 429
-    || /\b429\b|rate limit|too many requests|surpassed the max number of requests/i.test(JSON.stringify(detail));
 }
 
 function rateLimitReset(response: Response) {
@@ -83,8 +76,8 @@ async function runStep(params: {
       signal: AbortSignal.timeout(4 * 60_000),
     });
     const detail = await responseDetail(response);
-    const rateLimited = isRateLimited(response.status, detail);
-    const success = response.ok && !hasErrors(detail) && !rateLimited;
+    const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
+    const success = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
     const until = rateLimited ? rateLimitReset(response) : null;
     return {
       step: params.step,

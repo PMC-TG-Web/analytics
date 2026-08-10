@@ -1206,6 +1206,7 @@ export async function POST(request: Request) {
       stagingSynced: 0,
       stagingBidBoardStatusUpdated: 0,
       stagingBidBoardStatusSkipped: 0,
+      onboardingQueued: 0,
       errors: [] as string[]
     };
 
@@ -1395,6 +1396,34 @@ export async function POST(request: Request) {
         const message = e instanceof Error ? e.message : String(e);
         results.errors.push(`V1 ${p.name}: ${message}`);
       }
+    }
+
+    const activeV1ProjectIds = activeV1Projects
+      .map((project: Record<string, unknown>) => String(project.id || "").trim())
+      .filter(Boolean);
+    if (activeV1ProjectIds.length > 0) {
+      results.onboardingQueued = await prisma.$executeRaw(
+        Prisma.sql`
+          INSERT INTO procore_sync_project_states (
+            company_id, project_id, dataset, project_number, project_name,
+            next_run_at, created_at, updated_at
+          )
+          SELECT
+            project.company_id,
+            project.procore_project_id,
+            'project_onboarding',
+            project.project_number,
+            project.project_name,
+            NOW(),
+            NOW(),
+            NOW()
+          FROM pmc_projects project
+          WHERE project.company_id = ${companyId}
+            AND project.procore_project_id IN (${Prisma.join(activeV1ProjectIds)})
+            AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+          ON CONFLICT (company_id, project_id, dataset) DO NOTHING
+        `
+      );
     }
 
     // 4. Process Bid Board Projects

@@ -13,6 +13,10 @@ import {
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
+import {
+  procoreSyncDetailHasErrors,
+  procoreSyncResponseIsRateLimited,
+} from "@/lib/procoreSyncResponse";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -51,16 +55,6 @@ async function readDetail(response: Response) {
   try { return text ? JSON.parse(text) : {}; } catch { return text; }
 }
 
-function hasErrors(detail: unknown) {
-  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return false;
-  const value = detail as Record<string, unknown>;
-  return value.success === false || (Array.isArray(value.errors) && value.errors.length > 0);
-}
-
-function limited(status: number, detail: unknown) {
-  return status === 429 || /\b429\b|rate limit|too many requests|surpassed the max number of requests/i.test(JSON.stringify(detail));
-}
-
 function resetAt(response: Response) {
   const reset = Number(response.headers.get("x-rate-limit-reset") || 0);
   const retry = Number(response.headers.get("retry-after") || 0);
@@ -94,11 +88,11 @@ async function runStep(params: {
       signal: AbortSignal.timeout(4 * 60_000),
     });
     const detail = await readDetail(response);
-    const rateLimited = limited(response.status, detail);
+    const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
     const until = rateLimited ? resetAt(response) : null;
     return {
       step: params.step,
-      status: response.ok && !hasErrors(detail) && !rateLimited ? "ok" : "error",
+      status: response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited ? "ok" : "error",
       httpStatus: response.status,
       rateLimited,
       rateLimitUntil: until?.toISOString(),
@@ -358,8 +352,8 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(4 * 60_000),
       });
       const detail = await readDetail(response);
-      const rateLimited = limited(response.status, detail);
-      const success = response.ok && !hasErrors(detail) && !rateLimited;
+      const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
+      const success = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
       const until = rateLimited ? resetAt(response) : null;
       const error = success ? null : JSON.stringify(detail).slice(0, 4_000);
       if (until) await setProcoreRateLimit({ companyId: COMPANY_ID, until, error });

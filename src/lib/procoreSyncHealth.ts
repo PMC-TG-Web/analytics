@@ -62,3 +62,7 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
 
   return issues;
 }
+
+export function procoreHealthAlertFingerprint(issues: string[]) {
+  return issues.slice().sort().join("\n").slice(0, 4_000).replace(/\d+/g, "#");
+}

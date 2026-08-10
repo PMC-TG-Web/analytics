@@ -5,7 +5,10 @@ import {
   procoreSyncDetailHasErrors,
   procoreSyncResponseIsRateLimited,
 } from "../src/lib/procoreSyncResponse.ts";
-import { evaluateProcoreSyncHealth } from "../src/lib/procoreSyncHealth.ts";
+import {
+  evaluateProcoreSyncHealth,
+  procoreHealthAlertFingerprint,
+} from "../src/lib/procoreSyncHealth.ts";
 
 test("recovered 429 diagnostics do not fail a successful sync response", () => {
   const detail = {
@@ -68,4 +71,11 @@ test("middleware allows secret-authenticated reconciliation routes", async () =>
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
   assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
+});
+
+test("health alert deduplication ignores changing backlog counts", () => {
+  assert.equal(
+    procoreHealthAlertFingerprint(["57 nightly structure projects are failing."]),
+    procoreHealthAlertFingerprint(["41 nightly structure projects are failing."]),
+  );
 });

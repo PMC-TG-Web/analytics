@@ -4,6 +4,7 @@ import { getRequiredSyncSecret } from "@/lib/cronSync";
 import { Resend } from "resend";
 import {
   evaluateProcoreSyncHealth,
+  procoreHealthAlertFingerprint,
   type ProcoreSyncHealthSnapshot,
 } from "@/lib/procoreSyncHealth";
 
@@ -142,17 +143,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, healthy: true, alerted: false, health });
   }
 
-  const fingerprint = issues.slice().sort().join("\n").slice(0, 4_000);
-  const recentAlert = await prisma.syncLog.findFirst({
+  const alertDetail = issues.slice().sort().join("\n").slice(0, 4_000);
+  const fingerprint = procoreHealthAlertFingerprint(issues);
+  const recentAlerts = await prisma.syncLog.findMany({
     where: {
       companyId,
       triggeredBy: "sync-health-alert",
       success: true,
-      error: fingerprint,
       startedAt: { gte: new Date(Date.now() - 6 * 60 * 60_000) },
     },
-    select: { id: true, startedAt: true },
+    select: { id: true, startedAt: true, error: true },
+    orderBy: { startedAt: "desc" },
+    take: 50,
   });
+  const recentAlert = recentAlerts.find(
+    (alert) => procoreHealthAlertFingerprint(String(alert.error || "").split("\n")) === fingerprint,
+  ) || null;
   if (recentAlert) {
     return NextResponse.json({
       success: true,
@@ -169,7 +175,7 @@ export async function POST(request: NextRequest) {
       companyId,
       triggeredBy: "sync-health-alert",
       steps: issues.map((issue) => ({ step: "health-check", status: "error", detail: issue })),
-      error: fingerprint,
+      error: alertDetail,
     },
     select: { id: true },
   });
@@ -201,7 +207,7 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : String(error);
     await prisma.syncLog.update({
       where: { id: log.id },
-      data: { finishedAt: new Date(), success: false, error: `${fingerprint}\nAlert delivery: ${message}`.slice(0, 4_000) },
+      data: { finishedAt: new Date(), success: false, error: `${alertDetail}\nAlert delivery: ${message}`.slice(0, 4_000) },
     }).catch(() => undefined);
     return NextResponse.json({ success: false, healthy: false, alerted: false, issues, error: message }, { status: 503 });
   }

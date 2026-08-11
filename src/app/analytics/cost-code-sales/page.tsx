@@ -10,6 +10,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import { calculateActualProfitComparison } from "@/lib/costCodeSalesAnalytics";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -83,10 +84,7 @@ type QboProjectActual = {
   procoreProjectId: string;
   qboProjectName: string | null;
   matchMethod: string | null;
-  sales: number;
   actualCost: number;
-  profit: number;
-  marginPercent: number | null;
   rowCount: number;
 };
 
@@ -437,12 +435,8 @@ export default function CostCodeSalesPage() {
         cost: 0,
         profit: 0,
         marginPercent: null,
-        qboActualProfit: row.procoreProjectId
-          ? qboActualsByProject.get(row.procoreProjectId)?.profit ?? null
-          : null,
-        qboActualMarginPercent: row.procoreProjectId
-          ? qboActualsByProject.get(row.procoreProjectId)?.marginPercent ?? null
-          : null,
+        qboActualProfit: null,
+        qboActualMarginPercent: null,
         qboActualCost: row.procoreProjectId
           ? qboActualsByProject.get(row.procoreProjectId)?.actualCost ?? null
           : null,
@@ -460,18 +454,25 @@ export default function CostCodeSalesPage() {
       projects.set(projectKey, current);
     }
     return [...projects.values()]
-      .map((project) => ({
-        ...project,
-        marginPercent: project.sales ? (project.profit / project.sales) * 100 : null,
-        costVariance: !showProjectCostComparison || project.qboActualCost == null
+      .map((project) => {
+        const actualComparison = !showProjectCostComparison
           ? null
-          : project.cost - project.qboActualCost,
-        details: project.details.sort((left, right) =>
+          : calculateActualProfitComparison(project.sales, project.qboActualCost);
+        return {
+          ...project,
+          marginPercent: project.sales ? (project.profit / project.sales) * 100 : null,
+          qboActualProfit: actualComparison?.profit ?? null,
+          qboActualMarginPercent: actualComparison?.marginPercent ?? null,
+          costVariance: !showProjectCostComparison || project.qboActualCost == null
+            ? null
+            : project.cost - project.qboActualCost,
+          details: project.details.sort((left, right) =>
           left.period.localeCompare(right.period)
           || left.topLevelGroup.localeCompare(right.topLevelGroup)
           || left.reportingGroup.localeCompare(right.reportingGroup)
           || left.costCode.localeCompare(right.costCode)),
-      }))
+        };
+      })
       .sort((left, right) => right.sales - left.sales || left.projectName.localeCompare(right.projectName));
   }, [qboActualsByProject, showProjectCostComparison, visibleProjects]);
 

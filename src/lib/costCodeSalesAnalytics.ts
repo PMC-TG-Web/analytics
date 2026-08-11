@@ -33,7 +33,6 @@ export type QboProjectActualLine = {
   procoreProjectId?: string | null;
   qboProjectName?: string | null;
   matchMethod?: string | null;
-  sales?: unknown;
   actualCost?: unknown;
 };
 
@@ -41,16 +40,23 @@ export type QboProjectActual = {
   procoreProjectId: string;
   qboProjectName: string | null;
   matchMethod: string | null;
-  sales: number;
   actualCost: number;
-  profit: number;
-  marginPercent: number | null;
   rowCount: number;
 };
 
 function finiteNumber(value: unknown): number {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number : 0;
+}
+
+export function calculateActualProfitComparison(sales: unknown, actualCost: unknown) {
+  if (actualCost == null) return null;
+  const normalizedSales = finiteNumber(sales);
+  const profit = normalizedSales - finiteNumber(actualCost);
+  return {
+    profit,
+    marginPercent: normalizedSales ? (profit / normalizedSales) * 100 : null,
+  };
 }
 
 export function normalizeAnalyticsCostCode(value: unknown): string {
@@ -75,28 +81,17 @@ export function aggregateQboProjectActuals(lines: QboProjectActualLine[]): QboPr
       procoreProjectId,
       qboProjectName: String(line.qboProjectName || "").trim() || null,
       matchMethod: String(line.matchMethod || "").trim() || null,
-      sales: 0,
       actualCost: 0,
-      profit: 0,
-      marginPercent: null,
       rowCount: 0,
     };
-    current.sales += finiteNumber(line.sales);
     current.actualCost += finiteNumber(line.actualCost);
     current.rowCount += 1;
     projects.set(procoreProjectId, current);
   }
 
-  return [...projects.values()]
-    .map((project) => {
-      const profit = project.sales - project.actualCost;
-      return {
-        ...project,
-        profit,
-        marginPercent: project.sales ? (profit / project.sales) * 100 : null,
-      };
-    })
-    .sort((left, right) => left.procoreProjectId.localeCompare(right.procoreProjectId));
+  return [...projects.values()].sort((left, right) =>
+    left.procoreProjectId.localeCompare(right.procoreProjectId),
+  );
 }
 
 export function aggregateCostCodeSales(lines: CostCodeSalesLine[]): CostCodeMonthlyMetric[] {

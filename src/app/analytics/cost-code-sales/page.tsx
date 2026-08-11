@@ -62,6 +62,8 @@ type ProjectTotal = {
   cost: number;
   profit: number;
   marginPercent: number | null;
+  qboActualProfit: number | null;
+  qboActualMarginPercent: number | null;
   qboActualCost: number | null;
   costVariance: number | null;
   qboProjectName: string | null;
@@ -81,7 +83,10 @@ type QboProjectActual = {
   procoreProjectId: string;
   qboProjectName: string | null;
   matchMethod: string | null;
+  sales: number;
   actualCost: number;
+  profit: number;
+  marginPercent: number | null;
   rowCount: number;
 };
 
@@ -432,6 +437,12 @@ export default function CostCodeSalesPage() {
         cost: 0,
         profit: 0,
         marginPercent: null,
+        qboActualProfit: row.procoreProjectId
+          ? qboActualsByProject.get(row.procoreProjectId)?.profit ?? null
+          : null,
+        qboActualMarginPercent: row.procoreProjectId
+          ? qboActualsByProject.get(row.procoreProjectId)?.marginPercent ?? null
+          : null,
         qboActualCost: row.procoreProjectId
           ? qboActualsByProject.get(row.procoreProjectId)?.actualCost ?? null
           : null,
@@ -773,9 +784,9 @@ export default function CostCodeSalesPage() {
             </label>
           </div>
           <div className="max-h-[560px] max-w-full overflow-auto">
-            <table className="min-w-[1420px] text-sm">
+            <table className="min-w-[1660px] text-sm">
               <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
-                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Estimated cost</th><th className="px-4 py-3 text-right">QB actual cost</th><th className="px-4 py-3 text-right">Cost variance</th><th className="px-4 py-3 text-right">Profit</th><th className="px-4 py-3 text-right">Margin</th></tr>
+                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Estimated cost</th><th className="px-4 py-3 text-right">QB actual cost</th><th className="px-4 py-3 text-right">Cost variance</th><th className="px-4 py-3 text-right">Estimated profit</th><th className="px-4 py-3 text-right">Actual profit</th><th className="px-4 py-3 text-right">Estimated margin</th><th className="px-4 py-3 text-right">Actual margin</th></tr>
               </thead>
               <tbody>
                 {projectTotals.map((project) => {
@@ -795,11 +806,13 @@ export default function CostCodeSalesPage() {
                         <td className="px-4 py-3 text-right" title={project.qboProjectName || undefined}>{project.qboActualCost == null ? "—" : money.format(project.qboActualCost)}</td>
                         <td className={`px-4 py-3 text-right font-bold ${project.costVariance == null ? "text-slate-400" : project.costVariance >= 0 ? "text-emerald-700" : "text-red-700"}`}>{project.costVariance == null ? "—" : money.format(project.costVariance)}</td>
                         <td className={`px-4 py-3 text-right font-bold ${project.profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money.format(project.profit)}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${project.qboActualProfit == null ? "text-slate-400" : project.qboActualProfit >= 0 ? "text-emerald-700" : "text-red-700"}`} title={project.qboProjectName || undefined}>{project.qboActualProfit == null ? "—" : money.format(project.qboActualProfit)}</td>
                         <td className="px-4 py-3 text-right">{project.marginPercent == null ? "—" : `${percent.format(project.marginPercent)}%`}</td>
+                        <td className="px-4 py-3 text-right" title={project.qboProjectName || undefined}>{project.qboActualMarginPercent == null ? "—" : `${percent.format(project.qboActualMarginPercent)}%`}</td>
                       </tr>
                       {expanded && (
                         <tr className="bg-slate-50">
-                          <td colSpan={11} className="px-4 pb-4 pl-16">
+                          <td colSpan={13} className="px-4 pb-4 pl-16">
                             <div className="overflow-auto border border-slate-200 bg-white">
                               <table className="min-w-[1050px] text-xs">
                                 <thead className="bg-slate-100 font-black uppercase text-slate-600">

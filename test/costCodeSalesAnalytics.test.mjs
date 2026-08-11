@@ -85,14 +85,17 @@ test('cost-code analytics keeps Procore statuses independently filterable', () =
 
 test('QBO actual costs aggregate once per matched Procore project', () => {
   assert.deepEqual(aggregateQboProjectActuals([
-    { procoreProjectId: ' project-1 ', qboProjectName: 'QBO Job', matchMethod: 'exact-name', actualCost: '125.50' },
-    { procoreProjectId: 'project-1', qboProjectName: 'QBO Job Phase', matchMethod: 'exact-name', actualCost: 24.5 },
-    { procoreProjectId: null, qboProjectName: 'Unmatched', actualCost: 900 },
+    { procoreProjectId: ' project-1 ', qboProjectName: 'QBO Job', matchMethod: 'exact-name', sales: '250.00', actualCost: '125.50' },
+    { procoreProjectId: 'project-1', qboProjectName: 'QBO Job Phase', matchMethod: 'exact-name', sales: 50, actualCost: 24.5 },
+    { procoreProjectId: null, qboProjectName: 'Unmatched', sales: 1000, actualCost: 900 },
   ]), [{
     procoreProjectId: 'project-1',
     qboProjectName: 'QBO Job',
     matchMethod: 'exact-name',
+    sales: 300,
     actualCost: 150,
+    profit: 150,
+    marginPercent: 50,
     rowCount: 2,
   }]);
 });

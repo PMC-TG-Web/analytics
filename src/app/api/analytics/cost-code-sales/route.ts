@@ -136,6 +136,7 @@ export async function GET() {
               procoreProjectId: true,
               fullyQualifiedName: true,
               procoreMatchMethod: true,
+              sales: true,
               actualCost: true,
             },
           },
@@ -146,6 +147,7 @@ export async function GET() {
       procoreProjectId: row.procoreProjectId,
       qboProjectName: row.fullyQualifiedName,
       matchMethod: row.procoreMatchMethod,
+      sales: row.sales,
       actualCost: row.actualCost,
     })));
     const aliasesByLine = new Map(payloadAliases.map((row) => [

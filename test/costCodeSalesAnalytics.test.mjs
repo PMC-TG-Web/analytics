@@ -18,6 +18,7 @@ test('cost-code analytics groups item and labor values by UTC month', () => {
   const rows = aggregateCostCodeSales([
     {
       periodDate: '2026-02-28T23:00:00-05:00',
+      status: 'Bid Submitted',
       costCode: ' 03-300-10-10 ',
       costCodeName: 'Labor Foundation Forms',
       reportingGroup: 'Foundation Labor',
@@ -30,6 +31,7 @@ test('cost-code analytics groups item and labor values by UTC month', () => {
     },
     {
       periodDate: '2026-03-15T12:00:00Z',
+      status: 'Bid Submitted',
       costCode: '03-300-10-10',
       reportingGroup: 'Foundation Labor',
       topLevelGroup: 'Foundations',
@@ -45,6 +47,7 @@ test('cost-code analytics groups item and labor values by UTC month', () => {
     period: '2026-03',
     year: 2026,
     month: 3,
+    status: 'Bid Submitted',
     costCode: '03-300-10-10',
     costCodeName: 'Labor Foundation Forms',
     reportingGroup: 'Foundation Labor',
@@ -65,6 +68,18 @@ test('cost-code analytics retains unassigned lines and rejects invalid dates', (
     { periodDate: '2025-01-03', costCode: null, itemSales: 25, itemCost: 10 },
     { periodDate: null, costCode: 'ignored', itemSales: 100 },
   ])[0].costCode, 'UNASSIGNED');
+});
+
+test('cost-code analytics keeps Procore statuses independently filterable', () => {
+  const rows = aggregateCostCodeSales([
+    { periodDate: '2026-03-01', status: 'Complete', costCode: '03-300', itemSales: 100 },
+    { periodDate: '2026-03-01', status: 'In Progress', costCode: '03-300', itemSales: 50 },
+  ]);
+
+  assert.deepEqual(rows.map((row) => [row.status, row.sales]), [
+    ['Complete', 100],
+    ['In Progress', 50],
+  ]);
 });
 
 test('estimating catalog resolves ItemId to actual code and reporting hierarchy', () => {

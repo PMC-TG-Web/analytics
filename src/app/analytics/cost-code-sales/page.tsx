@@ -17,6 +17,7 @@ type MonthlyMetric = {
   period: string;
   year: number;
   month: number;
+  status: string;
   costCode: string;
   costCodeName: string | null;
   reportingGroup: string;
@@ -31,6 +32,7 @@ type MonthlyMetric = {
 
 type ProjectMetric = {
   period: string;
+  status: string;
   costCode: string;
   costCodeName: string | null;
   reportingGroup: string;
@@ -51,6 +53,7 @@ type ProjectTotal = {
   projectKey: string;
   projectName: string;
   projectNumber: string | null;
+  status: string;
   customers: Set<string>;
   proposalName: string | null;
   sales: number;
@@ -64,6 +67,7 @@ type ApiResponse = {
   success: boolean;
   generatedAt: string;
   years: number[];
+  statuses: string[];
   topLevelGroups: string[];
   monthly: MonthlyMetric[];
   projectBreakdown: ProjectMetric[];
@@ -73,6 +77,7 @@ type ApiResponse = {
 
 type UnassignedItem = {
   period: string;
+  status: string;
   costItemId: string;
   itemName: string;
   sales: number;
@@ -146,6 +151,7 @@ export default function CostCodeSalesPage() {
   const [error, setError] = useState("");
   const [year, setYear] = useState<number | "all">("all");
   const [month, setMonth] = useState<number | "all">("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedTopLevel, setSelectedTopLevel] = useState<string>("all");
   const [selectedName, setSelectedName] = useState<string>("all");
   const [selectedCode, setSelectedCode] = useState<string>("all");
@@ -174,8 +180,10 @@ export default function CostCodeSalesPage() {
   }, []);
 
   const periodRows = useMemo(() => (data?.monthly || []).filter((row) =>
-    (year === "all" || row.year === year) && (month === "all" || row.month === month),
-  ), [data, year, month]);
+    (year === "all" || row.year === year)
+    && (month === "all" || row.month === month)
+    && (selectedStatus === "all" || row.status === selectedStatus),
+  ), [data, year, month, selectedStatus]);
 
   const costCodeTotals = useMemo(() => {
     const totals = new Map<string, CostCodeTotal>();
@@ -303,8 +311,9 @@ export default function CostCodeSalesPage() {
       const [rowYear, rowMonth] = row.period.split("-").map(Number);
       if (year !== "all" && rowYear !== year) continue;
       if (month !== "all" && rowMonth !== month) continue;
+      if (selectedStatus !== "all" && row.status !== selectedStatus) continue;
       if (term && ![row.itemName, row.costItemId].some((value) => value.toLowerCase().includes(term))) continue;
-      const key = `${row.costItemId}:${row.itemName}`;
+      const key = `${row.status}:${row.costItemId}:${row.itemName}`;
       const group = groups.get(key) ?? { ...row, period: "filtered" };
       if (groups.has(key)) {
         group.sales += row.sales;
@@ -317,7 +326,7 @@ export default function CostCodeSalesPage() {
       groups.set(key, group);
     }
     return [...groups.values()].sort((left, right) => right.sales - left.sales || left.itemName.localeCompare(right.itemName));
-  }, [data, month, unassignedSearch, year]);
+  }, [data, month, selectedStatus, unassignedSearch, year]);
 
   const visibleProjects = useMemo(() => {
     const term = projectSearch.trim().toLowerCase();
@@ -325,13 +334,14 @@ export default function CostCodeSalesPage() {
       const [rowYear, rowMonth] = row.period.split("-").map(Number);
       if (year !== "all" && rowYear !== year) return false;
       if (month !== "all" && rowMonth !== month) return false;
+      if (selectedStatus !== "all" && row.status !== selectedStatus) return false;
       if (selectedTopLevel !== "all" && canonicalTopLevelGroup(row.topLevelGroup) !== selectedTopLevel) return false;
       if (selectedName !== "all" && `${canonicalTopLevelGroup(row.topLevelGroup)}|${row.reportingGroup}` !== selectedName) return false;
       if (selectedCode !== "all" && row.costCode !== selectedCode) return false;
       return !term || [row.projectName, row.projectNumber, row.customer]
         .some((value) => String(value || "").toLowerCase().includes(term));
     });
-  }, [data, month, projectSearch, selectedCode, selectedName, selectedTopLevel, year]);
+  }, [data, month, projectSearch, selectedCode, selectedName, selectedStatus, selectedTopLevel, year]);
 
   const projectTotals = useMemo(() => {
     const projects = new Map<string, ProjectTotal>();
@@ -341,6 +351,7 @@ export default function CostCodeSalesPage() {
         projectKey,
         projectName: row.projectName,
         projectNumber: row.projectNumber,
+        status: row.status,
         customers: new Set<string>(),
         proposalName: row.proposalName,
         sales: 0,
@@ -403,13 +414,14 @@ export default function CostCodeSalesPage() {
       row.projectNumber,
       row.projectName,
       row.customer,
+      row.status,
       row.sales,
       row.cost,
       row.profit,
       row.marginPercent,
       row.lineCount,
     ]);
-    const headers = ["Period", "Top-level Group", "Reporting Group", "Cost Code", "Cost Name", "Project Number", "Project", "Customer", "Sales", "Cost", "Profit", "Margin %", "Line Count"];
+    const headers = ["Period", "Top-level Group", "Reporting Group", "Cost Code", "Cost Name", "Project Number", "Project", "Customer", "Procore Status", "Sales", "Cost", "Profit", "Margin %", "Line Count"];
     const blob = new Blob([[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -420,8 +432,9 @@ export default function CostCodeSalesPage() {
   }
 
   function exportUnassignedCsv() {
-    const headers = ["Cost Item ID", "Item Name", "Projects", "Estimate Lines", "Sales", "Cost", "Profit"];
+    const headers = ["Procore Status", "Cost Item ID", "Item Name", "Projects", "Estimate Lines", "Sales", "Cost", "Profit"];
     const rows = visibleUnassignedItems.map((row) => [
+      row.status,
       row.costItemId,
       row.itemName,
       row.projectCount,
@@ -464,7 +477,7 @@ export default function CostCodeSalesPage() {
         {error && <div role="alert" className="border border-red-300 bg-red-50 px-4 py-3 font-semibold text-red-800">{error}</div>}
 
         <section className="border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[220px_220px_1fr_auto]">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[190px_190px_220px_1fr_auto]">
             <label className="text-xs font-black uppercase text-slate-600">
               Year
               <select value={year} onChange={(event) => { setYear(event.target.value === "all" ? "all" : Number(event.target.value)); setMonth("all"); setSelectedTopLevel("all"); setSelectedName("all"); setSelectedCode("all"); }} className="mt-1 h-11 w-full border border-slate-300 bg-white px-3 text-sm">
@@ -479,8 +492,15 @@ export default function CostCodeSalesPage() {
                 {monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
               </select>
             </label>
+            <label className="text-xs font-black uppercase text-slate-600">
+              Procore status
+              <select value={selectedStatus} onChange={(event) => { setSelectedStatus(event.target.value); setSelectedTopLevel("all"); setSelectedName("all"); setSelectedCode("all"); }} className="mt-1 h-11 w-full border border-slate-300 bg-white px-3 text-sm">
+                <option value="all">All statuses</option>
+                {(data?.statuses || []).map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </label>
             <div className="self-end text-sm text-slate-600">
-              <span className="font-black text-slate-900">{periodLabel}</span> · {topLevelTotals.length.toLocaleString()} top-level groups · {costNameTotals.length.toLocaleString()} reporting groups
+              <span className="font-black text-slate-900">{periodLabel}</span> · {selectedStatus === "all" ? "All Procore statuses" : selectedStatus} · {topLevelTotals.length.toLocaleString()} top-level groups · {costNameTotals.length.toLocaleString()} reporting groups
             </div>
             <button type="button" onClick={exportCsv} disabled={!visibleProjects.length} className="h-11 self-end bg-teal-800 px-5 text-sm font-black text-white hover:bg-teal-700 disabled:bg-slate-300">Export CSV</button>
           </div>
@@ -615,13 +635,14 @@ export default function CostCodeSalesPage() {
               </div>
             </div>
             <div className="max-h-[460px] max-w-full overflow-auto">
-              <table className="min-w-[900px] text-sm">
+              <table className="min-w-[1000px] text-sm">
                 <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
-                  <tr><th className="px-4 py-3 text-left">Item ID</th><th className="px-4 py-3 text-left">Item name</th><th className="px-4 py-3 text-right">Projects</th><th className="px-4 py-3 text-right">Lines</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Cost</th><th className="px-4 py-3 text-right">Profit</th></tr>
+                  <tr><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Item ID</th><th className="px-4 py-3 text-left">Item name</th><th className="px-4 py-3 text-right">Projects</th><th className="px-4 py-3 text-right">Lines</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Cost</th><th className="px-4 py-3 text-right">Profit</th></tr>
                 </thead>
                 <tbody>
                   {visibleUnassignedItems.map((row) => (
-                    <tr key={`${row.costItemId}:${row.itemName}`} className="border-t border-slate-100 hover:bg-amber-50">
+                    <tr key={`${row.status}:${row.costItemId}:${row.itemName}`} className="border-t border-slate-100 hover:bg-amber-50">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{row.status}</td>
                       <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-slate-700">{row.costItemId}</td>
                       <td className="px-4 py-3 font-bold text-slate-900">{row.itemName}</td>
                       <td className="px-4 py-3 text-right">{row.projectCount.toLocaleString()}</td>
@@ -649,9 +670,9 @@ export default function CostCodeSalesPage() {
             </label>
           </div>
           <div className="max-h-[560px] max-w-full overflow-auto">
-            <table className="min-w-[1050px] text-sm">
+            <table className="min-w-[1160px] text-sm">
               <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
-                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Cost</th><th className="px-4 py-3 text-right">Profit</th><th className="px-4 py-3 text-right">Margin</th></tr>
+                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Cost</th><th className="px-4 py-3 text-right">Profit</th><th className="px-4 py-3 text-right">Margin</th></tr>
               </thead>
               <tbody>
                 {projectTotals.map((project) => {
@@ -663,6 +684,7 @@ export default function CostCodeSalesPage() {
                           <button type="button" onClick={() => toggleProject(project.projectKey)} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${project.projectName}`} className="h-8 w-8 border border-slate-300 bg-white text-lg font-black text-slate-700 hover:border-teal-600 hover:text-teal-800">{expanded ? "-" : "+"}</button>
                         </td>
                         <td className="px-4 py-3"><div className="font-bold text-slate-900">{project.projectName}</div><div className="text-xs text-slate-500">{project.projectNumber || project.proposalName || "No project number"}</div></td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{project.status}</td>
                         <td className="px-4 py-3 text-slate-600">{[...project.customers].join(", ") || "Unknown"}</td>
                         <td className="px-4 py-3 text-right">{project.details.length.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right font-semibold">{money.format(project.sales)}</td>
@@ -672,7 +694,7 @@ export default function CostCodeSalesPage() {
                       </tr>
                       {expanded && (
                         <tr className="bg-slate-50">
-                          <td colSpan={8} className="px-4 pb-4 pl-16">
+                          <td colSpan={9} className="px-4 pb-4 pl-16">
                             <div className="overflow-auto border border-slate-200 bg-white">
                               <table className="min-w-[1050px] text-xs">
                                 <thead className="bg-slate-100 font-black uppercase text-slate-600">

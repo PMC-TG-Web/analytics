@@ -1,5 +1,6 @@
 export type CostCodeSalesLine = {
   periodDate: string | Date | null;
+  status?: string | null;
   costCode: string | null;
   costCodeName?: string | null;
   reportingGroup?: string | null;
@@ -15,6 +16,7 @@ export type CostCodeMonthlyMetric = {
   period: string;
   year: number;
   month: number;
+  status: string;
   costCode: string;
   costCodeName: string | null;
   reportingGroup: string;
@@ -47,6 +49,7 @@ export function analyticsPeriod(value: string | Date | null): string | null {
 export function aggregateCostCodeSales(lines: CostCodeSalesLine[]): CostCodeMonthlyMetric[] {
   const groups = new Map<string, {
     period: string;
+    status: string;
     costCode: string;
     costCodeName: string | null;
     reportingGroup: string;
@@ -60,12 +63,14 @@ export function aggregateCostCodeSales(lines: CostCodeSalesLine[]): CostCodeMont
   for (const line of lines) {
     const period = analyticsPeriod(line.periodDate);
     if (!period) continue;
+    const status = String(line.status || "Unknown").trim() || "Unknown";
     const costCode = normalizeAnalyticsCostCode(line.costCode);
     const reportingGroup = String(line.reportingGroup || line.costCodeName || "Unmapped cost items").trim();
     const topLevelGroup = String(line.topLevelGroup || "Unassigned").trim();
-    const key = `${period}:${topLevelGroup}:${reportingGroup}:${costCode}`;
+    const key = `${period}:${status}:${topLevelGroup}:${reportingGroup}:${costCode}`;
     const group = groups.get(key) ?? {
       period,
+      status,
       costCode,
       costCodeName: String(line.costCodeName ?? "").trim() || null,
       reportingGroup,
@@ -92,6 +97,7 @@ export function aggregateCostCodeSales(lines: CostCodeSalesLine[]): CostCodeMont
         period: group.period,
         year,
         month,
+        status: group.status,
         costCode: group.costCode,
         costCodeName: group.costCodeName,
         reportingGroup: group.reportingGroup,

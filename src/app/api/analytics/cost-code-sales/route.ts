@@ -200,6 +200,7 @@ export async function GET() {
       const fallbackCostName = costCodeNameByCode.get(costCode) || null;
       return {
         ...line,
+        status: String(project.status || "Unknown").trim() || "Unknown",
         costCode,
         mappingMethod: itemIdEntry
           ? "catalog_item_id"
@@ -230,6 +231,7 @@ export async function GET() {
     const monthly = aggregateCostCodeSales(selectedLines);
     const unassignedGroups = new Map<string, {
       period: string;
+      status: string;
       costItemId: string;
       itemName: string;
       sales: number;
@@ -243,9 +245,10 @@ export async function GET() {
       if (!period) continue;
       const costItemId = String(line.costItemId || "").trim() || "NO_ITEM_ID";
       const itemName = String(line.name || "").trim() || "Unnamed item";
-      const key = `${period}:${costItemId}:${itemName}`;
+      const key = `${period}:${line.status}:${costItemId}:${itemName}`;
       const group = unassignedGroups.get(key) ?? {
         period,
+        status: line.status,
         costItemId,
         itemName,
         sales: 0,
@@ -274,6 +277,7 @@ export async function GET() {
       .sort((left, right) => right.sales - left.sales || left.itemName.localeCompare(right.itemName));
     const projectGroups = new Map<string, {
       period: string;
+      status: string;
       costCode: string;
       costCodeName: string | null;
       reportingGroup: string;
@@ -292,9 +296,10 @@ export async function GET() {
       const period = analyticsPeriod(line.periodDate);
       if (!period) continue;
       const costCode = normalizeAnalyticsCostCode(line.costCode);
-      const key = `${period}:${line.topLevelGroup}:${line.reportingGroup}:${costCode}:${line.projectId}`;
+      const key = `${period}:${line.status}:${line.topLevelGroup}:${line.reportingGroup}:${costCode}:${line.projectId}`;
       const group = projectGroups.get(key) ?? {
         period,
+        status: line.status,
         costCode,
         costCodeName: line.costCodeName,
         reportingGroup: line.reportingGroup,
@@ -339,6 +344,8 @@ export async function GET() {
         }, {}),
       },
       years: [...new Set(monthly.map((row) => row.year))].sort((left, right) => right - left),
+      statuses: [...new Set(selectedProjects.map((project) => String(project.status || "Unknown").trim() || "Unknown"))]
+        .sort((left, right) => left.localeCompare(right)),
       topLevelGroups,
       monthly,
       projectBreakdown,

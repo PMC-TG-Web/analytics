@@ -73,7 +73,10 @@ export async function GET() {
     const selectedProposalIds = [...new Set(selectedProjects.map((project) => project.selectedProposalId as string))];
     const [baseLines, costCodes, payloadAliases] = await Promise.all([
       prisma.procoreEstimateLineItem.findMany({
-        where: { companyId },
+        where: {
+          companyId,
+          proposalId: { in: selectedProposalIds },
+        },
         select: {
           bidBoardProjectId: true,
           proposalId: true,
@@ -93,7 +96,7 @@ export async function GET() {
         orderBy: { syncedAt: "desc" },
         select: { code: true, fullCode: true, name: true },
       }),
-      prisma.$queryRaw<Array<{
+      selectedProposalIds.length === 0 ? Promise.resolve([]) : prisma.$queryRaw<Array<{
         bidBoardProjectId: string;
         proposalId: string;
         lineItemId: string;

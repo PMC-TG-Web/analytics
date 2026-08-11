@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import {
   aggregateCostCodeSales,
+  aggregateQboProjectActuals,
   analyticsPeriod,
   normalizeAnalyticsCostCode,
 } from "@/lib/costCodeSalesAnalytics";
@@ -71,7 +72,7 @@ export async function GET() {
     )].sort((left, right) => left.localeCompare(right));
 
     const selectedProposalIds = [...new Set(selectedProjects.map((project) => project.selectedProposalId as string))];
-    const [baseLines, costCodes, payloadAliases] = await Promise.all([
+    const [baseLines, costCodes, payloadAliases, qboSnapshot] = await Promise.all([
       prisma.procoreEstimateLineItem.findMany({
         where: {
           companyId,
@@ -117,7 +118,36 @@ export async function GET() {
         WHERE company_id = ${companyId}
           AND proposal_id IN (${Prisma.join(selectedProposalIds)})
       `),
+      prisma.qboProfitabilitySnapshot.findFirst({
+        orderBy: { importedAt: "desc" },
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          accountingMethod: true,
+          sourceGeneratedAt: true,
+          importedAt: true,
+          rows: {
+            where: {
+              recordType: "project",
+              procoreProjectId: { not: null },
+            },
+            select: {
+              procoreProjectId: true,
+              fullyQualifiedName: true,
+              procoreMatchMethod: true,
+              actualCost: true,
+            },
+          },
+        },
+      }),
     ]);
+    const qboActuals = aggregateQboProjectActuals((qboSnapshot?.rows || []).map((row) => ({
+      procoreProjectId: row.procoreProjectId,
+      qboProjectName: row.fullyQualifiedName,
+      matchMethod: row.procoreMatchMethod,
+      actualCost: row.actualCost,
+    })));
     const aliasesByLine = new Map(payloadAliases.map((row) => [
       `${row.bidBoardProjectId}|${row.proposalId}|${row.lineItemId}`,
       row,
@@ -221,6 +251,7 @@ export async function GET() {
           || (costCode === "UNASSIGNED" ? "Unassigned" : "Uncategorized"),
         periodDate: project.dateCreated || null,
         projectId: project.id,
+        procoreProjectId: project.procoreProjectId || null,
         projectName: project.projectName || "Unnamed Project",
         projectNumber: project.projectNumber || null,
         customer: project.customer || null,
@@ -283,6 +314,7 @@ export async function GET() {
       reportingGroup: string;
       topLevelGroup: string;
       projectId: string;
+      procoreProjectId: string | null;
       projectName: string;
       projectNumber: string | null;
       customer: string | null;
@@ -305,6 +337,7 @@ export async function GET() {
         reportingGroup: line.reportingGroup,
         topLevelGroup: line.topLevelGroup,
         projectId: line.projectId,
+        procoreProjectId: line.procoreProjectId,
         projectName: line.projectName,
         projectNumber: line.projectNumber,
         customer: line.customer,
@@ -332,6 +365,15 @@ export async function GET() {
       generatedAt: new Date().toISOString(),
       source: "procore_selected_primary_estimates",
       periodBasis: "bid_board_created_month",
+      qboSnapshot: qboSnapshot ? {
+        id: qboSnapshot.id,
+        startDate: qboSnapshot.startDate.toISOString().slice(0, 10),
+        endDate: qboSnapshot.endDate.toISOString().slice(0, 10),
+        accountingMethod: qboSnapshot.accountingMethod,
+        sourceGeneratedAt: qboSnapshot.sourceGeneratedAt.toISOString(),
+        importedAt: qboSnapshot.importedAt.toISOString(),
+      } : null,
+      qboActuals,
       summary: {
         sales: monthly.reduce((sum, row) => sum + row.sales, 0),
         cost: monthly.reduce((sum, row) => sum + row.cost, 0),

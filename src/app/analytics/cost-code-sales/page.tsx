@@ -38,6 +38,7 @@ type ProjectMetric = {
   reportingGroup: string;
   topLevelGroup: string;
   projectId: string;
+  procoreProjectId: string | null;
   projectName: string;
   projectNumber: string | null;
   customer: string | null;
@@ -53,6 +54,7 @@ type ProjectTotal = {
   projectKey: string;
   projectName: string;
   projectNumber: string | null;
+  procoreProjectId: string | null;
   status: string;
   customers: Set<string>;
   proposalName: string | null;
@@ -60,7 +62,27 @@ type ProjectTotal = {
   cost: number;
   profit: number;
   marginPercent: number | null;
+  qboActualCost: number | null;
+  costVariance: number | null;
+  qboProjectName: string | null;
   details: ProjectMetric[];
+};
+
+type QboSnapshot = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  accountingMethod: string;
+  sourceGeneratedAt: string;
+  importedAt: string;
+};
+
+type QboProjectActual = {
+  procoreProjectId: string;
+  qboProjectName: string | null;
+  matchMethod: string | null;
+  actualCost: number;
+  rowCount: number;
 };
 
 type ApiResponse = {
@@ -68,6 +90,8 @@ type ApiResponse = {
   generatedAt: string;
   years: number[];
   statuses: string[];
+  qboSnapshot: QboSnapshot | null;
+  qboActuals: QboProjectActual[];
   topLevelGroups: string[];
   monthly: MonthlyMetric[];
   projectBreakdown: ProjectMetric[];
@@ -145,6 +169,11 @@ function canonicalTopLevelGroup(value: string) {
   return value.trim().toLowerCase() === "job cost" ? "Job Cost" : value.trim();
 }
 
+function formatSnapshotDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
+    .format(new Date(`${value.slice(0, 10)}T12:00:00`));
+}
+
 export default function CostCodeSalesPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,6 +213,45 @@ export default function CostCodeSalesPage() {
     && (month === "all" || row.month === month)
     && (selectedStatus === "all" || row.status === selectedStatus),
   ), [data, year, month, selectedStatus]);
+
+  const qboActualsByProject = useMemo(() => new Map(
+    (data?.qboActuals || []).map((actual) => [actual.procoreProjectId, actual]),
+  ), [data]);
+
+  const qboComparison = useMemo(() => {
+    const projects = new Map<string, { procoreProjectId: string | null; estimatedCost: number }>();
+    for (const row of data?.projectBreakdown || []) {
+      const [rowYear, rowMonth] = row.period.split("-").map(Number);
+      if (year !== "all" && rowYear !== year) continue;
+      if (month !== "all" && rowMonth !== month) continue;
+      if (selectedStatus !== "all" && row.status !== selectedStatus) continue;
+      const project = projects.get(row.projectId) ?? {
+        procoreProjectId: row.procoreProjectId,
+        estimatedCost: 0,
+      };
+      project.estimatedCost += row.cost;
+      projects.set(row.projectId, project);
+    }
+    const matchedProcoreIds = new Set<string>();
+    let matchedProjectCount = 0;
+    let matchedEstimatedCost = 0;
+    for (const { procoreProjectId, estimatedCost } of projects.values()) {
+      if (!procoreProjectId || !qboActualsByProject.has(procoreProjectId)) continue;
+      matchedProjectCount += 1;
+      matchedEstimatedCost += estimatedCost;
+      matchedProcoreIds.add(procoreProjectId);
+    }
+    const actualCost = [...matchedProcoreIds].reduce(
+      (sum, procoreProjectId) => sum + (qboActualsByProject.get(procoreProjectId)?.actualCost || 0),
+      0,
+    );
+    return {
+      actualCost,
+      matchedEstimatedCost,
+      projectCount: projects.size,
+      matchedProjectCount,
+    };
+  }, [data, month, qboActualsByProject, selectedStatus, year]);
 
   const costCodeTotals = useMemo(() => {
     const totals = new Map<string, CostCodeTotal>();
@@ -343,14 +411,20 @@ export default function CostCodeSalesPage() {
     });
   }, [data, month, projectSearch, selectedCode, selectedName, selectedStatus, selectedTopLevel, year]);
 
+  const showProjectCostComparison = selectedTopLevel === "all"
+    && selectedName === "all"
+    && selectedCode === "all";
+
   const projectTotals = useMemo(() => {
     const projects = new Map<string, ProjectTotal>();
     for (const row of visibleProjects) {
-      const projectKey = String(row.projectNumber || row.projectName).trim().toLowerCase();
+      const projectKey = row.procoreProjectId
+        || String(row.projectNumber || row.projectName).trim().toLowerCase();
       const current = projects.get(projectKey) ?? {
         projectKey,
         projectName: row.projectName,
         projectNumber: row.projectNumber,
+        procoreProjectId: row.procoreProjectId,
         status: row.status,
         customers: new Set<string>(),
         proposalName: row.proposalName,
@@ -358,6 +432,13 @@ export default function CostCodeSalesPage() {
         cost: 0,
         profit: 0,
         marginPercent: null,
+        qboActualCost: row.procoreProjectId
+          ? qboActualsByProject.get(row.procoreProjectId)?.actualCost ?? null
+          : null,
+        costVariance: null,
+        qboProjectName: row.procoreProjectId
+          ? qboActualsByProject.get(row.procoreProjectId)?.qboProjectName ?? null
+          : null,
         details: [],
       };
       current.sales += row.sales;
@@ -371,6 +452,9 @@ export default function CostCodeSalesPage() {
       .map((project) => ({
         ...project,
         marginPercent: project.sales ? (project.profit / project.sales) * 100 : null,
+        costVariance: !showProjectCostComparison || project.qboActualCost == null
+          ? null
+          : project.cost - project.qboActualCost,
         details: project.details.sort((left, right) =>
           left.period.localeCompare(right.period)
           || left.topLevelGroup.localeCompare(right.topLevelGroup)
@@ -378,7 +462,7 @@ export default function CostCodeSalesPage() {
           || left.costCode.localeCompare(right.costCode)),
       }))
       .sort((left, right) => right.sales - left.sales || left.projectName.localeCompare(right.projectName));
-  }, [visibleProjects]);
+  }, [qboActualsByProject, showProjectCostComparison, visibleProjects]);
 
   function toggleProject(projectKey: string) {
     setExpandedProjects((current) => {
@@ -506,18 +590,37 @@ export default function CostCodeSalesPage() {
           </div>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           {[
             ["Estimated sales", totals.sales, "text-teal-800"],
             ["Estimated cost", totals.cost, "text-amber-700"],
             ["Gross profit", totals.profit, totals.profit >= 0 ? "text-emerald-700" : "text-red-700"],
             ["Margin", totals.sales ? (totals.profit / totals.sales) * 100 : null, "text-slate-900"],
+            ["Matched estimated cost", data?.qboSnapshot ? qboComparison.matchedEstimatedCost : null, "text-amber-700"],
+            ["Matched QB actual cost", data?.qboSnapshot ? qboComparison.actualCost : null, "text-sky-800"],
+            ["Matched cost variance", data?.qboSnapshot ? qboComparison.matchedEstimatedCost - qboComparison.actualCost : null, qboComparison.matchedEstimatedCost - qboComparison.actualCost >= 0 ? "text-emerald-700" : "text-red-700"],
           ].map(([label, value, color]) => (
             <div key={String(label)} className="border border-slate-200 bg-white px-5 py-4 shadow-sm">
               <div className="text-xs font-black uppercase text-slate-500">{label}</div>
-              <div className={`mt-1 text-2xl font-black ${color}`}>{label === "Margin" ? `${percent.format(Number(value || 0))}%` : money.format(Number(value || 0))}</div>
+              <div className={`mt-1 text-2xl font-black ${color}`}>{value == null ? "—" : label === "Margin" ? `${percent.format(Number(value))}%` : money.format(Number(value))}</div>
             </div>
           ))}
+        </section>
+
+        <section className="border border-sky-200 bg-sky-50 px-5 py-4 text-sm text-sky-950 shadow-sm">
+          {data?.qboSnapshot ? (
+            <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+              <div className="font-bold">
+                QuickBooks actual cost · {formatSnapshotDate(data.qboSnapshot.startDate)} to {formatSnapshotDate(data.qboSnapshot.endDate)} · {data.qboSnapshot.accountingMethod} basis
+              </div>
+              <div className="text-xs font-semibold text-sky-800">
+                {qboComparison.matchedProjectCount.toLocaleString()} of {qboComparison.projectCount.toLocaleString()} filtered estimate projects matched · imported {new Date(data.qboSnapshot.importedAt).toLocaleString()}
+              </div>
+            </div>
+          ) : (
+            <div className="font-bold">No QuickBooks profitability snapshot is available.</div>
+          )}
+          <p className="mt-1 text-xs text-sky-800">QuickBooks actuals are project-level totals for the snapshot period. Matched variance uses only matched projects; cost-group drill-through values remain estimate-only.</p>
         </section>
 
         <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(520px,0.9fr)]">
@@ -662,7 +765,7 @@ export default function CostCodeSalesPage() {
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-lg font-black">Project breakdown</h2>
-              <p className="text-xs text-slate-500">{selectedTopLevel === "all" ? "All top-level groups" : selectedTopLevel}{selectedName === "all" ? "" : ` · ${selectedName.split("|")[1]}`}{selectedCode === "all" ? "" : ` · ${selectedCode}`} · {projectTotals.length.toLocaleString()} projects</p>
+              <p className="text-xs text-slate-500">{selectedTopLevel === "all" ? "All top-level groups" : selectedTopLevel}{selectedName === "all" ? "" : ` · ${selectedName.split("|")[1]}`}{selectedCode === "all" ? "" : ` · ${selectedCode}`} · {projectTotals.length.toLocaleString()} projects · {projectTotals.filter((project) => project.qboActualCost != null).length.toLocaleString()} QB matches</p>
             </div>
             <label className="text-xs font-black uppercase text-slate-600">
               Search projects
@@ -670,9 +773,9 @@ export default function CostCodeSalesPage() {
             </label>
           </div>
           <div className="max-h-[560px] max-w-full overflow-auto">
-            <table className="min-w-[1160px] text-sm">
+            <table className="min-w-[1420px] text-sm">
               <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
-                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Cost</th><th className="px-4 py-3 text-right">Profit</th><th className="px-4 py-3 text-right">Margin</th></tr>
+                <tr><th className="w-12 px-4 py-3"><span className="sr-only">Expand</span></th><th className="px-4 py-3 text-left">Project</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-right">Details</th><th className="px-4 py-3 text-right">Sales</th><th className="px-4 py-3 text-right">Estimated cost</th><th className="px-4 py-3 text-right">QB actual cost</th><th className="px-4 py-3 text-right">Cost variance</th><th className="px-4 py-3 text-right">Profit</th><th className="px-4 py-3 text-right">Margin</th></tr>
               </thead>
               <tbody>
                 {projectTotals.map((project) => {
@@ -689,12 +792,14 @@ export default function CostCodeSalesPage() {
                         <td className="px-4 py-3 text-right">{project.details.length.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right font-semibold">{money.format(project.sales)}</td>
                         <td className="px-4 py-3 text-right">{money.format(project.cost)}</td>
+                        <td className="px-4 py-3 text-right" title={project.qboProjectName || undefined}>{project.qboActualCost == null ? "—" : money.format(project.qboActualCost)}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${project.costVariance == null ? "text-slate-400" : project.costVariance >= 0 ? "text-emerald-700" : "text-red-700"}`}>{project.costVariance == null ? "—" : money.format(project.costVariance)}</td>
                         <td className={`px-4 py-3 text-right font-bold ${project.profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money.format(project.profit)}</td>
                         <td className="px-4 py-3 text-right">{project.marginPercent == null ? "—" : `${percent.format(project.marginPercent)}%`}</td>
                       </tr>
                       {expanded && (
                         <tr className="bg-slate-50">
-                          <td colSpan={9} className="px-4 pb-4 pl-16">
+                          <td colSpan={11} className="px-4 pb-4 pl-16">
                             <div className="overflow-auto border border-slate-200 bg-white">
                               <table className="min-w-[1050px] text-xs">
                                 <thead className="bg-slate-100 font-black uppercase text-slate-600">

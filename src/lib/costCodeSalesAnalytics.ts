@@ -29,6 +29,21 @@ export type CostCodeMonthlyMetric = {
   lineCount: number;
 };
 
+export type QboProjectActualLine = {
+  procoreProjectId?: string | null;
+  qboProjectName?: string | null;
+  matchMethod?: string | null;
+  actualCost?: unknown;
+};
+
+export type QboProjectActual = {
+  procoreProjectId: string;
+  qboProjectName: string | null;
+  matchMethod: string | null;
+  actualCost: number;
+  rowCount: number;
+};
+
 function finiteNumber(value: unknown): number {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number : 0;
@@ -44,6 +59,29 @@ export function analyticsPeriod(value: string | Date | null): string | null {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
   return date.toISOString().slice(0, 7);
+}
+
+export function aggregateQboProjectActuals(lines: QboProjectActualLine[]): QboProjectActual[] {
+  const projects = new Map<string, QboProjectActual>();
+
+  for (const line of lines) {
+    const procoreProjectId = String(line.procoreProjectId || "").trim();
+    if (!procoreProjectId) continue;
+    const current = projects.get(procoreProjectId) ?? {
+      procoreProjectId,
+      qboProjectName: String(line.qboProjectName || "").trim() || null,
+      matchMethod: String(line.matchMethod || "").trim() || null,
+      actualCost: 0,
+      rowCount: 0,
+    };
+    current.actualCost += finiteNumber(line.actualCost);
+    current.rowCount += 1;
+    projects.set(procoreProjectId, current);
+  }
+
+  return [...projects.values()].sort((left, right) =>
+    left.procoreProjectId.localeCompare(right.procoreProjectId),
+  );
 }
 
 export function aggregateCostCodeSales(lines: CostCodeSalesLine[]): CostCodeMonthlyMetric[] {

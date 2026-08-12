@@ -826,10 +826,6 @@ function KPIPageContent({
   const baseKpiTableMinWidth = `${150 + monthNames.length * 90 + 110}px`;
   const selectedManagedYear = yearFilter || String(new Date().getFullYear());
   const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
-  const estimatesActHoursOverridesByMonth: Record<string, number> = {
-    '2026-03': 23783,
-    '2026-04': 9214,
-  };
   const [cardLoadWarning, setCardLoadWarning] = useState<string>("");
   const [editingCell, setEditingCell] = useState<{year: string; month: number; field: string} | null>(null);
   const [editValue, setEditValue] = useState<string>("");
@@ -3109,29 +3105,21 @@ function KPIPageContent({
                     ...kpiData
                       .map((entry) => String(((entry ?? {}) as Record<string, unknown>).year || '').trim())
                       .filter(Boolean),
-                    ...Object.keys(estimatesActHoursOverridesByMonth)
-                      .map((monthKey) => monthKey.split('-')[0])
-                      .filter(Boolean),
                   ])).sort();
 
                   const resolveActHoursForYearMonth = (targetYear: string, month: number) => {
-                    const monthKey = `${targetYear}-${String(month).padStart(2, '0')}`;
-                    const explicitOverride = estimatesActHoursOverridesByMonth[monthKey];
                     const matchingEntry = kpiData.find((entry) => {
                       const record = (entry ?? {}) as Record<string, unknown>;
                       return String(record.year || '').trim() === targetYear && Number(record.month) === month;
                     });
                     const manualValueRaw = ((matchingEntry ?? {}) as Record<string, unknown>).estimatesActualHours;
                     const manualValue = Number(manualValueRaw);
-                    const hasExplicitOverride = Number.isFinite(explicitOverride);
                     const hasManualValue = manualValueRaw !== undefined && manualValueRaw !== null && Number.isFinite(manualValue);
                     const calculatedValue = bidSubmittedHoursYearMonthMap[targetYear]?.[month] || 0;
 
                     return {
-                      hours: hasExplicitOverride
-                        ? Number(explicitOverride)
-                        : (hasManualValue ? manualValue : calculatedValue),
-                      isManual: hasExplicitOverride || hasManualValue,
+                      hours: hasManualValue ? manualValue : calculatedValue,
+                      isManual: hasManualValue,
                     };
                   };
 

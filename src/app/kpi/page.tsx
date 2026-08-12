@@ -2992,7 +2992,7 @@ function KPIPageContent({
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Estimates by Month</h3>
           <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>
-            Double-click any <strong>Bids Submitted</strong>, <strong>New Bids</strong>, or <strong>Act Hrs</strong> month cell to override that month value when a single year is selected.
+            Double-click any <strong>Bids Submitted</strong> or <strong>Act Hrs</strong> month cell to override that month value when a single year is selected.
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
@@ -3101,112 +3101,6 @@ function KPIPageContent({
                     );
                     rowIndex += 1;
 
-                    const newBidsColor = rowColors[rowIndex % 2];
-                    const newBidsMonthValues = monthNames.map((_, idx) => {
-                      const month = idx + 1;
-                      const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.estimates;
-                      const calculatedValue = newBidsSalesYearMonthMap[year]?.[month] || 0;
-                      const isManual = manualValue !== undefined && manualValue !== null;
-                      return {
-                        month,
-                        value: isManual ? manualValue : calculatedValue,
-                        isManual,
-                      };
-                    });
-                    const hasManualNewBids = newBidsMonthValues.some(({ isManual }) => isManual);
-                    const newBidsTotal = newBidsMonthValues.reduce((sum, { value }) => sum + value, 0);
-                    const newBidsYtdTotal = newBidsMonthValues
-                      .filter(({ month }) => month <= ytdMonthCutoff)
-                      .reduce((sum, { value }) => sum + value, 0);
-
-                    rows.push(
-                      <tr key={`new-bids-${year}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                        <td style={{ padding: "4px 6px", color: newBidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "New Bids" : `New Bids ${year}`}</td>
-                        {newBidsMonthValues.map(({ month, value, isManual }, idx) => {
-                          const isEditing =
-                            editingCell?.year === year &&
-                            editingCell?.month === month &&
-                            editingCell?.field === "estimates";
-                          return (
-                            <td
-                              key={month}
-                              onDoubleClick={() => beginEditKpiCell(year, month, "estimates", Number(value) || 0)}
-                              style={{
-                                padding: "4px 2px",
-                                textAlign: "center",
-                                color: value > 0 ? newBidsColor : "#999",
-                                fontWeight: value > 0 ? 700 : 400,
-                                fontSize: 12,
-                                cursor: "pointer",
-                              }}
-                              title="Double-click to edit"
-                            >
-                              {isEditing ? (
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={commitEditKpiCell}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitEditKpiCell();
-                                    if (e.key === "Escape") cancelEditKpiCell();
-                                  }}
-                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                                />
-                              ) : value > 0 && !isManual ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openNewBidsDrilldown(year, month)}
-                                  style={{
-                                    background: "transparent",
-                                    border: "none",
-                                    color: newBidsColor,
-                                    cursor: "pointer",
-                                    fontWeight: 700,
-                                    fontSize: 12,
-                                    textDecoration: "underline",
-                                    padding: 0,
-                                  }}
-                                  title={`Show projects for New Bids ${monthNames[idx]} ${year}`}
-                                >
-                                  ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </button>
-                              ) : isManual ? `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value > 0 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "4px 6px", textAlign: "center", color: newBidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {newBidsTotal > 0 && !hasManualNewBids ? (
-                            <button
-                              type="button"
-                              onClick={() => openNewBidsDrilldown(year, null)}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: newBidsColor,
-                                cursor: "pointer",
-                                fontWeight: 700,
-                                fontSize: 12,
-                                textDecoration: "underline",
-                                padding: 0,
-                              }}
-                              title={`Show all projects for New Bids ${year}`}
-                            >
-                              {renderTotalWithYtd(
-                                `$${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                                `$${newBidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                              )}
-                            </button>
-                          ) : (
-                            renderTotalWithYtd(
-                              `$${newBidsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                              `$${newBidsYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                            )
-                          )}
-                        </td>
-                      </tr>
-                    );
-                    rowIndex += 1;
                   });
 
                   const actHoursColor = rowColors[rowIndex % 2];

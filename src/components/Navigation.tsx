@@ -42,6 +42,7 @@ const navLinks: NavLink[] = [
   { href: "/procore/commitments-live", label: "Commitments", page: "procore-commitments", fallbackPage: "procore" },
   { href: "/procore/scope-mapping-review", label: "Scope Map", page: "procore-scope-map", fallbackPage: "procore" },
   { href: "/analytics", label: "Analytics", page: "analytics" },
+  { href: "/analytics/monthly-hours", label: "Monthly Hours", page: "analytics-monthly-hours", fallbackPage: "analytics" },
   { href: "/analytics/cost-code-sales", label: "Cost Code P&L", page: "analytics-cost-code-sales", fallbackPage: "analytics" },
   { href: "/accounting/project-profitability", label: "QBO P&L", page: "accounting-project-profitability", fallbackPage: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },

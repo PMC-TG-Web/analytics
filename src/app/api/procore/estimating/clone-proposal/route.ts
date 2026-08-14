@@ -4,6 +4,21 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import { buildEstimateCloneSourcePaths, hasEstimateCloneSource } from "@/lib/estimateCloneSource";
+import {
+  chooseEstimateMappingByDescriptionPrefix,
+  chooseEstimateGenericCategoryMapping,
+  chooseEstimateMappingByGroupCategory,
+  estimateCostItemTypeForCostCodeType,
+  estimateCostTypeCode,
+  estimateCostTypeName,
+  normalizeEstimateCloneItemName,
+} from "@/lib/estimateCloneMatching";
+import {
+  buildEstimateCloneLaborRateRepair,
+  buildEstimateCloneTakeoffQuantityRepair,
+  deriveEstimateCloneMargin,
+} from "@/lib/estimateClonePricing";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -61,7 +76,37 @@ function itemIdentityLooseKey(row: UnknownRecord): string {
 }
 
 function itemNameLooseKey(row: UnknownRecord): string {
-  return normLoose(row.Name);
+  return normalizeEstimateCloneItemName(row.Name);
+}
+
+function costCodeAliases(value: unknown): string[] {
+  const normalized = norm(value);
+  if (!normalized) return [];
+  if (normalized.endsWith(".l")) {
+    return [normalized, normalized.slice(0, -2)];
+  }
+  return [normalized, `${normalized}.l`];
+}
+
+function getUniqueCostCodeMatches(
+  index: Map<string, UnknownRecord[]>,
+  value: unknown
+): UnknownRecord[] {
+  const aliases = costCodeAliases(value);
+  if (aliases.length === 0) return [];
+
+  const matches: UnknownRecord[] = [];
+  const seenItemIds = new Set<string>();
+  for (const alias of aliases) {
+    for (const row of index.get(alias) || []) {
+      const itemId = readStr(row.ItemId);
+      if (itemId && seenItemIds.has(itemId)) continue;
+      if (itemId) seenItemIds.add(itemId);
+      matches.push(row);
+      if (matches.length > 1) return matches;
+    }
+  }
+  return matches;
 }
 
 function appendMapping(map: Map<string, UnknownRecord[]>, key: string, mapping: UnknownRecord) {
@@ -220,7 +265,9 @@ function buildCrosswalkFromWorkbook(workbook: XLSX.WorkBook) {
     const oldItemId = readStr(oldRow.ItemId);
     const costCode = norm(oldRow["Cost Code"]);
     const identityKey = itemIdentityKey(oldRow);
-    const matches = costCode ? newUniqueByCostCode.get(costCode) || [] : newUniqueByIdentity.get(identityKey) || [];
+    const matches = costCode
+      ? getUniqueCostCodeMatches(newUniqueByCostCode, oldRow["Cost Code"])
+      : newUniqueByIdentity.get(identityKey) || [];
     if (!oldItemId) continue;
     if (matches.length === 1) {
       const mapping = { old: oldRow, new: matches[0], strategy: costCode ? "unique_cost_code" : "unique_identity" };
@@ -437,27 +484,8 @@ function chooseByGroupCostCodeHint(matches: UnknownRecord[], groupCostCodeHint: 
   return hinted.length === 1 ? hinted[0] : null;
 }
 
-function mappingOldCostName(mapping: UnknownRecord): string {
-  const oldRow = isRecord(mapping.old) ? mapping.old : {};
-  return norm(oldRow["Cost Name"]);
-}
-
-function guessGroupCostNameHint(groupName: string): string {
-  const value = norm(groupName);
-  if (!value) return "";
-  if (/\bsog\b|slab on grade/.test(value)) return "sog rebar material";
-  if (/\bwall\b|wf\d/.test(value)) return "wall rebar material";
-  if (/\bfootings?\b|\bfooters?\b|\bspread\b|\bmat\b|\bfoundations?\b/.test(value)) return "foundation rebar material";
-  if (/\bsite\b|\bexterior\b.*\bslabs?\b|\bslabs?\b.*\bexterior\b/.test(value)) return "site rebar material";
-  return "";
-}
-
 function chooseByGroupNameCostNameHint(matches: UnknownRecord[], groupNameHint: string): UnknownRecord | null {
-  if (!groupNameHint || matches.length < 2) return null;
-  const costNameHint = guessGroupCostNameHint(groupNameHint);
-  if (!costNameHint) return null;
-  const hinted = matches.filter((entry) => mappingOldCostName(entry) === costNameHint);
-  return hinted.length === 1 ? hinted[0] : null;
+  return chooseEstimateMappingByGroupCategory(matches, groupNameHint);
 }
 
 function buildGroupCostCodeHints(
@@ -567,8 +595,11 @@ function resolveLineItemMapping(
     return { mapping: uniqueIdentityMatches[0], strategy: "line_item_unique_identity", oldCostItemId, identityKey };
   }
 
-  // Fallback only when the source line item is missing both stable mapping keys.
-  if (!oldCostItemId && !costCode) {
+  // An estimate can retain a legacy catalog item ID after that item has been
+  // replaced in the source catalog. Once all stable-key lookups have failed,
+  // continue through conservative identity fallbacks instead of treating the
+  // presence of an unknown ID as proof that no mapping exists.
+  {
     const anyIdentityMatches = crosswalk.byOldAnyIdentity.get(identityKey) || [];
     if (anyIdentityMatches.length === 1) {
       return { mapping: anyIdentityMatches[0], strategy: "line_item_any_identity", oldCostItemId, identityKey };
@@ -630,6 +661,18 @@ function resolveLineItemMapping(
     if (anyLooseNameMatches.length === 1) {
       return { mapping: anyLooseNameMatches[0], strategy: "line_item_any_loose_name", oldCostItemId, looseNameKey };
     }
+    const descriptionHintedLooseName = chooseEstimateMappingByDescriptionPrefix(
+      anyLooseNameMatches,
+      oldRow.Description
+    );
+    if (descriptionHintedLooseName) {
+      return {
+        mapping: descriptionHintedLooseName,
+        strategy: "line_item_any_loose_name_description_prefix",
+        oldCostItemId,
+        looseNameKey,
+      };
+    }
     const hintedLooseName = chooseByGroupCostCodeHint(anyLooseNameMatches, groupCostCodeHint);
     if (hintedLooseName) {
       return {
@@ -648,6 +691,34 @@ function resolveLineItemMapping(
         oldCostItemId,
         looseNameKey,
         groupNameHint,
+      };
+    }
+
+    const descriptionMapping = chooseEstimateMappingByDescriptionPrefix(
+      [...crosswalk.byOldItemId.values()],
+      oldRow.Description
+    );
+    if (descriptionMapping) {
+      return {
+        mapping: descriptionMapping,
+        strategy: "line_item_legacy_description",
+        oldCostItemId,
+      };
+    }
+
+    const genericCategoryMapping = chooseEstimateGenericCategoryMapping(
+      [...crosswalk.byOldItemId.values()],
+      oldRow.Name,
+      groupNameHint,
+      groupCostCodeHint
+    );
+    if (genericCategoryMapping) {
+      return {
+        mapping: genericCategoryMapping,
+        strategy: "line_item_legacy_generic_group_category",
+        oldCostItemId,
+        groupNameHint,
+        groupCostCodeHint,
       };
     }
   }
@@ -753,13 +824,24 @@ function buildLineItemPayload(params: {
   const clonedCostItem = cloneForCreate(sourceCostItem);
   const costItemPayload = isRecord(clonedCostItem) ? clonedCostItem : {};
   const newItemId = readStr(newRow.ItemId);
+  const costCodeType = estimateCostTypeCode(newRow["Cost code type"]);
 
   payload.name = readStr(payload.name || lineItem.name || sourceCostItem.name || newRow.Name) || "Imported Line Item";
   costItemPayload.id = newItemId;
   costItemPayload.based_on_item_id = newItemId;
   costItemPayload.name = readStr(costItemPayload.name || sourceCostItem.name || newRow.Name);
   costItemPayload.description = readStr(costItemPayload.description || sourceCostItem.description || newRow.Description);
-  costItemPayload.type = readStr(costItemPayload.type || sourceCostItem.type || sourceCostItem.item_type || "Custom");
+  costItemPayload.type = estimateCostItemTypeForCostCodeType(
+    costCodeType,
+    costItemPayload.type || sourceCostItem.type || sourceCostItem.item_type || "CUSTOM"
+  );
+  if (costCodeType && costItemPayload.type === "CUSTOM") {
+    costItemPayload.cost_type_code = costCodeType;
+    costItemPayload.cost_type_name = estimateCostTypeName(costCodeType);
+  } else if (costCodeType) {
+    delete costItemPayload.cost_type_code;
+    delete costItemPayload.cost_type_name;
+  }
   payload.cost_item = costItemPayload;
 
   const clonedCostCode = isRecord(payload.cost_code) ? payload.cost_code : {};
@@ -774,14 +856,26 @@ function buildLineItemPayload(params: {
   const mappedGroupId = oldGroupId ? groupIdMap.get(oldGroupId) : "";
   if (mappedGroupId) payload.group_id = mappedGroupId;
 
-  const costCodeType = readStr(newRow["Cost code type"]);
-  if (costCodeType) payload.cost_code_type = costCodeType;
+  if (costCodeType && costItemPayload.type === "CUSTOM") {
+    payload.cost_code_type = costCodeType;
+  } else if (costCodeType) {
+    // Supplying this field for a built-in type (especially S) makes Procore
+    // asynchronously normalize the line back to CUSTOM.
+    delete payload.cost_code_type;
+  }
 
   const existingPricingOverride = isRecord(payload.pricing_override) ? payload.pricing_override : {};
   const pricingOverride: UnknownRecord = { ...existingPricingOverride };
   copyPricingField(pricingOverride, "unit_material_cost", lineItem.unit_material_cost, lineItem.unitMaterialCost, sourceCostItem.unit_cost);
   copyPricingField(pricingOverride, "material_margin", lineItem.material_margin, lineItem.materialMargin, sourceCostItem.material_margin, sourceCostItem.item_margin);
   copyPricingField(pricingOverride, "item_margin", lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
+  const effectiveItemMargin = deriveEstimateCloneMargin(lineItem.item_cost, lineItem.item_sales);
+  if (pricingOverride.item_margin === undefined && effectiveItemMargin !== null) {
+    pricingOverride.item_margin = effectiveItemMargin;
+  }
+  if (pricingOverride.material_margin === undefined && effectiveItemMargin !== null) {
+    pricingOverride.material_margin = effectiveItemMargin;
+  }
   copyPricingField(pricingOverride, "unit_labor", lineItem.unit_labor, lineItem.unitLabor, sourceCostItem.unit_labor);
   copyPricingField(pricingOverride, "labor_factor", lineItem.labor_factor, lineItem.laborFactor);
   copyPricingField(pricingOverride, "unit_labor_rate", lineItem.unit_labor_rate, lineItem.unitLaborRate, sourceCostItem.unit_labor_rate);
@@ -801,6 +895,12 @@ function buildLineItemPayload(params: {
   copyPricingField(costItemPayload, "item_margin", lineItem.ci_item_margin, lineItem.item_margin, lineItem.itemMargin, sourceCostItem.item_margin);
   copyPricingField(costItemPayload, "labor_margin", lineItem.ci_labor_margin, lineItem.labor_margin, lineItem.laborMargin, sourceCostItem.labor_margin);
   copyPricingField(costItemPayload, "material_margin", lineItem.material_margin, lineItem.materialMargin, sourceCostItem.material_margin, sourceCostItem.item_margin);
+  if (costItemPayload.item_margin === undefined && effectiveItemMargin !== null) {
+    costItemPayload.item_margin = effectiveItemMargin;
+  }
+  if (costItemPayload.material_margin === undefined && effectiveItemMargin !== null) {
+    costItemPayload.material_margin = effectiveItemMargin;
+  }
 
   return payload;
 }
@@ -965,11 +1065,17 @@ export async function POST(request: Request) {
       ? requestedCrosswalkPath
       : path.join(process.cwd(), requestedCrosswalkPath);
 
-    if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectIdInput) {
+    if (
+      !sourceCompanyId ||
+      !hasEstimateCloneSource({ projectId: sourceProjectId, bidBoardProjectId: sourceBidBoardProjectId }) ||
+      !sourceProposalId ||
+      !targetCompanyId ||
+      !targetBidBoardProjectIdInput
+    ) {
       return NextResponse.json(
         {
           error:
-            "Missing required fields: sourceCompanyId, sourceProjectId, sourceProposalId, targetCompanyId, targetBidBoardProjectId",
+            "Missing required fields: sourceCompanyId, sourceProjectId or sourceBidBoardProjectId, sourceProposalId, targetCompanyId, targetBidBoardProjectId",
         },
         { status: 400 }
       );
@@ -988,44 +1094,99 @@ export async function POST(request: Request) {
       candidateId: targetBidBoardProjectIdInput,
     });
     const targetBidBoardProjectId = targetBidBoardResolution.bidBoardProjectId;
-    const sourceProposalPayload = await procoreJson({
-      accessToken,
+    const sourcePaths = buildEstimateCloneSourcePaths({
       companyId: sourceCompanyId,
-      path: `/rest/v2.0/companies/${encodeURIComponent(sourceCompanyId)}/projects/${encodeURIComponent(
-        sourceProjectId
-      )}/estimating/proposals/${encodeURIComponent(sourceProposalId)}`,
+      projectId: sourceProjectId,
+      bidBoardProjectId: sourceBidBoardProjectId,
+      bidBoardFallbackId: sourceProjectId,
+      proposalId: sourceProposalId,
     });
-    const sourceProposal = isRecord(unwrapData(sourceProposalPayload)) ? (unwrapData(sourceProposalPayload) as UnknownRecord) : {};
-
-    const lineItemPaths = [
-      ...(sourceBidBoardProjectId
-        ? [
-            `/rest/v2.0/companies/${encodeURIComponent(sourceCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
-              sourceBidBoardProjectId
-            )}/proposals/${encodeURIComponent(sourceProposalId)}/line_items`,
-          ]
-        : []),
-      `/rest/v2.0/companies/${encodeURIComponent(sourceCompanyId)}/projects/${encodeURIComponent(
-        sourceProjectId
-      )}/estimating/proposals/${encodeURIComponent(sourceProposalId)}/line_items`,
-    ];
-    const groupPaths = [
-      ...(sourceBidBoardProjectId
-        ? [
-            `/rest/v2.0/companies/${encodeURIComponent(sourceCompanyId)}/estimating/bid_board_projects/${encodeURIComponent(
-              sourceBidBoardProjectId
-            )}/proposals/${encodeURIComponent(sourceProposalId)}/line_item_groups`,
-          ]
-        : []),
-      `/rest/v2.0/companies/${encodeURIComponent(sourceCompanyId)}/projects/${encodeURIComponent(
-        sourceProjectId
-      )}/estimating/proposals/${encodeURIComponent(sourceProposalId)}/line_item_groups`,
-    ];
 
     let sourceLineItems: unknown[] = [];
     let sourceGroups: unknown[] = [];
     const fetchAttempts: UnknownRecord[] = [];
-    for (const candidatePath of lineItemPaths) {
+    let sourceProposal: UnknownRecord = {};
+    let sourceProposalLoaded = false;
+    let sourceProposalError: unknown = null;
+    let sourceProposalPath = "";
+    for (const candidatePath of sourcePaths.proposals) {
+      try {
+        const sourceProposalPayload = await procoreJson({
+          accessToken,
+          companyId: sourceCompanyId,
+          path: candidatePath,
+        });
+        const proposalRecord = unwrapData(sourceProposalPayload);
+        sourceProposal = isRecord(proposalRecord) ? proposalRecord : {};
+        sourceProposalLoaded = true;
+        sourceProposalPath = candidatePath;
+        fetchAttempts.push({ kind: "proposal", path: candidatePath, ok: true });
+        break;
+      } catch (error) {
+        sourceProposalError = error;
+        fetchAttempts.push({
+          kind: "proposal",
+          path: candidatePath,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (!sourceProposalLoaded) {
+      for (const candidatePath of sourcePaths.proposalCollections) {
+        try {
+          const proposals = (await fetchPaged({
+            accessToken,
+            companyId: sourceCompanyId,
+            path: candidatePath,
+            arrayKeys: ["data", "proposals", "items", "results"],
+          })).filter(isRecord);
+          const matchingProposal = proposals.find(
+            (proposal) =>
+              readStr(proposal.id || proposal.proposal_id || proposal.proposalId) === sourceProposalId
+          );
+          fetchAttempts.push({
+            kind: "proposal_list",
+            path: candidatePath,
+            count: proposals.length,
+            found: Boolean(matchingProposal),
+            ok: true,
+          });
+          if (matchingProposal) {
+            sourceProposal = matchingProposal;
+            sourceProposalLoaded = true;
+            sourceProposalPath = candidatePath;
+            break;
+          }
+        } catch (error) {
+          sourceProposalError = error;
+          fetchAttempts.push({
+            kind: "proposal_list",
+            path: candidatePath,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    if (!sourceProposalLoaded) {
+      throw sourceProposalError instanceof Error
+        ? sourceProposalError
+        : new Error("Unable to load the source proposal from the supplied project or bid board ID.");
+    }
+    const sourceUsedBidBoard = sourceProposalPath.includes("/estimating/bid_board_projects/");
+    const effectiveSourceBidBoardProjectId = sourceUsedBidBoard
+      ? sourceBidBoardProjectId || sourceProjectId
+      : sourceBidBoardProjectId;
+    const preferLoadedSource = (paths: string[]) =>
+      sourceUsedBidBoard
+        ? [
+            ...paths.filter((candidatePath) => candidatePath.includes("/estimating/bid_board_projects/")),
+            ...paths.filter((candidatePath) => !candidatePath.includes("/estimating/bid_board_projects/")),
+          ]
+        : paths;
+
+    for (const candidatePath of preferLoadedSource(sourcePaths.lineItems)) {
       try {
         if (dryRun) {
           sourceLineItems = await fetchPaged({
@@ -1051,7 +1212,7 @@ export async function POST(request: Request) {
         fetchAttempts.push({ kind: "line_items", path: candidatePath, ok: false, error: error instanceof Error ? error.message : String(error) });
       }
     }
-    for (const candidatePath of groupPaths) {
+    for (const candidatePath of preferLoadedSource(sourcePaths.lineItemGroups)) {
       try {
         sourceGroups = await fetchPaged({
           accessToken,
@@ -1133,6 +1294,14 @@ export async function POST(request: Request) {
     });
 
     const readyForLiveClone = missingMappings.length === 0;
+    const uniqueMissingMappings = new Set(
+      missingMappings.map((mapping) =>
+        [
+          readStr(mapping.name),
+          readStr(isRecord(mapping.inferredOldRow) ? mapping.inferredOldRow.Description : ""),
+        ].join("|")
+      )
+    ).size;
     const proposalPayload = buildProposalPayload(sourceProposal, targetProposalName, targetProposalType);
 
     if (dryRun) {
@@ -1143,8 +1312,9 @@ export async function POST(request: Request) {
         readyForLiveClone,
         source: {
           companyId: sourceCompanyId,
-          projectId: sourceProjectId,
-          bidBoardProjectId: sourceBidBoardProjectId || null,
+          projectId: sourceUsedBidBoard && !sourceBidBoardProjectId ? null : sourceProjectId || null,
+          bidBoardProjectId: effectiveSourceBidBoardProjectId || null,
+          resolvedAs: sourceUsedBidBoard ? "bid_board" : "project",
           proposalId: sourceProposalId,
           proposalName: readStr(sourceProposal.name || sourceProposal.title),
           proposalType: readStr(sourceProposal.type || sourceProposal.proposal_type || sourceProposal.estimate_type) || null,
@@ -1162,6 +1332,7 @@ export async function POST(request: Request) {
           sourceLineItems: sourceLineItemRecords.length,
           mappedLineItems: mappedLineItems.length - missingMappings.length,
           missingMappings: missingMappings.length,
+          uniqueMissingMappings,
         },
         crosswalk: crosswalk.summary,
         mappingOverrides,
@@ -1199,8 +1370,9 @@ export async function POST(request: Request) {
           },
           source: {
             companyId: sourceCompanyId,
-            projectId: sourceProjectId,
-            bidBoardProjectId: sourceBidBoardProjectId || null,
+            projectId: sourceUsedBidBoard && !sourceBidBoardProjectId ? null : sourceProjectId || null,
+            bidBoardProjectId: effectiveSourceBidBoardProjectId || null,
+            resolvedAs: sourceUsedBidBoard ? "bid_board" : "project",
             proposalId: sourceProposalId,
           },
           target: {
@@ -1251,8 +1423,9 @@ export async function POST(request: Request) {
           },
           source: {
             companyId: sourceCompanyId,
-            projectId: sourceProjectId,
-            bidBoardProjectId: sourceBidBoardProjectId || null,
+            projectId: sourceUsedBidBoard && !sourceBidBoardProjectId ? null : sourceProjectId || null,
+            bidBoardProjectId: effectiveSourceBidBoardProjectId || null,
+            resolvedAs: sourceUsedBidBoard ? "bid_board" : "project",
             proposalId: sourceProposalId,
           },
           target: {
@@ -1406,12 +1579,34 @@ export async function POST(request: Request) {
           )}/proposals/${encodeURIComponent(createdProposalId)}/line_items`,
           body: payload,
         });
+        const laborRateRepair = buildEstimateCloneLaborRateRepair(entry.lineItem, created);
+        const takeoffQuantityRepair = buildEstimateCloneTakeoffQuantityRepair(entry.lineItem, created);
+        const pricingRepairs: unknown[] = [];
+        for (const repair of [laborRateRepair, takeoffQuantityRepair]) {
+          if (!repair) continue;
+          pricingRepairs.push(
+            await procoreJson({
+              accessToken,
+              companyId: targetCompanyId,
+              method: "PATCH",
+              path: `/rest/v2.0/companies/${encodeURIComponent(
+                targetCompanyId
+              )}/estimating/bid_board_projects/${encodeURIComponent(
+                targetBidBoardProjectId
+              )}/proposals/${encodeURIComponent(createdProposalId)}/line_items/${encodeURIComponent(
+                repair.lineItemId
+              )}`,
+              body: repair.body,
+            })
+          );
+        }
         createdLineItems.push({
           oldLineItemId: readStr(entry.lineItem.id || entry.lineItem.line_item_id),
           oldCostItemId: entry.oldCostItemId,
           newCostItemId: isRecord(entry.mapping.new) ? readStr(entry.mapping.new.ItemId) : null,
           attemptedPayload: payload,
           created,
+          pricingRepairs,
         });
       } catch (error) {
         const rateLimited = isRateLimitError(error);
@@ -1469,8 +1664,9 @@ export async function POST(request: Request) {
       },
       source: {
         companyId: sourceCompanyId,
-        projectId: sourceProjectId,
-        bidBoardProjectId: sourceBidBoardProjectId || null,
+        projectId: sourceUsedBidBoard && !sourceBidBoardProjectId ? null : sourceProjectId || null,
+        bidBoardProjectId: effectiveSourceBidBoardProjectId || null,
+        resolvedAs: sourceUsedBidBoard ? "bid_board" : "project",
         proposalId: sourceProposalId,
       },
       target: {

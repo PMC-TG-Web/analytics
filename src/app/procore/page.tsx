@@ -5419,12 +5419,56 @@ function ProcoreContent() {
       {
         oldItemId: String(seed?.oldCostItemId ?? seed?.oldItemId ?? ""),
         oldName: String(seed?.name ?? ""),
+        occurrenceCount: String(seed?.occurrenceCount ?? "1"),
         newItemId: "",
         newName: "",
         newCostCode: "",
         costCodeType: "",
       },
     ]);
+  };
+
+  const normalizeCloneKeyPart = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+  const buildCloneMissingMappingRows = (missingRows: any[]): Array<Record<string, string>> => {
+    const grouped = new Map<string, Record<string, string>>();
+
+    for (const row of missingRows) {
+      const oldItemId = String(row?.oldCostItemId ?? row?.oldItemId ?? "").trim();
+      const oldName = String(row?.name ?? row?.oldCostItem?.name ?? "").trim();
+      const oldDescription = String(row?.inferredOldRow?.Description ?? row?.oldCostItem?.description ?? "").trim();
+      const oldCostCode = String(row?.inferredOldRow?.["Cost Code"] ?? row?.oldCostCode?.code ?? "").trim();
+      const oldCostName = String(row?.inferredOldRow?.["Cost Name"] ?? row?.oldCostCode?.name ?? "").trim();
+
+      const groupKey = oldItemId
+        ? `id:${oldItemId}`
+        : `identity:${normalizeCloneKeyPart(oldName)}|${normalizeCloneKeyPart(oldDescription)}|${normalizeCloneKeyPart(oldCostCode)}|${normalizeCloneKeyPart(oldCostName)}`;
+
+      const existing = grouped.get(groupKey);
+      if (existing) {
+        const nextCount = (Number.parseInt(existing.occurrenceCount ?? "1", 10) || 1) + 1;
+        existing.occurrenceCount = String(nextCount);
+        continue;
+      }
+
+      grouped.set(groupKey, {
+        oldItemId,
+        oldName,
+        oldDescription,
+        oldCostCode,
+        oldCostName,
+        oldGroupId: "",
+        groupId: "",
+        groupName: String(row?.groupName ?? ""),
+        occurrenceCount: "1",
+        newItemId: "",
+        newName: "",
+        newCostCode: "",
+        costCodeType: "",
+      });
+    }
+
+    return Array.from(grouped.values());
   };
 
   const removeCloneMappingOverride = (index: number) => {
@@ -5449,8 +5493,16 @@ function ProcoreContent() {
     const lineItemLimit = dryRun ? 20 : requestedLineItemLimit;
     const maxAutoBatches = Math.max(1, Math.min(5000, Number.parseInt(cloneProposalMaxAutoBatches.trim() || "50", 10) || 50));
 
-    if (!sourceCompanyId || !sourceProjectId || !sourceProposalId || !targetCompanyId || !targetBidBoardProjectId) {
-      setCloneProposalError("Source company/project/proposal and target company/bid board project are required.");
+    if (
+      !sourceCompanyId ||
+      (!sourceProjectId && !sourceBidBoardProjectId) ||
+      !sourceProposalId ||
+      !targetCompanyId ||
+      !targetBidBoardProjectId
+    ) {
+      setCloneProposalError(
+        "Source company, source project or bid board ID, source proposal, and target company/bid board project are required."
+      );
       return;
     }
     if (!dryRun && !continuation && !window.confirm(`Create a cloned proposal in bid board project ${targetBidBoardProjectId}?`)) {
@@ -12631,11 +12683,12 @@ function ProcoreContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project ID</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Project or Bid Board ID</label>
                   <input
                     type="text"
                     value={cloneSourceProjectId ?? ""}
                     onChange={(e) => setCloneSourceProjectId(e.target.value)}
+                    placeholder="Accepts either ID"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
@@ -12645,7 +12698,7 @@ function ProcoreContent() {
                     type="text"
                     value={cloneSourceBidBoardProjectId ?? ""}
                     onChange={(e) => setCloneSourceBidBoardProjectId(e.target.value)}
-                    placeholder="Optional"
+                    placeholder="Optional when using a Project ID"
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
                   />
                 </div>
@@ -12819,6 +12872,7 @@ function ProcoreContent() {
                         <tr>
                           <th className="text-left px-2 py-2">Old Item ID</th>
                           <th className="text-left px-2 py-2">Old Name</th>
+                          <th className="text-left px-2 py-2">Occurs</th>
                           <th className="text-left px-2 py-2">New Item ID</th>
                           <th className="text-left px-2 py-2">New Name</th>
                           <th className="text-left px-2 py-2">New Cost Code</th>
@@ -12844,6 +12898,9 @@ function ProcoreContent() {
                                 onChange={(e) => updateCloneMappingOverride(index, "oldName", e.target.value)}
                                 className="w-44 border border-gray-300 rounded px-2 py-1"
                               />
+                            </td>
+                            <td className="px-2 py-2 text-gray-700 font-semibold">
+                              {row.occurrenceCount ?? "1"}
                             </td>
                             <td className="px-2 py-2">
                               <input
@@ -12999,8 +13056,8 @@ function ProcoreContent() {
                     <strong>Clone Result:</strong>{" "}
                     {cloneProposalResult.result?.dryRun
                       ? cloneProposalResult.result?.readyForLiveClone
-                        ? "Dry run is clean. Live clone is enabled."
-                        : `${cloneProposalResult.result?.counts?.missingMappings ?? 0} missing mapping(s). Live clone is blocked.`
+                        ? `Dry run found ${cloneProposalResult.result?.counts?.sourceLineItems ?? 0} source line item(s), and all are mapped. No target items are created during a dry run. Live clone is enabled.`
+                        : `Dry run found ${cloneProposalResult.result?.counts?.sourceLineItems ?? 0} source line item(s): ${cloneProposalResult.result?.counts?.mappedLineItems ?? 0} mapped and ${cloneProposalResult.result?.counts?.missingMappings ?? 0} occurrence(s) across ${cloneProposalResult.result?.counts?.uniqueMissingMappings ?? cloneProposalResult.result?.counts?.missingMappings ?? 0} unique item(s) still need mappings. No target items are created during a dry run.`
                       : cloneProposalResult.result?.success
                         ? cloneProposalResult.result?.batch?.hasMoreLineItems
                           ? `Batch created ${cloneProposalResult.result?.counts?.createdLineItems ?? 0} line item(s). Continue clone is available.`
@@ -13013,26 +13070,11 @@ function ProcoreContent() {
                     <button
                       type="button"
                       onClick={() =>
-                        setCloneMappingOverrides(
-                          cloneProposalResult.result.missingMappings.map((row: any) => ({
-                            oldItemId: String(row.oldCostItemId ?? row.oldItemId ?? ""),
-                            oldName: String(row.name ?? row.oldCostItem?.name ?? ""),
-                            oldDescription: String(row.inferredOldRow?.Description ?? row.oldCostItem?.description ?? ""),
-                            oldCostCode: String(row.inferredOldRow?.["Cost Code"] ?? row.oldCostCode?.code ?? ""),
-                            oldCostName: String(row.inferredOldRow?.["Cost Name"] ?? row.oldCostCode?.name ?? ""),
-                            oldGroupId: String(row.groupId ?? ""),
-                            groupId: String(row.groupId ?? ""),
-                            groupName: String(row.groupName ?? ""),
-                            newItemId: "",
-                            newName: "",
-                            newCostCode: "",
-                            costCodeType: "",
-                          }))
-                        )
+                        setCloneMappingOverrides(buildCloneMissingMappingRows(cloneProposalResult.result.missingMappings))
                       }
                       className="mb-3 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded text-sm"
                     >
-                      Load Missing Mappings Into Editable Table
+                      Load Missing Mappings Into Editable Table (Deduped)
                     </button>
                   )}
                   <CollapsibleJson value={cloneProposalResult} />

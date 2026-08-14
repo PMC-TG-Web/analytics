@@ -6,6 +6,8 @@ import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
+import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
+import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +44,33 @@ function finiteBillingNumber(value: unknown): number | null {
   if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+type ProcoreContractAmounts = {
+  baseEstimate: number;
+  approvedChangeOrders: number;
+};
+
+async function loadProcoreContractAmounts(projectIds: string[]) {
+  const requestedIds = new Set(projectIds.map((id) => id.trim()).filter(Boolean));
+  const values = new Map<string, ProcoreContractAmounts>();
+  if (requestedIds.size === 0) return values;
+
+  try {
+    const projects = await loadEstimatingDashboardProjects();
+    for (const project of projects) {
+      const projectId = String(project.procoreProjectId || '').trim();
+      if (!projectId || !requestedIds.has(projectId)) continue;
+      values.set(projectId, {
+        baseEstimate: Number(project.sales || 0),
+        approvedChangeOrders: Number(project.approvedChangeOrderAmount || 0),
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load Procore contract values for QBO profitability:', error);
+  }
+
+  return values;
 }
 
 async function requireAdministrator(request: NextRequest) {
@@ -396,6 +425,9 @@ export async function GET(request: NextRequest) {
         })
       : null;
     const selectedBilling = billingByCustomerId(selectedSummary?.summary);
+    const procoreContracts = await loadProcoreContractAmounts(
+      rows.map((row) => String(row.procoreProjectId || ''))
+    );
 
     return noStoreJson({
       success: true,
@@ -416,6 +448,18 @@ export async function GET(request: NextRequest) {
         const billing = project.billing && typeof project.billing === 'object' && !Array.isArray(project.billing)
           ? project.billing as Record<string, unknown>
           : {};
+        const qboEstimateTotal = finiteBillingNumber(billing.estimateTotal);
+        const qboNetBilled = finiteBillingNumber(billing.netBilled);
+        const procoreContract = row.procoreProjectId
+          ? procoreContracts.get(row.procoreProjectId)
+          : undefined;
+        const contract = resolveProjectContractValue({
+          procoreProjectId: row.procoreProjectId,
+          procoreBaseEstimate: procoreContract?.baseEstimate,
+          procoreApprovedChangeOrders: procoreContract?.approvedChangeOrders,
+          qboEstimateTotal,
+          netBilled: qboNetBilled,
+        });
         return {
           id: row.id,
           qboCustomerId: row.qboCustomerId,
@@ -435,17 +479,24 @@ export async function GET(request: NextRequest) {
             : Number(row.qboMinusProcoreDirectCost),
           qboInvoiceCount: Math.max(0, Number(billing.invoiceCount || 0)),
           qboGrossInvoiced: finiteBillingNumber(billing.billed) || 0,
-          qboNetBilled: finiteBillingNumber(billing.netBilled),
+          qboNetBilled,
           qboCollected: finiteBillingNumber(billing.collected) || 0,
           qboOutstanding: finiteBillingNumber(billing.outstanding) || 0,
           qboCollectionPercent: finiteBillingNumber(billing.collectionPercent),
           qboOverdueAmount: finiteBillingNumber(billing.overdueAmount) || 0,
-          qboEstimateTotal: finiteBillingNumber(billing.estimateTotal),
+          qboEstimateCount: Math.max(0, Number(billing.estimateCount || 0)),
+          qboEstimateTotal,
           qboBillingProgressPercent: finiteBillingNumber(billing.billingProgressPercent),
           qboRemainingToBill: finiteBillingNumber(billing.remainingToBill),
-          qboBillingReconciliationDifference: finiteBillingNumber(billing.netBilled) == null
+          qboBillingReconciliationDifference: qboNetBilled == null
             ? null
-            : Number((Number(billing.netBilled) - Number(row.sales)).toFixed(2)),
+            : Number((qboNetBilled - Number(row.sales)).toFixed(2)),
+          contractValue: contract.contractValue,
+          contractValueSource: contract.contractValueSource,
+          procoreBaseEstimate: contract.procoreBaseEstimate,
+          procoreApprovedChangeOrders: contract.procoreApprovedChangeOrders,
+          billingProgressPercent: contract.billingProgressPercent,
+          remainingToBill: contract.remainingToBill,
           sales: Number(row.sales),
           costOfGoodsSold: Number(row.costOfGoodsSold),
           operatingExpenses: Number(row.operatingExpenses),

@@ -36,10 +36,17 @@ type ProfitabilityRow = {
   qboOutstanding: number;
   qboCollectionPercent: number | null;
   qboOverdueAmount: number;
+  qboEstimateCount: number;
   qboEstimateTotal: number | null;
   qboBillingProgressPercent: number | null;
   qboRemainingToBill: number | null;
   qboBillingReconciliationDifference: number | null;
+  contractValue: number | null;
+  contractValueSource: 'procore' | 'qbo-estimates' | 'procore-unavailable' | 'unavailable';
+  procoreBaseEstimate: number | null;
+  procoreApprovedChangeOrders: number | null;
+  billingProgressPercent: number | null;
+  remainingToBill: number | null;
   sales: number;
   costOfGoodsSold: number;
   operatingExpenses: number;
@@ -168,6 +175,21 @@ function formatMoney(value: number | null | undefined) {
   return value == null ? '—' : money.format(value);
 }
 
+function contractSourceLabel(row: ProfitabilityRow) {
+  if (row.contractValueSource === 'procore') {
+    return (row.procoreApprovedChangeOrders || 0) !== 0
+      ? 'Procore estimate + approved CO'
+      : 'Procore estimate';
+  }
+  if (row.contractValueSource === 'procore-unavailable') return 'Procore value unavailable';
+  if (row.contractValueSource === 'qbo-estimates') {
+    return row.qboEstimateCount === 1
+      ? '1 QBO estimate'
+      : `${row.qboEstimateCount} QBO estimates · review`;
+  }
+  return 'No contract source';
+}
+
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -254,7 +276,7 @@ export default function QboProjectProfitabilityPage() {
 
   const filteredTotals = useMemo(() => filteredRows.reduce(
     (totals, row) => ({
-      sales: totals.sales + (row.qboEstimateTotal || 0),
+      sales: totals.sales + (row.contractValue || 0),
       cost: totals.cost + row.actualCost,
       profit: totals.profit + row.profit,
       procoreDirectCost: totals.procoreDirectCost + (row.procoreDirectCost || 0),
@@ -373,17 +395,23 @@ export default function QboProjectProfitabilityPage() {
   }
 
   function exportCsv() {
-    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Procore Status', 'Match', 'Sales (Contract Value)', 'Net Billed', 'Billing Reconciliation Difference', 'Billing Progress %', 'Gross Invoiced', 'Collected', 'Outstanding', 'Overdue', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
+    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Procore Status', 'Match', 'Contract Value', 'Contract Source', 'Procore Base Estimate', 'Approved Procore Change Orders', 'QBO Estimate Count', 'QBO Estimate Total', 'Net Billed', 'Billing Reconciliation Difference', 'Billing Progress %', 'Remaining To Bill', 'Gross Invoiced', 'Collected', 'Outstanding', 'Overdue', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
     const rows = filteredRows.map((row) => [
       row.fullyQualifiedName,
       row.procoreProjectNumber,
       row.procoreProjectName,
       row.procoreProjectId ? procoreStatusByProjectId[row.procoreProjectId] || '' : '',
       row.procoreMatchMethod,
+      row.contractValue,
+      contractSourceLabel(row),
+      row.procoreBaseEstimate,
+      row.procoreApprovedChangeOrders,
+      row.qboEstimateCount,
       row.qboEstimateTotal,
       row.qboNetBilled,
       row.qboBillingReconciliationDifference,
-      row.qboBillingProgressPercent,
+      row.billingProgressPercent,
+      row.remainingToBill,
       row.qboGrossInvoiced,
       row.qboCollected,
       row.qboOutstanding,
@@ -431,7 +459,7 @@ export default function QboProjectProfitabilityPage() {
 
           <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
             {[
-              ['Sales', filteredTotals.sales, 'text-teal-800'],
+              ['Contract value', filteredTotals.sales, 'text-teal-800'],
               ['QBO actual cost', filteredTotals.cost, 'text-amber-700'],
               ['Procore direct cost', filteredTotals.procoreDirectCost, 'text-indigo-700'],
               ['Matched QBO minus Procore', filteredTotals.costVariance, filteredTotals.costVariance > 0 ? 'text-red-700' : 'text-emerald-700'],
@@ -515,7 +543,7 @@ export default function QboProjectProfitabilityPage() {
                   <tr>
                     <th className="border-b border-slate-300 px-4 py-3">QuickBooks project</th>
                     <th className="border-b border-slate-300 px-4 py-3">Procore match</th>
-                    <th className="border-b border-slate-300 px-4 py-3 text-right">Sales</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">Contract value</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Net billed</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Billing</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">A/R</th>
@@ -544,7 +572,12 @@ export default function QboProjectProfitabilityPage() {
                         <div className="font-semibold text-slate-800">{row.procoreProjectName || '—'}</div>
                         <div className="text-xs text-slate-500">{row.procoreProjectNumber || ''}</div>
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums">{formatMoney(row.qboEstimateTotal)}</td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">
+                        <div className="font-semibold">{formatMoney(row.contractValue)}</div>
+                        <div className={`text-[11px] ${row.contractValueSource.includes('unavailable') || row.contractValueSource === 'unavailable' ? 'text-amber-700' : 'text-slate-500'}`}>
+                          {contractSourceLabel(row)}
+                        </div>
+                      </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">
                         <div className="font-semibold text-teal-800">{formatMoney(row.qboNetBilled)}</div>
                         {row.qboBillingReconciliationDifference != null && Math.abs(row.qboBillingReconciliationDifference) > 0.01 && (
@@ -552,7 +585,7 @@ export default function QboProjectProfitabilityPage() {
                         )}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">
-                        <div className="font-bold text-teal-800">{row.qboBillingProgressPercent == null ? '—' : `${row.qboBillingProgressPercent.toFixed(1)}%`}</div>
+                        <div className="font-bold text-teal-800">{row.billingProgressPercent == null ? '—' : `${row.billingProgressPercent.toFixed(1)}%`}</div>
                         <div className="text-[11px] text-slate-500">of contract</div>
                       </td>
                       <td className={`border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums ${row.qboOverdueAmount > 0 ? 'text-red-700' : 'text-slate-700'}`}>
@@ -618,8 +651,8 @@ export default function QboProjectProfitabilityPage() {
                               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
                                 {[
                                   ['P&L net billed', billingByProject[row.qboCustomerId].netBilled],
-                                  [`Contract value (${billingByProject[row.qboCustomerId].estimateCount} estimates)`, billingByProject[row.qboCustomerId].estimateTotal],
-                                  ['Remaining to bill', billingByProject[row.qboCustomerId].remainingToBill],
+                                  [`Contract value (${contractSourceLabel(row)})`, row.contractValue],
+                                  ['Remaining to bill', row.remainingToBill],
                                   ['Gross invoices', billingByProject[row.qboCustomerId].grossInvoiced],
                                   ['Collected', billingByProject[row.qboCustomerId].collected],
                                   ['Outstanding', billingByProject[row.qboCustomerId].outstanding],
@@ -710,7 +743,7 @@ export default function QboProjectProfitabilityPage() {
         </section>
 
         <p className="px-1 pb-4 text-xs leading-5 text-slate-500">
-          Sales is the contract value represented by all QBO estimates assigned to the project. Net billed is QuickBooks P&amp;L Income and includes invoices, credit memos, and other posting adjustments. Billing progress compares net billed with contract value. Profit and margin remain based on P&amp;L income and actual cost. Gross invoices, collections, and outstanding balances come from QBO invoice documents.
+          Contract value uses the Procore primary estimate plus approved change orders whenever the QBO row is matched to a Procore project. Unmatched rows use the currently associated QBO estimate total and are marked for review when multiple estimates exist. Net billed is QuickBooks P&amp;L Income and includes invoices, credit memos, and other posting adjustments. Billing progress compares net billed with the selected contract value. Profit and margin remain based on P&amp;L income and actual cost. Gross invoices, collections, and outstanding balances come from QBO invoice documents.
         </p>
       </div>
     </main>

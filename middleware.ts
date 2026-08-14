@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
-import { resolvePermissionForPath } from '@/lib/permissions';
+import { resolvePermissionForPath } from '@/lib/permissionRoutes';
 import {
   getPermissionCookieOptions,
   PERMISSION_COOKIE_NAME,

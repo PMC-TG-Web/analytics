@@ -28,6 +28,22 @@ function noStoreJson(body: unknown, status = 200) {
   return response;
 }
 
+function billingByCustomerId(summary: unknown) {
+  const summaryRecord = summary && typeof summary === 'object' && !Array.isArray(summary)
+    ? summary as Record<string, unknown>
+    : {};
+  const projects = summaryRecord.qboCostDrillthroughProjects;
+  return projects && typeof projects === 'object' && !Array.isArray(projects)
+    ? projects as Record<string, Record<string, unknown>>
+    : {};
+}
+
+function finiteBillingNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function requireAdministrator(request: NextRequest) {
   const email = await getRequestUserEmail(request);
   if (!email) return { allowed: false as const, response: noStoreJson({ error: 'Unauthorized' }, 401) };
@@ -373,6 +389,13 @@ export async function GET(request: NextRequest) {
           orderBy: [{ sales: 'desc' }, { fullyQualifiedName: 'asc' }],
         })
       : [];
+    const selectedSummary = selected
+      ? await prisma.qboProfitabilitySnapshot.findUnique({
+          where: { id: selected.id },
+          select: { summary: true },
+        })
+      : null;
+    const selectedBilling = billingByCustomerId(selectedSummary?.summary);
 
     return noStoreJson({
       success: true,
@@ -389,6 +412,10 @@ export async function GET(request: NextRequest) {
         rowCount: snapshot._count.rows,
       })),
       rows: rows.map((row) => {
+        const project = selectedBilling[row.qboCustomerId] || {};
+        const billing = project.billing && typeof project.billing === 'object' && !Array.isArray(project.billing)
+          ? project.billing as Record<string, unknown>
+          : {};
         return {
           id: row.id,
           qboCustomerId: row.qboCustomerId,
@@ -406,6 +433,19 @@ export async function GET(request: NextRequest) {
           qboMinusProcoreDirectCost: row.qboMinusProcoreDirectCost == null
             ? null
             : Number(row.qboMinusProcoreDirectCost),
+          qboInvoiceCount: Math.max(0, Number(billing.invoiceCount || 0)),
+          qboGrossInvoiced: finiteBillingNumber(billing.billed) || 0,
+          qboNetBilled: finiteBillingNumber(billing.netBilled),
+          qboCollected: finiteBillingNumber(billing.collected) || 0,
+          qboOutstanding: finiteBillingNumber(billing.outstanding) || 0,
+          qboCollectionPercent: finiteBillingNumber(billing.collectionPercent),
+          qboOverdueAmount: finiteBillingNumber(billing.overdueAmount) || 0,
+          qboEstimateTotal: finiteBillingNumber(billing.estimateTotal),
+          qboBillingProgressPercent: finiteBillingNumber(billing.billingProgressPercent),
+          qboRemainingToBill: finiteBillingNumber(billing.remainingToBill),
+          qboBillingReconciliationDifference: finiteBillingNumber(billing.netBilled) == null
+            ? null
+            : Number((Number(billing.netBilled) - Number(row.sales)).toFixed(2)),
           sales: Number(row.sales),
           costOfGoodsSold: Number(row.costOfGoodsSold),
           operatingExpenses: Number(row.operatingExpenses),

@@ -28,6 +28,7 @@ export function buildEmbeddedDrillthroughProjects(qboCostDrillthrough) {
       fullyQualifiedName: project?.fullyQualifiedName == null ? null : String(project.fullyQualifiedName),
       breakdown,
       lines,
+      billing: asObject(project?.billing),
     };
   }
 

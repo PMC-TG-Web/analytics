@@ -31,6 +31,7 @@ type QboProjectDrillthrough = {
   lineCount?: number;
   breakdown?: Array<{ section: string; amount: number }>;
   lines?: QboLine[];
+  billing?: unknown;
 };
 
 type PersistedDrillthroughRow = {
@@ -47,6 +48,7 @@ type EmbeddedDrillthroughProject = {
   lineCount?: unknown;
   breakdown?: unknown;
   lines?: unknown;
+  billing?: unknown;
 };
 
 function noStoreJson(body: unknown, status = 200) {
@@ -142,6 +144,48 @@ function normalizeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeBilling(value: unknown) {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const invoices = Array.isArray(record.items) ? record.items : [];
+
+  return {
+    invoiceCount: Math.max(0, Number(record.invoiceCount || 0)),
+    grossInvoiced: normalizeNumber(record.billed) || 0,
+    netBilled: normalizeNumber(record.netBilled),
+    collected: normalizeNumber(record.collected) || 0,
+    outstanding: normalizeNumber(record.outstanding) || 0,
+    collectionPercent: normalizeNumber(record.collectionPercent),
+    overdueCount: Math.max(0, Number(record.overdueCount || 0)),
+    overdueAmount: normalizeNumber(record.overdueAmount) || 0,
+    billingProgressPercent: normalizeNumber(record.billingProgressPercent),
+    remainingToBill: normalizeNumber(record.remainingToBill),
+    estimateCount: Math.max(0, Number(record.estimateCount || 0)),
+    estimateTotal: normalizeNumber(record.estimateTotal),
+    estimates: Array.isArray(record.estimates) ? record.estimates : [],
+    activity: normalizeLines(record.activity),
+    invoices: invoices.map((invoice, index) => {
+      const item = invoice && typeof invoice === 'object' ? invoice as Record<string, unknown> : {};
+      return {
+        id: String(item.id || index),
+        docNum: item.docNum == null ? null : String(item.docNum),
+        txnDate: item.txnDate == null ? null : String(item.txnDate),
+        dueDate: item.dueDate == null ? null : String(item.dueDate),
+        customerMemo: item.customerMemo == null ? null : String(item.customerMemo),
+        privateNote: item.privateNote == null ? null : String(item.privateNote),
+        total: normalizeNumber(item.total) || 0,
+        balance: normalizeNumber(item.balance) || 0,
+        collected: normalizeNumber(item.collected) || 0,
+        status: String(item.status || 'open'),
+        emailStatus: item.emailStatus == null ? null : String(item.emailStatus),
+        printStatus: item.printStatus == null ? null : String(item.printStatus),
+        lines: Array.isArray(item.lines) ? item.lines : [],
+      };
+    }),
+  };
+}
+
 function normalizeKey(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -181,6 +225,7 @@ function readEmbeddedDrillthrough(summary: unknown, qboCustomerId: string) {
     lineCount: Math.max(0, Number(match.lineCount || 0)),
     breakdown: normalizeBreakdown(match.breakdown),
     items: normalizeLines(match.lines),
+    billing: normalizeBilling(match.billing),
   };
 }
 
@@ -247,6 +292,7 @@ export async function GET(request: NextRequest) {
     }
 
     const persisted = await readPersistedDrillthrough(snapshot.id, qboCustomerId);
+    const embedded = readEmbeddedDrillthrough(snapshot.summary, qboCustomerId);
     if (persisted) {
       return noStoreJson({
         success: true,
@@ -258,10 +304,10 @@ export async function GET(request: NextRequest) {
         total: persisted.total,
         breakdown: persisted.breakdown,
         items: persisted.items,
+        billing: embedded?.billing || normalizeBilling(null),
       });
     }
 
-    const embedded = readEmbeddedDrillthrough(snapshot.summary, qboCustomerId);
     if (embedded) {
       return noStoreJson({
         success: true,
@@ -273,6 +319,7 @@ export async function GET(request: NextRequest) {
         total: embedded.total,
         breakdown: embedded.breakdown,
         items: embedded.items,
+        billing: embedded.billing,
       });
     }
 
@@ -309,6 +356,7 @@ export async function GET(request: NextRequest) {
         total: null,
         breakdown: [],
         items: [],
+        billing: normalizeBilling(null),
         unavailableReason: 'No QBO drill-through detail file is available for this snapshot in this environment yet.',
         details: {
           reportBasename,
@@ -337,6 +385,7 @@ export async function GET(request: NextRequest) {
       total: typeof project.total === 'number' ? project.total : null,
       breakdown,
       items,
+      billing: normalizeBilling(project.billing),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

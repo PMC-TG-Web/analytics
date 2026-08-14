@@ -14,6 +14,11 @@ test('indexes drill-through details by QBO customer id', () => {
       total: '125.50',
       breakdown: [{ section: 'Cost of Goods Sold', amount: 125.5 }],
       lines: [{ amount: 125.5 }],
+      billing: {
+        billed: 1000,
+        netBilled: 900,
+        activity: [{ txnType: 'Credit Memo', amount: -100 }],
+      },
     }],
   });
 
@@ -25,6 +30,11 @@ test('indexes drill-through details by QBO customer id', () => {
     fullyQualifiedName: null,
     breakdown: [{ section: 'Cost of Goods Sold', amount: 125.5 }],
     lines: [{ amount: 125.5 }],
+    billing: {
+      billed: 1000,
+      netBilled: 900,
+      activity: [{ txnType: 'Credit Memo', amount: -100 }],
+    },
   });
 });
 

@@ -29,6 +29,17 @@ type ProfitabilityRow = {
   procoreDirectCostLineCount: number;
   procoreDirectCostStatus: string | null;
   qboMinusProcoreDirectCost: number | null;
+  qboInvoiceCount: number;
+  qboGrossInvoiced: number;
+  qboNetBilled: number | null;
+  qboCollected: number;
+  qboOutstanding: number;
+  qboCollectionPercent: number | null;
+  qboOverdueAmount: number;
+  qboEstimateTotal: number | null;
+  qboBillingProgressPercent: number | null;
+  qboRemainingToBill: number | null;
+  qboBillingReconciliationDifference: number | null;
   sales: number;
   costOfGoodsSold: number;
   operatingExpenses: number;
@@ -75,7 +86,42 @@ type LineItemResponse = {
   count: number;
   breakdown: Array<{ section: string; amount: number }>;
   items: LineItemDetail[];
+  billing: BillingDetail;
   error?: string;
+};
+
+type InvoiceLine = {
+  description?: string | null;
+  itemName?: string | null;
+};
+
+type InvoiceDetail = {
+  id: string;
+  docNum: string | null;
+  txnDate: string | null;
+  dueDate: string | null;
+  total: number;
+  balance: number;
+  collected: number;
+  status: string;
+  lines: InvoiceLine[];
+};
+
+type BillingDetail = {
+  invoiceCount: number;
+  grossInvoiced: number;
+  netBilled: number | null;
+  collected: number;
+  outstanding: number;
+  collectionPercent: number | null;
+  overdueCount: number;
+  overdueAmount: number;
+  billingProgressPercent: number | null;
+  remainingToBill: number | null;
+  estimateCount: number;
+  estimateTotal: number | null;
+  activity: LineItemDetail[];
+  invoices: InvoiceDetail[];
 };
 
 type RefreshResponse = {
@@ -141,6 +187,7 @@ export default function QboProjectProfitabilityPage() {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [lineItemsByProject, setLineItemsByProject] = useState<Record<string, LineItemDetail[]>>({});
   const [lineItemBreakdownByProject, setLineItemBreakdownByProject] = useState<Record<string, Array<{ section: string; amount: number }>>>({});
+  const [billingByProject, setBillingByProject] = useState<Record<string, BillingDetail>>({});
   const [lineItemsLoading, setLineItemsLoading] = useState<Record<string, boolean>>({});
   const [lineItemsError, setLineItemsError] = useState<Record<string, string>>({});
 
@@ -150,6 +197,7 @@ export default function QboProjectProfitabilityPage() {
     setExpandedRows({});
     setLineItemsByProject({});
     setLineItemBreakdownByProject({});
+    setBillingByProject({});
     setLineItemsLoading({});
     setLineItemsError({});
     try {
@@ -206,15 +254,16 @@ export default function QboProjectProfitabilityPage() {
 
   const filteredTotals = useMemo(() => filteredRows.reduce(
     (totals, row) => ({
-      sales: totals.sales + row.sales,
+      sales: totals.sales + (row.qboEstimateTotal || 0),
       cost: totals.cost + row.actualCost,
       profit: totals.profit + row.profit,
       procoreDirectCost: totals.procoreDirectCost + (row.procoreDirectCost || 0),
       costVariance: totals.costVariance + (
         row.qboMinusProcoreDirectCost || 0
       ),
+      outstanding: totals.outstanding + row.qboOutstanding,
     }),
-    { sales: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0 },
+    { sales: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0, outstanding: 0 },
   ), [filteredRows]);
 
   async function loadLineItemsForRow(row: ProfitabilityRow) {
@@ -235,6 +284,7 @@ export default function QboProjectProfitabilityPage() {
       }
       setLineItemsByProject((current) => ({ ...current, [row.qboCustomerId]: body.items }));
       setLineItemBreakdownByProject((current) => ({ ...current, [row.qboCustomerId]: body.breakdown }));
+      setBillingByProject((current) => ({ ...current, [row.qboCustomerId]: body.billing }));
     } catch (loadError) {
       setLineItemsError((current) => ({
         ...current,
@@ -261,6 +311,7 @@ export default function QboProjectProfitabilityPage() {
     setExpandedRows({});
     setLineItemsByProject({});
     setLineItemBreakdownByProject({});
+    setBillingByProject({});
     try {
       const response = await fetch('/api/accounting/project-profitability', {
         method: 'POST',
@@ -322,14 +373,21 @@ export default function QboProjectProfitabilityPage() {
   }
 
   function exportCsv() {
-    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Procore Status', 'Match', 'Sales', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
+    const headers = ['QBO Project', 'Procore Number', 'Procore Project', 'Procore Status', 'Match', 'Sales (Contract Value)', 'Net Billed', 'Billing Reconciliation Difference', 'Billing Progress %', 'Gross Invoiced', 'Collected', 'Outstanding', 'Overdue', 'QBO Actual Cost', 'Procore Direct Cost', 'QBO Minus Procore Direct Cost', 'Profit', 'Margin %'];
     const rows = filteredRows.map((row) => [
       row.fullyQualifiedName,
       row.procoreProjectNumber,
       row.procoreProjectName,
       row.procoreProjectId ? procoreStatusByProjectId[row.procoreProjectId] || '' : '',
       row.procoreMatchMethod,
-      row.sales,
+      row.qboEstimateTotal,
+      row.qboNetBilled,
+      row.qboBillingReconciliationDifference,
+      row.qboBillingProgressPercent,
+      row.qboGrossInvoiced,
+      row.qboCollected,
+      row.qboOutstanding,
+      row.qboOverdueAmount,
       row.actualCost,
       row.procoreDirectCost,
       row.qboMinusProcoreDirectCost,
@@ -371,13 +429,14 @@ export default function QboProjectProfitabilityPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
             {[
               ['Sales', filteredTotals.sales, 'text-teal-800'],
               ['QBO actual cost', filteredTotals.cost, 'text-amber-700'],
               ['Procore direct cost', filteredTotals.procoreDirectCost, 'text-indigo-700'],
               ['Matched QBO minus Procore', filteredTotals.costVariance, filteredTotals.costVariance > 0 ? 'text-red-700' : 'text-emerald-700'],
               ['Profit', filteredTotals.profit, filteredTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'],
+              ['A/R outstanding', filteredTotals.outstanding, filteredTotals.outstanding > 0 ? 'text-rose-700' : 'text-emerald-700'],
               ['Rows in view', filteredRows.length, 'text-slate-800'],
             ].map(([label, value, color]) => (
               <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -457,6 +516,9 @@ export default function QboProjectProfitabilityPage() {
                     <th className="border-b border-slate-300 px-4 py-3">QuickBooks project</th>
                     <th className="border-b border-slate-300 px-4 py-3">Procore match</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Sales</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">Net billed</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">Billing</th>
+                    <th className="border-b border-slate-300 px-4 py-3 text-right">A/R</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">QBO actual cost</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">Procore direct cost</th>
                     <th className="border-b border-slate-300 px-4 py-3 text-right">QBO − Procore</th>
@@ -482,7 +544,21 @@ export default function QboProjectProfitabilityPage() {
                         <div className="font-semibold text-slate-800">{row.procoreProjectName || '—'}</div>
                         <div className="text-xs text-slate-500">{row.procoreProjectNumber || ''}</div>
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums">{money.format(row.sales)}</td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums">{formatMoney(row.qboEstimateTotal)}</td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">
+                        <div className="font-semibold text-teal-800">{formatMoney(row.qboNetBilled)}</div>
+                        {row.qboBillingReconciliationDifference != null && Math.abs(row.qboBillingReconciliationDifference) > 0.01 && (
+                          <div className="text-[11px] font-bold text-red-700">{formatMoney(row.qboBillingReconciliationDifference)} vs sales</div>
+                        )}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums">
+                        <div className="font-bold text-teal-800">{row.qboBillingProgressPercent == null ? '—' : `${row.qboBillingProgressPercent.toFixed(1)}%`}</div>
+                        <div className="text-[11px] text-slate-500">of contract</div>
+                      </td>
+                      <td className={`border-b border-slate-100 px-4 py-3 text-right font-semibold tabular-nums ${row.qboOverdueAmount > 0 ? 'text-red-700' : 'text-slate-700'}`}>
+                        <div>{formatMoney(row.qboOutstanding)}</div>
+                        {row.qboOverdueAmount > 0 && <div className="text-[11px]">{formatMoney(row.qboOverdueAmount)} overdue</div>}
+                      </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums text-amber-800">{money.format(row.actualCost)}</td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right tabular-nums text-indigo-700">{row.procoreDirectCost == null ? '—' : money.format(row.procoreDirectCost)}</td>
                       <td className={`border-b border-slate-100 px-4 py-3 text-right font-bold tabular-nums ${row.qboMinusProcoreDirectCost == null ? 'text-slate-400' : row.qboMinusProcoreDirectCost > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
@@ -514,7 +590,7 @@ export default function QboProjectProfitabilityPage() {
                       <>
                         {lineItemsLoading[row.qboCustomerId] && (
                           <tr className="bg-slate-50">
-                            <td colSpan={10} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
+                            <td colSpan={13} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
                               Loading QBO line item details...
                             </td>
                           </tr>
@@ -522,7 +598,7 @@ export default function QboProjectProfitabilityPage() {
 
                         {lineItemsError[row.qboCustomerId] && (
                           <tr className="bg-red-50">
-                            <td colSpan={10} className="border-b border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                            <td colSpan={13} className="border-b border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
                               {lineItemsError[row.qboCustomerId]}
                             </td>
                           </tr>
@@ -530,56 +606,96 @@ export default function QboProjectProfitabilityPage() {
 
                         {!lineItemsLoading[row.qboCustomerId] && !lineItemsError[row.qboCustomerId] && !(lineItemsByProject[row.qboCustomerId] || []).length && (
                           <tr className="bg-slate-50">
-                            <td colSpan={10} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
+                            <td colSpan={13} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
                               No QBO line item details were found for this project.
+                            </td>
+                          </tr>
+                        )}
+
+                        {billingByProject[row.qboCustomerId] && (
+                          <tr className="bg-white">
+                            <td colSpan={13} className="border-b border-slate-200 p-4">
+                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                                {[
+                                  ['P&L net billed', billingByProject[row.qboCustomerId].netBilled],
+                                  [`Contract value (${billingByProject[row.qboCustomerId].estimateCount} estimates)`, billingByProject[row.qboCustomerId].estimateTotal],
+                                  ['Remaining to bill', billingByProject[row.qboCustomerId].remainingToBill],
+                                  ['Gross invoices', billingByProject[row.qboCustomerId].grossInvoiced],
+                                  ['Collected', billingByProject[row.qboCustomerId].collected],
+                                  ['Outstanding', billingByProject[row.qboCustomerId].outstanding],
+                                  ['Overdue', billingByProject[row.qboCustomerId].overdueAmount],
+                                ].map(([label, value]) => (
+                                  <div key={String(label)} className="border-l-2 border-teal-700 pl-3">
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</div>
+                                    <div className="mt-1 text-base font-black tabular-nums text-slate-900">{formatMoney(value as number | null)}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                                <div>
+                                  <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">P&amp;L billing activity</h3>
+                                  <p className="mt-1 text-xs text-slate-500">Invoices, credit memos, and all other posting entries that net to project sales.</p>
+                                  <div className="mt-2 max-h-72 overflow-auto border-y border-slate-200">
+                                    {(billingByProject[row.qboCustomerId].activity || []).map((item, index) => (
+                                      <div key={`${item.id}-${index}`} className="grid grid-cols-[90px_100px_minmax(120px,1fr)_110px] gap-2 border-b border-slate-100 px-2 py-2 text-xs">
+                                        <span>{item.date || '—'}</span>
+                                        <span className="font-semibold">{item.txnType || 'Entry'}</span>
+                                        <span><strong>{item.docNum || '—'}</strong> · {item.memo || item.name || 'No description'}</span>
+                                        <span className={`text-right font-bold tabular-nums ${item.amount < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{formatMoney(item.amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Invoice documents</h3>
+                                  <p className="mt-1 text-xs text-slate-500">Gross invoices and current QBO balances for collection tracking.</p>
+                                  <div className="mt-2 max-h-72 space-y-2 overflow-auto">
+                                    {(billingByProject[row.qboCustomerId].invoices || []).map((invoice) => (
+                                      <div key={invoice.id} className="border-b border-slate-200 pb-2 text-xs">
+                                        <div className="grid grid-cols-[90px_minmax(100px,1fr)_90px_90px] gap-2">
+                                          <span>{invoice.txnDate || '—'}</span>
+                                          <span className="font-bold">{invoice.docNum || invoice.id} <span className="ml-1 text-[10px] uppercase text-slate-500">{invoice.status}</span></span>
+                                          <span className="text-right tabular-nums">{formatMoney(invoice.total)}</span>
+                                          <span className={`text-right font-bold tabular-nums ${invoice.balance > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{formatMoney(invoice.balance)}</span>
+                                        </div>
+                                        {!!invoice.lines.length && <div className="mt-1 pl-[98px] text-[11px] text-slate-500">{invoice.lines.map((line) => line.description || line.itemName || 'Invoice line').join(' · ')}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
                             </td>
                           </tr>
                         )}
 
                         {(lineItemsByProject[row.qboCustomerId] || []).map((item, itemIndex) => (
                           <tr key={`${item.id}-${itemIndex}`} className="bg-slate-50/70 text-xs">
-                            <td className="border-b border-slate-100 px-4 py-2">
-                              <div className="font-semibold text-slate-800">{item.name || 'QBO detail line'}</div>
-                              <div className="text-[11px] text-slate-500">{item.date || '—'} · {item.txnType || '—'} · {item.docNum || '—'}</div>
+                            <td colSpan={13} className="border-b border-slate-100 px-4 py-2">
+                              <div className="grid grid-cols-[100px_110px_minmax(160px,1fr)_130px] gap-3">
+                                <span>{item.date || '—'}</span>
+                                <span className="font-semibold">{item.txnType || 'Detail'} · {item.docNum || '—'}</span>
+                                <span>{item.memo || item.name || item.sectionPath.join(' / ') || 'QBO cost detail'}</span>
+                                <span className="text-right font-bold tabular-nums text-amber-800">{formatMoney(item.amount)}</span>
+                              </div>
                             </td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-slate-700">
-                              <div>{item.sectionPath.join(' / ') || 'Uncategorized'}</div>
-                              <div className="text-[11px] text-slate-500">{item.className || item.splitAccount || ''}</div>
-                            </td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right font-bold tabular-nums text-amber-800">{formatMoney(item.amount)}</td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-100 px-4 py-2">
-                              <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-700">
-                                {item.txnType || 'Detail'}
-                              </span>
-                            </td>
-                            <td className="border-b border-slate-100 px-4 py-2 text-right text-slate-400">—</td>
                           </tr>
                         ))}
 
                         {!!lineItemBreakdownByProject[row.qboCustomerId]?.length && (
                           <tr className="bg-slate-100/80 text-xs">
-                            <td className="border-b border-slate-200 px-4 py-2 font-black text-slate-700">QBO cost section totals</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
-                            <td className="border-b border-slate-200 px-4 py-2">
+                            <td colSpan={13} className="border-b border-slate-200 px-4 py-2">
+                              <div className="flex flex-wrap items-center gap-4">
+                                <span className="font-black text-slate-700">QBO cost section totals</span>
                               {lineItemBreakdownByProject[row.qboCustomerId].map((section) => (
-                                <div key={section.section} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
+                                <div key={section.section} className="flex items-center gap-2 py-0.5 text-[11px]">
                                   <span className="font-semibold text-slate-700">{section.section}</span>
                                   <span className="font-bold tabular-nums text-slate-900">{formatMoney(section.amount)}</span>
                                 </div>
                               ))}
+                              </div>
                             </td>
-                            <td className="border-b border-slate-200 px-4 py-2 text-right text-slate-400">—</td>
                           </tr>
                         )}
                       </>
@@ -594,7 +710,7 @@ export default function QboProjectProfitabilityPage() {
         </section>
 
         <p className="px-1 pb-4 text-xs leading-5 text-slate-500">
-          Sales are QuickBooks Income assigned to the project. Expand a row to see the QuickBooks Profit and Loss drill-through lines for that project, grouped by cost section. Procore Direct Cost is the sum of the matched project&apos;s Direct Cost line-item amounts returned by Procore. The difference is QBO actual cost minus Procore Direct Cost; a positive amount means QBO contains more cost. Profit also includes assigned other income. Uncertain Procore matches remain flagged for review rather than being guessed.
+          Sales is the contract value represented by all QBO estimates assigned to the project. Net billed is QuickBooks P&amp;L Income and includes invoices, credit memos, and other posting adjustments. Billing progress compares net billed with contract value. Profit and margin remain based on P&amp;L income and actual cost. Gross invoices, collections, and outstanding balances come from QBO invoice documents.
         </p>
       </div>
     </main>

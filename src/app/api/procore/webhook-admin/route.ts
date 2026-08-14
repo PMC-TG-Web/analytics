@@ -252,6 +252,7 @@ export async function POST(request: NextRequest) {
   const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
   const resolvedResources: Array<{ requested: string; matched?: string; reason?: string }> = [];
   const triggerPlan: Array<{ resourceName: string; eventType: string }> = [];
+  const plannedTriggerKeys = new Set<string>();
 
   for (const desired of DESIRED_TRIGGER_PLAN) {
     const aliases = RESOURCE_ALIASES[desired.resourceName] || [desired.resourceName];
@@ -283,7 +284,10 @@ export async function POST(request: NextRequest) {
 
     resolvedResources.push({ requested: desired.resourceName, matched: matched.name });
     for (const eventType of validEvents) {
+      const triggerKey = `${matched.name.toLowerCase()}::${eventType.toLowerCase()}`;
+      if (plannedTriggerKeys.has(triggerKey)) continue;
       triggerPlan.push({ resourceName: matched.name, eventType });
+      plannedTriggerKeys.add(triggerKey);
     }
   }
 

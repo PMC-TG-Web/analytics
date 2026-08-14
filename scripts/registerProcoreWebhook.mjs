@@ -307,6 +307,7 @@ async function cmdRegister() {
   const existingTriggerKeys = new Set(
     existingTriggers.map((t) => `${String(t.resource_name || '').toLowerCase()}::${String(t.event_type || '').toLowerCase()}`)
   );
+  const plannedTriggerKeys = new Set(existingTriggerKeys);
 
   const triggerPlan = [];
   for (const desired of DESIRED_TRIGGERS) {
@@ -332,10 +333,11 @@ async function cmdRegister() {
 
     for (const eventType of validEvents) {
       const triggerKey = `${matched.name.toLowerCase()}::${eventType.toLowerCase()}`;
-      if (existingTriggerKeys.has(triggerKey)) {
+      if (plannedTriggerKeys.has(triggerKey)) {
         continue;
       }
       triggerPlan.push({ resourceName: matched.name, eventType });
+      plannedTriggerKeys.add(triggerKey);
     }
   }
 

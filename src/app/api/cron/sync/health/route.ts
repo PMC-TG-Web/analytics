@@ -38,7 +38,10 @@ async function loadHealth(companyId: string) {
         SELECT
           dataset,
           COUNT(*)::int AS project_count,
-          COUNT(*) FILTER (WHERE last_success_at IS NULL)::int AS never_succeeded,
+          COUNT(*) FILTER (
+            WHERE last_success_at IS NULL
+              AND next_run_at < NOW() + INTERVAL '1 year'
+          )::int AS never_succeeded,
           COUNT(*) FILTER (WHERE failure_count > 0)::int AS failed_projects,
           MAX(failure_count)::int AS max_failure_count,
           COUNT(*) FILTER (WHERE next_run_at <= NOW())::int AS due_projects,
@@ -58,6 +61,7 @@ async function loadHealth(companyId: string) {
                next_run_at, failure_count, last_error
         FROM procore_sync_project_states
         WHERE company_id = $1
+          AND next_run_at < NOW() + INTERVAL '1 year'
           AND (
             last_success_at IS NULL
             OR failure_count > 0

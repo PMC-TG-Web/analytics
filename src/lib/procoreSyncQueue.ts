@@ -558,6 +558,38 @@ export async function finishProjectSync(params: {
   );
 }
 
+export async function parkProjectSync(params: {
+  project: QueuedProject;
+  reason: string;
+  result?: unknown;
+}) {
+  const safeResult = params.result === undefined
+    ? null
+    : JSON.parse(JSON.stringify(params.result)) as Prisma.InputJsonValue;
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          failure_count = 0,
+          last_error = $5,
+          last_result = $6::jsonb,
+          updated_at = NOW()
+      WHERE company_id = $1
+        AND project_id = $2
+        AND dataset = $3
+        AND locked_by = $4
+    `,
+    params.project.companyId,
+    params.project.projectId,
+    params.project.dataset,
+    params.project.leaseId,
+    params.reason,
+    safeResult === null ? null : JSON.stringify(safeResult)
+  );
+}
+
 export async function setProcoreRateLimit(params: {
   companyId: string;
   until: Date;

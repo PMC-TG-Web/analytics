@@ -5,6 +5,7 @@ import {
   acquireProcoreWorker,
   claimDueProject,
   finishProjectSync,
+  parkProjectSync,
   releaseProcoreWorker,
   setProcoreRateLimit,
   type QueuedProject,
@@ -14,6 +15,7 @@ import {
   procoreSyncDetailHasErrors,
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
+import { shouldParkProjectOnboarding } from "@/lib/projectOnboardingPolicy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -296,6 +298,22 @@ export async function POST(request: NextRequest) {
     });
     if (!project) {
       return NextResponse.json({ success: true, skipped: true, reason: "no_project_due", dataset: DATASET });
+    }
+
+    if (shouldParkProjectOnboarding(project)) {
+      const reason = "Excluded from project onboarding because PMC Operations is an internal non-job project.";
+      await parkProjectSync({
+        project,
+        reason,
+        result: { skipped: true, reason: "internal_non_job_project" },
+      });
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: "internal_non_job_project",
+        dataset: DATASET,
+        projectId: project.projectId,
+      });
     }
 
     const selection = {

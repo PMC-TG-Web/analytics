@@ -8,6 +8,7 @@
  *   URL or APP_BASE_URL
  */
 import type { Config } from "@netlify/functions";
+import { procoreAutomationCadence } from "../../src/lib/procoreAutomationCadence.js";
 
 const handler = async () => {
   const syncSecret = (process.env.PROCORE_SYNC_SECRET || "").trim();
@@ -19,6 +20,7 @@ const handler = async () => {
   const actualsPaused = ["true", "1", "yes"].includes(
     String(process.env.PROCORE_ACTUALS_SYNC_PAUSED || "").trim().toLowerCase(),
   );
+  const cadence = procoreAutomationCadence();
 
   if (!syncSecret) {
     console.error("[scheduled-sync] PROCORE_SYNC_SECRET is not configured.");
@@ -80,6 +82,45 @@ const handler = async () => {
       + ` completeFailed=${reminderBody?.completionNoticesFailed ?? "?"}`,
     );
 
+    let healthStatus: number | null = null;
+    let healthBody: Record<string, unknown> | null = null;
+    if (cadence.runHealthMonitor) {
+      const healthResponse = await fetch(`${baseUrl}/api/cron/sync/health`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      });
+      healthStatus = healthResponse.status;
+      healthBody = await healthResponse.json().catch(() => null) as Record<string, unknown> | null;
+      console.log(JSON.stringify({
+        event: "sync-health-monitor",
+        status: healthStatus,
+        healthy: healthBody?.healthy,
+        alerted: healthBody?.alerted,
+        issues: healthBody?.issues,
+      }));
+    }
+
+    let reconciliationStatus: number | null = null;
+    if (cadence.runProjectReconciliation) {
+      const reconciliationResponse = await fetch(`${baseUrl}/api/background/project-reconciliation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      });
+      reconciliationStatus = reconciliationResponse.status;
+      console.log(JSON.stringify({
+        event: "project-reconciliation-dispatch",
+        status: reconciliationStatus,
+      }));
+    }
+
     const nowParts = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
       weekday: "short",
@@ -97,7 +138,8 @@ const handler = async () => {
       ? "/api/background/nightly-structure-sync"
       : "/api/background/actuals-sync";
     const workerBody = isReconciliationWindow ? { mode: "reconcile" } : {};
-    const skipActualsDispatch = actualsPaused && workerName === "actuals-sync-background";
+    const skipActualsDispatch = cadence.runProjectReconciliation
+      || (actualsPaused && workerName === "actuals-sync-background");
     const dispatch = skipActualsDispatch
       ? new Response(null, { status: 204 })
       : await fetch(`${baseUrl}${workerPath}`, {
@@ -110,21 +152,31 @@ const handler = async () => {
         });
     console.log(
       skipActualsDispatch
-        ? `[scheduled-sync] Skipped ${workerName} because PROCORE_ACTUALS_SYNC_PAUSED is enabled.`
+        ? cadence.runProjectReconciliation
+          ? `[scheduled-sync] Skipped ${workerName} while full project reconciliation was dispatched.`
+          : `[scheduled-sync] Skipped ${workerName} because PROCORE_ACTUALS_SYNC_PAUSED is enabled.`
         : `[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`,
     );
 
+    const healthOk = healthStatus == null || (healthStatus >= 200 && healthStatus < 300);
+    const reconciliationOk = reconciliationStatus == null
+      || (reconciliationStatus >= 200 && reconciliationStatus < 300);
+
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && dispatch.ok,
+      ok: ok && reminderResponse.ok && dispatch.ok && healthOk && reconciliationOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
       dispatchStatus: dispatch.status,
+      healthStatus,
+      reconciliationStatus,
       workerName,
       actualsPaused,
+      cadence,
       body,
       reminderBody,
+      healthBody,
     }), {
-      status: ok && reminderResponse.ok && dispatch.ok ? 200 : 500,
+      status: ok && reminderResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

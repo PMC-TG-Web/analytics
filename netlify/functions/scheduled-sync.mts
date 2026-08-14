@@ -123,21 +123,19 @@ const handler = async () => {
 
     const nowParts = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
-      weekday: "short",
       hour: "2-digit",
       hour12: false,
     }).formatToParts(new Date());
-    const weekday = nowParts.find((part) => part.type === "weekday")?.value;
     const hour = Number(nowParts.find((part) => part.type === "hour")?.value || 0);
     const isNightlyWindow = hour >= 2 && hour < 6;
-    const isReconciliationWindow = weekday === "Sun" && hour >= 6 && hour < 12;
-    const workerName = isNightlyWindow
+    const useNightlyWorker = isNightlyWindow && !cadence.runActualsReconciliation;
+    const workerName = useNightlyWorker
       ? "nightly-structure-sync-background"
       : "actuals-sync-background";
-    const workerPath = isNightlyWindow
+    const workerPath = useNightlyWorker
       ? "/api/background/nightly-structure-sync"
       : "/api/background/actuals-sync";
-    const workerBody = isReconciliationWindow ? { mode: "reconcile" } : {};
+    const workerBody = cadence.runActualsReconciliation ? { mode: "reconcile" } : {};
     const skipActualsDispatch = cadence.runProjectReconciliation
       || (actualsPaused && workerName === "actuals-sync-background");
     const dispatch = skipActualsDispatch
@@ -155,7 +153,7 @@ const handler = async () => {
         ? cadence.runProjectReconciliation
           ? `[scheduled-sync] Skipped ${workerName} while full project reconciliation was dispatched.`
           : `[scheduled-sync] Skipped ${workerName} because PROCORE_ACTUALS_SYNC_PAUSED is enabled.`
-        : `[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${isReconciliationWindow ? "reconcile" : "normal"}`,
+        : `[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${cadence.runActualsReconciliation ? "reconcile" : "normal"}`,
     );
 
     const healthOk = healthStatus == null || (healthStatus >= 200 && healthStatus < 300);

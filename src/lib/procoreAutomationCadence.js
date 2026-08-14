@@ -3,5 +3,6 @@ export function procoreAutomationCadence(now = new Date()) {
   return {
     runHealthMonitor: minute % 15 === 0,
     runProjectReconciliation: minute === 10,
+    runActualsReconciliation: minute === 40,
   };
 }

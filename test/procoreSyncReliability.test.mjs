@@ -67,6 +67,51 @@ test("health evaluation stays quiet when core automation is current", () => {
   }, now), []);
 });
 
+test("health evaluation allows the planned nightly Actuals pause and restart grace period", () => {
+  const snapshot = {
+    datasets: [{
+      dataset: "actuals",
+      never_succeeded: 0,
+      failed_projects: 0,
+      max_failure_count: 0,
+      newest_success: "2026-08-17T05:55:41.690Z",
+    }],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-17T09:00:00.000Z",
+      last_attempt_at: "2026-08-17T09:00:00.000Z",
+    },
+  };
+
+  assert.deepEqual(
+    evaluateProcoreSyncHealth(snapshot, new Date("2026-08-17T09:00:38.390Z")),
+    [],
+  );
+  assert.deepEqual(
+    evaluateProcoreSyncHealth(snapshot, new Date("2026-08-17T10:29:59.000Z")),
+    [],
+  );
+});
+
+test("health evaluation alerts when Actuals has not resumed after the nightly grace period", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [{
+      dataset: "actuals",
+      never_succeeded: 0,
+      failed_projects: 0,
+      max_failure_count: 0,
+      newest_success: "2026-08-17T05:55:41.690Z",
+    }],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-17T10:00:00.000Z",
+      last_attempt_at: "2026-08-17T10:00:00.000Z",
+    },
+  }, new Date("2026-08-17T10:30:00.000Z"));
+
+  assert.ok(issues.includes("Actuals have not completed successfully within 3 hours."));
+});
+
 test("middleware allows secret-authenticated reconciliation routes", async () => {
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);

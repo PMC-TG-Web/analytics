@@ -23,13 +23,33 @@ function ageMinutes(value: Date | string | null, now: Date) {
   return Number.isFinite(timestamp) ? (now.getTime() - timestamp) / 60_000 : Number.POSITIVE_INFINITY;
 }
 
+function easternMinuteOfDay(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+function actualsStalenessMonitoringPaused(now: Date) {
+  const minute = easternMinuteOfDay(now);
+  // scheduled-sync runs nightly structure work instead of Actuals from 2:00-6:00
+  // Eastern. Give the Actuals worker another 30 minutes to resume after that window.
+  return minute >= 2 * 60 && minute < 6 * 60 + 30;
+}
+
 export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, now = new Date()) {
   const issues: string[] = [];
   const datasets = new Map(snapshot.datasets.map((row) => [row.dataset, row]));
   const actuals = datasets.get("actuals");
-  if (!actuals || ageMinutes(actuals.newest_success, now) > 180) {
+  const actualsIsStale = !actuals || ageMinutes(actuals.newest_success, now) > 180;
+  if (actualsIsStale && !actualsStalenessMonitoringPaused(now)) {
     issues.push("Actuals have not completed successfully within 3 hours.");
-  } else if (actuals.failed_projects > 5) {
+  } else if (actuals && actuals.failed_projects > 5) {
     issues.push(`${actuals.failed_projects} actuals projects are failing.`);
   }
 

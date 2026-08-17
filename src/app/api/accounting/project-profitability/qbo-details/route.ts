@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '@/lib/prisma';
+import { isQboProjectExcluded } from '@/lib/qboProjectExclusions';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 
@@ -275,6 +276,9 @@ export async function GET(request: NextRequest) {
     const qboCustomerId = String(request.nextUrl.searchParams.get('qboCustomerId') || '').trim();
     if (!qboCustomerId) {
       return noStoreJson({ success: false, error: 'Missing required field: qboCustomerId' }, 400);
+    }
+    if (await isQboProjectExcluded(qboCustomerId)) {
+      return noStoreJson({ success: false, error: 'QBO project is excluded from profitability reporting.' }, 404);
     }
 
     const snapshot = snapshotId

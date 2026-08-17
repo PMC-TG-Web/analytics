@@ -14,6 +14,10 @@ import {
   loadEstimatingCostCodeCatalog,
   resolveEstimatingCostCodeAliases,
 } from "@/lib/estimatingCostCodeCrosswalk";
+import {
+  excludeMarkedQboProjects,
+  loadExcludedQboCustomerIds,
+} from "@/lib/qboProjectExclusions";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +76,7 @@ export async function GET() {
     )].sort((left, right) => left.localeCompare(right));
 
     const selectedProposalIds = [...new Set(selectedProjects.map((project) => project.selectedProposalId as string))];
-    const [baseLines, costCodes, payloadAliases, qboSnapshot] = await Promise.all([
+    const [baseLines, costCodes, payloadAliases, qboSnapshot, excludedQboCustomerIds] = await Promise.all([
       prisma.procoreEstimateLineItem.findMany({
         where: {
           companyId,
@@ -134,6 +138,7 @@ export async function GET() {
             },
             select: {
               procoreProjectId: true,
+              qboCustomerId: true,
               fullyQualifiedName: true,
               procoreMatchMethod: true,
               actualCost: true,
@@ -141,8 +146,10 @@ export async function GET() {
           },
         },
       }),
+      loadExcludedQboCustomerIds(),
     ]);
-    const qboActuals = aggregateQboProjectActuals((qboSnapshot?.rows || []).map((row) => ({
+    const visibleQboRows = excludeMarkedQboProjects(qboSnapshot?.rows || [], excludedQboCustomerIds);
+    const qboActuals = aggregateQboProjectActuals(visibleQboRows.map((row) => ({
       procoreProjectId: row.procoreProjectId,
       qboProjectName: row.fullyQualifiedName,
       matchMethod: row.procoreMatchMethod,

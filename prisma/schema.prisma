@@ -83,6 +83,19 @@ model QboProjectProfitabilityRow {
   @@map("qbo_project_profitability_rows")
 }
 
+model QboProjectExclusion {
+  qboCustomerId      String   @id @map("qbo_customer_id")
+  projectName        String?  @map("project_name")
+  fullyQualifiedName String?  @map("fully_qualified_name")
+  reason             String   @default("not_in_progress")
+  excludedBy         String?  @map("excluded_by")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([fullyQualifiedName], map: "idx_qbo_project_exclusions_full_name")
+  @@map("qbo_project_exclusions")
+}
+
 model SyncLog {
   id          BigInt    @id @default(autoincrement())
   startedAt   DateTime  @default(now()) @map("started_at")

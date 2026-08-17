@@ -8,6 +8,10 @@ import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
+import {
+  excludeMarkedQboProjects,
+  loadExcludedQboCustomerIds,
+} from '@/lib/qboProjectExclusions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -412,12 +416,14 @@ export async function GET(request: NextRequest) {
       return noStoreJson({ error: 'Snapshot not found' }, 404);
     }
 
-    const rows = selected
+    const allRows = selected
       ? await prisma.qboProjectProfitabilityRow.findMany({
           where: { snapshotId: selected.id },
           orderBy: [{ sales: 'desc' }, { fullyQualifiedName: 'asc' }],
         })
       : [];
+    const excludedCustomerIds = await loadExcludedQboCustomerIds();
+    const rows = excludeMarkedQboProjects(allRows, excludedCustomerIds);
     const selectedSummary = selected
       ? await prisma.qboProfitabilitySnapshot.findUnique({
           where: { id: selected.id },
@@ -432,6 +438,7 @@ export async function GET(request: NextRequest) {
     return noStoreJson({
       success: true,
       selectedSnapshotId: selected?.id || null,
+      excludedProjectCount: allRows.length - rows.length,
       snapshots: snapshots.map((snapshot) => ({
         id: snapshot.id,
         sourceGeneratedAt: snapshot.sourceGeneratedAt.toISOString(),

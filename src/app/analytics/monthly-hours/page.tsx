@@ -29,6 +29,23 @@ type ProjectHours = {
   remainingHours: number;
 };
 
+type FinancialWipProject = {
+  qboCustomerId: string;
+  projectName: string;
+  customerName: string | null;
+  procoreProjectId: string | null;
+  procoreProjectNumber: string | null;
+  procoreProjectName: string | null;
+  procoreStatus: string | null;
+  contractValue: number | null;
+  contractValueSource: string;
+  netBilled: number | null;
+  billingProgressPercent: number | null;
+  remainingToBill: number | null;
+  unbilledDollars: number;
+  overbilledDollars: number;
+};
+
 type ApiResponse = {
   success?: boolean;
   generatedAt?: string;
@@ -59,8 +76,30 @@ type ApiResponse = {
     averageMonthCount: number;
     averagePeriodStart: string | null;
     averagePeriodEnd: string | null;
-    projectedRevenue: number | null;
     sourceUpdatedAt: string | null;
+  };
+  financialWip?: {
+    summary: {
+      projectCount: number;
+      includedProjectCount: number;
+      unavailableProjectCount: number;
+      contractValue: number;
+      netBilled: number;
+      unbilledDollars: number;
+      overbilledDollars: number;
+      averageMonthlyBilled: number;
+      leadTimeMonths: number | null;
+      averageMonthCount: number;
+      averagePeriodStart: string | null;
+      averagePeriodEnd: string | null;
+      averageSource: string;
+      averageSourceUpdatedAt: string | null;
+      qboSnapshotId: string | null;
+      qboImportedAt: string | null;
+      qboPeriodStart: string | null;
+      qboPeriodEnd: string | null;
+    };
+    projects: FinancialWipProject[];
   };
   projects?: ProjectHours[];
 };
@@ -71,6 +110,7 @@ const money = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0,
 });
+const percent = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
 function monthLabel(value: string | undefined) {
   if (!value) return "—";
@@ -158,9 +198,13 @@ export default function MonthlyHoursPage() {
   };
   const revenueMonthly = data?.revenueMonthly || [];
   const revenueSummary = data?.revenueSummary;
+  const financialWip = data?.financialWip;
+  const financialLeadTimeMonths = financialWip?.summary.leadTimeMonths;
+  const financialProjectedMonthCount = Math.ceil(financialLeadTimeMonths || 0);
+  const financialProjectionEnd = addMonths(currentPeriod, financialProjectedMonthCount);
   const revenuePeriods = [...new Set([
     ...revenueMonthly.map((row) => row.month),
-    ...Array.from({ length: projectedMonthCount + 1 }, (_, index) => addMonths(currentPeriod, index)),
+    ...Array.from({ length: financialProjectedMonthCount + 1 }, (_, index) => addMonths(currentPeriod, index)),
   ])].sort();
   const revenueByMonth = new Map(revenueMonthly.map((row) => [row.month, row.totalRevenue]));
   const averageMonthlyRevenue = revenueSummary?.averageMonthlyRevenue || 0;
@@ -181,7 +225,7 @@ export default function MonthlyHoursPage() {
     }, {
       label: `KPI YTD average (${money.format(averageMonthlyRevenue)}/mo)`,
       data: revenuePeriods.map((period) =>
-        averageMonthlyRevenue > 0 && period >= revenueAverageStart && period <= projectionEnd
+        averageMonthlyRevenue > 0 && period >= revenueAverageStart && period <= financialProjectionEnd
           ? averageMonthlyRevenue
           : null,
       ),
@@ -196,14 +240,13 @@ export default function MonthlyHoursPage() {
       spanGaps: true,
     }],
   };
-
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="border-b border-slate-300 pb-5">
           <p className="text-xs font-black uppercase tracking-widest text-teal-700">Analytics / Labor</p>
           <h1 className="mt-1 text-3xl font-black">Monthly Hours &amp; Revenue</h1>
-          <p className="mt-1 text-sm text-slate-600">Monthly labor and revenue projections for projects currently in progress.</p>
+          <p className="mt-1 text-sm text-slate-600">Monthly labor, billing history, and sold contract backlog for projects currently in progress.</p>
         </header>
 
         {loading && <div className="border border-slate-200 bg-white p-8 text-sm font-bold text-slate-500">Loading monthly hours...</div>}
@@ -219,7 +262,7 @@ export default function MonthlyHoursPage() {
                 ["Hours left", hours.format(data.summary.remainingHours)],
                 ["YTD revenue hours average", hours.format(data.summary.averageMonthlyHours)],
                 [
-                  "Lead time remaining",
+                  "Labor lead time",
                   data.summary.leadTimeMonths === null
                     ? "—"
                     : `${hours.format(data.summary.leadTimeMonths)} months`,
@@ -236,6 +279,82 @@ export default function MonthlyHoursPage() {
                 </div>
               ))}
             </section>
+
+            {financialWip && (
+              <section className="overflow-hidden border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-900 px-5 py-5 text-white">
+                  <p className="text-xs font-black uppercase tracking-widest text-emerald-300">WIP (Work In Progress)</p>
+                  <h2 className="mt-1 text-xl font-black">Sold contract backlog and financial lead time</h2>
+                  <p className="mt-1 text-xs text-slate-300">
+                    Positive unbilled dollars ÷ KPI average billed YTD per month. Overbilling is reported separately and does not reduce WIP.
+                  </p>
+                </div>
+                <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ["Contract value", money.format(financialWip.summary.contractValue), "Procore estimate + approved changes; QBO estimate when unmatched"],
+                    ["Net billed", money.format(financialWip.summary.netBilled), "QBO invoices less credits"],
+                    ["WIP", money.format(financialWip.summary.unbilledDollars), "Sum of positive sold contract balances"],
+                    ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
+                    ["Financial lead time", financialLeadTimeMonths === null ? "—" : `${hours.format(financialLeadTimeMonths)} months`, financialLeadTimeMonths === null ? "KPI billed average unavailable" : `WIP horizon through ${monthLabel(financialProjectionEnd)}`],
+                    ["Overbilled", money.format(financialWip.summary.overbilledDollars), "Shown separately from WIP"],
+                  ].map(([label, value, detail]) => (
+                    <div key={label} className="bg-white px-5 py-4">
+                      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+                      <p className="mt-1 text-2xl font-black text-slate-900">{value}</p>
+                      <p className="mt-1 text-xs text-slate-500">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+                  {financialWip.summary.includedProjectCount} of {financialWip.summary.projectCount} visible QBO projects have both contract and billing values
+                  {financialWip.summary.unavailableProjectCount > 0 && ` · ${financialWip.summary.unavailableProjectCount} unavailable`}
+                  {financialWip.summary.qboImportedAt && ` · QBO imported ${new Date(financialWip.summary.qboImportedAt).toLocaleString()}`}
+                </div>
+                <details>
+                  <summary className="cursor-pointer border-t border-slate-200 px-5 py-4 hover:bg-slate-50">
+                    <span className="font-black">WIP by project</span>
+                    <span className="ml-2 text-xs text-slate-500">Contract, billed, and remaining balances</span>
+                  </summary>
+                  <div className="max-h-[680px] overflow-auto border-t border-slate-200">
+                    <table className="w-full min-w-[1050px] text-sm">
+                      <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Project</th>
+                          <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-4 py-3 text-left">Contract source</th>
+                          <th className="px-4 py-3 text-right">Contract</th>
+                          <th className="px-4 py-3 text-right">Net billed</th>
+                          <th className="px-4 py-3 text-right">Balance</th>
+                          <th className="px-4 py-3 text-right">Billed %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {financialWip.projects.map((project) => (
+                          <tr key={project.qboCustomerId} className="border-t border-slate-100 hover:bg-slate-50">
+                            <td className="px-4 py-3">
+                              <div className="font-bold">{project.projectName}</div>
+                              <div className="text-xs text-slate-500">
+                                {[project.customerName, project.procoreProjectNumber].filter(Boolean).join(" · ") || project.qboCustomerId}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">{project.procoreStatus || "QBO only"}</td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {project.contractValueSource === "procore" ? "Procore" : project.contractValueSource === "qbo-estimates" ? "QBO estimate" : "Unavailable"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">{project.contractValue === null ? "—" : money.format(project.contractValue)}</td>
+                            <td className="px-4 py-3 text-right">{project.netBilled === null ? "—" : money.format(project.netBilled)}</td>
+                            <td className={`px-4 py-3 text-right font-black ${project.remainingToBill !== null && project.remainingToBill < 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                              {project.remainingToBill === null ? "—" : money.format(project.remainingToBill)}
+                            </td>
+                            <td className="px-4 py-3 text-right">{project.billingProgressPercent === null ? "—" : `${percent.format(project.billingProgressPercent)}%`}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </section>
+            )}
 
             <section className="min-w-0 overflow-hidden border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
@@ -313,7 +432,7 @@ export default function MonthlyHoursPage() {
                   <p className="text-xs font-black uppercase tracking-widest text-sky-700">Revenue</p>
                   <h2 className="text-lg font-black">Revenue by month</h2>
                   <p className="text-xs text-slate-500">
-                    Monthly Actual Revenue excluding subcontracted plus Monthly Sub Actual Revenue Billed. The dashed YTD average extends through {monthLabel(projectionEnd)}.
+                    Monthly Actual Revenue excluding subcontracted plus Monthly Sub Actual Revenue Billed. The dashed YTD average is a billing run-rate reference through the WIP horizon of {monthLabel(financialProjectionEnd)}.
                   </p>
                 </div>
                 <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -323,14 +442,14 @@ export default function MonthlyHoursPage() {
                     <p className="text-xs text-slate-500">{monthLabel(revenueSummary.averagePeriodStart || undefined)} through {monthLabel(revenueSummary.averagePeriodEnd || undefined)}</p>
                   </div>
                   <div className="border border-slate-200 px-4 py-3">
-                    <p className="text-xs font-black uppercase text-slate-500">Lead-time horizon</p>
-                    <p className="mt-1 text-xl font-black">{hours.format(data.summary.leadTimeMonths || 0)} months</p>
-                    <p className="text-xs text-slate-500">Through {monthLabel(projectionEnd)}</p>
+                    <p className="text-xs font-black uppercase text-slate-500">WIP (Work In Progress)</p>
+                    <p className="mt-1 text-xl font-black">{financialWip ? money.format(financialWip.summary.unbilledDollars) : "—"}</p>
+                    <p className="text-xs text-slate-500">Sold contract balance</p>
                   </div>
                   <div className="border border-slate-200 px-4 py-3">
-                    <p className="text-xs font-black uppercase text-slate-500">Projected revenue</p>
-                    <p className="mt-1 text-xl font-black">{revenueSummary.projectedRevenue === null ? "—" : money.format(revenueSummary.projectedRevenue)}</p>
-                    <p className="text-xs text-slate-500">YTD average × lead time</p>
+                    <p className="text-xs font-black uppercase text-slate-500">Financial lead time</p>
+                    <p className="mt-1 text-xl font-black">{financialLeadTimeMonths === null || financialLeadTimeMonths === undefined ? "—" : `${hours.format(financialLeadTimeMonths)} months`}</p>
+                    <p className="text-xs text-slate-500">WIP ÷ YTD monthly average</p>
                   </div>
                 </div>
                 <div className="h-[360px] min-w-0 overflow-hidden">

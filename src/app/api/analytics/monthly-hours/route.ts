@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getKpiCardYearValues } from "@/lib/kpiCardMonths";
+import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
+import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractValue";
+import { calculateFinancialWip } from "@/lib/financialWip";
+import {
+  excludeMarkedQboProjects,
+  loadExcludedQboCustomerIds,
+} from "@/lib/qboProjectExclusions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +18,30 @@ function numberValue(value: unknown): number {
   if (typeof value === "bigint") return Number(value);
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumberValue(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function billingByCustomerId(summary: unknown) {
+  const projects = recordValue(summary).qboCostDrillthroughProjects;
+  return recordValue(projects) as Record<string, Record<string, unknown>>;
+}
+
+function customerFromFullyQualifiedName(value: string) {
+  const parts = value.split(":");
+  if (parts.length < 2) return null;
+  parts.pop();
+  return parts.join(":").trim() || null;
 }
 
 function textValue(value: unknown): string | null {
@@ -48,7 +79,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
     }
 
-    const [projectRows, monthlyRows, kpiCards] = await Promise.all([
+    const [
+      projectRows,
+      monthlyRows,
+      kpiCards,
+      qboSnapshot,
+      excludedQboCustomerIds,
+      estimatingProjects,
+    ] = await Promise.all([
       prisma.$queryRawUnsafe<DbRow[]>(
         `
           WITH active_projects AS (
@@ -195,6 +233,29 @@ export async function GET(request: NextRequest) {
         },
         select: { name: true, value: true, updatedAt: true },
       }),
+      prisma.qboProfitabilitySnapshot.findFirst({
+        orderBy: { importedAt: "desc" },
+        select: {
+          id: true,
+          importedAt: true,
+          startDate: true,
+          endDate: true,
+          summary: true,
+          rows: {
+            where: { recordType: "project" },
+            select: {
+              qboCustomerId: true,
+              projectName: true,
+              fullyQualifiedName: true,
+              procoreProjectId: true,
+              procoreProjectNumber: true,
+              procoreProjectName: true,
+            },
+          },
+        },
+      }),
+      loadExcludedQboCustomerIds(),
+      loadEstimatingDashboardProjects(),
     ]);
 
     const projects = projectRows.map((row) => ({
@@ -281,6 +342,46 @@ export async function GET(request: NextRequest) {
         (latest, card) => !latest || card.updatedAt > latest ? card.updatedAt : latest,
         null,
       );
+    const selectedBilling = billingByCustomerId(qboSnapshot?.summary);
+    const estimatingByProcoreId = new Map(
+      estimatingProjects
+        .filter((project) => project.procoreProjectId)
+        .map((project) => [project.procoreProjectId as string, project]),
+    );
+    const visibleQboProjects = excludeMarkedQboProjects(
+      qboSnapshot?.rows || [],
+      excludedQboCustomerIds,
+    );
+    const financialWip = calculateFinancialWip(
+      visibleQboProjects.map((row) => {
+        const billing = recordValue(selectedBilling[row.qboCustomerId]?.billing);
+        const netBilled = nullableNumberValue(billing.netBilled);
+        const procoreProject = row.procoreProjectId
+          ? estimatingByProcoreId.get(row.procoreProjectId)
+          : undefined;
+        const contract = resolveProjectContractValue({
+          procoreProjectId: row.procoreProjectId,
+          procoreBaseEstimate: procoreProject?.sales,
+          procoreApprovedChangeOrders: procoreProject?.approvedChangeOrderAmount,
+          qboEstimateTotal: nullableNumberValue(billing.estimateTotal),
+          netBilled,
+        });
+        return {
+          qboCustomerId: row.qboCustomerId,
+          projectName: row.projectName,
+          customerName: customerFromFullyQualifiedName(row.fullyQualifiedName),
+          procoreProjectId: row.procoreProjectId,
+          procoreProjectNumber: row.procoreProjectNumber,
+          procoreProjectName: row.procoreProjectName,
+          procoreStatus: procoreProject?.status || null,
+          contractValue: contract.contractValue,
+          contractValueSource: contract.contractValueSource,
+          netBilled,
+          billingProgressPercent: contract.billingProgressPercent,
+        };
+      }),
+      averageMonthlyRevenue,
+    );
 
     return NextResponse.json({
       success: true,
@@ -309,8 +410,22 @@ export async function GET(request: NextRequest) {
         averageMonthCount: revenueMonthly.length,
         averagePeriodStart: revenueMonthly[0]?.month ?? null,
         averagePeriodEnd: revenueMonthly.at(-1)?.month ?? null,
-        projectedRevenue: leadTimeMonths === null ? null : averageMonthlyRevenue * leadTimeMonths,
         sourceUpdatedAt: revenueSourceUpdatedAt?.toISOString() ?? null,
+      },
+      financialWip: {
+        ...financialWip,
+        summary: {
+          ...financialWip.summary,
+          averageMonthCount: revenueMonthly.length,
+          averagePeriodStart: revenueMonthly[0]?.month ?? null,
+          averagePeriodEnd: revenueMonthly.at(-1)?.month ?? null,
+          averageSource: "KPI Actual Revenue + Sub Actual Revenue Billed",
+          averageSourceUpdatedAt: revenueSourceUpdatedAt?.toISOString() ?? null,
+          qboSnapshotId: qboSnapshot?.id ?? null,
+          qboImportedAt: qboSnapshot?.importedAt.toISOString() ?? null,
+          qboPeriodStart: qboSnapshot?.startDate.toISOString().slice(0, 10) ?? null,
+          qboPeriodEnd: qboSnapshot?.endDate.toISOString().slice(0, 10) ?? null,
+        },
       },
       projects,
     });

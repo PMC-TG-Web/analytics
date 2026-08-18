@@ -17,6 +17,8 @@ function project(overrides) {
     contractValue: 1000,
     contractValueSource: "procore",
     netBilled: 400,
+    ytdBilled: 300,
+    revenueOnly: false,
     billingProgressPercent: 40,
     ...overrides,
   };
@@ -26,7 +28,7 @@ test("financial WIP separates positive unbilled work from overbilling", () => {
   const result = calculateFinancialWip([
     project({ qboCustomerId: "1", contractValue: 1000, netBilled: 400 }),
     project({ qboCustomerId: "2", contractValue: 500, netBilled: 650 }),
-    project({ qboCustomerId: "3", contractValue: null, netBilled: 100 }),
+    project({ qboCustomerId: "3", contractValue: null, netBilled: 100, revenueOnly: true }),
   ], 300);
 
   assert.deepEqual(result.summary, {
@@ -36,9 +38,12 @@ test("financial WIP separates positive unbilled work from overbilling", () => {
     contractValue: 1500,
     contractProjectCount: 2,
     billedProjectCount: 3,
-    billedWithoutContractProjectCount: 1,
-    billedWithoutContractDollars: 100,
+    billedWithoutContractProjectCount: 0,
+    billedWithoutContractDollars: 0,
+    revenueOnlyProjectCount: 1,
+    revenueOnlyBilledDollars: 100,
     netBilled: 1150,
+    contractBackedNetBilled: 1050,
     unbilledDollars: 600,
     overbilledDollars: 150,
     averageMonthlyBilled: 300,

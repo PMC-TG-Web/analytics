@@ -386,6 +386,10 @@ export async function GET(request: NextRequest) {
           contractValue: contract.contractValue,
           contractValueSource: contract.contractValueSource,
           netBilled,
+          ytdBilled: incomeReconciliationSource.companyIncome == null
+            ? null
+            : nullableNumberValue(incomeByCustomerId[row.qboCustomerId]) ?? 0,
+          revenueOnly: row.projectName.trim().toLowerCase() === "screeding",
           billingProgressPercent: contract.billingProgressPercent,
         };
       }),

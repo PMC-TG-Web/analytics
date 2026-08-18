@@ -9,6 +9,8 @@ export type FinancialWipProjectInput = {
   contractValue: number | null;
   contractValueSource: string;
   netBilled: number | null;
+  ytdBilled: number | null;
+  revenueOnly: boolean;
   billingProgressPercent: number | null;
 };
 
@@ -52,13 +54,21 @@ export function calculateFinancialWip(
   );
   const contractProjects = rows.filter((project) => project.contractValue != null);
   const billedProjects = rows.filter((project) => project.netBilled != null);
-  const billedWithoutContract = billedProjects.filter((project) => project.contractValue == null);
+  const revenueOnlyProjects = billedProjects.filter((project) =>
+    project.contractValue == null && project.revenueOnly
+  );
+  const billedWithoutContract = billedProjects.filter((project) =>
+    project.contractValue == null && !project.revenueOnly
+  );
   const monthlyBilled = finiteNumber(averageMonthlyBilled) ?? 0;
   const contractValue = roundCurrency(
     contractProjects.reduce((sum, project) => sum + (project.contractValue ?? 0), 0),
   );
   const netBilled = roundCurrency(
     billedProjects.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
+  );
+  const contractBackedNetBilled = roundCurrency(
+    included.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
   );
   const unbilledDollars = roundCurrency(
     included.reduce((sum, project) => sum + project.unbilledDollars, 0),
@@ -78,8 +88,13 @@ export function calculateFinancialWip(
       billedWithoutContractDollars: roundCurrency(
         billedWithoutContract.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
       ),
+      revenueOnlyProjectCount: revenueOnlyProjects.length,
+      revenueOnlyBilledDollars: roundCurrency(
+        revenueOnlyProjects.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
+      ),
       contractValue,
       netBilled,
+      contractBackedNetBilled,
       unbilledDollars,
       overbilledDollars,
       averageMonthlyBilled: roundCurrency(monthlyBilled),

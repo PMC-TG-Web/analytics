@@ -353,6 +353,7 @@ export async function GET(request: NextRequest) {
     const incomeByCustomerId = recordValue(incomeReconciliationSource.incomeByCustomerId);
     const openReceivablesSource = recordValue(qboSummary.qboOpenReceivables);
     const openReceivablesTotal = nullableNumberValue(openReceivablesSource.total);
+    const openReceivablesByCustomerId = recordValue(openReceivablesSource.byCustomerId);
     const qboOpenReceivables = openReceivablesTotal == null
       ? null
       : {
@@ -389,6 +390,7 @@ export async function GET(request: NextRequest) {
           qboEstimateTotal: nullableNumberValue(billing.estimateTotal),
           netBilled,
         });
+        const projectOpenReceivables = recordValue(openReceivablesByCustomerId[row.qboCustomerId]);
         return {
           qboCustomerId: row.qboCustomerId,
           projectName: row.projectName,
@@ -404,6 +406,16 @@ export async function GET(request: NextRequest) {
             ? null
             : nullableNumberValue(incomeByCustomerId[row.qboCustomerId]) ?? 0,
           revenueOnly: row.projectName.trim().toLowerCase() === "screeding",
+          openReceivables: openReceivablesTotal == null
+            ? null
+            : {
+                current: numberValue(projectOpenReceivables.current),
+                days1To30: numberValue(projectOpenReceivables.days1To30),
+                days31To60: numberValue(projectOpenReceivables.days31To60),
+                days61To90: numberValue(projectOpenReceivables.days61To90),
+                days91AndOver: numberValue(projectOpenReceivables.days91AndOver),
+                total: numberValue(projectOpenReceivables.total),
+              },
           billingProgressPercent: contract.billingProgressPercent,
         };
       }),

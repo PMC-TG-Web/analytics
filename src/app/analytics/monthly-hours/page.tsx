@@ -42,6 +42,14 @@ type FinancialWipProject = {
   netBilled: number | null;
   ytdBilled: number | null;
   revenueOnly: boolean;
+  openReceivables: {
+    current: number;
+    days1To30: number;
+    days31To60: number;
+    days61To90: number;
+    days91AndOver: number;
+    total: number;
+  } | null;
   billingProgressPercent: number | null;
   remainingToBill: number | null;
   unbilledDollars: number;
@@ -437,7 +445,7 @@ export default function MonthlyHoursPage() {
                     <span className="ml-2 text-xs text-slate-500">Contract, billed, and remaining balances</span>
                   </summary>
                   <div className="max-h-[680px] overflow-auto border-t border-slate-200">
-                    <table className="w-full min-w-[1050px] text-sm">
+                    <table className="w-full min-w-[1200px] text-sm">
                       <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase text-slate-600">
                         <tr>
                           <th className="px-4 py-3 text-left">Project</th>
@@ -445,6 +453,7 @@ export default function MonthlyHoursPage() {
                           <th className="px-4 py-3 text-left">Contract source</th>
                           <th className="px-4 py-3 text-right">Contract</th>
                           <th className="px-4 py-3 text-right">{showYtdBilling ? "YTD revenue" : "Lifetime billed"}</th>
+                          <th className="px-4 py-3 text-right">Open A/R</th>
                           <th className="px-4 py-3 text-right">Balance</th>
                           <th className="px-4 py-3 text-right">Billed %</th>
                         </tr>
@@ -464,6 +473,29 @@ export default function MonthlyHoursPage() {
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">{project.contractValue === null ? "—" : money.format(project.contractValue)}</td>
                             <td className="px-4 py-3 text-right">{showYtdBilling ? (project.ytdBilled === null ? "—" : money.format(project.ytdBilled)) : (project.netBilled === null ? "—" : money.format(project.netBilled))}</td>
+                            <td className="px-4 py-3 text-right align-top">
+                              {project.openReceivables ? (
+                                <details className="group ml-auto w-fit">
+                                  <summary className="cursor-pointer list-none font-semibold underline decoration-dotted underline-offset-2">
+                                    {moneyExact.format(project.openReceivables.total)}
+                                  </summary>
+                                  <div className="mt-2 w-44 border border-slate-200 bg-white p-2 text-left text-xs shadow-lg">
+                                    {[
+                                      ["Current", project.openReceivables.current],
+                                      ["1–30", project.openReceivables.days1To30],
+                                      ["31–60", project.openReceivables.days31To60],
+                                      ["61–90", project.openReceivables.days61To90],
+                                      ["91+", project.openReceivables.days91AndOver],
+                                    ].map(([label, value]) => (
+                                      <div key={label} className="flex justify-between gap-3 py-0.5">
+                                        <span className="text-slate-500">{label}</span>
+                                        <span className="font-semibold">{moneyExact.format(Number(value))}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              ) : "—"}
+                            </td>
                             <td className={`px-4 py-3 text-right font-black ${project.remainingToBill !== null && project.remainingToBill < 0 ? "text-amber-700" : "text-emerald-700"}`}>
                               {project.remainingToBill === null ? "—" : money.format(project.remainingToBill)}
                             </td>

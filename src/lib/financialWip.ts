@@ -11,6 +11,14 @@ export type FinancialWipProjectInput = {
   netBilled: number | null;
   ytdBilled: number | null;
   revenueOnly: boolean;
+  openReceivables: {
+    current: number;
+    days1To30: number;
+    days31To60: number;
+    days61To90: number;
+    days91AndOver: number;
+    total: number;
+  } | null;
   billingProgressPercent: number | null;
 };
 

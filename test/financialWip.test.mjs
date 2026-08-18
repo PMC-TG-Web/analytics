@@ -19,6 +19,7 @@ function project(overrides) {
     netBilled: 400,
     ytdBilled: 300,
     revenueOnly: false,
+    openReceivables: null,
     billingProgressPercent: 40,
     ...overrides,
   };

@@ -351,6 +351,20 @@ export async function GET(request: NextRequest) {
     const billingCoverage = recordValue(qboSummary.billingCoverage);
     const incomeReconciliationSource = recordValue(qboSummary.qboIncomeReconciliation);
     const incomeByCustomerId = recordValue(incomeReconciliationSource.incomeByCustomerId);
+    const openReceivablesSource = recordValue(qboSummary.qboOpenReceivables);
+    const openReceivablesTotal = nullableNumberValue(openReceivablesSource.total);
+    const qboOpenReceivables = openReceivablesTotal == null
+      ? null
+      : {
+          reportDate: textValue(openReceivablesSource.reportDate),
+          currency: textValue(openReceivablesSource.currency),
+          current: numberValue(openReceivablesSource.current),
+          days1To30: numberValue(openReceivablesSource.days1To30),
+          days31To60: numberValue(openReceivablesSource.days31To60),
+          days61To90: numberValue(openReceivablesSource.days61To90),
+          days91AndOver: numberValue(openReceivablesSource.days91AndOver),
+          total: openReceivablesTotal,
+        };
     const allQboProjects = (qboSnapshot?.rows || []).filter((row) => row.recordType === "project");
     const estimatingByProcoreId = new Map(
       estimatingProjects
@@ -462,6 +476,7 @@ export async function GET(request: NextRequest) {
             || null,
         },
         qboIncomeReconciliation,
+        qboOpenReceivables,
       },
       projects,
     });

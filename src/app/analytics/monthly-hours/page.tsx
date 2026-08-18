@@ -122,6 +122,16 @@ type ApiResponse = {
       reconciledTotal: number;
       difference: number;
     } | null;
+    qboOpenReceivables: {
+      reportDate: string | null;
+      currency: string | null;
+      current: number;
+      days1To30: number;
+      days31To60: number;
+      days61To90: number;
+      days91AndOver: number;
+      total: number;
+    } | null;
     projects: FinancialWipProject[];
   };
   projects?: ProjectHours[];
@@ -132,6 +142,12 @@ const money = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0,
+});
+const moneyExact = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 const percent = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
@@ -329,11 +345,12 @@ export default function MonthlyHoursPage() {
                     <button type="button" onClick={() => setBillingPeriod("lifetime")} className={`border-l border-slate-600 px-4 py-2 ${billingPeriod === "lifetime" ? "bg-emerald-300 text-slate-950" : "bg-slate-800 text-white hover:bg-slate-700"}`}>Lifetime</button>
                   </div>
                 </div>
-                <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     ["Contract value", money.format(financialWip.summary.contractValue), `${financialWip.summary.contractProjectCount} of ${financialWip.summary.projectCount} projects have contract values`],
                     [showYtdBilling ? "YTD billed" : "Lifetime billed", money.format(displayedBilled), showYtdBilling ? `QBO P&L Total Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}` : `Selected-project QBO P&L Income · ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} projects`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
+                    ["Open A/R", financialWip.qboOpenReceivables ? money.format(financialWip.qboOpenReceivables.total) : "—", financialWip.qboOpenReceivables ? `QBO A/R Aging Summary as of ${dateLabel(financialWip.qboOpenReceivables.reportDate)}` : "Awaiting the next QBO import"],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
                     ["Financial lead time", financialLeadTimeMonths === null ? "—" : `${hours.format(financialLeadTimeMonths)} months`, financialLeadTimeMonths === null ? "KPI billed average unavailable" : `WIP horizon through ${monthLabel(financialProjectionEnd)}`],
                     ["Overbilled", money.format(financialWip.summary.overbilledDollars), "Shown separately from WIP"],
@@ -388,6 +405,30 @@ export default function MonthlyHoursPage() {
                     <p className="mt-2 text-xs text-slate-600">
                       Reconciliation difference: {money.format(financialWip.qboIncomeReconciliation.difference)}. The company total should match the same QBO Profit and Loss period and accounting basis.
                     </p>
+                  </div>
+                )}
+                {financialWip.qboOpenReceivables && (
+                  <div className="border-t border-slate-200 bg-emerald-50 px-5 py-4">
+                    <div className="mb-3">
+                      <p className="text-xs font-black uppercase tracking-widest text-emerald-800">Open A/R aging</p>
+                      <p className="text-xs text-slate-600">
+                        Companywide QBO A/R Aging Summary as of {dateLabel(financialWip.qboOpenReceivables.reportDate)} · Total {moneyExact.format(financialWip.qboOpenReceivables.total)}
+                      </p>
+                    </div>
+                    <div className="grid gap-px overflow-hidden border border-emerald-200 bg-emerald-200 sm:grid-cols-2 lg:grid-cols-5">
+                      {[
+                        ["Current", financialWip.qboOpenReceivables.current],
+                        ["1–30 days", financialWip.qboOpenReceivables.days1To30],
+                        ["31–60 days", financialWip.qboOpenReceivables.days31To60],
+                        ["61–90 days", financialWip.qboOpenReceivables.days61To90],
+                        ["91+ days", financialWip.qboOpenReceivables.days91AndOver],
+                      ].map(([label, value]) => (
+                        <div key={label} className="bg-white px-4 py-3">
+                          <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+                          <p className="mt-1 font-black text-slate-950">{moneyExact.format(Number(value))}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <details>

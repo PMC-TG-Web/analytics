@@ -83,6 +83,10 @@ type ApiResponse = {
       projectCount: number;
       includedProjectCount: number;
       unavailableProjectCount: number;
+      contractProjectCount: number;
+      billedProjectCount: number;
+      billedWithoutContractProjectCount: number;
+      billedWithoutContractDollars: number;
       contractValue: number;
       netBilled: number;
       unbilledDollars: number;
@@ -98,7 +102,21 @@ type ApiResponse = {
       qboImportedAt: string | null;
       qboPeriodStart: string | null;
       qboPeriodEnd: string | null;
+      billingPeriodStart: string | null;
+      billingPeriodEnd: string | null;
+      billingAccountingMethod: string | null;
     };
+    qboIncomeReconciliation: {
+      periodStart: string | null;
+      periodEnd: string | null;
+      accountingMethod: string | null;
+      companyIncome: number;
+      selectedProjectIncome: number;
+      filteredProjectIncome: number;
+      nonProjectIncome: number;
+      reconciledTotal: number;
+      difference: number;
+    } | null;
     projects: FinancialWipProject[];
   };
   projects?: ProjectHours[];
@@ -117,6 +135,14 @@ function monthLabel(value: string | undefined) {
   const [year, month] = value.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" })
     .format(new Date(year, month - 1, 1));
+}
+
+function dateLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 function monthPeriod(date: Date) {
@@ -291,9 +317,9 @@ export default function MonthlyHoursPage() {
                 </div>
                 <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
                   {[
-                    ["Contract value", money.format(financialWip.summary.contractValue), "Procore estimate + approved changes; QBO estimate when unmatched"],
-                    ["Net billed", money.format(financialWip.summary.netBilled), "QBO invoices less credits"],
-                    ["WIP", money.format(financialWip.summary.unbilledDollars), "Sum of positive sold contract balances"],
+                    ["Contract value", money.format(financialWip.summary.contractValue), `${financialWip.summary.contractProjectCount} of ${financialWip.summary.projectCount} projects have contract values`],
+                    ["Net billed", money.format(financialWip.summary.netBilled), `Lifetime QBO P&L Income · ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} projects`],
+                    ["WIP", money.format(financialWip.summary.unbilledDollars), `Positive sold balances for ${financialWip.summary.includedProjectCount} contract-backed projects`],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
                     ["Financial lead time", financialLeadTimeMonths === null ? "—" : `${hours.format(financialLeadTimeMonths)} months`, financialLeadTimeMonths === null ? "KPI billed average unavailable" : `WIP horizon through ${monthLabel(financialProjectionEnd)}`],
                     ["Overbilled", money.format(financialWip.summary.overbilledDollars), "Shown separately from WIP"],
@@ -306,10 +332,42 @@ export default function MonthlyHoursPage() {
                   ))}
                 </div>
                 <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-                  {financialWip.summary.includedProjectCount} of {financialWip.summary.projectCount} visible QBO projects have both contract and billing values
-                  {financialWip.summary.unavailableProjectCount > 0 && ` · ${financialWip.summary.unavailableProjectCount} unavailable`}
+                  Net billed coverage: {financialWip.summary.billedProjectCount} of {financialWip.summary.projectCount} selected projects
+                  {` · ${financialWip.summary.billingAccountingMethod || "QBO"} basis ${dateLabel(financialWip.summary.billingPeriodStart)} through ${dateLabel(financialWip.summary.billingPeriodEnd)}`}
                   {financialWip.summary.qboImportedAt && ` · QBO imported ${new Date(financialWip.summary.qboImportedAt).toLocaleString()}`}
                 </div>
+                {financialWip.summary.billedWithoutContractProjectCount > 0 && (
+                  <div className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+                    <span className="font-black">Contract coverage exception:</span>{" "}
+                    {financialWip.summary.billedWithoutContractProjectCount} projects have {money.format(financialWip.summary.billedWithoutContractDollars)} billed but no contract value. Their billing is included in Net Billed, but no WIP balance can be calculated until a contract value is available.
+                  </div>
+                )}
+                {financialWip.qboIncomeReconciliation && (
+                  <div className="border-t border-slate-200 bg-sky-50 px-5 py-4">
+                    <div className="mb-3">
+                      <p className="text-xs font-black uppercase tracking-widest text-sky-800">QBO P&amp;L reconciliation</p>
+                      <p className="text-xs text-slate-600">
+                        {financialWip.qboIncomeReconciliation.accountingMethod || "QBO"} basis · {dateLabel(financialWip.qboIncomeReconciliation.periodStart)} through {dateLabel(financialWip.qboIncomeReconciliation.periodEnd)}
+                      </p>
+                    </div>
+                    <div className="overflow-hidden border border-sky-200 bg-white">
+                      {[
+                        ["Selected WIP projects", financialWip.qboIncomeReconciliation.selectedProjectIncome],
+                        ["Filtered/completed projects", financialWip.qboIncomeReconciliation.filteredProjectIncome],
+                        ["Customer-level and non-project income", financialWip.qboIncomeReconciliation.nonProjectIncome],
+                        ["QBO Total Income", financialWip.qboIncomeReconciliation.companyIncome],
+                      ].map(([label, value], index) => (
+                        <div key={label} className={`flex items-center justify-between px-4 py-2 text-sm ${index > 0 ? "border-t border-slate-100" : ""} ${label === "QBO Total Income" ? "font-black text-slate-950" : ""}`}>
+                          <span>{label}</span>
+                          <span className="font-semibold">{money.format(Number(value))}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-slate-600">
+                      Reconciliation difference: {money.format(financialWip.qboIncomeReconciliation.difference)}. The company total should match the same QBO Profit and Loss period and accounting basis.
+                    </p>
+                  </div>
+                )}
                 <details>
                   <summary className="cursor-pointer border-t border-slate-200 px-5 py-4 hover:bg-slate-50">
                     <span className="font-black">WIP by project</span>

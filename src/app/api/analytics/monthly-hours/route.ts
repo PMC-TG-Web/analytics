@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getKpiCardYearValues } from "@/lib/kpiCardMonths";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractValue";
-import { calculateFinancialWip } from "@/lib/financialWip";
+import {
+  calculateFinancialWip,
+  calculateQboIncomeReconciliation,
+} from "@/lib/financialWip";
 import {
   excludeMarkedQboProjects,
   loadExcludedQboCustomerIds,
@@ -240,11 +243,12 @@ export async function GET(request: NextRequest) {
           importedAt: true,
           startDate: true,
           endDate: true,
+          accountingMethod: true,
           summary: true,
           rows: {
-            where: { recordType: "project" },
             select: {
               qboCustomerId: true,
+              recordType: true,
               projectName: true,
               fullyQualifiedName: true,
               procoreProjectId: true,
@@ -343,13 +347,18 @@ export async function GET(request: NextRequest) {
         null,
       );
     const selectedBilling = billingByCustomerId(qboSnapshot?.summary);
+    const qboSummary = recordValue(qboSnapshot?.summary);
+    const billingCoverage = recordValue(qboSummary.billingCoverage);
+    const incomeReconciliationSource = recordValue(qboSummary.qboIncomeReconciliation);
+    const incomeByCustomerId = recordValue(incomeReconciliationSource.incomeByCustomerId);
+    const allQboProjects = (qboSnapshot?.rows || []).filter((row) => row.recordType === "project");
     const estimatingByProcoreId = new Map(
       estimatingProjects
         .filter((project) => project.procoreProjectId)
         .map((project) => [project.procoreProjectId as string, project]),
     );
     const visibleQboProjects = excludeMarkedQboProjects(
-      qboSnapshot?.rows || [],
+      allQboProjects,
       excludedQboCustomerIds,
     );
     const financialWip = calculateFinancialWip(
@@ -382,6 +391,19 @@ export async function GET(request: NextRequest) {
       }),
       averageMonthlyRevenue,
     );
+    const qboIncomeReconciliation = incomeReconciliationSource.companyIncome == null
+      ? null
+      : {
+          periodStart: textValue(incomeReconciliationSource.periodStart),
+          periodEnd: textValue(incomeReconciliationSource.periodEnd),
+          accountingMethod: textValue(incomeReconciliationSource.accountingMethod),
+          ...calculateQboIncomeReconciliation({
+            companyIncome: incomeReconciliationSource.companyIncome,
+            incomeByCustomerId,
+            projectCustomerIds: allQboProjects.map((row) => row.qboCustomerId),
+            selectedProjectCustomerIds: visibleQboProjects.map((row) => row.qboCustomerId),
+          }),
+        };
 
     return NextResponse.json({
       success: true,
@@ -425,7 +447,17 @@ export async function GET(request: NextRequest) {
           qboImportedAt: qboSnapshot?.importedAt.toISOString() ?? null,
           qboPeriodStart: qboSnapshot?.startDate.toISOString().slice(0, 10) ?? null,
           qboPeriodEnd: qboSnapshot?.endDate.toISOString().slice(0, 10) ?? null,
+          billingPeriodStart: textValue(billingCoverage.periodStart)
+            || qboSnapshot?.startDate.toISOString().slice(0, 10)
+            || null,
+          billingPeriodEnd: textValue(billingCoverage.periodEnd)
+            || qboSnapshot?.endDate.toISOString().slice(0, 10)
+            || null,
+          billingAccountingMethod: textValue(billingCoverage.accountingMethod)
+            || qboSnapshot?.accountingMethod
+            || null,
         },
+        qboIncomeReconciliation,
       },
       projects,
     });

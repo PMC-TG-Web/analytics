@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateFinancialWip } from "../src/lib/financialWip.ts";
+import {
+  calculateFinancialWip,
+  calculateQboIncomeReconciliation,
+} from "../src/lib/financialWip.ts";
 
 function project(overrides) {
   return {
@@ -31,7 +34,11 @@ test("financial WIP separates positive unbilled work from overbilling", () => {
     includedProjectCount: 2,
     unavailableProjectCount: 1,
     contractValue: 1500,
-    netBilled: 1050,
+    contractProjectCount: 2,
+    billedProjectCount: 3,
+    billedWithoutContractProjectCount: 1,
+    billedWithoutContractDollars: 100,
+    netBilled: 1150,
     unbilledDollars: 600,
     overbilledDollars: 150,
     averageMonthlyBilled: 300,
@@ -39,6 +46,27 @@ test("financial WIP separates positive unbilled work from overbilling", () => {
   });
   assert.equal(result.projects[0].remainingToBill, 600);
   assert.equal(result.projects[1].remainingToBill, -150);
+});
+
+test("QBO income reconciliation bridges selected, filtered, and non-project income", () => {
+  const result = calculateQboIncomeReconciliation({
+    companyIncome: 6_371_150.94,
+    incomeByCustomerId: {
+      selected: 5_374_722.98,
+      filtered: 877_039.68,
+    },
+    projectCustomerIds: ["selected", "filtered"],
+    selectedProjectCustomerIds: ["selected"],
+  });
+
+  assert.deepEqual(result, {
+    companyIncome: 6_371_150.94,
+    selectedProjectIncome: 5_374_722.98,
+    filteredProjectIncome: 877_039.68,
+    nonProjectIncome: 119_388.28,
+    reconciledTotal: 6_371_150.94,
+    difference: 0,
+  });
 });
 
 test("financial WIP has no lead time when the YTD monthly average is unavailable", () => {

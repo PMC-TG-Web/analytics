@@ -50,12 +50,15 @@ export function calculateFinancialWip(
   const included = rows.filter((project) =>
     project.contractValue != null && project.netBilled != null
   );
+  const contractProjects = rows.filter((project) => project.contractValue != null);
+  const billedProjects = rows.filter((project) => project.netBilled != null);
+  const billedWithoutContract = billedProjects.filter((project) => project.contractValue == null);
   const monthlyBilled = finiteNumber(averageMonthlyBilled) ?? 0;
   const contractValue = roundCurrency(
-    included.reduce((sum, project) => sum + (project.contractValue ?? 0), 0),
+    contractProjects.reduce((sum, project) => sum + (project.contractValue ?? 0), 0),
   );
   const netBilled = roundCurrency(
-    included.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
+    billedProjects.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
   );
   const unbilledDollars = roundCurrency(
     included.reduce((sum, project) => sum + project.unbilledDollars, 0),
@@ -69,6 +72,12 @@ export function calculateFinancialWip(
       projectCount: rows.length,
       includedProjectCount: included.length,
       unavailableProjectCount: rows.length - included.length,
+      contractProjectCount: contractProjects.length,
+      billedProjectCount: billedProjects.length,
+      billedWithoutContractProjectCount: billedWithoutContract.length,
+      billedWithoutContractDollars: roundCurrency(
+        billedWithoutContract.reduce((sum, project) => sum + (project.netBilled ?? 0), 0),
+      ),
       contractValue,
       netBilled,
       unbilledDollars,
@@ -82,5 +91,37 @@ export function calculateFinancialWip(
       right.unbilledDollars - left.unbilledDollars
       || left.projectName.localeCompare(right.projectName)
     ),
+  };
+}
+
+export function calculateQboIncomeReconciliation({
+  companyIncome,
+  incomeByCustomerId,
+  projectCustomerIds,
+  selectedProjectCustomerIds,
+}: {
+  companyIncome: unknown;
+  incomeByCustomerId: Record<string, unknown>;
+  projectCustomerIds: string[];
+  selectedProjectCustomerIds: string[];
+}) {
+  const company = finiteNumber(companyIncome) ?? 0;
+  const selectedIds = new Set(selectedProjectCustomerIds);
+  const sumIds = (ids: string[]) => ids.reduce(
+    (sum, id) => sum + (finiteNumber(incomeByCustomerId[id]) ?? 0),
+    0,
+  );
+  const selectedProjectIncome = roundCurrency(sumIds(projectCustomerIds.filter((id) => selectedIds.has(id))));
+  const filteredProjectIncome = roundCurrency(sumIds(projectCustomerIds.filter((id) => !selectedIds.has(id))));
+  const nonProjectIncome = roundCurrency(company - selectedProjectIncome - filteredProjectIncome);
+  const reconciledTotal = roundCurrency(selectedProjectIncome + filteredProjectIncome + nonProjectIncome);
+
+  return {
+    companyIncome: roundCurrency(company),
+    selectedProjectIncome,
+    filteredProjectIncome,
+    nonProjectIncome,
+    reconciledTotal,
+    difference: roundCurrency(company - reconciledTotal),
   };
 }

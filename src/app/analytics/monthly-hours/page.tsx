@@ -233,7 +233,7 @@ export default function MonthlyHoursPage() {
   const financialWip = data?.financialWip;
   const showYtdBilling = billingPeriod === "ytd" && financialWip?.qboIncomeReconciliation != null;
   const displayedBilled = showYtdBilling
-    ? financialWip.qboIncomeReconciliation!.selectedProjectIncome
+    ? financialWip.qboIncomeReconciliation!.companyIncome
     : financialWip?.summary.netBilled || 0;
   const financialLeadTimeMonths = financialWip?.summary.leadTimeMonths;
   const financialProjectedMonthCount = Math.ceil(financialLeadTimeMonths || 0);
@@ -332,7 +332,7 @@ export default function MonthlyHoursPage() {
                 <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
                   {[
                     ["Contract value", money.format(financialWip.summary.contractValue), `${financialWip.summary.contractProjectCount} of ${financialWip.summary.projectCount} projects have contract values`],
-                    [showYtdBilling ? "YTD revenue" : "Lifetime billed", money.format(displayedBilled), showYtdBilling ? `${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}` : `QBO P&L Income · ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} projects`],
+                    [showYtdBilling ? "YTD billed" : "Lifetime billed", money.format(displayedBilled), showYtdBilling ? `QBO P&L Total Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}` : `Selected-project QBO P&L Income · ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} projects`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
                     ["Financial lead time", financialLeadTimeMonths === null ? "—" : `${hours.format(financialLeadTimeMonths)} months`, financialLeadTimeMonths === null ? "KPI billed average unavailable" : `WIP horizon through ${monthLabel(financialProjectionEnd)}`],
@@ -346,7 +346,9 @@ export default function MonthlyHoursPage() {
                   ))}
                 </div>
                 <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-                  Viewing {showYtdBilling ? "YTD revenue" : "lifetime billed"} for {financialWip.summary.billedProjectCount} of {financialWip.summary.projectCount} selected projects
+                  {showYtdBilling
+                    ? `Viewing companywide QBO YTD Total Income; the reconciliation below identifies the ${money.format(financialWip.qboIncomeReconciliation?.selectedProjectIncome || 0)} assigned to selected WIP projects`
+                    : `Viewing lifetime billed for ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} selected projects`}
                   {` · Contract WIP always uses ${financialWip.summary.billingAccountingMethod || "QBO"} lifetime billing from ${dateLabel(financialWip.summary.billingPeriodStart)} through ${dateLabel(financialWip.summary.billingPeriodEnd)}`}
                   {financialWip.summary.qboImportedAt && ` · QBO imported ${new Date(financialWip.summary.qboImportedAt).toLocaleString()}`}
                 </div>

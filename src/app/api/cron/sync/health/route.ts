@@ -32,7 +32,7 @@ type StateRow = {
 };
 
 async function loadHealth(companyId: string) {
-  const [datasets, staleProjects, control, webhookQueue, webhookEvents, projectReconciliation] = await Promise.all([
+  const [datasets, staleProjects, control, webhookQueue, webhookEvents, projectReconciliation, timecardNotifications] = await Promise.all([
     prisma.$queryRawUnsafe<StateRow[]>(
       `
         SELECT
@@ -96,6 +96,9 @@ async function loadHealth(companyId: string) {
       `,
       companyId
     ),
+    prisma.$queryRawUnsafe(
+      `SELECT status, COUNT(*)::int AS count, MIN(available_at) AS oldest_available FROM timecard_notifications GROUP BY status ORDER BY status`
+    ),
   ]);
   return {
     companyId,
@@ -106,6 +109,7 @@ async function loadHealth(companyId: string) {
     webhookQueue,
     lastWebhookReceivedAt: webhookEvents[0]?.last_received_at || null,
     projectReconciliation: projectReconciliation[0] || null,
+    timecardNotifications,
   };
 }
 

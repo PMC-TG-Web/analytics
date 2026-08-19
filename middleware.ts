@@ -440,7 +440,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/cron/project-reconciliation/') ||
     pathname === '/api/cron/nightly-structure' ||
     pathname.startsWith('/api/cron/nightly-structure/') ||
-    pathname === '/api/cron/productivity-review-reminders'
+    pathname === '/api/cron/productivity-review-reminders' ||
+    pathname === '/api/cron/timecard-notifications'
   ) {
     return NextResponse.next();
   }

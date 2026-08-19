@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { extractTimesheetId } from "@/lib/timecardNotification";
 
 export type ProcoreTimecardEntry = Record<string, unknown>;
 type MutableJsonObject = Record<string, Prisma.InputJsonValue>;
@@ -189,6 +190,85 @@ function toNullableFloat(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function notificationActivationDate(): Date | null {
+  const configured = String(process.env.TIMECARD_NOTIFICATION_NOT_BEFORE || "").trim();
+  if (!configured) return null;
+  const parsed = new Date(configured);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+async function enqueueEligibleTimecardNotifications(
+  entries: ProcoreTimecardEntry[],
+  params: PersistTimecardEntriesParams,
+) {
+  const notBefore = notificationActivationDate();
+  const companyId = String(params.companyId || "").trim();
+  if (!notBefore || !companyId) return 0;
+
+  const entriesByTimesheet = new Map<string, ProcoreTimecardEntry>();
+  for (const entry of entries) {
+    const timesheetId = extractTimesheetId(entry);
+    if (!timesheetId || entriesByTimesheet.has(timesheetId)) continue;
+    entriesByTimesheet.set(timesheetId, entry);
+  }
+  if (!entriesByTimesheet.size) return 0;
+
+  const delaySeconds = Math.min(
+    1_800,
+    Math.max(0, Number.parseInt(process.env.TIMECARD_NOTIFICATION_DELAY_SECONDS || "120", 10) || 0),
+  );
+  let queued = 0;
+
+  for (const [timesheetId, entry] of entriesByTimesheet) {
+    const rows = await prisma.$queryRaw<Array<{
+      earliest_created_at: Date | null;
+      timecard_date: Date | null;
+      created_by_name: string | null;
+    }>>`
+      SELECT
+        MIN("procoreCreatedAt") AS earliest_created_at,
+        MIN("date") AS timecard_date,
+        MIN("createdByName") AS created_by_name
+      FROM "TimecardEntry"
+      WHERE "procoreProjectId" = ${params.projectId}
+        AND "procoreCompanyId" = ${companyId}
+        AND "procoreDeletedAt" IS NULL
+        AND COALESCE(
+          "customFields" #>> '{originalData,timesheet_id}',
+          "customFields" #>> '{originalData,_timesheet_id}'
+        ) = ${timesheetId}
+    `;
+    const summary = rows[0];
+    const earliestCreatedAt = summary?.earliest_created_at
+      || toNullableDate(entry.created_at);
+
+    // This release is intentionally non-retroactive. Looking at the earliest
+    // line also prevents a line later added to an old timesheet from appearing
+    // to be a newly-created timecard.
+    if (!earliestCreatedAt || earliestCreatedAt < notBefore) continue;
+
+    const result = await prisma.timecardNotification.createMany({
+      data: [{
+        companyId,
+        projectId: params.projectId,
+        timesheetId,
+        timecardDate: summary?.timecard_date || (
+          normalizeDate(entry.date ?? entry.log_date)
+            ? new Date(`${normalizeDate(entry.date ?? entry.log_date)}T00:00:00.000Z`)
+            : null
+        ),
+        createdByName: summary?.created_by_name
+          || toNullableString(asObject(entry.created_by).name),
+        availableAt: new Date(Date.now() + delaySeconds * 1_000),
+      }],
+      skipDuplicates: true,
+    });
+    queued += result.count;
+  }
+
+  return queued;
+}
+
 function toNullableString(value: unknown): string | null {
   const s = String(value ?? "").trim();
   return s || null;
@@ -318,7 +398,7 @@ export async function persistTimecardEntries(
   params: PersistTimecardEntriesParams
 ) {
   if (!entries.length) {
-    return { attempted: 0, saved: 0, skipped: 0, projectLinked: false, projectCreated: false, linkedProjectId: null as string | null };
+    return { attempted: 0, saved: 0, skipped: 0, notificationsQueued: 0, projectLinked: false, projectCreated: false, linkedProjectId: null as string | null };
   }
 
   const linkedProjectResult = await resolveLinkedProject(params);
@@ -394,11 +474,13 @@ export async function persistTimecardEntries(
   }
 
   await Promise.all(Array.from({ length: workerCount }, () => persistNextEntry()));
+  const notificationsQueued = await enqueueEligibleTimecardNotifications(entries, params);
 
   return {
     attempted: entries.length,
     saved,
     skipped,
+    notificationsQueued,
     projectLinked: Boolean(linkedProjectResult.project),
     projectCreated: linkedProjectResult.created,
     linkedProjectId: linkedProjectResult.project?.id ?? null,

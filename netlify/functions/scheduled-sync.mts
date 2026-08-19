@@ -82,6 +82,26 @@ const handler = async () => {
       + ` completeFailed=${reminderBody?.completionNoticesFailed ?? "?"}`,
     );
 
+    const timecardNotificationResponse = await fetch(
+      `${baseUrl}/api/cron/timecard-notifications`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+      },
+    );
+    const timecardNotificationBody = await timecardNotificationResponse.json().catch(() => null) as Record<string, unknown> | null;
+    console.log(
+      `[scheduled-sync] Timecard notifications ${timecardNotificationResponse.ok ? "processed" : "failed"}`
+      + ` - status=${timecardNotificationResponse.status}`
+      + ` scanned=${timecardNotificationBody?.scanned ?? "?"}`
+      + ` sent=${timecardNotificationBody?.sent ?? "?"}`
+      + ` retried=${timecardNotificationBody?.retried ?? "?"}`
+      + ` failed=${timecardNotificationBody?.failed ?? "?"}`,
+    );
+
     let healthStatus: number | null = null;
     let healthBody: Record<string, unknown> | null = null;
     if (cadence.runHealthMonitor) {
@@ -161,9 +181,10 @@ const handler = async () => {
       || (reconciliationStatus >= 200 && reconciliationStatus < 300);
 
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && dispatch.ok && healthOk && reconciliationOk,
+      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && dispatch.ok && healthOk && reconciliationOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
+      timecardNotificationStatus: timecardNotificationResponse.status,
       dispatchStatus: dispatch.status,
       healthStatus,
       reconciliationStatus,
@@ -173,8 +194,9 @@ const handler = async () => {
       body,
       reminderBody,
       healthBody,
+      timecardNotificationBody,
     }), {
-      status: ok && reminderResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
+      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

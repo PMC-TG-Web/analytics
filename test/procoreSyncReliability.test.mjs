@@ -51,6 +51,24 @@ test("health evaluation catches stale reconciliation and stuck webhook work", ()
   assert.ok(issues.some((issue) => issue.includes("stuck")));
 });
 
+test("health evaluation reports permanently failed timecard notifications", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-08-19T14:55:00.000Z" },
+    ],
+    webhookQueue: [],
+    timecardNotifications: [
+      { status: "failed", count: 2, oldest_available: "2026-08-19T14:00:00.000Z" },
+    ],
+    projectReconciliation: {
+      last_success_at: "2026-08-19T14:30:00.000Z",
+      last_attempt_at: "2026-08-19T14:30:00.000Z",
+    },
+  }, new Date("2026-08-19T15:00:00.000Z"));
+
+  assert.ok(issues.includes("2 timecard notification(s) are permanently failed."));
+});
+
 test("health evaluation stays quiet when core automation is current", () => {
   const now = new Date("2026-08-10T16:00:00.000Z");
   assert.deepEqual(evaluateProcoreSyncHealth({

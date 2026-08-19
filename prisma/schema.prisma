@@ -1150,6 +1150,36 @@ model ProcoreWebhookQueue {
   @@map("procore_webhook_queue")
 }
 
+/// One durable email delivery per Procore timesheet. A timesheet can contain
+/// many timecard-entry lines, so the unique key prevents line-level emails and
+/// duplicate sends caused by sync overlap or webhook retries.
+model TimecardNotification {
+  id                String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId         String    @map("company_id")
+  projectId         String    @map("project_id")
+  timesheetId       String    @map("timesheet_id")
+  timecardDate      DateTime? @map("timecard_date") @db.Date
+  createdByName     String?   @map("created_by_name")
+  status            String    @default("pending")
+  attempts          Int       @default(0)
+  maxAttempts       Int       @default(12) @map("max_attempts")
+  availableAt       DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  lockedAt          DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockedBy          String?   @map("locked_by")
+  recipientEmails   Json?     @map("recipient_emails")
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  providerMessageId String?   @map("provider_message_id")
+  lastError         String?   @map("last_error")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, projectId, timesheetId], map: "uq_timecard_notification_timesheet")
+  @@index([status, availableAt], map: "idx_timecard_notification_pending")
+  @@index([projectId], map: "idx_timecard_notification_project")
+  @@index([sentAt(sort: Desc)], map: "idx_timecard_notification_sent")
+  @@map("timecard_notifications")
+}
+
 model GanttV2Project {
   id             String         @id
   projectName    String         @map("project_name")

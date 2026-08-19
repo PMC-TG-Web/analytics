@@ -287,6 +287,7 @@ export async function POST(request: Request) {
       projectsWithActivity: 0,
       totalEntriesFetched: 0,
       totalEntriesSaved: 0,
+      totalNotificationsQueued: 0,
       totalProjectsCreated: 0,
       activeProjects: [] as Array<{
         projectId: string;
@@ -294,6 +295,7 @@ export async function POST(request: Request) {
         projectName: string;
         entryCount: number;
         savedCount: number;
+        notificationsQueued: number;
         skippedCount: number;
         projectCreated: boolean;
         linkedProjectId: string | null;
@@ -337,6 +339,7 @@ export async function POST(request: Request) {
 
         let savedCount = 0;
         let skippedCount = 0;
+        let notificationsQueued = 0;
         let projectCreated = false;
         let linkedProjectId: string | null = null;
 
@@ -351,9 +354,11 @@ export async function POST(request: Request) {
           });
           savedCount = result.saved;
           skippedCount = result.skipped;
+          notificationsQueued = result.notificationsQueued;
           projectCreated = result.projectCreated;
           linkedProjectId = result.linkedProjectId;
           summary.totalEntriesSaved += result.saved;
+          summary.totalNotificationsQueued += result.notificationsQueued;
           if (projectCreated) summary.totalProjectsCreated += 1;
         } else {
           savedCount = entries.length;
@@ -366,6 +371,7 @@ export async function POST(request: Request) {
           entryCount: entries.length,
           savedCount,
           skippedCount,
+          notificationsQueued,
           projectCreated,
           linkedProjectId,
         });

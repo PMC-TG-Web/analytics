@@ -11,6 +11,11 @@ export type ProcoreSyncHealthSnapshot = {
     count: number;
     oldest_available: Date | string | null;
   }>;
+  timecardNotifications?: Array<{
+    status: string;
+    count: number;
+    oldest_available: Date | string | null;
+  }>;
   projectReconciliation: {
     last_success_at: Date | string | null;
     last_attempt_at: Date | string | null;
@@ -77,6 +82,16 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     }
     if (["pending", "processing"].includes(status) && ageMinutes(row.oldest_available, now) > 20) {
       issues.push(`${row.count} Procore webhook event(s) have been stuck for more than 20 minutes.`);
+    }
+  }
+
+  for (const row of snapshot.timecardNotifications || []) {
+    const status = String(row.status || "").toLowerCase();
+    if (status === "failed" && row.count > 0) {
+      issues.push(`${row.count} timecard notification(s) are permanently failed.`);
+    }
+    if (["pending", "processing"].includes(status) && ageMinutes(row.oldest_available, now) > 30) {
+      issues.push(`${row.count} timecard notification(s) have been stuck for more than 30 minutes.`);
     }
   }
 

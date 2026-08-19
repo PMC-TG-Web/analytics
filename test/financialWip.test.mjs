@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
+  projectNumberMatchesYear,
 } from "../src/lib/financialWip.ts";
 
 function project(overrides) {
@@ -86,4 +87,13 @@ test("financial WIP lead time divides sold backlog by average monthly billing", 
   ], 889_033);
 
   assert.ok(Math.abs(result.summary.leadTimeMonths - 6.49605470213142) < 1e-12);
+});
+
+test("contract year follows the Procore project number convention", () => {
+  assert.equal(projectNumberMatchesYear("2603 - WC", 2026), true);
+  assert.equal(projectNumberMatchesYear("2601-MW", 2026), true);
+  assert.equal(projectNumberMatchesYear("PROJECT-2026-A", 2026), true);
+  assert.equal(projectNumberMatchesYear("2508 - SC", 2026), false);
+  assert.equal(projectNumberMatchesYear("WG-25-001", 2026), false);
+  assert.equal(projectNumberMatchesYear("PMC-OPS", 2026), false);
 });

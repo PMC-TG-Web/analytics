@@ -118,6 +118,10 @@ type ApiResponse = {
       billingPeriodStart: string | null;
       billingPeriodEnd: string | null;
       billingAccountingMethod: string | null;
+      contractYear: number;
+      soldContractValue: number;
+      soldContractProjectCount: number;
+      soldProjectCount: number;
     };
     qboIncomeReconciliation: {
       periodStart: string | null;
@@ -187,7 +191,6 @@ export default function MonthlyHoursPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [billingPeriod, setBillingPeriod] = useState<"ytd" | "lifetime">("ytd");
 
   useEffect(() => {
     let active = true;
@@ -255,10 +258,6 @@ export default function MonthlyHoursPage() {
   const revenueMonthly = data?.revenueMonthly || [];
   const revenueSummary = data?.revenueSummary;
   const financialWip = data?.financialWip;
-  const showYtdBilling = billingPeriod === "ytd" && financialWip?.qboIncomeReconciliation != null;
-  const displayedBilled = showYtdBilling
-    ? financialWip.qboIncomeReconciliation!.companyIncome
-    : financialWip?.summary.netBilled || 0;
   const financialLeadTimeMonths = financialWip?.summary.leadTimeMonths;
   const financialProjectedMonthCount = Math.ceil(financialLeadTimeMonths || 0);
   const financialProjectionEnd = addMonths(currentPeriod, financialProjectedMonthCount);
@@ -348,15 +347,11 @@ export default function MonthlyHoursPage() {
                   <p className="mt-1 text-xs text-slate-300">
                     Positive unbilled dollars ÷ KPI average billed YTD per month. Overbilling is reported separately and does not reduce WIP.
                   </p>
-                  <div className="mt-4 inline-flex overflow-hidden border border-slate-600 text-xs font-black uppercase">
-                    <button type="button" onClick={() => setBillingPeriod("ytd")} className={`px-4 py-2 ${billingPeriod === "ytd" ? "bg-emerald-300 text-slate-950" : "bg-slate-800 text-white hover:bg-slate-700"}`}>YTD</button>
-                    <button type="button" onClick={() => setBillingPeriod("lifetime")} className={`border-l border-slate-600 px-4 py-2 ${billingPeriod === "lifetime" ? "bg-emerald-300 text-slate-950" : "bg-slate-800 text-white hover:bg-slate-700"}`}>Lifetime</button>
-                  </div>
                 </div>
                 <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
                   {[
-                    ["Contract value", money.format(financialWip.summary.contractValue), `${financialWip.summary.contractProjectCount} of ${financialWip.summary.projectCount} projects have contract values`],
-                    [showYtdBilling ? "YTD billed" : "Lifetime billed", money.format(displayedBilled), showYtdBilling ? `QBO P&L Total Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}` : `Selected-project QBO P&L Income · ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} projects`],
+                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} contracts · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} projects have contract values`],
+                    ["YTD billed", money.format(financialWip.qboIncomeReconciliation?.companyIncome || 0), `Companywide QBO P&L Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
                     ["Open A/R", financialWip.qboOpenReceivables ? money.format(financialWip.qboOpenReceivables.total) : "—", financialWip.qboOpenReceivables ? `QBO A/R Aging Summary as of ${dateLabel(financialWip.qboOpenReceivables.reportDate)}` : "Awaiting the next QBO import"],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
@@ -371,9 +366,7 @@ export default function MonthlyHoursPage() {
                   ))}
                 </div>
                 <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-                  {showYtdBilling
-                    ? `Viewing companywide QBO YTD Total Income; the reconciliation below identifies the ${money.format(financialWip.qboIncomeReconciliation?.selectedProjectIncome || 0)} assigned to selected WIP projects`
-                    : `Viewing lifetime billed for ${financialWip.summary.billedProjectCount} of ${financialWip.summary.projectCount} selected projects`}
+                  {`Viewing companywide QBO YTD Total Income; WIP separately uses lifetime billing for ${financialWip.summary.billedProjectCount} not-complete projects`}
                   {` · Contract WIP always uses ${financialWip.summary.billingAccountingMethod || "QBO"} lifetime billing from ${dateLabel(financialWip.summary.billingPeriodStart)} through ${dateLabel(financialWip.summary.billingPeriodEnd)}`}
                   {financialWip.summary.qboImportedAt && ` · QBO imported ${new Date(financialWip.summary.qboImportedAt).toLocaleString()}`}
                 </div>
@@ -452,7 +445,7 @@ export default function MonthlyHoursPage() {
                           <th className="px-4 py-3 text-left">Status</th>
                           <th className="px-4 py-3 text-left">Contract source</th>
                           <th className="px-4 py-3 text-right">Contract</th>
-                          <th className="px-4 py-3 text-right">{showYtdBilling ? "YTD revenue" : "Lifetime billed"}</th>
+                          <th className="px-4 py-3 text-right">Lifetime billed</th>
                           <th className="px-4 py-3 text-right">Open A/R</th>
                           <th className="px-4 py-3 text-right">Balance</th>
                           <th className="px-4 py-3 text-right">Billed %</th>
@@ -472,7 +465,7 @@ export default function MonthlyHoursPage() {
                               {project.revenueOnly ? "Revenue only" : project.contractValueSource === "procore" ? "Procore" : project.contractValueSource === "qbo-estimates" ? "QBO estimate" : "Unavailable"}
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">{project.contractValue === null ? "—" : money.format(project.contractValue)}</td>
-                            <td className="px-4 py-3 text-right">{showYtdBilling ? (project.ytdBilled === null ? "—" : money.format(project.ytdBilled)) : (project.netBilled === null ? "—" : money.format(project.netBilled))}</td>
+                            <td className="px-4 py-3 text-right">{project.netBilled === null ? "—" : money.format(project.netBilled)}</td>
                             <td className="px-4 py-3 text-right align-top">
                               {project.openReceivables ? (
                                 <details className="group ml-auto w-fit">

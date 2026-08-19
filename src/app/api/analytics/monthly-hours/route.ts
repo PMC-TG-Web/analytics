@@ -6,6 +6,7 @@ import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractV
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
+  projectNumberMatchesYear,
 } from "@/lib/financialWip";
 import {
   excludeMarkedQboProjects,
@@ -89,6 +90,7 @@ export async function GET(request: NextRequest) {
       qboSnapshot,
       excludedQboCustomerIds,
       estimatingProjects,
+      canonicalProcoreProjects,
     ] = await Promise.all([
       prisma.$queryRawUnsafe<DbRow[]>(
         `
@@ -260,6 +262,14 @@ export async function GET(request: NextRequest) {
       }),
       loadExcludedQboCustomerIds(),
       loadEstimatingDashboardProjects(),
+      prisma.pmcProject.findMany({
+        where: { companyId },
+        select: {
+          procoreProjectId: true,
+          bidBoardStatus: true,
+          status: true,
+        },
+      }),
     ]);
 
     const projects = projectRows.map((row) => ({
@@ -372,17 +382,25 @@ export async function GET(request: NextRequest) {
         .filter((project) => project.procoreProjectId)
         .map((project) => [project.procoreProjectId as string, project]),
     );
+    const procoreStatusByProjectId = new Map(
+      canonicalProcoreProjects.map((project) => [
+        project.procoreProjectId,
+        textValue(project.bidBoardStatus || project.status),
+      ]),
+    );
     const visibleQboProjects = excludeMarkedQboProjects(
       allQboProjects,
       excludedQboCustomerIds,
     );
-    const financialWip = calculateFinancialWip(
-      visibleQboProjects.map((row) => {
+    const financialProjectRows = visibleQboProjects.map((row) => {
         const billing = recordValue(selectedBilling[row.qboCustomerId]?.billing);
         const netBilled = nullableNumberValue(billing.netBilled);
         const procoreProject = row.procoreProjectId
           ? estimatingByProcoreId.get(row.procoreProjectId)
           : undefined;
+        const procoreStatus = row.procoreProjectId
+          ? procoreStatusByProjectId.get(row.procoreProjectId) || procoreProject?.status || null
+          : null;
         const contract = resolveProjectContractValue({
           procoreProjectId: row.procoreProjectId,
           procoreBaseEstimate: procoreProject?.sales,
@@ -392,13 +410,15 @@ export async function GET(request: NextRequest) {
         });
         const projectOpenReceivables = recordValue(openReceivablesByCustomerId[row.qboCustomerId]);
         return {
+          source: row,
+          financial: {
           qboCustomerId: row.qboCustomerId,
           projectName: row.projectName,
           customerName: customerFromFullyQualifiedName(row.fullyQualifiedName),
           procoreProjectId: row.procoreProjectId,
           procoreProjectNumber: row.procoreProjectNumber,
           procoreProjectName: row.procoreProjectName,
-          procoreStatus: procoreProject?.status || null,
+          procoreStatus,
           contractValue: contract.contractValue,
           contractValueSource: contract.contractValueSource,
           netBilled,
@@ -417,9 +437,22 @@ export async function GET(request: NextRequest) {
                 total: numberValue(projectOpenReceivables.total),
               },
           billingProgressPercent: contract.billingProgressPercent,
+          },
         };
-      }),
+      });
+    const wipProjectRows = financialProjectRows.filter(({ financial }) =>
+      !["complete", "completed"].includes(String(financial.procoreStatus || "").trim().toLowerCase())
+    );
+    const soldThisYearProjectRows = financialProjectRows.filter(({ source }) =>
+      projectNumberMatchesYear(source.procoreProjectNumber, currentYear)
+    );
+    const financialWip = calculateFinancialWip(
+      wipProjectRows.map(({ financial }) => financial),
       averageMonthlyRevenue,
+    );
+    const soldThisYear = calculateFinancialWip(
+      soldThisYearProjectRows.map(({ financial }) => financial),
+      0,
     );
     const qboIncomeReconciliation = incomeReconciliationSource.companyIncome == null
       ? null
@@ -431,7 +464,7 @@ export async function GET(request: NextRequest) {
             companyIncome: incomeReconciliationSource.companyIncome,
             incomeByCustomerId,
             projectCustomerIds: allQboProjects.map((row) => row.qboCustomerId),
-            selectedProjectCustomerIds: visibleQboProjects.map((row) => row.qboCustomerId),
+            selectedProjectCustomerIds: wipProjectRows.map(({ source }) => source.qboCustomerId),
           }),
         };
 
@@ -468,6 +501,10 @@ export async function GET(request: NextRequest) {
         ...financialWip,
         summary: {
           ...financialWip.summary,
+          contractYear: currentYear,
+          soldContractValue: soldThisYear.summary.contractValue,
+          soldContractProjectCount: soldThisYear.summary.contractProjectCount,
+          soldProjectCount: soldThisYear.summary.projectCount,
           averageMonthCount: revenueMonthly.length,
           averagePeriodStart: revenueMonthly[0]?.month ?? null,
           averagePeriodEnd: revenueMonthly.at(-1)?.month ?? null,

@@ -38,6 +38,22 @@ function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+export function projectNumberMatchesYear(projectNumber: unknown, year: number): boolean {
+  if (!Number.isInteger(year) || year < 2000 || year > 2099) return false;
+  const value = String(projectNumber || "").trim();
+  if (!value) return false;
+
+  const fourDigitYear = value.match(/(?:^|\D)(20\d{2})(?=\D|$)/)?.[1];
+  if (fourDigitYear) return Number(fourDigitYear) === year;
+
+  const twoDigitYear = String(year).slice(-2);
+  const leadingJobYear = value.match(/^(\d{2})\d{2}(?=\D|$)/)?.[1];
+  if (leadingJobYear) return leadingJobYear === twoDigitYear;
+
+  const separatedJobYear = value.match(/(?:^|\D)(\d{2})(?=\D|$)/)?.[1];
+  return separatedJobYear === twoDigitYear;
+}
+
 export function calculateFinancialWip(
   projects: FinancialWipProjectInput[],
   averageMonthlyBilled: unknown,

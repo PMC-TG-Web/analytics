@@ -45,6 +45,12 @@ export function isValidTimecardNotificationEmail(value: string): boolean {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+export function isPmcdecorEmail(value: string): boolean {
+  const email = value.trim().toLowerCase();
+  return isValidTimecardNotificationEmail(email)
+    && email.slice(email.lastIndexOf("@") + 1) === "pmcdecor.com";
+}
+
 export function extractTimesheetId(entry: Record<string, unknown>): string | null {
   const originData = asRecord(entry.origin_data);
   const id = text(
@@ -73,7 +79,7 @@ export function selectProjectManagerRecipients(
 
     const email = text(role.login ?? role.email ?? role.email_address ?? roleUser?.login ?? roleUser?.email)
       .toLowerCase();
-    if (email && isValidTimecardNotificationEmail(email)) {
+    if (email && isPmcdecorEmail(email)) {
       emailsFromRoles.set(id || email, {
         name: text(role.name ?? roleUser?.name),
         email,
@@ -86,7 +92,7 @@ export function selectProjectManagerRecipients(
     const id = text(user.id ?? user.user_id);
     if (!id || !managerIds.has(id)) continue;
     const email = text(user.login ?? user.email ?? user.email_address).toLowerCase();
-    if (!isValidTimecardNotificationEmail(email)) continue;
+    if (!isPmcdecorEmail(email)) continue;
     recipients.set(email, {
       id,
       name: text(user.name || `${text(user.first_name)} ${text(user.last_name)}`),

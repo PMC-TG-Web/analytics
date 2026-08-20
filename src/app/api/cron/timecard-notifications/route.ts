@@ -11,6 +11,7 @@ import {
 } from "@/lib/procore";
 import {
   buildTimecardNotificationEmail,
+  isPmcdecorEmail,
   selectProjectManagerRecipients,
   type ProjectRoleLike,
   type ProjectUserLike,
@@ -170,7 +171,7 @@ async function processNotifications() {
         recipientCache.set(cacheKey, recipients);
       }
       if (!recipients.length) {
-        throw new Error("No active Project Manager role with a valid email was found in the Procore project directory.");
+        throw new Error("No active Project Manager with a @pmcdecor.com email was found in the Procore project directory.");
       }
 
       const lines = await prisma.$queryRaw<Array<{
@@ -206,7 +207,14 @@ async function processNotifications() {
         entries: lines.map((line) => ({ partyName: line.party_name, hours: line.hours })),
         projectUrl,
       });
-      const recipientEmails = recipients.map((recipient) => recipient.email);
+      // Defense in depth: never pass a non-PMC address to the email provider,
+      // even if recipient-resolution logic changes later.
+      const recipientEmails = recipients
+        .map((recipient) => recipient.email)
+        .filter(isPmcdecorEmail);
+      if (!recipientEmails.length) {
+        throw new Error("No active Project Manager with a @pmcdecor.com email was found in the Procore project directory.");
+      }
       const result = await resend.emails.send({
         from,
         to: recipientEmails,

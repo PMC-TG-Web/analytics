@@ -19,6 +19,7 @@ function loadModule() {
 const {
   buildTimecardNotificationEmail,
   extractTimesheetId,
+  isPmcdecorEmail,
   selectProjectManagerRecipients,
 } = loadModule();
 
@@ -33,15 +34,25 @@ test("selects only active users assigned to the Project Manager project role", (
     { role: "Project Manager", user_id: 10, is_active: true },
     { role: "Project Manager", user_id: 11, is_active: false },
     { role: "Foreman", user_id: 12, is_active: true },
+    { role: "Project Manager", user_id: 13, is_active: true },
+    { role: "Project Manager", user_id: 14, is_active: true, email: "vendor@example.com" },
   ], [
-    { id: 10, name: "Pat Manager", login: "PAT@example.com" },
-    { id: 11, name: "Old Manager", login: "old@example.com" },
-    { id: 12, name: "Fran Foreman", login: "foreman@example.com" },
+    { id: 10, name: "Pat Manager", login: "PAT@PMCDECOR.COM" },
+    { id: 11, name: "Old Manager", login: "old@pmcdecor.com" },
+    { id: 12, name: "Fran Foreman", login: "foreman@pmcdecor.com" },
+    { id: 13, name: "External Manager", login: "manager@vendor.com" },
   ]);
 
   assert.deepEqual(JSON.parse(JSON.stringify(recipients)), [
-    { id: "10", name: "Pat Manager", email: "pat@example.com" },
+    { id: "10", name: "Pat Manager", email: "pat@pmcdecor.com" },
   ]);
+});
+
+test("accepts only the exact pmcdecor.com recipient domain", () => {
+  assert.equal(isPmcdecorEmail("User@PMCDECOR.COM"), true);
+  assert.equal(isPmcdecorEmail("user@sub.pmcdecor.com"), false);
+  assert.equal(isPmcdecorEmail("user@pmcdecor.com.example"), false);
+  assert.equal(isPmcdecorEmail("user@example.com"), false);
 });
 
 test("builds one timecard email summarizing all entry lines", () => {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
+  calculateSoldContractValue,
   projectNumberMatchesYear,
 } from "../src/lib/financialWip.ts";
 
@@ -96,4 +97,18 @@ test("contract year follows the Procore project number convention", () => {
   assert.equal(projectNumberMatchesYear("2508 - SC", 2026), false);
   assert.equal(projectNumberMatchesYear("WG-25-001", 2026), false);
   assert.equal(projectNumberMatchesYear("PMC-OPS", 2026), false);
+});
+
+test("sold contract value uses one current-year project population", () => {
+  assert.deepEqual(calculateSoldContractValue([
+    { procoreProjectNumber: "2603 - WC", contractValue: 1_000_000.25 },
+    { procoreProjectNumber: "PROJECT-2026-A", contractValue: 250_000 },
+    { procoreProjectNumber: "2604 - Missing", contractValue: null },
+    { procoreProjectNumber: "2508 - SC", contractValue: 900_000 },
+  ], 2026), {
+    year: 2026,
+    projectCount: 3,
+    contractProjectCount: 2,
+    contractValue: 1_250_000.25,
+  });
 });

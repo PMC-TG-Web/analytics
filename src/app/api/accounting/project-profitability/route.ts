@@ -8,6 +8,7 @@ import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
+import { calculateSoldContractValue } from '@/lib/financialWip';
 import {
   excludeMarkedQboProjects,
   loadExcludedQboCustomerIds,
@@ -424,49 +425,62 @@ export async function GET(request: NextRequest) {
       : [];
     const excludedCustomerIds = await loadExcludedQboCustomerIds();
     const rows = excludeMarkedQboProjects(allRows, excludedCustomerIds);
+    const latest = snapshots[0];
+    const latestAllRows = latest && latest.id !== selected?.id
+      ? await prisma.qboProjectProfitabilityRow.findMany({
+          where: { snapshotId: latest.id },
+        })
+      : allRows;
+    const canonicalProjectRows = excludeMarkedQboProjects(
+      latestAllRows,
+      excludedCustomerIds,
+    ).filter((row) => row.recordType === 'project');
     const selectedSummary = selected
       ? await prisma.qboProfitabilitySnapshot.findUnique({
           where: { id: selected.id },
           select: { summary: true },
         })
       : null;
+    const latestSummary = latest && latest.id !== selected?.id
+      ? await prisma.qboProfitabilitySnapshot.findUnique({
+          where: { id: latest.id },
+          select: { summary: true },
+        })
+      : selectedSummary;
     const selectedBilling = billingByCustomerId(selectedSummary?.summary);
+    const canonicalBilling = billingByCustomerId(latestSummary?.summary);
     const procoreContracts = await loadProcoreContractAmounts(
-      rows.map((row) => String(row.procoreProjectId || ''))
+      [...rows, ...canonicalProjectRows].map((row) => String(row.procoreProjectId || ''))
     );
 
-    return noStoreJson({
-      success: true,
-      selectedSnapshotId: selected?.id || null,
-      excludedProjectCount: allRows.length - rows.length,
-      snapshots: snapshots.map((snapshot) => ({
-        id: snapshot.id,
-        sourceGeneratedAt: snapshot.sourceGeneratedAt.toISOString(),
-        startDate: snapshot.startDate.toISOString().slice(0, 10),
-        endDate: snapshot.endDate.toISOString().slice(0, 10),
-        accountingMethod: snapshot.accountingMethod,
-        readOnly: snapshot.readOnly,
-        sourceCounts: snapshot.sourceCounts,
-        importedAt: snapshot.importedAt.toISOString(),
-        rowCount: snapshot._count.rows,
-      })),
-      rows: rows.map((row) => {
-        const project = selectedBilling[row.qboCustomerId] || {};
-        const billing = project.billing && typeof project.billing === 'object' && !Array.isArray(project.billing)
-          ? project.billing as Record<string, unknown>
-          : {};
-        const qboEstimateTotal = finiteBillingNumber(billing.estimateTotal);
-        const qboNetBilled = finiteBillingNumber(billing.netBilled);
-        const procoreContract = row.procoreProjectId
-          ? procoreContracts.get(row.procoreProjectId)
-          : undefined;
-        const contract = resolveProjectContractValue({
-          procoreProjectId: row.procoreProjectId,
-          procoreBaseEstimate: procoreContract?.baseEstimate,
-          procoreApprovedChangeOrders: procoreContract?.approvedChangeOrders,
-          qboEstimateTotal,
-          netBilled: qboNetBilled,
-        });
+    const resolveFinancialValues = (
+      row: (typeof rows)[number],
+      billingSource: ReturnType<typeof billingByCustomerId>,
+    ) => {
+      const project = billingSource[row.qboCustomerId] || {};
+      const billing = project.billing && typeof project.billing === 'object' && !Array.isArray(project.billing)
+        ? project.billing as Record<string, unknown>
+        : {};
+      const qboEstimateTotal = finiteBillingNumber(billing.estimateTotal);
+      const qboNetBilled = finiteBillingNumber(billing.netBilled);
+      const procoreContract = row.procoreProjectId
+        ? procoreContracts.get(row.procoreProjectId)
+        : undefined;
+      const contract = resolveProjectContractValue({
+        procoreProjectId: row.procoreProjectId,
+        procoreBaseEstimate: procoreContract?.baseEstimate,
+        procoreApprovedChangeOrders: procoreContract?.approvedChangeOrders,
+        qboEstimateTotal,
+        netBilled: qboNetBilled,
+      });
+      return { billing, contract, qboEstimateTotal, qboNetBilled };
+    };
+
+    const responseRows = rows.map((row) => {
+        const { billing, contract, qboEstimateTotal, qboNetBilled } = resolveFinancialValues(
+          row,
+          selectedBilling,
+        );
         return {
           id: row.id,
           qboCustomerId: row.qboCustomerId,
@@ -515,7 +529,35 @@ export async function GET(request: NextRequest) {
           reportedNetIncome: Number(row.reportedNetIncome),
           reconciliationDifference: Number(row.reconciliationDifference),
         };
-      }),
+    });
+    const soldContracts = calculateSoldContractValue(
+      canonicalProjectRows.map((row) => ({
+        procoreProjectNumber: row.procoreProjectNumber,
+        contractValue: resolveFinancialValues(row, canonicalBilling).contract.contractValue,
+      })),
+      new Date().getFullYear(),
+    );
+
+    return noStoreJson({
+      success: true,
+      selectedSnapshotId: selected?.id || null,
+      excludedProjectCount: allRows.length - rows.length,
+      soldContracts: {
+        ...soldContracts,
+        snapshotId: latest?.id || null,
+      },
+      snapshots: snapshots.map((snapshot) => ({
+        id: snapshot.id,
+        sourceGeneratedAt: snapshot.sourceGeneratedAt.toISOString(),
+        startDate: snapshot.startDate.toISOString().slice(0, 10),
+        endDate: snapshot.endDate.toISOString().slice(0, 10),
+        accountingMethod: snapshot.accountingMethod,
+        readOnly: snapshot.readOnly,
+        sourceCounts: snapshot.sourceCounts,
+        importedAt: snapshot.importedAt.toISOString(),
+        rowCount: snapshot._count.rows,
+      })),
+      rows: responseRows,
     });
   } catch (error) {
     console.error('Failed to load QBO project profitability:', error);

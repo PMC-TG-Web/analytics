@@ -1,7 +1,6 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { projectNumberMatchesYear } from '@/lib/financialWip';
 
 type Snapshot = {
   id: string;
@@ -76,6 +75,13 @@ type LineItemDetail = {
 type ApiResponse = {
   success: boolean;
   selectedSnapshotId: string | null;
+  soldContracts: {
+    year: number;
+    projectCount: number;
+    contractProjectCount: number;
+    contractValue: number;
+    snapshotId: string | null;
+  };
   snapshots: Snapshot[];
   rows: ProfitabilityRow[];
   error?: string;
@@ -258,7 +264,7 @@ export default function QboProjectProfitabilityPage() {
   }, []);
 
   const selectedSnapshot = data?.snapshots.find((snapshot) => snapshot.id === data.selectedSnapshotId) || null;
-  const soldYear = Number(selectedSnapshot?.endDate.slice(0, 4)) || new Date().getFullYear();
+  const soldYear = data?.soldContracts.year ?? new Date().getFullYear();
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (data?.rows || []).filter((row) => {
@@ -278,11 +284,6 @@ export default function QboProjectProfitabilityPage() {
 
   const filteredTotals = useMemo(() => filteredRows.reduce(
     (totals, row) => ({
-      soldThisYear: totals.soldThisYear + (
-        projectNumberMatchesYear(row.procoreProjectNumber, soldYear)
-          ? row.contractValue || 0
-          : 0
-      ),
       cost: totals.cost + row.actualCost,
       profit: totals.profit + row.profit,
       procoreDirectCost: totals.procoreDirectCost + (row.procoreDirectCost || 0),
@@ -291,8 +292,8 @@ export default function QboProjectProfitabilityPage() {
       ),
       outstanding: totals.outstanding + row.qboOutstanding,
     }),
-    { soldThisYear: 0, cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0, outstanding: 0 },
-  ), [filteredRows, soldYear]);
+    { cost: 0, profit: 0, procoreDirectCost: 0, costVariance: 0, outstanding: 0 },
+  ), [filteredRows]);
 
   async function loadLineItemsForRow(row: ProfitabilityRow) {
     if (lineItemsByProject[row.qboCustomerId] || lineItemsLoading[row.qboCustomerId]) {
@@ -465,7 +466,7 @@ export default function QboProjectProfitabilityPage() {
 
           <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
             {[
-              [`Sold ${soldYear}`, filteredTotals.soldThisYear, 'text-teal-800'],
+              [`Sold ${soldYear}`, data?.soldContracts.contractValue ?? 0, 'text-teal-800'],
               ['QBO actual cost', filteredTotals.cost, 'text-amber-700'],
               ['Procore direct cost', filteredTotals.procoreDirectCost, 'text-indigo-700'],
               ['Matched QBO minus Procore', filteredTotals.costVariance, filteredTotals.costVariance > 0 ? 'text-red-700' : 'text-emerald-700'],
@@ -749,7 +750,7 @@ export default function QboProjectProfitabilityPage() {
         </section>
 
           <p className="px-1 pb-4 text-xs leading-5 text-slate-500">
-            Sold {soldYear} includes contract value only for projects whose Procore project number identifies them as {soldYear} jobs. Individual rows retain their full contract value: the Procore primary estimate plus approved change orders whenever the QBO row is matched to a Procore project. Unmatched rows use the currently associated QBO estimate total and are marked for review when multiple estimates exist. Net billed is QuickBooks P&amp;L Income and includes invoices, credit memos, and other posting adjustments. Billing progress compares net billed with the selected contract value. Profit and margin remain based on P&amp;L income and actual cost. Gross invoices, collections, and outstanding balances come from QBO invoice documents.
+            Sold {soldYear} uses the latest imported project set and stays fixed when table filters or historical snapshots change. It includes contract value only for projects whose Procore project number identifies them as {soldYear} jobs. Individual rows retain their full contract value: the Procore primary estimate plus approved change orders whenever the QBO row is matched to a Procore project. Unmatched rows use the currently associated QBO estimate total and are marked for review when multiple estimates exist. Net billed is QuickBooks P&amp;L Income and includes invoices, credit memos, and other posting adjustments. Billing progress compares net billed with the selected contract value. Profit and margin remain based on P&amp;L income and actual cost. Gross invoices, collections, and outstanding balances come from QBO invoice documents.
           </p>
       </div>
     </main>

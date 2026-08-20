@@ -6,7 +6,7 @@ import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractV
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
-  projectNumberMatchesYear,
+  calculateSoldContractValue,
 } from "@/lib/financialWip";
 import {
   excludeMarkedQboProjects,
@@ -443,16 +443,13 @@ export async function GET(request: NextRequest) {
     const wipProjectRows = financialProjectRows.filter(({ financial }) =>
       !["complete", "completed"].includes(String(financial.procoreStatus || "").trim().toLowerCase())
     );
-    const soldThisYearProjectRows = financialProjectRows.filter(({ source }) =>
-      projectNumberMatchesYear(source.procoreProjectNumber, currentYear)
-    );
     const financialWip = calculateFinancialWip(
       wipProjectRows.map(({ financial }) => financial),
       averageMonthlyRevenue,
     );
-    const soldThisYear = calculateFinancialWip(
-      soldThisYearProjectRows.map(({ financial }) => financial),
-      0,
+    const soldThisYear = calculateSoldContractValue(
+      financialProjectRows.map(({ financial }) => financial),
+      currentYear,
     );
     const qboIncomeReconciliation = incomeReconciliationSource.companyIncome == null
       ? null
@@ -502,9 +499,9 @@ export async function GET(request: NextRequest) {
         summary: {
           ...financialWip.summary,
           contractYear: currentYear,
-          soldContractValue: soldThisYear.summary.contractValue,
-          soldContractProjectCount: soldThisYear.summary.contractProjectCount,
-          soldProjectCount: soldThisYear.summary.projectCount,
+          soldContractValue: soldThisYear.contractValue,
+          soldContractProjectCount: soldThisYear.contractProjectCount,
+          soldProjectCount: soldThisYear.projectCount,
           averageMonthCount: revenueMonthly.length,
           averagePeriodStart: revenueMonthly[0]?.month ?? null,
           averagePeriodEnd: revenueMonthly.at(-1)?.month ?? null,

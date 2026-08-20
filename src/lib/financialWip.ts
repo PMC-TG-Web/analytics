@@ -54,6 +54,27 @@ export function projectNumberMatchesYear(projectNumber: unknown, year: number): 
   return separatedJobYear === twoDigitYear;
 }
 
+export function calculateSoldContractValue(
+  projects: Array<{ procoreProjectNumber: unknown; contractValue: unknown }>,
+  year: number,
+) {
+  const soldProjects = projects.filter((project) =>
+    projectNumberMatchesYear(project.procoreProjectNumber, year)
+  );
+  const contractProjects = soldProjects
+    .map((project) => finiteNumber(project.contractValue))
+    .filter((value): value is number => value != null);
+
+  return {
+    year,
+    projectCount: soldProjects.length,
+    contractProjectCount: contractProjects.length,
+    contractValue: roundCurrency(
+      contractProjects.reduce((sum, value) => sum + value, 0),
+    ),
+  };
+}
+
 export function calculateFinancialWip(
   projects: FinancialWipProjectInput[],
   averageMonthlyBilled: unknown,

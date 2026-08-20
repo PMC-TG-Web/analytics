@@ -136,6 +136,23 @@ test("middleware allows secret-authenticated reconciliation routes", async () =>
   assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
 });
 
+test("full project reconciliation has timeout headroom and rejects truncated responses", async () => {
+  const allProjectsRoute = await readFile(
+    new URL("../src/app/api/procore/sync/all-projects/route.ts", import.meta.url),
+    "utf8",
+  );
+  const backgroundWorker = await readFile(
+    new URL("../netlify/functions/project-reconciliation-background.mts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(allProjectsRoute, /mapWithConcurrency\(allProjectStages, writeConcurrency/);
+  assert.match(allProjectsRoute, /mapWithConcurrency\(allV1Projects, writeConcurrency/);
+  assert.match(allProjectsRoute, /mapWithConcurrency\(allBidBoardProjects, writeConcurrency/);
+  assert.match(backgroundWorker, /result\?\.success === true/);
+  assert.doesNotMatch(backgroundWorker, /result\?\.success !== false/);
+});
+
 test("health alert deduplication ignores changing backlog counts", () => {
   assert.equal(
     procoreHealthAlertFingerprint(["57 nightly structure projects are failing."]),

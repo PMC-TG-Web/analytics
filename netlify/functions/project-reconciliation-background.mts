@@ -15,15 +15,17 @@ const handler = async (request: Request) => {
     signal: AbortSignal.timeout(13 * 60_000),
   });
   const result = await response.json().catch(() => null);
+  const completed = response.ok && result?.success === true;
   console.log(JSON.stringify({
     event: "project-reconciliation-background",
     status: response.status,
     success: result?.success,
+    completed,
     totalMs: result?.totalMs,
     summary: result?.detail?.summary,
   }));
-  return Response.json({ success: response.ok && result?.success !== false, status: response.status, result }, {
-    status: response.ok && result?.success !== false ? 200 : 500,
+  return Response.json({ success: completed, status: response.status, result }, {
+    status: completed ? 200 : 500,
   });
 };
 

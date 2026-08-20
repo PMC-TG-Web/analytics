@@ -1212,6 +1212,13 @@ async function runAllProjectsSync(request: Request) {
       onboardingQueued: 0,
       errors: [] as string[]
     };
+    const writeConcurrency = Math.min(
+      6,
+      Math.max(
+        1,
+        Number.parseInt(process.env.PROCORE_PROJECT_RECONCILIATION_WRITE_CONCURRENCY || '4', 10) || 4,
+      ),
+    );
 
     const v1CustomerByProcoreId = new Map<string, string>();
     const v1CustomerByName = new Map<string, string>();
@@ -1230,7 +1237,7 @@ async function runAllProjectsSync(request: Request) {
       return '';
     }
 
-    for (const stage of allProjectStages) {
+    await mapWithConcurrency(allProjectStages, writeConcurrency, async (stage) => {
       try {
         const projectStageId = String(stage.id);
         await upsertProjectStageLive({
@@ -1248,12 +1255,12 @@ async function runAllProjectsSync(request: Request) {
         const message = e instanceof Error ? e.message : String(e);
         results.errors.push(`Stage ${String(stage?.name || stage?.id || 'unknown')}: ${message}`);
       }
-    }
+    });
 
     // 3. Process V1 Projects (Upsert into 'Project' table)
     // We use customFields to store the Procore ID to avoid breaking existing logic
     // We DO NOT overwrite 'status' if the project is already mapped to a schedule, unless it's new
-    for (const p of allV1Projects) {
+    await mapWithConcurrency(allV1Projects, writeConcurrency, async (p) => {
       try {
         const procoreId = String(p.id);
         const name = p.name || p.display_name || "Untitled Procore Project";
@@ -1399,7 +1406,7 @@ async function runAllProjectsSync(request: Request) {
         const message = e instanceof Error ? e.message : String(e);
         results.errors.push(`V1 ${p.name}: ${message}`);
       }
-    }
+    });
 
     const activeV1ProjectIds = activeV1Projects
       .map((project: Record<string, unknown>) => String(project.id || "").trim())
@@ -1430,7 +1437,7 @@ async function runAllProjectsSync(request: Request) {
     }
 
     // 4. Process Bid Board Projects
-    for (const bb of allBidBoardProjects) {
+    await mapWithConcurrency(allBidBoardProjects, writeConcurrency, async (bb) => {
       try {
         const bidId = String(bb.id);
         const procoreProjectId = bb.project_id ? String(bb.project_id) : null;
@@ -1594,7 +1601,7 @@ async function runAllProjectsSync(request: Request) {
         const message = e instanceof Error ? e.message : String(e);
         results.errors.push(`Bid ${bb.name}: ${message}`);
       }
-    }
+    });
 
     return NextResponse.json({
       success: true,

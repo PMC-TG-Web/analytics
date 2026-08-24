@@ -17,6 +17,7 @@ function loadModule() {
 }
 
 const {
+  buildTimecardNotificationErrorEmail,
   buildTimecardNotificationEmail,
   extractTimesheetId,
   isPmcdecorEmail,
@@ -77,6 +78,23 @@ test("builds one timecard email summarizing all entry lines", () => {
   assert.match(email.html, /&lt;Sample &amp; Project&gt;/);
 });
 
+test("builds an error alert with timecard delivery details", () => {
+  const email = buildTimecardNotificationErrorEmail({
+    projectNumber: "2601",
+    projectName: "Sample Project",
+    timesheetId: "98765",
+    timecardDate: new Date("2026-08-24T00:00:00.000Z"),
+    attemptNumber: 2,
+    errorMessage: "No active Project Manager was found.",
+    projectUrl: "https://example.com/project",
+  });
+
+  assert.match(email.subject, /Timecard email error/);
+  assert.match(email.text, /Timesheet ID: 98765/);
+  assert.match(email.text, /Delivery attempt: 2/);
+  assert.match(email.text, /No active Project Manager/);
+});
+
 test("the sender is scheduled and the delivery table is unique per timesheet", () => {
   const scheduledSync = fs.readFileSync("netlify/functions/scheduled-sync.mts", "utf8");
   const migration = fs.readFileSync(
@@ -85,4 +103,19 @@ test("the sender is scheduled and the delivery table is unique per timesheet", (
   );
   assert.match(scheduledSync, /api\/cron\/timecard-notifications/);
   assert.match(migration, /UNIQUE \(company_id, project_id, timesheet_id\)/);
+});
+
+test("timecard errors are durably retried only to Todd", () => {
+  const sender = fs.readFileSync("src/app/api/cron/timecard-notifications/route.ts", "utf8");
+  const migration = fs.readFileSync(
+    "prisma/migrations/20260824100000_add_timecard_notification_error_alerts/migration.sql",
+    "utf8",
+  );
+
+  assert.match(sender, /TIMECARD_ERROR_RECIPIENT = "todd@pmcdecor\.com"/);
+  assert.match(sender, /idempotencyKey: `timecard-error-/);
+  assert.match(sender, /processErrorAlerts/);
+  assert.match(migration, /error_alert_attempts INTEGER NOT NULL DEFAULT 0/);
+  assert.match(migration, /error_alert_sent_at TIMESTAMPTZ/);
+  assert.match(migration, /error_alert_message = last_error/);
 });

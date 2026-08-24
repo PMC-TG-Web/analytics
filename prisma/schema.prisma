@@ -1170,6 +1170,14 @@ model TimecardNotification {
   sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
   providerMessageId String?   @map("provider_message_id")
   lastError         String?   @map("last_error")
+  errorAlertMessage String?   @map("error_alert_message")
+  errorAlertAttempts Int      @default(0) @map("error_alert_attempts")
+  errorAlertAvailableAt DateTime? @map("error_alert_available_at") @db.Timestamptz(6)
+  errorAlertLockedAt DateTime? @map("error_alert_locked_at") @db.Timestamptz(6)
+  errorAlertLockedBy String?   @map("error_alert_locked_by")
+  errorAlertSentAt DateTime?   @map("error_alert_sent_at") @db.Timestamptz(6)
+  errorAlertProviderMessageId String? @map("error_alert_provider_message_id")
+  errorAlertLastError String?  @map("error_alert_last_error")
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1177,6 +1185,7 @@ model TimecardNotification {
   @@index([status, availableAt], map: "idx_timecard_notification_pending")
   @@index([projectId], map: "idx_timecard_notification_project")
   @@index([sentAt(sort: Desc)], map: "idx_timecard_notification_sent")
+  @@index([errorAlertSentAt, errorAlertAvailableAt], map: "idx_timecard_notification_error_alert")
   @@map("timecard_notifications")
 }
 

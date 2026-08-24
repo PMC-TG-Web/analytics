@@ -15,6 +15,16 @@ export type TimecardNotificationEmailInput = {
   projectUrl: string;
 };
 
+export type TimecardNotificationErrorEmailInput = {
+  projectNumber: string | null;
+  projectName: string;
+  timesheetId: string;
+  timecardDate: Date | null;
+  attemptNumber: number;
+  errorMessage: string;
+  projectUrl: string;
+};
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -160,6 +170,45 @@ export function buildTimecardNotificationEmail(input: TimecardNotificationEmailI
           <a href="${escapeHtml(input.projectUrl)}" style="display:inline-block;margin-top:22px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px">Open Project in Procore</a>
         </div>
       </div>
+    </div>
+  `.trim();
+
+  return { subject, text: textBody, html };
+}
+
+export function buildTimecardNotificationErrorEmail(input: TimecardNotificationErrorEmailInput) {
+  const projectLabel = [input.projectNumber, input.projectName]
+    .filter(Boolean)
+    .join(" · ")
+    .replace(/[\r\n]+/g, " ");
+  const dateLabel = input.timecardDate
+    ? input.timecardDate.toLocaleDateString("en-US", { timeZone: "UTC", dateStyle: "long" })
+    : "Date not available";
+  const errorMessage = input.errorMessage.replace(/[\r\n]+/g, " ").slice(0, 1_000);
+  const subject = `[Analytics] Timecard email error — ${projectLabel}`;
+  const textBody = [
+    "Analytics could not send a Procore timecard notification.",
+    "",
+    `Project: ${projectLabel}`,
+    `Work date: ${dateLabel}`,
+    `Timesheet ID: ${input.timesheetId}`,
+    `Delivery attempt: ${input.attemptNumber}`,
+    `Error: ${errorMessage}`,
+    "",
+    `Open project: ${input.projectUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5">
+      <h2>Timecard email delivery error</h2>
+      <p>Analytics could not send a Procore timecard notification.</p>
+      <table role="presentation" style="border-collapse:collapse">
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Project</td><td>${escapeHtml(projectLabel)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Work date</td><td>${escapeHtml(dateLabel)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Timesheet ID</td><td>${escapeHtml(input.timesheetId)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Attempt</td><td>${input.attemptNumber}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Error</td><td>${escapeHtml(errorMessage)}</td></tr>
+      </table>
+      <p><a href="${escapeHtml(input.projectUrl)}">Open Project in Procore</a></p>
     </div>
   `.trim();
 

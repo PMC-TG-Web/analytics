@@ -10,6 +10,7 @@ import {
   withProcoreLiveApiBypassForSyncSecret,
 } from "@/lib/procore";
 import {
+  buildTimecardNotificationErrorEmail,
   buildTimecardNotificationEmail,
   isPmcdecorEmail,
   selectProjectManagerRecipients,
@@ -89,6 +90,130 @@ function retryDelay(attempts: number) {
   return minutes[Math.min(Math.max(0, attempts - 1), minutes.length - 1)] * 60_000;
 }
 
+const TIMECARD_ERROR_RECIPIENT = "todd@pmcdecor.com";
+
+async function processErrorAlerts(params: {
+  resend: Resend;
+  from: string;
+  workerId: string;
+}) {
+  const now = new Date();
+  await prisma.timecardNotification.updateMany({
+    where: {
+      errorAlertSentAt: null,
+      errorAlertLockedAt: { lt: new Date(now.getTime() - 15 * 60_000) },
+    },
+    data: { errorAlertLockedAt: null, errorAlertLockedBy: null },
+  });
+
+  const alerts = await prisma.timecardNotification.findMany({
+    where: {
+      errorAlertMessage: { not: null },
+      errorAlertSentAt: null,
+      errorAlertLockedAt: null,
+      errorAlertAttempts: { lt: 12 },
+      OR: [
+        { errorAlertAvailableAt: null },
+        { errorAlertAvailableAt: { lte: now } },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    take: 10,
+  });
+
+  let sent = 0;
+  let retried = 0;
+  let failed = 0;
+
+  for (const alert of alerts) {
+    const claim = await prisma.timecardNotification.updateMany({
+      where: {
+        id: alert.id,
+        errorAlertSentAt: null,
+        errorAlertLockedAt: null,
+        errorAlertAttempts: alert.errorAlertAttempts,
+      },
+      data: {
+        errorAlertAttempts: { increment: 1 },
+        errorAlertLockedAt: new Date(),
+        errorAlertLockedBy: params.workerId,
+      },
+    });
+    if (!claim.count) continue;
+    const attemptNumber = alert.errorAlertAttempts + 1;
+
+    try {
+      const project = await prisma.pmcProject.findUnique({
+        where: {
+          companyId_procoreProjectId: {
+            companyId: alert.companyId,
+            procoreProjectId: alert.projectId,
+          },
+        },
+        select: { projectNumber: true, projectName: true },
+      });
+      const fallbackProject = project ? null : await prisma.project.findFirst({
+        where: { procoreId: alert.projectId },
+        select: { projectNumber: true, projectName: true },
+      });
+      const projectName = project?.projectName
+        || fallbackProject?.projectName
+        || `Procore Project ${alert.projectId}`;
+      const projectNumber = project?.projectNumber || fallbackProject?.projectNumber || null;
+      const projectUrl = `https://us02.procore.com/${encodeURIComponent(alert.projectId)}/project/home`;
+      const email = buildTimecardNotificationErrorEmail({
+        projectNumber,
+        projectName,
+        timesheetId: alert.timesheetId,
+        timecardDate: alert.timecardDate,
+        attemptNumber: alert.attempts,
+        errorMessage: alert.errorAlertMessage || "Unknown timecard email error",
+        projectUrl,
+      });
+      const result = await params.resend.emails.send({
+        from: params.from,
+        to: [TIMECARD_ERROR_RECIPIENT],
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+      }, {
+        idempotencyKey: `timecard-error-${alert.companyId}-${alert.projectId}-${alert.timesheetId}`,
+      });
+      if (result.error) throw new Error(result.error.message);
+
+      await prisma.timecardNotification.update({
+        where: { id: alert.id },
+        data: {
+          errorAlertSentAt: new Date(),
+          errorAlertProviderMessageId: result.data?.id || null,
+          errorAlertLockedAt: null,
+          errorAlertLockedBy: null,
+          errorAlertLastError: null,
+        },
+      });
+      sent += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const terminal = attemptNumber >= 12;
+      await prisma.timecardNotification.update({
+        where: { id: alert.id },
+        data: {
+          errorAlertAvailableAt: terminal
+            ? alert.errorAlertAvailableAt
+            : new Date(Date.now() + retryDelay(attemptNumber)),
+          errorAlertLockedAt: null,
+          errorAlertLockedBy: null,
+          errorAlertLastError: message.slice(0, 1_000),
+        },
+      });
+      if (terminal) failed += 1;
+      else retried += 1;
+    }
+  }
+
+  return { scanned: alerts.length, sent, retried, failed };
+}
+
 async function processNotifications() {
   const now = new Date();
   const workerId = `timecard-email:${Date.now()}`;
@@ -108,12 +233,29 @@ async function processNotifications() {
     orderBy: { createdAt: "asc" },
     take: 10,
   });
+  const errorAlertsDue = await prisma.timecardNotification.count({
+    where: {
+      errorAlertMessage: { not: null },
+      errorAlertSentAt: null,
+      errorAlertAttempts: { lt: 12 },
+      OR: [
+        { errorAlertAvailableAt: null },
+        { errorAlertAvailableAt: { lte: now } },
+      ],
+    },
+  });
 
-  if (!candidates.length) {
-    return { scanned: 0, claimed: 0, sent: 0, retried: 0, failed: 0 };
+  if (!candidates.length && !errorAlertsDue) {
+    return {
+      scanned: 0,
+      claimed: 0,
+      sent: 0,
+      retried: 0,
+      failed: 0,
+      errorAlerts: { scanned: 0, sent: 0, retried: 0, failed: 0 },
+    };
   }
 
-  const token = await getClientCredentialsToken();
   const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
   if (!resendApiKey) throw new Error("RESEND_API_KEY is not configured.");
   const resend = new Resend(resendApiKey);
@@ -123,6 +265,7 @@ async function processNotifications() {
     || "Procore Timecards <notifications@pmcdecor.com>",
   ).trim();
   const recipientCache = new Map<string, Awaited<ReturnType<typeof resolveProjectManagerRecipients>>>();
+  let token: string | null = null;
 
   let claimed = 0;
   let sent = 0;
@@ -144,6 +287,7 @@ async function processNotifications() {
     const attemptNumber = candidate.attempts + 1;
 
     try {
+      token = token || await getClientCredentialsToken();
       const project = await prisma.pmcProject.findUnique({
         where: {
           companyId_procoreProjectId: {
@@ -252,6 +396,10 @@ async function processNotifications() {
           lockedAt: null,
           lockedBy: null,
           lastError: message.slice(0, 1_000),
+          errorAlertMessage: candidate.errorAlertMessage || message.slice(0, 1_000),
+          errorAlertAvailableAt: candidate.errorAlertMessage
+            ? candidate.errorAlertAvailableAt
+            : new Date(),
         },
       });
       if (terminal) failed += 1;
@@ -259,7 +407,8 @@ async function processNotifications() {
     }
   }
 
-  return { scanned: candidates.length, claimed, sent, retried, failed };
+  const errorAlerts = await processErrorAlerts({ resend, from, workerId });
+  return { scanned: candidates.length, claimed, sent, retried, failed, errorAlerts };
 }
 
 export async function POST(request: NextRequest) {

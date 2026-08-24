@@ -9,6 +9,7 @@ import {
   classifyEstimateCostType,
   classifyLaborGroup,
   concreteYardQuantity,
+  estimateCogsCost,
   numericValue,
   selectClosestPopulatedEstimate,
   selectEstimateProposal,
@@ -33,6 +34,7 @@ const estimateDashboardLineSelect = {
   laborCost: true,
   laborSales: true,
   laborHours: true,
+  payload: true,
 } satisfies Prisma.ProcoreEstimateLineItemSelect;
 
 type EstimateDashboardLine = Prisma.ProcoreEstimateLineItemGetPayload<{
@@ -136,6 +138,7 @@ export type EstimatingDashboardProject = {
   hours: number;
   laborSales: number;
   laborCost: number;
+  cogsCost: number;
   pmcGroup: Record<string, number>;
   pmcBreakdown: Record<string, number>;
   concreteGroup: Record<string, number>;
@@ -158,6 +161,7 @@ type DashboardSummary = {
   totalApprovedPrimeChangeOrders: number;
   totalApprovedPrimeChangeOrderHours: number;
   totalCost: number;
+  totalCogsCost: number;
   totalHours: number;
   statusGroups: Record<string, {
     sales: number;
@@ -338,6 +342,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     hours: number;
     laborSales: number;
     laborCost: number;
+    cogsCost: number;
     lineCount: number;
     laborByGroup: Record<string, number>;
     concreteByGroup: Record<string, number>;
@@ -377,11 +382,13 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       hours: 0,
       laborSales: 0,
       laborCost: 0,
+      cogsCost: 0,
       lineCount: 0,
       laborByGroup: {},
       concreteByGroup: {},
     };
     addEstimateLineAmounts(totals, line);
+    totals.cogsCost += estimateCogsCost(line);
     totals.lineCount += 1;
     const hours = numericValue(line.laborHours);
     if (hours > 0) {
@@ -425,6 +432,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       hours: 0,
       laborSales: 0,
       laborCost: 0,
+      cogsCost: 0,
       lineCount: 0,
       laborByGroup: {},
       concreteByGroup: {},
@@ -486,6 +494,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       hours: totals.hours,
       laborSales: totals.laborSales,
       laborCost: totals.laborCost,
+      cogsCost: totals.cogsCost,
       pmcGroup: totals.laborByGroup,
       pmcBreakdown: totals.laborByGroup,
       concreteGroup: totals.concreteByGroup,
@@ -550,6 +559,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     totalApprovedPrimeChangeOrders: 0,
     totalApprovedPrimeChangeOrderHours: 0,
     totalCost: 0,
+    totalCogsCost: 0,
     totalHours: 0,
     statusGroups: {},
     contractors: {},
@@ -568,6 +578,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     summary.totalApprovedPrimeChangeOrders += project.approvedPrimeChangeOrderAmount;
     summary.totalApprovedPrimeChangeOrderHours += project.approvedPrimeChangeOrderHours;
     summary.totalCost += project.cost;
+    summary.totalCogsCost += project.cogsCost;
     summary.totalHours += project.hours;
 
     const status = clean(project.status) || "Unknown";

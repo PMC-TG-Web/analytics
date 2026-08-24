@@ -8,6 +8,7 @@ import {
   classifyConcreteGroup,
   classifyLaborGroup,
   concreteYardQuantity,
+  estimateCogsCost,
   potentialChangeOrderHolderId,
   selectClosestPopulatedEstimate,
   selectEstimateProposal,
@@ -224,6 +225,29 @@ test('project totals add item and labor amounts once', () => {
     laborSales: 25,
     laborCost: 20,
   });
+});
+
+test('dashboard COGS includes labor and materials but excludes equipment and subcontractors', () => {
+  assert.equal(estimateCogsCost({
+    itemCost: '80',
+    laborCost: '20',
+    payload: { cost_item: { type: 'PART' } },
+  }), 100);
+  assert.equal(estimateCogsCost({
+    itemCost: '50',
+    laborCost: '25',
+    payload: { cost_item: { type: 'LABOR' } },
+  }), 75);
+  assert.equal(estimateCogsCost({
+    itemCost: '500',
+    laborCost: '25',
+    payload: { cost_item: { type: 'EQUIPMENT' } },
+  }), 0);
+  assert.equal(estimateCogsCost({
+    itemCost: '900',
+    laborCost: '25',
+    payload: { cost_item: { cost_type_code: 'S' } },
+  }), 0);
 });
 
 test('estimating labor names roll up into dashboard categories', () => {

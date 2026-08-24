@@ -73,6 +73,7 @@ export type Project = {
   hours?: number;
   laborSales?: number;
   laborCost?: number;
+  cogsCost?: number;
   dateUpdated?: any;
   dateCreated?: any;
   projectArchived?: boolean;
@@ -90,6 +91,7 @@ export type DashboardSummary = {
   totalApprovedPrimeChangeOrders: number;
   totalApprovedPrimeChangeOrderHours: number;
   totalCost: number;
+  totalCogsCost: number;
   totalHours: number;
   statusGroups: Record<string, { 
     sales: number;

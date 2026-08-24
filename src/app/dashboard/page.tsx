@@ -131,9 +131,12 @@ function DashboardContent() {
     ? (summary.totalApprovedPrimeChangeOrders ?? 0)
     : aggregatedProjects.reduce((sum, p) => sum + (p.approvedPrimeChangeOrderAmount ?? 0), 0);
   const totalCost = useSummary ? summary.totalCost : aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
+  const totalCogsCost = useSummary
+    ? summary.totalCogsCost
+    : aggregatedProjects.reduce((sum, p) => sum + (p.cogsCost ?? 0), 0);
   const totalHours = useSummary ? summary.totalHours : aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
-  const costOfGoodsPerHour = totalHours ? totalCost / totalHours : 0;
+  const costOfGoodsPerHour = totalHours ? totalCogsCost / totalHours : 0;
   const markup = totalCost ? ((totalSales - totalCost) / totalCost) * 100 : 0;
 
   const openContractorJobs = async (customerName: string, status?: string) => {
@@ -518,7 +521,14 @@ function DashboardContent() {
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
         <SummaryCard label="Hours" value={totalHours} large />
         <SummaryCard label="RPH" value={rph} prefix="$" decimals={2} large />
-        <SummaryCard label="Cost of Goods / Hr" value={costOfGoodsPerHour} prefix="$" decimals={2} large />
+        <SummaryCard
+          label="COGS / Hr"
+          value={costOfGoodsPerHour}
+          prefix="$"
+          decimals={2}
+          description="Labor + materials ÷ labor hours"
+          large
+        />
         <SummaryCard label="Markup %" value={markup} suffix="%" decimals={1} large />
         <SummaryCard label="Win Rate" value={winRate} suffix="%" decimals={1} large />
       </div>

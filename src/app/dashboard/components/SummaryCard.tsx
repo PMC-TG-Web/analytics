@@ -7,6 +7,7 @@ interface SummaryCardProps {
   suffix?: string;
   decimals?: number;
   large?: boolean;
+  description?: string;
 }
 
 export function SummaryCard({
@@ -16,6 +17,7 @@ export function SummaryCard({
   suffix = "",
   decimals = 0,
   large = false,
+  description,
 }: SummaryCardProps) {
   return (
     <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 flex flex-col items-center justify-center hover:shadow-xl transition-all duration-300 hover:-translate-y-1 w-full">
@@ -23,6 +25,11 @@ export function SummaryCard({
       <div className="text-2xl md:text-3xl font-black text-teal-800 tracking-tight text-center">
         {prefix}{value?.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
       </div>
+      {description && (
+        <div className="mt-1 text-center text-[9px] font-bold text-gray-400">
+          {description}
+        </div>
+      )}
     </div>
   );
 }

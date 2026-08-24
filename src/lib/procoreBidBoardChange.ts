@@ -7,6 +7,14 @@ const LOCAL_SYNC_FIELDS = new Set([
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
+  // PostgreSQL JSONB and JavaScript can choose adjacent IEEE-754
+  // representations for the same Procore decimal (for example,
+  // 462372.34269816 vs 462372.34269816004). Treat sub-micro-unit drift as
+  // serialization noise so an unchanged Bid Board project is not requeued on
+  // every header poll.
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value * 1e6) / 1e6;
+  }
   if (!value || typeof value !== "object") return value;
 
   const object = value as JsonObject;

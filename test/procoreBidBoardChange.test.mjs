@@ -17,6 +17,23 @@ test("object key order does not create a false Bid Board change", () => {
   );
 });
 
+test("JSONB floating-point round trips do not requeue unchanged totals", () => {
+  assert.equal(
+    bidBoardPayloadChanged(
+      { id: "123", stats: { total: 462372.34269816 } },
+      { id: "123", stats: { total: 462372.34269816004 } },
+    ),
+    false,
+  );
+  assert.equal(
+    bidBoardPayloadChanged(
+      { id: "123", stats: { total: 462372.34 } },
+      { id: "123", stats: { total: 462372.35 } },
+    ),
+    true,
+  );
+});
+
 test("local missing-row markers do not create a false Bid Board change", () => {
   assert.equal(
     bidBoardPayloadChanged(

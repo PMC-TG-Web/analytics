@@ -4,6 +4,8 @@ export type ProcoreSyncHealthSnapshot = {
     never_succeeded: number;
     failed_projects: number;
     max_failure_count: number;
+    due_projects?: number;
+    oldest_due?: Date | string | null;
     newest_success: Date | string | null;
   }>;
   webhookQueue: Array<{
@@ -61,6 +63,20 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   const structure = datasets.get("nightly_structure");
   if (structure && structure.failed_projects > 5) {
     issues.push(`${structure.failed_projects} nightly structure projects are failing.`);
+  }
+
+  const estimates = datasets.get("nightly_estimates");
+  if (
+    estimates
+    && Number(estimates.due_projects || 0) > 0
+    && ageMinutes(estimates.oldest_due || null, now) > 120
+  ) {
+    issues.push(
+      `${estimates.due_projects} estimate detail project(s) have been overdue for more than 2 hours.`,
+    );
+  }
+  if (estimates && estimates.max_failure_count >= 3) {
+    issues.push(`${estimates.failed_projects} estimate detail project(s) are repeatedly failing.`);
   }
 
   const onboarding = datasets.get("project_onboarding");

@@ -16,6 +16,10 @@ const handler = async (request: Request) => {
   let onboarding: unknown = null;
   const purchaseOrderDiscovery: unknown[] = [];
   const estimateDetails: unknown[] = [];
+  const estimateCap = Math.min(
+    12,
+    Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
+  );
   if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -32,6 +36,42 @@ const handler = async (request: Request) => {
       reason: headerResult?.reason,
       totalMs: headerResult?.totalMs,
     }));
+
+    // Estimate details are customer-facing dashboard data. Drain them before
+    // onboarding and purchase-order discovery so slower secondary work cannot
+    // consume the whole background-function window first.
+    for (let index = 0; index < estimateCap && Date.now() < deadline; index += 1) {
+      const estimateResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: JSON.stringify({ mode: "estimates" }),
+      });
+      const estimateResult = await estimateResponse.json().catch(() => null);
+      estimateDetails.push({ status: estimateResponse.status, result: estimateResult });
+      console.log(JSON.stringify({
+        event: "estimate-detail-sync-background",
+        batch: index + 1,
+        status: estimateResponse.status,
+        success: estimateResult?.success,
+        skipped: estimateResult?.skipped,
+        reason: estimateResult?.reason,
+        projectIds: estimateResult?.projectIds,
+      }));
+      const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
+        || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
+      if (estimateRateLimited) {
+        return Response.json({
+          success: false,
+          bidBoardHeaders,
+          onboarding,
+          purchaseOrderDiscovery,
+          estimateDetails,
+          results,
+        });
+      }
+      if (!estimateResponse.ok || estimateResult?.success === false) continue;
+      if (estimateResult?.skipped) break;
+    }
 
     const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
       method: "POST",
@@ -52,7 +92,7 @@ const handler = async (request: Request) => {
     const rateLimited = Array.isArray(result?.steps)
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     if (rateLimited) {
-      return Response.json({ success: false, bidBoardHeaders, onboarding, purchaseOrderDiscovery, results });
+      return Response.json({ success: false, bidBoardHeaders, onboarding, purchaseOrderDiscovery, estimateDetails, results });
     }
 
     for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
@@ -89,38 +129,6 @@ const handler = async (request: Request) => {
       if (poResult?.skipped) break;
     }
 
-    for (let index = 0; index < 3 && Date.now() < deadline; index += 1) {
-      const estimateResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-sync-secret": expected },
-        body: JSON.stringify({ mode: "estimates" }),
-      });
-      const estimateResult = await estimateResponse.json().catch(() => null);
-      estimateDetails.push({ status: estimateResponse.status, result: estimateResult });
-      console.log(JSON.stringify({
-        event: "estimate-detail-sync-background",
-        batch: index + 1,
-        status: estimateResponse.status,
-        success: estimateResult?.success,
-        skipped: estimateResult?.skipped,
-        reason: estimateResult?.reason,
-        projectIds: estimateResult?.projectIds,
-      }));
-      const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
-        || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
-      if (estimateRateLimited) {
-        return Response.json({
-          success: false,
-          bidBoardHeaders,
-          onboarding,
-          purchaseOrderDiscovery,
-          estimateDetails,
-          results,
-        });
-      }
-      if (!estimateResponse.ok || estimateResult?.success === false) continue;
-      if (estimateResult?.skipped) break;
-    }
   }
   const configuredCap = Math.min(
     12,

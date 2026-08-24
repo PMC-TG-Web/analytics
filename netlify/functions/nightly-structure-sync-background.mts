@@ -8,7 +8,51 @@ const handler = async (request: Request) => {
   const baseUrl = (process.env.APP_BASE_URL || process.env.URL || "").replace(/\/$/, "");
   const deadline = Date.now() + 12 * 60_000;
   const results: unknown[] = [];
-  let estimateResult: unknown = null;
+  const estimateResults: unknown[] = [];
+  const estimateCap = Math.min(
+    12,
+    Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
+  );
+
+  // Refresh Bid Board headers first so changed estimates enter the queue, then
+  // drain estimate details before slower nightly structure work.
+  const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-sync-secret": secret },
+    body: JSON.stringify({ mode: "bid-board-headers" }),
+  });
+  const headerResult = await headerResponse.json().catch(() => null);
+  const bidBoardHeaders = { status: headerResponse.status, result: headerResult };
+  console.log(JSON.stringify({
+    event: "nightly-bid-board-header-sync-background",
+    status: headerResponse.status,
+    success: headerResult?.success,
+    skipped: headerResult?.skipped,
+    reason: headerResult?.reason,
+  }));
+
+  for (let index = 0; index < estimateCap && Date.now() < deadline; index += 1) {
+    const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": secret },
+      body: JSON.stringify({ mode: "estimates" }),
+    });
+    const result = await response.json().catch(() => null);
+    estimateResults.push({ status: response.status, result });
+    console.log(JSON.stringify({
+      event: "nightly-estimate-sync-background",
+      batch: index + 1,
+      status: response.status,
+      success: result?.success,
+      skipped: result?.skipped,
+      reason: result?.reason,
+      projectIds: result?.projectIds,
+    }));
+    const rateLimited = Boolean(result?.detail?.rateLimited)
+      || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(result));
+    if (result?.skipped || rateLimited) break;
+  }
+
   for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -32,25 +76,7 @@ const handler = async (request: Request) => {
     if (!response.ok || result?.success === false) continue;
   }
 
-  if (Date.now() < deadline) {
-    const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": secret },
-      body: JSON.stringify({ mode: "estimates" }),
-    });
-    const result = await response.json().catch(() => null);
-    estimateResult = { status: response.status, result };
-    console.log(JSON.stringify({
-      event: "nightly-estimate-sync-background",
-      status: response.status,
-      success: result?.success,
-      skipped: result?.skipped,
-      reason: result?.reason,
-      projectIds: result?.projectIds,
-    }));
-  }
-
-  return Response.json({ success: true, results, estimateResult });
+  return Response.json({ success: true, bidBoardHeaders, estimateResults, results });
 };
 
 export default handler;

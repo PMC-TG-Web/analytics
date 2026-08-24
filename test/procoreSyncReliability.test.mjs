@@ -69,6 +69,54 @@ test("health evaluation reports permanently failed timecard notifications", () =
   assert.ok(issues.includes("2 timecard notification(s) are permanently failed."));
 });
 
+test("health evaluation reports an overdue estimate detail backlog", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-08-24T15:55:00.000Z" },
+      {
+        dataset: "nightly_estimates",
+        never_succeeded: 0,
+        failed_projects: 0,
+        max_failure_count: 0,
+        due_projects: 141,
+        oldest_due: "2026-08-24T12:00:00.000Z",
+        newest_success: "2026-08-24T15:00:00.000Z",
+      },
+    ],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-24T15:30:00.000Z",
+      last_attempt_at: "2026-08-24T15:30:00.000Z",
+    },
+  }, new Date("2026-08-24T16:00:00.000Z"));
+
+  assert.ok(issues.includes("141 estimate detail project(s) have been overdue for more than 2 hours."));
+});
+
+test("health evaluation allows a fresh estimate detail queue", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-08-24T15:55:00.000Z" },
+      {
+        dataset: "nightly_estimates",
+        never_succeeded: 0,
+        failed_projects: 0,
+        max_failure_count: 0,
+        due_projects: 3,
+        oldest_due: "2026-08-24T15:30:00.000Z",
+        newest_success: "2026-08-24T15:00:00.000Z",
+      },
+    ],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-24T15:30:00.000Z",
+      last_attempt_at: "2026-08-24T15:30:00.000Z",
+    },
+  }, new Date("2026-08-24T16:00:00.000Z"));
+
+  assert.ok(!issues.some((issue) => issue.includes("estimate detail")));
+});
+
 test("health evaluation stays quiet when core automation is current", () => {
   const now = new Date("2026-08-10T16:00:00.000Z");
   assert.deepEqual(evaluateProcoreSyncHealth({
@@ -158,4 +206,40 @@ test("health alert deduplication ignores changing backlog counts", () => {
     procoreHealthAlertFingerprint(["57 nightly structure projects are failing."]),
     procoreHealthAlertFingerprint(["41 nightly structure projects are failing."]),
   );
+});
+
+test("background workers prioritize and drain multiple estimate projects per tick", async () => {
+  const actualsWorker = await readFile(
+    new URL("../netlify/functions/actuals-sync-background.mts", import.meta.url),
+    "utf8",
+  );
+  const nightlyWorker = await readFile(
+    new URL("../netlify/functions/nightly-structure-sync-background.mts", import.meta.url),
+    "utf8",
+  );
+
+  for (const worker of [actualsWorker, nightlyWorker]) {
+    assert.match(worker, /PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK \|\| "6"/);
+    assert.ok(
+      worker.indexOf('mode: "estimates"') < worker.indexOf('body: "{}"'),
+      "estimate draining should run before generic structure/onboarding work",
+    );
+  }
+});
+
+test("estimate requeues preserve fair ordering instead of resetting to the epoch", async () => {
+  const queue = await readFile(
+    new URL("../src/lib/procoreSyncQueue.ts", import.meta.url),
+    "utf8",
+  );
+  const estimatingQueue = queue.slice(
+    queue.indexOf("export async function queueEstimatingSyncProjects"),
+    queue.indexOf("export async function seedSingletonSyncQueue"),
+  );
+
+  assert.match(
+    estimatingQueue,
+    /next_run_at = LEAST\(procore_sync_project_states\.next_run_at, NOW\(\)\)/,
+  );
+  assert.doesNotMatch(estimatingQueue, /1970-01-01/);
 });

@@ -7,14 +7,15 @@ interface ContractorAggregate {
   name: string;
   sales: number;
   cost: number;
+  cogsCost: number;
   hours: number;
   projectCount: number;
-  byStatus: Record<string, { sales: number; cost: number; hours: number; count: number }>;
+  byStatus: Record<string, { sales: number; cost: number; cogsCost: number; hours: number; count: number }>;
 }
 
 interface TopContractorsCardProps {
   aggregatedProjects: Project[];
-  summaryContractors?: Record<string, { sales: number; cost: number; hours: number; count: number; byStatus: any }>;
+  summaryContractors?: Record<string, { sales: number; cost: number; cogsCost: number; hours: number; count: number; byStatus: any }>;
   topContractorLimit: string;
   setTopContractorLimit: (value: string) => void;
   onOpenJobsList: (customerName: string, status?: string) => void;
@@ -29,6 +30,7 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
         const byStatus: Record<string, any> = {};
         let filteredSales = 0;
         let filteredCost = 0;
+        let filteredCogsCost = 0;
         let filteredHours = 0;
         let filteredCount = 0;
 
@@ -37,6 +39,7 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
           byStatus[status] = sData;
           filteredSales += sData.sales || 0;
           filteredCost += sData.cost || 0;
+          filteredCogsCost += sData.cogsCost || 0;
           filteredHours += sData.hours || 0;
           filteredCount += sData.count || 0;
         });
@@ -45,6 +48,7 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
           name,
           sales: filteredSales,
           cost: filteredCost,
+          cogsCost: filteredCogsCost,
           hours: filteredHours,
           projectCount: filteredCount,
           byStatus
@@ -63,6 +67,7 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
       const customerName = project.customer || "Unknown";
       const sales = project.sales || 0;
       const cost = project.cost || 0;
+      const cogsCost = project.cogsCost || 0;
       const hours = project.hours || 0;
       const status = project.status || "Unknown";
       
@@ -70,14 +75,16 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
         const existing = contractorMap.get(customerName)!;
         existing.sales += sales;
         existing.cost += cost;
+        existing.cogsCost += cogsCost;
         existing.hours += hours;
         existing.projectCount += 1;
         
         if (!existing.byStatus[status]) {
-          existing.byStatus[status] = { sales: 0, cost: 0, hours: 0, count: 0 };
+          existing.byStatus[status] = { sales: 0, cost: 0, cogsCost: 0, hours: 0, count: 0 };
         }
         existing.byStatus[status].sales += sales;
         existing.byStatus[status].cost += cost;
+        existing.byStatus[status].cogsCost += cogsCost;
         existing.byStatus[status].hours += hours;
         existing.byStatus[status].count += 1;
       } else {
@@ -85,10 +92,11 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
           name: customerName,
           sales: sales,
           cost: cost,
+          cogsCost,
           hours: hours,
           projectCount: 1,
           byStatus: {
-            [status]: { sales, cost, hours, count: 1 }
+            [status]: { sales, cost, cogsCost, hours, count: 1 }
           }
         });
       }
@@ -104,12 +112,14 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
   }, [aggregatedProjects, summaryContractors, topContractorLimit]);
 
   const handleDownloadCSV = () => {
-    const headers = ["Contractor", "Sales", "Cost", "Hours", "Project Count", "Markup %"];
+    const headers = ["Contractor", "Sales", "Cost", "COGS", "Hours", "COGS / Hour", "Project Count", "Markup %"];
     const rows = topContractors.map(c => [
       `"${c.name}"`,
       c.sales.toFixed(2),
       c.cost.toFixed(2),
+      c.cogsCost.toFixed(2),
       c.hours.toFixed(1),
+      (c.hours > 0 ? c.cogsCost / c.hours : 0).toFixed(2),
       c.projectCount.toString(),
       (c.cost > 0 ? ((c.sales - c.cost) / c.cost * 100).toFixed(1) : '0.0')
     ]);
@@ -118,22 +128,24 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
     
     // Add status breakdown per contractor
     csvContent += "\n\nContractor Status Breakdown\n";
-    csvContent += "Contractor,Status,Sales,Cost,Hours,Count,Markup %\n";
+    csvContent += "Contractor,Status,Sales,Cost,COGS,Hours,COGS / Hour,Count,Markup %\n";
     topContractors.forEach(c => {
       Object.entries(c.byStatus).forEach(([status, data]: [string, any]) => {
-        const d = data as { sales: number; cost: number; hours: number; count: number };
+        const d = data as { sales: number; cost: number; cogsCost: number; hours: number; count: number };
         const markup = d.cost > 0 ? ((d.sales - d.cost) / d.cost * 100).toFixed(1) : '0.0';
-        csvContent += `"${c.name}","${status}",${d.sales.toFixed(2)},${d.cost.toFixed(2)},${d.hours.toFixed(1)},${d.count},${markup}\n`;
+        const cogsPerHour = d.hours > 0 ? d.cogsCost / d.hours : 0;
+        csvContent += `"${c.name}","${status}",${d.sales.toFixed(2)},${d.cost.toFixed(2)},${d.cogsCost.toFixed(2)},${d.hours.toFixed(1)},${cogsPerHour.toFixed(2)},${d.count},${markup}\n`;
       });
     });
 
     // Add comprehensive Project List for all displayed contractors
     csvContent += "\n\nAll Projects for Selected Contractors\n";
-    csvContent += "Contractor,Project Number,Project Name,Status,Sales,Cost,Hours,Preconst Hours,Date Updated\n";
+    csvContent += "Contractor,Project Number,Project Name,Status,Sales,Cost,COGS,Hours,COGS / Hour,Preconst Hours,Date Updated\n";
     topContractors.forEach(c => {
       const contractorProjects = aggregatedProjects.filter(p => (p.customer ?? "Unknown") === c.name);
       contractorProjects.forEach(p => {
-        csvContent += `"${c.name}","${p.projectNumber || ''}","${p.projectName || ''}","${p.status || ''}",${(p.sales || 0).toFixed(2)},${(p.cost || 0).toFixed(2)},${(p.hours || 0).toFixed(1)},${(p.projectedPreconstHours || 0).toFixed(1)},"${p.dateUpdated || ''}"\n`;
+        const cogsPerHour = (p.hours || 0) > 0 ? (p.cogsCost || 0) / (p.hours || 0) : 0;
+        csvContent += `"${c.name}","${p.projectNumber || ''}","${p.projectName || ''}","${p.status || ''}",${(p.sales || 0).toFixed(2)},${(p.cost || 0).toFixed(2)},${(p.cogsCost || 0).toFixed(2)},${(p.hours || 0).toFixed(1)},${cogsPerHour.toFixed(2)},${(p.projectedPreconstHours || 0).toFixed(1)},"${p.dateUpdated || ''}"\n`;
       });
     });
 
@@ -150,23 +162,26 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
 
   const handleDownloadSingleCSV = (contractor: ContractorAggregate) => {
     // 1. Status Breakdown
-    const headersBreakdown = ["Contractor", "Status", "Sales", "Cost", "Hours", "Count", "Markup %"];
+    const headersBreakdown = ["Contractor", "Status", "Sales", "Cost", "COGS", "Hours", "COGS / Hour", "Count", "Markup %"];
     const rowsBreakdown = Object.entries(contractor.byStatus).map(([status, data]: [string, any]) => {
-      const d = data as { sales: number; cost: number; hours: number; count: number };
+      const d = data as { sales: number; cost: number; cogsCost: number; hours: number; count: number };
       const markup = d.cost > 0 ? ((d.sales - d.cost) / d.cost * 100).toFixed(1) : '0.0';
+      const cogsPerHour = d.hours > 0 ? d.cogsCost / d.hours : 0;
       return [
         `"${contractor.name}"`,
         `"${status}"`,
         d.sales.toFixed(2),
         d.cost.toFixed(2),
+        d.cogsCost.toFixed(2),
         d.hours.toFixed(1),
+        cogsPerHour.toFixed(2),
         d.count.toString(),
         markup
       ];
     });
 
     // 2. Project List
-    const headersProjects = ["Contractor", "Project Number", "Project Name", "Status", "Sales", "Cost", "Hours", "Preconst Hours", "Date Updated"];
+    const headersProjects = ["Contractor", "Project Number", "Project Name", "Status", "Sales", "Cost", "COGS", "Hours", "COGS / Hour", "Preconst Hours", "Date Updated"];
     const rowsProjects = aggregatedProjects
       .filter(p => (p.customer ?? "Unknown") === contractor.name)
       .map(p => [
@@ -176,7 +191,9 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
         `"${p.status || ''}"`,
         (Number(p.sales) || 0).toFixed(2),
         (Number(p.cost) || 0).toFixed(2),
+        (Number(p.cogsCost) || 0).toFixed(2),
         (Number(p.hours) || 0).toFixed(1),
+        ((Number(p.hours) || 0) > 0 ? (Number(p.cogsCost) || 0) / (Number(p.hours) || 0) : 0).toFixed(2),
         (Number(p.projectedPreconstHours) || 0).toFixed(1),
         `"${p.dateUpdated || ''}"`
       ]);
@@ -284,6 +301,13 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
                   {(contractor.cost > 0 ? ((contractor.sales - contractor.cost) / contractor.cost * 100) : 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%
                 </div>
               </div>
+              <div className="col-span-2 bg-orange-50/60 p-4 rounded-2xl border border-orange-100">
+                <div className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">COGS / Hr</div>
+                <div className="text-xl font-black text-orange-700">
+                  ${(contractor.hours > 0 ? contractor.cogsCost / contractor.hours : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="mt-1 text-[9px] font-bold text-orange-400">Labor + materials ÷ labor hours</div>
+              </div>
             </div>
 
             <div className="pt-4 border-t border-gray-100">
@@ -300,6 +324,9 @@ export function TopContractorsCard({ aggregatedProjects, summaryContractors, top
                   >
                     <span className="text-[8px] font-black text-gray-400 uppercase tracking-tight group-hover/status:text-teal-600">{status}</span>
                     <span className="text-xs font-black text-gray-800">${(data.sales / 1000).toFixed(0)}k</span>
+                    <span className="text-[8px] font-bold text-orange-500">
+                      COGS/Hr ${(data.hours > 0 ? data.cogsCost / data.hours : 0).toFixed(2)}
+                    </span>
                   </button>
                 ))}
               </div>

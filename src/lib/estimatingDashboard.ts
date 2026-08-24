@@ -172,6 +172,7 @@ type DashboardSummary = {
     approvedPrimeChangeOrders: number;
     approvedPrimeChangeOrderHours: number;
     cost: number;
+    cogsCost: number;
     hours: number;
     count: number;
     laborByGroup: Record<string, number>;
@@ -180,9 +181,10 @@ type DashboardSummary = {
   contractors: Record<string, {
     sales: number;
     cost: number;
+    cogsCost: number;
     hours: number;
     count: number;
-    byStatus: Record<string, { sales: number; cost: number; hours: number; count: number }>;
+    byStatus: Record<string, { sales: number; cost: number; cogsCost: number; hours: number; count: number }>;
   }>;
   pmcGroupHours: Record<string, number>;
   laborBreakdown: Record<string, number>;
@@ -591,6 +593,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       approvedPrimeChangeOrders: 0,
       approvedPrimeChangeOrderHours: 0,
       cost: 0,
+      cogsCost: 0,
       hours: 0,
       count: 0,
       laborByGroup: {},
@@ -604,6 +607,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     statusGroup.approvedPrimeChangeOrders += project.approvedPrimeChangeOrderAmount;
     statusGroup.approvedPrimeChangeOrderHours += project.approvedPrimeChangeOrderHours;
     statusGroup.cost += project.cost;
+    statusGroup.cogsCost += project.cogsCost;
     statusGroup.hours += project.hours;
     statusGroup.count += 1;
     for (const [group, hours] of Object.entries(project.pmcGroup)) {
@@ -620,17 +624,20 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     const contractor = summary.contractors[contractorName] ?? {
       sales: 0,
       cost: 0,
+      cogsCost: 0,
       hours: 0,
       count: 0,
       byStatus: {},
     };
     contractor.sales += project.sales;
     contractor.cost += project.cost;
+    contractor.cogsCost += project.cogsCost;
     contractor.hours += project.hours;
     contractor.count += 1;
-    const contractorStatus = contractor.byStatus[status] ?? { sales: 0, cost: 0, hours: 0, count: 0 };
+    const contractorStatus = contractor.byStatus[status] ?? { sales: 0, cost: 0, cogsCost: 0, hours: 0, count: 0 };
     contractorStatus.sales += project.sales;
     contractorStatus.cost += project.cost;
+    contractorStatus.cogsCost += project.cogsCost;
     contractorStatus.hours += project.hours;
     contractorStatus.count += 1;
     contractor.byStatus[status] = contractorStatus;

@@ -199,6 +199,7 @@ function DashboardContent() {
           approvedPrimeChangeOrders: 0,
           approvedPrimeChangeOrderHours: 0,
           cost: 0,
+          cogsCost: 0,
           hours: 0,
           count: 0,
           laborByGroup: {},
@@ -214,6 +215,7 @@ function DashboardContent() {
       groups[status].approvedPrimeChangeOrders += (p.approvedPrimeChangeOrderAmount ?? 0);
       groups[status].approvedPrimeChangeOrderHours += (p.approvedPrimeChangeOrderHours ?? 0);
       groups[status].cost += (p.cost ?? 0);
+      groups[status].cogsCost += (p.cogsCost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
       
@@ -567,10 +569,12 @@ function DashboardContent() {
                   approvedPotentialChangeOrders = 0,
                   approvedPrimeChangeOrders = 0,
                   cost,
+                  cogsCost = 0,
                   hours,
                   laborByGroup,
                 } = metrics;
               const rph = hours ? sales / hours : 0;
+              const cogsPerHour = hours ? Number(cogsCost) / Number(hours) : 0;
               const markup = cost ? ((sales - cost) / cost) * 100 : 0;
               const excludedGroupPatterns = ['part', 'equipment', 'subcontract'];
               
@@ -654,10 +658,14 @@ function DashboardContent() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">
+                    <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-50">
                       <div>
                         <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">RPH</span>
                         <span className="text-sm font-black text-teal-600">{`$${rph.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">COGS / Hr</span>
+                        <span className="text-sm font-black text-orange-600">{`$${cogsPerHour.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-0.5">Markup</span>

@@ -18,6 +18,7 @@ export interface Project {
   hours?: number;
   laborSales?: number;
   laborCost?: number;
+  cogsCost?: number;
   dateUpdated?: any;
   dateCreated?: any;
   projectArchived?: boolean;

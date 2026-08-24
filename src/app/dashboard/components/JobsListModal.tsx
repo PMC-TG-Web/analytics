@@ -90,6 +90,7 @@ export function JobsListModal({
                 // Calculate Profit/Hr: Total Profit ÷ Hours excluding PM
                 const profit = (project.sales ?? 0) - (project.cost ?? 0);
                 const profitPerHour = hoursWithoutPM > 0 ? profit / hoursWithoutPM : 0;
+                const cogsPerHour = totalHours > 0 ? (project.cogsCost ?? 0) / totalHours : 0;
                 
                 return (
                   <button
@@ -178,7 +179,10 @@ export function JobsListModal({
                       </div>
                     </div>
                     <div>
-                      {/* Empty cell for alignment */}
+                      <div className="text-xs text-gray-500 mb-1">COGS / Hr</div>
+                      <div className="text-sm font-semibold text-orange-600">
+                        ${cogsPerHour.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
                     </div>
                   </div>
                 </button>

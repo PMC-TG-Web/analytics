@@ -102,6 +102,7 @@ export type DashboardSummary = {
     approvedPrimeChangeOrders?: number;
     approvedPrimeChangeOrderHours?: number;
     cost: number; 
+    cogsCost: number;
     hours: number; 
     count: number;
     laborByGroup?: Record<string, number>;
@@ -110,9 +111,10 @@ export type DashboardSummary = {
   contractors: Record<string, { 
     sales: number; 
     cost: number; 
+    cogsCost: number;
     hours: number; 
     count: number;
-    byStatus: Record<string, { sales: number; cost: number; hours: number; count: number }>;
+    byStatus: Record<string, { sales: number; cost: number; cogsCost: number; hours: number; count: number }>;
   }>;
   pmcGroupHours: Record<string, number>;
   laborBreakdown?: Record<string, number>;

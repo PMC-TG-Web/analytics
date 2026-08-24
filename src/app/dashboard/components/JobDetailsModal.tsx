@@ -228,6 +228,7 @@ export function JobDetailsModal({ isOpen, project, onClose, onBack, onStatusUpda
     { label: "Cost", value: project.cost, prefix: "$", decimals: 0 },
     { label: "Profit", value: (project.sales ?? 0) - (project.cost ?? 0), prefix: "$", decimals: 0 },
     { label: "Markup %", value: project.cost && project.cost > 0 ? (((project.sales ?? 0) - project.cost) / project.cost * 100) : 0, suffix: "%", decimals: 1 },
+    { label: "COGS/Hr", value: (project.hours ?? 0) > 0 ? (project.cogsCost ?? 0) / (project.hours ?? 0) : 0, prefix: "$", decimals: 2 },
     { label: "Profit/Hr (net)", value: hoursWithoutPM > 0 ? ((project.sales ?? 0) - (project.cost ?? 0)) / hoursWithoutPM : 0, prefix: "$", decimals: 2 },
     { label: "Total Labor Hrs", value: project.hours, decimals: 0 },
   ];

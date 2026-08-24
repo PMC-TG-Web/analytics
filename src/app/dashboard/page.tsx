@@ -133,6 +133,7 @@ function DashboardContent() {
   const totalCost = useSummary ? summary.totalCost : aggregatedProjects.reduce((sum, p) => sum + (p.cost ?? 0), 0);
   const totalHours = useSummary ? summary.totalHours : aggregatedProjects.reduce((sum, p) => sum + (p.hours ?? 0), 0);
   const rph = totalHours ? totalSales / totalHours : 0;
+  const costOfGoodsPerHour = totalHours ? totalCost / totalHours : 0;
   const markup = totalCost ? ((totalSales - totalCost) / totalCost) * 100 : 0;
 
   const openContractorJobs = async (customerName: string, status?: string) => {
@@ -498,7 +499,7 @@ function DashboardContent() {
         )}
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-12">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-12">
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
         <div className="flex w-full flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-4 text-center shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
           <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Approved COs</div>
@@ -517,6 +518,7 @@ function DashboardContent() {
         <SummaryCard label="Cost" value={totalCost} prefix="$" large />
         <SummaryCard label="Hours" value={totalHours} large />
         <SummaryCard label="RPH" value={rph} prefix="$" decimals={2} large />
+        <SummaryCard label="Cost of Goods / Hr" value={costOfGoodsPerHour} prefix="$" decimals={2} large />
         <SummaryCard label="Markup %" value={markup} suffix="%" decimals={1} large />
         <SummaryCard label="Win Rate" value={winRate} suffix="%" decimals={1} large />
       </div>

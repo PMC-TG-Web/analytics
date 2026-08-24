@@ -22,6 +22,7 @@ const {
   extractTimesheetId,
   isPmcdecorEmail,
   selectProjectManagerRecipients,
+  selectProjectManagerRecipientsForDomain,
 } = loadModule();
 
 test("uses the parent timesheet ID instead of the individual entry ID", () => {
@@ -54,6 +55,22 @@ test("accepts only the exact pmcdecor.com recipient domain", () => {
   assert.equal(isPmcdecorEmail("user@sub.pmcdecor.com"), false);
   assert.equal(isPmcdecorEmail("user@pmcdecor.com.example"), false);
   assert.equal(isPmcdecorEmail("user@example.com"), false);
+});
+
+test("limits project manager recipients to the exact requested email domain", () => {
+  const recipients = selectProjectManagerRecipientsForDomain([
+    { role: "Project Manager", user_id: 10, is_active: true },
+    { role: "Project Manager", user_id: 11, is_active: true },
+    { role: "Project Manager", user_id: 12, is_active: true },
+  ], [
+    { id: 10, name: "Internal PM", login: "pm@PMCDECOR.COM" },
+    { id: 11, name: "External PM", login: "pm@example.com" },
+    { id: 12, name: "Lookalike Domain", login: "pm@notpmcdecor.com" },
+  ], "@pmcdecor.com");
+
+  assert.deepEqual(JSON.parse(JSON.stringify(recipients)), [
+    { id: "10", name: "Internal PM", email: "pm@pmcdecor.com" },
+  ]);
 });
 
 test("builds one timecard email summarizing all entry lines", () => {

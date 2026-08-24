@@ -119,6 +119,19 @@ export function selectProjectManagerRecipients(
   return [...recipients.values()].sort((a, b) => a.email.localeCompare(b.email));
 }
 
+export function selectProjectManagerRecipientsForDomain(
+  roles: ProjectRoleLike[],
+  users: ProjectUserLike[],
+  domain: string,
+): Array<{ id: string; name: string; email: string }> {
+  const normalizedDomain = domain.trim().toLowerCase().replace(/^@+/, "");
+  if (!normalizedDomain) return [];
+  return selectProjectManagerRecipients(roles, users).filter(({ email }) => {
+    const separator = email.lastIndexOf("@");
+    return separator > 0 && email.slice(separator + 1).toLowerCase() === normalizedDomain;
+  });
+}
+
 export function buildTimecardNotificationEmail(input: TimecardNotificationEmailInput) {
   const projectLabel = [input.projectNumber, input.projectName]
     .filter(Boolean)

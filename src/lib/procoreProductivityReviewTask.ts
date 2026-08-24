@@ -1,10 +1,16 @@
 import { makeRequest } from '@/lib/procore';
+import {
+  selectProjectManagerRecipientsForDomain,
+  type ProjectRoleLike,
+  type ProjectUserLike,
+} from '@/lib/timecardNotification';
 
 const TASK_TITLE = 'Field Productivity Review';
 const TASK_TAG = '[analytics:auto-productivity-review]';
 const TASK_DUE_OFFSET_DAYS = 30;
 const DISTRIBUTION_GROUP = 'Project Review';
 const DISTRIBUTION_MEMBER_IDS_DEFAULT = '12495259,14134125';
+const PROJECT_MANAGER_EMAIL_DOMAIN = 'pmcdecor.com';
 
 type JsonObject = Record<string, unknown>;
 
@@ -89,6 +95,65 @@ function readTaskDistributionMemberIds(task: JsonObject): number[] {
     .filter((id): id is number => id !== null))];
 }
 
+function readTaskAssigneeIds(task: JsonObject): number[] {
+  const assignedId = readNumber(task.assigned_id ?? task.assignedId);
+  const directIds = Array.isArray(task.assignee_ids)
+    ? task.assignee_ids
+    : [];
+  const assigneeIds = Array.isArray(task.assignees)
+    ? task.assignees.map((assignee) => asObject(assignee)?.id)
+    : [];
+  return [...new Set([assignedId, ...directIds, ...assigneeIds]
+    .map(readNumber)
+    .filter((id): id is number => id !== null))];
+}
+
+async function fetchAll(params: {
+  path: string;
+  token: string;
+  companyId: string;
+}) {
+  const rows: JsonObject[] = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const separator = params.path.includes('?') ? '&' : '?';
+    const payload = await makeRequest(
+      `${params.path}${separator}page=${page}&per_page=100`,
+      params.token,
+      undefined,
+      params.companyId,
+      [404]
+    );
+    const pageRows = asRows(payload);
+    rows.push(...pageRows);
+    if (pageRows.length < 100) break;
+  }
+  return rows;
+}
+
+async function resolveProjectManagerAssigneeIds(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+}) {
+  const [roles, users] = await Promise.all([
+    fetchAll({
+      ...params,
+      path: `/rest/v1.0/project_roles?project_id=${encodeURIComponent(params.projectId)}`,
+    }),
+    fetchAll({
+      ...params,
+      path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,
+    }),
+  ]);
+  return selectProjectManagerRecipientsForDomain(
+    roles as ProjectRoleLike[],
+    users as ProjectUserLike[],
+    PROJECT_MANAGER_EMAIL_DOMAIN,
+  )
+    .map(({ id }) => readNumber(id))
+    .filter((id): id is number => id !== null);
+}
+
 function sameIds(left: number[], right: number[]): boolean {
   if (left.length !== right.length) return false;
   const rightSet = new Set(right);
@@ -135,23 +200,38 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
   const distributionMemberIds = groupMemberIds.length
     ? [...new Set(groupMemberIds)]
     : readDistributionMemberIds();
+  const projectManagerAssigneeIds = await resolveProjectManagerAssigneeIds({
+    token: params.token,
+    companyId: params.companyId,
+    projectId: params.projectId,
+  });
 
   if (existingTask) {
     const taskId = readId(existingTask.id);
     const currentMemberIds = readTaskDistributionMemberIds(existingTask);
-    if (taskId && distributionMemberIds.length && !sameIds(currentMemberIds, distributionMemberIds)) {
+    const currentAssigneeIds = readTaskAssigneeIds(existingTask);
+    const mergedAssigneeIds = [...new Set([...currentAssigneeIds, ...projectManagerAssigneeIds])];
+    const patch: JsonObject = {};
+    if (distributionMemberIds.length && !sameIds(currentMemberIds, distributionMemberIds)) {
+      patch.distribution_member_ids = distributionMemberIds;
+    }
+    if (projectManagerAssigneeIds.some((id) => !currentAssigneeIds.includes(id))) {
+      patch.assigned_id = currentAssigneeIds[0] || projectManagerAssigneeIds[0];
+      patch.assignee_ids = mergedAssigneeIds;
+    }
+    if (taskId && Object.keys(patch).length) {
       await makeRequest(
         `/rest/v1.0/task_items/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(params.projectId)}`,
         params.token,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task_item: { distribution_member_ids: distributionMemberIds } }),
+          body: JSON.stringify({ task_item: patch }),
         },
         params.companyId
       );
     }
-    return { created: false, taskId, dueDate };
+    return { created: false, taskId, dueDate, projectManagerAssigneeIds };
   }
 
   const projectLabel = [params.projectNumber, params.projectName]
@@ -177,6 +257,10 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
           description,
           due_date: dueDate,
           status: 'initiated',
+          ...(projectManagerAssigneeIds.length ? {
+            assigned_id: projectManagerAssigneeIds[0],
+            assignee_ids: projectManagerAssigneeIds,
+          } : {}),
           ...(distributionMemberIds.length ? { distribution_member_ids: distributionMemberIds } : {}),
         },
       }),
@@ -189,5 +273,6 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     created: true,
     taskId: readId(createdTaskObject?.id) || readId(createdTaskInner?.id),
     dueDate,
+    projectManagerAssigneeIds,
   };
 }

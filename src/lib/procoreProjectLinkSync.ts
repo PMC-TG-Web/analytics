@@ -21,7 +21,8 @@ export type ProjectLinkSyncResult = {
 
 const DEFAULT_FOLDER_NAME = "Job-Schedule";
 const DEFAULT_FILE_NAME = "PMC_JobSchedule.xlsx";
-const DEFAULT_LINK_TITLE = "Job Schedule";
+const DEFAULT_LINK_TITLE = "PMC Job Schedule";
+const MANAGED_LINK_TITLES = new Set(["job schedule", "pmc job schedule"]);
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
 
@@ -149,7 +150,11 @@ export function buildProjectLinksBulkUpdate(
     return { id, title: existingTitle, url: existingUrl };
   });
 
-  const existingIndex = body.findIndex((link) => normalized(link.title) === normalized(title));
+  const normalizedTitle = normalized(title);
+  const managedTitles = MANAGED_LINK_TITLES.has(normalizedTitle)
+    ? MANAGED_LINK_TITLES
+    : new Set([normalizedTitle]);
+  const existingIndex = body.findIndex((link) => managedTitles.has(normalized(link.title)));
   if (existingIndex < 0) {
     body.push({ title, url });
     return { changed: true, action: "created", body };

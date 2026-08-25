@@ -81,6 +81,18 @@ test("updates the existing named link and becomes idempotent", () => {
   assert.equal(unchanged.changed, false);
 });
 
+test("renames the previously managed Job Schedule link without creating a duplicate", () => {
+  const { buildProjectLinksBulkUpdate } = loadModule();
+  const result = buildProjectLinksBulkUpdate([
+    { id: 8, title: "Job Schedule", url: "https://us02.procore.com/current", position: 1 },
+  ], "PMC Job Schedule", "https://us02.procore.com/current");
+
+  assert.equal(result.action, "updated");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.body)), [
+    { id: "8", title: "PMC Job Schedule", url: "https://us02.procore.com/current" },
+  ]);
+});
+
 test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update", async () => {
   const calls = [];
   const makeRequest = async (path, _token, options) => {
@@ -92,7 +104,7 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
     if (path.endsWith("/links/bulk_update")) {
       return [...JSON.parse(options.body).slice(0, 1), {
         id: 9,
-        title: "Job Schedule",
+        title: "PMC Job Schedule",
         url: "https://us02.procore.com/fas/api/v5/files/current",
       }];
     }
@@ -107,6 +119,6 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
   assert.equal(calls[2].options.method, "PATCH");
   assert.deepEqual(JSON.parse(calls[2].options.body), [
     { id: "7", title: "Safety", url: "https://example.com/safety" },
-    { title: "Job Schedule", url: "https://us02.procore.com/fas/api/v5/files/current" },
+    { title: "PMC Job Schedule", url: "https://us02.procore.com/fas/api/v5/files/current" },
   ]);
 });

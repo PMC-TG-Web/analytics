@@ -6,6 +6,7 @@ import {
   commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
+  selectCommitmentMakerWbsCandidate,
 } from '../src/lib/procore/commitmentMaker.ts';
 
 test('uses the fixed Paradise Masonry vendor', () => {
@@ -85,4 +86,30 @@ test('reads only a numeric project ID from the Project Home link', () => {
   );
   assert.equal(commitmentMakerProjectIdFromSearch('?project_id=12345'), '12345');
   assert.equal(commitmentMakerProjectIdFromSearch('?projectId=wrong-project'), '');
+});
+
+test('prefers the requested WBS cost type when it exists', () => {
+  const candidates = [
+    { id: 'material', flatCode: '03-300-30-20.M', costCode: '03-300-30-20', costType: 'Materials' },
+    { id: 'other', flatCode: '03-300-30-20.O', costCode: '03-300-30-20', costType: 'Other' },
+  ];
+
+  assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O')?.id, 'other');
+});
+
+test('uses one unambiguous project WBS code when the old O type is absent', () => {
+  const candidates = [
+    { id: 'material', flatCode: '03-150-10-85.M', costCode: '03-150-10-85', costType: 'M' },
+  ];
+
+  assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O')?.id, 'material');
+});
+
+test('does not guess when multiple project WBS types exist and O is absent', () => {
+  const candidates = [
+    { id: 'labor', flatCode: '03-300-30-10.L', costCode: '03-300-30-10', costType: 'L' },
+    { id: 'material', flatCode: '03-300-30-10.M', costCode: '03-300-30-10', costType: 'M' },
+  ];
+
+  assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O'), null);
 });

@@ -14,6 +14,7 @@ import {
   COMMITMENT_MAKER_VENDOR_NAME,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
+  selectCommitmentMakerWbsCandidate,
   type CommitmentMakerGroup,
   type CommitmentMakerLineItem,
 } from "@/lib/procore/commitmentMaker";
@@ -280,10 +281,7 @@ function buildWbsIndex(records: UnknownRecord[]): Map<string, WbsMatch[]> {
 
 function resolveWbs(line: CommitmentMakerLineItem, index: Map<string, WbsMatch[]>): WbsMatch | null {
   const candidates = index.get(normalizeCode(line.costCode)) || [];
-  const typed = candidates.filter((candidate) => candidate.costType === normalizeCode(line.costType));
-  if (typed.length === 1) return typed[0];
-  if (typed.length === 0 && candidates.length === 1 && !candidates[0].costType) return candidates[0];
-  return null;
+  return selectCommitmentMakerWbsCandidate(candidates, line.costType);
 }
 
 function vendorName(record: UnknownRecord): string {
@@ -474,8 +472,11 @@ async function buildPlan(params: {
     for (const line of group.lineItems) {
       const match = resolveWbs(line, wbsIndex);
       if (!match) {
-        validationErrors.push(
-          `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} did not resolve to one unique project WBS code.`
+        const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
+        const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
+        validationErrors.push(candidateCodes.length > 0
+          ? `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} matches multiple project WBS codes (${candidateCodes.join(", ")}); select one in Procore before creating.`
+          : `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} was not found in this project's WBS.`
         );
         continue;
       }

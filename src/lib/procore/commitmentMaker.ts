@@ -18,6 +18,13 @@ export type CommitmentMakerGroup = {
   lineItems: CommitmentMakerLineItem[];
 };
 
+export type CommitmentMakerWbsCandidate = {
+  id: string;
+  flatCode: string;
+  costCode: string;
+  costType: string;
+};
+
 export type CommitmentMakerParseResult = {
   headerRowIndex: number;
   groups: CommitmentMakerGroup[];
@@ -285,6 +292,33 @@ export function commitmentMakerProjectIdFromSearch(search: string): string {
   const params = new URLSearchParams(search);
   const projectId = String(params.get("projectId") || params.get("project_id") || "").trim();
   return /^\d+$/.test(projectId) ? projectId : "";
+}
+
+function canonicalCostType(value: unknown): string {
+  const normalized = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (["L", "LAB", "LABOR"].includes(normalized)) return "L";
+  if (["M", "MAT", "MATERIAL", "MATERIALS"].includes(normalized)) return "M";
+  if (["S", "SUB", "SUBCONTRACT", "SUBCONTRACTOR", "SUBCONTRACTORS"].includes(normalized)) return "S";
+  if (["C", "COMMITMENT", "COMMITMENTS"].includes(normalized)) return "C";
+  if (["CON", "CONC", "CONCRETE"].includes(normalized)) return "CON";
+  if (["O", "OTHER"].includes(normalized)) return "O";
+  return normalized;
+}
+
+/**
+ * Prefer the converter's requested cost type when it exists. A Procore project
+ * may use a different type for the same cost code; using that code is
+ * safe only when the project has exactly one possible WBS candidate.
+ */
+export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCandidate>(
+  candidates: T[],
+  requestedCostType: string,
+): T | null {
+  const requested = canonicalCostType(requestedCostType);
+  const typed = candidates.filter((candidate) => canonicalCostType(candidate.costType) === requested);
+  if (typed.length === 1) return typed[0];
+  if (typed.length > 1) return null;
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function planNextPurchaseOrderNumbers(existingNumbers: unknown[], count: number): string[] {

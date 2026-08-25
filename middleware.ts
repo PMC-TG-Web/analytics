@@ -438,6 +438,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/cron/project-onboarding/') ||
     pathname === '/api/cron/project-reconciliation' ||
     pathname.startsWith('/api/cron/project-reconciliation/') ||
+    pathname === '/api/cron/project-link-sync' ||
+    pathname.startsWith('/api/cron/project-link-sync/') ||
     pathname === '/api/cron/nightly-structure' ||
     pathname.startsWith('/api/cron/nightly-structure/') ||
     pathname === '/api/cron/productivity-review-reminders' ||

@@ -1,0 +1,241 @@
+import { makeRequest } from "@/lib/procore";
+
+type UnknownRecord = Record<string, unknown>;
+
+export type ProjectLinkSyncStatus =
+  | "missing_folder"
+  | "missing_file"
+  | "missing_file_url"
+  | "created"
+  | "updated"
+  | "unchanged";
+
+export type ProjectLinkSyncResult = {
+  status: ProjectLinkSyncStatus;
+  folderId?: string;
+  documentId?: string;
+  fileVersionId?: string;
+  linkId?: string;
+  url?: string;
+};
+
+const DEFAULT_FOLDER_NAME = "Job-Schedule";
+const DEFAULT_FILE_NAME = "PMC_JobSchedule.xlsx";
+const DEFAULT_LINK_TITLE = "Job Schedule";
+const PAGE_SIZE = 100;
+const MAX_PAGES = 20;
+
+function record(value: unknown): UnknownRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as UnknownRecord
+    : {};
+}
+
+function text(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function normalized(value: unknown): string {
+  return text(value).toLocaleLowerCase("en-US");
+}
+
+function rowsFromPayload(payload: unknown): UnknownRecord[] {
+  const rows = Array.isArray(payload) ? payload : record(payload).data;
+  return Array.isArray(rows)
+    ? rows.filter((row): row is UnknownRecord => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+    : [];
+}
+
+function isRemoved(row: UnknownRecord): boolean {
+  return row.is_deleted === true
+    || row.deleted === true
+    || row.is_in_recycle_bin === true
+    || row.in_recycle_bin === true;
+}
+
+function documentKind(row: UnknownRecord): string {
+  return normalized(row.document_type || row.type || row.kind);
+}
+
+function documentId(row: UnknownRecord): string {
+  return text(row.id);
+}
+
+function parentId(row: UnknownRecord): string {
+  return text(row.parent_id || record(row.parent).id || row.folder_id);
+}
+
+export function findJobScheduleDocument(
+  documents: unknown,
+  folderName = DEFAULT_FOLDER_NAME,
+  fileName = DEFAULT_FILE_NAME,
+): { status: "missing_folder" | "missing_file" | "found"; folderId?: string; file?: UnknownRecord } {
+  const rows = rowsFromPayload(documents).filter((row) => !isRemoved(row));
+  const matchingFolders = rows.filter((row) => (
+    documentKind(row).includes("folder")
+    && normalized(row.name) === normalized(folderName)
+    && Boolean(documentId(row))
+  ));
+  if (!matchingFolders.length) return { status: "missing_folder" };
+
+  const folderIds = new Set(matchingFolders.map(documentId));
+  const file = rows.find((row) => (
+    !documentKind(row).includes("folder")
+    && normalized(row.name || row.file_name || row.filename) === normalized(fileName)
+    && folderIds.has(parentId(row))
+  ));
+  const folderId = file ? parentId(file) : documentId(matchingFolders[0]);
+  return file ? { status: "found", folderId, file } : { status: "missing_file", folderId };
+}
+
+export function jobScheduleFileUrl(file: unknown): string | null {
+  const currentVersion = record(record(record(file).file).current_version);
+  const candidates = [
+    record(currentVersion.prostore_file).url,
+    currentVersion.url,
+    currentVersion.download_url,
+  ];
+  for (const candidate of candidates) {
+    const value = text(candidate);
+    if (!value) continue;
+    try {
+      const parsed = new URL(value);
+      const hostname = parsed.hostname.toLowerCase();
+      if (parsed.protocol === "https:" && (hostname === "procore.com" || hostname.endsWith(".procore.com"))) {
+        return parsed.toString();
+      }
+    } catch {
+      // Ignore malformed or non-Procore URLs.
+    }
+  }
+  return null;
+}
+
+export function buildProjectLinksBulkUpdate(
+  existingPayload: unknown,
+  title: string,
+  url: string,
+): { changed: boolean; action: "created" | "updated" | "unchanged"; body: Array<{ id?: string; title: string; url: string }>; linkId?: string } {
+  const rows = rowsFromPayload(existingPayload)
+    .map((row, index) => ({ row, index, position: Number(row.position) }))
+    .sort((left, right) => {
+      const leftPosition = Number.isFinite(left.position) ? left.position : left.index;
+      const rightPosition = Number.isFinite(right.position) ? right.position : right.index;
+      return leftPosition - rightPosition || left.index - right.index;
+    })
+    .map(({ row }) => row);
+
+  const body: Array<{ id?: string; title: string; url: string }> = rows.map((row) => {
+    const id = text(row.id);
+    const existingTitle = text(row.title || row.name);
+    const existingUrl = text(row.url);
+    if (!id || !existingTitle || !existingUrl) {
+      throw new Error("Procore returned a project link without an id, title, or URL; refusing a bulk update that could drop it.");
+    }
+    return { id, title: existingTitle, url: existingUrl };
+  });
+
+  const existingIndex = body.findIndex((link) => normalized(link.title) === normalized(title));
+  if (existingIndex < 0) {
+    body.push({ title, url });
+    return { changed: true, action: "created", body };
+  }
+
+  const existing = body[existingIndex];
+  if (existing.title === title && existing.url === url) {
+    return { changed: false, action: "unchanged", body, linkId: existing.id };
+  }
+  body[existingIndex] = { id: existing.id, title, url };
+  return { changed: true, action: "updated", body, linkId: existing.id };
+}
+
+async function fetchAllPages(params: {
+  path: string;
+  token: string;
+  companyId: string;
+  query?: Record<string, string>;
+}) {
+  const rows: UnknownRecord[] = [];
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const query = new URLSearchParams({
+      ...(params.query || {}),
+      page: String(page),
+      per_page: String(PAGE_SIZE),
+    });
+    const payload = await makeRequest(
+      `${params.path}?${query.toString()}`,
+      params.token,
+      { method: "GET", cache: "no-store" },
+      params.companyId,
+    );
+    const pageRows = rowsFromPayload(payload);
+    rows.push(...pageRows);
+    if (pageRows.length < PAGE_SIZE) return rows;
+  }
+  throw new Error(`Procore pagination exceeded ${MAX_PAGES} pages for ${params.path}.`);
+}
+
+export async function syncJobScheduleProjectLink(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+  folderName?: string;
+  fileName?: string;
+  linkTitle?: string;
+}): Promise<ProjectLinkSyncResult> {
+  const folderName = text(params.folderName || process.env.PROCORE_JOB_SCHEDULE_FOLDER_NAME) || DEFAULT_FOLDER_NAME;
+  const fileName = text(params.fileName || process.env.PROCORE_JOB_SCHEDULE_FILE_NAME) || DEFAULT_FILE_NAME;
+  const linkTitle = text(params.linkTitle || process.env.PROCORE_JOB_SCHEDULE_LINK_TITLE) || DEFAULT_LINK_TITLE;
+  const projectId = encodeURIComponent(params.projectId);
+  const companyId = encodeURIComponent(params.companyId);
+
+  const documents = await fetchAllPages({
+    path: `/rest/v2.0/projects/${projectId}/documents`,
+    token: params.token,
+    companyId: params.companyId,
+    query: { view: "extended", "filters[is_in_recycle_bin]": "false" },
+  });
+  const match = findJobScheduleDocument(documents, folderName, fileName);
+  if (match.status !== "found") return { status: match.status, folderId: match.folderId };
+
+  const file = match.file || {};
+  const url = jobScheduleFileUrl(file);
+  const baseResult = {
+    folderId: match.folderId,
+    documentId: documentId(file),
+    fileVersionId: text(record(record(file.file).current_version).id) || undefined,
+  };
+  if (!url) return { status: "missing_file_url", ...baseResult };
+
+  const linksPath = `/rest/v2.0/companies/${companyId}/projects/${projectId}/links`;
+  const links = await fetchAllPages({
+    path: linksPath,
+    token: params.token,
+    companyId: params.companyId,
+  });
+  const update = buildProjectLinksBulkUpdate(links, linkTitle, url);
+  if (!update.changed) {
+    return { status: "unchanged", ...baseResult, url, linkId: update.linkId };
+  }
+
+  const response = await makeRequest(
+    `${linksPath}/bulk_update`,
+    params.token,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update.body),
+    },
+    params.companyId,
+  );
+  const updatedLinks = rowsFromPayload(response);
+  const saved = updatedLinks.find((link) => normalized(link.title || link.name) === normalized(linkTitle));
+  return {
+    status: update.action,
+    ...baseResult,
+    url,
+    linkId: text(saved?.id) || update.linkId,
+  };
+}

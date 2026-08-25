@@ -53,6 +53,23 @@ const handler = async (request: Request) => {
     if (result?.skipped || rateLimited) break;
   }
 
+  const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-sync-secret": secret },
+    body: JSON.stringify({}),
+  });
+  const projectLinkResult = await projectLinkResponse.json().catch(() => null);
+  const projectLinkSync = { status: projectLinkResponse.status, result: projectLinkResult };
+  console.log(JSON.stringify({
+    event: "nightly-project-link-sync-background",
+    status: projectLinkResponse.status,
+    success: projectLinkResult?.success,
+    skipped: projectLinkResult?.skipped,
+    reason: projectLinkResult?.reason,
+    projectId: projectLinkResult?.projectId,
+    result: projectLinkResult?.result,
+  }));
+
   for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -76,7 +93,7 @@ const handler = async (request: Request) => {
     if (!response.ok || result?.success === false) continue;
   }
 
-  return Response.json({ success: true, bidBoardHeaders, estimateResults, results });
+  return Response.json({ success: true, projectLinkSync, bidBoardHeaders, estimateResults, results });
 };
 
 export default handler;

@@ -14,6 +14,7 @@ const handler = async (request: Request) => {
   const reconciliation = String(body?.mode || "") === "reconcile";
   let bidBoardHeaders: unknown = null;
   let onboarding: unknown = null;
+  let projectLinkSync: unknown = null;
   const purchaseOrderDiscovery: unknown[] = [];
   const estimateDetails: unknown[] = [];
   const estimateCap = Math.min(
@@ -63,6 +64,7 @@ const handler = async (request: Request) => {
         return Response.json({
           success: false,
           bidBoardHeaders,
+          projectLinkSync,
           onboarding,
           purchaseOrderDiscovery,
           estimateDetails,
@@ -72,6 +74,23 @@ const handler = async (request: Request) => {
       if (!estimateResponse.ok || estimateResult?.success === false) continue;
       if (estimateResult?.skipped) break;
     }
+
+    const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": expected },
+      body: JSON.stringify({}),
+    });
+    const projectLinkResult = await projectLinkResponse.json().catch(() => null);
+    projectLinkSync = { status: projectLinkResponse.status, result: projectLinkResult };
+    console.log(JSON.stringify({
+      event: "project-link-sync-background",
+      status: projectLinkResponse.status,
+      success: projectLinkResult?.success,
+      skipped: projectLinkResult?.skipped,
+      reason: projectLinkResult?.reason,
+      projectId: projectLinkResult?.projectId,
+      result: projectLinkResult?.result,
+    }));
 
     const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
       method: "POST",
@@ -120,6 +139,7 @@ const handler = async (request: Request) => {
         return Response.json({
           success: false,
           bidBoardHeaders,
+          projectLinkSync,
           onboarding,
           purchaseOrderDiscovery,
           results,
@@ -173,6 +193,7 @@ const handler = async (request: Request) => {
   return Response.json({
     success: true,
     bidBoardHeaders,
+    projectLinkSync,
     onboarding,
     purchaseOrderDiscovery,
     estimateDetails,

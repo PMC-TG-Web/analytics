@@ -67,6 +67,7 @@ async function loadHealth(companyId: string) {
             OR failure_count > 0
             OR (dataset = 'actuals' AND next_run_at < NOW() - INTERVAL '30 minutes')
             OR (dataset = 'actuals_reconciliation' AND next_run_at < NOW() - INTERVAL '6 hours')
+            OR (dataset = 'project_home_links' AND failure_count >= 3)
             OR (dataset = 'nightly_structure' AND last_success_at < NOW() - INTERVAL '30 hours')
             OR (dataset = 'nightly_bid_board_headers' AND last_success_at < NOW() - INTERVAL '1 hour')
           )

@@ -125,6 +125,70 @@ export async function seedAllProjectSyncQueue(companyId: string, dataset: string
   return seeded;
 }
 
+export async function seedPmcProjectSyncQueue(companyId: string, dataset: string) {
+  const seeded = await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT
+        company_id,
+        procore_project_id,
+        $2,
+        project_number,
+        project_name,
+        NOW(),
+        NOW(),
+        NOW()
+      FROM pmc_projects
+      WHERE company_id = $1
+        AND NULLIF(BTRIM(procore_project_id), '') IS NOT NULL
+        AND LOWER(BTRIM(project_name)) NOT LIKE '%template%'
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.last_error = 'Excluded because the project is no longer in the Procore project scope.'
+          THEN NOW()
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        last_error = CASE
+          WHEN procore_sync_project_states.last_error = 'Excluded because the project is no longer in the Procore project scope.'
+          THEN NULL
+          ELSE procore_sync_project_states.last_error
+        END,
+        updated_at = NOW()
+    `,
+    companyId,
+    dataset,
+  );
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states state
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          last_error = 'Excluded because the project is no longer in the Procore project scope.',
+          updated_at = NOW()
+      WHERE state.company_id = $1
+        AND state.dataset = $2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pmc_projects project
+          WHERE project.company_id = state.company_id
+            AND project.procore_project_id = state.project_id
+            AND NULLIF(BTRIM(project.procore_project_id), '') IS NOT NULL
+            AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+        )
+    `,
+    companyId,
+    dataset,
+  );
+  return seeded;
+}
+
 export async function seedProjectSyncQueue(companyId: string, dataset: string) {
   return prisma.$executeRawUnsafe(
     `

@@ -93,6 +93,22 @@ test("health evaluation reports an overdue estimate detail backlog", () => {
   assert.ok(issues.includes("141 estimate detail project(s) have been overdue for more than 2 hours."));
 });
 
+test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-08-24T15:55:00.000Z" },
+      { dataset: "project_home_links", never_succeeded: 0, failed_projects: 2, max_failure_count: 3, newest_success: "2026-08-24T15:00:00.000Z" },
+    ],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-24T15:30:00.000Z",
+      last_attempt_at: "2026-08-24T15:30:00.000Z",
+    },
+  }, new Date("2026-08-24T16:00:00.000Z"));
+
+  assert.ok(issues.includes("2 Project Link Sync job(s) are repeatedly failing."));
+});
+
 test("health evaluation allows a fresh estimate detail queue", () => {
   const issues = evaluateProcoreSyncHealth({
     datasets: [
@@ -182,6 +198,7 @@ test("middleware allows secret-authenticated reconciliation routes", async () =>
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
   assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
+  assert.match(middleware, /pathname === '\/api\/cron\/project-link-sync'/);
 });
 
 test("full project reconciliation has timeout headroom and rejects truncated responses", async () => {

@@ -86,6 +86,13 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     );
   }
 
+  const projectLinks = datasets.get("project_home_links");
+  if (projectLinks && projectLinks.max_failure_count >= 3) {
+    issues.push(
+      `${projectLinks.failed_projects} Project Link Sync job(s) are repeatedly failing.`,
+    );
+  }
+
   const reconciliationAge = ageMinutes(snapshot.projectReconciliation?.last_success_at || null, now);
   if (reconciliationAge > 120) {
     issues.push("The full active-project reconciliation has not succeeded within 2 hours.");

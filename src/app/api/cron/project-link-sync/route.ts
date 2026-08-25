@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
 import { getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
-import { syncJobScheduleProjectLink } from "@/lib/procoreProjectLinkSync";
+import {
+  syncCommitmentMakerProjectLink,
+  syncJobScheduleProjectLink,
+} from "@/lib/procoreProjectLinkSync";
 import {
   acquireProcoreWorker,
   claimDueProject,
@@ -88,11 +91,33 @@ async function run(request: NextRequest) {
 
     try {
       const token = await getClientCredentialsToken();
-      const result = await syncJobScheduleProjectLink({
-        token,
-        companyId: COMPANY_ID,
-        projectId: project.projectId,
-      });
+      const errors: string[] = [];
+      const result: Record<string, unknown> = {};
+      try {
+        result.jobSchedule = await syncJobScheduleProjectLink({
+          token,
+          companyId: COMPANY_ID,
+          projectId: project.projectId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.jobSchedule = { status: "error", error: message };
+        errors.push(`Job Schedule: ${message}`);
+      }
+      try {
+        result.commitmentMaker = await syncCommitmentMakerProjectLink({
+          token,
+          companyId: COMPANY_ID,
+          projectId: project.projectId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.commitmentMaker = { status: "error", error: message };
+        errors.push(`Commitment Maker: ${message}`);
+      }
+      if (errors.length > 0) {
+        throw new Error(errors.join(" | "));
+      }
       await finishProjectSync({
         project,
         success: true,

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import Navigation from "@/components/Navigation";
 import {
+  commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
   type CommitmentMakerParseResult,
 } from "@/lib/procore/commitmentMaker";
@@ -121,6 +122,7 @@ export default function CommitmentMakerPage() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsBusy, setProjectsBusy] = useState(true);
   const [projectId, setProjectId] = useState("");
+  const [projectLocked, setProjectLocked] = useState(false);
   const [fileName, setFileName] = useState("");
   const [workbookBuffer, setWorkbookBuffer] = useState<ArrayBuffer | null>(null);
   const [parsedWorkbook, setParsedWorkbook] = useState<CommitmentMakerParseResult | null>(null);
@@ -142,10 +144,26 @@ export default function CommitmentMakerPage() {
     let cancelled = false;
     async function loadProjects() {
       try {
+        const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
         const response = await fetch("/api/procore/projects", { cache: "no-store" });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(text(asRecord(payload).error) || "Projects could not be loaded.");
-        if (!cancelled) setProjects(projectOptions(payload));
+        if (!cancelled) {
+          const options = projectOptions(payload);
+          if (linkedProjectId) {
+            setProjectId(linkedProjectId);
+            setProjectLocked(true);
+            if (!options.some((project) => project.id === linkedProjectId)) {
+              options.unshift({
+                id: linkedProjectId,
+                name: "Project opened from Procore",
+                number: "",
+                status: "",
+              });
+            }
+          }
+          setProjects(options);
+        }
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
       } finally {
@@ -301,7 +319,7 @@ export default function CommitmentMakerPage() {
               <span className="text-xs font-black uppercase tracking-wider text-slate-600">1. Procore Project</span>
               <select
                 value={projectId}
-                disabled={projectsBusy || busy}
+                disabled={projectsBusy || busy || projectLocked}
                 onChange={(event) => {
                   setProjectId(event.target.value);
                   invalidatePreview();
@@ -315,6 +333,11 @@ export default function CommitmentMakerPage() {
                   </option>
                 ))}
               </select>
+              {projectLocked && (
+                <p className="mt-1.5 text-xs font-semibold text-emerald-700">
+                  Locked to the project that opened this link in Procore.
+                </p>
+              )}
             </label>
 
             <label className="block">

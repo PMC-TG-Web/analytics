@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   COMMITMENT_MAKER_VENDOR_NAME,
+  commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
 } from '../src/lib/procore/commitmentMaker.ts';
@@ -75,4 +76,13 @@ test('plans padded PO numbers after the largest existing numeric number', () => 
   assert.deepEqual(planNextPurchaseOrderNumbers([], 2), ['001', '002']);
   assert.deepEqual(planNextPurchaseOrderNumbers(['0999'], 1), ['1000']);
   assert.deepEqual(planNextPurchaseOrderNumbers(['PO-008', 'PO-009'], 2), ['PO-010', 'PO-011']);
+});
+
+test('reads only a numeric project ID from the Project Home link', () => {
+  assert.equal(
+    commitmentMakerProjectIdFromSearch('?projectId=598134326626273&source=procore-project-home'),
+    '598134326626273',
+  );
+  assert.equal(commitmentMakerProjectIdFromSearch('?project_id=12345'), '12345');
+  assert.equal(commitmentMakerProjectIdFromSearch('?projectId=wrong-project'), '');
 });

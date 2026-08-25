@@ -281,6 +281,12 @@ export function normalizeCommitmentMakerVendorName(value: unknown): string {
     .trim();
 }
 
+export function commitmentMakerProjectIdFromSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  const projectId = String(params.get("projectId") || params.get("project_id") || "").trim();
+  return /^\d+$/.test(projectId) ? projectId : "";
+}
+
 export function planNextPurchaseOrderNumbers(existingNumbers: unknown[], count: number): string[] {
   const values = existingNumbers
     .map((value) => String(value ?? "").trim())

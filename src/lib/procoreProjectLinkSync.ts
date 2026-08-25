@@ -19,9 +19,18 @@ export type ProjectLinkSyncResult = {
   url?: string;
 };
 
+export type StaticProjectLinkSyncResult = {
+  status: "created" | "updated" | "unchanged";
+  linkId?: string;
+  title: string;
+  url: string;
+};
+
 const DEFAULT_FOLDER_NAME = "Job-Schedule";
 const DEFAULT_FILE_NAME = "PMC_JobSchedule.xlsx";
 const DEFAULT_LINK_TITLE = "PMC Job Schedule";
+const DEFAULT_COMMITMENT_MAKER_LINK_TITLE = "Commitment Maker";
+const DEFAULT_ANALYTICS_BASE_URL = "https://analyticspmc.netlify.app";
 const MANAGED_LINK_TITLES = new Set(["job schedule", "pmc job schedule"]);
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
@@ -168,6 +177,27 @@ export function buildProjectLinksBulkUpdate(
   return { changed: true, action: "updated", body, linkId: existing.id };
 }
 
+export function commitmentMakerProjectUrl(
+  projectId: string,
+  baseUrl = process.env.APP_BASE_URL || DEFAULT_ANALYTICS_BASE_URL,
+): string {
+  const normalizedProjectId = text(projectId);
+  if (!/^\d+$/.test(normalizedProjectId)) {
+    throw new Error("A numeric Procore project ID is required for the Commitment Maker link.");
+  }
+  const parsed = new URL(text(baseUrl) || DEFAULT_ANALYTICS_BASE_URL);
+  if (parsed.protocol !== "https:") {
+    throw new Error("The Commitment Maker project link must use HTTPS.");
+  }
+  parsed.pathname = "/procore/commitments-live/maker";
+  parsed.search = new URLSearchParams({
+    projectId: normalizedProjectId,
+    source: "procore-project-home",
+  }).toString();
+  parsed.hash = "";
+  return parsed.toString();
+}
+
 async function fetchAllPages(params: {
   path: string;
   token: string;
@@ -252,6 +282,50 @@ export async function syncJobScheduleProjectLink(params: {
   return {
     status: update.action,
     ...baseResult,
+    url,
+    linkId: text(saved?.id) || update.linkId,
+  };
+}
+
+export async function syncCommitmentMakerProjectLink(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+  linkTitle?: string;
+  baseUrl?: string;
+}): Promise<StaticProjectLinkSyncResult> {
+  const linkTitle = text(
+    params.linkTitle || process.env.PROCORE_COMMITMENT_MAKER_LINK_TITLE,
+  ) || DEFAULT_COMMITMENT_MAKER_LINK_TITLE;
+  const url = commitmentMakerProjectUrl(params.projectId, params.baseUrl);
+  const projectId = encodeURIComponent(params.projectId);
+  const companyId = encodeURIComponent(params.companyId);
+  const linksPath = `/rest/v2.0/companies/${companyId}/projects/${projectId}/links`;
+  const links = await fetchAllPages({
+    path: linksPath,
+    token: params.token,
+    companyId: params.companyId,
+  });
+  const update = buildProjectLinksBulkUpdate(links, linkTitle, url);
+  if (!update.changed) {
+    return { status: "unchanged", title: linkTitle, url, linkId: update.linkId };
+  }
+
+  const response = await makeRequest(
+    `${linksPath}/bulk_update`,
+    params.token,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update.body),
+    },
+    params.companyId,
+  );
+  const updatedLinks = rowsFromPayload(response);
+  const saved = updatedLinks.find((link) => normalized(link.title || link.name) === normalized(linkTitle));
+  return {
+    status: update.action,
+    title: linkTitle,
     url,
     linkId: text(saved?.id) || update.linkId,
   };

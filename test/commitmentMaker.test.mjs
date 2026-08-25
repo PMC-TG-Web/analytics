@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerProjectIdFromSearch,
+  isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
   selectCommitmentMakerWbsCandidate,
@@ -11,6 +12,24 @@ import {
 
 test('uses the fixed Paradise Masonry vendor', () => {
   assert.equal(COMMITMENT_MAKER_VENDOR_NAME, 'Paradise Masonry, LLC');
+});
+
+test('excludes estimate-to-contract balancing rows from commitment lines', () => {
+  const rows = [
+    ['Budget Code', 'Cost Catalog Item', 'Quantity', 'UoM (Quantity)', 'Unit Cost'],
+    ['SIDEWALK', '', '', 'Mixed', ''],
+    ['03-300-30-20 - SITE', 'Ready Mix Concrete', '83', 'cu yd', '$140.45'],
+    ['90-100-10-10', 'Item used to match estimate with contract line.', '1', 'ea', '$0.01'],
+  ];
+
+  const result = parseCommitmentMakerRows(rows);
+
+  assert.equal(result.groups[0].lineItems.length, 1);
+  assert.equal(result.groups[0].lineItems[0].description, 'Ready Mix Concrete - Site');
+  assert.equal(result.groups[0].lineItems[0].quantity, 83);
+  assert.equal(result.skippedRows, 1);
+  assert.equal(isCommitmentMakerEstimateMatchingLine('90-100-10-10', 'Created to match estimate'), true);
+  assert.equal(isCommitmentMakerEstimateMatchingLine('03-300-30-20', 'Ready Mix Concrete'), false);
 });
 
 test('ports the production split-with-labor transformation', () => {

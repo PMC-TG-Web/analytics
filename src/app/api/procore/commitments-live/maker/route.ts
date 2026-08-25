@@ -12,6 +12,7 @@ import {
 import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
+  isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
   selectCommitmentMakerWbsCandidate,
@@ -359,7 +360,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
     const name = readText(rawGroup.name);
     if (!name) throw new Error(`Group ${groupIndex + 1} is missing its name.`);
     if (!Array.isArray(rawGroup.lineItems)) throw new Error(`Group "${name}" is missing its line items.`);
-    const lineItems = rawGroup.lineItems.map((rawLine, lineIndex): CommitmentMakerLineItem => {
+    const lineItems = rawGroup.lineItems.map((rawLine, lineIndex): CommitmentMakerLineItem | null => {
       if (!isRecord(rawLine)) throw new Error(`Group "${name}" line ${lineIndex + 1} is invalid.`);
       const costCode = readText(rawLine.costCode).substring(0, 12);
       const description = readText(rawLine.description);
@@ -372,6 +373,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
       if (!Number.isFinite(unitCost) || unitCost < 0) {
         throw new Error(`Group "${name}" line ${lineIndex + 1} has an invalid unit cost.`);
       }
+      if (isCommitmentMakerEstimateMatchingLine(costCode, description)) return null;
       return {
         costCode,
         costType: COMMITMENT_MAKER_COST_TYPE,
@@ -381,7 +383,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
         unitCost: Math.round(unitCost * 100) / 100,
         subtotalOverride: null,
       };
-    });
+    }).filter((line): line is CommitmentMakerLineItem => line !== null);
     totalLineItems += lineItems.length;
     return { name, lineItems };
   });

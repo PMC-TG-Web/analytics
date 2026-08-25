@@ -147,6 +147,31 @@ function safeGroupName(value: CommitmentMakerCell, fallback: string): string {
 }
 
 /**
+ * Estimate exports can contain a one-cent Over/Under row whose only purpose is
+ * to reconcile the estimate with its contract total. It is not real PO scope
+ * and must never become a commitment line item.
+ */
+export function isCommitmentMakerEstimateMatchingLine(
+  costCodeValue: unknown,
+  descriptionValue: unknown,
+): boolean {
+  const costCode = String(costCodeValue ?? "").substring(0, 12).trim();
+  const description = String(descriptionValue ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const describesEstimateMatching =
+    description.includes("match estimate") ||
+    description.includes("match the estimate");
+
+  return describesEstimateMatching || (
+    costCode === "90-100-10-10" &&
+    (description.includes("over under") || description.includes("contract line"))
+  );
+}
+
+/**
  * Ports the production converter's "New Commitment with Labor - Split by Groups"
  * transformation. The caller is responsible for turning an XLSX sheet into a
  * two-dimensional value array.
@@ -229,6 +254,11 @@ export function parseCommitmentMakerRows(
       const hourly = ["hr", "hrs", "hour", "hours"].includes(uom.toLowerCase());
       const management = `${description} ${originalBudgetCode}`.toLowerCase().includes("management");
       const unitCost = hourly ? 0 : parsePositiveNumber(row[indices.unitCost]);
+
+      if (isCommitmentMakerEstimateMatchingLine(costCode, description)) {
+        skippedRows += 1;
+        continue;
+      }
 
       if (
         !costCode ||

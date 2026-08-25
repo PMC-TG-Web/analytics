@@ -14,6 +14,7 @@ import {
   shouldBlockDiagnosticsInProduction,
 } from '@/lib/diagnosticsGate';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
+import { isProcoreLiveApiRoutePath } from '@/lib/procoreLiveApiRoutes';
 
 const API_RATE_LIMIT = 300;
 const API_RATE_WINDOW_MS = 60 * 1000;
@@ -37,28 +38,6 @@ const HEAVY_API_ROUTE_PREFIXES = [
   '/api/procore/estimating/proposals-bulk',
   '/api/procore/estimating/proposal-line-items-bulk',
   '/api/procore/sync/project-commercial-data',
-];
-
-const PROCORE_LIVE_API_ROUTE_PREFIXES = [
-  '/api/procore/sync',
-  '/api/procore/projects',
-  '/api/procore/vendors',
-  '/api/procore/prime-contracts',
-  '/api/procore/change-order-packages',
-  '/api/procore/company-users',
-  '/api/procore/configurable-field-sets',
-  '/api/procore/custom-fields',
-  '/api/procore/project-stages',
-  '/api/procore/estimating/bid-board-projects',
-  '/api/procore/estimating/bid-board-project-by-id',
-  '/api/procore/estimating/catalogs',
-  '/api/procore/estimating/catalog-items',
-  '/api/procore/estimating/estimating-project',
-  '/api/procore/estimating/proposals',
-  '/api/procore/estimating/proposals-bulk',
-  '/api/procore/estimating/proposal-line-items',
-  '/api/procore/estimating/proposal-line-items-bulk',
-  '/api/procore/estimating/proposal-line-item-groups',
 ];
 
 type PermissionCheckResult = {
@@ -118,12 +97,6 @@ function applyPermissionCookie(response: NextResponse, cookieValue: string | nul
 
 function isHeavyApiRoutePath(pathname: string) {
   return HEAVY_API_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-}
-
-function isProcoreLiveApiRoutePath(pathname: string) {
-  return PROCORE_LIVE_API_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 }

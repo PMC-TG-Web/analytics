@@ -39,7 +39,12 @@ function loadModule(makeRequest) {
 
 test("creates the productivity review task with the internal project manager as assignee", async () => {
   let createdPayload;
+  let sendCalls = 0;
   const makeRequest = async (path, _token, options) => {
+    if (path.startsWith("/rest/v1.0/task_items/send_unsent?")) {
+      sendCalls += 1;
+      return [{ id: 456 }];
+    }
     if (options?.method === "POST") {
       createdPayload = JSON.parse(options.body).task_item;
       return { id: 456 };
@@ -77,11 +82,19 @@ test("creates the productivity review task with the internal project manager as 
   assert.equal(createdPayload.assigned_id, 123);
   assert.deepEqual(createdPayload.assignee_ids, [123]);
   assert.deepEqual(createdPayload.distribution_member_ids, [900]);
+  assert.equal(sendCalls, 1);
+  assert.equal(result.notified, true);
+  assert.deepEqual(result.sentTaskIds, ["456"]);
 });
 
 test("adds the project manager to an existing automated task without removing assignees", async () => {
   let patchedPayload;
+  let sendCalls = 0;
   const makeRequest = async (path, _token, options) => {
+    if (path.startsWith("/rest/v1.0/task_items/send_unsent?")) {
+      sendCalls += 1;
+      return [{ id: 456 }];
+    }
     if (options?.method === "PATCH") {
       patchedPayload = JSON.parse(options.body).task_item;
       return { id: 456 };
@@ -123,4 +136,52 @@ test("adds the project manager to an existing automated task without removing as
   assert.equal(patchedPayload.assigned_id, 777);
   assert.deepEqual(patchedPayload.assignee_ids, [777, 123]);
   assert.equal(patchedPayload.distribution_member_ids, undefined);
+  assert.equal(sendCalls, 1);
+  assert.equal(result.notified, true);
+});
+
+test("does not resend an automated task that Procore already notified", async () => {
+  let sendCalls = 0;
+  const makeRequest = async (path) => {
+    if (path.startsWith("/rest/v1.0/task_items/send_unsent?")) {
+      sendCalls += 1;
+      return [{ id: 456 }];
+    }
+    if (path.startsWith("/rest/v1.0/task_items?")) {
+      return [{
+        id: 456,
+        title: "Field Productivity Review",
+        due_date: "2026-08-31",
+        description: "[analytics:auto-productivity-review]",
+        assigned_id: 123,
+        assignee_ids: [123],
+        distribution_member_ids: [900],
+        date_notified: "2026-08-01T13:00:00Z",
+      }];
+    }
+    if (path.includes("/distribution_groups?")) {
+      return [{ name: "Project Review", users: [{ id: 900 }] }];
+    }
+    if (path.startsWith("/rest/v1.0/project_roles?")) {
+      return [{ role: "Project Manager", user_id: 123, is_active: true }];
+    }
+    if (path.includes("/users?")) {
+      return [{ id: 123, name: "Internal PM", login: "pm@pmcdecor.com" }];
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const { ensureProductivityReviewTaskOnComplete } = loadModule(makeRequest);
+
+  const result = await ensureProductivityReviewTaskOnComplete({
+    token: "token",
+    companyId: "company",
+    projectId: "project",
+    projectNumber: "2601",
+    projectName: "Test Project",
+    completedAt: new Date("2026-08-01T12:00:00.000Z"),
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.notified, true);
+  assert.equal(sendCalls, 0);
 });

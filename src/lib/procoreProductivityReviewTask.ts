@@ -160,6 +160,32 @@ function sameIds(left: number[], right: number[]): boolean {
   return left.every((id) => rightSet.has(id));
 }
 
+function taskWasNotified(task: JsonObject): boolean {
+  return Boolean(String(task.date_notified || task.dateNotified || '').trim());
+}
+
+async function sendUnsentTaskItems(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+}) {
+  const payload = await makeRequest(
+    `/rest/v1.0/task_items/send_unsent?project_id=${encodeURIComponent(params.projectId)}`,
+    params.token,
+    { method: 'POST' },
+    params.companyId
+  );
+  return asRows(payload)
+    .map((task) => readId(task.id))
+    .filter((id): id is string => Boolean(id));
+}
+
+function ensureTaskWasSent(taskId: string, sentTaskIds: string[]) {
+  if (!sentTaskIds.includes(taskId)) {
+    throw new Error(`Procore did not confirm notification delivery for Task Item ${taskId}.`);
+  }
+}
+
 export async function ensureProductivityReviewTaskOnComplete(params: {
   token: string;
   companyId: string;
@@ -208,6 +234,9 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
 
   if (existingTask) {
     const taskId = readId(existingTask.id);
+    if (!taskId) {
+      throw new Error('The existing automated Procore Task Item is missing its ID.');
+    }
     const currentMemberIds = readTaskDistributionMemberIds(existingTask);
     const currentAssigneeIds = readTaskAssigneeIds(existingTask);
     const mergedAssigneeIds = [...new Set([...currentAssigneeIds, ...projectManagerAssigneeIds])];
@@ -231,7 +260,23 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
         params.companyId
       );
     }
-    return { created: false, taskId, dueDate, projectManagerAssigneeIds };
+    const alreadyNotified = taskWasNotified(existingTask);
+    const sentTaskIds = alreadyNotified
+      ? []
+      : await sendUnsentTaskItems({
+          token: params.token,
+          companyId: params.companyId,
+          projectId: params.projectId,
+        });
+    if (!alreadyNotified) ensureTaskWasSent(taskId, sentTaskIds);
+    return {
+      created: false,
+      taskId,
+      dueDate,
+      projectManagerAssigneeIds,
+      notified: alreadyNotified || Boolean(taskId && sentTaskIds.includes(taskId)),
+      sentTaskIds,
+    };
   }
 
   const projectLabel = [params.projectNumber, params.projectName]
@@ -269,10 +314,22 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
   );
   const createdTaskObject = asObject(createdTask);
   const createdTaskInner = asObject(createdTaskObject?.task_item);
+  const taskId = readId(createdTaskObject?.id) || readId(createdTaskInner?.id);
+  if (!taskId) {
+    throw new Error('Procore created the Task Item without returning its ID; notification was not attempted.');
+  }
+  const sentTaskIds = await sendUnsentTaskItems({
+    token: params.token,
+    companyId: params.companyId,
+    projectId: params.projectId,
+  });
+  ensureTaskWasSent(taskId, sentTaskIds);
   return {
     created: true,
-    taskId: readId(createdTaskObject?.id) || readId(createdTaskInner?.id),
+    taskId,
     dueDate,
     projectManagerAssigneeIds,
+    notified: Boolean(taskId && sentTaskIds.includes(taskId)),
+    sentTaskIds,
   };
 }

@@ -41,6 +41,10 @@ function normalized(value: unknown): string {
   return text(value).toLocaleLowerCase("en-US");
 }
 
+function compactFileName(value: unknown): string {
+  return normalized(value).replace(/[^a-z0-9]/g, "");
+}
+
 function rowsFromPayload(payload: unknown): UnknownRecord[] {
   const rows = Array.isArray(payload) ? payload : record(payload).data;
   return Array.isArray(rows)
@@ -81,11 +85,19 @@ export function findJobScheduleDocument(
   if (!matchingFolders.length) return { status: "missing_folder" };
 
   const folderIds = new Set(matchingFolders.map(documentId));
-  const file = rows.find((row) => (
+  const expectedFileName = compactFileName(fileName);
+  const matchingFiles = rows.filter((row) => (
     !documentKind(row).includes("folder")
-    && normalized(row.name || row.file_name || row.filename) === normalized(fileName)
+    && compactFileName(row.name || row.file_name || row.filename) === expectedFileName
     && folderIds.has(parentId(row))
   ));
+  const file = matchingFiles.sort((left, right) => {
+    const leftVersion = record(record(left.file).current_version);
+    const rightVersion = record(record(right.file).current_version);
+    const leftTime = Date.parse(text(leftVersion.updated_at || leftVersion.created_at || left.updated_at)) || 0;
+    const rightTime = Date.parse(text(rightVersion.updated_at || rightVersion.created_at || right.updated_at)) || 0;
+    return rightTime - leftTime || Number(documentId(right)) - Number(documentId(left));
+  })[0];
   const folderId = file ? parentId(file) : documentId(matchingFolders[0]);
   return file ? { status: "found", folderId, file } : { status: "missing_file", folderId };
 }

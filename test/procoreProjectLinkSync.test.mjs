@@ -24,7 +24,7 @@ function loadModule(makeRequest = async () => []) {
 const folder = { id: 10, name: "Job-Schedule", document_type: "folder" };
 const file = {
   id: 20,
-  name: "PMC_JobSchedule.xlsx",
+  name: "PMC_Job_Schedule.xlsx",
   document_type: "file",
   parent_id: 10,
   file: {
@@ -36,7 +36,7 @@ const file = {
   },
 };
 
-test("finds the exact workbook only inside the Job-Schedule folder", () => {
+test("finds the workbook inside Job-Schedule despite separator variations", () => {
   const { findJobScheduleDocument } = loadModule();
   const wrongFolderFile = { ...file, id: 21, parent_id: 999 };
   const result = findJobScheduleDocument([folder, wrongFolderFile, file]);

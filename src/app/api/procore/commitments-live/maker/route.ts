@@ -18,7 +18,7 @@ import {
   type CommitmentMakerGroup,
   type CommitmentMakerLineItem,
 } from "@/lib/procore/commitmentMaker";
-import { getRequestUserEmail } from "@/lib/requestUser";
+import { getCurrentUserEmail } from "@/lib/requestUser";
 
 export const dynamic = "force-dynamic";
 
@@ -643,7 +643,10 @@ async function handleRequest(request: NextRequest) {
     return NextResponse.json({ ...preview, error: "Commitment creation is blocked by validation errors." }, { status: 409 });
   }
 
-  const userEmail = (await getRequestUserEmail(request)) || "unknown@pmcdecor.com";
+  // Use Auth0's App Router request context here. The workbook request body was
+  // consumed above, so passing `request` back into Auth0 can cause a serverless
+  // runtime to rebuild an already-disturbed body stream.
+  const userEmail = (await getCurrentUserEmail()) || "unknown@pmcdecor.com";
   if (plan.vendor.willAddToProject) {
     await addVendorToProject({ accessToken, companyId, projectId, vendorId: plan.vendor.id });
   }

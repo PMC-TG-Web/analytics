@@ -268,7 +268,7 @@ export default function CommitmentMakerPage() {
         setExpandedGroups(
           Object.fromEntries((nextPreview.groups || []).map((group, index) => [group.name, index === 0]))
         );
-      } else {
+      } else if (Array.isArray(asRecord(payload).results)) {
         setResult(payload as CreateResult);
       }
       if (!response.ok) throw new Error(text(asRecord(payload).error) || "The request failed.");

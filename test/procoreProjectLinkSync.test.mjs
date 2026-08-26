@@ -33,6 +33,7 @@ const file = {
   file: {
     current_version: {
       id: 30,
+      created_by: { id: 40 },
       url: "https://us02.procore.com/fas/api/v5/files/fallback",
       prostore_file: { url: "https://us02.procore.com/fas/api/v5/files/current" },
     },
@@ -48,16 +49,17 @@ test("finds the workbook inside Job-Schedule despite separator variations", () =
   assert.equal(result.folderId, "10");
 });
 
-test("links to the Procore Documents folder instead of the workbook download", () => {
+test("links to Procore WOPI so Office edits the existing workbook", () => {
   const { jobScheduleFileUrl } = loadModule();
   assert.equal(
-    jobScheduleFileUrl(file, "66", "10"),
-    "https://us02.procore.com/66/project/documents?folder_id=10",
+    jobScheduleFileUrl(file, "55", "66"),
+    "https://wopi.procore.com/wopi/viewer/20?project_id=66&company_id=55&hint=40&mode=view",
   );
-  assert.equal(jobScheduleFileUrl({
-    file: { current_version: { url: "https://files.example.com/workbook.xlsx" } },
-  }, "66", "10"), "https://app.procore.com/66/project/documents?folder_id=10");
-  assert.equal(jobScheduleFileUrl(file, "not-a-project", "10"), null);
+  assert.equal(
+    jobScheduleFileUrl({ ...file, created_by: { id: 41 }, file: { current_version: {} } }, "55", "66"),
+    "https://wopi.procore.com/wopi/viewer/20?project_id=66&company_id=55&hint=41&mode=view",
+  );
+  assert.equal(jobScheduleFileUrl(file, "55", "not-a-project"), null);
 });
 
 test("adds one Project Home link while preserving existing link order", () => {
@@ -132,7 +134,7 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
       return [...JSON.parse(options.body).slice(0, 1), {
         id: 9,
         title: "PMC Job Schedule",
-        url: "https://us02.procore.com/66/project/documents?folder_id=10",
+        url: "https://wopi.procore.com/wopi/viewer/20?project_id=66&company_id=55&hint=40&mode=view",
       }];
     }
     throw new Error(`Unexpected request: ${path}`);
@@ -146,7 +148,7 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
   assert.equal(calls[2].options.method, "PATCH");
   assert.deepEqual(JSON.parse(calls[2].options.body), [
     { id: "7", title: "Safety", url: "https://example.com/safety" },
-    { title: "PMC Job Schedule", url: "https://us02.procore.com/66/project/documents?folder_id=10" },
+    { title: "PMC Job Schedule", url: "https://wopi.procore.com/wopi/viewer/20?project_id=66&company_id=55&hint=40&mode=view" },
   ]);
 });
 

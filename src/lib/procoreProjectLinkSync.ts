@@ -113,47 +113,31 @@ export function findJobScheduleDocument(
   return file ? { status: "found", folderId, file } : { status: "missing_file", folderId };
 }
 
-function procoreWebOrigin(file: unknown, configuredBaseUrl = ""): string {
-  const currentVersion = record(record(record(file).file).current_version);
-  const candidates = [
-    configuredBaseUrl,
-    record(currentVersion.prostore_file).url,
-    currentVersion.url,
-    currentVersion.download_url,
-    "https://app.procore.com",
-  ];
-  for (const candidate of candidates) {
-    const value = text(candidate);
-    if (!value) continue;
-    try {
-      const parsed = new URL(value);
-      const hostname = parsed.hostname.toLowerCase();
-      if (
-        parsed.protocol === "https:"
-        && (hostname === "app.procore.com" || /^[a-z]{2}\d{2}\.procore\.com$/.test(hostname))
-      ) {
-        return parsed.origin;
-      }
-    } catch {
-      // Ignore malformed or non-Procore URLs.
-    }
-  }
-  return "https://app.procore.com";
-}
-
 export function jobScheduleFileUrl(
   file: unknown,
+  companyId: string,
   projectId: string,
-  folderId: string,
-  configuredBaseUrl = process.env.PROCORE_WEB_BASE_URL || "",
 ): string | null {
+  const fileRecord = record(file);
+  const currentVersion = record(record(fileRecord.file).current_version);
+  const normalizedCompanyId = text(companyId);
   const normalizedProjectId = text(projectId);
-  const normalizedFolderId = text(folderId);
-  if (!/^\d+$/.test(normalizedProjectId) || !/^\d+$/.test(normalizedFolderId)) return null;
+  const normalizedDocumentId = documentId(fileRecord);
+  const creatorId = text(record(currentVersion.created_by).id || record(fileRecord.created_by).id);
+  if (
+    !/^\d+$/.test(normalizedCompanyId)
+    || !/^\d+$/.test(normalizedProjectId)
+    || !/^\d+$/.test(normalizedDocumentId)
+    || !/^\d+$/.test(creatorId)
+  ) return null;
 
-  const url = new URL(procoreWebOrigin(file, configuredBaseUrl));
-  url.pathname = `/${encodeURIComponent(normalizedProjectId)}/project/documents`;
-  url.search = new URLSearchParams({ folder_id: normalizedFolderId }).toString();
+  const url = new URL(`/wopi/viewer/${encodeURIComponent(normalizedDocumentId)}`, "https://wopi.procore.com");
+  url.search = new URLSearchParams({
+    project_id: normalizedProjectId,
+    company_id: normalizedCompanyId,
+    hint: creatorId,
+    mode: "view",
+  }).toString();
   url.hash = "";
   return url.toString();
 }
@@ -276,7 +260,7 @@ export async function syncJobScheduleProjectLink(params: {
   if (match.status !== "found") return { status: match.status, folderId: match.folderId };
 
   const file = match.file || {};
-  const url = jobScheduleFileUrl(file, params.projectId, match.folderId || "");
+  const url = jobScheduleFileUrl(file, params.companyId, params.projectId);
   const baseResult = {
     folderId: match.folderId,
     documentId: documentId(file),

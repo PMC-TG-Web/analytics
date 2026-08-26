@@ -113,12 +113,14 @@ export function findJobScheduleDocument(
   return file ? { status: "found", folderId, file } : { status: "missing_file", folderId };
 }
 
-export function jobScheduleFileUrl(file: unknown): string | null {
+function procoreWebOrigin(file: unknown, configuredBaseUrl = ""): string {
   const currentVersion = record(record(record(file).file).current_version);
   const candidates = [
+    configuredBaseUrl,
     record(currentVersion.prostore_file).url,
     currentVersion.url,
     currentVersion.download_url,
+    "https://app.procore.com",
   ];
   for (const candidate of candidates) {
     const value = text(candidate);
@@ -126,14 +128,34 @@ export function jobScheduleFileUrl(file: unknown): string | null {
     try {
       const parsed = new URL(value);
       const hostname = parsed.hostname.toLowerCase();
-      if (parsed.protocol === "https:" && (hostname === "procore.com" || hostname.endsWith(".procore.com"))) {
-        return parsed.toString();
+      if (
+        parsed.protocol === "https:"
+        && (hostname === "app.procore.com" || /^[a-z]{2}\d{2}\.procore\.com$/.test(hostname))
+      ) {
+        return parsed.origin;
       }
     } catch {
       // Ignore malformed or non-Procore URLs.
     }
   }
-  return null;
+  return "https://app.procore.com";
+}
+
+export function jobScheduleFileUrl(
+  file: unknown,
+  projectId: string,
+  folderId: string,
+  configuredBaseUrl = process.env.PROCORE_WEB_BASE_URL || "",
+): string | null {
+  const normalizedProjectId = text(projectId);
+  const normalizedFolderId = text(folderId);
+  if (!/^\d+$/.test(normalizedProjectId) || !/^\d+$/.test(normalizedFolderId)) return null;
+
+  const url = new URL(procoreWebOrigin(file, configuredBaseUrl));
+  url.pathname = `/${encodeURIComponent(normalizedProjectId)}/project/documents`;
+  url.search = new URLSearchParams({ folder_id: normalizedFolderId }).toString();
+  url.hash = "";
+  return url.toString();
 }
 
 export function buildProjectLinksBulkUpdate(
@@ -254,7 +276,7 @@ export async function syncJobScheduleProjectLink(params: {
   if (match.status !== "found") return { status: match.status, folderId: match.folderId };
 
   const file = match.file || {};
-  const url = jobScheduleFileUrl(file);
+  const url = jobScheduleFileUrl(file, params.projectId, match.folderId || "");
   const baseResult = {
     folderId: match.folderId,
     documentId: documentId(file),

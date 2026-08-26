@@ -48,12 +48,16 @@ test("finds the workbook inside Job-Schedule despite separator variations", () =
   assert.equal(result.folderId, "10");
 });
 
-test("uses only HTTPS URLs hosted by Procore", () => {
+test("links to the Procore Documents folder instead of the workbook download", () => {
   const { jobScheduleFileUrl } = loadModule();
-  assert.equal(jobScheduleFileUrl(file), "https://us02.procore.com/fas/api/v5/files/current");
+  assert.equal(
+    jobScheduleFileUrl(file, "66", "10"),
+    "https://us02.procore.com/66/project/documents?folder_id=10",
+  );
   assert.equal(jobScheduleFileUrl({
     file: { current_version: { url: "https://files.example.com/workbook.xlsx" } },
-  }), null);
+  }, "66", "10"), "https://app.procore.com/66/project/documents?folder_id=10");
+  assert.equal(jobScheduleFileUrl(file, "not-a-project", "10"), null);
 });
 
 test("adds one Project Home link while preserving existing link order", () => {
@@ -128,7 +132,7 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
       return [...JSON.parse(options.body).slice(0, 1), {
         id: 9,
         title: "PMC Job Schedule",
-        url: "https://us02.procore.com/fas/api/v5/files/current",
+        url: "https://us02.procore.com/66/project/documents?folder_id=10",
       }];
     }
     throw new Error(`Unexpected request: ${path}`);
@@ -142,7 +146,7 @@ test("sync fetches Documents v2 and sends the full ordered Links v2 bulk update"
   assert.equal(calls[2].options.method, "PATCH");
   assert.deepEqual(JSON.parse(calls[2].options.body), [
     { id: "7", title: "Safety", url: "https://example.com/safety" },
-    { title: "PMC Job Schedule", url: "https://us02.procore.com/fas/api/v5/files/current" },
+    { title: "PMC Job Schedule", url: "https://us02.procore.com/66/project/documents?folder_id=10" },
   ]);
 });
 

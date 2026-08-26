@@ -13,6 +13,7 @@ import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerLineCreatePayload,
+  consolidateCommitmentMakerLineItems,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
@@ -366,7 +367,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
     const name = readText(rawGroup.name);
     if (!name) throw new Error(`Group ${groupIndex + 1} is missing its name.`);
     if (!Array.isArray(rawGroup.lineItems)) throw new Error(`Group "${name}" is missing its line items.`);
-    const lineItems = rawGroup.lineItems.map((rawLine, lineIndex): CommitmentMakerLineItem | null => {
+    const lineItems = consolidateCommitmentMakerLineItems(rawGroup.lineItems.map((rawLine, lineIndex): CommitmentMakerLineItem | null => {
       if (!isRecord(rawLine)) throw new Error(`Group "${name}" line ${lineIndex + 1} is invalid.`);
       const costCode = readText(rawLine.costCode).substring(0, 12);
       const description = readText(rawLine.description);
@@ -389,7 +390,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
         unitCost: Math.round(unitCost * 100) / 100,
         subtotalOverride: null,
       };
-    }).filter((line): line is CommitmentMakerLineItem => line !== null);
+    }).filter((line): line is CommitmentMakerLineItem => line !== null));
     totalLineItems += lineItems.length;
     return { name, lineItems };
   });

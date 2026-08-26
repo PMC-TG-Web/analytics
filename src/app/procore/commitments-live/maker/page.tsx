@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import Navigation from "@/components/Navigation";
 import {
+  combineCommitmentMakerGroups,
   commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
   type CommitmentMakerParseResult,
@@ -126,6 +127,7 @@ export default function CommitmentMakerPage() {
   const [fileName, setFileName] = useState("");
   const [workbookBuffer, setWorkbookBuffer] = useState<ArrayBuffer | null>(null);
   const [parsedWorkbook, setParsedWorkbook] = useState<CommitmentMakerParseResult | null>(null);
+  const [originalParsedWorkbook, setOriginalParsedWorkbook] = useState<CommitmentMakerParseResult | null>(null);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [sheetName, setSheetName] = useState("");
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -134,6 +136,9 @@ export default function CommitmentMakerPage() {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [combineSelection, setCombineSelection] = useState<Record<string, boolean>>({});
+  const [combinedGroupName, setCombinedGroupName] = useState("");
+  const [combineMessage, setCombineMessage] = useState("");
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) || null,
@@ -208,6 +213,9 @@ export default function CommitmentMakerPage() {
     setResult(null);
     setConfirmed(false);
     setExpandedGroups({});
+    setCombineSelection({});
+    setCombinedGroupName("");
+    setCombineMessage("");
   }
 
   async function handleFile(file: File | null) {
@@ -216,6 +224,7 @@ export default function CommitmentMakerPage() {
     setFileName("");
     setWorkbookBuffer(null);
     setParsedWorkbook(null);
+    setOriginalParsedWorkbook(null);
     setSheetNames([]);
     setSheetName("");
     if (!file) return;
@@ -238,7 +247,9 @@ export default function CommitmentMakerPage() {
         raw: false,
         defval: "",
       });
-      setParsedWorkbook(parseCommitmentMakerRows(rows, { fallbackGroupName: file.name.replace(/\.[^.]+$/, "") }));
+      const parsed = parseCommitmentMakerRows(rows, { fallbackGroupName: file.name.replace(/\.[^.]+$/, "") });
+      setParsedWorkbook(parsed);
+      setOriginalParsedWorkbook(parsed);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : String(uploadError));
     }
@@ -249,6 +260,7 @@ export default function CommitmentMakerPage() {
     invalidatePreview();
     setError("");
     setParsedWorkbook(null);
+    setOriginalParsedWorkbook(null);
     if (!nextSheetName || !workbookBuffer) return;
     try {
       const XLSX = await import("xlsx");
@@ -260,13 +272,18 @@ export default function CommitmentMakerPage() {
         raw: false,
         defval: "",
       });
-      setParsedWorkbook(parseCommitmentMakerRows(rows, { fallbackGroupName: fileName.replace(/\.[^.]+$/, "") }));
+      const parsed = parseCommitmentMakerRows(rows, { fallbackGroupName: fileName.replace(/\.[^.]+$/, "") });
+      setParsedWorkbook(parsed);
+      setOriginalParsedWorkbook(parsed);
     } catch (sheetError) {
       setError(sheetError instanceof Error ? sheetError.message : String(sheetError));
     }
   }
 
-  async function callMaker(mode: "preview" | "create") {
+  async function callMaker(
+    mode: "preview" | "create",
+    parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
+  ) {
     setBusy(true);
     setError("");
     if (mode === "create") setResult(null);
@@ -289,10 +306,10 @@ export default function CommitmentMakerPage() {
           projectId,
           fileName,
           sheetName,
-          groups: parsedWorkbook?.groups,
-          sourceRowCount: parsedWorkbook?.sourceRowCount,
-          skippedRows: parsedWorkbook?.skippedRows,
-          warnings: parsedWorkbook?.warnings,
+          groups: parsedOverride?.groups,
+          sourceRowCount: parsedOverride?.sourceRowCount,
+          skippedRows: parsedOverride?.skippedRows,
+          warnings: parsedOverride?.warnings,
           previewFingerprint: mode === "create" ? preview?.previewFingerprint : undefined,
         }),
       });
@@ -302,6 +319,8 @@ export default function CommitmentMakerPage() {
         setPreview(nextPreview);
         setResult(null);
         setConfirmed(false);
+        setCombineSelection({});
+        setCombinedGroupName("");
         setExpandedGroups(
           Object.fromEntries((nextPreview.groups || []).map((group, index) => [group.name, index === 0]))
         );
@@ -316,8 +335,67 @@ export default function CommitmentMakerPage() {
     }
   }
 
+  async function combineSelectedGroups() {
+    if (!parsedWorkbook || !preview) return;
+    const selectedNames = preview.groups
+      .filter((group) => combineSelection[group.name] === true)
+      .map((group) => group.name);
+    const selectedExisting = preview.groups.filter((group) => (
+      combineSelection[group.name] === true && group.action === "resume"
+    ));
+    if (selectedExisting.length > 0) {
+      setError("Existing Procore purchase orders cannot be combined here. Only new proposed POs can be combined before creation.");
+      return;
+    }
+    try {
+      setError("");
+      const combinedGroups = combineCommitmentMakerGroups(
+        parsedWorkbook.groups,
+        selectedNames,
+        combinedGroupName,
+      );
+      const nextParsed = { ...parsedWorkbook, groups: combinedGroups };
+      setParsedWorkbook(nextParsed);
+      setPreview(null);
+      setResult(null);
+      setConfirmed(false);
+      setExpandedGroups({});
+      setCombineSelection({});
+      setCombinedGroupName("");
+      setCombineMessage(`Combined ${selectedNames.length} proposed POs into "${combinedGroupName.trim()}" and consolidated matching quantities.`);
+      await callMaker("preview", nextParsed);
+    } catch (combineError) {
+      setError(combineError instanceof Error ? combineError.message : String(combineError));
+    }
+  }
+
+  async function resetCombinedGroups() {
+    if (!originalParsedWorkbook) return;
+    setParsedWorkbook(originalParsedWorkbook);
+    setPreview(null);
+    setResult(null);
+    setConfirmed(false);
+    setExpandedGroups({});
+    setCombineSelection({});
+    setCombinedGroupName("");
+    setCombineMessage("Restored the original estimate groupings.");
+    await callMaker("preview", originalParsedWorkbook);
+  }
+
   const readyToPreview = Boolean(projectId && parsedWorkbook && sheetName && !busy);
-  const readyToCreate = Boolean(preview?.success && confirmed && !busy && !result?.success);
+  const selectedCombineNames = preview?.groups
+    .filter((group) => combineSelection[group.name] === true)
+    .map((group) => group.name) || [];
+  const combinableGroupCount = preview?.groups.filter((group) => group.action === "create").length || 0;
+  const groupingChanged = Boolean(
+    parsedWorkbook
+    && originalParsedWorkbook
+    && JSON.stringify(parsedWorkbook.groups) !== JSON.stringify(originalParsedWorkbook.groups)
+  );
+  const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !busy);
+  const readyToCreate = Boolean(
+    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success
+  );
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -330,7 +408,7 @@ export default function CommitmentMakerPage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">Procore Commitments</p>
               <h1 className="mt-1 text-2xl font-black text-slate-900">Commitment Maker</h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Turn an estimate workbook into approved Procore purchase orders. Each estimate group becomes one PO.
+                Turn an estimate workbook into approved Procore purchase orders. Keep estimate groups separate or combine selected groups before creation.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -423,7 +501,7 @@ export default function CommitmentMakerPage() {
           {[
             ["Vendor", "Paradise Masonry, LLC"],
             ["Type", "Purchase Order"],
-            ["Title", "Estimate group name"],
+            ["Title", "Estimate group or combined name"],
             ["Final Status", "Approved"],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -465,6 +543,12 @@ export default function CommitmentMakerPage() {
               <strong>{preview.vendor.name}</strong> {preview.vendor.assignedToProject ? "is assigned to this project." : "will be added to this project before the POs are created."}
             </div>
 
+            {combineMessage && (
+              <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+                {combineMessage}
+              </div>
+            )}
+
             {preview.validationErrors.length > 0 && (
               <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                 <p className="font-black">Fix these items before creating:</p>
@@ -480,24 +564,92 @@ export default function CommitmentMakerPage() {
               </div>
             )}
 
+            {combinableGroupCount >= 2 && (
+              <div className="mt-5 rounded-xl border-2 border-violet-200 bg-violet-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-violet-950">Combine proposed purchase orders</h3>
+                    <p className="mt-1 text-xs text-violet-800">
+                      Select two or more new POs below. Matching budget code, description, UOM, cost type, and unit cost lines will become one line with the quantities added together.
+                    </p>
+                  </div>
+                  {groupingChanged && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void resetCombinedGroups()}
+                      className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Reset Original Groups
+                    </button>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end">
+                  <label className="block flex-1">
+                    <span className="text-xs font-black uppercase tracking-wider text-violet-800">Combined PO title</span>
+                    <input
+                      type="text"
+                      maxLength={255}
+                      value={combinedGroupName}
+                      disabled={busy}
+                      onChange={(event) => setCombinedGroupName(event.target.value)}
+                      placeholder="Enter the title for the combined PO"
+                      className="mt-1.5 w-full rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!readyToCombine}
+                    onClick={() => void combineSelectedGroups()}
+                    className="rounded-lg bg-violet-700 px-5 py-2.5 text-sm font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {busy ? "Revalidating..." : `Combine ${selectedCombineNames.length} Selected POs`}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs font-semibold text-violet-800">
+                  {selectedCombineNames.length} selected. Existing or previously resumed Procore POs are protected and cannot be combined here.
+                </p>
+              </div>
+            )}
+
             <div className="mt-5 space-y-3">
               {preview.groups.map((group) => {
                 const expanded = expandedGroups[group.name] === true;
                 return (
                   <div key={group.name} className="overflow-hidden rounded-xl border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedGroups((current) => ({ ...current, [group.name]: !expanded }))}
-                      className="flex w-full items-center justify-between gap-4 bg-slate-50 px-4 py-3 text-left hover:bg-slate-100"
-                    >
-                      <span>
-                        <span className="font-black text-slate-900">PO {group.number} — {group.name}</span>
-                        <span className="ml-2 text-xs font-semibold text-slate-500">{group.lineItems.length} lines · {formatCurrency(group.total)}</span>
-                      </span>
-                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${group.action === "resume" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-                        {group.action === "resume" ? "Resume existing" : "New PO"}
-                      </span>
-                    </button>
+                    <div className="flex items-stretch bg-slate-50">
+                      {combinableGroupCount >= 2 && (
+                        <label
+                          className={`flex items-center border-r border-slate-200 px-4 ${group.action === "resume" ? "cursor-not-allowed bg-slate-100" : "cursor-pointer hover:bg-violet-100"}`}
+                          title={group.action === "resume" ? "Existing Procore POs cannot be combined." : "Select this proposed PO to combine."}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Select PO ${group.number} ${group.name} to combine`}
+                            checked={combineSelection[group.name] === true}
+                            disabled={busy || group.action === "resume"}
+                            onChange={(event) => {
+                              setConfirmed(false);
+                              setCombineSelection((current) => ({ ...current, [group.name]: event.target.checked }));
+                            }}
+                            className="h-5 w-5 rounded border-slate-300 text-violet-700"
+                          />
+                        </label>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedGroups((current) => ({ ...current, [group.name]: !expanded }))}
+                        className="flex flex-1 items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-100"
+                      >
+                        <span>
+                          <span className="font-black text-slate-900">PO {group.number} — {group.name}</span>
+                          <span className="ml-2 text-xs font-semibold text-slate-500">{group.lineItems.length} lines · {formatCurrency(group.total)}</span>
+                        </span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${group.action === "resume" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+                          {group.action === "resume" ? "Resume existing" : "New PO"}
+                        </span>
+                      </button>
+                    </div>
                     {expanded && (
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[900px] text-left text-xs">
@@ -553,6 +705,11 @@ export default function CommitmentMakerPage() {
                 <p className="mt-2 text-xs text-indigo-800">
                   Each PO is staged as Draft while its line items are added, then changed to Approved after the PO is complete.
                 </p>
+                {selectedCombineNames.length > 0 && (
+                  <p className="mt-2 text-xs font-black text-violet-800">
+                    Combine the selected POs or clear their selections before creating.
+                  </p>
+                )}
               </div>
             )}
           </section>

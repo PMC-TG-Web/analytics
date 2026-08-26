@@ -33,6 +33,78 @@ export type CommitmentMakerGroup = {
   lineItems: CommitmentMakerLineItem[];
 };
 
+function normalizedLineKeyPart(value: unknown): string {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function commitmentMakerLineKey(line: CommitmentMakerLineItem): string {
+  return [
+    normalizedLineKeyPart(line.costCode).replace(/\s+/g, ""),
+    normalizedLineKeyPart(line.costType),
+    normalizedLineKeyPart(line.description),
+    normalizedLineKeyPart(line.uom),
+    String(Math.round(line.unitCost * 100)),
+  ].join("|");
+}
+
+export function consolidateCommitmentMakerLineItems(
+  lineItems: CommitmentMakerLineItem[],
+): CommitmentMakerLineItem[] {
+  const consolidated = new Map<string, CommitmentMakerLineItem>();
+  for (const line of lineItems) {
+    const key = commitmentMakerLineKey(line);
+    const existing = consolidated.get(key);
+    if (existing) {
+      existing.quantity = Math.round((existing.quantity + line.quantity) * 1_000_000) / 1_000_000;
+    } else {
+      consolidated.set(key, { ...line });
+    }
+  }
+  return [...consolidated.values()];
+}
+
+function normalizedGroupName(value: unknown): string {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function combineCommitmentMakerGroups(
+  groups: CommitmentMakerGroup[],
+  selectedGroupNames: string[],
+  combinedGroupName: string,
+): CommitmentMakerGroup[] {
+  const combinedName = String(combinedGroupName || "").trim().replace(/\s+/g, " ");
+  if (!combinedName) throw new Error("Enter a title for the combined purchase order.");
+  if (combinedName.length > 255) throw new Error("The combined purchase order title cannot exceed 255 characters.");
+
+  const selectedNames = new Set(selectedGroupNames.map(normalizedGroupName).filter(Boolean));
+  const selected = groups.filter((group) => selectedNames.has(normalizedGroupName(group.name)));
+  if (selected.length < 2) throw new Error("Select at least two purchase orders to combine.");
+  if (selected.length !== selectedNames.size) {
+    throw new Error("One or more selected purchase orders are no longer available. Preview the workbook again.");
+  }
+
+  const combinedNameKey = normalizedGroupName(combinedName);
+  const conflictsWithUnselected = groups.some((group) => (
+    !selectedNames.has(normalizedGroupName(group.name))
+    && normalizedGroupName(group.name) === combinedNameKey
+  ));
+  if (conflictsWithUnselected) {
+    throw new Error("Another purchase order already uses that title. Select it too or enter a different title.");
+  }
+
+  const firstSelectedIndex = groups.findIndex((group) => selectedNames.has(normalizedGroupName(group.name)));
+  const combined: CommitmentMakerGroup = {
+    name: combinedName,
+    lineItems: consolidateCommitmentMakerLineItems(selected.flatMap((group) => group.lineItems)),
+  };
+  const result: CommitmentMakerGroup[] = [];
+  for (let index = 0; index < groups.length; index += 1) {
+    if (index === firstSelectedIndex) result.push(combined);
+    if (!selectedNames.has(normalizedGroupName(groups[index].name))) result.push(groups[index]);
+  }
+  return result;
+}
+
 export type CommitmentMakerWbsCandidate = {
   id: string;
   flatCode: string;
@@ -259,7 +331,7 @@ export function parseCommitmentMakerRows(
   const warnings: string[] = [];
   const groups: CommitmentMakerGroup[] = [];
   for (const group of mergedGroups.values()) {
-    const consolidated = new Map<string, CommitmentMakerLineItem>();
+    const parsedLineItems: CommitmentMakerLineItem[] = [];
     for (const row of group.rows) {
       const originalBudgetCode = text(row[indices.costCode]);
       const costCode = originalBudgetCode.substring(0, 12).trim();
@@ -290,24 +362,18 @@ export function parseCommitmentMakerRows(
 
       if (hourly) uom = "hours";
       description = suffixDescription(description, originalBudgetCode);
-      const key = `${costCode}|${description}`;
-      const existing = consolidated.get(key);
-      if (existing) {
-        existing.quantity += quantity;
-      } else {
-        consolidated.set(key, {
-          costCode,
-          costType: COMMITMENT_MAKER_COST_TYPE,
-          description,
-          quantity,
-          uom,
-          unitCost: Math.round((unitCost || 0) * 100) / 100,
-          subtotalOverride: null,
-        });
-      }
+      parsedLineItems.push({
+        costCode,
+        costType: COMMITMENT_MAKER_COST_TYPE,
+        description,
+        quantity,
+        uom,
+        unitCost: Math.round((unitCost || 0) * 100) / 100,
+        subtotalOverride: null,
+      });
     }
 
-    const lineItems = [...consolidated.values()];
+    const lineItems = consolidateCommitmentMakerLineItems(parsedLineItems);
     if (lineItems.length === 0) warnings.push(`Group "${group.name}" has no importable line items.`);
     groups.push({ name: group.name, lineItems });
   }

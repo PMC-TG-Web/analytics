@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   COMMITMENT_MAKER_VENDOR_NAME,
+  combineCommitmentMakerGroups,
   commitmentMakerLineCreatePayload,
   commitmentMakerProjectIdFromSearch,
   isCommitmentMakerEstimateMatchingLine,
@@ -122,6 +123,69 @@ test('merges repeated group names into one purchase order', () => {
   const result = parseCommitmentMakerRows(rows);
   assert.equal(result.groups.length, 1);
   assert.equal(result.groups[0].lineItems[0].quantity, 3);
+});
+
+test('combines selected purchase orders and aggregates matching line quantities', () => {
+  const concrete = {
+    costCode: '03-300-30-20',
+    costType: 'O',
+    description: 'Ready Mix Concrete - Site',
+    quantity: 2,
+    uom: 'cy',
+    unitCost: 140.45,
+    subtotalOverride: null,
+  };
+  const groups = [
+    { name: 'Sidewalk', lineItems: [concrete] },
+    {
+      name: 'Island Infill',
+      lineItems: [
+        { ...concrete, quantity: 3 },
+        { ...concrete, costCode: '03-200-10-20', description: '#4 Rebar - Site', quantity: 10, uom: 'ea', unitCost: 7.18 },
+      ],
+    },
+    { name: 'Dumpster Pad', lineItems: [{ ...concrete, quantity: 4 }] },
+  ];
+
+  const result = combineCommitmentMakerGroups(groups, ['Sidewalk', 'Island Infill'], 'Site Extras');
+
+  assert.deepEqual(result.map((group) => group.name), ['Site Extras', 'Dumpster Pad']);
+  assert.equal(result[0].lineItems.length, 2);
+  assert.equal(result[0].lineItems[0].quantity, 5);
+  assert.equal(result[1].lineItems[0].quantity, 4);
+});
+
+test('combined purchase orders keep differently priced lines separate', () => {
+  const base = {
+    costCode: '03-300-30-20',
+    costType: 'O',
+    description: 'Ready Mix Concrete',
+    quantity: 2,
+    uom: 'cy',
+    unitCost: 140,
+    subtotalOverride: null,
+  };
+  const result = combineCommitmentMakerGroups([
+    { name: 'A', lineItems: [base] },
+    { name: 'B', lineItems: [{ ...base, quantity: 3, unitCost: 145 }] },
+  ], ['A', 'B'], 'Combined Concrete');
+
+  assert.equal(result[0].lineItems.length, 2);
+  assert.deepEqual(result[0].lineItems.map((line) => line.quantity), [2, 3]);
+});
+
+test('combining purchase orders requires two selections and a unique title', () => {
+  const line = {
+    costCode: '03-300-30-20', costType: 'O', description: 'Concrete', quantity: 1,
+    uom: 'cy', unitCost: 100, subtotalOverride: null,
+  };
+  const groups = [
+    { name: 'A', lineItems: [line] },
+    { name: 'B', lineItems: [line] },
+    { name: 'C', lineItems: [line] },
+  ];
+  assert.throws(() => combineCommitmentMakerGroups(groups, ['A'], 'Combined'), /at least two/);
+  assert.throws(() => combineCommitmentMakerGroups(groups, ['A', 'B'], 'C'), /already uses that title/);
 });
 
 test('plans padded PO numbers after the largest existing numeric number', () => {

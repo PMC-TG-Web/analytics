@@ -118,10 +118,18 @@ async function run(request: NextRequest) {
       if (errors.length > 0) {
         throw new Error(errors.join(" | "));
       }
+      const jobScheduleStatus = String(
+        (result.jobSchedule as { status?: unknown } | undefined)?.status || "",
+      );
+      const waitingForTemplateDocuments = [
+        "missing_folder",
+        "missing_file",
+        "missing_file_url",
+      ].includes(jobScheduleStatus);
       await finishProjectSync({
         project,
         success: true,
-        nextRunMinutes: 24 * 60,
+        nextRunMinutes: waitingForTemplateDocuments ? 15 : 24 * 60,
         result,
       });
       const queue = await getSyncQueueStats(COMPANY_ID, DATASET);

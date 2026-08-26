@@ -185,3 +185,12 @@ test("sync adds the project-specific Commitment Maker link while preserving exis
     },
   ]);
 });
+
+test("the five-minute scheduler continuously drains the Project Home link queue", () => {
+  const scheduledSync = fs.readFileSync("netlify/functions/scheduled-sync.mts", "utf8");
+  const projectLinkRoute = fs.readFileSync("src/app/api/cron/project-link-sync/route.ts", "utf8");
+  assert.match(scheduledSync, /api\/cron\/project-link-sync/);
+  assert.match(scheduledSync, /projectLinkResponse\.ok/);
+  assert.match(scheduledSync, /projectLinkStatus: projectLinkResponse\.status/);
+  assert.match(projectLinkRoute, /waitingForTemplateDocuments \? 15 : 24 \* 60/);
+});

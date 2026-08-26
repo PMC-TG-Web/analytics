@@ -102,6 +102,26 @@ const handler = async () => {
       + ` failed=${timecardNotificationBody?.failed ?? "?"}`,
     );
 
+    const projectLinkResponse = await fetch(
+      `${baseUrl}/api/cron/project-link-sync`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      },
+    );
+    const projectLinkBody = await projectLinkResponse.json().catch(() => null) as Record<string, unknown> | null;
+    console.log(
+      `[scheduled-sync] Project Home links ${projectLinkResponse.ok ? "processed" : "failed"}`
+      + ` - status=${projectLinkResponse.status}`
+      + ` projectId=${projectLinkBody?.projectId ?? "?"}`
+      + ` skipped=${projectLinkBody?.skipped ?? false}`
+      + ` reason=${projectLinkBody?.reason ?? "?"}`,
+    );
+
     let healthStatus: number | null = null;
     let healthBody: Record<string, unknown> | null = null;
     if (cadence.runHealthMonitor) {
@@ -181,10 +201,11 @@ const handler = async () => {
       || (reconciliationStatus >= 200 && reconciliationStatus < 300);
 
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && dispatch.ok && healthOk && reconciliationOk,
+      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && dispatch.ok && healthOk && reconciliationOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
       timecardNotificationStatus: timecardNotificationResponse.status,
+      projectLinkStatus: projectLinkResponse.status,
       dispatchStatus: dispatch.status,
       healthStatus,
       reconciliationStatus,
@@ -195,8 +216,9 @@ const handler = async () => {
       reminderBody,
       healthBody,
       timecardNotificationBody,
+      projectLinkBody,
     }), {
-      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
+      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

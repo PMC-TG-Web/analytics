@@ -151,9 +151,35 @@ export default function CommitmentMakerPage() {
             setProjectLocked(true);
             setProjects([{
               id: linkedProjectId,
-              name: "Project opened from Procore",
+              name: "Loading project…",
               number: "",
               status: "",
+            }]);
+          }
+
+          const search = new URLSearchParams(window.location.search);
+          const accessToken = text(search.get("access"));
+          const response = await fetch(
+            `/api/procore/commitments-live/maker?projectId=${encodeURIComponent(linkedProjectId)}`,
+            {
+              cache: "no-store",
+              headers: {
+                "X-Commitment-Maker-Project-Id": linkedProjectId,
+                "X-Commitment-Maker-Access": accessToken,
+              },
+            }
+          );
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(text(asRecord(payload).error) || "The Procore project name could not be loaded.");
+          }
+          const project = asRecord(asRecord(payload).project);
+          if (!cancelled) {
+            setProjects([{
+              id: text(project.id) || linkedProjectId,
+              name: text(project.name) || `Project ${linkedProjectId}`,
+              number: text(project.number),
+              status: text(project.status),
             }]);
           }
           return;
@@ -163,18 +189,6 @@ export default function CommitmentMakerPage() {
         if (!response.ok) throw new Error(text(asRecord(payload).error) || "Projects could not be loaded.");
         if (!cancelled) {
           const options = projectOptions(payload);
-          if (linkedProjectId) {
-            setProjectId(linkedProjectId);
-            setProjectLocked(true);
-            if (!options.some((project) => project.id === linkedProjectId)) {
-              options.unshift({
-                id: linkedProjectId,
-                name: "Project opened from Procore",
-                number: "",
-                status: "",
-              });
-            }
-          }
           setProjects(options);
         }
       } catch (loadError) {

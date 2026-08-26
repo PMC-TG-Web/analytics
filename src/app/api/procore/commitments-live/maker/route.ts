@@ -818,6 +818,54 @@ async function handleRequest(request: NextRequest) {
   );
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const projectId = readText(request.nextUrl.searchParams.get("projectId"));
+    const accessProjectId = readText(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER));
+    const signedAccessToken = readText(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER));
+    const hasSignedProjectAccess = accessProjectId === projectId
+      && await verifyCommitmentMakerAccessToken(accessProjectId, signedAccessToken).catch(() => false);
+
+    if (!projectId || !hasSignedProjectAccess) {
+      return NextResponse.json(
+        { error: "A valid Procore Project Home link is required." },
+        { status: 401 }
+      );
+    }
+
+    const project = await prisma.pmcProject.findFirst({
+      where: {
+        companyId: procoreConfig.companyId,
+        procoreProjectId: projectId,
+      },
+      select: {
+        procoreProjectId: true,
+        projectNumber: true,
+        projectName: true,
+        status: true,
+      },
+    });
+
+    if (!project) {
+      return NextResponse.json({ error: "This project was not found in Analytics." }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      project: {
+        id: project.procoreProjectId,
+        number: project.projectNumber || "",
+        name: project.projectName,
+        status: project.status || "",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Commitment Maker project lookup error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const csrf = validateCsrfRequest({
     method: request.method,

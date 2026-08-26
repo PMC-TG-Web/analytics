@@ -24,8 +24,8 @@ type PreviewLine = {
   quantity: number;
   uom: string;
   unitCost: number;
-  wbsCodeId: string;
-  wbsFlatCode: string;
+  wbsCodeId: string | null;
+  wbsFlatCode: string | null;
 };
 
 type PreviewGroup = {
@@ -500,7 +500,7 @@ export default function CommitmentMakerPage() {
                           <tbody className="divide-y divide-slate-100">
                             {group.lineItems.map((line, index) => (
                               <tr key={`${line.wbsCodeId}-${line.description}-${index}`}>
-                                <td className="px-3 py-2 font-mono font-semibold">{line.wbsFlatCode || `${line.costCode}.${line.costType}`}</td>
+                                <td className="px-3 py-2 font-mono font-semibold">{line.wbsFlatCode || `${line.costCode} (unassigned)`}</td>
                                 <td className="px-3 py-2">{line.description}</td>
                                 <td className="px-3 py-2 text-right">{line.quantity}</td>
                                 <td className="px-3 py-2">{line.uom}</td>

@@ -13,6 +13,21 @@ export type CommitmentMakerLineItem = {
   subtotalOverride: null;
 };
 
+export type CommitmentMakerPlannedLineItem = CommitmentMakerLineItem & {
+  wbsCodeId: string | null;
+};
+
+export function commitmentMakerLineCreatePayload(line: CommitmentMakerPlannedLineItem) {
+  return {
+    description: line.description,
+    quantity: line.quantity,
+    unit_cost: line.unitCost,
+    amount: Math.round(line.quantity * line.unitCost * 100) / 100,
+    uom: line.uom,
+    ...(line.wbsCodeId ? { wbs_code_id: line.wbsCodeId } : {}),
+  };
+}
+
 export type CommitmentMakerGroup = {
   name: string;
   lineItems: CommitmentMakerLineItem[];

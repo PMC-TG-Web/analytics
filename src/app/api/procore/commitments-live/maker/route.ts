@@ -12,6 +12,7 @@ import {
 import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
+  commitmentMakerLineCreatePayload,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
@@ -419,7 +420,7 @@ async function addVendorToProject(params: {
   throw new Error(`Paradise Masonry could not be added to Procore project ${params.projectId}.`);
 }
 
-type PlannedLine = CommitmentMakerLineItem & { wbsCodeId: string; wbsFlatCode: string };
+type PlannedLine = CommitmentMakerLineItem & { wbsCodeId: string | null; wbsFlatCode: string | null };
 type PlannedGroup = {
   name: string;
   number: string;
@@ -446,6 +447,7 @@ async function buildPlan(params: {
   const companyVendor = findParadiseVendor(companyVendors);
   const projectVendor = findParadiseVendor(projectVendors);
   const validationErrors: string[] = [];
+  const warnings: string[] = [];
   if (!companyVendor) validationErrors.push(`${COMMITMENT_MAKER_VENDOR_NAME} was not found in the Procore company directory.`);
   const vendorId = readId(companyVendor);
   if (companyVendor && !vendorId) validationErrors.push(`${COMMITMENT_MAKER_VENDOR_NAME} does not have a usable Procore vendor ID.`);
@@ -481,10 +483,16 @@ async function buildPlan(params: {
       if (!match) {
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
-        validationErrors.push(candidateCodes.length > 0
-          ? `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} matches multiple project WBS codes (${candidateCodes.join(", ")}); select one in Procore before creating.`
-          : `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} was not found in this project's WBS.`
+        if (candidateCodes.length > 0) {
+          validationErrors.push(
+            `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} matches multiple project WBS codes (${candidateCodes.join(", ")}); select one in Procore before creating.`
+          );
+          continue;
+        }
+        warnings.push(
+          `Group "${group.name}": ${line.costCode} is not in this project's WBS; this PO line will be created without a WBS assignment.`
         );
+        plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
         continue;
       }
       plannedLines.push({ ...line, wbsCodeId: match.id, wbsFlatCode: match.flatCode });
@@ -511,6 +519,7 @@ async function buildPlan(params: {
     commitments,
     groups,
     validationErrors: [...new Set(validationErrors)],
+    warnings: [...new Set(warnings)],
   };
 }
 
@@ -537,7 +546,7 @@ function lineAlreadyExists(line: PlannedLine, records: UnknownRecord[]): boolean
     const quantity = Number(record.quantity);
     const unitCost = Number(record.unit_cost);
     return (
-      recordWbsId === line.wbsCodeId &&
+      recordWbsId === (line.wbsCodeId || "") &&
       readText(record.description) === line.description &&
       Number.isFinite(quantity) &&
       Math.abs(quantity - line.quantity) < 0.0001 &&
@@ -639,7 +648,7 @@ async function handleRequest(request: NextRequest) {
     previewFingerprint: importFingerprint,
     sourceRowCount,
     skippedRows,
-    warnings,
+    warnings: [...new Set([...warnings, ...plan.warnings])],
     validationErrors: plan.validationErrors,
     groups: plan.groups,
     totals: {
@@ -731,14 +740,7 @@ async function handleRequest(request: NextRequest) {
           method: "POST",
           accessToken,
           companyId,
-          body: {
-            description: line.description,
-            quantity: line.quantity,
-            unit_cost: line.unitCost,
-            amount: Math.round(line.quantity * line.unitCost * 100) / 100,
-            uom: line.uom,
-            wbs_code_id: line.wbsCodeId,
-          },
+          body: commitmentMakerLineCreatePayload(line),
         });
         if (!response.ok) {
           throw new Error(

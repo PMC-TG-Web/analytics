@@ -3,12 +3,45 @@ import test from 'node:test';
 
 import {
   COMMITMENT_MAKER_VENDOR_NAME,
+  commitmentMakerLineCreatePayload,
   commitmentMakerProjectIdFromSearch,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
   selectCommitmentMakerWbsCandidate,
 } from '../src/lib/procore/commitmentMaker.ts';
+
+test('omits the WBS field when a project does not contain the workbook cost code', () => {
+  const payload = commitmentMakerLineCreatePayload({
+    costCode: '05-100-10-10',
+    costType: 'O',
+    description: 'Bollards',
+    quantity: 2,
+    uom: 'EA',
+    unitCost: 10,
+    subtotalOverride: null,
+    wbsCodeId: null,
+  });
+
+  assert.equal(Object.hasOwn(payload, 'wbs_code_id'), false);
+  assert.equal(payload.amount, 20);
+});
+
+test('keeps a resolved project WBS ID on the commitment line request', () => {
+  const payload = commitmentMakerLineCreatePayload({
+    costCode: '03-300-30-10',
+    costType: 'O',
+    description: 'Concrete',
+    quantity: 3,
+    uom: 'CY',
+    unitCost: 125.55,
+    subtotalOverride: null,
+    wbsCodeId: '12345',
+  });
+
+  assert.equal(payload.wbs_code_id, '12345');
+  assert.equal(payload.amount, 376.65);
+});
 
 test('uses the fixed Paradise Masonry vendor', () => {
   assert.equal(COMMITMENT_MAKER_VENDOR_NAME, 'Paradise Masonry, LLC');

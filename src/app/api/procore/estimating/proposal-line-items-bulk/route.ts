@@ -60,22 +60,6 @@ function normalizeTimestamp(value: unknown): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<void>
-): Promise<void> {
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(1, concurrency), items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const item = items[nextIndex];
-      nextIndex += 1;
-      await worker(item);
-    }
-  }));
-}
-
 function nestedObject(value: unknown): UnknownRecord {
   return isRecord(value) ? value : {};
 }
@@ -184,95 +168,6 @@ async function upsertEstimateProposal(params: {
   );
 }
 
-async function upsertNormalizedEstimateLine(params: {
-  companyId: string;
-  bidBoardProjectId: string;
-  proposalId: string;
-  procoreProjectId: string | null;
-  lineItem: unknown;
-}) {
-  const { companyId, bidBoardProjectId, proposalId, procoreProjectId, lineItem } = params;
-  const item = isRecord(lineItem) ? lineItem : {};
-  const costItem = nestedObject(item.cost_item);
-  const costCodeObject = nestedObject(item.cost_code);
-  const costItemCostCode = nestedObject(costItem.cost_code);
-  const budgetCode = nestedObject(item.budget_code);
-  const group = nestedObject(item.group);
-  const lineItemId = getLineItemId(lineItem, bidBoardProjectId, proposalId);
-  const costCode = firstText(
-    costCodeObject.full_code,
-    costCodeObject.code,
-    costItemCostCode.full_code,
-    costItemCostCode.code,
-    budgetCode.flat_code,
-    item.cost_code
-  );
-  const wbsCode = firstText(item.wbs_code, budgetCode.flat_code, costCode);
-
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO procore_estimate_line_items (
-        company_id, bid_board_project_id, proposal_id, line_item_id, procore_project_id,
-        group_id, group_name, name, status, cost_code_id, cost_code, wbs_code,
-        cost_item_id, uom, quantity, labor_factor, item_cost, item_sales,
-        labor_cost, labor_sales, labor_hours, payload, source_updated_at,
-        synced_at, updated_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb,
-        $23::timestamptz, NOW(), NOW()
-      )
-      ON CONFLICT (company_id, bid_board_project_id, proposal_id, line_item_id)
-      DO UPDATE SET
-        procore_project_id = EXCLUDED.procore_project_id,
-        group_id = EXCLUDED.group_id,
-        group_name = EXCLUDED.group_name,
-        name = EXCLUDED.name,
-        status = EXCLUDED.status,
-        cost_code_id = EXCLUDED.cost_code_id,
-        cost_code = EXCLUDED.cost_code,
-        wbs_code = EXCLUDED.wbs_code,
-        cost_item_id = EXCLUDED.cost_item_id,
-        uom = EXCLUDED.uom,
-        quantity = EXCLUDED.quantity,
-        labor_factor = EXCLUDED.labor_factor,
-        item_cost = EXCLUDED.item_cost,
-        item_sales = EXCLUDED.item_sales,
-        labor_cost = EXCLUDED.labor_cost,
-        labor_sales = EXCLUDED.labor_sales,
-        labor_hours = EXCLUDED.labor_hours,
-        payload = EXCLUDED.payload,
-        source_updated_at = EXCLUDED.source_updated_at,
-        synced_at = NOW(),
-        updated_at = NOW()
-    `,
-    companyId,
-    bidBoardProjectId,
-    proposalId,
-    lineItemId,
-    procoreProjectId,
-    firstText(item.group_id, group.id),
-    firstText(item.group_name, item.group_title, group.name, group.title),
-    firstText(item.name, item.description, item.title),
-    firstText(item.status),
-    firstText(costCodeObject.id, costItemCostCode.id, budgetCode.cost_code_id),
-    costCode,
-    wbsCode,
-    firstText(costItem.id, item.cost_item_id),
-    firstText(costItem.unit, costItem.uom, item.unit, item.uom),
-    readNumber(item.count ?? item.quantity),
-    readNumber(item.labor_factor),
-    readNumber(item.item_cost),
-    readNumber(item.item_sales),
-    readNumber(item.labor_cost),
-    readNumber(item.labor_sales),
-    laborHoursForLine(item),
-    JSON.stringify(lineItem ?? {}),
-    normalizeTimestamp(item.updated_at)
-  );
-}
-
 async function reconcileNormalizedEstimateLines(params: {
   companyId: string;
   bidBoardProjectId: string;
@@ -356,55 +251,157 @@ function getLineItemId(lineItem: unknown, bidBoardProjectId: string, proposalId:
   return createHash("sha256").update(fallbackSeed).digest("hex");
 }
 
-async function upsertProposalLineItemLive(params: {
+async function upsertProposalLineItemsBatch(params: {
   companyId: string;
   bidBoardProjectId: string;
   proposalId: string;
+  procoreProjectId: string | null;
   projectName: string | null;
   customerName: string | null;
   proposalName: string | null;
-  lineItem: unknown;
+  lineItems: unknown[];
 }) {
-  const { companyId, bidBoardProjectId, proposalId, projectName, customerName, proposalName, lineItem } = params;
-  const itemRecord = isRecord(lineItem) ? lineItem : {};
+  if (params.lineItems.length === 0) return [];
 
-  const lineItemId = getLineItemId(lineItem, bidBoardProjectId, proposalId);
-  const name = String(itemRecord.name || itemRecord.description || itemRecord.title || "").trim() || null;
-  const status = String(itemRecord.status || "").trim() || null;
-  const costCode = isRecord(itemRecord.cost_code)
-    ? String(itemRecord.cost_code.code || itemRecord.cost_code.name || "").trim() || null
-    : (String(itemRecord.cost_code || "").trim() || null);
+  const rows = params.lineItems.map((lineItem) => {
+    const item = isRecord(lineItem) ? lineItem : {};
+    const costItem = nestedObject(item.cost_item);
+    const costCodeObject = nestedObject(item.cost_code);
+    const costItemCostCode = nestedObject(costItem.cost_code);
+    const budgetCode = nestedObject(item.budget_code);
+    const group = nestedObject(item.group);
+    const lineItemId = getLineItemId(lineItem, params.bidBoardProjectId, params.proposalId);
+    const costCode = firstText(
+      costCodeObject.full_code,
+      costCodeObject.code,
+      costItemCostCode.full_code,
+      costItemCostCode.code,
+      budgetCode.flat_code,
+      item.cost_code
+    );
 
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO procore_proposal_line_items_live
-        (company_id, bid_board_project_id, proposal_id, line_item_id, project_name, customer_name, proposal_name, name, status, cost_code, payload, synced_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, NOW(), NOW())
-      ON CONFLICT (company_id, bid_board_project_id, proposal_id, line_item_id)
-      DO UPDATE
-      SET
-        project_name = EXCLUDED.project_name,
-        customer_name = EXCLUDED.customer_name,
-        proposal_name = EXCLUDED.proposal_name,
-        name = EXCLUDED.name,
-        status = EXCLUDED.status,
-        cost_code = EXCLUDED.cost_code,
-        payload = EXCLUDED.payload,
-        synced_at = NOW(),
-        updated_at = NOW()
-    `,
-    companyId,
-    bidBoardProjectId,
-    proposalId,
-    lineItemId,
-    projectName,
-    customerName,
-    proposalName,
-    name,
-    status,
-    costCode,
-    JSON.stringify(lineItem ?? {})
-  );
+    return {
+      company_id: params.companyId,
+      bid_board_project_id: params.bidBoardProjectId,
+      proposal_id: params.proposalId,
+      line_item_id: lineItemId,
+      procore_project_id: params.procoreProjectId,
+      project_name: params.projectName,
+      customer_name: params.customerName,
+      proposal_name: params.proposalName,
+      group_id: firstText(item.group_id, group.id),
+      group_name: firstText(item.group_name, item.group_title, group.name, group.title),
+      name: firstText(item.name, item.description, item.title),
+      status: firstText(item.status),
+      cost_code_id: firstText(costCodeObject.id, costItemCostCode.id, budgetCode.cost_code_id),
+      cost_code: costCode,
+      live_cost_code: isRecord(item.cost_code)
+        ? firstText(item.cost_code.code, item.cost_code.name)
+        : firstText(item.cost_code),
+      wbs_code: firstText(item.wbs_code, budgetCode.flat_code, costCode),
+      cost_item_id: firstText(costItem.id, item.cost_item_id),
+      uom: firstText(costItem.unit, costItem.uom, item.unit, item.uom),
+      quantity: readNumber(item.count ?? item.quantity),
+      labor_factor: readNumber(item.labor_factor),
+      item_cost: readNumber(item.item_cost),
+      item_sales: readNumber(item.item_sales),
+      labor_cost: readNumber(item.labor_cost),
+      labor_sales: readNumber(item.labor_sales),
+      labor_hours: laborHoursForLine(item),
+      payload: lineItem ?? {},
+      source_updated_at: normalizeTimestamp(item.updated_at),
+    };
+  });
+  const payload = JSON.stringify(rows);
+
+  await prisma.$transaction([
+    prisma.$executeRawUnsafe(
+      `
+        INSERT INTO procore_proposal_line_items_live (
+          company_id, bid_board_project_id, proposal_id, line_item_id,
+          project_name, customer_name, proposal_name, name, status, cost_code,
+          payload, synced_at, updated_at
+        )
+        SELECT
+          company_id, bid_board_project_id, proposal_id, line_item_id,
+          project_name, customer_name, proposal_name, name, status, live_cost_code,
+          payload, NOW(), NOW()
+        FROM jsonb_to_recordset($1::jsonb) AS row(
+          company_id text, bid_board_project_id text, proposal_id text, line_item_id text,
+          procore_project_id text, project_name text, customer_name text, proposal_name text,
+          group_id text, group_name text, name text, status text, cost_code_id text,
+          cost_code text, live_cost_code text, wbs_code text, cost_item_id text, uom text,
+          quantity numeric, labor_factor numeric, item_cost numeric, item_sales numeric,
+          labor_cost numeric, labor_sales numeric, labor_hours numeric,
+          payload jsonb, source_updated_at timestamptz
+        )
+        ON CONFLICT (company_id, bid_board_project_id, proposal_id, line_item_id)
+        DO UPDATE SET
+          project_name = EXCLUDED.project_name,
+          customer_name = EXCLUDED.customer_name,
+          proposal_name = EXCLUDED.proposal_name,
+          name = EXCLUDED.name,
+          status = EXCLUDED.status,
+          cost_code = EXCLUDED.cost_code,
+          payload = EXCLUDED.payload,
+          synced_at = NOW(),
+          updated_at = NOW()
+      `,
+      payload
+    ),
+    prisma.$executeRawUnsafe(
+      `
+        INSERT INTO procore_estimate_line_items (
+          company_id, bid_board_project_id, proposal_id, line_item_id, procore_project_id,
+          group_id, group_name, name, status, cost_code_id, cost_code, wbs_code,
+          cost_item_id, uom, quantity, labor_factor, item_cost, item_sales,
+          labor_cost, labor_sales, labor_hours, payload, source_updated_at,
+          synced_at, updated_at
+        )
+        SELECT
+          company_id, bid_board_project_id, proposal_id, line_item_id, procore_project_id,
+          group_id, group_name, name, status, cost_code_id, cost_code, wbs_code,
+          cost_item_id, uom, quantity, labor_factor, item_cost, item_sales,
+          labor_cost, labor_sales, labor_hours, payload, source_updated_at,
+          NOW(), NOW()
+        FROM jsonb_to_recordset($1::jsonb) AS row(
+          company_id text, bid_board_project_id text, proposal_id text, line_item_id text,
+          procore_project_id text, project_name text, customer_name text, proposal_name text,
+          group_id text, group_name text, name text, status text, cost_code_id text,
+          cost_code text, wbs_code text, cost_item_id text, uom text,
+          quantity numeric, labor_factor numeric, item_cost numeric, item_sales numeric,
+          labor_cost numeric, labor_sales numeric, labor_hours numeric,
+          payload jsonb, source_updated_at timestamptz
+        )
+        ON CONFLICT (company_id, bid_board_project_id, proposal_id, line_item_id)
+        DO UPDATE SET
+          procore_project_id = EXCLUDED.procore_project_id,
+          group_id = EXCLUDED.group_id,
+          group_name = EXCLUDED.group_name,
+          name = EXCLUDED.name,
+          status = EXCLUDED.status,
+          cost_code_id = EXCLUDED.cost_code_id,
+          cost_code = EXCLUDED.cost_code,
+          wbs_code = EXCLUDED.wbs_code,
+          cost_item_id = EXCLUDED.cost_item_id,
+          uom = EXCLUDED.uom,
+          quantity = EXCLUDED.quantity,
+          labor_factor = EXCLUDED.labor_factor,
+          item_cost = EXCLUDED.item_cost,
+          item_sales = EXCLUDED.item_sales,
+          labor_cost = EXCLUDED.labor_cost,
+          labor_sales = EXCLUDED.labor_sales,
+          labor_hours = EXCLUDED.labor_hours,
+          payload = EXCLUDED.payload,
+          source_updated_at = EXCLUDED.source_updated_at,
+          synced_at = NOW(),
+          updated_at = NOW()
+      `,
+      payload
+    ),
+  ]);
+
+  return rows.map((row) => row.line_item_id);
 }
 
 export async function POST(request: Request) {
@@ -691,39 +688,31 @@ export async function POST(request: Request) {
                 }
 
                 if (persist) {
-                  await runWithConcurrency(proposalLineItems, 8, async (item) => {
-                    persistence.attempted += 1;
-                    try {
-                      await upsertProposalLineItemLive({
-                        companyId,
-                        bidBoardProjectId,
-                        proposalId,
-                        projectName,
-                        customerName,
-                        proposalName,
-                        lineItem: item,
-                      });
-                      await upsertNormalizedEstimateLine({
-                        companyId,
-                        bidBoardProjectId,
-                        proposalId,
-                        procoreProjectId,
-                        lineItem: item,
-                      });
-                      persistedLineItemIds.push(getLineItemId(item, bidBoardProjectId, proposalId));
-                      persistence.persisted += 1;
-                    } catch (persistError) {
-                      if (isMissingTableError(persistError)) {
-                        throw persistError;
-                      }
-
-                      persistence.failed += 1;
-                      if (persistence.errors.length < 25) {
-                        const msg = persistError instanceof Error ? persistError.message : String(persistError);
-                        persistence.errors.push(`${bidBoardProjectId}/${proposalId}: ${msg}`);
-                      }
+                  persistence.attempted += proposalLineItems.length;
+                  try {
+                    const persistedIds = await upsertProposalLineItemsBatch({
+                      companyId,
+                      bidBoardProjectId,
+                      proposalId,
+                      procoreProjectId,
+                      projectName,
+                      customerName,
+                      proposalName,
+                      lineItems: proposalLineItems,
+                    });
+                    persistedLineItemIds.push(...persistedIds);
+                    persistence.persisted += persistedIds.length;
+                  } catch (persistError) {
+                    if (isMissingTableError(persistError)) {
+                      throw persistError;
                     }
-                  });
+
+                    persistence.failed += proposalLineItems.length;
+                    if (persistence.errors.length < 25) {
+                      const msg = persistError instanceof Error ? persistError.message : String(persistError);
+                      persistence.errors.push(`${bidBoardProjectId}/${proposalId}: ${msg}`);
+                    }
+                  }
                 }
 
                 projectLineItemCount += proposalLineItems.length;

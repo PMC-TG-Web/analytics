@@ -163,7 +163,10 @@ async function hasSignedCommitmentMakerAccess(request: NextRequest): Promise<boo
   if (pathname === COMMITMENT_MAKER_PAGE_PATH && request.method.toUpperCase() === 'GET') {
     projectId = String(request.nextUrl.searchParams.get('projectId') || '').trim();
     accessToken = String(request.nextUrl.searchParams.get('access') || '').trim();
-  } else if (pathname === COMMITMENT_MAKER_API_PATH && request.method.toUpperCase() === 'POST') {
+  } else if (
+    pathname === COMMITMENT_MAKER_API_PATH &&
+    ['GET', 'POST'].includes(request.method.toUpperCase())
+  ) {
     projectId = String(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER) || '').trim();
     accessToken = String(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER) || '').trim();
   } else {
@@ -489,7 +492,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // A signed, project-specific Procore Project Home link grants access only to
-  // Commitment Maker and its matching write endpoint. This avoids an Auth0
+  // Commitment Maker and its matching project lookup/write endpoint. This avoids an Auth0
   // prompt without exposing general Analytics or unrestricted Procore access.
   if (await hasSignedCommitmentMakerAccess(request)) {
     const response = NextResponse.next();

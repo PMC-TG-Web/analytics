@@ -15,6 +15,11 @@ import {
 } from '@/lib/diagnosticsGate';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { isProcoreLiveApiRoutePath } from '@/lib/procoreLiveApiRoutes';
+import {
+  COMMITMENT_MAKER_ACCESS_HEADER,
+  COMMITMENT_MAKER_PROJECT_HEADER,
+  verifyCommitmentMakerAccessToken,
+} from '@/lib/commitmentMakerAccess';
 
 const API_RATE_LIMIT = 300;
 const API_RATE_WINDOW_MS = 60 * 1000;
@@ -22,6 +27,8 @@ const HEAVY_API_RATE_LIMIT = 6;
 const HEAVY_API_RATE_WINDOW_MS = 10 * 60 * 1000;
 const INTERNAL_PERMISSION_CHECK_ROUTE = '/api/internal/permission-check';
 const ANALYTICS_PROCORE_LINK_COOKIE = 'analytics_procore_link_access';
+const COMMITMENT_MAKER_PAGE_PATH = '/procore/commitments-live/maker';
+const COMMITMENT_MAKER_API_PATH = '/api/procore/commitments-live/maker';
 
 const PERMISSION_FALLBACKS: Record<string, string> = {
   'accounting-project-profitability': 'admin',
@@ -146,6 +153,29 @@ function hasProcoreAccessTokenCookie(request: NextRequest): boolean {
 
 function hasAnalyticsProcoreLinkCookie(request: NextRequest): boolean {
   return request.cookies.get(ANALYTICS_PROCORE_LINK_COOKIE)?.value === '1';
+}
+
+async function hasSignedCommitmentMakerAccess(request: NextRequest): Promise<boolean> {
+  const pathname = request.nextUrl.pathname;
+  let projectId = '';
+  let accessToken = '';
+
+  if (pathname === COMMITMENT_MAKER_PAGE_PATH && request.method.toUpperCase() === 'GET') {
+    projectId = String(request.nextUrl.searchParams.get('projectId') || '').trim();
+    accessToken = String(request.nextUrl.searchParams.get('access') || '').trim();
+  } else if (pathname === COMMITMENT_MAKER_API_PATH && request.method.toUpperCase() === 'POST') {
+    projectId = String(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER) || '').trim();
+    accessToken = String(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER) || '').trim();
+  } else {
+    return false;
+  }
+
+  try {
+    return await verifyCommitmentMakerAccessToken(projectId, accessToken);
+  } catch (error) {
+    console.error('Commitment Maker signed-link verification failed:', error);
+    return false;
+  }
 }
 
 function isTrustedProcoreEntryRequest(request: NextRequest): boolean {
@@ -456,6 +486,20 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
     }
+  }
+
+  // A signed, project-specific Procore Project Home link grants access only to
+  // Commitment Maker and its matching write endpoint. This avoids an Auth0
+  // prompt without exposing general Analytics or unrestricted Procore access.
+  if (await hasSignedCommitmentMakerAccess(request)) {
+    const response = NextResponse.next();
+    response.headers.set('Referrer-Policy', 'no-referrer');
+    if (isApiRoute && apiRateLimit) {
+      response.headers.set('X-RateLimit-Limit', String(apiRateLimit.limit));
+      response.headers.set('X-RateLimit-Remaining', String(apiRateLimit.remaining));
+      response.headers.set('X-RateLimit-Reset', String(Math.floor(apiRateLimit.resetAt / 1000)));
+    }
+    return response;
   }
 
   const session = await auth0.getSession(request);

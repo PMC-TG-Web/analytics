@@ -20,6 +20,11 @@ import {
   type CommitmentMakerLineItem,
 } from "@/lib/procore/commitmentMaker";
 import { getCurrentUserEmail } from "@/lib/requestUser";
+import {
+  COMMITMENT_MAKER_ACCESS_HEADER,
+  COMMITMENT_MAKER_PROJECT_HEADER,
+  verifyCommitmentMakerAccessToken,
+} from "@/lib/commitmentMakerAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -583,6 +588,16 @@ async function handleRequest(request: NextRequest) {
     return NextResponse.json({ error: "Mode must be preview or create." }, { status: 400 });
   }
 
+  const accessProjectId = readText(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER));
+  const signedAccessToken = readText(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER));
+  const hasSignedProjectAccess = accessProjectId === projectId
+    && await verifyCommitmentMakerAccessToken(accessProjectId, signedAccessToken).catch(() => false);
+  const sessionUserEmail = hasSignedProjectAccess ? null : await getCurrentUserEmail();
+  if (!hasSignedProjectAccess && !sessionUserEmail) {
+    return NextResponse.json({ error: "Authentication or a valid Procore Project Home link is required." }, { status: 401 });
+  }
+  const userEmail = sessionUserEmail || "procore-project-link@pmcdecor.com";
+
   const cookieToken = readText(request.cookies.get("procore_access_token")?.value);
   let accessToken = "";
   let tokenSource = "client_credentials";
@@ -645,10 +660,6 @@ async function handleRequest(request: NextRequest) {
     return NextResponse.json({ ...preview, error: "Commitment creation is blocked by validation errors." }, { status: 409 });
   }
 
-  // Use Auth0's App Router request context here. The workbook request body was
-  // consumed above, so passing `request` back into Auth0 can cause a serverless
-  // runtime to rebuild an already-disturbed body stream.
-  const userEmail = (await getCurrentUserEmail()) || "unknown@pmcdecor.com";
   if (plan.vendor.willAddToProject) {
     await addVendorToProject({ accessToken, companyId, projectId, vendorId: plan.vendor.id });
   }

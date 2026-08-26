@@ -12,6 +12,9 @@ function loadModule(makeRequest = async () => []) {
   const module = { exports: {} };
   const require = (id) => {
     if (id === "@/lib/procore") return { makeRequest };
+    if (id === "@/lib/commitmentMakerAccess") {
+      return { createCommitmentMakerAccessToken: async () => "a".repeat(43) };
+    }
     throw new Error(`Unexpected import: ${id}`);
   };
   vm.runInNewContext(
@@ -93,19 +96,23 @@ test("renames the previously managed Job Schedule link without creating a duplic
   ]);
 });
 
-test("builds a project-specific HTTPS Commitment Maker URL", () => {
+test("builds a signed project-specific HTTPS Commitment Maker URL", () => {
   const { commitmentMakerProjectUrl } = loadModule();
   assert.equal(
-    commitmentMakerProjectUrl("598134326626273", "https://analyticspmc.netlify.app/analytics?old=true"),
-    "https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home",
+    commitmentMakerProjectUrl("598134326626273", "https://analyticspmc.netlify.app/analytics?old=true", "a".repeat(43)),
+    `https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home&access=${"a".repeat(43)}`,
   );
   assert.throws(
-    () => commitmentMakerProjectUrl("not-a-project", "https://analyticspmc.netlify.app"),
+    () => commitmentMakerProjectUrl("not-a-project", "https://analyticspmc.netlify.app", "a".repeat(43)),
     /numeric Procore project ID/,
   );
   assert.throws(
-    () => commitmentMakerProjectUrl("598134326626273", "http://analyticspmc.netlify.app"),
+    () => commitmentMakerProjectUrl("598134326626273", "http://analyticspmc.netlify.app", "a".repeat(43)),
     /must use HTTPS/,
+  );
+  assert.throws(
+    () => commitmentMakerProjectUrl("598134326626273", "https://analyticspmc.netlify.app", "unsigned"),
+    /signed Commitment Maker project access token/,
   );
 });
 
@@ -162,13 +169,13 @@ test("sync adds the project-specific Commitment Maker link while preserving exis
   assert.equal(result.status, "created");
   assert.equal(
     result.url,
-    "https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home",
+    `https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home&access=${"a".repeat(43)}`,
   );
   assert.deepEqual(JSON.parse(calls[1].options.body), [
     { id: "7", title: "PMC Job Schedule", url: "https://us02.procore.com/file" },
     {
       title: "Commitment Maker",
-      url: "https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home",
+      url: `https://analyticspmc.netlify.app/procore/commitments-live/maker?projectId=598134326626273&source=procore-project-home&access=${"a".repeat(43)}`,
     },
   ]);
 });

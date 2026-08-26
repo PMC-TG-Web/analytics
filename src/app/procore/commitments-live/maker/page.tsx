@@ -145,6 +145,19 @@ export default function CommitmentMakerPage() {
     async function loadProjects() {
       try {
         const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
+        if (linkedProjectId) {
+          if (!cancelled) {
+            setProjectId(linkedProjectId);
+            setProjectLocked(true);
+            setProjects([{
+              id: linkedProjectId,
+              name: "Project opened from Procore",
+              number: "",
+              status: "",
+            }]);
+          }
+          return;
+        }
         const response = await fetch("/api/procore/projects", { cache: "no-store" });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(text(asRecord(payload).error) || "Projects could not be loaded.");
@@ -246,7 +259,17 @@ export default function CommitmentMakerPage() {
     try {
       const response = await fetch("/api/procore/commitments-live/maker", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: (() => {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          const search = new URLSearchParams(window.location.search);
+          const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
+          const accessToken = text(search.get("access"));
+          if (linkedProjectId && linkedProjectId === projectId && accessToken) {
+            headers["X-Commitment-Maker-Project-Id"] = linkedProjectId;
+            headers["X-Commitment-Maker-Access"] = accessToken;
+          }
+          return headers;
+        })(),
         body: JSON.stringify({
           mode,
           projectId,
@@ -284,7 +307,7 @@ export default function CommitmentMakerPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <Navigation />
+      {!projectLocked && <Navigation />}
 
       <main className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-8">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

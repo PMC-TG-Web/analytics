@@ -1,4 +1,5 @@
 import { makeRequest } from "@/lib/procore";
+import { createCommitmentMakerAccessToken } from "@/lib/commitmentMakerAccess";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -180,6 +181,7 @@ export function buildProjectLinksBulkUpdate(
 export function commitmentMakerProjectUrl(
   projectId: string,
   baseUrl = process.env.APP_BASE_URL || DEFAULT_ANALYTICS_BASE_URL,
+  accessToken = "",
 ): string {
   const normalizedProjectId = text(projectId);
   if (!/^\d+$/.test(normalizedProjectId)) {
@@ -189,10 +191,14 @@ export function commitmentMakerProjectUrl(
   if (parsed.protocol !== "https:") {
     throw new Error("The Commitment Maker project link must use HTTPS.");
   }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(text(accessToken))) {
+    throw new Error("A signed Commitment Maker project access token is required.");
+  }
   parsed.pathname = "/procore/commitments-live/maker";
   parsed.search = new URLSearchParams({
     projectId: normalizedProjectId,
     source: "procore-project-home",
+    access: text(accessToken),
   }).toString();
   parsed.hash = "";
   return parsed.toString();
@@ -297,7 +303,8 @@ export async function syncCommitmentMakerProjectLink(params: {
   const linkTitle = text(
     params.linkTitle || process.env.PROCORE_COMMITMENT_MAKER_LINK_TITLE,
   ) || DEFAULT_COMMITMENT_MAKER_LINK_TITLE;
-  const url = commitmentMakerProjectUrl(params.projectId, params.baseUrl);
+  const accessToken = await createCommitmentMakerAccessToken(params.projectId);
+  const url = commitmentMakerProjectUrl(params.projectId, params.baseUrl, accessToken);
   const projectId = encodeURIComponent(params.projectId);
   const companyId = encodeURIComponent(params.companyId);
   const linksPath = `/rest/v2.0/companies/${companyId}/projects/${projectId}/links`;

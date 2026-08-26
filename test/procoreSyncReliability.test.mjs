@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  procoreApiErrorIsNotFound,
   procoreSyncDetailHasErrors,
   procoreSyncResponseIsRateLimited,
 } from "../src/lib/procoreSyncResponse.ts";
@@ -91,6 +92,33 @@ test("health evaluation reports an overdue estimate detail backlog", () => {
   }, new Date("2026-08-24T16:00:00.000Z"));
 
   assert.ok(issues.includes("141 estimate detail project(s) have been overdue for more than 2 hours."));
+});
+
+test("Procore not-found detection handles structured and wrapped API errors", () => {
+  const structured = Object.assign(new Error("missing child resource"), { status: 404 });
+  assert.equal(procoreApiErrorIsNotFound(structured), true);
+  assert.equal(procoreApiErrorIsNotFound(new Error("API Request Failed: Procore API error 404:")), true);
+  assert.equal(procoreApiErrorIsNotFound(new Error("Procore API error 403: Forbidden")), false);
+});
+
+test("nightly structure supports targeted reruns and a scheduler-tick requeue margin", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/cron/nightly-structure/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /const requestedProjectId = String\(body\.projectId \|\| ""\)\.trim\(\)/);
+  assert.match(route, /projectId: requestedProjectId \|\| undefined/);
+  assert.match(route, /const DAILY_REQUEUE_MINUTES = 24 \* 60 - 5/);
+  assert.match(route, /success \? DAILY_REQUEUE_MINUTES : 30/);
+});
+
+test("missing potential-change-order child lines are warnings, not project errors", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/procore/sync/change-order-packages/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /if \(!procoreApiErrorIsNotFound\(err\)\) throw err/);
+  assert.match(route, /potential:\$\{changeOrderId\} lines skipped/);
 });
 
 test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {

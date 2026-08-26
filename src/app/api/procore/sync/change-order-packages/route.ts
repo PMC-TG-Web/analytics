@@ -20,6 +20,7 @@ import {
   upsertPotentialChangeOrder,
   upsertPotentialChangeOrderLine,
 } from '@/lib/procorePotentialChangeOrders';
+import { procoreApiErrorIsNotFound } from '@/lib/procoreSyncResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -375,13 +376,26 @@ export async function POST(request: Request) {
             projectPotentialIds.push(persistedId);
             projectPotentialUpserted += 1;
 
-            const potentialLines = await fetchPotentialChangeOrderLines(
-              accessToken,
-              companyId,
-              projectId,
-              changeOrderId,
-              perPage
-            );
+            let potentialLines: JsonObject[];
+            try {
+              potentialLines = await fetchPotentialChangeOrderLines(
+                accessToken,
+                companyId,
+                projectId,
+                changeOrderId,
+                perPage
+              );
+            } catch (err) {
+              if (!procoreApiErrorIsNotFound(err)) throw err;
+              const message = err instanceof Error ? err.message : String(err);
+              if (warnings.length < 25) {
+                warnings.push(`project:${projectId} potential:${changeOrderId} lines skipped: ${message}`);
+              }
+              // Procore can retain a PCO in the project list after its child
+              // line-item resource is removed or becomes unavailable. Keep the
+              // valid parent and do not let that stale child fail the project.
+              continue;
+            }
             projectPotentialLinesFetched += potentialLines.length;
             const persistedLineIds: string[] = [];
             let linePersistenceFailed = false;

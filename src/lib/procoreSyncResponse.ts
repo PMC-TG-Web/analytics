@@ -25,3 +25,11 @@ export function procoreSyncResponseIsRateLimited(status: number, detail: unknown
     JSON.stringify(detail),
   );
 }
+
+export function procoreApiErrorIsNotFound(error: unknown) {
+  const status = Number((error as { status?: unknown } | null)?.status || 0);
+  if (status === 404) return true;
+
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /(?:^|\D)404(?:\D|$)/.test(message);
+}

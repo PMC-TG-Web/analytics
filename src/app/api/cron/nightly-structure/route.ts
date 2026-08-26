@@ -27,6 +27,9 @@ const BID_BOARD_DATASET = "nightly_bid_board_headers";
 const PO_DISCOVERY_DATASET = "purchase_order_discovery";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
+// The scheduler runs every five minutes. Requeue one tick before 24 hours so a
+// job completed a few seconds after a tick cannot miss the next nightly window.
+const DAILY_REQUEUE_MINUTES = 24 * 60 - 5;
 const BID_BOARD_SYNC_INTERVAL_MINUTES = Math.min(
   360,
   Math.max(15, Number.parseInt(process.env.PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES || "15", 10) || 15)
@@ -118,6 +121,7 @@ export async function POST(request: NextRequest) {
   }
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const mode = String(body.mode || "").trim().toLowerCase();
+  const requestedProjectId = String(body.projectId || "").trim();
   const estimateOnly = mode === "estimates";
   const bidBoardOnly = mode === "bid-board-headers" || mode === "headers";
   const poDiscoveryOnly = mode === "po-discovery" || mode === "purchase-orders";
@@ -236,6 +240,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!estimateOnly) {
+    if (!requestedProjectId) {
     await seedSingletonSyncQueue({
       companyId: COMPANY_ID,
       dataset: BID_BOARD_DATASET,
@@ -312,11 +317,26 @@ export async function POST(request: NextRequest) {
         dataset: BID_BOARD_DATASET,
       });
     }
+    }
 
     await seedProjectSyncQueue(COMPANY_ID, DATASET);
-    project = await claimDueProject({ companyId: COMPANY_ID, dataset: DATASET, leaseId: worker.leaseId });
+    project = await claimDueProject({
+      companyId: COMPANY_ID,
+      dataset: DATASET,
+      leaseId: worker.leaseId,
+      projectId: requestedProjectId || undefined,
+    });
     }
     if (!project) {
+      if (requestedProjectId) {
+        return NextResponse.json({
+          success: false,
+          skipped: true,
+          reason: "requested_project_not_available",
+          projectId: requestedProjectId,
+          dataset: DATASET,
+        }, { status: 404 });
+      }
       await seedEstimatingSyncQueue(COMPANY_ID, ESTIMATING_DATASET);
       // Process estimates one project per request. This keeps a timeout or
       // project-level 403 from failing unrelated queue records in the batch.
@@ -363,7 +383,7 @@ export async function POST(request: NextRequest) {
           success,
           nextRunMinutes: until
             ? Math.max(15, Math.ceil((until.getTime() - Date.now()) / 60_000))
-            : success ? 24 * 60 : 30,
+            : success ? DAILY_REQUEUE_MINUTES : 30,
           error,
           result: detail,
         });
@@ -432,7 +452,7 @@ export async function POST(request: NextRequest) {
       success,
       nextRunMinutes: rateLimit?.rateLimitUntil
         ? Math.max(15, Math.ceil((new Date(rateLimit.rateLimitUntil).getTime() - Date.now()) / 60_000))
-        : success ? 24 * 60 : 30,
+        : success ? DAILY_REQUEUE_MINUTES : 30,
       error,
       result: { selection, steps },
     });

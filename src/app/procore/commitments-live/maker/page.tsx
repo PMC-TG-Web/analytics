@@ -98,6 +98,7 @@ type CreateResult = {
   addedToExisting?: number;
   sourceChangeOrder?: ApprovedChangeOrder | null;
   taskError?: string;
+  tasksQueued?: boolean;
   taskResult?: {
     tasks: Array<{
       kind: "aia_billing" | "commitment_verification";
@@ -1001,6 +1002,11 @@ export default function CommitmentMakerPage() {
                 </div>
               </div>
             ) : null}
+            {result.tasksQueued && !result.taskResult && (
+              <p className="mt-3 text-sm font-semibold text-emerald-800">
+                The follow-up tasks were queued and will be created and sent in the background.
+              </p>
+            )}
             {result.taskError && (
               <p className="mt-3 text-sm font-semibold text-red-800">Task error: {result.taskError}</p>
             )}

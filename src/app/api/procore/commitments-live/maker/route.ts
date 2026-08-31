@@ -41,11 +41,11 @@ import {
   verifyCommitmentMakerAccessToken,
 } from "@/lib/commitmentMakerAccess";
 import {
-  ensureCommitmentMakerChangeOrderTasks,
   resolveCommitmentMakerChangeOrderTaskAssignees,
   type CommitmentMakerChangeOrderContext,
   type CommitmentMakerTaskRequest,
 } from "@/lib/procoreCommitmentMakerTasks";
+import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
 
 export const dynamic = "force-dynamic";
 
@@ -979,6 +979,29 @@ async function writeAudit(params: {
   }
 }
 
+async function auditedCommitmentChangeOrderIds(params: {
+  projectId: string;
+  contractId: string;
+  fingerprint: string;
+}): Promise<string[]> {
+  const rows = await prisma.auditLog.findMany({
+    where: {
+      entity: "ProcoreCommitmentMaker",
+      action: { in: ["create-commitment-change-order", "resume-commitment-change-order"] },
+      createdAt: { gte: new Date(Date.now() - 180 * 24 * 60 * 60_000) },
+    },
+    select: { entityId: true, changes: true },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  return [...new Set(rows.filter((row) => {
+    const changes = isRecord(row.changes) ? row.changes : {};
+    return readText(changes.projectId) === params.projectId
+      && readText(changes.contractId ?? changes.targetCommitmentId) === params.contractId
+      && readText(changes.fingerprint) === params.fingerprint;
+  }).map((row) => row.entityId).filter(Boolean))];
+}
+
 async function findShellyCompanyUser(): Promise<UnknownRecord | null> {
   const rows = await prisma.$queryRawUnsafe<Array<{ payload: UnknownRecord }>>(
     `
@@ -1203,6 +1226,28 @@ async function handleRequest(request: NextRequest) {
         let commitmentChangeOrderId = readId(commitmentChangeOrder);
         let createdCommitmentChangeOrder = false;
         if (!commitmentChangeOrderId) {
+          const auditedIds = await auditedCommitmentChangeOrderIds({
+            projectId,
+            contractId,
+            fingerprint: group.fingerprint,
+          });
+          for (const auditedId of auditedIds) {
+            const auditedResponse = await procoreJson({
+              path: `${commitmentChangeOrderPath(projectId, auditedId)}?view=extended`,
+              accessToken,
+              companyId,
+            });
+            if (!auditedResponse.ok) continue;
+            const candidate = unwrapData(auditedResponse.payload);
+            if (!isRecord(candidate)) continue;
+            const candidateContractId = readText(candidate.contract_id ?? nestedRecord(candidate, "contract").id);
+            if (candidateContractId !== contractId || !readText(candidate.description).includes(group.fingerprint)) continue;
+            commitmentChangeOrder = candidate;
+            commitmentChangeOrderId = readId(candidate);
+            break;
+          }
+        }
+        if (!commitmentChangeOrderId) {
           const createResponse = await procoreJson({
             path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/commitment_change_orders`,
             method: "POST",
@@ -1418,29 +1463,39 @@ async function handleRequest(request: NextRequest) {
     }
   }
 
-  let taskResult: Awaited<ReturnType<typeof ensureCommitmentMakerChangeOrderTasks>> | null = null;
+  const taskResult = null;
   let taskError = "";
+  let tasksQueued = false;
   if (!failure && sourceChangeOrder) {
     try {
-      const project = await prisma.pmcProject.findUnique({
-        where: { companyId_procoreProjectId: { companyId, procoreProjectId: projectId } },
-        select: { projectNumber: true, projectName: true },
-      });
-      taskResult = await ensureCommitmentMakerChangeOrderTasks({
+      const completedChangeOrderId = readText(
+        results.find((result) => result.success === true && result.createdCommitmentChangeOrder === true)?.changeOrderId,
+      );
+      await enqueueCommitmentMakerTasks({
         companyId,
         projectId,
-        projectNumber: project?.projectNumber || null,
-        projectName: project?.projectName || `Procore Project ${projectId}`,
         changeOrder: sourceChangeOrder,
-        shellyCompanyUser,
-        request: taskRequest,
+        userEmail,
+        commitmentChangeOrderId: completedChangeOrderId || undefined,
       });
+      tasksQueued = true;
       await writeAudit({
-        action: "change-order-tasks",
+        action: "change-order-tasks-queued",
         entityId: sourceChangeOrder.packageId,
         userEmail,
-        changes: { projectId, changeOrder: sourceChangeOrder, taskResult },
+        changes: { projectId, changeOrder: sourceChangeOrder, commitmentChangeOrderId: completedChangeOrderId },
       });
+      const syncSecret = String(process.env.PROCORE_SYNC_SECRET || "").trim();
+      if (syncSecret) {
+        const dispatchResponse = await fetch(`${request.nextUrl.origin}/api/background/commitment-maker-tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-sync-secret": syncSecret },
+          body: "{}",
+        });
+        if (!dispatchResponse.ok && dispatchResponse.status !== 202) {
+          console.warn(`Commitment Maker task background dispatch returned ${dispatchResponse.status}; the durable queue will retry.`);
+        }
+      }
     } catch (error) {
       taskError = error instanceof Error ? error.message : String(error);
       await writeAudit({
@@ -1463,6 +1518,7 @@ async function handleRequest(request: NextRequest) {
       results,
       sourceChangeOrder,
       taskResult,
+      tasksQueued,
       taskError: taskError || undefined,
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && result.createdCommitmentChangeOrder !== true).length,

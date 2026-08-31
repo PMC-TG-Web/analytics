@@ -173,6 +173,8 @@ The project-scoped Commitment Maker supports base-estimate workbooks and approve
 
 Interactive Commitment Maker reads honor Procore's `x-rate-limit-reset` epoch before retrying a temporary 429, but cap the wait so the browser still receives a structured response inside Netlify's synchronous request window. Shared background Procore requests use the same reset-aware delay calculation with their longer configured cap. Mutation requests are not automatically replayed by the Commitment Maker.
 
+After a change-order commitment is approved, the browser request durably enqueues the two follow-up Task Items in `ProcoreSyncProjectState` and returns without waiting for Procore task creation. A Netlify background function processes the queue immediately, while the five-minute scheduler redispatches it for retry recovery. Task creation remains idempotent through the source-change-order tags. Commitment-change-order retries consult both Procore and the durable audit fingerprint, then verify an audited ID live before creating anything; this covers Procore list eventual consistency without reviving a deleted record.
+
 ## QuickBooks profitability
 
 This repository does not own QuickBooks OAuth or write back to QuickBooks. The separate `QBO_1` integration produces a normalized JSON export, or a configured remote webhook triggers that refresh.

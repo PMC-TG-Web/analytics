@@ -122,6 +122,21 @@ const handler = async () => {
       + ` reason=${projectLinkBody?.reason ?? "?"}`,
     );
 
+    const commitmentTaskDispatch = await fetch(
+      `${baseUrl}/api/background/commitment-maker-tasks`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      },
+    );
+    console.log(
+      `[scheduled-sync] Commitment Maker task queue dispatched - status=${commitmentTaskDispatch.status}`,
+    );
+
     let healthStatus: number | null = null;
     let healthBody: Record<string, unknown> | null = null;
     if (cadence.runHealthMonitor) {

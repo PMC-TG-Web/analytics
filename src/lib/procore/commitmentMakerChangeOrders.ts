@@ -12,6 +12,13 @@ export type CommitmentMakerApprovedChangeOrder = {
   title: string;
 };
 
+export type CommitmentMakerExistingPurchaseOrder = {
+  id: string;
+  title: string;
+  status: string;
+  vendorId: string;
+};
+
 export function isAvailableApprovedPotentialChangeOrder(value: unknown): boolean {
   const source = record(value);
   const status = text(source.status).toLowerCase();
@@ -30,6 +37,36 @@ function text(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function normalizedTitle(value: unknown): string {
+  return text(value).toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Procore's Commitment Contracts v2 response does not return origin_data even
+ * when it accepted that field on create. Use the server-generated CO title and
+ * fixed vendor as the retry identity, preferring an already-approved result to
+ * a partial draft left by an earlier failed attempt.
+ */
+export function selectExistingChangeOrderPurchaseOrder<T extends CommitmentMakerExistingPurchaseOrder>(
+  candidates: T[],
+  expectedTitle: string,
+  vendorId: string,
+): T | null {
+  const title = normalizedTitle(expectedTitle);
+  const expectedVendorId = text(vendorId);
+  const matches = candidates.filter((candidate) => (
+    Boolean(text(candidate.id))
+    && normalizedTitle(candidate.title) === title
+    && text(candidate.vendorId) === expectedVendorId
+  ));
+  return matches.sort((left, right) => {
+    const leftApproved = text(left.status).toLowerCase() === "approved" ? 1 : 0;
+    const rightApproved = text(right.status).toLowerCase() === "approved" ? 1 : 0;
+    if (leftApproved !== rightApproved) return rightApproved - leftApproved;
+    return text(right.id).localeCompare(text(left.id), undefined, { numeric: true });
+  })[0] || null;
 }
 
 function number(value: unknown): number | null {

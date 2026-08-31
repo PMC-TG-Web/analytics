@@ -111,3 +111,14 @@ test("exposes an approved PCO only while it is not already part of a PCCO", () =
     change_order_package_acronym_number: "PCCO #",
   }), false);
 });
+
+test("reuses the approved PO for an already-created change order before a partial draft", () => {
+  const { selectExistingChangeOrderPurchaseOrder } = loadModule();
+  const selected = selectExistingChangeOrderPurchaseOrder([
+    { id: "100", title: "CO 001 — Added concrete", status: "Draft", vendorId: "9" },
+    { id: "101", title: "CO 001 — Added concrete", status: "Approved", vendorId: "9" },
+    { id: "102", title: "CO 001 — Added concrete", status: "Approved", vendorId: "different" },
+  ], "  CO 001 — Added concrete  ", "9");
+
+  assert.equal(selected?.id, "101");
+});

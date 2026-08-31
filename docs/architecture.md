@@ -110,7 +110,7 @@ There are two authentication lanes:
 
 Outbound requests through `makeRequest` are blocked when `PROCORE_LIVE_API_ENABLED` is false unless the call is inside an approved authenticated-session or sync-secret bypass. Normal production browsing should not require the global live-API switch.
 
-Commitment Maker estimate imports resolve workbook base cost codes against the selected project's WBS. Approved change-order imports retain each source line's project WBS ID and cost type. Procore requires that Budget Code on every created purchase-order or commitment-change-order line, so unresolved lines block creation during preview rather than being submitted without a WBS assignment.
+Commitment Maker estimate imports resolve workbook base cost codes against the selected project's WBS. Approved change-order imports retain each source line's project WBS ID and cost type. Procore requires that Budget Code on every created purchase-order or commitment-change-order line, so unresolved lines block creation during preview rather than being submitted without a WBS assignment. New-PO retries identify an existing result by the server-generated change-order title plus the fixed vendor because Procore's Commitment Contracts v2 read response does not expose the submitted `origin_data`; an Approved match wins over a partial Draft.
 
 ### IDs and source systems
 

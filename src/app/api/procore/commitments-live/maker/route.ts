@@ -25,6 +25,7 @@ import {
   approvedChangeOrderCommitmentGroup,
   commitmentChangeOrderTitle,
   isAvailableApprovedPotentialChangeOrder,
+  selectExistingChangeOrderPurchaseOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
 import {
@@ -606,6 +607,25 @@ function purchaseOrderCommitments(records: UnknownRecord[]): UnknownRecord[] {
   );
 }
 
+function findExistingChangeOrderPurchaseOrder(
+  records: UnknownRecord[],
+  title: string,
+  vendorId: string,
+): UnknownRecord | null {
+  const selected = selectExistingChangeOrderPurchaseOrder(
+    records.map((record) => ({
+      record,
+      id: readId(record),
+      title: readText(record.title),
+      status: readText(record.status),
+      vendorId: commitmentVendorId(record),
+    })),
+    title,
+    vendorId,
+  );
+  return selected?.record || null;
+}
+
 function workbookFromBase64(base64: string, sheetName: string, fileName: string) {
   if (!base64) throw new Error("Missing workbook data.");
   const buffer = Buffer.from(base64, "base64");
@@ -713,6 +733,7 @@ async function buildPlan(params: {
   importFingerprint: string;
   target: CommitmentTarget;
   existingCommitmentId: string;
+  sourceChangeOrderId: string;
 }) {
   const [companyVendors, projectVendors, commitments, wbsRecords] = await Promise.all([
     fetchCompanyVendors(params.accessToken, params.companyId),
@@ -750,7 +771,11 @@ async function buildPlan(params: {
   const existingNumbers = purchaseOrders.map((record) => record.number);
   const newGroupCount = params.target === "existing_purchase_order" ? 0 : params.groups.filter((group) => {
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
-    return !findExistingByFingerprint(commitments, fingerprint);
+    const existing = findExistingByFingerprint(commitments, fingerprint)
+      || (params.sourceChangeOrderId
+        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, vendorId)
+        : null);
+    return !existing;
   }).length;
   const availableNumbers = planNextPurchaseOrderNumbers(existingNumbers, newGroupCount);
   let nextNumberIndex = 0;
@@ -762,7 +787,11 @@ async function buildPlan(params: {
       continue;
     }
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
-    const existing = targetCommitment || findExistingByFingerprint(commitments, fingerprint);
+    const existing = targetCommitment
+      || findExistingByFingerprint(commitments, fingerprint)
+      || (params.sourceChangeOrderId
+        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, vendorId)
+        : null);
     if (existing && vendorId && commitmentVendorId(existing) !== vendorId) {
       validationErrors.push(
         `Group "${group.name}" matches an earlier import, but that Procore PO is no longer assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`
@@ -1042,6 +1071,7 @@ async function handleRequest(request: NextRequest) {
     importFingerprint,
     target,
     existingCommitmentId,
+    sourceChangeOrderId: sourceChangeOrder?.packageId || "",
   });
   const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
   const shellyCompanyUser = sourceChangeOrder ? await findShellyCompanyUser() : null;

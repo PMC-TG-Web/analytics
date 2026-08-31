@@ -12,6 +12,14 @@ export type CommitmentMakerApprovedChangeOrder = {
   title: string;
 };
 
+export function isAvailableApprovedPotentialChangeOrder(value: unknown): boolean {
+  const source = record(value);
+  const status = text(source.status).toLowerCase();
+  const id = text(source.id);
+  const packageAcronym = text(source.change_order_package_acronym_number);
+  return status === "approved" && Boolean(id) && !/#\s*\d+/i.test(packageAcronym);
+}
+
 function record(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as UnknownRecord

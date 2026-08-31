@@ -26,6 +26,7 @@ type ApprovedChangeOrder = {
   status: string;
   amount: number | null;
   updatedAt: string;
+  sourceKind: "change_order_package" | "potential_change_order";
 };
 
 type ExistingCommitment = {

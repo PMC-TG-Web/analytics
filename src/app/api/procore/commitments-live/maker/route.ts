@@ -24,6 +24,7 @@ import {
 import {
   approvedChangeOrderCommitmentGroup,
   commitmentChangeOrderTitle,
+  isAvailableApprovedPotentialChangeOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
 import {
@@ -46,6 +47,7 @@ type ApprovedChangeOrder = CommitmentMakerChangeOrderContext & {
   contractId: string;
   status: string;
   updatedAt: string;
+  sourceKind: "change_order_package" | "potential_change_order";
 };
 type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 
@@ -218,6 +220,24 @@ function approvedChangeOrder(record: UnknownRecord, fallbackContractId = ""): Ap
     status,
     amount: Number.isFinite(rawAmount) ? rawAmount : null,
     updatedAt: readText(record.updated_at ?? record.reviewed_at ?? record.created_at),
+    sourceKind: "change_order_package",
+  };
+}
+
+function approvedPotentialChangeOrder(record: UnknownRecord): ApprovedChangeOrder | null {
+  const status = readText(record.status).toLowerCase();
+  const packageId = readId(record);
+  if (!isAvailableApprovedPotentialChangeOrder(record)) return null;
+  const rawAmount = Number(record.grand_total ?? record.amount ?? record.value);
+  return {
+    packageId,
+    contractId: readText(record.contract_id),
+    number: readText(record.number),
+    title: readText(record.title) || `Change Order ${readText(record.number) || packageId}`,
+    status,
+    amount: Number.isFinite(rawAmount) ? rawAmount : null,
+    updatedAt: readText(record.updated_at ?? record.reviewed_at ?? record.created_at),
+    sourceKind: "potential_change_order",
   };
 }
 
@@ -233,7 +253,8 @@ async function fetchApprovedChangeOrders(
     pathForPage: (page) =>
       `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
   });
-  const packages = (await Promise.all(primeContracts.map(async (contract) => {
+  const [packages, potentialChangeOrders] = await Promise.all([
+    Promise.all(primeContracts.map(async (contract) => {
     const contractId = readId(contract);
     if (!contractId) return [];
     return fetchPaged({
@@ -245,10 +266,23 @@ async function fetchApprovedChangeOrders(
           contractId
         )}&page=${page}&per_page=100`,
     }).then((records) => records.map((record) => ({ record, contractId })));
-  }))).flat();
-  return packages
+    })).then((records) => records.flat()),
+    fetchPaged({
+      accessToken,
+      companyId,
+      keys: ["data", "potential_change_orders"],
+      pathForPage: (page) =>
+        `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
+    }),
+  ]);
+  return [
+    ...packages
     .map(({ record, contractId }) => approvedChangeOrder(record, contractId))
-    .filter((record): record is ApprovedChangeOrder => Boolean(record))
+    .filter((record): record is ApprovedChangeOrder => Boolean(record)),
+    ...potentialChangeOrders
+      .map(approvedPotentialChangeOrder)
+      .filter((record): record is ApprovedChangeOrder => Boolean(record)),
+  ]
     .sort((left, right) => `${left.number} ${left.title}`.localeCompare(`${right.number} ${right.title}`));
 }
 
@@ -281,7 +315,51 @@ async function fetchApprovedChangeOrdersFromDatabase(
     status: String(record.status || "approved").toLowerCase(),
     amount: record.amount === null ? null : Number(record.amount),
     updatedAt: record.sourceUpdatedAt?.toISOString() || "",
+    sourceKind: "change_order_package" as const,
   }));
+}
+
+async function fetchApprovedPotentialChangeOrdersFromDatabase(
+  companyId: string,
+  projectId: string,
+): Promise<ApprovedChangeOrder[]> {
+  const rows = await prisma.procorePotentialChangeOrder.findMany({
+    where: {
+      companyId,
+      projectId,
+      packageId: null,
+      status: { equals: "approved", mode: "insensitive" },
+    },
+    select: {
+      changeOrderId: true,
+      contractId: true,
+      number: true,
+      title: true,
+      status: true,
+      amount: true,
+      sourceUpdatedAt: true,
+    },
+    orderBy: [{ number: "asc" }, { title: "asc" }],
+  });
+  return rows.map((record) => ({
+    packageId: record.changeOrderId,
+    contractId: record.contractId || "",
+    number: record.number || "",
+    title: record.title || `Change Order ${record.number || record.changeOrderId}`,
+    status: String(record.status || "approved").toLowerCase(),
+    amount: record.amount === null ? null : Number(record.amount),
+    updatedAt: record.sourceUpdatedAt?.toISOString() || "",
+    sourceKind: "potential_change_order" as const,
+  }));
+}
+
+async function fetchApprovedChangeOrdersFromAllDatabaseSources(companyId: string, projectId: string) {
+  const [packages, potentialChangeOrders] = await Promise.all([
+    fetchApprovedChangeOrdersFromDatabase(companyId, projectId),
+    fetchApprovedPotentialChangeOrdersFromDatabase(companyId, projectId),
+  ]);
+  return [...packages, ...potentialChangeOrders]
+    .sort((left, right) => `${left.number} ${left.title}`.localeCompare(`${right.number} ${right.title}`));
 }
 
 async function resolveApprovedChangeOrder(params: {
@@ -294,7 +372,7 @@ async function resolveApprovedChangeOrder(params: {
     .catch(() => []);
   const liveMatch = live.find((record) => record.packageId === params.packageId);
   if (liveMatch) return liveMatch;
-  const stored = await fetchApprovedChangeOrdersFromDatabase(params.companyId, params.projectId);
+  const stored = await fetchApprovedChangeOrdersFromAllDatabaseSources(params.companyId, params.projectId);
   return stored.find((record) => record.packageId === params.packageId) || null;
 }
 
@@ -304,6 +382,45 @@ async function fetchApprovedChangeOrderLines(params: {
   projectId: string;
   changeOrder: ApprovedChangeOrder;
 }): Promise<UnknownRecord[]> {
+  if (params.changeOrder.sourceKind === "potential_change_order") {
+    const liveLines = await fetchPaged({
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+      keys: ["data", "line_items"],
+      pathForPage: (page) =>
+        `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.changeOrder.packageId)}/line_items?project_id=${encodeURIComponent(
+          params.projectId
+        )}&page=${page}&per_page=100`,
+    }).catch(() => []);
+    if (liveLines.length > 0) return liveLines;
+    const storedLines = await prisma.procorePotentialChangeOrderLine.findMany({
+      where: {
+        companyId: params.companyId,
+        projectId: params.projectId,
+        changeOrderId: params.changeOrder.packageId,
+      },
+      orderBy: { id: "asc" },
+      select: {
+        description: true,
+        costCode: true,
+        wbsCode: true,
+        uom: true,
+        quantity: true,
+        unitCost: true,
+        payload: true,
+      },
+    });
+    return storedLines.map((line) => ({
+      ...(isRecord(line.payload) ? line.payload : {}),
+      description: line.description,
+      cost_code_string: line.costCode,
+      wbsCode: line.wbsCode,
+      uom: line.uom,
+      quantity: line.quantity === null ? null : Number(line.quantity),
+      unitCost: line.unitCost === null ? null : Number(line.unitCost),
+    }));
+  }
+
   const live = await procoreJson({
     path: `/rest/v1.0/change_order_packages/${encodeURIComponent(params.changeOrder.packageId)}?project_id=${encodeURIComponent(
       params.projectId
@@ -1345,7 +1462,7 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       changeOrderSource = "database-fallback";
       changeOrderWarning = "Live Procore change orders could not be read; the latest synchronized approved list is shown.";
-      approvedChangeOrders = await fetchApprovedChangeOrdersFromDatabase(procoreConfig.companyId, projectId);
+      approvedChangeOrders = await fetchApprovedChangeOrdersFromAllDatabaseSources(procoreConfig.companyId, projectId);
       console.warn("Commitment Maker approved change order live lookup fell back to the database:",
         error instanceof Error ? error.message : String(error));
     }

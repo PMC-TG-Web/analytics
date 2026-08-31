@@ -58,3 +58,22 @@ test("omits invalid source lines instead of inventing commitment values", () => 
   );
   assert.equal(group.lineItems.length, 0);
 });
+
+test("exposes an approved PCO only while it is not already part of a PCCO", () => {
+  const { isAvailableApprovedPotentialChangeOrder } = loadModule();
+  assert.equal(isAvailableApprovedPotentialChangeOrder({
+    id: 100,
+    status: "approved",
+    change_order_package_acronym_number: "PCCO #",
+  }), true);
+  assert.equal(isAvailableApprovedPotentialChangeOrder({
+    id: 100,
+    status: "approved",
+    change_order_package_acronym_number: "PCCO #001",
+  }), false);
+  assert.equal(isAvailableApprovedPotentialChangeOrder({
+    id: 100,
+    status: "pending",
+    change_order_package_acronym_number: "PCCO #",
+  }), false);
+});

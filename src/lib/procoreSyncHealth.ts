@@ -65,6 +65,13 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     issues.push(`${structure.failed_projects} nightly structure projects are failing.`);
   }
 
+  const bidBoardHeaders = datasets.get("nightly_bid_board_headers");
+  if (bidBoardHeaders && bidBoardHeaders.max_failure_count >= 3) {
+    issues.push(
+      `${bidBoardHeaders.failed_projects} Bid Board header sync job(s) are repeatedly failing.`,
+    );
+  }
+
   const estimates = datasets.get("nightly_estimates");
   if (
     estimates

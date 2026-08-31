@@ -155,6 +155,8 @@ For steady-state operation, `netlify/functions/scheduled-sync.mts` runs every fi
 
 The background wrappers call `/api/cron/actuals`, `/api/cron/nightly-structure`, `/api/cron/project-onboarding`, and `/api/cron/project-reconciliation` in bounded batches. Queue state, locks, retry timestamps, and rate-limit cooldowns live in PostgreSQL so work can resume across invocations. Successful daily structure and estimate records requeue five minutes short of 24 hours so second-level scheduler jitter cannot push them past the final nightly tick. Secret-authenticated operators can pass one exact `projectId` to `/api/cron/nightly-structure` for a targeted structure rerun.
 
+Bid Board header reconciliation protects against incomplete service-account visibility with a coverage threshold. Rows already marked `sync_missing_from_procore` remain as historical evidence but are excluded from the expected-visible denominator; otherwise old deletions would permanently lower coverage and block every later header sync. Repeated header-sync failures are evaluated directly by the production health monitor.
+
 Change-order mirroring treats an unavailable Potential Change Order child-line resource as a warning when Procore still returns the valid parent in its project list. The sync preserves the parent and prior line snapshot instead of failing the entire project or deleting data based on that transient/stale 404.
 
 ### Webhook flow

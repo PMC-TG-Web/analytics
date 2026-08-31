@@ -10,6 +10,7 @@ import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/pro
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 import { shouldStopBidBoardPagination } from "@/lib/procoreBidBoardPagination";
 import { bidBoardPayloadChanged } from "@/lib/procoreBidBoardChange";
+import { assessBidBoardCoverage } from "@/lib/procoreBidBoardCoverage";
 import { queueEstimatingSyncProjects } from "@/lib/procoreSyncQueue";
 
 export const dynamic = "force-dynamic";
@@ -315,16 +316,39 @@ async function mapWithConcurrency<T, R>(
 }
 
 async function markMissingCurrentRows(companyId: string, currentIds: string[]) {
-  const existingCurrentRows = await prisma.pmcBidBoardProject.count({
-    where: {
-      companyId,
-      NOT: { bidBoardId: { contains: ":" } },
-    },
+  const coverageRows = await prisma.$queryRawUnsafe<Array<{
+    existing_current_rows: number;
+    expected_visible_rows: number;
+    known_missing_rows: number;
+  }>>(
+    `
+      SELECT
+        COUNT(*)::int AS existing_current_rows,
+        COUNT(*) FILTER (
+          WHERE COALESCE((payload->>'sync_missing_from_procore')::boolean, false) = false
+        )::int AS expected_visible_rows,
+        COUNT(*) FILTER (
+          WHERE COALESCE((payload->>'sync_missing_from_procore')::boolean, false) = true
+        )::int AS known_missing_rows
+      FROM pmc_bid_board_projects
+      WHERE company_id = $1
+        AND POSITION(':' IN bid_board_id) = 0
+    `,
+    companyId
+  );
+  const existingCurrentRows = Number(coverageRows[0]?.existing_current_rows || 0);
+  const expectedVisibleRows = Number(coverageRows[0]?.expected_visible_rows || 0);
+  const knownMissingRows = Number(coverageRows[0]?.known_missing_rows || 0);
+  const coverageAssessment = assessBidBoardCoverage({
+    fetchedRows: currentIds.length,
+    expectedVisibleRows,
   });
-  const coverage = existingCurrentRows > 0 ? currentIds.length / existingCurrentRows : 1;
   // Estimating visibility can differ between a user's Procore session and the
   // service account. Never mark rows stale from a materially incomplete list.
-  if (!currentIds.length || coverage < 0.98) {
+  // Rows already confirmed missing are historical evidence, not records the
+  // service account is still expected to return, so exclude them from the
+  // coverage denominator.
+  if (!coverageAssessment.complete) {
     return {
       pmc: 0,
       live: 0,
@@ -332,7 +356,9 @@ async function markMissingCurrentRows(companyId: string, currentIds: string[]) {
       reason: !currentIds.length ? "empty_response" : "incomplete_service_account_coverage",
       fetched: currentIds.length,
       existingCurrentRows,
-      coverage,
+      expectedVisibleRows,
+      knownMissingRows,
+      coverage: coverageAssessment.coverage,
     };
   }
   const [pmc, live] = await Promise.all([
@@ -377,7 +403,9 @@ async function markMissingCurrentRows(companyId: string, currentIds: string[]) {
     reason: null,
     fetched: currentIds.length,
     existingCurrentRows,
-    coverage,
+    expectedVisibleRows,
+    knownMissingRows,
+    coverage: coverageAssessment.coverage,
   };
 }
 

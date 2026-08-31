@@ -137,6 +137,22 @@ test("health evaluation reports repeatedly failing Project Link Sync jobs", () =
   assert.ok(issues.includes("2 Project Link Sync job(s) are repeatedly failing."));
 });
 
+test("health evaluation reports repeated Bid Board header sync failures directly", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-08-31T13:45:00.000Z" },
+      { dataset: "nightly_bid_board_headers", never_succeeded: 0, failed_projects: 1, max_failure_count: 102, newest_success: "2026-08-30T04:15:00.000Z" },
+    ],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-31T13:10:00.000Z",
+      last_attempt_at: "2026-08-31T13:10:00.000Z",
+    },
+  }, new Date("2026-08-31T13:50:00.000Z"));
+
+  assert.ok(issues.includes("1 Bid Board header sync job(s) are repeatedly failing."));
+});
+
 test("health evaluation allows a fresh estimate detail queue", () => {
   const issues = evaluateProcoreSyncHealth({
     datasets: [

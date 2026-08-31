@@ -408,7 +408,13 @@ export default function CommitmentMakerPage() {
           previewFingerprint: mode === "create" ? preview?.previewFingerprint : undefined,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const responseText = await response.text();
+      let payload: unknown = {};
+      try {
+        payload = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        payload = {};
+      }
       if (mode === "preview") {
         const nextPreview = payload as PreviewResponse;
         setPreview(nextPreview);
@@ -422,7 +428,12 @@ export default function CommitmentMakerPage() {
       } else if (Array.isArray(asRecord(payload).results)) {
         setResult(payload as CreateResult);
       }
-      if (!response.ok) throw new Error(text(asRecord(payload).error) || "The request failed.");
+      if (!response.ok) {
+        throw new Error(
+          text(asRecord(payload).error)
+          || `The request failed (${response.status}). No Procore changes were confirmed; refresh and retry.`,
+        );
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {

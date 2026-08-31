@@ -129,7 +129,9 @@ async function procoreJson(params: {
     if (response.status === 429 && attempt < maxRetries) {
       const delayMs = procoreRateLimitDelayMs(response.headers, {
         fallbackMs: 1_000,
-        maxDelayMs: 15_000,
+        // Keep interactive requests comfortably inside Netlify's synchronous
+        // response window. Background syncs may wait for the full reset epoch.
+        maxDelayMs: 5_000,
       });
       await response.body?.cancel().catch(() => undefined);
       console.warn(`Commitment Maker live read was rate limited; retrying in ${delayMs}ms.`);

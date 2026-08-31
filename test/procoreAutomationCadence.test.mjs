@@ -31,3 +31,16 @@ test('PMC Operations is parked because it is an internal non-job project', () =>
   assert.equal(shouldParkProjectOnboarding({ projectNumber: 'PMC-OPS', projectName: 'PMC Operations' }), true);
   assert.equal(shouldParkProjectOnboarding({ projectNumber: '2603 - WR', projectName: 'WSCA Ramp' }), false);
 });
+
+test('the known Procore sandbox is parked instead of creating a permanent onboarding alert', () => {
+  assert.equal(shouldParkProjectOnboarding({
+    projectId: '598134326542330',
+    projectNumber: '12345',
+    projectName: 'Sandbox Test Project',
+  }), true);
+  assert.equal(shouldParkProjectOnboarding({
+    projectId: '598134326649722',
+    projectNumber: '2616 - HC',
+    projectName: 'Honey Brook Commons',
+  }), false);
+});

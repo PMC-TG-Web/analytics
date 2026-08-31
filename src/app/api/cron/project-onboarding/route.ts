@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (shouldParkProjectOnboarding(project)) {
-      const reason = "Excluded from project onboarding because PMC Operations is an internal non-job project.";
+      const reason = "Excluded from project onboarding because this is an internal/demo non-job project.";
       await parkProjectSync({
         project,
         reason,

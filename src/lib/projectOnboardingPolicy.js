@@ -3,7 +3,10 @@ function normalize(value) {
 }
 
 export function shouldParkProjectOnboarding(project) {
+  const projectId = normalize(project?.projectId);
   const projectNumber = normalize(project?.projectNumber);
   const projectName = normalize(project?.projectName);
-  return projectNumber === 'pmc-ops' || projectName === 'pmc operations';
+  return projectId === '598134326542330'
+    || projectNumber === 'pmc-ops'
+    || projectName === 'pmc operations';
 }

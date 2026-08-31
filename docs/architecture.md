@@ -165,6 +165,8 @@ Change-order mirroring treats an unavailable Potential Change Order child-line r
 
 `POST /api/webhooks/procore/process` requires the sync secret, claims due queue entries, dispatches resource-specific handlers, updates canonical and compatibility tables, retries transient failures with backoff, and can enqueue project onboarding work. This separation keeps webhook acknowledgement fast and processing durable.
 
+Project onboarding parks explicitly identified internal/demo non-job projects instead of retrying them forever when they have no Bid Board record. Production projects continue to retry until their Procore/Bid Board link becomes available.
+
 ## QuickBooks profitability
 
 This repository does not own QuickBooks OAuth or write back to QuickBooks. The separate `QBO_1` integration produces a normalized JSON export, or a configured remote webhook triggers that refresh.

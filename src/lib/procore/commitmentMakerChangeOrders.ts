@@ -16,7 +16,7 @@ export type CommitmentMakerExistingPurchaseOrder = {
   id: string;
   title: string;
   status: string;
-  vendorId: string;
+  vendorName: string;
 };
 
 export function isAvailableApprovedPotentialChangeOrder(value: unknown): boolean {
@@ -52,14 +52,14 @@ function normalizedTitle(value: unknown): string {
 export function selectExistingChangeOrderPurchaseOrder<T extends CommitmentMakerExistingPurchaseOrder>(
   candidates: T[],
   expectedTitle: string,
-  vendorId: string,
+  vendorName: string,
 ): T | null {
   const title = normalizedTitle(expectedTitle);
-  const expectedVendorId = text(vendorId);
+  const expectedVendorName = normalizedTitle(vendorName);
   const matches = candidates.filter((candidate) => (
     Boolean(text(candidate.id))
     && normalizedTitle(candidate.title) === title
-    && text(candidate.vendorId) === expectedVendorId
+    && normalizedTitle(candidate.vendorName) === expectedVendorName
   ));
   return matches.sort((left, right) => {
     const leftApproved = text(left.status).toLowerCase() === "approved" ? 1 : 0;

@@ -15,6 +15,7 @@ import {
   commitmentMakerLineCreatePayload,
   consolidateCommitmentMakerLineItems,
   isCommitmentMakerEstimateMatchingLine,
+  normalizeCommitmentMakerVendorName,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
   selectCommitmentMakerWbsCandidate,
@@ -595,6 +596,19 @@ function commitmentVendorId(record: UnknownRecord): string {
   return readText(record.vendor_id ?? nestedRecord(record, "vendor").id);
 }
 
+function commitmentVendorName(record: UnknownRecord): string {
+  return vendorName(nestedRecord(record, "vendor")) || readText(record.vendor_name);
+}
+
+function commitmentUsesParadiseVendor(record: UnknownRecord, companyVendorId: string): boolean {
+  const name = commitmentVendorName(record);
+  if (name) {
+    return normalizeCommitmentMakerVendorName(name)
+      === normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME);
+  }
+  return Boolean(companyVendorId) && commitmentVendorId(record) === companyVendorId;
+}
+
 function findExistingByFingerprint(records: UnknownRecord[], fingerprint: string): UnknownRecord | null {
   return records.find((record) => commitmentOriginData(record).includes(fingerprint)) || null;
 }
@@ -610,7 +624,7 @@ function purchaseOrderCommitments(records: UnknownRecord[]): UnknownRecord[] {
 function findExistingChangeOrderPurchaseOrder(
   records: UnknownRecord[],
   title: string,
-  vendorId: string,
+  vendorName: string,
 ): UnknownRecord | null {
   const selected = selectExistingChangeOrderPurchaseOrder(
     records.map((record) => ({
@@ -618,10 +632,10 @@ function findExistingChangeOrderPurchaseOrder(
       id: readId(record),
       title: readText(record.title),
       status: readText(record.status),
-      vendorId: commitmentVendorId(record),
+      vendorName: commitmentVendorName(record),
     })),
     title,
-    vendorId,
+    vendorName,
   );
   return selected?.record || null;
 }
@@ -761,7 +775,7 @@ async function buildPlan(params: {
     validationErrors.push("Select the existing purchase order that will receive this change order.");
   } else if (params.target === "existing_purchase_order" && !targetCommitment) {
     validationErrors.push("The selected existing purchase order is no longer available on this project.");
-  } else if (targetCommitment && vendorId && commitmentVendorId(targetCommitment) !== vendorId) {
+  } else if (targetCommitment && !commitmentUsesParadiseVendor(targetCommitment, vendorId)) {
     validationErrors.push(`The selected purchase order is not assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`);
   }
   if (params.target === "existing_purchase_order" && params.groups.length !== 1) {
@@ -773,7 +787,7 @@ async function buildPlan(params: {
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
     const existing = findExistingByFingerprint(commitments, fingerprint)
       || (params.sourceChangeOrderId
-        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, vendorId)
+        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, COMMITMENT_MAKER_VENDOR_NAME)
         : null);
     return !existing;
   }).length;
@@ -790,9 +804,9 @@ async function buildPlan(params: {
     const existing = targetCommitment
       || findExistingByFingerprint(commitments, fingerprint)
       || (params.sourceChangeOrderId
-        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, vendorId)
+        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, COMMITMENT_MAKER_VENDOR_NAME)
         : null);
-    if (existing && vendorId && commitmentVendorId(existing) !== vendorId) {
+    if (existing && !commitmentUsesParadiseVendor(existing, vendorId)) {
       validationErrors.push(
         `Group "${group.name}" matches an earlier import, but that Procore PO is no longer assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`
       );
@@ -905,7 +919,7 @@ function commitmentOption(record: UnknownRecord) {
     title: readText(record.title),
     status: readText(record.status),
     vendorId: commitmentVendorId(record),
-    vendorName: vendorName(nestedRecord(record, "vendor")) || readText(record.vendor_name),
+      vendorName: commitmentVendorName(record),
   };
 }
 

@@ -115,10 +115,10 @@ test("exposes an approved PCO only while it is not already part of a PCCO", () =
 test("reuses the approved PO for an already-created change order before a partial draft", () => {
   const { selectExistingChangeOrderPurchaseOrder } = loadModule();
   const selected = selectExistingChangeOrderPurchaseOrder([
-    { id: "100", title: "CO 001 — Added concrete", status: "Draft", vendorId: "9" },
-    { id: "101", title: "CO 001 — Added concrete", status: "Approved", vendorId: "9" },
-    { id: "102", title: "CO 001 — Added concrete", status: "Approved", vendorId: "different" },
-  ], "  CO 001 — Added concrete  ", "9");
+    { id: "100", title: "CO 001 — Added concrete", status: "Draft", vendorName: "Paradise Masonry, LLC" },
+    { id: "101", title: "CO 001 — Added concrete", status: "Approved", vendorName: "Paradise Masonry, LLC" },
+    { id: "102", title: "CO 001 — Added concrete", status: "Approved", vendorName: "Different Vendor" },
+  ], "  CO 001 — Added concrete  ", "Paradise Masonry, LLC");
 
   assert.equal(selected?.id, "101");
 });

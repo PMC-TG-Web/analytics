@@ -18,6 +18,16 @@ type ProjectOption = {
   status: string;
 };
 
+type ApprovedChangeOrder = {
+  packageId: string;
+  contractId: string;
+  number: string;
+  title: string;
+  status: string;
+  amount: number | null;
+  updatedAt: string;
+};
+
 type PreviewLine = {
   costCode: string;
   costType: string;
@@ -57,6 +67,12 @@ type PreviewResponse = {
   };
   contractType: string;
   finalStatus: string;
+  sourceType: "estimate" | "approved_change_order";
+  sourceChangeOrder: ApprovedChangeOrder | null;
+  taskAssignees: {
+    shellyAssigneeId: number;
+    projectManagerAssigneeIds: number[];
+  } | null;
   groups: PreviewGroup[];
   totals: { groups: number; lineItems: number; amount: number };
 };
@@ -67,6 +83,18 @@ type CreateResult = {
   created: number;
   resumed: number;
   failed: number;
+  sourceChangeOrder?: ApprovedChangeOrder | null;
+  taskError?: string;
+  taskResult?: {
+    tasks: Array<{
+      kind: "aia_billing" | "commitment_verification";
+      taskId: string;
+      title: string;
+      created: boolean;
+      updated: boolean;
+      notified: boolean;
+    }>;
+  } | null;
   results: Array<{
     success: boolean;
     group: string;
@@ -124,6 +152,11 @@ export default function CommitmentMakerPage() {
   const [projectsBusy, setProjectsBusy] = useState(true);
   const [projectId, setProjectId] = useState("");
   const [projectLocked, setProjectLocked] = useState(false);
+  const [sourceType, setSourceType] = useState<"estimate" | "approved_change_order">("estimate");
+  const [approvedChangeOrders, setApprovedChangeOrders] = useState<ApprovedChangeOrder[]>([]);
+  const [changeOrdersBusy, setChangeOrdersBusy] = useState(false);
+  const [changeOrderWarning, setChangeOrderWarning] = useState("");
+  const [changeOrderPackageId, setChangeOrderPackageId] = useState("");
   const [fileName, setFileName] = useState("");
   const [workbookBuffer, setWorkbookBuffer] = useState<ArrayBuffer | null>(null);
   const [parsedWorkbook, setParsedWorkbook] = useState<CommitmentMakerParseResult | null>(null);
@@ -144,6 +177,10 @@ export default function CommitmentMakerPage() {
     () => projects.find((project) => project.id === projectId) || null,
     [projects, projectId]
   );
+  const selectedChangeOrder = useMemo(
+    () => approvedChangeOrders.find((changeOrder) => changeOrder.packageId === changeOrderPackageId) || null,
+    [approvedChangeOrders, changeOrderPackageId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -159,32 +196,6 @@ export default function CommitmentMakerPage() {
               name: "Loading project…",
               number: "",
               status: "",
-            }]);
-          }
-
-          const search = new URLSearchParams(window.location.search);
-          const accessToken = text(search.get("access"));
-          const response = await fetch(
-            `/api/procore/commitments-live/maker?projectId=${encodeURIComponent(linkedProjectId)}`,
-            {
-              cache: "no-store",
-              headers: {
-                "X-Commitment-Maker-Project-Id": linkedProjectId,
-                "X-Commitment-Maker-Access": accessToken,
-              },
-            }
-          );
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(text(asRecord(payload).error) || "The Procore project name could not be loaded.");
-          }
-          const project = asRecord(asRecord(payload).project);
-          if (!cancelled) {
-            setProjects([{
-              id: text(project.id) || linkedProjectId,
-              name: text(project.name) || `Project ${linkedProjectId}`,
-              number: text(project.number),
-              status: text(project.status),
             }]);
           }
           return;
@@ -207,6 +218,61 @@ export default function CommitmentMakerPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadApprovedChangeOrders() {
+      setApprovedChangeOrders([]);
+      setChangeOrderPackageId("");
+      setChangeOrderWarning("");
+      if (!projectId) return;
+      setChangeOrdersBusy(true);
+      try {
+        const search = new URLSearchParams(window.location.search);
+        const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
+        const accessToken = text(search.get("access"));
+        const headers: Record<string, string> = {};
+        if (linkedProjectId === projectId && accessToken) {
+          headers["X-Commitment-Maker-Project-Id"] = linkedProjectId;
+          headers["X-Commitment-Maker-Access"] = accessToken;
+        }
+        const response = await fetch(
+          `/api/procore/commitments-live/maker?projectId=${encodeURIComponent(projectId)}`,
+          { cache: "no-store", headers },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(text(asRecord(payload).error) || "Approved change orders could not be loaded.");
+        }
+        const records = Array.isArray(asRecord(payload).approvedChangeOrders)
+          ? asRecord(payload).approvedChangeOrders as ApprovedChangeOrder[]
+          : [];
+        if (!cancelled) {
+          const project = asRecord(asRecord(payload).project);
+          if (linkedProjectId === projectId) {
+            setProjects([{
+              id: text(project.id) || projectId,
+              name: text(project.name) || `Project ${projectId}`,
+              number: text(project.number),
+              status: text(project.status),
+            }]);
+          }
+          setApprovedChangeOrders(records);
+          setChangeOrderWarning(text(asRecord(payload).changeOrderWarning));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setChangeOrderWarning(loadError instanceof Error ? loadError.message : String(loadError));
+        }
+      } finally {
+        if (!cancelled) setChangeOrdersBusy(false);
+      }
+    }
+    void loadApprovedChangeOrders();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   function invalidatePreview() {
     setPreview(null);
@@ -310,6 +376,7 @@ export default function CommitmentMakerPage() {
           sourceRowCount: parsedOverride?.sourceRowCount,
           skippedRows: parsedOverride?.skippedRows,
           warnings: parsedOverride?.warnings,
+          changeOrderPackageId: sourceType === "approved_change_order" ? changeOrderPackageId : undefined,
           previewFingerprint: mode === "create" ? preview?.previewFingerprint : undefined,
         }),
       });
@@ -382,7 +449,13 @@ export default function CommitmentMakerPage() {
     await callMaker("preview", originalParsedWorkbook);
   }
 
-  const readyToPreview = Boolean(projectId && parsedWorkbook && sheetName && !busy);
+  const readyToPreview = Boolean(
+    projectId
+    && parsedWorkbook
+    && sheetName
+    && !busy
+    && (sourceType === "estimate" || changeOrderPackageId),
+  );
   const selectedCombineNames = preview?.groups
     .filter((group) => combineSelection[group.name] === true)
     .map((group) => group.name) || [];
@@ -408,7 +481,7 @@ export default function CommitmentMakerPage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">Procore Commitments</p>
               <h1 className="mt-1 text-2xl font-black text-slate-900">Commitment Maker</h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Turn an estimate workbook into approved Procore purchase orders. Keep estimate groups separate or combine selected groups before creation.
+                Turn an estimate or approved change-order workbook into approved Procore purchase orders. Keep groups separate or combine selected groups before creation.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -429,7 +502,7 @@ export default function CommitmentMakerPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <label className="block">
               <span className="text-xs font-black uppercase tracking-wider text-slate-600">1. Procore Project</span>
               <select
@@ -437,6 +510,8 @@ export default function CommitmentMakerPage() {
                 disabled={projectsBusy || busy || projectLocked}
                 onChange={(event) => {
                   setProjectId(event.target.value);
+                  setSourceType("estimate");
+                  setChangeOrderPackageId("");
                   invalidatePreview();
                 }}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
@@ -456,7 +531,62 @@ export default function CommitmentMakerPage() {
             </label>
 
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600">2. Estimate Workbook</span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-600">2. Work Source</span>
+              <select
+                value={sourceType}
+                disabled={busy || !projectId}
+                onChange={(event) => {
+                  const nextSource = event.target.value === "approved_change_order"
+                    ? "approved_change_order"
+                    : "estimate";
+                  setSourceType(nextSource);
+                  setChangeOrderPackageId("");
+                  invalidatePreview();
+                }}
+                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+              >
+                <option value="estimate">Base Estimate</option>
+                <option value="approved_change_order">Approved Change Order</option>
+              </select>
+            </label>
+
+            {sourceType === "approved_change_order" && (
+              <label className="block xl:col-span-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-600">3. Approved Change Order</span>
+                <select
+                  value={changeOrderPackageId}
+                  disabled={busy || changeOrdersBusy || !projectId}
+                  onChange={(event) => {
+                    setChangeOrderPackageId(event.target.value);
+                    invalidatePreview();
+                  }}
+                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+                >
+                  <option value="">
+                    {changeOrdersBusy
+                      ? "Loading approved change orders..."
+                      : approvedChangeOrders.length
+                        ? "Select an approved change order"
+                        : "No approved change orders found"}
+                  </option>
+                  {approvedChangeOrders.map((changeOrder) => (
+                    <option key={changeOrder.packageId} value={changeOrder.packageId}>
+                      {[`CO ${changeOrder.number || changeOrder.packageId}`, changeOrder.title, formatCurrency(changeOrder.amount || 0)]
+                        .filter(Boolean)
+                        .join(" — ")}
+                    </option>
+                  ))}
+                </select>
+                {changeOrderWarning && (
+                  <p className="mt-1.5 text-xs font-semibold text-amber-700">{changeOrderWarning}</p>
+                )}
+              </label>
+            )}
+
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+                {sourceType === "approved_change_order" ? "4. Change Order Workbook" : "3. Estimate Workbook"}
+              </span>
               <input
                 type="file"
                 accept=".xlsx,.xls"
@@ -467,7 +597,9 @@ export default function CommitmentMakerPage() {
             </label>
 
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600">3. Worksheet</span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+                {sourceType === "approved_change_order" ? "5. Worksheet" : "4. Worksheet"}
+              </span>
               <select
                 value={sheetName}
                 disabled={!sheetNames.length || busy}
@@ -497,8 +629,16 @@ export default function CommitmentMakerPage() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {[
+            [
+              "Source",
+              sourceType === "approved_change_order"
+                ? selectedChangeOrder
+                  ? `CO ${selectedChangeOrder.number || selectedChangeOrder.packageId} — ${selectedChangeOrder.title}`
+                  : "Select an approved change order"
+                : "Base Estimate",
+            ],
             ["Vendor", "Paradise Masonry, LLC"],
             ["Type", "Purchase Order"],
             ["Title", "Estimate group or combined name"],
@@ -525,6 +665,11 @@ export default function CommitmentMakerPage() {
                 <p className="mt-1 text-sm text-slate-600">
                   {selectedProject ? `${selectedProject.number} — ${selectedProject.name}` : preview.projectId} · {preview.fileName} · {preview.sheetName}
                 </p>
+                {preview.sourceChangeOrder && (
+                  <p className="mt-1 text-sm font-bold text-indigo-700">
+                    CO {preview.sourceChangeOrder.number || preview.sourceChangeOrder.packageId} — {preview.sourceChangeOrder.title}
+                  </p>
+                )}
               </div>
               <div className={`rounded-lg px-4 py-2 text-sm font-black ${preview.success ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
                 {preview.success ? "Ready to create" : "Creation blocked"}
@@ -542,6 +687,12 @@ export default function CommitmentMakerPage() {
             <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
               <strong>{preview.vendor.name}</strong> {preview.vendor.assignedToProject ? "is assigned to this project." : "will be added to this project before the POs are created."}
             </div>
+
+            {preview.sourceChangeOrder && preview.taskAssignees && (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Follow-up task assignees verified: Shelly Swinehart and {preview.taskAssignees.projectManagerAssigneeIds.length} internal project manager{preview.taskAssignees.projectManagerAssigneeIds.length === 1 ? "" : "s"}. Both tasks will be sent automatically after the POs finish.
+              </div>
+            )}
 
             {combineMessage && (
               <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
@@ -692,7 +843,9 @@ export default function CommitmentMakerPage() {
                     onChange={(event) => setConfirmed(event.target.checked)}
                     className="mt-0.5 h-4 w-4"
                   />
-                  <span>I reviewed the project, PO numbers, groups, budget codes, quantities, and costs above.</span>
+                  <span>
+                    I reviewed the project, {preview.sourceChangeOrder ? "approved change order, " : ""}PO numbers, groups, budget codes, quantities, and costs above.
+                  </span>
                 </label>
                 <button
                   type="button"
@@ -704,6 +857,9 @@ export default function CommitmentMakerPage() {
                 </button>
                 <p className="mt-2 text-xs text-indigo-800">
                   Each PO is staged as Draft while its line items are added, then changed to Approved after the PO is complete.
+                  {preview.sourceChangeOrder
+                    ? " After successful creation, Shelly and the project manager will receive their Procore follow-up tasks."
+                    : ""}
                 </p>
                 {selectedCombineNames.length > 0 && (
                   <p className="mt-2 text-xs font-black text-violet-800">
@@ -737,6 +893,24 @@ export default function CommitmentMakerPage() {
                 </div>
               ))}
             </div>
+            {result.taskResult?.tasks?.length ? (
+              <div className="mt-4 rounded-xl border border-white/80 bg-white p-4">
+                <p className="text-sm font-black text-slate-900">Change-order follow-up tasks</p>
+                <div className="mt-2 space-y-2">
+                  {result.taskResult.tasks.map((task) => (
+                    <div key={task.taskId} className="text-sm text-slate-700">
+                      <span className="font-bold">{task.title}</span>
+                      <span className="text-xs text-slate-500">
+                        {` · Task ${task.taskId} · ${task.created ? "created" : task.updated ? "updated" : "already existed"} · ${task.notified ? "notification sent" : "notification pending"}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {result.taskError && (
+              <p className="mt-3 text-sm font-semibold text-red-800">Task error: {result.taskError}</p>
+            )}
           </section>
         )}
       </main>

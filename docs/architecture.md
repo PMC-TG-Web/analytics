@@ -167,6 +167,8 @@ Change-order mirroring treats an unavailable Potential Change Order child-line r
 
 Project onboarding parks explicitly identified internal/demo non-job projects instead of retrying them forever when they have no Bid Board record. Production projects continue to retry until their Procore/Bid Board link becomes available.
 
+The project-scoped Commitment Maker supports both base-estimate workbooks and workbooks associated with an approved Prime Change Order. Approved change orders are validated against the selected Procore project and included in the import fingerprint so retries cannot collide with base-estimate POs. After every associated PO succeeds, the tool idempotently creates and sends two tagged Procore Task Items: an AIA-billing task assigned to `shelly@pmcdecor.com`, and a commitment-verification task assigned to the project-team Project Manager(s) whose email is under `pmcdecor.com`. Preview blocks creation when either required assignee cannot be resolved.
+
 ## QuickBooks profitability
 
 This repository does not own QuickBooks OAuth or write back to QuickBooks. The separate `QBO_1` integration produces a normalized JSON export, or a configured remote webhook triggers that refresh.

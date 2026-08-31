@@ -19,6 +19,14 @@ export type CommitmentMakerExistingPurchaseOrder = {
   vendorName: string;
 };
 
+export type CommitmentMakerExistingCommitmentChangeOrder = {
+  id: string;
+  contractId: string;
+  description: string;
+  externalOriginData: string;
+  status: string;
+};
+
 export function isAvailableApprovedPotentialChangeOrder(value: unknown): boolean {
   const source = record(value);
   const status = text(source.status).toLowerCase();
@@ -152,4 +160,68 @@ export function commitmentChangeOrderTitle(changeOrder: CommitmentMakerApprovedC
     .filter(Boolean)
     .join(" — ")
     .substring(0, 255);
+}
+
+export function commitmentChangeOrderSourceMarker(sourceChangeOrderId: string, fingerprint: string): string {
+  return `PMC-COMMITMENT-MAKER:${text(sourceChangeOrderId)}:${text(fingerprint)}`;
+}
+
+export function commitmentChangeOrderDescription(
+  changeOrder: CommitmentMakerApprovedChangeOrder,
+  fingerprint: string,
+): string {
+  const sourceLabel = changeOrder.number || changeOrder.packageId;
+  const marker = commitmentChangeOrderSourceMarker(changeOrder.packageId, fingerprint);
+  return `Created from approved Prime Contract Change Order ${sourceLabel}.\n\n[${marker}]`;
+}
+
+/**
+ * A Commitment Change Order is a different Procore resource from a legacy
+ * Change Order Package. Match only records returned by the Commitment Change
+ * Orders collection and use the embedded source marker to resume interrupted
+ * line-item creation without duplicating the CCO.
+ */
+export function selectExistingCommitmentChangeOrder<T extends CommitmentMakerExistingCommitmentChangeOrder>(
+  candidates: T[],
+  contractId: string,
+  sourceChangeOrderId: string,
+  fingerprint: string,
+): T | null {
+  const expectedContractId = text(contractId);
+  const marker = commitmentChangeOrderSourceMarker(sourceChangeOrderId, fingerprint);
+  const matches = candidates.filter((candidate) => (
+    Boolean(text(candidate.id))
+    && text(candidate.contractId) === expectedContractId
+    && (`${text(candidate.description)} ${text(candidate.externalOriginData)}`).includes(marker)
+  ));
+  return matches.sort((left, right) => {
+    const leftApproved = text(left.status).toLowerCase() === "approved" ? 1 : 0;
+    const rightApproved = text(right.status).toLowerCase() === "approved" ? 1 : 0;
+    if (leftApproved !== rightApproved) return rightApproved - leftApproved;
+    return text(right.id).localeCompare(text(left.id), undefined, { numeric: true });
+  })[0] || null;
+}
+
+export function commitmentChangeOrdersCollectionPath(
+  projectId: string,
+  contractId: string,
+  page = 1,
+): string {
+  return `/rest/v1.0/projects/${encodeURIComponent(projectId)}/commitment_change_orders?view=extended&filters%5Bcontract_id%5D=${encodeURIComponent(
+    contractId,
+  )}&page=${page}&per_page=100`;
+}
+
+export function commitmentChangeOrderPath(projectId: string, changeOrderId: string): string {
+  return `/rest/v1.0/projects/${encodeURIComponent(projectId)}/commitment_change_orders/${encodeURIComponent(changeOrderId)}`;
+}
+
+export function commitmentChangeOrderLineItemsPath(
+  companyId: string,
+  projectId: string,
+  changeOrderId: string,
+): string {
+  return `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+    projectId,
+  )}/commitment_change_orders/${encodeURIComponent(changeOrderId)}/line_items`;
 }

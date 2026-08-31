@@ -24,8 +24,13 @@ import {
 } from "@/lib/procore/commitmentMaker";
 import {
   approvedChangeOrderCommitmentGroup,
+  commitmentChangeOrderDescription,
+  commitmentChangeOrderLineItemsPath,
+  commitmentChangeOrderPath,
+  commitmentChangeOrdersCollectionPath,
   commitmentChangeOrderTitle,
   isAvailableApprovedPotentialChangeOrder,
+  selectExistingCommitmentChangeOrder,
   selectExistingChangeOrderPurchaseOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
@@ -887,11 +892,8 @@ async function fetchCommitmentChangeOrders(params: {
   return fetchPaged({
     accessToken: params.accessToken,
     companyId: params.companyId,
-    keys: ["data", "change_order_packages"],
-    pathForPage: (page) =>
-      `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(params.projectId)}&contract_id=${encodeURIComponent(
-        params.contractId
-      )}&page=${page}&per_page=100`,
+    keys: ["data", "commitment_change_orders"],
+    pathForPage: (page) => commitmentChangeOrdersCollectionPath(params.projectId, params.contractId, page),
   });
 }
 
@@ -906,9 +908,7 @@ async function fetchCommitmentChangeOrderLineItems(params: {
     companyId: params.companyId,
     keys: ["data", "line_items"],
     pathForPage: (page) =>
-      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
-        params.projectId
-      )}/commitment_change_orders/${encodeURIComponent(params.changeOrderId)}/line_items?page=${page}&per_page=100`,
+      `${commitmentChangeOrderLineItemsPath(params.companyId, params.projectId, params.changeOrderId)}?page=${page}&per_page=100`,
   });
 }
 
@@ -1166,25 +1166,36 @@ async function handleRequest(request: NextRequest) {
           projectId,
           contractId,
         });
-        let commitmentChangeOrder = findExistingByFingerprint(existingChangeOrders, group.fingerprint);
+        const selectedChangeOrder = selectExistingCommitmentChangeOrder(
+          existingChangeOrders.map((record) => ({
+            record,
+            id: readId(record),
+            contractId: readText(record.contract_id ?? nestedRecord(record, "contract").id),
+            description: readText(record.description),
+            externalOriginData: readText(
+              record.origin_data ?? nestedRecord(record, "external_data").origin_data,
+            ),
+            status: readText(record.status),
+          })),
+          contractId,
+          sourceChangeOrder.packageId,
+          group.fingerprint,
+        );
+        let commitmentChangeOrder = selectedChangeOrder?.record || null;
         let commitmentChangeOrderId = readId(commitmentChangeOrder);
         let createdCommitmentChangeOrder = false;
         if (!commitmentChangeOrderId) {
           const createResponse = await procoreJson({
-            path: "/rest/v1.0/change_order_packages",
+            path: `/rest/v1.0/projects/${encodeURIComponent(projectId)}/commitment_change_orders`,
             method: "POST",
             accessToken,
             companyId,
             body: {
-              project_id: Number(projectId) || projectId,
-              contract_id: Number(contractId) || contractId,
               change_order: {
+                contract_id: Number(contractId) || contractId,
                 status: "draft",
                 title: commitmentChangeOrderTitle(sourceChangeOrder),
-                description: `Created from approved Prime Contract Change Order ${sourceChangeOrder.number || sourceChangeOrder.packageId}.`,
-                origin_code: "PMC-COMMITMENT-MAKER",
-                origin_id: sourceChangeOrder.packageId,
-                origin_data: originDataFor(group.fingerprint),
+                description: commitmentChangeOrderDescription(sourceChangeOrder, group.fingerprint),
               },
             },
           });
@@ -1198,6 +1209,7 @@ async function handleRequest(request: NextRequest) {
             throw new Error("Procore created the commitment change order without returning its ID.");
           }
         }
+        actualNumber = readText(commitmentChangeOrder?.number) || actualNumber;
 
         const existingLines = await fetchCommitmentChangeOrderLineItems({
           accessToken,
@@ -1213,9 +1225,7 @@ async function handleRequest(request: NextRequest) {
             continue;
           }
           const lineResponse = await procoreJson({
-            path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
-              projectId
-            )}/commitment_change_orders/${encodeURIComponent(commitmentChangeOrderId)}/line_items`,
+            path: commitmentChangeOrderLineItemsPath(companyId, projectId, commitmentChangeOrderId),
             method: "POST",
             accessToken,
             companyId,
@@ -1230,13 +1240,11 @@ async function handleRequest(request: NextRequest) {
         }
 
         const approveResponse = await procoreJson({
-          path: `/rest/v1.0/change_order_packages/${encodeURIComponent(commitmentChangeOrderId)}`,
+          path: commitmentChangeOrderPath(projectId, commitmentChangeOrderId),
           method: "PATCH",
           accessToken,
           companyId,
           body: {
-            project_id: Number(projectId) || projectId,
-            contract_id: Number(contractId) || contractId,
             change_order: { status: "approved" },
           },
         });

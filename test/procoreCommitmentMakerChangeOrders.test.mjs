@@ -122,3 +122,59 @@ test("reuses the approved PO for an already-created change order before a partia
 
   assert.equal(selected?.id, "101");
 });
+
+test("uses a source marker to resume only the matching commitment change order", () => {
+  const {
+    commitmentChangeOrderDescription,
+    selectExistingCommitmentChangeOrder,
+  } = loadModule();
+  const source = { packageId: "700", number: "002", title: "Added pier" };
+  const description = commitmentChangeOrderDescription(source, "fingerprint-1");
+  const selected = selectExistingCommitmentChangeOrder([
+    {
+      id: "900",
+      contractId: "800",
+      description,
+      externalOriginData: "",
+      status: "draft",
+    },
+    {
+      id: "901",
+      contractId: "different-contract",
+      description,
+      externalOriginData: "",
+      status: "approved",
+    },
+    {
+      id: "902",
+      contractId: "800",
+      description: "Created from another source.",
+      externalOriginData: "",
+      status: "approved",
+    },
+  ], "800", "700", "fingerprint-1");
+
+  assert.equal(selected?.id, "900");
+  assert.match(description, /PMC-COMMITMENT-MAKER:700:fingerprint-1/);
+});
+
+test("keeps commitment change order resource paths separate from legacy packages", () => {
+  const {
+    commitmentChangeOrderLineItemsPath,
+    commitmentChangeOrderPath,
+    commitmentChangeOrdersCollectionPath,
+  } = loadModule();
+
+  assert.equal(
+    commitmentChangeOrdersCollectionPath("project id", "contract/id", 2),
+    "/rest/v1.0/projects/project%20id/commitment_change_orders?view=extended&filters%5Bcontract_id%5D=contract%2Fid&page=2&per_page=100",
+  );
+  assert.equal(
+    commitmentChangeOrderPath("project id", "co/id"),
+    "/rest/v1.0/projects/project%20id/commitment_change_orders/co%2Fid",
+  );
+  assert.equal(
+    commitmentChangeOrderLineItemsPath("company id", "project id", "co/id"),
+    "/rest/v2.0/companies/company%20id/projects/project%20id/commitment_change_orders/co%2Fid/line_items",
+  );
+});

@@ -41,6 +41,23 @@ function baseCostCode(value: unknown): string {
   return text(value).split(".")[0].substring(0, 12);
 }
 
+function sourceCostType(line: UnknownRecord, wbs: UnknownRecord): string {
+  const lineItemType = record(line.line_item_type ?? line.lineItemType);
+  const costType = record(line.cost_type ?? line.costType);
+  const flatCode = text(wbs.flat_code ?? wbs.flatCode);
+  const flatCodeParts = flatCode.split(".");
+  return text(
+    lineItemType.code
+    || lineItemType.abbreviation
+    || lineItemType.name
+    || costType.code
+    || costType.abbreviation
+    || costType.name
+    || (flatCodeParts.length > 1 ? flatCodeParts.at(-1) : "")
+    || COMMITMENT_MAKER_COST_TYPE,
+  );
+}
+
 function sourceDescription(line: UnknownRecord, costCode: string): string {
   const wbs = record(line.wbs_code ?? line.wbsCode);
   const costCodeRecord = record(line.cost_code ?? line.costCode);
@@ -50,9 +67,9 @@ function sourceDescription(line: UnknownRecord, costCode: string): string {
 
 /**
  * Turns an approved Prime Contract Change Order SOV into one editable/reviewable
- * commitment group. The original cost-type suffix is intentionally omitted:
- * Commitment Maker writes Paradise Masonry lines to the project's Other (O)
- * WBS code, matching the established base-estimate workflow.
+ * commitment group. Because Procore requires a Budget Code on commitment
+ * lines, approved change orders retain their authoritative project WBS ID and
+ * cost type instead of being flattened to the estimate-import Other type.
  */
 export function approvedChangeOrderCommitmentGroup(
   changeOrder: CommitmentMakerApprovedChangeOrder,
@@ -74,7 +91,8 @@ export function approvedChangeOrderCommitmentGroup(
     if (!costCode || quantity === null || quantity <= 0 || unitCost === null || unitCost < 0) return null;
     return {
       costCode,
-      costType: COMMITMENT_MAKER_COST_TYPE,
+      costType: sourceCostType(line, wbs),
+      sourceWbsCodeId: text(wbs.id) || null,
       description: sourceDescription(line, costCode),
       quantity,
       uom,

@@ -12,8 +12,8 @@ import {
   selectCommitmentMakerWbsCandidate,
 } from '../src/lib/procore/commitmentMaker.ts';
 
-test('omits the WBS field when a project does not contain the workbook cost code', () => {
-  const payload = commitmentMakerLineCreatePayload({
+test('blocks a commitment line when its required Procore Budget Code is missing', () => {
+  assert.throws(() => commitmentMakerLineCreatePayload({
     costCode: '05-100-10-10',
     costType: 'O',
     description: 'Bollards',
@@ -22,10 +22,7 @@ test('omits the WBS field when a project does not contain the workbook cost code
     unitCost: 10,
     subtotalOverride: null,
     wbsCodeId: null,
-  });
-
-  assert.equal(Object.hasOwn(payload, 'wbs_code_id'), false);
-  assert.equal(payload.amount, 20);
+  }), /missing its required Procore Budget Code/);
 });
 
 test('keeps a resolved project WBS ID on the commitment line request', () => {
@@ -228,4 +225,13 @@ test('does not guess when multiple project WBS types exist and O is absent', () 
   ];
 
   assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O'), null);
+});
+
+test('uses the approved change-order source WBS ID when multiple types share a cost code', () => {
+  const candidates = [
+    { id: 'equipment', flatCode: '03-300-20-30.E', costCode: '03-300-20-30', costType: 'E' },
+    { id: 'subcontract', flatCode: '03-300-20-30.S', costCode: '03-300-20-30', costType: 'S' },
+  ];
+
+  assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O', 'subcontract')?.id, 'subcontract');
 });

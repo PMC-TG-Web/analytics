@@ -562,7 +562,7 @@ function buildWbsIndex(records: UnknownRecord[]): Map<string, WbsMatch[]> {
 
 function resolveWbs(line: CommitmentMakerLineItem, index: Map<string, WbsMatch[]>): WbsMatch | null {
   const candidates = index.get(normalizeCode(line.costCode)) || [];
-  return selectCommitmentMakerWbsCandidate(candidates, line.costType);
+  return selectCommitmentMakerWbsCandidate(candidates, line.costType, line.sourceWbsCodeId);
 }
 
 function vendorName(record: UnknownRecord): string {
@@ -775,14 +775,14 @@ async function buildPlan(params: {
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
         if (candidateCodes.length > 0) {
-          warnings.push(
-            `Group "${group.name}": ${line.costCode} has multiple non-Other WBS choices (${candidateCodes.join(", ")}); the letter is omitted and this commitment line will be created without a WBS assignment.`
+          validationErrors.push(
+            `Group "${group.name}": ${line.costCode} did not resolve to one required Procore Budget Code (${candidateCodes.join(", ")}).`
           );
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
-        warnings.push(
-          `Group "${group.name}": ${line.costCode} is not in this project's WBS; this PO line will be created without a WBS assignment.`
+        validationErrors.push(
+          `Group "${group.name}": ${line.costCode} is not in this project's WBS, so its required Procore Budget Code cannot be assigned.`
         );
         plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
         continue;

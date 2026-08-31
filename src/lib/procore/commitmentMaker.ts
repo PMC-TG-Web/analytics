@@ -5,7 +5,8 @@ export type CommitmentMakerCell = string | number | boolean | null | undefined;
 
 export type CommitmentMakerLineItem = {
   costCode: string;
-  costType: typeof COMMITMENT_MAKER_COST_TYPE;
+  costType: string;
+  sourceWbsCodeId?: string | null;
   description: string;
   quantity: number;
   uom: string;
@@ -18,13 +19,16 @@ export type CommitmentMakerPlannedLineItem = CommitmentMakerLineItem & {
 };
 
 export function commitmentMakerLineCreatePayload(line: CommitmentMakerPlannedLineItem) {
+  if (!line.wbsCodeId) {
+    throw new Error(`Commitment line "${line.description}" is missing its required Procore Budget Code.`);
+  }
   return {
     description: line.description,
     quantity: line.quantity,
     unit_cost: line.unitCost,
     amount: Math.round(line.quantity * line.unitCost * 100) / 100,
     uom: line.uom,
-    ...(line.wbsCodeId ? { wbs_code_id: line.wbsCodeId } : {}),
+    wbs_code_id: line.wbsCodeId,
   };
 }
 
@@ -41,6 +45,7 @@ function commitmentMakerLineKey(line: CommitmentMakerLineItem): string {
   return [
     normalizedLineKeyPart(line.costCode).replace(/\s+/g, ""),
     normalizedLineKeyPart(line.costType),
+    normalizedLineKeyPart(line.sourceWbsCodeId),
     normalizedLineKeyPart(line.description),
     normalizedLineKeyPart(line.uom),
     String(Math.round(line.unitCost * 100)),
@@ -424,7 +429,13 @@ function canonicalCostType(value: unknown): string {
 export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCandidate>(
   candidates: T[],
   requestedCostType: string,
+  sourceWbsCodeId?: string | null,
 ): T | null {
+  const sourceId = String(sourceWbsCodeId || "").trim();
+  if (sourceId) {
+    const sourceMatch = candidates.find((candidate) => String(candidate.id) === sourceId);
+    if (sourceMatch) return sourceMatch;
+  }
   const requested = canonicalCostType(requestedCostType);
   const typed = candidates.filter((candidate) => canonicalCostType(candidate.costType) === requested);
   if (typed.length === 1) return typed[0];

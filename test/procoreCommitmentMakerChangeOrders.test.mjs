@@ -40,13 +40,47 @@ test("builds commitment lines directly from an approved change order SOV", () =>
     { ...group.lineItems[0] },
     {
       costCode: "03-300-30-20",
-      costType: "O",
+      costType: "CON",
+      sourceWbsCodeId: null,
       description: "Site Concrete Material",
       quantity: 9.5,
       uom: "cy",
       unitCost: 144.34,
       subtotalOverride: null,
     },
+  );
+});
+
+test("retains distinct source WBS assignments for same-code approved CO lines", () => {
+  const { approvedChangeOrderCommitmentGroup } = loadModule();
+  const group = approvedChangeOrderCommitmentGroup(
+    { packageId: "500", number: "001", title: "Equipment" },
+    [
+      {
+        quantity: "1",
+        unit_cost: "137",
+        uom: "ea",
+        cost_code: { full_code: "03-300-20-30", name: "SOG Concrete Equipment" },
+        wbs_code: { id: "equipment", flat_code: "03-300-20-30.E" },
+        line_item_type: { code: "E", name: "Equipment" },
+      },
+      {
+        quantity: "1",
+        unit_cost: "1440",
+        uom: "ea",
+        cost_code: { full_code: "03-300-20-30", name: "SOG Concrete Equipment" },
+        wbs_code: { id: "subcontract", flat_code: "03-300-20-30.S" },
+        line_item_type: { code: "S", name: "Subcontractors" },
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    group.lineItems.map((line) => ({ costType: line.costType, sourceWbsCodeId: line.sourceWbsCodeId })),
+    [
+      { costType: "E", sourceWbsCodeId: "equipment" },
+      { costType: "S", sourceWbsCodeId: "subcontract" },
+    ],
   );
 });
 

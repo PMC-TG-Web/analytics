@@ -21,6 +21,10 @@ import {
   type CommitmentMakerGroup,
   type CommitmentMakerLineItem,
 } from "@/lib/procore/commitmentMaker";
+import {
+  approvedChangeOrderCommitmentGroup,
+  commitmentChangeOrderTitle,
+} from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
 import {
   COMMITMENT_MAKER_ACCESS_HEADER,
@@ -43,6 +47,7 @@ type ApprovedChangeOrder = CommitmentMakerChangeOrderContext & {
   status: string;
   updatedAt: string;
 };
+type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 
 const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_GROUPS = 100;
@@ -196,7 +201,7 @@ async function fetchCommitments(
     pathForPage: (page) =>
       `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
         projectId
-      )}/commitment_contracts?page=${page}&per_page=100`,
+      )}/commitment_contracts?page=${page}&per_page=100&view=extended`,
   });
 }
 
@@ -291,6 +296,53 @@ async function resolveApprovedChangeOrder(params: {
   if (liveMatch) return liveMatch;
   const stored = await fetchApprovedChangeOrdersFromDatabase(params.companyId, params.projectId);
   return stored.find((record) => record.packageId === params.packageId) || null;
+}
+
+async function fetchApprovedChangeOrderLines(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  changeOrder: ApprovedChangeOrder;
+}): Promise<UnknownRecord[]> {
+  const live = await procoreJson({
+    path: `/rest/v1.0/change_order_packages/${encodeURIComponent(params.changeOrder.packageId)}?project_id=${encodeURIComponent(
+      params.projectId
+    )}&contract_id=${encodeURIComponent(params.changeOrder.contractId)}`,
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+  }).catch(() => null);
+  if (live?.ok) {
+    const detail = unwrapData(live.payload);
+    const lines = asArray(detail, ["line_items", "data"]);
+    if (lines.length > 0) return lines;
+  }
+
+  const stored = await prisma.procoreChangeOrderPackageLine.findMany({
+    where: {
+      companyId: params.companyId,
+      projectId: params.projectId,
+      packageId: params.changeOrder.packageId,
+    },
+    orderBy: { id: "asc" },
+    select: {
+      description: true,
+      costCode: true,
+      wbsCode: true,
+      uom: true,
+      quantity: true,
+      unitCost: true,
+      payload: true,
+    },
+  });
+  return stored.map((line) => ({
+    ...(isRecord(line.payload) ? line.payload : {}),
+    description: line.description,
+    cost_code_string: line.costCode,
+    wbsCode: line.wbsCode,
+    uom: line.uom,
+    quantity: line.quantity === null ? null : Number(line.quantity),
+    unitCost: line.unitCost === null ? null : Number(line.unitCost),
+  }));
 }
 
 async function fetchProjectWbsRecords(
@@ -529,7 +581,7 @@ type PlannedLine = CommitmentMakerLineItem & { wbsCodeId: string | null; wbsFlat
 type PlannedGroup = {
   name: string;
   number: string;
-  action: "create" | "resume";
+  action: "create" | "resume" | "change_order";
   existingContractId: string;
   fingerprint: string;
   lineItems: PlannedLine[];
@@ -542,6 +594,8 @@ async function buildPlan(params: {
   projectId: string;
   groups: CommitmentMakerGroup[];
   importFingerprint: string;
+  target: CommitmentTarget;
+  existingCommitmentId: string;
 }) {
   const [companyVendors, projectVendors, commitments, wbsRecords] = await Promise.all([
     fetchCompanyVendors(params.accessToken, params.companyId),
@@ -561,8 +615,23 @@ async function buildPlan(params: {
   }
 
   const wbsIndex = buildWbsIndex(wbsRecords);
-  const existingNumbers = purchaseOrderCommitments(commitments).map((record) => record.number);
-  const newGroupCount = params.groups.filter((group) => {
+  const purchaseOrders = purchaseOrderCommitments(commitments);
+  const targetCommitment = params.target === "existing_purchase_order"
+    ? purchaseOrders.find((record) => readId(record) === params.existingCommitmentId) || null
+    : null;
+  if (params.target === "existing_purchase_order" && !params.existingCommitmentId) {
+    validationErrors.push("Select the existing purchase order that will receive this change order.");
+  } else if (params.target === "existing_purchase_order" && !targetCommitment) {
+    validationErrors.push("The selected existing purchase order is no longer available on this project.");
+  } else if (targetCommitment && vendorId && commitmentVendorId(targetCommitment) !== vendorId) {
+    validationErrors.push(`The selected purchase order is not assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`);
+  }
+  if (params.target === "existing_purchase_order" && params.groups.length !== 1) {
+    validationErrors.push("One approved change order can be added to one existing purchase order at a time.");
+  }
+
+  const existingNumbers = purchaseOrders.map((record) => record.number);
+  const newGroupCount = params.target === "existing_purchase_order" ? 0 : params.groups.filter((group) => {
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
     return !findExistingByFingerprint(commitments, fingerprint);
   }).length;
@@ -576,7 +645,7 @@ async function buildPlan(params: {
       continue;
     }
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
-    const existing = findExistingByFingerprint(commitments, fingerprint);
+    const existing = targetCommitment || findExistingByFingerprint(commitments, fingerprint);
     if (existing && vendorId && commitmentVendorId(existing) !== vendorId) {
       validationErrors.push(
         `Group "${group.name}" matches an earlier import, but that Procore PO is no longer assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`
@@ -589,9 +658,10 @@ async function buildPlan(params: {
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
         if (candidateCodes.length > 0) {
-          validationErrors.push(
-            `Group "${group.name}": cost code ${line.costCode}.${COMMITMENT_MAKER_COST_TYPE} matches multiple project WBS codes (${candidateCodes.join(", ")}); select one in Procore before creating.`
+          warnings.push(
+            `Group "${group.name}": ${line.costCode} has multiple non-Other WBS choices (${candidateCodes.join(", ")}); the letter is omitted and this commitment line will be created without a WBS assignment.`
           );
+          plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
         warnings.push(
@@ -606,11 +676,14 @@ async function buildPlan(params: {
     groups.push({
       name: group.name,
       number,
-      action: existing ? "resume" : "create",
+      action: targetCommitment ? "change_order" : existing ? "resume" : "create",
       existingContractId: readId(existing),
       fingerprint,
       lineItems: plannedLines,
-      total: plannedLines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
+      total: plannedLines.reduce(
+        (sum, line) => sum + Math.round(line.quantity * line.unitCost * 100) / 100,
+        0,
+      ),
     });
   }
 
@@ -643,6 +716,51 @@ async function fetchContractLineItems(params: {
         params.projectId
       )}/commitment_contracts/${encodeURIComponent(params.contractId)}/line_items?page=${page}&per_page=100`,
   });
+}
+
+async function fetchCommitmentChangeOrders(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  contractId: string;
+}): Promise<UnknownRecord[]> {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    keys: ["data", "change_order_packages"],
+    pathForPage: (page) =>
+      `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(params.projectId)}&contract_id=${encodeURIComponent(
+        params.contractId
+      )}&page=${page}&per_page=100`,
+  });
+}
+
+async function fetchCommitmentChangeOrderLineItems(params: {
+  accessToken: string;
+  companyId: string;
+  projectId: string;
+  changeOrderId: string;
+}): Promise<UnknownRecord[]> {
+  return fetchPaged({
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+    keys: ["data", "line_items"],
+    pathForPage: (page) =>
+      `/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/projects/${encodeURIComponent(
+        params.projectId
+      )}/commitment_change_orders/${encodeURIComponent(params.changeOrderId)}/line_items?page=${page}&per_page=100`,
+  });
+}
+
+function commitmentOption(record: UnknownRecord) {
+  return {
+    id: readId(record),
+    number: readText(record.number),
+    title: readText(record.title),
+    status: readText(record.status),
+    vendorId: commitmentVendorId(record),
+    vendorName: vendorName(nestedRecord(record, "vendor")) || readText(record.vendor_name),
+  };
 }
 
 function lineAlreadyExists(line: PlannedLine, records: UnknownRecord[]): boolean {
@@ -726,11 +844,18 @@ async function handleRequest(request: NextRequest) {
   const fileName = readText(body.fileName) || "estimate.xlsx";
   const previewFingerprint = readText(body.previewFingerprint);
   const changeOrderPackageId = readText(body.changeOrderPackageId ?? body.change_order_package_id);
+  const target: CommitmentTarget = body.target === "existing_purchase_order"
+    ? "existing_purchase_order"
+    : "new_purchase_order";
+  const existingCommitmentId = readText(body.existingCommitmentId ?? body.existing_commitment_id);
 
   if (!projectId) return NextResponse.json({ error: "Select a Procore project." }, { status: 400 });
   if (!companyId) return NextResponse.json({ error: "Missing Procore company ID." }, { status: 400 });
-  if (!workbookBase64 && !Array.isArray(body.groups)) {
+  if (!changeOrderPackageId && !workbookBase64 && !Array.isArray(body.groups)) {
     return NextResponse.json({ error: "Upload an estimate workbook." }, { status: 400 });
+  }
+  if (!changeOrderPackageId && target === "existing_purchase_order") {
+    return NextResponse.json({ error: "Only an approved change order can be added to an existing purchase order." }, { status: 400 });
   }
   if (mode !== "preview" && mode !== "create") {
     return NextResponse.json({ error: "Mode must be preview or create." }, { status: 400 });
@@ -765,14 +890,32 @@ async function handleRequest(request: NextRequest) {
       { status: 409 },
     );
   }
-  const workbookImport = workbookBase64 ? workbookFromBase64(workbookBase64, sheetName, fileName) : null;
-  const selectedSheetName = workbookImport?.selectedSheetName || sheetName || "Imported Estimate";
-  const groups = workbookImport?.parsed.groups || groupsFromPayload(body.groups);
-  const sourceRowCount = workbookImport?.parsed.sourceRowCount || Number(body.sourceRowCount) || 0;
-  const skippedRows = workbookImport?.parsed.skippedRows || Number(body.skippedRows) || 0;
-  const warnings = workbookImport?.parsed.warnings || (Array.isArray(body.warnings) ? body.warnings.map(readText).filter(Boolean) : []);
+  const sourceChangeOrderLines = sourceChangeOrder
+    ? await fetchApprovedChangeOrderLines({ accessToken, companyId, projectId, changeOrder: sourceChangeOrder })
+    : [];
+  const workbookImport = !sourceChangeOrder && workbookBase64
+    ? workbookFromBase64(workbookBase64, sheetName, fileName)
+    : null;
+  const selectedSheetName = sourceChangeOrder
+    ? "Approved Change Order"
+    : workbookImport?.selectedSheetName || sheetName || "Imported Estimate";
+  const groups = sourceChangeOrder
+    ? [approvedChangeOrderCommitmentGroup(sourceChangeOrder, sourceChangeOrderLines)]
+    : workbookImport?.parsed.groups || groupsFromPayload(body.groups);
+  const sourceRowCount = sourceChangeOrder
+    ? sourceChangeOrderLines.length
+    : workbookImport?.parsed.sourceRowCount || Number(body.sourceRowCount) || 0;
+  const skippedRows = sourceChangeOrder
+    ? sourceChangeOrderLines.length - groups[0].lineItems.length
+    : workbookImport?.parsed.skippedRows || Number(body.skippedRows) || 0;
+  const warnings = sourceChangeOrder
+    ? skippedRows > 0 ? [`${skippedRows} change-order line(s) without usable quantity, cost, or WBS data were excluded.`] : []
+    : workbookImport?.parsed.warnings || (Array.isArray(body.warnings) ? body.warnings.map(readText).filter(Boolean) : []);
+  const effectiveFileName = sourceChangeOrder
+    ? `Procore CO ${sourceChangeOrder.number || sourceChangeOrder.packageId}`
+    : fileName;
   const importFingerprint = createHash("sha256")
-    .update(JSON.stringify({ projectId, changeOrderPackageId, selectedSheetName, groups }))
+    .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
   const plan = await buildPlan({
     accessToken,
@@ -780,6 +923,8 @@ async function handleRequest(request: NextRequest) {
     projectId,
     groups,
     importFingerprint,
+    target,
+    existingCommitmentId,
   });
   const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
   const shellyCompanyUser = sourceChangeOrder ? await findShellyCompanyUser() : null;
@@ -804,13 +949,15 @@ async function handleRequest(request: NextRequest) {
     mode: "preview",
     projectId,
     companyId,
-    fileName,
+    fileName: effectiveFileName,
     sheetName: selectedSheetName,
     vendor: plan.vendor,
     contractType: "Purchase Order",
     finalStatus: "Approved",
     sourceType: sourceChangeOrder ? "approved_change_order" : "estimate",
     sourceChangeOrder,
+    target,
+    existingCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
     taskAssignees: taskAssigneePreview,
     costType: COMMITMENT_MAKER_COST_TYPE,
     previewFingerprint: importFingerprint,
@@ -829,7 +976,7 @@ async function handleRequest(request: NextRequest) {
   if (mode === "preview") return NextResponse.json(preview);
   if (!previewFingerprint || previewFingerprint !== importFingerprint) {
     return NextResponse.json(
-      { error: "The workbook or project changed after preview. Preview it again before creating commitments." },
+      { error: "The source, project, or target changed after preview. Preview it again before creating commitments." },
       { status: 409 }
     );
   }
@@ -848,6 +995,122 @@ async function handleRequest(request: NextRequest) {
     let createdContract = false;
     let actualNumber = group.number;
     try {
+      if (group.action === "change_order") {
+        if (!sourceChangeOrder || !contractId) {
+          throw new Error("The approved change order or target purchase order is no longer available.");
+        }
+        const existingChangeOrders = await fetchCommitmentChangeOrders({
+          accessToken,
+          companyId,
+          projectId,
+          contractId,
+        });
+        let commitmentChangeOrder = findExistingByFingerprint(existingChangeOrders, group.fingerprint);
+        let commitmentChangeOrderId = readId(commitmentChangeOrder);
+        let createdCommitmentChangeOrder = false;
+        if (!commitmentChangeOrderId) {
+          const createResponse = await procoreJson({
+            path: "/rest/v1.0/change_order_packages",
+            method: "POST",
+            accessToken,
+            companyId,
+            body: {
+              project_id: Number(projectId) || projectId,
+              contract_id: Number(contractId) || contractId,
+              change_order: {
+                status: "draft",
+                title: commitmentChangeOrderTitle(sourceChangeOrder),
+                description: `Created from approved Prime Contract Change Order ${sourceChangeOrder.number || sourceChangeOrder.packageId}.`,
+                origin_code: "PMC-COMMITMENT-MAKER",
+                origin_id: sourceChangeOrder.packageId,
+                origin_data: originDataFor(group.fingerprint),
+              },
+            },
+          });
+          if (!createResponse.ok) {
+            throw new Error(`Procore rejected the commitment change order (${createResponse.status}): ${JSON.stringify(createResponse.payload)}`);
+          }
+          commitmentChangeOrder = unwrapData(createResponse.payload) as UnknownRecord;
+          commitmentChangeOrderId = readId(commitmentChangeOrder);
+          createdCommitmentChangeOrder = true;
+          if (!commitmentChangeOrderId) {
+            throw new Error("Procore created the commitment change order without returning its ID.");
+          }
+        }
+
+        const existingLines = await fetchCommitmentChangeOrderLineItems({
+          accessToken,
+          companyId,
+          projectId,
+          changeOrderId: commitmentChangeOrderId,
+        });
+        let createdLineItems = 0;
+        let reusedLineItems = 0;
+        for (const line of group.lineItems) {
+          if (lineAlreadyExists(line, existingLines)) {
+            reusedLineItems += 1;
+            continue;
+          }
+          const lineResponse = await procoreJson({
+            path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+              projectId
+            )}/commitment_change_orders/${encodeURIComponent(commitmentChangeOrderId)}/line_items`,
+            method: "POST",
+            accessToken,
+            companyId,
+            body: commitmentMakerLineCreatePayload(line),
+          });
+          if (!lineResponse.ok) {
+            throw new Error(
+              `Procore rejected change-order line "${line.description}" (${lineResponse.status}): ${JSON.stringify(lineResponse.payload)}`
+            );
+          }
+          createdLineItems += 1;
+        }
+
+        const approveResponse = await procoreJson({
+          path: `/rest/v1.0/change_order_packages/${encodeURIComponent(commitmentChangeOrderId)}`,
+          method: "PATCH",
+          accessToken,
+          companyId,
+          body: {
+            project_id: Number(projectId) || projectId,
+            contract_id: Number(contractId) || contractId,
+            change_order: { status: "approved" },
+          },
+        });
+        if (!approveResponse.ok) {
+          throw new Error(`The commitment change order was populated but could not be approved (${approveResponse.status}).`);
+        }
+
+        const result = {
+          success: true,
+          group: group.name,
+          number: actualNumber,
+          contractId,
+          changeOrderId: commitmentChangeOrderId,
+          createdContract: false,
+          createdCommitmentChangeOrder,
+          createdLineItems,
+          reusedLineItems,
+          status: "Approved change order",
+        };
+        results.push(result);
+        await writeAudit({
+          action: createdCommitmentChangeOrder ? "create-commitment-change-order" : "resume-commitment-change-order",
+          entityId: commitmentChangeOrderId,
+          userEmail,
+          changes: {
+            projectId,
+            sourceChangeOrder,
+            targetCommitmentId: contractId,
+            fingerprint: group.fingerprint,
+            ...result,
+          },
+        });
+        continue;
+      }
+
       if (!contractId) {
         const refreshedCommitments = await fetchCommitments(accessToken, companyId, projectId);
         const duplicate = findExistingByFingerprint(refreshedCommitments, group.fingerprint);
@@ -946,7 +1209,7 @@ async function handleRequest(request: NextRequest) {
         action: createdContract ? "create" : "resume",
         entityId: contractId,
         userEmail,
-        changes: { projectId, fileName, sheetName: selectedSheetName, fingerprint: group.fingerprint, ...result },
+        changes: { projectId, fileName: effectiveFileName, sheetName: selectedSheetName, fingerprint: group.fingerprint, ...result },
       });
     } catch (error) {
       failure = {
@@ -962,7 +1225,7 @@ async function handleRequest(request: NextRequest) {
         action: "error",
         entityId: contractId || group.fingerprint,
         userEmail,
-        changes: { projectId, fileName, sheetName: selectedSheetName, ...failure },
+        changes: { projectId, fileName: effectiveFileName, sheetName: selectedSheetName, ...failure },
       });
       break;
     }
@@ -1015,10 +1278,11 @@ async function handleRequest(request: NextRequest) {
       taskResult,
       taskError: taskError || undefined,
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
-      resumed: results.filter((result) => result.success === true && result.createdContract === false).length,
+      resumed: results.filter((result) => result.success === true && result.createdContract === false && result.createdCommitmentChangeOrder !== true).length,
+      addedToExisting: results.filter((result) => result.success === true && result.createdCommitmentChangeOrder === true).length,
       failed: failure ? 1 : 0,
       error: failure
-        ? "Commitment creation stopped after an error. Any affected PO was left in Draft for review."
+        ? "Commitment creation stopped after an error. Any affected PO or commitment change order was left in Draft for review."
         : taskError
           ? "The commitments were created, but the required change-order follow-up tasks need attention. Retry to repair the tasks without duplicating the POs."
           : undefined,
@@ -1061,6 +1325,7 @@ export async function GET(request: NextRequest) {
     }
 
     let approvedChangeOrders: ApprovedChangeOrder[] = [];
+    let existingCommitments: ReturnType<typeof commitmentOption>[] = [];
     let changeOrderSource = "procore-live";
     let changeOrderWarning = "";
     try {
@@ -1069,6 +1334,13 @@ export async function GET(request: NextRequest) {
         accessToken,
         procoreConfig.companyId,
         projectId,
+      );
+      existingCommitments = purchaseOrderCommitments(
+        await fetchCommitments(accessToken, procoreConfig.companyId, projectId),
+      ).map(commitmentOption).filter((commitment) =>
+        commitment.id
+        && commitment.vendorName.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+          === COMMITMENT_MAKER_VENDOR_NAME.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
       );
     } catch (error) {
       changeOrderSource = "database-fallback";
@@ -1087,6 +1359,7 @@ export async function GET(request: NextRequest) {
         status: project.status || "",
       },
       approvedChangeOrders,
+      existingCommitments,
       changeOrderSource,
       changeOrderWarning,
     });

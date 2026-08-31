@@ -28,6 +28,15 @@ type ApprovedChangeOrder = {
   updatedAt: string;
 };
 
+type ExistingCommitment = {
+  id: string;
+  number: string;
+  title: string;
+  status: string;
+  vendorId: string;
+  vendorName: string;
+};
+
 type PreviewLine = {
   costCode: string;
   costType: string;
@@ -42,7 +51,7 @@ type PreviewLine = {
 type PreviewGroup = {
   name: string;
   number: string;
-  action: "create" | "resume";
+  action: "create" | "resume" | "change_order";
   existingContractId: string;
   lineItems: PreviewLine[];
   total: number;
@@ -69,6 +78,8 @@ type PreviewResponse = {
   finalStatus: string;
   sourceType: "estimate" | "approved_change_order";
   sourceChangeOrder: ApprovedChangeOrder | null;
+  target: "new_purchase_order" | "existing_purchase_order";
+  existingCommitmentId: string;
   taskAssignees: {
     shellyAssigneeId: number;
     projectManagerAssigneeIds: number[];
@@ -83,6 +94,7 @@ type CreateResult = {
   created: number;
   resumed: number;
   failed: number;
+  addedToExisting?: number;
   sourceChangeOrder?: ApprovedChangeOrder | null;
   taskError?: string;
   taskResult?: {
@@ -101,6 +113,8 @@ type CreateResult = {
     number: string;
     contractId?: string | null;
     createdContract?: boolean;
+    createdCommitmentChangeOrder?: boolean;
+    changeOrderId?: string;
     createdLineItems?: number;
     reusedLineItems?: number;
     status: string;
@@ -157,6 +171,9 @@ export default function CommitmentMakerPage() {
   const [changeOrdersBusy, setChangeOrdersBusy] = useState(false);
   const [changeOrderWarning, setChangeOrderWarning] = useState("");
   const [changeOrderPackageId, setChangeOrderPackageId] = useState("");
+  const [commitmentTarget, setCommitmentTarget] = useState<"new_purchase_order" | "existing_purchase_order">("new_purchase_order");
+  const [existingCommitments, setExistingCommitments] = useState<ExistingCommitment[]>([]);
+  const [existingCommitmentId, setExistingCommitmentId] = useState("");
   const [fileName, setFileName] = useState("");
   const [workbookBuffer, setWorkbookBuffer] = useState<ArrayBuffer | null>(null);
   const [parsedWorkbook, setParsedWorkbook] = useState<CommitmentMakerParseResult | null>(null);
@@ -223,7 +240,9 @@ export default function CommitmentMakerPage() {
     let cancelled = false;
     async function loadApprovedChangeOrders() {
       setApprovedChangeOrders([]);
+      setExistingCommitments([]);
       setChangeOrderPackageId("");
+      setExistingCommitmentId("");
       setChangeOrderWarning("");
       if (!projectId) return;
       setChangeOrdersBusy(true);
@@ -247,6 +266,9 @@ export default function CommitmentMakerPage() {
         const records = Array.isArray(asRecord(payload).approvedChangeOrders)
           ? asRecord(payload).approvedChangeOrders as ApprovedChangeOrder[]
           : [];
+        const commitments = Array.isArray(asRecord(payload).existingCommitments)
+          ? asRecord(payload).existingCommitments as ExistingCommitment[]
+          : [];
         if (!cancelled) {
           const project = asRecord(asRecord(payload).project);
           if (linkedProjectId === projectId) {
@@ -258,6 +280,7 @@ export default function CommitmentMakerPage() {
             }]);
           }
           setApprovedChangeOrders(records);
+          setExistingCommitments(commitments);
           setChangeOrderWarning(text(asRecord(payload).changeOrderWarning));
         }
       } catch (loadError) {
@@ -377,6 +400,10 @@ export default function CommitmentMakerPage() {
           skippedRows: parsedOverride?.skippedRows,
           warnings: parsedOverride?.warnings,
           changeOrderPackageId: sourceType === "approved_change_order" ? changeOrderPackageId : undefined,
+          target: sourceType === "approved_change_order" ? commitmentTarget : "new_purchase_order",
+          existingCommitmentId: sourceType === "approved_change_order" && commitmentTarget === "existing_purchase_order"
+            ? existingCommitmentId
+            : undefined,
           previewFingerprint: mode === "create" ? preview?.previewFingerprint : undefined,
         }),
       });
@@ -451,10 +478,10 @@ export default function CommitmentMakerPage() {
 
   const readyToPreview = Boolean(
     projectId
-    && parsedWorkbook
-    && sheetName
+    && (sourceType === "approved_change_order" || (parsedWorkbook && sheetName))
     && !busy
-    && (sourceType === "estimate" || changeOrderPackageId),
+    && (sourceType === "estimate" || changeOrderPackageId)
+    && (sourceType === "estimate" || commitmentTarget === "new_purchase_order" || existingCommitmentId)
   );
   const selectedCombineNames = preview?.groups
     .filter((group) => combineSelection[group.name] === true)
@@ -481,7 +508,7 @@ export default function CommitmentMakerPage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">Procore Commitments</p>
               <h1 className="mt-1 text-2xl font-black text-slate-900">Commitment Maker</h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Turn an estimate or approved change-order workbook into approved Procore purchase orders. Keep groups separate or combine selected groups before creation.
+                Turn an estimate into approved purchase orders, or use an approved Procore change order to create a new PO or a change order on an existing PO.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -512,6 +539,8 @@ export default function CommitmentMakerPage() {
                   setProjectId(event.target.value);
                   setSourceType("estimate");
                   setChangeOrderPackageId("");
+                  setCommitmentTarget("new_purchase_order");
+                  setExistingCommitmentId("");
                   invalidatePreview();
                 }}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
@@ -541,6 +570,8 @@ export default function CommitmentMakerPage() {
                     : "estimate";
                   setSourceType(nextSource);
                   setChangeOrderPackageId("");
+                  setCommitmentTarget("new_purchase_order");
+                  setExistingCommitmentId("");
                   invalidatePreview();
                 }}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
@@ -577,41 +608,82 @@ export default function CommitmentMakerPage() {
                     </option>
                   ))}
                 </select>
-                {changeOrderWarning && (
+                  {changeOrderWarning && (
                   <p className="mt-1.5 text-xs font-semibold text-amber-700">{changeOrderWarning}</p>
                 )}
               </label>
             )}
 
-            <label className="block">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600">
-                {sourceType === "approved_change_order" ? "4. Change Order Workbook" : "3. Estimate Workbook"}
-              </span>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                disabled={busy}
-                onChange={(event) => void handleFile(event.target.files?.[0] || null)}
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600">
-                {sourceType === "approved_change_order" ? "5. Worksheet" : "4. Worksheet"}
-              </span>
-              <select
-                value={sheetName}
-                disabled={!sheetNames.length || busy}
-                onChange={(event) => void handleSheetChange(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
-              >
-                <option value="">Select a worksheet</option>
-                {sheetNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </label>
+            {sourceType === "approved_change_order" ? (
+              <>
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-600">4. Add CO To</span>
+                  <select
+                    value={commitmentTarget}
+                    disabled={busy || !changeOrderPackageId}
+                    onChange={(event) => {
+                      setCommitmentTarget(event.target.value === "existing_purchase_order" ? "existing_purchase_order" : "new_purchase_order");
+                      setExistingCommitmentId("");
+                      invalidatePreview();
+                    }}
+                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+                  >
+                    <option value="new_purchase_order">New Purchase Order</option>
+                    <option value="existing_purchase_order">Existing Purchase Order</option>
+                  </select>
+                </label>
+                {commitmentTarget === "existing_purchase_order" && (
+                  <label className="block xl:col-span-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-600">5. Existing Purchase Order</span>
+                    <select
+                      value={existingCommitmentId}
+                      disabled={busy || !changeOrderPackageId}
+                      onChange={(event) => {
+                        setExistingCommitmentId(event.target.value);
+                        invalidatePreview();
+                      }}
+                      className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+                    >
+                      <option value="">Select an existing purchase order</option>
+                      {existingCommitments.map((commitment) => (
+                        <option key={commitment.id} value={commitment.id}>
+                          {[`PO ${commitment.number || commitment.id}`, commitment.title, commitment.vendorName, commitment.status]
+                            .filter(Boolean)
+                            .join(" — ")}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            ) : (
+              <>
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-600">3. Estimate Workbook</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    disabled={busy}
+                    onChange={(event) => void handleFile(event.target.files?.[0] || null)}
+                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-600">4. Worksheet</span>
+                  <select
+                    value={sheetName}
+                    disabled={!sheetNames.length || busy}
+                    onChange={(event) => void handleSheetChange(event.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
+                  >
+                    <option value="">Select a worksheet</option>
+                    {sheetNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -640,8 +712,8 @@ export default function CommitmentMakerPage() {
                 : "Base Estimate",
             ],
             ["Vendor", "Paradise Masonry, LLC"],
-            ["Type", "Purchase Order"],
-            ["Title", "Estimate group or combined name"],
+            ["Type", sourceType === "approved_change_order" && commitmentTarget === "existing_purchase_order" ? "Commitment Change Order" : "Purchase Order"],
+            ["Title", sourceType === "approved_change_order" ? "Selected approved change order" : "Estimate group or combined name"],
             ["Final Status", "Approved"],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -663,7 +735,8 @@ export default function CommitmentMakerPage() {
               <div>
                 <h2 className="text-lg font-black text-slate-900">Validated Preview</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  {selectedProject ? `${selectedProject.number} — ${selectedProject.name}` : preview.projectId} · {preview.fileName} · {preview.sheetName}
+                  {selectedProject ? `${selectedProject.number} — ${selectedProject.name}` : preview.projectId}
+                  {preview.sourceType === "estimate" ? ` · ${preview.fileName} · ${preview.sheetName}` : " · Live Procore change-order lines"}
                 </p>
                 {preview.sourceChangeOrder && (
                   <p className="mt-1 text-sm font-bold text-indigo-700">
@@ -677,7 +750,7 @@ export default function CommitmentMakerPage() {
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">POs</p><p className="text-lg font-black">{preview.totals.groups}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{preview.target === "existing_purchase_order" ? "Change orders" : "POs"}</p><p className="text-lg font-black">{preview.totals.groups}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Line items</p><p className="text-lg font-black">{preview.totals.lineItems}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Total</p><p className="text-lg font-black">{formatCurrency(preview.totals.amount)}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Source rows</p><p className="text-lg font-black">{preview.sourceRowCount}</p></div>
@@ -690,7 +763,7 @@ export default function CommitmentMakerPage() {
 
             {preview.sourceChangeOrder && preview.taskAssignees && (
               <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                Follow-up task assignees verified: Shelly Swinehart and {preview.taskAssignees.projectManagerAssigneeIds.length} internal project manager{preview.taskAssignees.projectManagerAssigneeIds.length === 1 ? "" : "s"}. Both tasks will be sent automatically after the POs finish.
+                Follow-up task assignees verified: Shelly Swinehart and {preview.taskAssignees.projectManagerAssigneeIds.length} internal project manager{preview.taskAssignees.projectManagerAssigneeIds.length === 1 ? "" : "s"}. Both tasks will be sent automatically after the commitment finishes.
               </div>
             )}
 
@@ -793,11 +866,13 @@ export default function CommitmentMakerPage() {
                         className="flex flex-1 items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-100"
                       >
                         <span>
-                          <span className="font-black text-slate-900">PO {group.number} — {group.name}</span>
+                          <span className="font-black text-slate-900">
+                            {group.action === "change_order" ? `PO ${group.number} change order` : `PO ${group.number}`} — {group.name}
+                          </span>
                           <span className="ml-2 text-xs font-semibold text-slate-500">{group.lineItems.length} lines · {formatCurrency(group.total)}</span>
                         </span>
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${group.action === "resume" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-                          {group.action === "resume" ? "Resume existing" : "New PO"}
+                          {group.action === "change_order" ? "Add to existing PO" : group.action === "resume" ? "Resume existing" : "New PO"}
                         </span>
                       </button>
                     </div>
@@ -844,7 +919,7 @@ export default function CommitmentMakerPage() {
                     className="mt-0.5 h-4 w-4"
                   />
                   <span>
-                    I reviewed the project, {preview.sourceChangeOrder ? "approved change order, " : ""}PO numbers, groups, budget codes, quantities, and costs above.
+                    I reviewed the project, {preview.sourceChangeOrder ? "approved change order, " : ""}{preview.target === "existing_purchase_order" ? "target PO, " : "PO numbers, groups, "}budget codes, quantities, and costs above.
                   </span>
                 </label>
                 <button
@@ -853,10 +928,16 @@ export default function CommitmentMakerPage() {
                   onClick={() => void callMaker("create")}
                   className="mt-4 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
-                  {busy ? "Creating Purchase Orders..." : `Create ${preview.totals.groups} Approved Purchase Order${preview.totals.groups === 1 ? "" : "s"}`}
+                  {busy
+                    ? preview.target === "existing_purchase_order" ? "Adding Change Order..." : "Creating Purchase Orders..."
+                    : preview.target === "existing_purchase_order"
+                      ? "Add Approved Change Order to Existing PO"
+                      : `Create ${preview.totals.groups} Approved Purchase Order${preview.totals.groups === 1 ? "" : "s"}`}
                 </button>
                 <p className="mt-2 text-xs text-indigo-800">
-                  Each PO is staged as Draft while its line items are added, then changed to Approved after the PO is complete.
+                  {preview.target === "existing_purchase_order"
+                    ? "The original PO stays intact. A commitment change order is staged as Draft, populated with these lines, then changed to Approved."
+                    : "Each PO is staged as Draft while its line items are added, then changed to Approved after the PO is complete."}
                   {preview.sourceChangeOrder
                     ? " After successful creation, Shelly and the project manager will receive their Procore follow-up tasks."
                     : ""}
@@ -877,15 +958,15 @@ export default function CommitmentMakerPage() {
               {result.success ? "Commitments created successfully" : "Commitment creation needs attention"}
             </h2>
             <p className="mt-1 text-sm">
-              Created {result.created || 0}, resumed {result.resumed || 0}, failed {result.failed || 0}.
+              Created {result.created || 0} PO(s), added {result.addedToExisting || 0} change order(s) to existing PO(s), resumed {result.resumed || 0}, failed {result.failed || 0}.
             </p>
             {result.error && <p className="mt-2 text-sm font-semibold text-red-800">{result.error}</p>}
             <div className="mt-4 space-y-2">
               {(result.results || []).map((item) => (
                 <div key={`${item.group}-${item.contractId || item.number}`} className="rounded-lg border border-white/80 bg-white px-4 py-3 text-sm">
-                  <p className="font-black">PO {item.number} — {item.group}</p>
+                  <p className="font-black">PO {item.number}{item.changeOrderId ? " change order" : ""} — {item.group}</p>
                   <p className="mt-1 text-xs text-slate-600">
-                    {item.status}{item.contractId ? ` · Procore ID ${item.contractId}` : ""}
+                    {item.status}{item.contractId ? ` · PO ID ${item.contractId}` : ""}{item.changeOrderId ? ` · Change Order ID ${item.changeOrderId}` : ""}
                     {item.createdLineItems !== undefined ? ` · ${item.createdLineItems} lines created` : ""}
                     {item.reusedLineItems ? ` · ${item.reusedLineItems} existing lines reused` : ""}
                   </p>

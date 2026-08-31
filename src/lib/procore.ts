@@ -1,6 +1,8 @@
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import { procoreRateLimitDelayMs } from '@/lib/procoreRateLimit';
+
 interface ProcoreTokenResponse {
   access_token: string;
   token_type: string;
@@ -107,15 +109,6 @@ export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function parseRetryAfterMs(value: string | null): number | null {
-  if (!value) return null;
-  const seconds = Number.parseInt(value, 10);
-  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-  const when = Date.parse(value);
-  if (Number.isNaN(when)) return null;
-  return Math.max(0, when - Date.now());
 }
 
 // Get OAuth authorization URL
@@ -304,10 +297,13 @@ export async function makeRequest(
         });
 
         if (response.status === 429 && attempt < maxRetries) {
-          const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
           const expoBackoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
           const jitter = Math.floor(Math.random() * 250);
-          const delayMs = Math.min(maxDelayMs, Math.max(baseDelayMs, retryAfterMs ?? expoBackoff) + jitter);
+          const delayMs = procoreRateLimitDelayMs(response.headers, {
+            fallbackMs: Math.max(baseDelayMs, expoBackoff) + jitter,
+            maxDelayMs,
+          });
+          await response.body?.cancel().catch(() => undefined);
           console.warn(`[Procore API] Rate limited (429). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries}).`);
           await sleep(delayMs);
           continue;

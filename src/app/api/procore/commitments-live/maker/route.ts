@@ -34,6 +34,7 @@ import {
   selectExistingChangeOrderPurchaseOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
+import { procoreRateLimitDelayMs } from "@/lib/procoreRateLimit";
 import {
   COMMITMENT_MAKER_ACCESS_HEADER,
   COMMITMENT_MAKER_PROJECT_HEADER,
@@ -112,18 +113,33 @@ async function procoreJson(params: {
   body?: unknown;
 }): Promise<ProcoreResponse> {
   const path = params.path.startsWith("/") ? params.path : `/${params.path}`;
-  const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
-    method: params.method || "GET",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "Procore-Company-Id": params.companyId,
-    },
-    body: params.body === undefined ? undefined : JSON.stringify(params.body),
-  });
-  const payload = parseUpstreamPayload(await response.text());
-  return { ok: response.ok, status: response.status, payload, path };
+  const method = params.method || "GET";
+  const maxRetries = method === "GET" ? 1 : 0;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${params.accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Procore-Company-Id": params.companyId,
+      },
+      body: params.body === undefined ? undefined : JSON.stringify(params.body),
+    });
+    if (response.status === 429 && attempt < maxRetries) {
+      const delayMs = procoreRateLimitDelayMs(response.headers, {
+        fallbackMs: 1_000,
+        maxDelayMs: 15_000,
+      });
+      await response.body?.cancel().catch(() => undefined);
+      console.warn(`Commitment Maker live read was rate limited; retrying in ${delayMs}ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+    const payload = parseUpstreamPayload(await response.text());
+    return { ok: response.ok, status: response.status, payload, path };
+  }
+  return { ok: false, status: 429, payload: { error: "Procore rate limit retries were exhausted." }, path };
 }
 
 async function fetchPaged(params: {
@@ -1513,10 +1529,13 @@ export async function GET(request: NextRequest) {
       );
     } catch (error) {
       changeOrderSource = "database-fallback";
-      changeOrderWarning = "Live Procore change orders could not be read; the latest synchronized approved list is shown.";
+      const liveError = error instanceof Error ? error.message : String(error);
+      changeOrderWarning = /(?:429|rate limit)/i.test(liveError)
+        ? "Procore's temporary API limit was reached. The synchronized approved list is shown; refresh shortly for the live list."
+        : "Live Procore change orders could not be read; the latest synchronized approved list is shown.";
       approvedChangeOrders = await fetchApprovedChangeOrdersFromAllDatabaseSources(procoreConfig.companyId, projectId);
       console.warn("Commitment Maker approved change order live lookup fell back to the database:",
-        error instanceof Error ? error.message : String(error));
+        liveError);
     }
 
     return NextResponse.json({

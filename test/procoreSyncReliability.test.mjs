@@ -10,6 +10,31 @@ import {
   evaluateProcoreSyncHealth,
   procoreHealthAlertFingerprint,
 } from "../src/lib/procoreSyncHealth.ts";
+import { procoreRateLimitDelayMs } from "../src/lib/procoreRateLimit.ts";
+
+function headers(values) {
+  return { get: (name) => values[name.toLowerCase()] ?? null };
+}
+
+test("Procore retries wait for the server's rate-limit reset epoch", () => {
+  const nowMs = Date.parse("2026-08-31T16:35:12.000Z");
+  assert.equal(procoreRateLimitDelayMs(headers({
+    "x-rate-limit-reset": String(Date.parse("2026-08-31T16:35:27.000Z") / 1_000),
+  }), {
+    fallbackMs: 1_000,
+    maxDelayMs: 20_000,
+    nowMs,
+    resetPaddingMs: 100,
+  }), 15_100);
+});
+
+test("Procore rate-limit waits remain capped for distant reset windows", () => {
+  assert.equal(procoreRateLimitDelayMs(headers({ "retry-after": "60" }), {
+    fallbackMs: 1_000,
+    maxDelayMs: 15_000,
+    nowMs: 0,
+  }), 15_000);
+});
 
 test("recovered 429 diagnostics do not fail a successful sync response", () => {
   const detail = {

@@ -8,8 +8,6 @@ import {
 const TASK_TITLE = 'Field Productivity Review';
 const TASK_TAG = '[analytics:auto-productivity-review]';
 const TASK_DUE_OFFSET_DAYS = 30;
-const DISTRIBUTION_GROUP = 'Project Review';
-const DISTRIBUTION_MEMBER_IDS_DEFAULT = '12495259,14134125';
 const PROJECT_MANAGER_EMAIL_DOMAIN = 'pmcdecor.com';
 
 type JsonObject = Record<string, unknown>;
@@ -50,10 +48,6 @@ function readNumber(value: unknown): number | null {
   return null;
 }
 
-function normalizeLabel(value: unknown): string {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
 function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -69,18 +63,6 @@ function addDays(date: Date, days: number): Date {
   const result = new Date(date.getTime());
   result.setUTCDate(result.getUTCDate() + days);
   return result;
-}
-
-function readDistributionMemberIds(): number[] {
-  const configured = String(
-    process.env.PROCORE_PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_IDS
-    || DISTRIBUTION_MEMBER_IDS_DEFAULT
-  ).trim();
-  const single = String(process.env.PROCORE_PRODUCTIVITY_REVIEW_DISTRIBUTION_MEMBER_ID || '').trim();
-  const ids = [...configured.split(','), single]
-    .map((value) => readNumber(value.trim()))
-    .filter((value): value is number => value !== null);
-  return [...new Set(ids)];
 }
 
 function readTaskDistributionMemberIds(task: JsonObject): number[] {
@@ -164,28 +146,6 @@ function taskWasNotified(task: JsonObject): boolean {
   return Boolean(String(task.date_notified || task.dateNotified || '').trim());
 }
 
-async function sendUnsentTaskItems(params: {
-  token: string;
-  companyId: string;
-  projectId: string;
-}) {
-  const payload = await makeRequest(
-    `/rest/v1.0/task_items/send_unsent?project_id=${encodeURIComponent(params.projectId)}`,
-    params.token,
-    { method: 'POST' },
-    params.companyId
-  );
-  return asRows(payload)
-    .map((task) => readId(task.id))
-    .filter((id): id is string => Boolean(id));
-}
-
-function ensureTaskWasSent(taskId: string, sentTaskIds: string[]) {
-  if (!sentTaskIds.includes(taskId)) {
-    throw new Error(`Procore did not confirm notification delivery for Task Item ${taskId}.`);
-  }
-}
-
 export async function ensureProductivityReviewTaskOnComplete(params: {
   token: string;
   companyId: string;
@@ -209,28 +169,14 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     && String(task.description || '').includes(TASK_TAG)
   ));
 
-  const distributionGroups = await makeRequest(
-    `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/distribution_groups?page=1&per_page=100&view=extended&include_ancestors=true&filters%5Bsearch%5D=${encodeURIComponent(DISTRIBUTION_GROUP)}`,
-    params.token,
-    undefined,
-    params.companyId,
-    [404]
-  );
-  const distributionGroup = asRows(distributionGroups).find((row) => (
-    normalizeLabel(row.name) === normalizeLabel(DISTRIBUTION_GROUP)
-  ));
-  const groupUsers = Array.isArray(distributionGroup?.users) ? distributionGroup.users : [];
-  const groupMemberIds = groupUsers
-    .map((user) => readNumber(asObject(user)?.id))
-    .filter((id): id is number => id !== null);
-  const distributionMemberIds = groupMemberIds.length
-    ? [...new Set(groupMemberIds)]
-    : readDistributionMemberIds();
   const projectManagerAssigneeIds = await resolveProjectManagerAssigneeIds({
     token: params.token,
     companyId: params.companyId,
     projectId: params.projectId,
   });
+  if (!projectManagerAssigneeIds.length) {
+    throw new Error('No Project Manager with an @pmcdecor.com email was found on this project.');
+  }
 
   if (existingTask) {
     const taskId = readId(existingTask.id);
@@ -239,14 +185,13 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     }
     const currentMemberIds = readTaskDistributionMemberIds(existingTask);
     const currentAssigneeIds = readTaskAssigneeIds(existingTask);
-    const mergedAssigneeIds = [...new Set([...currentAssigneeIds, ...projectManagerAssigneeIds])];
     const patch: JsonObject = {};
-    if (distributionMemberIds.length && !sameIds(currentMemberIds, distributionMemberIds)) {
-      patch.distribution_member_ids = distributionMemberIds;
+    if (currentMemberIds.length) {
+      patch.distribution_member_ids = [];
     }
-    if (projectManagerAssigneeIds.some((id) => !currentAssigneeIds.includes(id))) {
-      patch.assigned_id = currentAssigneeIds[0] || projectManagerAssigneeIds[0];
-      patch.assignee_ids = mergedAssigneeIds;
+    if (!sameIds(currentAssigneeIds, projectManagerAssigneeIds)) {
+      patch.assigned_id = projectManagerAssigneeIds[0];
+      patch.assignee_ids = projectManagerAssigneeIds;
     }
     if (taskId && Object.keys(patch).length) {
       await makeRequest(
@@ -261,21 +206,13 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
       );
     }
     const alreadyNotified = taskWasNotified(existingTask);
-    const sentTaskIds = alreadyNotified
-      ? []
-      : await sendUnsentTaskItems({
-          token: params.token,
-          companyId: params.companyId,
-          projectId: params.projectId,
-        });
-    if (!alreadyNotified) ensureTaskWasSent(taskId, sentTaskIds);
     return {
       created: false,
       taskId,
       dueDate,
       projectManagerAssigneeIds,
-      notified: alreadyNotified || Boolean(taskId && sentTaskIds.includes(taskId)),
-      sentTaskIds,
+      notified: alreadyNotified,
+      sentTaskIds: [],
     };
   }
 
@@ -302,11 +239,9 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
           description,
           due_date: dueDate,
           status: 'initiated',
-          ...(projectManagerAssigneeIds.length ? {
-            assigned_id: projectManagerAssigneeIds[0],
-            assignee_ids: projectManagerAssigneeIds,
-          } : {}),
-          ...(distributionMemberIds.length ? { distribution_member_ids: distributionMemberIds } : {}),
+          assigned_id: projectManagerAssigneeIds[0],
+          assignee_ids: projectManagerAssigneeIds,
+          distribution_member_ids: [],
         },
       }),
     },
@@ -316,20 +251,14 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
   const createdTaskInner = asObject(createdTaskObject?.task_item);
   const taskId = readId(createdTaskObject?.id) || readId(createdTaskInner?.id);
   if (!taskId) {
-    throw new Error('Procore created the Task Item without returning its ID; notification was not attempted.');
+    throw new Error('Procore created the Task Item without returning its ID.');
   }
-  const sentTaskIds = await sendUnsentTaskItems({
-    token: params.token,
-    companyId: params.companyId,
-    projectId: params.projectId,
-  });
-  ensureTaskWasSent(taskId, sentTaskIds);
   return {
     created: true,
     taskId,
     dueDate,
     projectManagerAssigneeIds,
-    notified: Boolean(taskId && sentTaskIds.includes(taskId)),
-    sentTaskIds,
+    notified: false,
+    sentTaskIds: [],
   };
 }

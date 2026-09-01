@@ -21,6 +21,7 @@ const {
   buildTimecardNotificationEmail,
   extractTimesheetId,
   isPmcdecorEmail,
+  parsePmcdecorEmailList,
   selectProjectManagerRecipients,
   selectProjectManagerRecipientsForDomain,
 } = loadModule();
@@ -55,6 +56,17 @@ test("accepts only the exact pmcdecor.com recipient domain", () => {
   assert.equal(isPmcdecorEmail("user@sub.pmcdecor.com"), false);
   assert.equal(isPmcdecorEmail("user@pmcdecor.com.example"), false);
   assert.equal(isPmcdecorEmail("user@example.com"), false);
+});
+
+test("parses only exact PMC recipient lists and rejects mixed-company lists", () => {
+  assert.deepEqual(
+    Array.from(parsePmcdecorEmailList("Todd@PMCDECOR.COM, todd@pmcdecor.com, pm@pmcdecor.com")),
+    ["todd@pmcdecor.com", "pm@pmcdecor.com"],
+  );
+  assert.throws(
+    () => parsePmcdecorEmailList("pm@pmcdecor.com, vendor@example.com"),
+    /exact @pmcdecor\.com domain/,
+  );
 });
 
 test("limits project manager recipients to the exact requested email domain", () => {

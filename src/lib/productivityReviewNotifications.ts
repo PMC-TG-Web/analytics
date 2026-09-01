@@ -1,4 +1,5 @@
 import { isValidNotificationEmail } from "@/lib/productivityReviewEmail";
+import { parsePmcdecorEmailList } from "@/lib/timecardNotification";
 
 export const DEFAULT_PRODUCTIVITY_REVIEW_FROM_EMAIL =
   "Field Productivity <notifications@pmcdecor.com>";
@@ -23,13 +24,8 @@ function getNotificationConfig(params: {
     params.recipients
     || params.defaults.join(","),
   );
-  const to = [...new Set(
-    configuredRecipients
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  )];
-  if (!to.length || to.some((email) => !isValidNotificationEmail(email))) {
+  const to = parsePmcdecorEmailList(configuredRecipients);
+  if (to.some((email) => !isValidNotificationEmail(email))) {
     throw new Error(`${params.environmentName} is not configured correctly.`);
   }
   return {

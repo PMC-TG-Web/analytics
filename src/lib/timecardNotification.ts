@@ -61,6 +61,17 @@ export function isPmcdecorEmail(value: string): boolean {
     && email.slice(email.lastIndexOf("@") + 1) === "pmcdecor.com";
 }
 
+export function parsePmcdecorEmailList(value: string): string[] {
+  const emails = value
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  if (!emails.length || emails.some((email) => !isPmcdecorEmail(email))) {
+    throw new Error("Email recipients must use the exact @pmcdecor.com domain.");
+  }
+  return [...new Set(emails)];
+}
+
 export function extractTimesheetId(entry: Record<string, unknown>): string | null {
   const originData = asRecord(entry.origin_data);
   const id = text(

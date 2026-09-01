@@ -37,7 +37,7 @@ function loadModule(makeRequest) {
   return module.exports;
 }
 
-test("creates the productivity review task with the internal project manager as assignee", async () => {
+test("creates the productivity review task with PMC-only assignees and no broad email dispatch", async () => {
   let createdPayload;
   let sendCalls = 0;
   const makeRequest = async (path, _token, options) => {
@@ -81,13 +81,13 @@ test("creates the productivity review task with the internal project manager as 
   assert.equal(result.created, true);
   assert.equal(createdPayload.assigned_id, 123);
   assert.deepEqual(createdPayload.assignee_ids, [123]);
-  assert.deepEqual(createdPayload.distribution_member_ids, [900]);
-  assert.equal(sendCalls, 1);
-  assert.equal(result.notified, true);
-  assert.deepEqual(result.sentTaskIds, ["456"]);
+  assert.deepEqual(createdPayload.distribution_member_ids, []);
+  assert.equal(sendCalls, 0);
+  assert.equal(result.notified, false);
+  assert.deepEqual(Array.from(result.sentTaskIds), []);
 });
 
-test("adds the project manager to an existing automated task without removing assignees", async () => {
+test("replaces external recipients on an existing automated task", async () => {
   let patchedPayload;
   let sendCalls = 0;
   const makeRequest = async (path, _token, options) => {
@@ -133,19 +133,24 @@ test("adds the project manager to an existing automated task without removing as
   });
 
   assert.equal(result.created, false);
-  assert.equal(patchedPayload.assigned_id, 777);
-  assert.deepEqual(patchedPayload.assignee_ids, [777, 123]);
-  assert.equal(patchedPayload.distribution_member_ids, undefined);
-  assert.equal(sendCalls, 1);
-  assert.equal(result.notified, true);
+  assert.equal(patchedPayload.assigned_id, 123);
+  assert.deepEqual(patchedPayload.assignee_ids, [123]);
+  assert.deepEqual(patchedPayload.distribution_member_ids, []);
+  assert.equal(sendCalls, 0);
+  assert.equal(result.notified, false);
 });
 
 test("does not resend an automated task that Procore already notified", async () => {
   let sendCalls = 0;
-  const makeRequest = async (path) => {
+  let patchedPayload;
+  const makeRequest = async (path, _token, options) => {
     if (path.startsWith("/rest/v1.0/task_items/send_unsent?")) {
       sendCalls += 1;
       return [{ id: 456 }];
+    }
+    if (options?.method === "PATCH") {
+      patchedPayload = JSON.parse(options.body).task_item;
+      return { id: 456 };
     }
     if (path.startsWith("/rest/v1.0/task_items?")) {
       return [{
@@ -184,4 +189,5 @@ test("does not resend an automated task that Procore already notified", async ()
   assert.equal(result.created, false);
   assert.equal(result.notified, true);
   assert.equal(sendCalls, 0);
+  assert.deepEqual(patchedPayload.distribution_member_ids, []);
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
 import { Resend } from "resend";
+import { parsePmcdecorEmailList } from "@/lib/timecardNotification";
 import {
   evaluateProcoreSyncHealth,
   procoreHealthAlertFingerprint,
@@ -122,13 +123,12 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ success: true, ...await loadHealth(companyId) });
 }
 
-function alertRecipients() {
-  return [...new Set(
-    String(process.env.SYNC_HEALTH_ALERT_TO_EMAILS || "todd@pmcdecor.com")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  )];
+export function getSyncHealthAlertRecipients(
+  configuredRecipients = process.env.SYNC_HEALTH_ALERT_TO_EMAILS,
+) {
+  return parsePmcdecorEmailList(
+    String(configuredRecipients || "todd@pmcdecor.com"),
+  );
 }
 
 function escapeHtml(value: string) {
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
     ).trim();
     const result = await new Resend(apiKey).emails.send({
       from,
-      to: alertRecipients(),
+      to: getSyncHealthAlertRecipients(),
       subject: `[Analytics] Production sync needs attention (${issues.length})`,
       text: `Analytics detected the following automation problems:\n\n- ${issues.join("\n- ")}\n\nDetected ${health.generatedAt}.`,
       html: `<p>Analytics detected the following automation problems:</p><ul>${issues

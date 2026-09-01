@@ -153,7 +153,7 @@ For steady-state operation, `netlify/functions/scheduled-sync.mts` runs every fi
 1. drains queued Procore webhook events;
 2. reconciles productivity-review reminders;
 3. processes timecard notifications;
-4. polls PCO/PCCO header status for projects with mirrored change-order activity and dispatches newly approved verification tasks; and
+4. dispatches a background worker that polls PCO/PCCO header status in bounded project batches and queues newly approved verification tasks; and
 5. dispatches actuals or nightly-structure work according to the America/New_York time window.
 
 The background wrappers call `/api/cron/actuals`, `/api/cron/nightly-structure`, `/api/cron/project-onboarding`, and `/api/cron/project-reconciliation` in bounded batches. Queue state, locks, retry timestamps, and rate-limit cooldowns live in PostgreSQL so work can resume across invocations. Successful daily structure and estimate records requeue five minutes short of 24 hours so second-level scheduler jitter cannot push them past the final nightly tick. Secret-authenticated operators can pass one exact `projectId` to `/api/cron/nightly-structure` for a targeted structure rerun.

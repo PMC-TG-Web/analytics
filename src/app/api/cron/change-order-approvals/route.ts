@@ -144,6 +144,9 @@ export async function POST(request: NextRequest) {
   }
 
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
+    const body = await request.json().catch(() => ({}));
+    const offset = Math.max(0, Number.parseInt(String(body?.offset || "0"), 10) || 0);
+    const limit = Math.min(6, Math.max(1, Number.parseInt(String(body?.limit || "4"), 10) || 4));
     const companyId = String(procoreConfig.companyId || "").trim();
     if (!companyId) {
       return NextResponse.json({ success: false, error: "PROCORE_COMPANY_ID is not configured." }, { status: 503 });
@@ -158,12 +161,13 @@ export async function POST(request: NextRequest) {
       ) AS change_order_projects
       ORDER BY project_id
     `, companyId);
+    const projectBatch = projects.slice(offset, offset + limit);
     const accessToken = await getClientCredentialsToken();
     let potentialChangeOrdersScanned = 0;
     let packagesScanned = 0;
     const errors: string[] = [];
 
-    for (const { project_id: projectId } of projects) {
+    for (const { project_id: projectId } of projectBatch) {
       try {
         const potentialChangeOrders = await fetchAll({
           accessToken,
@@ -202,7 +206,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: errors.length === 0,
-      projectsScanned: projects.length,
+      projectsScanned: projectBatch.length,
+      totalProjects: projects.length,
+      nextOffset: offset + projectBatch.length < projects.length
+        ? offset + projectBatch.length
+        : null,
       potentialChangeOrdersScanned,
       packagesScanned,
       errors: errors.slice(0, 25),

@@ -63,7 +63,7 @@ test("dedicated scheduler drains commitment task jobs every five minutes", () =>
 
 test("five-minute sync polls change-order approvals before dispatching task jobs", () => {
   const source = fs.readFileSync("netlify/functions/scheduled-sync.mts", "utf8");
-  const approvalPoll = source.indexOf("/api/cron/change-order-approvals");
+  const approvalPoll = source.indexOf("/api/background/change-order-approvals");
   const taskDispatch = source.indexOf("/api/background/commitment-maker-tasks");
 
   assert.ok(approvalPoll > 0);

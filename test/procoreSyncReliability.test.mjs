@@ -197,6 +197,18 @@ test("approval polling queues verification before persisting newly approved head
   assert.ok(packageQueue > potentialPersist && packagePersist > packageQueue);
   assert.match(route, /taskKinds: \["commitment_verification"\]/);
   assert.doesNotMatch(route, /line_items/);
+  assert.match(route, /const limit = Math\.min\(6/);
+  assert.match(route, /nextOffset:/);
+});
+
+test("background approval worker drains bounded polling batches", async () => {
+  const worker = await readFile(
+    new URL("../netlify/functions/change-order-approvals-background.mts", import.meta.url),
+    "utf8",
+  );
+  assert.match(worker, /\/api\/cron\/change-order-approvals/);
+  assert.match(worker, /nextOffset/);
+  assert.match(worker, /12 \* 60_000/);
 });
 
 test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {

@@ -123,7 +123,7 @@ const handler = async () => {
     );
 
     const changeOrderApprovalResponse = await fetch(
-      `${baseUrl}/api/cron/change-order-approvals`,
+      `${baseUrl}/api/background/change-order-approvals`,
       {
         method: "POST",
         headers: {

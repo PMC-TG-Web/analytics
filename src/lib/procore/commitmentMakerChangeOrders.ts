@@ -110,6 +110,16 @@ function sourceDescription(line: UnknownRecord, costCode: string): string {
   return text(line.description) || text(costCodeRecord.name) || text(line.cost_code_name ?? line.costCodeName) || wbsDescription || costCode;
 }
 
+function changeOrderLineDescription(changeOrderNumber: string, description: string): string {
+  const rawNumber = text(changeOrderNumber).replace(/^CO\s*#?\s*/i, "");
+  if (!rawNumber) return description;
+  const normalizedNumber = /^\d+$/.test(rawNumber) ? String(Number(rawNumber)) : rawNumber;
+  const prefix = `CO${normalizedNumber}`;
+  return description.toLowerCase().startsWith(`${prefix.toLowerCase()} - `)
+    ? description
+    : `${prefix} - ${description}`;
+}
+
 function normalizedUom(value: unknown): string {
   const normalized = text(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (["ea", "each"].includes(normalized)) return "ea";
@@ -213,7 +223,7 @@ export function approvedChangeOrderCommitmentGroup(
       costCode,
       costType: sourceCostType(line, wbs),
       sourceWbsCodeId: text(wbs.id) || null,
-      description: sourceDescription(line, costCode),
+      description: changeOrderLineDescription(changeOrder.number, sourceDescription(line, costCode)),
       quantity,
       uom,
       unitCost: Math.round(unitCost * 10_000) / 10_000,

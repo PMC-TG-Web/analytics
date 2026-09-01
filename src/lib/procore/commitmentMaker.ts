@@ -263,6 +263,22 @@ export function isCommitmentMakerEstimateMatchingLine(
   );
 }
 
+export function isCommitmentMakerExcludedLine(
+  costCodeValue: unknown,
+  descriptionValue: unknown,
+): boolean {
+  const costCode = String(costCodeValue ?? "").substring(0, 12).trim();
+  const description = String(descriptionValue ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return costCode === "90-100-10-10"
+    || /\boverhead(?: and)? profit\b/.test(description)
+    || /(?:^|\s)shop draw/.test(description);
+}
+
 /**
  * Ports the production converter's "New Commitment with Labor - Split by Groups"
  * transformation. The caller is responsible for turning an XLSX sheet into a
@@ -347,7 +363,10 @@ export function parseCommitmentMakerRows(
       const management = `${description} ${originalBudgetCode}`.toLowerCase().includes("management");
       const unitCost = hourly ? 0 : parsePositiveNumber(row[indices.unitCost]);
 
-      if (isCommitmentMakerEstimateMatchingLine(costCode, description)) {
+      if (
+        isCommitmentMakerEstimateMatchingLine(costCode, description)
+        || isCommitmentMakerExcludedLine(costCode, description)
+      ) {
         skippedRows += 1;
         continue;
       }
@@ -358,8 +377,7 @@ export function parseCommitmentMakerRows(
         !quantity ||
         uom.toLowerCase() === "mixed" ||
         (hourly && management) ||
-        (!hourly && unitCost === null) ||
-        description.toLowerCase().includes("shop draw")
+        (!hourly && unitCost === null)
       ) {
         skippedRows += 1;
         continue;

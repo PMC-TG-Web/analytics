@@ -14,6 +14,7 @@ import {
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerLineCreatePayload,
   consolidateCommitmentMakerLineItems,
+  isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
   normalizeCommitmentMakerVendorName,
   parseCommitmentMakerRows,
@@ -1111,9 +1112,15 @@ async function handleRequest(request: NextRequest) {
   const selectedSheetName = sourceChangeOrder
     ? "Approved Change Order"
     : workbookImport?.selectedSheetName || sheetName || "Imported Estimate";
-  const groups = sourceChangeOrder
+  const sourceGroups = sourceChangeOrder
     ? [approvedChangeOrderCommitmentGroup(sourceChangeOrder, sourceChangeOrderLines)]
     : workbookImport?.parsed.groups || groupsFromPayload(body.groups);
+  const groups = sourceGroups.map((group) => ({
+    ...group,
+    lineItems: group.lineItems.filter((line) => (
+      !isCommitmentMakerExcludedLine(line.costCode, line.description)
+    )),
+  }));
   const sourceRowCount = sourceChangeOrder
     ? sourceChangeOrderLines.length
     : workbookImport?.parsed.sourceRowCount || Number(body.sourceRowCount) || 0;

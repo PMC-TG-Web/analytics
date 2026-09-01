@@ -43,7 +43,7 @@ test("uses the specific PCO item description instead of the generic cost code na
       costCode: "03-300-30-20",
       costType: "CON",
       sourceWbsCodeId: null,
-      description: "#4 Rebar",
+      description: "CO1 - #4 Rebar",
       quantity: 9.5,
       uom: "cy",
       unitCost: 144.34,
@@ -52,6 +52,30 @@ test("uses the specific PCO item description instead of the generic cost code na
   );
 });
 
+
+test("prefixes every split PCO commitment line with the normalized CO number", () => {
+  const {
+    approvedChangeOrderCommitmentGroup,
+    enrichApprovedChangeOrderLinesFromEstimate,
+  } = loadModule();
+  const sourceLines = enrichApprovedChangeOrderLinesFromEstimate(
+    [{ quantity: "8", amount: "77.74", uom: "ea", cost_code: "03-200-10-20" }],
+    [
+      { name: "#4 Rebar - 20' Pc", quantity: "6", uom: "ea", itemCost: "44.46" },
+      { name: "#6 Rebar - 20' Pc", quantity: "2", uom: "ea", itemCost: "33.28" },
+    ],
+  );
+
+  const group = approvedChangeOrderCommitmentGroup(
+    { packageId: "500", number: "002", title: "P1 Pier" },
+    sourceLines,
+  );
+
+  assert.deepEqual(
+    group.lineItems.map((line) => line.description),
+    ["CO2 - #4 Rebar - 20' Pc", "CO2 - #6 Rebar - 20' Pc"],
+  );
+});
 test("splits uniquely matching estimate items into separate PCO lines", () => {
   const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
   const lines = enrichApprovedChangeOrderLinesFromEstimate(

@@ -6,6 +6,7 @@ import {
   combineCommitmentMakerGroups,
   commitmentMakerLineCreatePayload,
   commitmentMakerProjectIdFromSearch,
+  isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
@@ -61,6 +62,14 @@ test('excludes estimate-to-contract balancing rows from commitment lines', () =>
   assert.equal(result.skippedRows, 1);
   assert.equal(isCommitmentMakerEstimateMatchingLine('90-100-10-10', 'Created to match estimate'), true);
   assert.equal(isCommitmentMakerEstimateMatchingLine('03-300-30-20', 'Ready Mix Concrete'), false);
+});
+
+test('always excludes overhead and shop drawing lines from commitments', () => {
+  assert.equal(isCommitmentMakerExcludedLine('90-100-10-10', 'Quickbooks adjustment'), true);
+  assert.equal(isCommitmentMakerExcludedLine('01-300-10-40', 'Overhead & Profit - Pier'), true);
+  assert.equal(isCommitmentMakerExcludedLine('01-300-10-40', 'Shop Drawing'), true);
+  assert.equal(isCommitmentMakerExcludedLine('01-300-10-40', 'Shop Drawings - Pier'), true);
+  assert.equal(isCommitmentMakerExcludedLine('03-200-10-20', '#4 Rebar - Pier'), false);
 });
 
 test('ports the production split-with-labor transformation', () => {

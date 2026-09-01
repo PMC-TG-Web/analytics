@@ -492,10 +492,12 @@ async function resolveApprovedChangeOrder(params: {
   companyId: string;
   projectId: string;
   packageId: string;
+  useLive: boolean;
 }): Promise<{ changeOrder: ApprovedChangeOrder; liveLines: UnknownRecord[] | null } | null> {
   const stored = await fetchApprovedChangeOrdersFromAllDatabaseSources(params.companyId, params.projectId);
   const storedMatch = stored.find((record) => record.packageId === params.packageId) || null;
   if (!storedMatch) return null;
+  if (!params.useLive) return { changeOrder: storedMatch, liveLines: null };
 
   const path = storedMatch.sourceKind === "potential_change_order"
     ? `/rest/v1.0/potential_change_orders/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(params.projectId)}`
@@ -1233,15 +1235,24 @@ async function handleRequest(request: NextRequest) {
   const cookieToken = readText(request.cookies.get("procore_access_token")?.value);
   let accessToken = "";
   let tokenSource = "client_credentials";
-  try {
-    accessToken = await getClientCredentialsToken();
-  } catch (serviceTokenError) {
-    if (!cookieToken) throw serviceTokenError;
-    accessToken = cookieToken;
-    tokenSource = "user_oauth_fallback";
+  const requiresLiveProcore = mode === "create" || !changeOrderPackageId;
+  if (requiresLiveProcore) {
+    try {
+      accessToken = await getClientCredentialsToken();
+    } catch (serviceTokenError) {
+      if (!cookieToken) throw serviceTokenError;
+      accessToken = cookieToken;
+      tokenSource = "user_oauth_fallback";
+    }
   }
   const resolvedSourceChangeOrder = changeOrderPackageId
-    ? await resolveApprovedChangeOrder({ accessToken, companyId, projectId, packageId: changeOrderPackageId })
+    ? await resolveApprovedChangeOrder({
+        accessToken,
+        companyId,
+        projectId,
+        packageId: changeOrderPackageId,
+        useLive: mode === "create",
+      })
     : null;
   const sourceChangeOrder = resolvedSourceChangeOrder?.changeOrder || null;
   if (changeOrderPackageId && !sourceChangeOrder) {

@@ -310,12 +310,14 @@ test("keeps approved change-order preview within the interactive response window
   );
 
   assert.match(resolver, /fetchApprovedChangeOrdersFromAllDatabaseSources/);
+  assert.match(resolver, /if \(!params\.useLive\) return \{ changeOrder: storedMatch, liveLines: null \}/);
   assert.match(resolver, /potential_change_orders\/\$\{encodeURIComponent\(storedMatch\.packageId\)\}/);
   assert.match(resolver, /change_order_packages\/\$\{encodeURIComponent\(storedMatch\.packageId\)\}/);
   assert.match(resolver, /liveLines: storedMatch\.sourceKind === "change_order_package"/);
   assert.match(route, /resolvedSourceChangeOrder\?\.liveLines !== null/);
   assert.match(route, /fetchCommitmentMakerPlanDataFromDatabase/);
   assert.match(route, /useSynchronizedData: mode === "preview" && Boolean\(sourceChangeOrder\)/);
+  assert.match(route, /const requiresLiveProcore = mode === "create" \|\| !changeOrderPackageId/);
   assert.match(route, /useLive: mode === "create"/);
   assert.match(route, /sourceChangeOrder && mode === "create"/);
   assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);

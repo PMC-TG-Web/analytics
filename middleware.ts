@@ -265,6 +265,8 @@ export async function middleware(request: NextRequest) {
   const isProcoreBackgroundSyncRoute =
     pathname === '/api/background/actuals-sync' ||
     pathname === '/api/background/nightly-structure-sync' ||
+    pathname === '/api/background/change-order-approvals' ||
+    pathname === '/api/background/commitment-maker-tasks' ||
     pathname === '/api/background/project-reconciliation';
   const isNetlifyScheduledSyncFunctionRoute =
     pathname === '/.netlify/functions/scheduled-sync' ||

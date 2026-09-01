@@ -211,6 +211,12 @@ test("background approval worker drains bounded polling batches", async () => {
   assert.match(worker, /12 \* 60_000/);
 });
 
+test("middleware allows secret-authenticated change-order background work", async () => {
+  const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
+  assert.match(middleware, /pathname === '\/api\/background\/change-order-approvals'/);
+  assert.match(middleware, /pathname === '\/api\/background\/commitment-maker-tasks'/);
+});
+
 test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {
   const issues = evaluateProcoreSyncHealth({
     datasets: [

@@ -323,3 +323,29 @@ test("keeps approved change-order preview within the interactive response window
   assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);
   assert.match(route, /const \[sourceAliases, plan, taskAssigneeResult\] = await Promise\.all/);
 });
+
+test("removes only exact PCO lines before releasing the PO assignment", () => {
+  const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+  const deleteHandler = route.slice(
+    route.indexOf("async function handleDelete"),
+    route.indexOf("export async function GET"),
+  );
+  const middleware = fs.readFileSync("middleware.ts", "utf8");
+  const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
+
+  assert.match(deleteHandler, /Number\(audit\.reusedLineItems\) !== 0/);
+  assert.match(deleteHandler, /exactCommitmentLineIds\(plannedLines, existingLines\)/);
+  assert.match(deleteHandler, /line_items\/\$\{encodeURIComponent\(lineId\)\}/);
+  assert.match(deleteHandler, /method: "DELETE"/);
+  assert.match(deleteHandler, /remainingIds\.has\(lineId\)/);
+  assert.match(deleteHandler, /commitmentMakerLineCreatePayload\(plannedLines\[index\]\)/);
+  assert.match(deleteHandler, /exactCommitmentLineIds\(plannedLines, restoredLines\)/);
+  assert.match(deleteHandler, /markCommitmentMakerChangeOrderRemovalUncertain/);
+  assert.ok(deleteHandler.indexOf('body: { status: "Approved" }') < deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)"));
+  assert.ok(deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)") < deleteHandler.indexOf('action: "remove-lines"'));
+  assert.match(deleteHandler, /failCommitmentMakerChangeOrderRemoval/);
+  assert.doesNotMatch(deleteHandler, /method: "DELETE"[\s\S]{0,200}commitment_contracts[^\n]*,$/m);
+  assert.match(middleware, /\['GET', 'POST', 'DELETE'\]/);
+  assert.match(page, /Delete from PO/);
+  assert.match(page, /The purchase order itself will not be deleted/);
+});

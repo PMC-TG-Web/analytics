@@ -79,6 +79,7 @@ type PreviewResponse = {
   finalStatus: string;
   sourceType: "estimate" | "approved_change_order";
   sourceChangeOrder: ApprovedChangeOrder | null;
+  removableTargetCommitmentId: string;
   target: "new_purchase_order" | "existing_purchase_order";
   existingCommitmentId: string;
   taskAssignees: {
@@ -185,6 +186,7 @@ export default function CommitmentMakerPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [removeConfirmation, setRemoveConfirmation] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [combineSelection, setCombineSelection] = useState<Record<string, boolean>>({});
   const [combinedGroupName, setCombinedGroupName] = useState("");
@@ -301,6 +303,7 @@ export default function CommitmentMakerPage() {
     setPreview(null);
     setResult(null);
     setConfirmed(false);
+    setRemoveConfirmation(false);
     setExpandedGroups({});
     setCombineSelection({});
     setCombinedGroupName("");
@@ -434,6 +437,7 @@ export default function CommitmentMakerPage() {
         setPreview(nextPreview);
         setResult(null);
         setConfirmed(false);
+        setRemoveConfirmation(false);
         setCombineSelection({});
         setCombinedGroupName("");
         setExpandedGroups(
@@ -453,6 +457,63 @@ export default function CommitmentMakerPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function deleteFromPurchaseOrder() {
+    if (!preview?.sourceChangeOrder || !preview.removableTargetCommitmentId) return;
+    const target = existingCommitments.find((commitment) => commitment.id === preview.removableTargetCommitmentId);
+    const targetLabel = target
+      ? `PO ${target.number}${target.title ? ` - ${target.title}` : ""}`
+      : `PO ${preview.removableTargetCommitmentId}`;
+
+    setBusy(true);
+    setError("");
+    setRemoveConfirmation(false);
+    let removedLineItems = 0;
+    try {
+      const response = await fetch("/api/procore/commitments-live/maker", {
+        method: "DELETE",
+        headers: (() => {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          const search = new URLSearchParams(window.location.search);
+          const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
+          const accessToken = text(search.get("access"));
+          if (linkedProjectId && linkedProjectId === projectId && accessToken) {
+            headers["X-Commitment-Maker-Project-Id"] = linkedProjectId;
+            headers["X-Commitment-Maker-Access"] = accessToken;
+          }
+          return headers;
+        })(),
+        body: JSON.stringify({
+          projectId,
+          changeOrderPackageId: preview.sourceChangeOrder.packageId,
+        }),
+      });
+      const responseText = await response.text();
+      let payload: unknown = {};
+      try {
+        payload = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        payload = {};
+      }
+      if (!response.ok) {
+        throw new Error(text(asRecord(payload).error) || `Removal failed (${response.status}).`);
+      }
+      removedLineItems = Number(asRecord(payload).removedLineItems) || 0;
+      setPreview(null);
+      setResult(null);
+      setConfirmed(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
+      return;
+    } finally {
+      setBusy(false);
+    }
+
+    await callMaker("preview");
+    setCombineMessage(
+      `${removedLineItems} line${removedLineItems === 1 ? " was" : "s were"} deleted from ${targetLabel}. The change order can now be added again.`,
+    );
   }
 
   async function combineSelectedGroups() {
@@ -805,6 +866,42 @@ export default function CommitmentMakerPage() {
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   {preview.validationErrors.map((message) => <li key={message}>{message}</li>)}
                 </ul>
+                {preview.sourceChangeOrder && preview.removableTargetCommitmentId && (
+                  removeConfirmation ? (
+                    <div className="mt-4 border-t border-red-200 pt-3">
+                      <p className="font-semibold">
+                        Delete this change order&apos;s lines from PO {preview.removableTargetCommitmentId}? The purchase order itself will not be deleted.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void deleteFromPurchaseOrder()}
+                          disabled={busy}
+                          className="rounded-md bg-red-700 px-4 py-2 font-black text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {busy ? "Deleting from PO..." : "Confirm delete from PO"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRemoveConfirmation(false)}
+                          disabled={busy}
+                          className="rounded-md border border-red-300 bg-white px-4 py-2 font-black text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setRemoveConfirmation(true)}
+                      disabled={busy}
+                      className="mt-4 rounded-md bg-red-700 px-4 py-2 font-black text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Delete from PO
+                    </button>
+                  )
+                )}
               </div>
             )}
 

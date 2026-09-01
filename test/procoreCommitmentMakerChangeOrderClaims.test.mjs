@@ -88,6 +88,109 @@ test("allows only failed or expired retries for the original target", () => {
   );
 });
 
+test("allows a verified removal to be re-added but keeps an in-progress removal blocked", () => {
+  const { commitmentMakerChangeOrderClaimBlockReason } = loadModule();
+  assert.equal(
+    commitmentMakerChangeOrderClaimBlockReason(
+      claim({ status: "removed", requestedTargetCommitmentId: null, targetCommitmentId: null }),
+      { targetKind: "existing_purchase_order", requestedTargetCommitmentId: "801" },
+      now,
+    ),
+    null,
+  );
+  assert.equal(
+    commitmentMakerChangeOrderClaimBlockReason(
+      claim({ status: "removing" }),
+      { targetKind: "existing_purchase_order", requestedTargetCommitmentId: "800" },
+      now,
+    ),
+    "This change order is being removed from PO 800.",
+  );
+});
+
+test("leases removal and clears the target only on verified completion", async () => {
+  const updates = [];
+  const application = {
+    id: "application-1",
+    status: "completed",
+    targetCommitmentId: "800",
+  };
+  const prisma = {
+    $transaction: async (work) => work(prisma),
+    commitmentMakerChangeOrderAlias: {
+      findMany: async () => [{ applicationId: application.id, application }],
+    },
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        updates.push(request);
+        return { count: 1 };
+      },
+    },
+  };
+  const {
+    claimCommitmentMakerChangeOrderRemoval,
+    completeCommitmentMakerChangeOrderRemoval,
+  } = loadModule(prisma);
+  const lease = await claimCommitmentMakerChangeOrderRemoval({
+    companyId: "company-1",
+    projectId: "project-1",
+    aliases: [{ sourceKind: "potential_change_order", sourceId: "100" }],
+  });
+  await completeCommitmentMakerChangeOrderRemoval(lease);
+
+  assert.equal(updates[0].data.status, "removing");
+  assert.equal(updates[1].where.status, "removing");
+  assert.equal(updates[1].data.status, "removed");
+  assert.equal(updates[1].data.targetCommitmentId, null);
+  assert.equal(updates[1].data.requestedTargetCommitmentId, null);
+});
+
+test("restores the completed claim when Procore removal fails", async () => {
+  let update;
+  const prisma = {
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        update = request;
+        return { count: 1 };
+      },
+    },
+  };
+  const { failCommitmentMakerChangeOrderRemoval } = loadModule(prisma);
+  await failCommitmentMakerChangeOrderRemoval({
+    applicationId: "application-1",
+    leaseToken: "lease-token",
+    targetCommitmentId: "800",
+    error: "Procore deletion failed",
+  });
+
+  assert.equal(update.where.status, "removing");
+  assert.equal(update.data.status, "completed");
+  assert.equal(update.data.lastError, "Procore deletion failed");
+});
+
+test("keeps an uncertain Procore removal blocked", async () => {
+  let update;
+  const prisma = {
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        update = request;
+        return { count: 1 };
+      },
+    },
+  };
+  const { markCommitmentMakerChangeOrderRemovalUncertain } = loadModule(prisma);
+  await markCommitmentMakerChangeOrderRemovalUncertain({
+    applicationId: "application-1",
+    leaseToken: "lease-token",
+    targetCommitmentId: "800",
+    error: "Could not verify the restored lines",
+  });
+
+  assert.equal(update.where.status, "removing");
+  assert.equal(update.data.status, undefined);
+  assert.equal(update.data.lastError, "Could not verify the restored lines");
+});
+
 test("blocks historical successful imports that are not yet in the claim ledger", async () => {
   const prisma = {
     commitmentMakerChangeOrderAlias: {

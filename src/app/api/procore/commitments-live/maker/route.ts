@@ -46,10 +46,15 @@ import {
 import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
 import {
   claimCommitmentMakerChangeOrder,
+  claimCommitmentMakerChangeOrderRemoval,
   CommitmentMakerChangeOrderClaimError,
   completeCommitmentMakerChangeOrderClaim,
+  completeCommitmentMakerChangeOrderRemoval,
   failCommitmentMakerChangeOrderClaim,
+  failCommitmentMakerChangeOrderRemoval,
+  getCommitmentMakerChangeOrderRemovalTarget,
   inspectCommitmentMakerChangeOrderClaim,
+  markCommitmentMakerChangeOrderRemovalUncertain,
   setCommitmentMakerChangeOrderTarget,
 } from "@/lib/procoreCommitmentMakerChangeOrderClaims";
 
@@ -116,7 +121,7 @@ async function procoreJson(params: {
   path: string;
   accessToken: string;
   companyId: string;
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
 }): Promise<ProcoreResponse> {
   const path = params.path.startsWith("/") ? params.path : `/${params.path}`;
@@ -1124,21 +1129,47 @@ function commitmentOption(record: UnknownRecord) {
   };
 }
 
+function commitmentLineMatches(line: PlannedLine, record: UnknownRecord): boolean {
+  const recordWbsId = readText(record.wbs_code_id ?? nestedRecord(record, "wbs_code").id);
+  const quantity = Number(record.quantity);
+  const unitCost = Number(record.unit_cost);
+  return (
+    recordWbsId === (line.wbsCodeId || "") &&
+    readText(record.description) === line.description &&
+    Number.isFinite(quantity) &&
+    Math.abs(quantity - line.quantity) < 0.0001 &&
+    Number.isFinite(unitCost) &&
+    Math.abs(unitCost - line.unitCost) < 0.005 &&
+    readText(record.uom).toLowerCase() === line.uom.toLowerCase()
+  );
+}
+
 function lineAlreadyExists(line: PlannedLine, records: UnknownRecord[]): boolean {
-  return records.some((record) => {
-    const recordWbsId = readText(record.wbs_code_id ?? nestedRecord(record, "wbs_code").id);
-    const quantity = Number(record.quantity);
-    const unitCost = Number(record.unit_cost);
-    return (
-      recordWbsId === (line.wbsCodeId || "") &&
-      readText(record.description) === line.description &&
-      Number.isFinite(quantity) &&
-      Math.abs(quantity - line.quantity) < 0.0001 &&
-      Number.isFinite(unitCost) &&
-      Math.abs(unitCost - line.unitCost) < 0.005 &&
-      readText(record.uom).toLowerCase() === line.uom.toLowerCase()
-    );
+  return records.some((record) => commitmentLineMatches(line, record));
+}
+
+function exactCommitmentLineIds(lines: PlannedLine[], records: UnknownRecord[]): string[] {
+  const ids = lines.map((line) => {
+    const matches = records.filter((record) => commitmentLineMatches(line, record));
+    if (matches.length !== 1) {
+      throw new CommitmentMakerChangeOrderClaimError(
+        `Line "${line.description}" has ${matches.length} exact matches on the PO; no lines were deleted.`,
+      );
+    }
+    const id = readId(matches[0]);
+    if (!id) {
+      throw new CommitmentMakerChangeOrderClaimError(
+        `Line "${line.description}" does not have a usable Procore line ID; no lines were deleted.`,
+      );
+    }
+    return id;
   });
+  if (new Set(ids).size !== ids.length) {
+    throw new CommitmentMakerChangeOrderClaimError(
+      "Two source lines resolve to the same PO line; no lines were deleted.",
+    );
+  }
+  return ids;
 }
 
 async function writeAudit(params: {
@@ -1160,6 +1191,33 @@ async function writeAudit(params: {
   } catch (error) {
     console.error("Commitment Maker audit log write failed:", error);
   }
+}
+
+async function findCompletedChangeOrderAudit(params: {
+  projectId: string;
+  sourceChangeOrderId: string;
+  targetCommitmentId: string;
+}): Promise<UnknownRecord | null> {
+  const audits = await prisma.auditLog.findMany({
+    where: {
+      entity: "ProcoreCommitmentMaker",
+      entityId: params.targetCommitmentId,
+      action: { in: ["create", "resume", "append-lines"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { changes: true },
+  });
+  for (const audit of audits) {
+    const changes = isRecord(audit.changes) ? audit.changes : {};
+    const source = isRecord(changes.sourceChangeOrder) ? changes.sourceChangeOrder : {};
+    if (
+      readText(changes.projectId) === params.projectId
+      && readText(source.packageId) === params.sourceChangeOrderId
+    ) {
+      return changes;
+    }
+  }
+  return null;
 }
 
 async function findShellyCompanyUser(): Promise<UnknownRecord | null> {
@@ -1341,15 +1399,20 @@ async function handleRequest(request: NextRequest) {
     }),
     taskAssigneePromise,
   ]);
+  let removableTargetCommitmentId = "";
   if (sourceChangeOrder) {
-    const claimError = await inspectCommitmentMakerChangeOrderClaim({
-      companyId,
-      projectId,
-      aliases: sourceAliases,
-      targetKind: target,
-      requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
-    });
+    const [claimError, removalTarget] = await Promise.all([
+      inspectCommitmentMakerChangeOrderClaim({
+        companyId,
+        projectId,
+        aliases: sourceAliases,
+        targetKind: target,
+        requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
+      }),
+      getCommitmentMakerChangeOrderRemovalTarget({ companyId, projectId, aliases: sourceAliases }),
+    ]);
     if (claimError) plan.validationErrors.push(claimError);
+    removableTargetCommitmentId = removalTarget?.targetCommitmentId || "";
     if (taskAssigneeResult.error) {
       plan.validationErrors.push(
         `Follow-up tasks: ${taskAssigneeResult.error instanceof Error ? taskAssigneeResult.error.message : String(taskAssigneeResult.error)}`,
@@ -1369,6 +1432,7 @@ async function handleRequest(request: NextRequest) {
     finalStatus: "Approved",
     sourceType: sourceChangeOrder ? "approved_change_order" : "estimate",
     sourceChangeOrder,
+    removableTargetCommitmentId,
     target,
     existingCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
     taskAssignees: taskAssigneeResult.assignees,
@@ -1724,6 +1788,272 @@ async function handleRequest(request: NextRequest) {
   );
 }
 
+async function handleDelete(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as UnknownRecord;
+  const projectId = readText(body.projectId ?? body.project_id);
+  const companyId = readText(body.companyId ?? procoreConfig.companyId);
+  const changeOrderPackageId = readText(body.changeOrderPackageId ?? body.change_order_package_id);
+  if (!projectId || !changeOrderPackageId) {
+    return NextResponse.json({ error: "Select the project and approved change order to remove." }, { status: 400 });
+  }
+  if (!companyId) return NextResponse.json({ error: "Missing Procore company ID." }, { status: 400 });
+
+  const accessProjectId = readText(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER));
+  const signedAccessToken = readText(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER));
+  const hasSignedProjectAccess = accessProjectId === projectId
+    && await verifyCommitmentMakerAccessToken(accessProjectId, signedAccessToken).catch(() => false);
+  const sessionUserEmail = hasSignedProjectAccess ? null : await getCurrentUserEmail();
+  if (!hasSignedProjectAccess && !sessionUserEmail) {
+    return NextResponse.json({ error: "Authentication or a valid Procore Project Home link is required." }, { status: 401 });
+  }
+  const userEmail = sessionUserEmail || "procore-project-link@pmcdecor.com";
+
+  const cookieToken = readText(request.cookies.get("procore_access_token")?.value);
+  let accessToken = "";
+  try {
+    accessToken = await getClientCredentialsToken();
+  } catch (serviceTokenError) {
+    if (!cookieToken) throw serviceTokenError;
+    accessToken = cookieToken;
+  }
+
+  const resolved = await resolveApprovedChangeOrder({
+    accessToken,
+    companyId,
+    projectId,
+    packageId: changeOrderPackageId,
+    useLive: true,
+  });
+  const sourceChangeOrder = resolved?.changeOrder || null;
+  if (!sourceChangeOrder) {
+    return NextResponse.json({ error: "The selected approved change order is no longer available." }, { status: 409 });
+  }
+  const sourceAliases = await resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder);
+  const removalTarget = await getCommitmentMakerChangeOrderRemovalTarget({
+    companyId,
+    projectId,
+    aliases: sourceAliases,
+  });
+  if (!removalTarget) {
+    return NextResponse.json({ error: "This change order does not have a completed PO assignment to remove." }, { status: 409 });
+  }
+
+  const rawLines = resolved?.liveLines !== null
+    ? resolved.liveLines
+    : await fetchApprovedChangeOrderLines({
+        accessToken,
+        companyId,
+        projectId,
+        changeOrder: sourceChangeOrder,
+        useLive: true,
+      });
+  const enrichedLines = await enrichChangeOrderLinesFromEstimate({
+    companyId,
+    projectId,
+    changeOrder: sourceChangeOrder,
+    sourceLines: rawLines,
+  });
+  const sourceGroup = approvedChangeOrderCommitmentGroup(sourceChangeOrder, enrichedLines);
+  sourceGroup.lineItems = sourceGroup.lineItems.filter((line) => (
+    !isCommitmentMakerExcludedLine(line.costCode, line.description)
+  ));
+  const importFingerprint = createHash("sha256")
+    .update(JSON.stringify({
+      projectId,
+      changeOrderPackageId,
+      target: "existing_purchase_order",
+      existingCommitmentId: removalTarget.targetCommitmentId,
+      selectedSheetName: "Approved Change Order",
+      groups: [sourceGroup],
+    }))
+    .digest("hex");
+  const plan = await buildPlan({
+    accessToken,
+    companyId,
+    projectId,
+    groups: [sourceGroup],
+    importFingerprint,
+    target: "existing_purchase_order",
+    existingCommitmentId: removalTarget.targetCommitmentId,
+    sourceChangeOrderId: sourceChangeOrder.packageId,
+  });
+  if (plan.validationErrors.length > 0 || plan.groups.length !== 1 || plan.groups[0].lineItems.length === 0) {
+    return NextResponse.json({
+      error: plan.validationErrors[0] || "The original change-order lines could not be reconstructed safely.",
+    }, { status: 409 });
+  }
+  const targetCommitment = plan.commitments.find((record) => readId(record) === removalTarget.targetCommitmentId);
+  if (!targetCommitment || readText(targetCommitment.status).toLowerCase() !== "approved") {
+    return NextResponse.json({ error: "The assigned PO must be Approved before these lines can be removed." }, { status: 409 });
+  }
+
+  const audit = await findCompletedChangeOrderAudit({
+    projectId,
+    sourceChangeOrderId: sourceChangeOrder.packageId,
+    targetCommitmentId: removalTarget.targetCommitmentId,
+  });
+  const plannedLines = plan.groups[0].lineItems;
+  if (
+    !audit
+    || Number(audit.reusedLineItems) !== 0
+    || Number(audit.createdLineItems) !== plannedLines.length
+  ) {
+    return NextResponse.json({
+      error: "The original add did not create every matched PO line, so automatic removal is blocked.",
+    }, { status: 409 });
+  }
+
+  let removalClaim: Awaited<ReturnType<typeof claimCommitmentMakerChangeOrderRemoval>> | null = null;
+  let contractPath = "";
+  let claimCanReturnToCompleted = true;
+  const restoreApprovedStatus = async () => {
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await procoreJson({
+        path: contractPath,
+        method: "PATCH",
+        accessToken,
+        companyId,
+        body: { status: "Approved" },
+      });
+      if (response.ok) return;
+      lastStatus = response.status;
+    }
+    throw new Error(`The PO could not be restored to Approved (${lastStatus}).`);
+  };
+  try {
+    removalClaim = await claimCommitmentMakerChangeOrderRemoval({ companyId, projectId, aliases: sourceAliases });
+    const existingLines = await fetchContractLineItems({
+      accessToken,
+      companyId,
+      projectId,
+      contractId: removalClaim.targetCommitmentId,
+    });
+    const lineIds = exactCommitmentLineIds(plannedLines, existingLines);
+    contractPath = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+      projectId
+    )}/commitment_contracts/${encodeURIComponent(removalClaim.targetCommitmentId)}`;
+    const draftResponse = await procoreJson({
+      path: contractPath,
+      method: "PATCH",
+      accessToken,
+      companyId,
+      body: { status: "Draft" },
+    });
+    if (!draftResponse.ok) {
+      throw new Error(`Procore would not move the PO to Draft (${draftResponse.status}); no lines were deleted.`);
+    }
+    claimCanReturnToCompleted = false;
+
+    const deleteResults = await Promise.allSettled(lineIds.map((lineId) => (
+      procoreJson({
+        path: `${contractPath}/line_items/${encodeURIComponent(lineId)}`,
+        method: "DELETE",
+        accessToken,
+        companyId,
+      })
+    )));
+    const rejectedDeleteRequest = deleteResults.find((result) => result.status === "rejected");
+    const rejectedDeleteResponse = deleteResults.find((result) => (
+      result.status === "fulfilled" && !result.value.ok
+    ));
+    const remainingLines = await fetchContractLineItems({
+      accessToken,
+      companyId,
+      projectId,
+      contractId: removalClaim.targetCommitmentId,
+    });
+    const remainingIds = new Set(remainingLines.map(readId));
+    const undeletedIds = lineIds.filter((lineId) => remainingIds.has(lineId));
+    if (rejectedDeleteRequest || rejectedDeleteResponse || undeletedIds.length > 0) {
+      const deletionFailure = rejectedDeleteRequest?.status === "rejected"
+        ? `A Procore line deletion request failed: ${rejectedDeleteRequest.reason instanceof Error ? rejectedDeleteRequest.reason.message : String(rejectedDeleteRequest.reason)}.`
+        : rejectedDeleteResponse?.status === "fulfilled"
+          ? `Procore rejected a line deletion (${rejectedDeleteResponse.value.status}).`
+          : `Procore retained ${undeletedIds.length} targeted line${undeletedIds.length === 1 ? "" : "s"}.`;
+      const missingLineIndexes = lineIds
+        .map((lineId, index) => remainingIds.has(lineId) ? -1 : index)
+        .filter((index) => index >= 0);
+      try {
+        const restoreResults = await Promise.allSettled(missingLineIndexes.map((index) => (
+          procoreJson({
+            path: `${contractPath}/line_items`,
+            method: "POST",
+            accessToken,
+            companyId,
+            body: commitmentMakerLineCreatePayload(plannedLines[index]),
+          })
+        )));
+        const failedRestore = restoreResults.find((result) => (
+          result.status === "rejected" || (result.status === "fulfilled" && !result.value.ok)
+        ));
+        if (failedRestore) {
+          const detail = failedRestore.status === "rejected"
+            ? failedRestore.reason instanceof Error ? failedRestore.reason.message : String(failedRestore.reason)
+            : `Procore returned ${failedRestore.value.status}`;
+          throw new Error(`Not every deleted PO line could be restored: ${detail}`);
+        }
+        const restoredLines = await fetchContractLineItems({
+          accessToken,
+          companyId,
+          projectId,
+          contractId: removalClaim.targetCommitmentId,
+        });
+        exactCommitmentLineIds(plannedLines, restoredLines);
+        await restoreApprovedStatus();
+      } catch (recoveryError) {
+        const recoveryMessage = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+        throw new Error(`${deletionFailure} Automatic recovery also failed: ${recoveryMessage}`);
+      }
+      claimCanReturnToCompleted = true;
+      throw new CommitmentMakerChangeOrderClaimError(
+        `${deletionFailure} The original PO lines were restored and no assignment changed.`,
+      );
+    }
+
+    try {
+      await restoreApprovedStatus();
+    } catch (approvalError) {
+      const approvalMessage = approvalError instanceof Error ? approvalError.message : String(approvalError);
+      throw new Error(`All ${lineIds.length} target lines were deleted, but ${approvalMessage}`);
+    }
+
+    await completeCommitmentMakerChangeOrderRemoval(removalClaim);
+    await writeAudit({
+      action: "remove-lines",
+      entityId: removalClaim.targetCommitmentId,
+      userEmail,
+      changes: {
+        projectId,
+        sourceChangeOrder,
+        removedLineItems: lineIds.length,
+        applicationId: removalClaim.applicationId,
+      },
+    });
+    return NextResponse.json({
+      success: true,
+      targetCommitmentId: removalClaim.targetCommitmentId,
+      removedLineItems: lineIds.length,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (removalClaim) {
+      if (!claimCanReturnToCompleted && contractPath) {
+        await restoreApprovedStatus().catch(() => undefined);
+      }
+      if (claimCanReturnToCompleted) {
+        await failCommitmentMakerChangeOrderRemoval({ ...removalClaim, error: message });
+      } else {
+        await markCommitmentMakerChangeOrderRemovalUncertain({ ...removalClaim, error: message });
+      }
+    }
+    if (error instanceof CommitmentMakerChangeOrderClaimError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const projectId = readText(request.nextUrl.searchParams.get("projectId"));
@@ -1797,6 +2127,25 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Procore Commitment Maker error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const csrf = validateCsrfRequest({
+    method: request.method,
+    requestUrl: request.url,
+    origin: request.headers.get("origin"),
+    referer: request.headers.get("referer"),
+  });
+  if (!csrf.allowed) {
+    return NextResponse.json({ error: "Cross-site request rejected." }, { status: 403 });
+  }
+  try {
+    return await handleDelete(request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Procore Commitment Maker removal error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

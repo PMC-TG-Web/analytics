@@ -165,7 +165,7 @@ async function hasSignedCommitmentMakerAccess(request: NextRequest): Promise<boo
     accessToken = String(request.nextUrl.searchParams.get('access') || '').trim();
   } else if (
     pathname === COMMITMENT_MAKER_API_PATH &&
-    ['GET', 'POST'].includes(request.method.toUpperCase())
+    ['GET', 'POST', 'DELETE'].includes(request.method.toUpperCase())
   ) {
     projectId = String(request.headers.get(COMMITMENT_MAKER_PROJECT_HEADER) || '').trim();
     accessToken = String(request.headers.get(COMMITMENT_MAKER_ACCESS_HEADER) || '').trim();

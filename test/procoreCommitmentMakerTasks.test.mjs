@@ -4,13 +4,19 @@ import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
 
-function loadModule() {
+function loadModule(notifyMissingProjectManager = async () => ({
+  recipient: "todd@pmcdecor.com",
+  messageId: "email-1",
+})) {
   const source = fs.readFileSync("src/lib/procoreCommitmentMakerTasks.ts", "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const module = { exports: {} };
   const require = (id) => {
+    if (id === "@/lib/missingProjectManagerNotification") {
+      return { notifyMissingProjectManager };
+    }
     if (id === "@/lib/timecardNotification") {
       return {
         selectProjectManagerRecipientsForDomain: (roles, users, domain) => {
@@ -213,9 +219,19 @@ test("preserves existing assignees and distribution members on automated tasks",
   ]);
 });
 
-test("blocks the workflow before creation when the project has no internal PM", async () => {
-  const { resolveCommitmentMakerChangeOrderTaskAssignees } = loadModule();
-  const request = async ({ path }) => {
+test("creates Shelly's task and emails Todd instead of assigning an external PM", async () => {
+  const alerts = [];
+  const { ensureCommitmentMakerChangeOrderTasks } = loadModule(async (params) => {
+    alerts.push(params);
+    return { recipient: "todd@pmcdecor.com", messageId: "email-1" };
+  });
+  const created = [];
+  const request = async ({ path, method, body }) => {
+    if (method === "POST") {
+      created.push(body.task_item);
+      return { id: 901 };
+    }
+    if (path.startsWith("/rest/v1.0/task_items?")) return [];
     if (path.startsWith("/rest/v1.0/project_roles?")) {
       return [{ role: "Project Manager", user_id: 777, is_active: true }];
     }
@@ -228,12 +244,22 @@ test("blocks the workflow before creation when the project has no internal PM", 
     throw new Error(`Unexpected request: ${path}`);
   };
 
-  await assert.rejects(
-    resolveCommitmentMakerChangeOrderTaskAssignees({
-      request,
-      companyId: "company",
-      projectId: "project",
-    }),
-    /No Project Manager with a @pmcdecor.com email/,
-  );
+  const result = await ensureCommitmentMakerChangeOrderTasks({
+    request,
+    companyId: "company",
+    projectId: "project",
+    projectNumber: "2601",
+    projectName: "Test Project",
+    changeOrder,
+  });
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0].assigned_id, 9549803);
+  assert.deepEqual(Array.from(created[0].assignee_ids), [9549803]);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].taskTitle, "Verify CO 001 Is in Commitments");
+  assert.equal(alerts[0].workflowKey, `commitment-maker-${changeOrder.packageId}`);
+  assert.equal(result.fallbackEmail.recipient, "todd@pmcdecor.com");
+  assert.equal(result.tasks[1].skipped, true);
+  assert.equal(result.tasks[1].taskId, null);
 });

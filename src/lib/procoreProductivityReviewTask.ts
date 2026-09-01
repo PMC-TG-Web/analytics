@@ -1,4 +1,5 @@
 import { makeRequest } from '@/lib/procore';
+import { notifyMissingProjectManager } from '@/lib/missingProjectManagerNotification';
 import {
   selectProjectManagerRecipientsForDomain,
   type ProjectRoleLike,
@@ -157,7 +158,26 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     projectId: params.projectId,
   });
   if (!projectManagerAssigneeIds.length) {
-    throw new Error('No Project Manager with an @pmcdecor.com email was found on this project.');
+    const fallbackEmail = await notifyMissingProjectManager({
+      companyId: params.companyId,
+      projectId: params.projectId,
+      projectNumber: params.projectNumber,
+      projectName: params.projectName,
+      taskTitle: TASK_TITLE,
+      workflowKey: `project-completion-${formatDate(completedAt)}`,
+      details: [`Review due: ${dueDate}`],
+    });
+    return {
+      created: false,
+      skipped: true,
+      skipReason: 'no-pmc-project-manager',
+      taskId: null,
+      dueDate,
+      projectManagerAssigneeIds,
+      notified: false,
+      sentTaskIds: [],
+      fallbackEmail,
+    };
   }
 
   if (existingTask) {

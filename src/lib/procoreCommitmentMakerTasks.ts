@@ -3,6 +3,7 @@ import {
   type ProjectRoleLike,
   type ProjectUserLike,
 } from "@/lib/timecardNotification";
+import { notifyMissingProjectManager } from "@/lib/missingProjectManagerNotification";
 
 const SHELLY_EMAIL = "shelly@pmcdecor.com";
 const PROJECT_MANAGER_EMAIL_DOMAIN = "pmcdecor.com";
@@ -195,9 +196,6 @@ export async function resolveCommitmentMakerChangeOrderTaskAssignees(params: {
   )
     .map((recipient) => numericId(recipient.id))
     .filter((id): id is number => id !== null);
-  if (projectManagerAssigneeIds.length === 0) {
-    throw new Error("No Project Manager with a @pmcdecor.com email was found on this project.");
-  }
   return { shellyAssigneeId, projectManagerAssigneeIds };
 }
 
@@ -217,17 +215,46 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
   ]);
 
   const specs = buildCommitmentMakerChangeOrderTaskSpecs(params);
+  let fallbackEmail: Awaited<ReturnType<typeof notifyMissingProjectManager>> | null = null;
   const results: Array<{
     kind: CommitmentMakerTaskSpec["kind"];
-    taskId: string;
+    taskId: string | null;
     title: string;
     created: boolean;
     updated: boolean;
     notified: boolean;
     assigneeIds: number[];
+    skipped?: boolean;
+    skipReason?: string;
   }> = [];
 
   for (const spec of specs) {
+    if (spec.kind === "commitment_verification" && assignees.projectManagerAssigneeIds.length === 0) {
+      fallbackEmail = await notifyMissingProjectManager({
+        companyId: params.companyId,
+        projectId: params.projectId,
+        projectNumber: params.projectNumber,
+        projectName: params.projectName,
+        taskTitle: spec.title,
+        workflowKey: `commitment-maker-${params.changeOrder.packageId}`,
+        details: [
+          `Change order: ${params.changeOrder.number || params.changeOrder.packageId}`,
+          `Change order amount: ${currency(params.changeOrder.amount)}`,
+        ],
+      });
+      results.push({
+        kind: spec.kind,
+        taskId: null,
+        title: spec.title,
+        created: false,
+        updated: false,
+        notified: false,
+        assigneeIds: [],
+        skipped: true,
+        skipReason: "no-pmc-project-manager",
+      });
+      continue;
+    }
     const requiredAssigneeIds = spec.kind === "aia_billing"
       ? [assignees.shellyAssigneeId]
       : assignees.projectManagerAssigneeIds;
@@ -294,6 +321,7 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
   return {
     success: true,
     ...assignees,
+    fallbackEmail,
     tasks: results,
   };
 }

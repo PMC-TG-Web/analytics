@@ -4,7 +4,10 @@ import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
 
-function loadModule(makeRequest) {
+function loadModule(makeRequest, notifyMissingProjectManager = async () => ({
+  recipient: "todd@pmcdecor.com",
+  messageId: "email-1",
+})) {
   const source = fs.readFileSync("src/lib/procoreProductivityReviewTask.ts", "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -12,6 +15,9 @@ function loadModule(makeRequest) {
   const module = { exports: {} };
   const require = (id) => {
     if (id === "@/lib/procore") return { makeRequest };
+    if (id === "@/lib/missingProjectManagerNotification") {
+      return { notifyMissingProjectManager };
+    }
     if (id === "@/lib/timecardNotification") {
       return {
         selectProjectManagerRecipientsForDomain: (roles, users, domain) => {
@@ -185,4 +191,40 @@ test("does not alter recipients or resend an automated task that Procore already
   assert.equal(result.created, false);
   assert.equal(result.notified, true);
   assert.equal(sendCalls, 0);
+});
+
+test("emails Todd and skips task creation when no internal project manager exists", async () => {
+  const alerts = [];
+  let taskCreateCalls = 0;
+  const makeRequest = async (path, _token, options) => {
+    if (options?.method === "POST") taskCreateCalls += 1;
+    if (path.startsWith("/rest/v1.0/task_items?")) return [];
+    if (path.startsWith("/rest/v1.0/project_roles?")) {
+      return [{ role: "Project Manager", user_id: 777, is_active: true }];
+    }
+    if (path.includes("/users?")) {
+      return [{ id: 777, name: "External PM", login: "pm@example.com" }];
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const { ensureProductivityReviewTaskOnComplete } = loadModule(makeRequest, async (params) => {
+    alerts.push(params);
+    return { recipient: "todd@pmcdecor.com", messageId: "email-1" };
+  });
+
+  const result = await ensureProductivityReviewTaskOnComplete({
+    token: "token",
+    companyId: "company",
+    projectId: "project",
+    projectNumber: "2601",
+    projectName: "Test Project",
+    completedAt: new Date("2026-08-01T12:00:00.000Z"),
+  });
+
+  assert.equal(taskCreateCalls, 0);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].taskTitle, "Field Productivity Review");
+  assert.equal(result.skipped, true);
+  assert.equal(result.taskId, null);
+  assert.equal(result.fallbackEmail.recipient, "todd@pmcdecor.com");
 });

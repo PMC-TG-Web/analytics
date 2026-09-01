@@ -425,6 +425,57 @@ async function fetchApprovedChangeOrdersFromAllDatabaseSources(companyId: string
     .sort((left, right) => `${left.number} ${left.title}`.localeCompare(`${right.number} ${right.title}`));
 }
 
+async function fetchExistingPurchaseOrdersFromDatabase(companyId: string, projectId: string) {
+  const [rows, projectVendors, companyVendors] = await Promise.all([
+    prisma.purchaseOrderContract.findMany({
+      where: {
+        procoreCompanyId: companyId,
+        procoreProjectId: projectId,
+        procoreId: { not: null },
+        procoreDeletedAt: null,
+      },
+      select: {
+        procoreId: true,
+        number: true,
+        title: true,
+        status: true,
+        vendorId: true,
+        vendorName: true,
+      },
+      orderBy: [{ number: "asc" }, { title: "asc" }],
+    }),
+    prisma.procoreProjectVendor.findMany({
+      where: { companyId, projectId, softDeleted: false },
+      select: { procoreVendorId: true, name: true, abbreviatedName: true },
+    }),
+    prisma.procore_company_vendors_live.findMany({
+      where: { company_id: companyId },
+      select: { vendor_id: true, name: true },
+    }),
+  ]);
+  const vendorNames = new Map([
+    ...companyVendors.map((vendor) => [vendor.vendor_id, vendor.name || ""] as const),
+    ...projectVendors.map((vendor) => [
+      vendor.procoreVendorId,
+      vendor.name || vendor.abbreviatedName || "",
+    ] as const),
+  ]);
+  return rows
+    .map((record) => ({
+      id: record.procoreId || "",
+      number: record.number || "",
+      title: record.title || "",
+      status: record.status || "",
+      vendorId: record.vendorId || "",
+      vendorName: record.vendorName || vendorNames.get(record.vendorId || "") || "",
+    }))
+    .filter((commitment) => (
+      commitment.id
+      && normalizeCommitmentMakerVendorName(commitment.vendorName)
+        === normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME)
+    ));
+}
+
 async function resolveApprovedChangeOrder(params: {
   accessToken: string;
   companyId: string;
@@ -1636,34 +1687,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "This project was not found in Analytics." }, { status: 404 });
     }
 
-    let approvedChangeOrders: ApprovedChangeOrder[] = [];
-    let existingCommitments: ReturnType<typeof commitmentOption>[] = [];
-    let changeOrderSource = "procore-live";
-    let changeOrderWarning = "";
-    try {
-      const accessToken = await getClientCredentialsToken();
-      approvedChangeOrders = await fetchApprovedChangeOrders(
-        accessToken,
-        procoreConfig.companyId,
-        projectId,
-      );
-      existingCommitments = purchaseOrderCommitments(
-        await fetchCommitments(accessToken, procoreConfig.companyId, projectId),
-      ).map(commitmentOption).filter((commitment) =>
-        commitment.id
-        && commitment.vendorName.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
-          === COMMITMENT_MAKER_VENDOR_NAME.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
-      );
-    } catch (error) {
-      changeOrderSource = "database-fallback";
-      const liveError = error instanceof Error ? error.message : String(error);
-      changeOrderWarning = /(?:429|rate limit)/i.test(liveError)
-        ? "Procore's temporary API limit was reached. The synchronized approved list is shown; refresh shortly for the live list."
-        : "Live Procore change orders could not be read; the latest synchronized approved list is shown.";
-      approvedChangeOrders = await fetchApprovedChangeOrdersFromAllDatabaseSources(procoreConfig.companyId, projectId);
-      console.warn("Commitment Maker approved change order live lookup fell back to the database:",
-        liveError);
-    }
+    const [approvedChangeOrders, existingCommitments] = await Promise.all([
+      fetchApprovedChangeOrdersFromAllDatabaseSources(procoreConfig.companyId, projectId),
+      fetchExistingPurchaseOrdersFromDatabase(procoreConfig.companyId, projectId),
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -1675,8 +1702,8 @@ export async function GET(request: NextRequest) {
       },
       approvedChangeOrders,
       existingCommitments,
-      changeOrderSource,
-      changeOrderWarning,
+      changeOrderSource: "database",
+      changeOrderWarning: "",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

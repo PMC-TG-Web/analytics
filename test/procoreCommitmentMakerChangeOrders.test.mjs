@@ -273,3 +273,14 @@ test("appends approved PCO lines directly to an existing commitment", () => {
   assert.match(route, /commitment_contracts\/\$\{encodeURIComponent\(contractId\)\}\/line_items/);
   assert.doesNotMatch(route, /\/commitment_change_orders/);
 });
+
+test("loads Commitment Maker project data from synchronized tables without blocking on Procore", () => {
+  const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+  const getHandler = route.slice(route.indexOf("export async function GET"), route.indexOf("export async function POST"));
+
+  assert.match(getHandler, /fetchApprovedChangeOrdersFromAllDatabaseSources/);
+  assert.match(getHandler, /fetchExistingPurchaseOrdersFromDatabase/);
+  assert.match(route, /procore_company_vendors_live\.findMany/);
+  assert.match(route, /record\.vendorName \|\| vendorNames\.get\(record\.vendorId \|\| ""\)/);
+  assert.doesNotMatch(getHandler, /getClientCredentialsToken|fetchApprovedChangeOrders\(|fetchCommitments\(/);
+});

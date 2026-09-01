@@ -52,7 +52,7 @@ type PreviewLine = {
 type PreviewGroup = {
   name: string;
   number: string;
-  action: "create" | "resume" | "change_order";
+  action: "create" | "resume" | "append";
   existingContractId: string;
   lineItems: PreviewLine[];
   total: number;
@@ -115,8 +115,6 @@ type CreateResult = {
     number: string;
     contractId?: string | null;
     createdContract?: boolean;
-    createdCommitmentChangeOrder?: boolean;
-    changeOrderId?: string;
     createdLineItems?: number;
     reusedLineItems?: number;
     status: string;
@@ -521,7 +519,7 @@ export default function CommitmentMakerPage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">Procore Commitments</p>
               <h1 className="mt-1 text-2xl font-black text-slate-900">Commitment Maker</h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Turn an estimate into approved purchase orders, or use an approved Procore change order to create a new PO or a change order on an existing PO.
+                Turn an estimate into approved purchase orders, or add approved Procore change-order lines to a new or existing PO.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -725,7 +723,7 @@ export default function CommitmentMakerPage() {
                 : "Base Estimate",
             ],
             ["Vendor", "Paradise Masonry, LLC"],
-            ["Type", sourceType === "approved_change_order" && commitmentTarget === "existing_purchase_order" ? "Commitment Change Order" : "Purchase Order"],
+            ["Type", sourceType === "approved_change_order" && commitmentTarget === "existing_purchase_order" ? "Purchase Order Lines" : "Purchase Order"],
             ["Title", sourceType === "approved_change_order" ? "Selected approved change order" : "Estimate group or combined name"],
             ["Final Status", "Approved"],
           ].map(([label, value]) => (
@@ -763,7 +761,7 @@ export default function CommitmentMakerPage() {
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{preview.target === "existing_purchase_order" ? "Change orders" : "POs"}</p><p className="text-lg font-black">{preview.totals.groups}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{preview.target === "existing_purchase_order" ? "Target POs" : "POs"}</p><p className="text-lg font-black">{preview.totals.groups}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Line items</p><p className="text-lg font-black">{preview.totals.lineItems}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Total</p><p className="text-lg font-black">{formatCurrency(preview.totals.amount)}</p></div>
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Source rows</p><p className="text-lg font-black">{preview.sourceRowCount}</p></div>
@@ -880,12 +878,12 @@ export default function CommitmentMakerPage() {
                       >
                         <span>
                           <span className="font-black text-slate-900">
-                            {group.action === "change_order" ? `PO ${group.number} change order` : `PO ${group.number}`} — {group.name}
+                            PO {group.number} — {group.name}
                           </span>
                           <span className="ml-2 text-xs font-semibold text-slate-500">{group.lineItems.length} lines · {formatCurrency(group.total)}</span>
                         </span>
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${group.action === "resume" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-                          {group.action === "change_order" ? "Add to existing PO" : group.action === "resume" ? "Resume existing" : "New PO"}
+                          {group.action === "append" ? "Append lines" : group.action === "resume" ? "Resume existing" : "New PO"}
                         </span>
                       </button>
                     </div>
@@ -942,14 +940,14 @@ export default function CommitmentMakerPage() {
                   className="mt-4 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   {busy
-                    ? preview.target === "existing_purchase_order" ? "Adding Change Order..." : "Creating Purchase Orders..."
+                    ? preview.target === "existing_purchase_order" ? "Adding Lines..." : "Creating Purchase Orders..."
                     : preview.target === "existing_purchase_order"
-                      ? "Add Approved Change Order to Existing PO"
+                      ? "Add PCO Lines to Existing PO"
                       : `Create ${preview.totals.groups} Approved Purchase Order${preview.totals.groups === 1 ? "" : "s"}`}
                 </button>
                 <p className="mt-2 text-xs text-indigo-800">
                   {preview.target === "existing_purchase_order"
-                    ? "The original PO stays intact. A commitment change order is staged as Draft, populated with these lines, then changed to Approved."
+                    ? "Only missing PCO lines are added directly to the selected purchase order. No commitment change order is created."
                     : "Each PO is staged as Draft while its line items are added, then changed to Approved after the PO is complete."}
                   {preview.sourceChangeOrder
                     ? " After successful creation, Shelly and the project manager will receive their Procore follow-up tasks."
@@ -971,15 +969,15 @@ export default function CommitmentMakerPage() {
               {result.success ? "Commitments created successfully" : "Commitment creation needs attention"}
             </h2>
             <p className="mt-1 text-sm">
-              Created {result.created || 0} PO(s), added {result.addedToExisting || 0} change order(s) to existing PO(s), resumed {result.resumed || 0}, failed {result.failed || 0}.
+              Created {result.created || 0} PO(s), updated {result.addedToExisting || 0} existing PO(s), resumed {result.resumed || 0}, failed {result.failed || 0}.
             </p>
             {result.error && <p className="mt-2 text-sm font-semibold text-red-800">{result.error}</p>}
             <div className="mt-4 space-y-2">
               {(result.results || []).map((item) => (
                 <div key={`${item.group}-${item.contractId || item.number}`} className="rounded-lg border border-white/80 bg-white px-4 py-3 text-sm">
-                  <p className="font-black">PO {item.number}{item.changeOrderId ? " change order" : ""} — {item.group}</p>
+                  <p className="font-black">PO {item.number} — {item.group}</p>
                   <p className="mt-1 text-xs text-slate-600">
-                    {item.status}{item.contractId ? ` · PO ID ${item.contractId}` : ""}{item.changeOrderId ? ` · Change Order ID ${item.changeOrderId}` : ""}
+                    {item.status}{item.contractId ? ` · PO ID ${item.contractId}` : ""}
                     {item.createdLineItems !== undefined ? ` · ${item.createdLineItems} lines created` : ""}
                     {item.reusedLineItems ? ` · ${item.reusedLineItems} existing lines reused` : ""}
                   </p>

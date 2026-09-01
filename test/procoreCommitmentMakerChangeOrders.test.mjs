@@ -178,3 +178,11 @@ test("keeps commitment change order resource paths separate from legacy packages
     "/rest/v2.0/companies/company%20id/projects/project%20id/commitment_change_orders/co%2Fid/line_items",
   );
 });
+
+test("appends approved PCO lines directly to an existing commitment", () => {
+  const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+
+  assert.match(route, /action: targetCommitment \? "append"/);
+  assert.match(route, /commitment_contracts\/\$\{encodeURIComponent\(contractId\)\}\/line_items/);
+  assert.doesNotMatch(route, /\/commitment_change_orders/);
+});

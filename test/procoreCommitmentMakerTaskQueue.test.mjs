@@ -36,3 +36,22 @@ test("commitment task retries back off and cap at one hour", () => {
     [5, 10, 20, 40, 60, 60],
   );
 });
+
+test("maker creates tasks immediately and queues only after that attempt fails", () => {
+  const source = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+  const immediateCreate = source.indexOf("taskResult = await ensureCommitmentMakerChangeOrderTasks");
+  const fallbackCatch = source.indexOf("catch (immediateTaskError)", immediateCreate);
+  const fallbackQueue = source.indexOf("await enqueueCommitmentMakerTasks", fallbackCatch);
+
+  assert.ok(immediateCreate > 0);
+  assert.ok(fallbackCatch > immediateCreate);
+  assert.ok(fallbackQueue > fallbackCatch);
+});
+
+test("dedicated scheduler drains commitment task jobs every five minutes", () => {
+  const source = fs.readFileSync("netlify/functions/commitment-maker-tasks-scheduled.mts", "utf8");
+
+  assert.match(source, /\/api\/cron\/commitment-maker-tasks/);
+  assert.match(source, /"x-sync-secret": syncSecret/);
+  assert.match(source, /schedule: "\*\/5 \* \* \* \*"/);
+});

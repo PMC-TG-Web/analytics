@@ -37,6 +37,7 @@ import {
   verifyCommitmentMakerAccessToken,
 } from "@/lib/commitmentMakerAccess";
 import {
+  ensureCommitmentMakerChangeOrderTasks,
   resolveCommitmentMakerChangeOrderTaskAssignees,
   type CommitmentMakerChangeOrderContext,
   type CommitmentMakerTaskRequest,
@@ -1342,43 +1343,72 @@ async function handleRequest(request: NextRequest) {
     }
   }
 
-  const taskResult = null;
+  let taskResult: Awaited<ReturnType<typeof ensureCommitmentMakerChangeOrderTasks>> | null = null;
   let taskError = "";
   let tasksQueued = false;
   if (!failure && sourceChangeOrder) {
     try {
-      await enqueueCommitmentMakerTasks({
+      const project = await prisma.pmcProject.findUnique({
+        where: {
+          companyId_procoreProjectId: {
+            companyId,
+            procoreProjectId: projectId,
+          },
+        },
+        select: { projectNumber: true, projectName: true },
+      });
+      taskResult = await ensureCommitmentMakerChangeOrderTasks({
+        request: taskRequest,
         companyId,
         projectId,
+        projectNumber: project?.projectNumber || null,
+        projectName: project?.projectName || `Procore Project ${projectId}`,
         changeOrder: sourceChangeOrder,
-        userEmail,
+        shellyCompanyUser,
       });
-      tasksQueued = true;
       await writeAudit({
-        action: "change-order-tasks-queued",
+        action: "change-order-tasks",
         entityId: sourceChangeOrder.packageId,
         userEmail,
-        changes: { projectId, changeOrder: sourceChangeOrder },
+        changes: { projectId, changeOrder: sourceChangeOrder, taskResult },
       });
-      const syncSecret = String(process.env.PROCORE_SYNC_SECRET || "").trim();
-      if (syncSecret) {
-        const dispatchResponse = await fetch(`${request.nextUrl.origin}/api/background/commitment-maker-tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-sync-secret": syncSecret },
-          body: "{}",
+    } catch (immediateTaskError) {
+      const immediateError = immediateTaskError instanceof Error ? immediateTaskError.message : String(immediateTaskError);
+      try {
+        await enqueueCommitmentMakerTasks({
+          companyId,
+          projectId,
+          changeOrder: sourceChangeOrder,
+          userEmail,
         });
-        if (!dispatchResponse.ok && dispatchResponse.status !== 202) {
-          console.warn(`Commitment Maker task background dispatch returned ${dispatchResponse.status}; the durable queue will retry.`);
+        tasksQueued = true;
+        await writeAudit({
+          action: "change-order-tasks-queued",
+          entityId: sourceChangeOrder.packageId,
+          userEmail,
+          changes: { projectId, changeOrder: sourceChangeOrder, immediateError },
+        });
+        const syncSecret = String(process.env.PROCORE_SYNC_SECRET || "").trim();
+        if (syncSecret) {
+          const dispatchResponse = await fetch(`${request.nextUrl.origin}/api/background/commitment-maker-tasks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-sync-secret": syncSecret },
+            body: "{}",
+          });
+          if (!dispatchResponse.ok && dispatchResponse.status !== 202) {
+            console.warn(`Commitment Maker task background dispatch returned ${dispatchResponse.status}; the durable queue will retry.`);
+          }
         }
+      } catch (queueError) {
+        const queueMessage = queueError instanceof Error ? queueError.message : String(queueError);
+        taskError = `${immediateError} Queue fallback failed: ${queueMessage}`;
+        await writeAudit({
+          action: "change-order-task-error",
+          entityId: sourceChangeOrder.packageId,
+          userEmail,
+          changes: { projectId, changeOrder: sourceChangeOrder, error: taskError },
+        });
       }
-    } catch (error) {
-      taskError = error instanceof Error ? error.message : String(error);
-      await writeAudit({
-        action: "change-order-task-error",
-        entityId: sourceChangeOrder.packageId,
-        userEmail,
-        changes: { projectId, changeOrder: sourceChangeOrder, error: taskError },
-      });
     }
   }
 

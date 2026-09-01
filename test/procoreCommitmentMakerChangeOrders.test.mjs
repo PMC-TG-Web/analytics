@@ -26,6 +26,7 @@ test("builds commitment lines directly from an approved change order SOV", () =>
   const group = approvedChangeOrderCommitmentGroup(
     { packageId: "500", number: "001", title: "Added sidewalk" },
     [{
+      description: "PCO budget description",
       quantity: "9.5",
       unit_cost: "144.3400",
       uom: "cy",

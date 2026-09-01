@@ -107,7 +107,7 @@ function sourceDescription(line: UnknownRecord, costCode: string): string {
   const wbs = record(line.wbs_code ?? line.wbsCode);
   const costCodeRecord = record(line.cost_code ?? line.costCode);
   const wbsDescription = text(wbs.description).replace(/\.[^.]+$/, "");
-  return text(line.description) || wbsDescription || text(costCodeRecord.name) || costCode;
+  return text(costCodeRecord.name) || text(line.cost_code_name ?? line.costCodeName) || text(line.description) || wbsDescription || costCode;
 }
 
 /**

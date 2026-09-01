@@ -400,20 +400,22 @@ async function fetchApprovedPotentialChangeOrdersFromDatabase(
       status: true,
       amount: true,
       sourceUpdatedAt: true,
+      payload: true,
     },
     orderBy: [{ number: "asc" }, { title: "asc" }],
   });
-  return rows.map((record) => ({
-    packageId: record.changeOrderId,
-    contractId: record.contractId || "",
-    number: record.number || "",
-    title: record.title || `Change Order ${record.number || record.changeOrderId}`,
-    status: String(record.status || "approved").toLowerCase(),
-    amount: record.amount === null ? null : Number(record.amount),
-    updatedAt: record.sourceUpdatedAt?.toISOString() || "",
-    sourceKind: "potential_change_order" as const,
-    containedPotentialChangeOrderIds: [],
-  }));
+  return rows
+    .map((record) => approvedPotentialChangeOrder({
+      ...(isRecord(record.payload) ? record.payload : {}),
+      id: record.changeOrderId,
+      contract_id: record.contractId,
+      number: record.number,
+      title: record.title,
+      status: record.status || "approved",
+      amount: record.amount === null ? null : Number(record.amount),
+      updated_at: record.sourceUpdatedAt?.toISOString(),
+    }))
+    .filter((record): record is ApprovedChangeOrder => Boolean(record));
 }
 
 async function fetchApprovedChangeOrdersFromAllDatabaseSources(companyId: string, projectId: string) {

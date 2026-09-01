@@ -167,6 +167,11 @@ test("exposes an approved PCO only while it is not already part of a PCCO", () =
   }), false);
   assert.equal(isAvailableApprovedPotentialChangeOrder({
     id: 100,
+    status: "approved",
+    change_order_package_acronym_number: "CCO #001",
+  }), false);
+  assert.equal(isAvailableApprovedPotentialChangeOrder({
+    id: 100,
     status: "pending",
     change_order_package_acronym_number: "PCCO #",
   }), false);

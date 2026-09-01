@@ -60,7 +60,7 @@ test("builds separate AIA and commitment-verification tasks for one approved cha
   assert.match(specs[1].description, /598134327089031:commitments/);
 });
 
-test("creates, assigns, and sends both tasks without creating duplicates", async () => {
+test("creates both tasks with PMC-only assignees and no project-wide email dispatch", async () => {
   const { ensureCommitmentMakerChangeOrderTasks } = loadModule();
   const created = [];
   let sendCalls = 0;
@@ -100,10 +100,12 @@ test("creates, assigns, and sends both tasks without creating duplicates", async
   assert.equal(result.tasks.length, 2);
   assert.equal(created[0].assigned_id, 9549803);
   assert.deepEqual(Array.from(created[0].assignee_ids), [9549803]);
+  assert.deepEqual(Array.from(created[0].distribution_member_ids), []);
   assert.equal(created[1].assigned_id, 123);
   assert.deepEqual(Array.from(created[1].assignee_ids), [123]);
-  assert.equal(sendCalls, 1);
-  assert.equal(result.tasks.every((task) => task.notified), true);
+  assert.deepEqual(Array.from(created[1].distribution_member_ids), []);
+  assert.equal(sendCalls, 0);
+  assert.equal(result.tasks.every((task) => task.notified === false), true);
 });
 
 test("reuses previously notified tagged tasks on a safe retry", async () => {
@@ -156,6 +158,63 @@ test("reuses previously notified tagged tasks on a safe retry", async () => {
   assert.equal(writeCalls, 0);
   assert.equal(sendCalls, 0);
   assert.equal(result.tasks.every((task) => task.created === false && task.notified), true);
+});
+
+test("removes external assignees and distribution members from existing automated tasks", async () => {
+  const { ensureCommitmentMakerChangeOrderTasks } = loadModule();
+  const patches = [];
+  const request = async ({ path, method, body }) => {
+    if (method === "PATCH") {
+      patches.push(body.task_item);
+      return { id: path.includes("/901?") ? 901 : 902 };
+    }
+    if (path.startsWith("/rest/v1.0/task_items?")) {
+      return [
+        {
+          id: 901,
+          description: `[analytics:commitment-maker-change-order:${changeOrder.packageId}:aia-billing]`,
+          assignee_ids: [9549803, 777],
+          distribution_member_ids: [888],
+        },
+        {
+          id: 902,
+          description: `[analytics:commitment-maker-change-order:${changeOrder.packageId}:commitments]`,
+          assignee_ids: [123, 777],
+          distribution_members: [{ id: 889 }],
+        },
+      ];
+    }
+    if (path.startsWith("/rest/v1.0/project_roles?")) {
+      return [{ role: "Project Manager", user_id: 123, is_active: true }];
+    }
+    if (path.includes("/users?")) {
+      return [
+        { id: 123, name: "Internal PM", login: "pm@pmcdecor.com" },
+        { id: 777, name: "External PM", login: "pm@example.com" },
+        { id: 9549803, name: "Shelly Swinehart", email_address: "shelly@pmcdecor.com" },
+      ];
+    }
+    throw new Error(`Unexpected request: ${method || "GET"} ${path}`);
+  };
+
+  const result = await ensureCommitmentMakerChangeOrderTasks({
+    request,
+    companyId: "company",
+    projectId: "598134326683024",
+    projectNumber: "2506-SDMB",
+    projectName: "Shank Door Main Building",
+    changeOrder,
+  });
+
+  assert.deepEqual(patches.map((patch) => ({
+    assignedId: patch.assigned_id,
+    assigneeIds: Array.from(patch.assignee_ids),
+    distributionMemberIds: Array.from(patch.distribution_member_ids),
+  })), [
+    { assignedId: 9549803, assigneeIds: [9549803], distributionMemberIds: [] },
+    { assignedId: 123, assigneeIds: [123], distributionMemberIds: [] },
+  ]);
+  assert.deepEqual(Array.from(result.tasks, (task) => Array.from(task.assigneeIds)), [[9549803], [123]]);
 });
 
 test("blocks the workflow before creation when the project has no internal PM", async () => {

@@ -61,7 +61,7 @@ test("builds separate AIA and commitment-verification tasks for one approved cha
   assert.equal(specs.length, 2);
   assert.equal(specs[0].title, "Add CO 001 to AIA Billing");
   assert.equal(specs[1].title, "Verify CO 001 Is in Commitments");
-  assert.equal(specs[0].dueDate, "2026-09-07");
+  assert.equal(specs[0].dueDate, "2026-08-31");
   assert.equal(specs[1].dueDate, "2026-08-31");
   assert.match(specs[0].description, /598134327089031:aia-billing/);
   assert.match(specs[1].description, /598134327089031:commitments/);
@@ -90,7 +90,7 @@ test("normalizes an approved Procore change order into task context", () => {
   );
 });
 
-test("uses PMC's Eastern calendar date for due-today verification", () => {
+test("uses PMC's Eastern creation date for both due-today tasks", () => {
   const { buildCommitmentMakerChangeOrderTaskSpecs } = loadModule();
   const specs = buildCommitmentMakerChangeOrderTaskSpecs({
     projectId: "project",
@@ -100,7 +100,7 @@ test("uses PMC's Eastern calendar date for due-today verification", () => {
     now: new Date("2026-09-01T02:00:00.000Z"),
   });
 
-  assert.equal(specs[1].dueDate, "2026-08-31");
+  assert.deepEqual(Array.from(specs, (spec) => spec.dueDate), ["2026-08-31", "2026-08-31"]);
 });
 
 test("creates only a due-today verification task without resolving Shelly", async () => {

@@ -8,7 +8,6 @@ import { notifyMissingProjectManager } from "@/lib/missingProjectManagerNotifica
 const SHELLY_EMAIL = "shelly@pmcdecor.com";
 const PROJECT_MANAGER_EMAIL_DOMAIN = "pmcdecor.com";
 const PMC_TIME_ZONE = "America/New_York";
-const AIA_TASK_DUE_OFFSET_DAYS = 7;
 
 type JsonObject = Record<string, unknown>;
 
@@ -91,10 +90,6 @@ function numericId(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function formatDate(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
 function formatPmcDate(value: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: PMC_TIME_ZONE,
@@ -102,12 +97,6 @@ function formatPmcDate(value: Date): string {
     month: "2-digit",
     day: "2-digit",
   }).format(value);
-}
-
-function addDays(value: Date, days: number): Date {
-  const result = new Date(value.getTime());
-  result.setUTCDate(result.getUTCDate() + days);
-  return result;
 }
 
 function currency(value: number | null): string {
@@ -156,8 +145,7 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
   now?: Date;
 }): CommitmentMakerTaskSpec[] {
   const now = params.now || new Date();
-  const aiaDueDate = formatDate(addDays(now, AIA_TASK_DUE_OFFSET_DAYS));
-  const verificationDueDate = formatPmcDate(now);
+  const dueDate = formatPmcDate(now);
   const projectLabel = [params.projectNumber, params.projectName]
     .map((value) => text(value))
     .filter(Boolean)
@@ -184,7 +172,7 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
         ...common,
         "Action: Add this approved change order to the project's AIA billing.",
       ].join("\n"),
-      dueDate: aiaDueDate,
+      dueDate,
     },
     {
       kind: "commitment_verification",
@@ -196,7 +184,7 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
         ...common,
         "Action: Verify that the approved change order was added to the project's commitments.",
       ].join("\n"),
-      dueDate: verificationDueDate,
+      dueDate,
     },
   ];
 }

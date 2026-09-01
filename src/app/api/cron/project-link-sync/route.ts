@@ -40,6 +40,15 @@ function errorStatus(error: unknown) {
   return Number(match?.[1] || 0);
 }
 
+function errorRateLimitUntil(error: unknown) {
+  if (errorStatus(error) !== 429) return null;
+  const provided = (error as { rateLimitUntil?: unknown })?.rateLimitUntil;
+  const parsed = provided instanceof Date ? provided : new Date(String(provided || ""));
+  return Number.isFinite(parsed.getTime()) && parsed > new Date()
+    ? parsed
+    : new Date(Date.now() + 15 * 60_000);
+}
+
 async function ensureExplicitProject(projectId: string) {
   await seedPmcProjectSyncQueue(COMPANY_ID, DATASET);
   await prisma.$executeRawUnsafe(
@@ -101,6 +110,7 @@ async function run(request: NextRequest) {
           projectId: project.projectId,
         });
       } catch (error) {
+        if (errorStatus(error) === 429) throw error;
         const message = error instanceof Error ? error.message : String(error);
         result.jobSchedule = { status: "error", error: message };
         errors.push(`Job Schedule: ${message}`);
@@ -112,6 +122,7 @@ async function run(request: NextRequest) {
           projectId: project.projectId,
         });
       } catch (error) {
+        if (errorStatus(error) === 429) throw error;
         const message = error instanceof Error ? error.message : String(error);
         result.commitmentMaker = { status: "error", error: message };
         errors.push(`Commitment Maker: ${message}`);
@@ -147,8 +158,8 @@ async function run(request: NextRequest) {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const rateLimited = errorStatus(error) === 429;
-      const rateLimitUntil = rateLimited ? new Date(Date.now() + 15 * 60_000) : null;
+      const rateLimitUntil = errorRateLimitUntil(error);
+      const rateLimited = Boolean(rateLimitUntil);
       if (rateLimited) {
         await setProcoreRateLimit({
           companyId: COMPANY_ID,

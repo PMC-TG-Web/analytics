@@ -72,7 +72,11 @@ export function procoreQuotaObservation(
       ? nowMs + retryAfterMs + (options.resetPaddingMs ?? 1_500)
       : null;
   const rateLimited = status === 429;
-  const reserveReached = remaining !== null && remaining <= Math.max(0, options.reserve);
+  const configuredReserve = Math.max(0, options.reserve);
+  const effectiveReserve = limit === null
+    ? configuredReserve
+    : Math.min(configuredReserve, Math.max(1, Math.floor(limit * 0.2)));
+  const reserveReached = remaining !== null && remaining <= effectiveReserve;
   const cooldownUntilMs = rateLimited || reserveReached
     ? resetAtMs ?? nowMs + Math.max(1_000, options.fallbackCooldownMs)
     : null;

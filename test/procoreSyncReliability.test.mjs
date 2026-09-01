@@ -60,6 +60,31 @@ test("Procore quota observations reserve background capacity until the provider 
   assert.equal(observation.cooldownUntil?.toISOString(), "2026-09-01T19:00:01.500Z");
 });
 
+test("Procore quota reserve scales down for small provider windows", () => {
+  const nowMs = Date.parse("2026-09-01T18:30:00.000Z");
+  const resetSeconds = Date.parse("2026-09-01T18:30:10.000Z") / 1_000;
+  const options = {
+    reserve: 100,
+    fallbackCooldownMs: 15 * 60_000,
+    nowMs,
+    resetPaddingMs: 1_500,
+  };
+
+  const available = procoreQuotaObservation(headers({
+    "x-rate-limit-limit": "25",
+    "x-rate-limit-remaining": "24",
+    "x-rate-limit-reset": String(resetSeconds),
+  }), 200, options);
+  const reserved = procoreQuotaObservation(headers({
+    "x-rate-limit-limit": "25",
+    "x-rate-limit-remaining": "5",
+    "x-rate-limit-reset": String(resetSeconds),
+  }), 200, options);
+
+  assert.equal(available.cooldownUntil, null);
+  assert.equal(reserved.cooldownUntil?.toISOString(), "2026-09-01T18:30:11.500Z");
+});
+
 test("Procore 429 observations use a bounded fallback when reset headers are absent", () => {
   const observation = procoreQuotaObservation(headers({}), 429, {
     reserve: 100,
@@ -530,6 +555,16 @@ test("provider rate limits defer queue work without creating project failures", 
     const route = await readFile(new URL(routePath, import.meta.url), "utf8");
     assert.match(route, /deferProjectSync\(\{/);
   }
+
+  const projectLinkRoute = await readFile(
+    new URL("../src/app/api/cron/project-link-sync/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    projectLinkRoute.match(/if \(errorStatus\(error\) === 429\) throw error;/g)?.length,
+    2,
+  );
+  assert.match(projectLinkRoute, /const provided = \(error as \{ rateLimitUntil\?: unknown \}\)\?\.rateLimitUntil/);
 });
 
 test("the shared Procore client gates background traffic but preserves interactive access", async () => {

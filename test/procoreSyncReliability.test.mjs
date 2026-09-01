@@ -406,8 +406,8 @@ test("background workers prioritize and drain multiple estimate projects per tic
   assert.match(actualsWorker, /secondaryWork: if \(!reconciliation/);
   assert.match(actualsWorker, /if \(estimateRateLimited\) \{\s+break secondaryWork;/);
   assert.ok(
-    actualsWorker.indexOf("break secondaryWork;") < actualsWorker.indexOf("let maxProjects = reconciliation"),
-    "rate-limited secondary work should continue into the Actuals loop",
+    actualsWorker.indexOf("/api/cron/actuals") < actualsWorker.indexOf('mode: "estimates"'),
+    "Actuals should run before secondary estimate work can start a shared rate-limit cooldown",
   );
 });
 

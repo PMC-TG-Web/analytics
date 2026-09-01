@@ -21,6 +21,45 @@ const handler = async (request: Request) => {
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
   );
+  const configuredCap = Math.min(
+    12,
+    Math.max(3, Number.parseInt(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK || "8", 10) || 8)
+  );
+  const reconciliationCap = Math.min(
+    3,
+    Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "2", 10) || 2)
+  );
+  let maxProjects = reconciliation ? reconciliationCap : 3;
+  for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
+    const response = await fetch(`${baseUrl}/api/cron/actuals`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": expected },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => null);
+    results.push({ status: response.status, result });
+    console.log(JSON.stringify({
+      event: "actuals-sync-background",
+      status: response.status,
+      success: result?.success,
+      skipped: result?.skipped,
+      reason: result?.reason,
+      projectId: result?.projectId,
+      totalMs: result?.totalMs,
+      queue: result?.queue,
+    }));
+    if (!reconciliation) {
+      const recommended = Number(result?.queue?.recommendedBatchSize || 3);
+      if (Number.isFinite(recommended)) {
+        maxProjects = Math.min(configuredCap, Math.max(maxProjects, Math.ceil(recommended)));
+      }
+    }
+    const rateLimited = Array.isArray(result?.steps)
+      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+    if (result?.skipped || rateLimited) break;
+    if (!response.ok || result?.success === false) continue;
+  }
+
   secondaryWork: if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -133,47 +172,6 @@ const handler = async (request: Request) => {
       if (!poResponse.ok || poResult?.success === false) continue;
       if (poResult?.skipped) break;
     }
-
-  }
-  const configuredCap = Math.min(
-    12,
-    Math.max(3, Number.parseInt(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK || "8", 10) || 8)
-  );
-  const reconciliationCap = Math.min(
-    3,
-    Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "2", 10) || 2)
-  );
-  let maxProjects = reconciliation ? reconciliationCap : 3;
-  for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
-    const response = await fetch(`${baseUrl}/api/cron/actuals`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": expected },
-      body: JSON.stringify(body),
-    });
-    const result = await response.json().catch(() => null);
-    results.push({ status: response.status, result });
-    console.log(JSON.stringify({
-      event: "actuals-sync-background",
-      status: response.status,
-      success: result?.success,
-      skipped: result?.skipped,
-      reason: result?.reason,
-      projectId: result?.projectId,
-      totalMs: result?.totalMs,
-      queue: result?.queue,
-    }));
-    if (!reconciliation) {
-      const recommended = Number(result?.queue?.recommendedBatchSize || 3);
-      if (Number.isFinite(recommended)) {
-        maxProjects = Math.min(configuredCap, Math.max(maxProjects, Math.ceil(recommended)));
-      }
-    }
-    const rateLimited = Array.isArray(result?.steps)
-      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-    // A slow or malformed project should be retried on its own schedule without
-    // preventing the worker from advancing to the next due project.
-    if (result?.skipped || rateLimited) break;
-    if (!response.ok || result?.success === false) continue;
   }
   return Response.json({
     success: true,

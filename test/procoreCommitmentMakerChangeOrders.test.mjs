@@ -301,3 +301,20 @@ test("rejects failed preview responses before storing preview state", () => {
   assert.match(page, /!Array\.isArray\(nextPreview\.validationErrors\)/);
   assert.match(page, /!nextPreview\.totals/);
 });
+
+test("resolves only the selected live change order before preview", () => {
+  const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+  const resolver = route.slice(
+    route.indexOf("async function resolveApprovedChangeOrder"),
+    route.indexOf("async function resolveChangeOrderSourceAliases"),
+  );
+
+  assert.match(resolver, /fetchApprovedChangeOrdersFromAllDatabaseSources/);
+  assert.match(resolver, /potential_change_orders\/\$\{encodeURIComponent\(storedMatch\.packageId\)\}/);
+  assert.match(resolver, /change_order_packages\/\$\{encodeURIComponent\(storedMatch\.packageId\)\}/);
+  assert.match(resolver, /liveLines: storedMatch\.sourceKind === "change_order_package"/);
+  assert.match(route, /resolvedSourceChangeOrder\?\.liveLines !== null/);
+  assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);
+  assert.match(route, /const \[sourceAliases, plan, shellyCompanyUser\] = await Promise\.all/);
+  assert.match(route, /const \[claimError, taskAssigneeResult\] = await Promise\.all/);
+});

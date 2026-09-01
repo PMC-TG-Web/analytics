@@ -275,78 +275,6 @@ function approvedPotentialChangeOrder(record: UnknownRecord): ApprovedChangeOrde
   };
 }
 
-function potentialChangeOrderPackageId(record: UnknownRecord): string {
-  const changeOrderPackage = isRecord(record.change_order_package)
-    ? record.change_order_package
-    : isRecord(record.prime_contract_change_order)
-      ? record.prime_contract_change_order
-      : {};
-  return readText(
-    record.change_order_package_id
-    ?? record.prime_contract_change_order_id
-    ?? changeOrderPackage.id,
-  );
-}
-
-async function fetchApprovedChangeOrders(
-  accessToken: string,
-  companyId: string,
-  projectId: string,
-): Promise<ApprovedChangeOrder[]> {
-  const primeContracts = await fetchPaged({
-    accessToken,
-    companyId,
-    keys: ["data", "prime_contracts"],
-    pathForPage: (page) =>
-      `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
-  });
-  const [packages, potentialChangeOrders] = await Promise.all([
-    Promise.all(primeContracts.map(async (contract) => {
-    const contractId = readId(contract);
-    if (!contractId) return [];
-    return fetchPaged({
-      accessToken,
-      companyId,
-      keys: ["data", "change_order_packages"],
-      pathForPage: (page) =>
-        `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(projectId)}&contract_id=${encodeURIComponent(
-          contractId
-        )}&page=${page}&per_page=100`,
-    }).then((records) => records.map((record) => ({ record, contractId })));
-    })).then((records) => records.flat()),
-    fetchPaged({
-      accessToken,
-      companyId,
-      keys: ["data", "potential_change_orders"],
-      pathForPage: (page) =>
-        `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
-    }),
-  ]);
-  const potentialChangeOrderIdsByPackage = new Map<string, string[]>();
-  for (const record of potentialChangeOrders) {
-    const packageId = potentialChangeOrderPackageId(record);
-    const changeOrderId = readId(record);
-    if (!packageId || !changeOrderId) continue;
-    potentialChangeOrderIdsByPackage.set(packageId, [
-      ...(potentialChangeOrderIdsByPackage.get(packageId) || []),
-      changeOrderId,
-    ]);
-  }
-  return [
-    ...packages
-      .map(({ record, contractId }) => approvedChangeOrder(record, contractId))
-      .filter((record): record is ApprovedChangeOrder => Boolean(record))
-      .map((record) => ({
-        ...record,
-        containedPotentialChangeOrderIds: potentialChangeOrderIdsByPackage.get(record.packageId) || [],
-      })),
-    ...potentialChangeOrders
-      .map(approvedPotentialChangeOrder)
-      .filter((record): record is ApprovedChangeOrder => Boolean(record)),
-  ]
-    .sort((left, right) => `${left.number} ${left.title}`.localeCompare(`${right.number} ${right.title}`));
-}
-
 async function fetchApprovedChangeOrdersFromDatabase(
   companyId: string,
   projectId: string,
@@ -483,13 +411,35 @@ async function resolveApprovedChangeOrder(params: {
   companyId: string;
   projectId: string;
   packageId: string;
-}) {
-  const live = await fetchApprovedChangeOrders(params.accessToken, params.companyId, params.projectId)
-    .catch(() => []);
-  const liveMatch = live.find((record) => record.packageId === params.packageId);
-  if (liveMatch) return liveMatch;
+}): Promise<{ changeOrder: ApprovedChangeOrder; liveLines: UnknownRecord[] | null } | null> {
   const stored = await fetchApprovedChangeOrdersFromAllDatabaseSources(params.companyId, params.projectId);
-  return stored.find((record) => record.packageId === params.packageId) || null;
+  const storedMatch = stored.find((record) => record.packageId === params.packageId) || null;
+  if (!storedMatch) return null;
+
+  const path = storedMatch.sourceKind === "potential_change_order"
+    ? `/rest/v1.0/potential_change_orders/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(params.projectId)}`
+    : `/rest/v1.0/change_order_packages/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(
+        params.projectId
+      )}&contract_id=${encodeURIComponent(storedMatch.contractId)}`;
+  const response = await procoreJson({
+    path,
+    accessToken: params.accessToken,
+    companyId: params.companyId,
+  }).catch(() => null);
+  if (!response?.ok) return { changeOrder: storedMatch, liveLines: null };
+
+  const liveRecord = unwrapData(response.payload);
+  if (!isRecord(liveRecord)) return { changeOrder: storedMatch, liveLines: null };
+  const liveMatch = storedMatch.sourceKind === "potential_change_order"
+    ? approvedPotentialChangeOrder(liveRecord)
+    : approvedChangeOrder(liveRecord, storedMatch.contractId);
+  if (liveMatch?.packageId !== storedMatch.packageId) return null;
+  return {
+    changeOrder: liveMatch,
+    liveLines: storedMatch.sourceKind === "change_order_package"
+      ? asArray(liveRecord, ["line_items", "data"])
+      : null,
+  };
 }
 
 async function resolveChangeOrderSourceAliases(
@@ -1198,9 +1148,10 @@ async function handleRequest(request: NextRequest) {
     accessToken = cookieToken;
     tokenSource = "user_oauth_fallback";
   }
-  const sourceChangeOrder = changeOrderPackageId
+  const resolvedSourceChangeOrder = changeOrderPackageId
     ? await resolveApprovedChangeOrder({ accessToken, companyId, projectId, packageId: changeOrderPackageId })
     : null;
+  const sourceChangeOrder = resolvedSourceChangeOrder?.changeOrder || null;
   if (changeOrderPackageId && !sourceChangeOrder) {
     return NextResponse.json(
       { error: "The selected change order is not currently approved for this Procore project." },
@@ -1208,7 +1159,9 @@ async function handleRequest(request: NextRequest) {
     );
   }
   const rawSourceChangeOrderLines = sourceChangeOrder
-    ? await fetchApprovedChangeOrderLines({ accessToken, companyId, projectId, changeOrder: sourceChangeOrder })
+    ? resolvedSourceChangeOrder?.liveLines !== null
+      ? resolvedSourceChangeOrder.liveLines
+      : await fetchApprovedChangeOrderLines({ accessToken, companyId, projectId, changeOrder: sourceChangeOrder })
     : [];
   const sourceChangeOrderLines = sourceChangeOrder
     ? await enrichChangeOrderLinesFromEstimate({
@@ -1248,43 +1201,48 @@ async function handleRequest(request: NextRequest) {
   const importFingerprint = createHash("sha256")
     .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
-  const sourceAliases = sourceChangeOrder
-    ? await resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
-    : [];
-  const plan = await buildPlan({
-    accessToken,
-    companyId,
-    projectId,
-    groups,
-    importFingerprint,
-    target,
-    existingCommitmentId,
-    sourceChangeOrderId: sourceChangeOrder?.packageId || "",
-  });
-  if (sourceChangeOrder) {
-    const claimError = await inspectCommitmentMakerChangeOrderClaim({
+  const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
+  const [sourceAliases, plan, shellyCompanyUser] = await Promise.all([
+    sourceChangeOrder
+      ? resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
+      : [],
+    buildPlan({
+      accessToken,
       companyId,
       projectId,
-      aliases: sourceAliases,
-      targetKind: target,
-      requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
-    });
-    if (claimError) plan.validationErrors.push(claimError);
-  }
-  const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
-  const shellyCompanyUser = sourceChangeOrder ? await findShellyCompanyUser() : null;
+      groups,
+      importFingerprint,
+      target,
+      existingCommitmentId,
+      sourceChangeOrderId: sourceChangeOrder?.packageId || "",
+    }),
+    sourceChangeOrder ? findShellyCompanyUser() : null,
+  ]);
   let taskAssigneePreview: Awaited<ReturnType<typeof resolveCommitmentMakerChangeOrderTaskAssignees>> | null = null;
   if (sourceChangeOrder) {
-    try {
-      taskAssigneePreview = await resolveCommitmentMakerChangeOrderTaskAssignees({
+    const [claimError, taskAssigneeResult] = await Promise.all([
+      inspectCommitmentMakerChangeOrderClaim({
+        companyId,
+        projectId,
+        aliases: sourceAliases,
+        targetKind: target,
+        requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
+      }),
+      resolveCommitmentMakerChangeOrderTaskAssignees({
         request: taskRequest,
         companyId,
         projectId,
         shellyCompanyUser,
-      });
-    } catch (error) {
+      }).then(
+        (assignees) => ({ assignees, error: null }),
+        (error: unknown) => ({ assignees: null, error }),
+      ),
+    ]);
+    if (claimError) plan.validationErrors.push(claimError);
+    taskAssigneePreview = taskAssigneeResult.assignees;
+    if (taskAssigneeResult.error) {
       plan.validationErrors.push(
-        `Follow-up tasks: ${error instanceof Error ? error.message : String(error)}`,
+        `Follow-up tasks: ${taskAssigneeResult.error instanceof Error ? taskAssigneeResult.error.message : String(taskAssigneeResult.error)}`,
       );
     }
   }

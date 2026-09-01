@@ -87,7 +87,7 @@ test("creates the productivity review task with PMC-only assignees and no broad 
   assert.deepEqual(Array.from(result.sentTaskIds), []);
 });
 
-test("replaces external recipients on an existing automated task", async () => {
+test("adds the internal project manager without removing existing task recipients", async () => {
   let patchedPayload;
   let sendCalls = 0;
   const makeRequest = async (path, _token, options) => {
@@ -133,25 +133,21 @@ test("replaces external recipients on an existing automated task", async () => {
   });
 
   assert.equal(result.created, false);
-  assert.equal(patchedPayload.assigned_id, 123);
-  assert.deepEqual(patchedPayload.assignee_ids, [123]);
-  assert.deepEqual(patchedPayload.distribution_member_ids, []);
+  assert.equal(patchedPayload.assigned_id, 777);
+  assert.deepEqual(patchedPayload.assignee_ids, [777, 123]);
+  assert.equal(patchedPayload.distribution_member_ids, undefined);
   assert.equal(sendCalls, 0);
   assert.equal(result.notified, false);
 });
 
-test("does not resend an automated task that Procore already notified", async () => {
+test("does not alter recipients or resend an automated task that Procore already notified", async () => {
   let sendCalls = 0;
-  let patchedPayload;
   const makeRequest = async (path, _token, options) => {
     if (path.startsWith("/rest/v1.0/task_items/send_unsent?")) {
       sendCalls += 1;
       return [{ id: 456 }];
     }
-    if (options?.method === "PATCH") {
-      patchedPayload = JSON.parse(options.body).task_item;
-      return { id: 456 };
-    }
+    if (options?.method === "PATCH") throw new Error("Existing recipients should not be changed");
     if (path.startsWith("/rest/v1.0/task_items?")) {
       return [{
         id: 456,
@@ -189,5 +185,4 @@ test("does not resend an automated task that Procore already notified", async ()
   assert.equal(result.created, false);
   assert.equal(result.notified, true);
   assert.equal(sendCalls, 0);
-  assert.deepEqual(patchedPayload.distribution_member_ids, []);
 });

@@ -65,18 +65,6 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-function readTaskDistributionMemberIds(task: JsonObject): number[] {
-  const directIds = Array.isArray(task.distribution_member_ids)
-    ? task.distribution_member_ids
-    : [];
-  const memberIds = Array.isArray(task.distribution_members)
-    ? task.distribution_members.map((member) => asObject(member)?.id)
-    : [];
-  return [...new Set([...directIds, ...memberIds]
-    .map(readNumber)
-    .filter((id): id is number => id !== null))];
-}
-
 function readTaskAssigneeIds(task: JsonObject): number[] {
   const assignedId = readNumber(task.assigned_id ?? task.assignedId);
   const directIds = Array.isArray(task.assignee_ids)
@@ -136,12 +124,6 @@ async function resolveProjectManagerAssigneeIds(params: {
     .filter((id): id is number => id !== null);
 }
 
-function sameIds(left: number[], right: number[]): boolean {
-  if (left.length !== right.length) return false;
-  const rightSet = new Set(right);
-  return left.every((id) => rightSet.has(id));
-}
-
 function taskWasNotified(task: JsonObject): boolean {
   return Boolean(String(task.date_notified || task.dateNotified || '').trim());
 }
@@ -183,15 +165,12 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     if (!taskId) {
       throw new Error('The existing automated Procore Task Item is missing its ID.');
     }
-    const currentMemberIds = readTaskDistributionMemberIds(existingTask);
     const currentAssigneeIds = readTaskAssigneeIds(existingTask);
+    const mergedAssigneeIds = [...new Set([...currentAssigneeIds, ...projectManagerAssigneeIds])];
     const patch: JsonObject = {};
-    if (currentMemberIds.length) {
-      patch.distribution_member_ids = [];
-    }
-    if (!sameIds(currentAssigneeIds, projectManagerAssigneeIds)) {
-      patch.assigned_id = projectManagerAssigneeIds[0];
-      patch.assignee_ids = projectManagerAssigneeIds;
+    if (mergedAssigneeIds.length !== currentAssigneeIds.length) {
+      patch.assigned_id = currentAssigneeIds[0] || projectManagerAssigneeIds[0];
+      patch.assignee_ids = mergedAssigneeIds;
     }
     if (taskId && Object.keys(patch).length) {
       await makeRequest(

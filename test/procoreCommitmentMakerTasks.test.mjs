@@ -160,7 +160,7 @@ test("reuses previously notified tagged tasks on a safe retry", async () => {
   assert.equal(result.tasks.every((task) => task.created === false && task.notified), true);
 });
 
-test("removes external assignees and distribution members from existing automated tasks", async () => {
+test("preserves existing assignees and distribution members on automated tasks", async () => {
   const { ensureCommitmentMakerChangeOrderTasks } = loadModule();
   const patches = [];
   const request = async ({ path, method, body }) => {
@@ -206,15 +206,11 @@ test("removes external assignees and distribution members from existing automate
     changeOrder,
   });
 
-  assert.deepEqual(patches.map((patch) => ({
-    assignedId: patch.assigned_id,
-    assigneeIds: Array.from(patch.assignee_ids),
-    distributionMemberIds: Array.from(patch.distribution_member_ids),
-  })), [
-    { assignedId: 9549803, assigneeIds: [9549803], distributionMemberIds: [] },
-    { assignedId: 123, assigneeIds: [123], distributionMemberIds: [] },
+  assert.deepEqual(patches, []);
+  assert.deepEqual(Array.from(result.tasks, (task) => Array.from(task.assigneeIds)), [
+    [9549803, 777],
+    [123, 777],
   ]);
-  assert.deepEqual(Array.from(result.tasks, (task) => Array.from(task.assigneeIds)), [[9549803], [123]]);
 });
 
 test("blocks the workflow before creation when the project has no internal PM", async () => {

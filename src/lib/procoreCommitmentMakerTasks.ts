@@ -96,15 +96,6 @@ function taskAssigneeIds(task: JsonObject): number[] {
     .filter((id): id is number => id !== null))];
 }
 
-function taskDistributionMemberIds(task: JsonObject): number[] {
-  const direct = Array.isArray(task.distribution_member_ids) ? task.distribution_member_ids : [];
-  const nested = Array.isArray(task.distribution_members)
-    ? task.distribution_members.map((member) => asObject(member)?.id)
-    : [];
-  return [...new Set([...direct.map(numericId), ...nested.map(numericId)]
-    .filter((id): id is number => id !== null))];
-}
-
 function taskId(task: JsonObject): string {
   return text(task.id ?? asObject(task.task_item)?.id);
 }
@@ -245,19 +236,16 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
       const id = taskId(existing);
       if (!id) throw new Error(`The existing automated task "${spec.title}" is missing its ID.`);
       const currentAssigneeIds = taskAssigneeIds(existing);
-      const currentDistributionMemberIds = taskDistributionMemberIds(existing);
-      const updated = currentDistributionMemberIds.length > 0
-        || currentAssigneeIds.length !== requiredAssigneeIds.length
-        || currentAssigneeIds.some((assigneeId) => !requiredAssigneeIds.includes(assigneeId));
+      const mergedAssigneeIds = [...new Set([...currentAssigneeIds, ...requiredAssigneeIds])];
+      const updated = mergedAssigneeIds.length !== currentAssigneeIds.length;
       if (updated) {
         await params.request({
           path: `/rest/v1.0/task_items/${encodeURIComponent(id)}?project_id=${encodeURIComponent(params.projectId)}`,
           method: "PATCH",
           body: {
             task_item: {
-              assigned_id: requiredAssigneeIds[0],
-              assignee_ids: requiredAssigneeIds,
-              distribution_member_ids: [],
+              assigned_id: currentAssigneeIds[0] || requiredAssigneeIds[0],
+              assignee_ids: mergedAssigneeIds,
             },
           },
         });
@@ -269,7 +257,7 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
         created: false,
         updated,
         notified: taskWasNotified(existing),
-        assigneeIds: requiredAssigneeIds,
+        assigneeIds: mergedAssigneeIds,
       });
       continue;
     }

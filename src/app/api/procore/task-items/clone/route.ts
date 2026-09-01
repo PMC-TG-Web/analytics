@@ -393,7 +393,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const [sourceTasks, sourceCategories, targetCategories, sourceAssignees, targetAssignees, sourceDistribution, sourceComments] =
+    const [sourceTasks, sourceCategories, targetCategories, sourceAssignees, targetAssignees, sourceDistribution, targetDistribution, sourceComments] =
       await Promise.all([
         fetchTaskItems({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
         fetchTaskItemCategories({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
@@ -401,6 +401,7 @@ export async function POST(request: Request) {
         fetchTaskAssigneeOptions({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
         fetchTaskAssigneeOptions({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
         fetchDistributionOptions({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
+        fetchDistributionOptions({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
         cloneComments
           ? fetchTaskComments({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages })
           : Promise.resolve([]),
@@ -434,6 +435,12 @@ export async function POST(request: Request) {
     const sourceDistributionKeysById = new Map<number, string[]>();
     for (const row of sourceDistribution) {
       sourceDistributionKeysById.set(row.id, makeDistributionKeys(row));
+    }
+    const targetDistributionIdByKey = new Map<string, number>();
+    for (const row of targetDistribution) {
+      for (const key of makeDistributionKeys(row)) {
+        if (!targetDistributionIdByKey.has(key)) targetDistributionIdByKey.set(key, row.id);
+      }
     }
     const selectedSourceTasks = sourceTasks
       .filter((row) => {
@@ -472,7 +479,7 @@ export async function POST(request: Request) {
         ...(Array.isArray(sourceTask.distribution_member_ids) ? sourceTask.distribution_member_ids : []),
         ...unwrapArray(sourceTask.distribution_members).map((entry) => readNum(entry.id)).filter((value) => value !== undefined),
       ]);
-      const mappedDistribution = mapManyIds(sourceDistributionIds, sourceDistributionKeysById, new Map());
+      const mappedDistribution = mapManyIds(sourceDistributionIds, sourceDistributionKeysById, targetDistributionIdByKey);
 
       const payload: UnknownRecord = {
         title: readStr(sourceTask.title),

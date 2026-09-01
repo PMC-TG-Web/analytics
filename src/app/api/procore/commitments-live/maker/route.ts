@@ -24,6 +24,7 @@ import {
 } from "@/lib/procore/commitmentMaker";
 import {
   approvedChangeOrderCommitmentGroup,
+  enrichApprovedChangeOrderLinesFromEstimate,
   isAvailableApprovedPotentialChangeOrder,
   selectExistingChangeOrderPurchaseOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
@@ -479,6 +480,66 @@ async function fetchApprovedChangeOrderLines(params: {
     quantity: line.quantity === null ? null : Number(line.quantity),
     unitCost: line.unitCost === null ? null : Number(line.unitCost),
   }));
+}
+
+function changeOrderReferenceNumber(value: unknown): string {
+  const direct = readText(value).match(/^0*(\d+)$/);
+  if (direct) return String(Number(direct[1]));
+  const labeled = readText(value).match(/\bCO\s*#?\s*0*(\d+)\b/i);
+  return labeled ? String(Number(labeled[1])) : "";
+}
+
+async function enrichChangeOrderLinesFromEstimate(params: {
+  companyId: string;
+  projectId: string;
+  changeOrder: ApprovedChangeOrder;
+  sourceLines: UnknownRecord[];
+}): Promise<UnknownRecord[]> {
+  const referenceNumber = changeOrderReferenceNumber(params.changeOrder.number);
+  if (!referenceNumber) return params.sourceLines;
+
+  const proposals = await prisma.procoreEstimateProposal.findMany({
+    where: {
+      companyId: params.companyId,
+      procoreProjectId: params.projectId,
+    },
+    select: {
+      bidBoardProjectId: true,
+      proposalId: true,
+      proposalName: true,
+    },
+  }).catch(() => []);
+  const matchingProposals = proposals.filter(
+    (proposal) => changeOrderReferenceNumber(proposal.proposalName) === referenceNumber,
+  );
+  if (matchingProposals.length !== 1) return params.sourceLines;
+
+  const proposal = matchingProposals[0];
+  const estimateLines = await prisma.procoreEstimateLineItem.findMany({
+    where: {
+      companyId: params.companyId,
+      bidBoardProjectId: proposal.bidBoardProjectId,
+      proposalId: proposal.proposalId,
+    },
+    select: {
+      name: true,
+      uom: true,
+      quantity: true,
+      itemCost: true,
+      laborCost: true,
+    },
+    orderBy: { id: "asc" },
+  }).catch(() => []);
+  return enrichApprovedChangeOrderLinesFromEstimate(
+    params.sourceLines,
+    estimateLines.map((line) => ({
+      name: line.name,
+      uom: line.uom,
+      quantity: line.quantity === null ? null : Number(line.quantity),
+      itemCost: line.itemCost === null ? null : Number(line.itemCost),
+      laborCost: line.laborCost === null ? null : Number(line.laborCost),
+    })),
+  );
 }
 
 async function fetchProjectWbsRecords(
@@ -1033,9 +1094,17 @@ async function handleRequest(request: NextRequest) {
       { status: 409 },
     );
   }
-  const sourceChangeOrderLines = sourceChangeOrder
+  const rawSourceChangeOrderLines = sourceChangeOrder
     ? await fetchApprovedChangeOrderLines({ accessToken, companyId, projectId, changeOrder: sourceChangeOrder })
     : [];
+  const sourceChangeOrderLines = sourceChangeOrder
+    ? await enrichChangeOrderLinesFromEstimate({
+        companyId,
+        projectId,
+        changeOrder: sourceChangeOrder,
+        sourceLines: rawSourceChangeOrderLines,
+      })
+    : rawSourceChangeOrderLines;
   const workbookImport = !sourceChangeOrder && workbookBase64
     ? workbookFromBase64(workbookBase64, sheetName, fileName)
     : null;

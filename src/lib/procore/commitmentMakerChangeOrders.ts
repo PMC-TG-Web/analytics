@@ -110,6 +110,74 @@ function sourceDescription(line: UnknownRecord, costCode: string): string {
   return text(line.description) || text(costCodeRecord.name) || text(line.cost_code_name ?? line.costCodeName) || wbsDescription || costCode;
 }
 
+function normalizedUom(value: unknown): string {
+  const normalized = text(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (["ea", "each"].includes(normalized)) return "ea";
+  if (["cy", "cuyd", "cubicyard", "cubicyards"].includes(normalized)) return "cy";
+  if (["sf", "sqft", "squarefoot", "squarefeet"].includes(normalized)) return "sf";
+  if (["hr", "hrs", "hour", "hours"].includes(normalized)) return "hours";
+  return normalized;
+}
+
+function estimateLineAmount(line: UnknownRecord): number | null {
+  const itemCost = number(line.itemCost ?? line.item_cost) ?? 0;
+  const laborCost = number(line.laborCost ?? line.labor_cost) ?? 0;
+  const amount = itemCost + laborCost;
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function matchingEstimateSubsets(sourceLine: UnknownRecord, estimateLines: UnknownRecord[]): UnknownRecord[][] {
+  const sourceQuantity = number(sourceLine.quantity);
+  const sourceAmount = number(sourceLine.amount)
+    ?? ((sourceQuantity ?? 0) * (number(sourceLine.unit_cost ?? sourceLine.unitCost) ?? 0));
+  const sourceUom = normalizedUom(sourceLine.uom);
+  if (!sourceUom || sourceQuantity === null || sourceQuantity <= 0 || sourceAmount <= 0) return [];
+
+  const candidates = estimateLines.filter((line) => (
+    Boolean(text(line.name))
+    && normalizedUom(line.uom) === sourceUom
+    && (number(line.quantity) ?? 0) > 0
+    && estimateLineAmount(line) !== null
+  ));
+  if (candidates.length > 20) return [];
+
+  const matches: UnknownRecord[][] = [];
+  const visit = (start: number, selected: UnknownRecord[], quantity: number, amount: number) => {
+    if (Math.abs(quantity - sourceQuantity) <= 0.0001 && Math.abs(amount - sourceAmount) <= 0.02) {
+      matches.push([...selected]);
+      return;
+    }
+    if (selected.length >= 4 || quantity > sourceQuantity + 0.0001 || amount > sourceAmount + 0.02) return;
+    for (let index = start; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      visit(
+        index + 1,
+        [...selected, candidate],
+        quantity + (number(candidate.quantity) ?? 0),
+        amount + (estimateLineAmount(candidate) ?? 0),
+      );
+      if (matches.length > 1) return;
+    }
+  };
+  visit(0, [], 0, 0);
+  return matches;
+}
+
+export function enrichApprovedChangeOrderLinesFromEstimate(
+  sourceLines: UnknownRecord[],
+  estimateLines: UnknownRecord[],
+): UnknownRecord[] {
+  return sourceLines.map((line) => {
+    if (text(line.description)) return line;
+    const matches = matchingEstimateSubsets(line, estimateLines);
+    if (matches.length !== 1) return line;
+    const description = matches[0]
+      .map((match) => `${text(match.name)} (${number(match.quantity)} ${text(match.uom).toLowerCase()})`)
+      .join(" + ");
+    return description ? { ...line, description } : line;
+  });
+}
+
 /**
  * Turns an approved Prime Contract Change Order SOV into one editable/reviewable
  * commitment group. Because Procore requires a Budget Code on commitment

@@ -52,6 +52,33 @@ test("uses the specific PCO item description instead of the generic cost code na
   );
 });
 
+test("combines uniquely matching estimate items to describe a blended PCO line", () => {
+  const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
+  const [line] = enrichApprovedChangeOrderLinesFromEstimate(
+    [{ quantity: "8", unit_cost: "9.7175", amount: "77.74", uom: "ea" }],
+    [
+      { name: "#4 Rebar - 20' Pc", quantity: "6", uom: "EA", itemCost: "44.46" },
+      { name: "#6 Rebar - 20' Pc", quantity: "2", uom: "EA", itemCost: "33.28" },
+      { name: "Shop Drawings", quantity: "0.1", uom: "EA", itemCost: "4.90" },
+    ],
+  );
+
+  assert.equal(line.description, "#4 Rebar - 20' Pc (6 ea) + #6 Rebar - 20' Pc (2 ea)");
+});
+
+test("does not invent an estimate description when more than one subset matches", () => {
+  const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
+  const [line] = enrichApprovedChangeOrderLinesFromEstimate(
+    [{ quantity: "2", amount: "20", uom: "ea" }],
+    [
+      { name: "First", quantity: "2", uom: "EA", itemCost: "20" },
+      { name: "Second", quantity: "2", uom: "EA", itemCost: "20" },
+    ],
+  );
+
+  assert.equal(line.description, undefined);
+});
+
 test("retains distinct source WBS assignments for same-code approved CO lines", () => {
   const { approvedChangeOrderCommitmentGroup } = loadModule();
   const group = approvedChangeOrderCommitmentGroup(

@@ -1364,6 +1364,7 @@ async function handleRequest(request: NextRequest) {
         projectNumber: project?.projectNumber || null,
         projectName: project?.projectName || `Procore Project ${projectId}`,
         changeOrder: sourceChangeOrder,
+        taskKinds: ["aia_billing"],
         shellyCompanyUser,
       });
       await writeAudit({
@@ -1380,6 +1381,7 @@ async function handleRequest(request: NextRequest) {
           projectId,
           changeOrder: sourceChangeOrder,
           userEmail,
+          taskKinds: ["aia_billing"],
         });
         tasksQueued = true;
         await writeAudit({

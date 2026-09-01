@@ -146,6 +146,43 @@ test("missing potential-change-order child lines are warnings, not project error
   assert.match(route, /potential:\$\{changeOrderId\} lines skipped/);
 });
 
+test("change-order sync queues verification before persisting an approval transition", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/procore/sync/change-order-packages/route.ts", import.meta.url),
+    "utf8",
+  );
+  const transitionCheck = route.indexOf("await enqueueVerificationOnApprovalTransition");
+  const potentialUpsert = route.indexOf("const persistedId = await upsertPotentialChangeOrder", transitionCheck);
+  const packageTransitionCheck = route.indexOf("await enqueueVerificationOnApprovalTransition", transitionCheck + 1);
+  const packageUpsert = route.indexOf("await upsertChangeOrderPackage", packageTransitionCheck);
+
+  assert.ok(transitionCheck > 0 && potentialUpsert > transitionCheck);
+  assert.ok(packageTransitionCheck > potentialUpsert && packageUpsert > packageTransitionCheck);
+  assert.match(route, /taskKinds: \['commitment_verification'\]/);
+});
+
+test("webhook processing handles approved PCO and prime change-order resources", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/webhooks/procore/process/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /resource\.includes\('potential change order'\)/);
+  assert.match(route, /resource\.includes\('prime contract change order'\)/);
+  assert.match(route, /return handleChangeOrderEvent\(event\)/);
+  assert.match(route, /taskKinds: \['commitment_verification'\]/);
+  assert.match(route, /isApprovedChangeOrderStatus\(params\.record\.status\)/);
+});
+
+test("webhook registration requests PCO and prime change-order events", async () => {
+  const script = await readFile(
+    new URL("../scripts/registerProcoreWebhook.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(script, /resourceName: 'Potential Change Orders'/);
+  assert.match(script, /resourceName: 'Prime Contract Change Orders'/);
+  assert.match(script, /'Change Order Packages'/);
+});
+
 test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {
   const issues = evaluateProcoreSyncHealth({
     datasets: [

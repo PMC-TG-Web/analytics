@@ -3,6 +3,7 @@ import { getClientCredentialsToken, makeRequest } from "@/lib/procore";
 import {
   ensureCommitmentMakerChangeOrderTasks,
   type CommitmentMakerChangeOrderContext,
+  type CommitmentMakerTaskKind,
   type CommitmentMakerTaskRequest,
 } from "@/lib/procoreCommitmentMakerTasks";
 
@@ -33,7 +34,9 @@ export async function runCommitmentMakerChangeOrderTasks(params: {
   projectId: string;
   changeOrder: CommitmentMakerChangeOrderContext;
   userEmail: string;
+  taskKinds?: CommitmentMakerTaskKind[];
 }) {
+  const needsShelly = !params.taskKinds || params.taskKinds.includes("aia_billing");
   const [accessToken, project, shellyCompanyUser] = await Promise.all([
     getClientCredentialsToken(),
     prisma.pmcProject.findUnique({
@@ -45,7 +48,7 @@ export async function runCommitmentMakerChangeOrderTasks(params: {
       },
       select: { projectNumber: true, projectName: true },
     }),
-    findShellyCompanyUser(),
+    needsShelly ? findShellyCompanyUser() : Promise.resolve(null),
   ]);
   const result = await ensureCommitmentMakerChangeOrderTasks({
     companyId: params.companyId,
@@ -53,6 +56,7 @@ export async function runCommitmentMakerChangeOrderTasks(params: {
     projectNumber: project?.projectNumber || null,
     projectName: project?.projectName || `Procore Project ${params.projectId}`,
     changeOrder: params.changeOrder,
+    taskKinds: params.taskKinds,
     shellyCompanyUser,
     request: taskRequest(accessToken, params.companyId),
   });

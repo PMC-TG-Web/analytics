@@ -7,7 +7,7 @@ import { notifyMissingProjectManager } from "@/lib/missingProjectManagerNotifica
 
 const SHELLY_EMAIL = "shelly@pmcdecor.com";
 const PROJECT_MANAGER_EMAIL_DOMAIN = "pmcdecor.com";
-const TASK_DUE_OFFSET_DAYS = 7;
+const AIA_TASK_DUE_OFFSET_DAYS = 7;
 
 type JsonObject = Record<string, unknown>;
 
@@ -32,10 +32,32 @@ export type CommitmentMakerTaskSpec = {
   dueDate: string;
 };
 
+export type CommitmentMakerTaskKind = CommitmentMakerTaskSpec["kind"];
+
 export type CommitmentMakerTaskAssignees = {
-  shellyAssigneeId: number;
+  shellyAssigneeId: number | null;
   projectManagerAssigneeIds: number[];
 };
+
+export function isApprovedChangeOrderStatus(value: unknown): boolean {
+  return text(value).toLowerCase() === "approved";
+}
+
+export function commitmentMakerChangeOrderContextFromRecord(
+  record: JsonObject,
+): CommitmentMakerChangeOrderContext | null {
+  const packageId = text(record.id);
+  if (!packageId) return null;
+  const numberObject = asObject(record.number_object);
+  const rawAmount = Number(record.grand_total ?? record.amount ?? record.value);
+  const number = text(record.number ?? numberObject?.value ?? record.package_number);
+  return {
+    packageId,
+    number,
+    title: text(record.title ?? record.name) || `Change Order ${number || packageId}`,
+    amount: Number.isFinite(rawAmount) ? rawAmount : null,
+  };
+}
 
 function asObject(value: unknown): JsonObject | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -123,7 +145,9 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
   changeOrder: CommitmentMakerChangeOrderContext;
   now?: Date;
 }): CommitmentMakerTaskSpec[] {
-  const dueDate = formatDate(addDays(params.now || new Date(), TASK_DUE_OFFSET_DAYS));
+  const now = params.now || new Date();
+  const aiaDueDate = formatDate(addDays(now, AIA_TASK_DUE_OFFSET_DAYS));
+  const verificationDueDate = formatDate(now);
   const projectLabel = [params.projectNumber, params.projectName]
     .map((value) => text(value))
     .filter(Boolean)
@@ -133,7 +157,6 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
     params.changeOrder.title,
   ].filter(Boolean).join(" - ");
   const common = [
-    "Automatically created after Commitment Maker processed this approved change order.",
     `Project: ${projectLabel}`,
     `Approved change order: ${changeOrderLabel}`,
     `Prime change order ID: ${params.changeOrder.packageId}`,
@@ -147,10 +170,11 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
       title: `Add CO ${params.changeOrder.number || params.changeOrder.packageId} to AIA Billing`,
       description: [
         `[analytics:commitment-maker-change-order:${params.changeOrder.packageId}:aia-billing]`,
+        "Automatically created after Commitment Maker processed this approved change order.",
         ...common,
         "Action: Add this approved change order to the project's AIA billing.",
       ].join("\n"),
-      dueDate,
+      dueDate: aiaDueDate,
     },
     {
       kind: "commitment_verification",
@@ -158,10 +182,11 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
       title: `Verify CO ${params.changeOrder.number || params.changeOrder.packageId} Is in Commitments`,
       description: [
         `[analytics:commitment-maker-change-order:${params.changeOrder.packageId}:commitments]`,
+        "Automatically created when this change order was approved.",
         ...common,
         "Action: Verify that the approved change order was added to the project's commitments.",
       ].join("\n"),
-      dueDate,
+      dueDate: verificationDueDate,
     },
   ];
 }
@@ -171,6 +196,7 @@ export async function resolveCommitmentMakerChangeOrderTaskAssignees(params: {
   companyId: string;
   projectId: string;
   shellyCompanyUser?: ProjectUserLike | null;
+  taskKinds?: CommitmentMakerTaskKind[];
 }): Promise<CommitmentMakerTaskAssignees> {
   const [roles, projectUsers] = await Promise.all([
     fetchAll(params.request, `/rest/v1.0/project_roles?project_id=${encodeURIComponent(params.projectId)}`),
@@ -179,14 +205,18 @@ export async function resolveCommitmentMakerChangeOrderTaskAssignees(params: {
       `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,
     ),
   ]);
-  const shellyProjectUser = projectUsers.find((user) => userEmail(user) === SHELLY_EMAIL) || null;
-  const shellyFallback = asObject(params.shellyCompanyUser || null);
-  const shelly = shellyProjectUser || (shellyFallback && userEmail(shellyFallback) === SHELLY_EMAIL
-    ? shellyFallback
-    : null);
-  const shellyAssigneeId = numericId(shelly?.id ?? shelly?.user_id);
-  if (!shellyAssigneeId) {
-    throw new Error(`${SHELLY_EMAIL} could not be resolved to a Procore user for this task.`);
+  const needsShelly = !params.taskKinds || params.taskKinds.includes("aia_billing");
+  let shellyAssigneeId: number | null = null;
+  if (needsShelly) {
+    const shellyProjectUser = projectUsers.find((user) => userEmail(user) === SHELLY_EMAIL) || null;
+    const shellyFallback = asObject(params.shellyCompanyUser || null);
+    const shelly = shellyProjectUser || (shellyFallback && userEmail(shellyFallback) === SHELLY_EMAIL
+      ? shellyFallback
+      : null);
+    shellyAssigneeId = numericId(shelly?.id ?? shelly?.user_id);
+    if (!shellyAssigneeId) {
+      throw new Error(`${SHELLY_EMAIL} could not be resolved to a Procore user for this task.`);
+    }
   }
 
   const projectManagerAssigneeIds = selectProjectManagerRecipientsForDomain(
@@ -207,6 +237,7 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
   projectName: string;
   changeOrder: CommitmentMakerChangeOrderContext;
   shellyCompanyUser?: ProjectUserLike | null;
+  taskKinds?: CommitmentMakerTaskKind[];
   now?: Date;
 }) {
   const [tasks, assignees] = await Promise.all([
@@ -214,7 +245,9 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
     resolveCommitmentMakerChangeOrderTaskAssignees(params),
   ]);
 
-  const specs = buildCommitmentMakerChangeOrderTaskSpecs(params);
+  const requestedKinds = new Set<CommitmentMakerTaskKind>(params.taskKinds || ["aia_billing", "commitment_verification"]);
+  const specs = buildCommitmentMakerChangeOrderTaskSpecs(params)
+    .filter((spec) => requestedKinds.has(spec.kind));
   let fallbackEmail: Awaited<ReturnType<typeof notifyMissingProjectManager>> | null = null;
   const results: Array<{
     kind: CommitmentMakerTaskSpec["kind"];
@@ -256,7 +289,7 @@ export async function ensureCommitmentMakerChangeOrderTasks(params: {
       continue;
     }
     const requiredAssigneeIds = spec.kind === "aia_billing"
-      ? [assignees.shellyAssigneeId]
+      ? [assignees.shellyAssigneeId!]
       : assignees.projectManagerAssigneeIds;
     const existing = tasks.find((task) => text(task.description).includes(spec.tag)) || null;
     if (existing) {

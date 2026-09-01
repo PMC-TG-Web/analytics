@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
         },
         userEmail: String(body.userEmail || "procore-project-link@pmcdecor.com").trim(),
         commitmentChangeOrderId: String(body.commitmentChangeOrderId || "").trim() || undefined,
+        taskKinds: Array.isArray(body.taskKinds) ? body.taskKinds : undefined,
       });
     }
     const result = await processNextCommitmentMakerTaskJob();

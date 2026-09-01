@@ -68,6 +68,8 @@ const DESIRED_TRIGGERS = [
   { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
   { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
+  { resourceName: 'Potential Change Orders', eventTypes: ['create', 'update'] },
+  { resourceName: 'Prime Contract Change Orders', eventTypes: ['create', 'update'] },
 ];
 
 const RESOURCE_ALIASES = {
@@ -77,6 +79,8 @@ const RESOURCE_ALIASES = {
   'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
   'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
   'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
+  'Potential Change Orders': ['Potential Change Orders'],
+  'Prime Contract Change Orders': ['Prime Contract Change Orders', 'Change Order Packages'],
 };
 
 // ─── OAuth token ─────────────────────────────────────────────────────────────

@@ -16,6 +16,19 @@ import { persistProductivityLogs, type ProcoreLog } from '@/lib/procoreProductiv
 import { persistCommitmentContracts, type ProcoreCommitmentContract } from '@/lib/procoreCommitmentContracts';
 import { refreshCommitmentsAggMaterializedView } from '@/lib/commitmentsAggMv';
 import { ensureProductivityReviewTaskOnComplete } from '@/lib/procoreProductivityReviewTask';
+import {
+  ensurePotentialChangeOrderTables,
+  upsertPotentialChangeOrder,
+} from '@/lib/procorePotentialChangeOrders';
+import {
+  ensureChangeOrderPackagesTable,
+  upsertChangeOrderPackage,
+} from '@/lib/procoreChangeOrderPackages';
+import {
+  commitmentMakerChangeOrderContextFromRecord,
+  isApprovedChangeOrderStatus,
+} from '@/lib/procoreCommitmentMakerTasks';
+import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
 
 const MAX_BATCH_SIZE = 100;
 
@@ -39,6 +52,64 @@ function firstStr(...values: unknown[]): string | null {
     if (s) return s;
   }
   return null;
+}
+
+function text(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
+function asRows(payload: unknown): JsonObject[] {
+  if (Array.isArray(payload)) {
+    return payload.map(asObj).filter((item): item is JsonObject => Boolean(item));
+  }
+  const record = asObj(payload);
+  if (!record) return [];
+  for (const candidate of [
+    record.data,
+    record.items,
+    record.results,
+    record.prime_contracts,
+    record.potential_change_orders,
+  ]) {
+    if (Array.isArray(candidate)) {
+      return candidate.map(asObj).filter((item): item is JsonObject => Boolean(item));
+    }
+  }
+  return [];
+}
+
+function unwrapRecord(payload: unknown): JsonObject | null {
+  const record = asObj(payload);
+  if (!record) return null;
+  for (const candidate of [
+    record.data,
+    record.potential_change_order,
+    record.change_order_package,
+    record.prime_contract_change_order,
+  ]) {
+    const nested = asObj(candidate);
+    if (nested) return nested;
+  }
+  return record;
+}
+
+function nestedText(payload: unknown, keys: Set<string>, depth = 0): string {
+  if (depth > 4) return '';
+  const record = asObj(payload);
+  if (!record) return '';
+  for (const [key, value] of Object.entries(record)) {
+    if (keys.has(key.toLowerCase())) {
+      const found = text(value);
+      if (found) return found;
+    }
+  }
+  for (const value of Object.values(record)) {
+    const found = nestedText(value, keys, depth + 1);
+    if (found) return found;
+  }
+  return '';
 }
 
 function readDate(value: unknown): Date | null {
@@ -1241,6 +1312,122 @@ async function handleCommitmentsEvent(event: {
   await refreshCommitmentsAggMaterializedView();
 }
 
+// ─── Prime/Potential Change Orders handler ─────────────────────────────────
+
+function isPotentialChangeOrderResource(resource: string): boolean {
+  return resource.includes('potential change order');
+}
+
+function isPrimeChangeOrderResource(resource: string): boolean {
+  return resource.includes('prime contract change order') || resource.includes('change order package');
+}
+
+async function enqueueApprovedChangeOrderVerification(params: {
+  companyId: string;
+  projectId: string;
+  record: JsonObject;
+}) {
+  if (!isApprovedChangeOrderStatus(params.record.status)) return;
+  const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
+  if (!changeOrder) throw new Error('Approved change-order webhook record is missing its ID.');
+  await enqueueCommitmentMakerTasks({
+    companyId: params.companyId,
+    projectId: params.projectId,
+    changeOrder,
+    userEmail: 'procore-change-order-webhook@pmcdecor.com',
+    taskKinds: ['commitment_verification'],
+  });
+}
+
+async function handleChangeOrderEvent(event: {
+  companyId: string | null;
+  projectId: string | null;
+  resourceName: string | null;
+  resourceId: string | null;
+  eventType: string | null;
+  payload: unknown;
+}): Promise<void> {
+  if (String(event.eventType || '').toLowerCase() === 'delete') return;
+  const companyId = (event.companyId || procoreConfig.companyId || '').trim();
+  const projectId = (event.projectId || '').trim();
+  const resourceId = (event.resourceId || '').trim();
+  const resource = (event.resourceName || '').toLowerCase();
+  if (!companyId) throw new Error('handleChangeOrderEvent: missing companyId');
+  if (!projectId) throw new Error('handleChangeOrderEvent: missing projectId');
+  if (!resourceId) throw new Error('handleChangeOrderEvent: missing resourceId');
+
+  const token = await getServiceToken();
+  if (isPotentialChangeOrderResource(resource)) {
+    const response = await makeRequest(
+      `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&filters%5Bid%5D=${encodeURIComponent(resourceId)}&page=1&per_page=1`,
+      token,
+      { method: 'GET', cache: 'no-store' },
+      companyId,
+    );
+    const record = asRows(response).find((candidate) => text(candidate.id) === resourceId) || null;
+    if (!record) throw new Error(`Potential Change Order ${resourceId} returned no record.`);
+    await enqueueApprovedChangeOrderVerification({ companyId, projectId, record });
+    await ensurePotentialChangeOrderTables();
+    await upsertPotentialChangeOrder({ companyId, projectId, record });
+    return;
+  }
+
+  const stored = await prisma.procoreChangeOrderPackage.findUnique({
+    where: {
+      companyId_projectId_packageId: { companyId, projectId, packageId: resourceId },
+    },
+    select: { contractId: true },
+  });
+  const contractIds = new Set<string>();
+  const payloadContractId = nestedText(event.payload, new Set(['contract_id', 'prime_contract_id']));
+  if (payloadContractId) contractIds.add(payloadContractId);
+  if (stored?.contractId) contractIds.add(stored.contractId);
+  if (contractIds.size === 0) {
+    const contracts = asRows(await makeRequest(
+      `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(projectId)}&page=1&per_page=100`,
+      token,
+      { method: 'GET', cache: 'no-store' },
+      companyId,
+    ));
+    for (const contract of contracts) {
+      const contractId = text(contract.id);
+      if (contractId) contractIds.add(contractId);
+    }
+  }
+
+  let packageRecord: JsonObject | null = null;
+  let packageContractId = '';
+  for (const contractId of contractIds) {
+    try {
+      const response = await makeRequest(
+        `/rest/v1.0/change_order_packages/${encodeURIComponent(resourceId)}?project_id=${encodeURIComponent(projectId)}&contract_id=${encodeURIComponent(contractId)}`,
+        token,
+        { method: 'GET', cache: 'no-store' },
+        companyId,
+      );
+      const candidate = unwrapRecord(response);
+      if (candidate && text(candidate.id) === resourceId) {
+        packageRecord = candidate;
+        packageContractId = contractId;
+        break;
+      }
+    } catch {
+      // A project can have multiple prime contracts; continue until the package is found.
+    }
+  }
+  if (!packageRecord || !packageContractId) {
+    throw new Error(`Prime Contract Change Order ${resourceId} could not be resolved.`);
+  }
+  await enqueueApprovedChangeOrderVerification({ companyId, projectId, record: packageRecord });
+  await ensureChangeOrderPackagesTable();
+  await upsertChangeOrderPackage({
+    companyId,
+    projectId,
+    contractId: packageContractId,
+    record: packageRecord,
+  });
+}
+
 // ─── Event dispatch ──────────────────────────────────────────────────────────
 
 async function processEvent(event: {
@@ -1278,7 +1465,10 @@ async function processEvent(event: {
     return handleCommitmentsEvent(event);
   }
 
-  // Other domains (change orders, etc.) will be added in subsequent phases.
+  if (isPotentialChangeOrderResource(resource) || isPrimeChangeOrderResource(resource)) {
+    return handleChangeOrderEvent(event);
+  }
+
   // Unrecognised resources are acknowledged so they are marked completed rather
   // than left to retry indefinitely.
 }

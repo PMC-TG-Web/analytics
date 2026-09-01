@@ -62,8 +62,68 @@ test("builds separate AIA and commitment-verification tasks for one approved cha
   assert.equal(specs[0].title, "Add CO 001 to AIA Billing");
   assert.equal(specs[1].title, "Verify CO 001 Is in Commitments");
   assert.equal(specs[0].dueDate, "2026-09-07");
+  assert.equal(specs[1].dueDate, "2026-08-31");
   assert.match(specs[0].description, /598134327089031:aia-billing/);
   assert.match(specs[1].description, /598134327089031:commitments/);
+});
+
+test("normalizes an approved Procore change order into task context", () => {
+  const {
+    commitmentMakerChangeOrderContextFromRecord,
+    isApprovedChangeOrderStatus,
+  } = loadModule();
+  assert.equal(isApprovedChangeOrderStatus(" Approved "), true);
+  assert.equal(isApprovedChangeOrderStatus("Pending"), false);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(commitmentMakerChangeOrderContextFromRecord({
+      id: 42,
+      number_object: { value: "PCO-7" },
+      name: "Pier revisions",
+      grand_total: "1250.50",
+    }))),
+    {
+      packageId: "42",
+      number: "PCO-7",
+      title: "Pier revisions",
+      amount: 1250.5,
+    },
+  );
+});
+
+test("creates only a due-today verification task without resolving Shelly", async () => {
+  const { ensureCommitmentMakerChangeOrderTasks } = loadModule();
+  const created = [];
+  const request = async ({ path, method, body }) => {
+    if (method === "POST") {
+      created.push(body.task_item);
+      return { id: 902 };
+    }
+    if (path.startsWith("/rest/v1.0/task_items?")) return [];
+    if (path.startsWith("/rest/v1.0/project_roles?")) {
+      return [{ role: "Project Manager", user_id: 123, is_active: true }];
+    }
+    if (path.includes("/users?")) {
+      return [{ id: 123, name: "Internal PM", login: "pm@pmcdecor.com" }];
+    }
+    throw new Error(`Unexpected request: ${method || "GET"} ${path}`);
+  };
+
+  const result = await ensureCommitmentMakerChangeOrderTasks({
+    request,
+    companyId: "company",
+    projectId: "598134326683024",
+    projectNumber: "2506-SDMB",
+    projectName: "Shank Door Main Building",
+    changeOrder,
+    taskKinds: ["commitment_verification"],
+    now: new Date("2026-08-31T14:00:00.000Z"),
+  });
+
+  assert.equal(result.tasks.length, 1);
+  assert.equal(result.tasks[0].kind, "commitment_verification");
+  assert.equal(created[0].due_date, "2026-08-31");
+  assert.deepEqual(Array.from(created[0].assignee_ids), [123]);
+  assert.equal(result.shellyAssigneeId, null);
 });
 
 test("creates both tasks with PMC-only assignees and no project-wide email dispatch", async () => {

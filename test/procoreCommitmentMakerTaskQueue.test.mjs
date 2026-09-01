@@ -27,6 +27,10 @@ function loadModule() {
 test("commitment task jobs are isolated by source change order", () => {
   const { commitmentMakerTaskDataset } = loadModule();
   assert.equal(commitmentMakerTaskDataset("598134327052229"), "commitment_maker_tasks:598134327052229");
+  assert.equal(
+    commitmentMakerTaskDataset("598134327052229", ["commitment_verification"]),
+    "commitment_maker_tasks:598134327052229:commitment_verification",
+  );
 });
 
 test("commitment task retries back off and cap at one hour", () => {
@@ -46,6 +50,7 @@ test("maker creates tasks immediately and queues only after that attempt fails",
   assert.ok(immediateCreate > 0);
   assert.ok(fallbackCatch > immediateCreate);
   assert.ok(fallbackQueue > fallbackCatch);
+  assert.match(source.slice(immediateCreate, fallbackQueue + 500), /taskKinds: \["aia_billing"\]/);
 });
 
 test("dedicated scheduler drains commitment task jobs every five minutes", () => {

@@ -1,7 +1,10 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import type { CommitmentMakerChangeOrderContext } from "@/lib/procoreCommitmentMakerTasks";
+import type {
+  CommitmentMakerChangeOrderContext,
+  CommitmentMakerTaskKind,
+} from "@/lib/procoreCommitmentMakerTasks";
 import { runCommitmentMakerChangeOrderTasks } from "@/lib/procoreCommitmentMakerTaskRunner";
 
 const DATASET_PREFIX = "commitment_maker_tasks:";
@@ -10,10 +13,15 @@ type TaskPayload = {
   changeOrder: CommitmentMakerChangeOrderContext;
   userEmail: string;
   commitmentChangeOrderId?: string;
+  taskKinds?: CommitmentMakerTaskKind[];
 };
 
-export function commitmentMakerTaskDataset(sourceChangeOrderId: string) {
-  return `${DATASET_PREFIX}${sourceChangeOrderId}`;
+export function commitmentMakerTaskDataset(
+  sourceChangeOrderId: string,
+  taskKinds?: CommitmentMakerTaskKind[],
+) {
+  const kindSuffix = taskKinds?.length === 1 ? `:${taskKinds[0]}` : "";
+  return `${DATASET_PREFIX}${sourceChangeOrderId}${kindSuffix}`;
 }
 
 export function commitmentMakerTaskRetryDelayMinutes(failureCount: number) {
@@ -26,24 +34,26 @@ export async function enqueueCommitmentMakerTasks(params: {
   changeOrder: CommitmentMakerChangeOrderContext;
   userEmail: string;
   commitmentChangeOrderId?: string;
+  taskKinds?: CommitmentMakerTaskKind[];
 }) {
   const payload: TaskPayload = {
     changeOrder: params.changeOrder,
     userEmail: params.userEmail,
     commitmentChangeOrderId: params.commitmentChangeOrderId,
+    taskKinds: params.taskKinds,
   };
   return prisma.procoreSyncProjectState.upsert({
     where: {
       companyId_projectId_dataset: {
         companyId: params.companyId,
         projectId: params.projectId,
-        dataset: commitmentMakerTaskDataset(params.changeOrder.packageId),
+        dataset: commitmentMakerTaskDataset(params.changeOrder.packageId, params.taskKinds),
       },
     },
     create: {
       companyId: params.companyId,
       projectId: params.projectId,
-      dataset: commitmentMakerTaskDataset(params.changeOrder.packageId),
+      dataset: commitmentMakerTaskDataset(params.changeOrder.packageId, params.taskKinds),
       nextRunAt: new Date(),
       lastResult: payload as unknown as Prisma.InputJsonValue,
     },
@@ -65,6 +75,11 @@ function taskPayload(value: unknown): TaskPayload | null {
   const source = changeOrder as Record<string, unknown>;
   const packageId = String(source.packageId || "").trim();
   if (!packageId) return null;
+  const taskKinds = Array.isArray(payload.taskKinds)
+    ? payload.taskKinds.filter((kind): kind is CommitmentMakerTaskKind => (
+      kind === "aia_billing" || kind === "commitment_verification"
+    ))
+    : undefined;
   return {
     changeOrder: {
       packageId,
@@ -74,6 +89,7 @@ function taskPayload(value: unknown): TaskPayload | null {
     },
     userEmail: String(payload.userEmail || "procore-project-link@pmcdecor.com").trim(),
     commitmentChangeOrderId: String(payload.commitmentChangeOrderId || "").trim() || undefined,
+    taskKinds: taskKinds?.length ? taskKinds : undefined,
   };
 }
 
@@ -115,6 +131,7 @@ export async function processNextCommitmentMakerTaskJob() {
       projectId: job.projectId,
       changeOrder: payload.changeOrder,
       userEmail: payload.userEmail,
+      taskKinds: payload.taskKinds,
     });
     await prisma.procoreSyncProjectState.update({
       where: { id: job.id },

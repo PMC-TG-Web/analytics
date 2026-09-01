@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 import {
   makeRequest,
   procoreConfig,
@@ -21,6 +22,11 @@ import {
   upsertPotentialChangeOrderLine,
 } from '@/lib/procorePotentialChangeOrders';
 import { procoreApiErrorIsNotFound } from '@/lib/procoreSyncResponse';
+import {
+  commitmentMakerChangeOrderContextFromRecord,
+  isApprovedChangeOrderStatus,
+} from '@/lib/procoreCommitmentMakerTasks';
+import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +64,25 @@ function isAccessSkippedError(message: string): boolean {
     lower.includes('error 404') ||
     lower.includes('not found')
   );
+}
+
+async function enqueueVerificationOnApprovalTransition(params: {
+  companyId: string;
+  projectId: string;
+  previousStatus: string | null | undefined;
+  record: JsonObject;
+}) {
+  if (!params.previousStatus || isApprovedChangeOrderStatus(params.previousStatus)) return;
+  if (!isApprovedChangeOrderStatus(params.record.status)) return;
+  const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
+  if (!changeOrder) return;
+  await enqueueCommitmentMakerTasks({
+    companyId: params.companyId,
+    projectId: params.projectId,
+    changeOrder,
+    userEmail: 'procore-change-order-sync@pmcdecor.com',
+    taskKinds: ['commitment_verification'],
+  });
 }
 
 function unwrapArray(response: unknown): JsonObject[] {
@@ -367,6 +392,18 @@ export async function POST(request: Request) {
           const changeOrderId = readText(potentialItem.id);
           if (!changeOrderId) continue;
           try {
+            const previous = await prisma.procorePotentialChangeOrder.findUnique({
+              where: {
+                companyId_projectId_changeOrderId: { companyId, projectId, changeOrderId },
+              },
+              select: { status: true },
+            });
+            await enqueueVerificationOnApprovalTransition({
+              companyId,
+              projectId,
+              previousStatus: previous?.status,
+              record: potentialItem,
+            });
             const persistedId = await upsertPotentialChangeOrder({
               companyId,
               projectId,
@@ -513,6 +550,18 @@ export async function POST(request: Request) {
               }
             }
 
+            const previous = await prisma.procoreChangeOrderPackage.findUnique({
+              where: {
+                companyId_projectId_packageId: { companyId, projectId, packageId },
+              },
+              select: { status: true },
+            });
+            await enqueueVerificationOnApprovalTransition({
+              companyId,
+              projectId,
+              previousStatus: previous?.status,
+              record: packageRecord,
+            });
             await upsertChangeOrderPackage({
               companyId,
               projectId,

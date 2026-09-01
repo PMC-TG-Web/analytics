@@ -9,6 +9,7 @@ import {
 import {
   acquireProcoreWorker,
   claimDueProject,
+  deferProjectSync,
   finishProjectSync,
   getSyncQueueStats,
   releaseProcoreWorker,
@@ -147,19 +148,28 @@ async function run(request: NextRequest) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const rateLimited = errorStatus(error) === 429;
+      const rateLimitUntil = rateLimited ? new Date(Date.now() + 15 * 60_000) : null;
       if (rateLimited) {
         await setProcoreRateLimit({
           companyId: COMPANY_ID,
-          until: new Date(Date.now() + 15 * 60_000),
+          until: rateLimitUntil!,
           error: message.slice(0, 4_000),
         });
       }
-      await finishProjectSync({
-        project,
-        success: false,
-        nextRunMinutes: rateLimited ? 15 : 30,
-        error: message.slice(0, 4_000),
-      });
+      if (rateLimitUntil) {
+        await deferProjectSync({
+          project,
+          until: rateLimitUntil,
+          result: { deferredBy: "procore-rate-limit" },
+        });
+      } else {
+        await finishProjectSync({
+          project,
+          success: false,
+          nextRunMinutes: 30,
+          error: message.slice(0, 4_000),
+        });
+      }
       return NextResponse.json({
         success: false,
         companyId: COMPANY_ID,

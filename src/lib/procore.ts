@@ -1,7 +1,11 @@
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { procoreRateLimitDelayMs } from '@/lib/procoreRateLimit';
+import {
+  getProcoreBackgroundCooldown,
+  recordProcoreQuotaObservation,
+} from '@/lib/procoreQuotaControl';
+import { procoreQuotaObservation, procoreRateLimitDelayMs } from '@/lib/procoreRateLimit';
 
 interface ProcoreTokenResponse {
   access_token: string;
@@ -16,7 +20,9 @@ type ErrorWithStatusAndCause = Error & {
   cause?: unknown;
 };
 
-const liveApiBypassStore = new AsyncLocalStorage<boolean>();
+type ProcoreRequestContext = 'background' | 'interactive';
+
+const liveApiBypassStore = new AsyncLocalStorage<ProcoreRequestContext>();
 
 export const procoreConfig = {
   clientId: (process.env.PROCORE_CLIENT_ID || '').trim(),
@@ -93,18 +99,21 @@ export function withProcoreLiveApiBypassForSyncSecret<T>(
     return operation();
   }
 
-  return liveApiBypassStore.run(true, operation);
+  return liveApiBypassStore.run('background', operation);
 }
 
 export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
   request: Request,
   operation: () => Promise<T>
 ): Promise<T> {
-  if (!hasValidProcoreSyncSecret(request) && !hasProcoreAccessTokenCookie(request)) {
+  if (hasValidProcoreSyncSecret(request)) {
+    return liveApiBypassStore.run('background', operation);
+  }
+  if (!hasProcoreAccessTokenCookie(request)) {
     return operation();
   }
 
-  return liveApiBypassStore.run(true, operation);
+  return liveApiBypassStore.run('interactive', operation);
 }
 
 function sleep(ms: number) {
@@ -255,7 +264,8 @@ export async function makeRequest(
   companyIdOverride?: string,
   quietStatuses: number[] = []
 ): Promise<unknown> {
-  if (!isProcoreLiveApiEnabled() && liveApiBypassStore.getStore() !== true) {
+  const requestContext = liveApiBypassStore.getStore();
+  if (!isProcoreLiveApiEnabled() && !requestContext) {
     throw new Error('PROCORE_LIVE_API_DISABLED: Set PROCORE_LIVE_API_ENABLED=true to allow outbound Procore API requests.');
   }
 
@@ -269,6 +279,18 @@ export async function makeRequest(
   // CRITICAL: Stop the request if we still don't have a company ID
   if (!companyId || companyId === 'undefined') {
     throw new Error('MISSING_COMPANY_ID: The Procore Company ID is not configured.');
+  }
+
+  if (requestContext === 'background') {
+    const cooldownUntil = await getProcoreBackgroundCooldown(companyId);
+    if (cooldownUntil) {
+      const deferred = new Error(
+        `Procore background rate limit cooldown is active until ${cooldownUntil.toISOString()}.`,
+      ) as Error & { status?: number; rateLimitUntil?: Date };
+      deferred.status = 429;
+      deferred.rateLimitUntil = cooldownUntil;
+      throw deferred;
+    }
   }
 
   console.log(`[Procore API] Requesting: ${url}`);
@@ -295,6 +317,20 @@ export async function makeRequest(
           signal: controller.signal,
           headers: requestHeaders,
         });
+
+        const quota = procoreQuotaObservation(response.headers, response.status, {
+          reserve: Math.max(0, Number.parseInt(process.env.PROCORE_API_BACKGROUND_RESERVE || '100', 10) || 100),
+          fallbackCooldownMs: 15 * 60_000,
+        });
+        if (quota.cooldownUntil || quota.rateLimited) {
+          await recordProcoreQuotaObservation({
+            companyId,
+            observation: quota,
+            error: response.status === 429 ? `Procore API rate limit reached for ${endpoint}.` : null,
+          }).catch((quotaError) => {
+            console.error('[Procore API] Failed to persist quota state:', quotaError);
+          });
+        }
 
         if (response.status === 429 && attempt < maxRetries) {
           const expoBackoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));

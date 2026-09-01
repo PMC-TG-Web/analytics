@@ -10,7 +10,10 @@ import {
   evaluateProcoreSyncHealth,
   procoreHealthAlertFingerprint,
 } from "../src/lib/procoreSyncHealth.ts";
-import { procoreRateLimitDelayMs } from "../src/lib/procoreRateLimit.ts";
+import {
+  procoreQuotaObservation,
+  procoreRateLimitDelayMs,
+} from "../src/lib/procoreRateLimit.ts";
 
 function headers(values) {
   return { get: (name) => values[name.toLowerCase()] ?? null };
@@ -34,6 +37,52 @@ test("Procore rate-limit waits remain capped for distant reset windows", () => {
     maxDelayMs: 15_000,
     nowMs: 0,
   }), 15_000);
+});
+
+test("Procore quota observations reserve background capacity until the provider reset", () => {
+  const nowMs = Date.parse("2026-09-01T18:30:00.000Z");
+  const resetSeconds = Date.parse("2026-09-01T19:00:00.000Z") / 1_000;
+  const observation = procoreQuotaObservation(headers({
+    "x-rate-limit-limit": "3600",
+    "x-rate-limit-remaining": "75",
+    "x-rate-limit-reset": String(resetSeconds),
+  }), 200, {
+    reserve: 100,
+    fallbackCooldownMs: 15 * 60_000,
+    nowMs,
+    resetPaddingMs: 1_500,
+  });
+
+  assert.equal(observation.limit, 3600);
+  assert.equal(observation.remaining, 75);
+  assert.equal(observation.rateLimited, false);
+  assert.equal(observation.resetAt?.toISOString(), "2026-09-01T19:00:01.500Z");
+  assert.equal(observation.cooldownUntil?.toISOString(), "2026-09-01T19:00:01.500Z");
+});
+
+test("Procore 429 observations use a bounded fallback when reset headers are absent", () => {
+  const observation = procoreQuotaObservation(headers({}), 429, {
+    reserve: 100,
+    fallbackCooldownMs: 15 * 60_000,
+    nowMs: Date.parse("2026-09-01T18:30:00.000Z"),
+  });
+
+  assert.equal(observation.rateLimited, true);
+  assert.equal(observation.cooldownUntil?.toISOString(), "2026-09-01T18:45:00.000Z");
+});
+
+test("successful responses without quota headers do not create a false cooldown", () => {
+  const observation = procoreQuotaObservation(headers({}), 200, {
+    reserve: 100,
+    fallbackCooldownMs: 15 * 60_000,
+    nowMs: Date.parse("2026-09-01T18:30:00.000Z"),
+  });
+
+  assert.equal(observation.limit, null);
+  assert.equal(observation.remaining, null);
+  assert.equal(observation.resetAt, null);
+  assert.equal(observation.cooldownUntil, null);
+  assert.equal(observation.rateLimited, false);
 });
 
 test("recovered 429 diagnostics do not fail a successful sync response", () => {
@@ -353,6 +402,36 @@ test("health evaluation alerts when Actuals has not resumed after the nightly gr
   assert.ok(issues.includes("Actuals have not completed successfully within 3 hours."));
 });
 
+test("health evaluation identifies provider quota recovery when data is stale", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [{
+      dataset: "actuals",
+      never_succeeded: 0,
+      failed_projects: 0,
+      max_failure_count: 0,
+      newest_success: "2026-09-01T15:05:00.000Z",
+    }],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-09-01T11:10:00.000Z",
+      last_attempt_at: "2026-09-01T11:10:00.000Z",
+    },
+    control: {
+      rate_limit_until: "2026-09-01T19:00:01.500Z",
+      last_429_at: "2026-09-01T18:39:33.000Z",
+      rate_limit_limit: 3600,
+      rate_limit_remaining: 0,
+      rate_limit_reset_at: "2026-09-01T19:00:00.000Z",
+      rate_limit_observed_at: "2026-09-01T18:39:33.000Z",
+    },
+  }, new Date("2026-09-01T18:45:00.000Z"));
+
+  assert.ok(issues.includes(
+    "Actuals have not completed successfully within 3 hours. Procore background quota recovery is active until 2026-09-01T19:00:01.500Z.",
+  ));
+  assert.equal(issues.some((issue) => issue.includes("project(s) are repeatedly failing")), false);
+});
+
 test("middleware allows secret-authenticated reconciliation routes", async () => {
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
@@ -426,4 +505,45 @@ test("estimate requeues preserve fair ordering instead of resetting to the epoch
     /next_run_at = LEAST\(procore_sync_project_states\.next_run_at, NOW\(\)\)/,
   );
   assert.doesNotMatch(estimatingQueue, /1970-01-01/);
+});
+
+test("provider rate limits defer queue work without creating project failures", async () => {
+  const queue = await readFile(
+    new URL("../src/lib/procoreSyncQueue.ts", import.meta.url),
+    "utf8",
+  );
+  const deferred = queue.slice(
+    queue.indexOf("export async function deferProjectSync"),
+    queue.indexOf("export async function parkProjectSync"),
+  );
+  assert.match(deferred, /next_run_at = GREATEST/);
+  assert.match(deferred, /HASHTEXT\(project_id \|\| ':' \|\| dataset\)/);
+  assert.doesNotMatch(deferred, /failure_count/);
+  assert.doesNotMatch(deferred, /last_error/);
+
+  for (const routePath of [
+    "../src/app/api/cron/actuals/route.ts",
+    "../src/app/api/cron/nightly-structure/route.ts",
+    "../src/app/api/cron/project-onboarding/route.ts",
+    "../src/app/api/cron/project-link-sync/route.ts",
+  ]) {
+    const route = await readFile(new URL(routePath, import.meta.url), "utf8");
+    assert.match(route, /deferProjectSync\(\{/);
+  }
+});
+
+test("the shared Procore client gates background traffic but preserves interactive access", async () => {
+  const procore = await readFile(
+    new URL("../src/lib/procore.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(procore, /liveApiBypassStore\.run\('background', operation\)/);
+  assert.match(procore, /liveApiBypassStore\.run\('interactive', operation\)/);
+  assert.match(
+    procore,
+    /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return liveApiBypassStore\.run\('background', operation\)/,
+  );
+  assert.match(procore, /requestContext === 'background'/);
+  assert.match(procore, /await getProcoreBackgroundCooldown\(companyId\)/);
+  assert.match(procore, /deferred\.status = 429/);
 });

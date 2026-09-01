@@ -78,7 +78,13 @@ async function loadHealth(companyId: string) {
       companyId
     ),
     prisma.$queryRawUnsafe(
-      `SELECT worker_locked_by, worker_locked_until, rate_limit_until, last_429_at, last_error, updated_at FROM procore_sync_controls WHERE company_id = $1`,
+      `
+        SELECT worker_locked_by, worker_locked_until, rate_limit_until, last_429_at,
+               last_error, rate_limit_limit, rate_limit_remaining, rate_limit_reset_at,
+               rate_limit_observed_at, updated_at
+        FROM procore_sync_controls
+        WHERE company_id = $1
+      `,
       companyId
     ),
     prisma.$queryRawUnsafe(

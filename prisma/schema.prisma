@@ -144,6 +144,10 @@ model ProcoreSyncControl {
   rateLimitUntil  DateTime? @map("rate_limit_until") @db.Timestamptz(6)
   last429At       DateTime? @map("last_429_at") @db.Timestamptz(6)
   lastError       String?   @map("last_error")
+  rateLimitLimit  Int?      @map("rate_limit_limit")
+  rateLimitRemaining Int?   @map("rate_limit_remaining")
+  rateLimitResetAt DateTime? @map("rate_limit_reset_at") @db.Timestamptz(6)
+  rateLimitObservedAt DateTime? @map("rate_limit_observed_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -1,5 +1,13 @@
 type HeaderReader = Pick<Headers, "get">;
 
+export type ProcoreQuotaObservation = {
+  limit: number | null;
+  remaining: number | null;
+  resetAt: Date | null;
+  cooldownUntil: Date | null;
+  rateLimited: boolean;
+};
+
 function retryAfterDelayMs(value: string | null, nowMs: number): number | null {
   if (!value) return null;
   const seconds = Number(value);
@@ -31,4 +39,49 @@ export function procoreRateLimitDelayMs(
     : 0;
   const requestedDelayMs = Math.max(0, options.fallbackMs, retryAfterMs, resetDelayMs);
   return Math.min(Math.max(0, options.maxDelayMs), Math.ceil(requestedDelayMs));
+}
+
+function nonNegativeHeaderNumber(headers: HeaderReader, names: string[]) {
+  for (const name of names) {
+    const raw = headers.get(name);
+    if (raw === null || raw.trim() === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+export function procoreQuotaObservation(
+  headers: HeaderReader,
+  status: number,
+  options: {
+    reserve: number;
+    fallbackCooldownMs: number;
+    nowMs?: number;
+    resetPaddingMs?: number;
+  },
+): ProcoreQuotaObservation {
+  const nowMs = options.nowMs ?? Date.now();
+  const limit = nonNegativeHeaderNumber(headers, ["x-rate-limit-limit", "x-ratelimit-limit"]);
+  const remaining = nonNegativeHeaderNumber(headers, ["x-rate-limit-remaining", "x-ratelimit-remaining"]);
+  const resetSeconds = nonNegativeHeaderNumber(headers, ["x-rate-limit-reset", "x-ratelimit-reset"]);
+  const retryAfterMs = retryAfterDelayMs(headers.get("retry-after"), nowMs);
+  const resetAtMs = resetSeconds && resetSeconds * 1_000 > nowMs
+    ? resetSeconds * 1_000 + (options.resetPaddingMs ?? 1_500)
+    : retryAfterMs !== null
+      ? nowMs + retryAfterMs + (options.resetPaddingMs ?? 1_500)
+      : null;
+  const rateLimited = status === 429;
+  const reserveReached = remaining !== null && remaining <= Math.max(0, options.reserve);
+  const cooldownUntilMs = rateLimited || reserveReached
+    ? resetAtMs ?? nowMs + Math.max(1_000, options.fallbackCooldownMs)
+    : null;
+
+  return {
+    limit,
+    remaining,
+    resetAt: resetAtMs === null ? null : new Date(resetAtMs),
+    cooldownUntil: cooldownUntilMs === null ? null : new Date(cooldownUntilMs),
+    rateLimited,
+  };
 }

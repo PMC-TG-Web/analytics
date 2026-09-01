@@ -4,6 +4,7 @@ import { getRequiredSyncSecret } from "@/lib/cronSync";
 import {
   acquireProcoreWorker,
   claimDueProject,
+  deferProjectSync,
   finishProjectSync,
   parkProjectSync,
   releaseProcoreWorker,
@@ -422,10 +423,11 @@ export async function POST(request: NextRequest) {
     const failedStep = steps.find((step) => step.status === "error");
     const waitingForProcore = failedStep?.httpStatus === 202 || failedStep?.httpStatus === 404;
     const error = success ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
-    if (limited?.rateLimitUntil) {
+    const rateLimitUntil = limited?.rateLimitUntil ? new Date(limited.rateLimitUntil) : null;
+    if (rateLimitUntil) {
       await setProcoreRateLimit({
         companyId: COMPANY_ID,
-        until: new Date(limited.rateLimitUntil),
+        until: rateLimitUntil,
         error,
       });
     }
@@ -436,15 +438,21 @@ export async function POST(request: NextRequest) {
         bidBoardIds,
       });
     }
-    await finishProjectSync({
-      project,
-      success,
-      nextRunMinutes: limited?.rateLimitUntil
-        ? Math.max(15, Math.ceil((new Date(limited.rateLimitUntil).getTime() - Date.now()) / 60_000))
-        : success ? 365 * 24 * 60 : waitingForProcore ? 30 : 15,
-      error,
-      result: { selection, bidBoardIds, steps },
-    });
+    if (rateLimitUntil) {
+      await deferProjectSync({
+        project,
+        until: rateLimitUntil,
+        result: { selection, bidBoardIds, steps, deferredBy: "procore-rate-limit" },
+      });
+    } else {
+      await finishProjectSync({
+        project,
+        success,
+        nextRunMinutes: success ? 365 * 24 * 60 : waitingForProcore ? 30 : 15,
+        error,
+        result: { selection, bidBoardIds, steps },
+      });
+    }
 
     const totalMs = Date.now() - startedAt;
     if (logId !== null) {

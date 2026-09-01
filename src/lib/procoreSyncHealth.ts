@@ -22,6 +22,14 @@ export type ProcoreSyncHealthSnapshot = {
     last_success_at: Date | string | null;
     last_attempt_at: Date | string | null;
   } | null;
+  control?: {
+    rate_limit_until?: Date | string | null;
+    last_429_at?: Date | string | null;
+    rate_limit_limit?: number | null;
+    rate_limit_remaining?: number | null;
+    rate_limit_reset_at?: Date | string | null;
+    rate_limit_observed_at?: Date | string | null;
+  } | null;
 };
 
 const PROJECT_RECONCILIATION_MAX_AGE_MINUTES = 26 * 60;
@@ -54,10 +62,21 @@ function actualsStalenessMonitoringPaused(now: Date) {
 export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, now = new Date()) {
   const issues: string[] = [];
   const datasets = new Map(snapshot.datasets.map((row) => [row.dataset, row]));
+  const cooldownUntil = snapshot.control?.rate_limit_until
+    ? new Date(snapshot.control.rate_limit_until)
+    : null;
+  const quotaCooldownActive = Boolean(
+    cooldownUntil
+    && Number.isFinite(cooldownUntil.getTime())
+    && cooldownUntil > now,
+  );
+  const quotaSuffix = quotaCooldownActive
+    ? ` Procore background quota recovery is active until ${cooldownUntil!.toISOString()}.`
+    : "";
   const actuals = datasets.get("actuals");
   const actualsIsStale = !actuals || ageMinutes(actuals.newest_success, now) > 180;
   if (actualsIsStale && !actualsStalenessMonitoringPaused(now)) {
-    issues.push("Actuals have not completed successfully within 3 hours.");
+    issues.push(`Actuals have not completed successfully within 3 hours.${quotaSuffix}`);
   } else if (actuals && actuals.failed_projects > 5) {
     issues.push(`${actuals.failed_projects} actuals projects are failing.`);
   }
@@ -81,7 +100,7 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     && ageMinutes(estimates.oldest_due || null, now) > 120
   ) {
     issues.push(
-      `${estimates.due_projects} estimate detail project(s) have been overdue for more than 2 hours.`,
+      `${estimates.due_projects} estimate detail project(s) have been overdue for more than 2 hours.${quotaSuffix}`,
     );
   }
   if (estimates && estimates.max_failure_count >= 3) {

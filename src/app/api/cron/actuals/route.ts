@@ -4,6 +4,7 @@ import { getRequiredSyncSecret } from "@/lib/cronSync";
 import {
   acquireProcoreWorker,
   claimDueProject,
+  deferProjectSync,
   finishProjectSync,
   getSyncQueueStats,
   releaseProcoreWorker,
@@ -303,18 +304,23 @@ async function runActualsSync(request: NextRequest) {
     const polling = success
       ? await pollingCadence(companyId, project.projectId, reconciliation)
       : null;
-    if (limited?.rateLimitUntil) {
-      await setProcoreRateLimit({ companyId, until: new Date(limited.rateLimitUntil), error });
+    const rateLimitUntil = limited?.rateLimitUntil ? new Date(limited.rateLimitUntil) : null;
+    if (rateLimitUntil) {
+      await setProcoreRateLimit({ companyId, until: rateLimitUntil, error });
+      await deferProjectSync({
+        project,
+        until: rateLimitUntil,
+        result: { selection, startDate, endDate, polling, steps, deferredBy: "procore-rate-limit" },
+      });
+    } else {
+      await finishProjectSync({
+        project,
+        success,
+        nextRunMinutes: success ? polling?.nextRunMinutes || 90 : 15,
+        error,
+        result: { selection, startDate, endDate, polling, steps },
+      });
     }
-    await finishProjectSync({
-      project,
-      success,
-      nextRunMinutes: limited?.rateLimitUntil
-        ? Math.max(15, Math.ceil((new Date(limited.rateLimitUntil).getTime() - Date.now()) / 60_000))
-        : success ? polling?.nextRunMinutes || 90 : 15,
-      error,
-      result: { selection, startDate, endDate, polling, steps },
-    });
 
     const queueStats = await getSyncQueueStats(companyId, dataset);
     const batchCap = boundedNumber(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK, 8, 3, 12);

@@ -52,9 +52,9 @@ test("uses the specific PCO item description instead of the generic cost code na
   );
 });
 
-test("combines uniquely matching estimate items to describe a blended PCO line", () => {
+test("splits uniquely matching estimate items into separate PCO lines", () => {
   const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
-  const [line] = enrichApprovedChangeOrderLinesFromEstimate(
+  const lines = enrichApprovedChangeOrderLinesFromEstimate(
     [{ quantity: "8", unit_cost: "9.7175", amount: "77.74", uom: "ea" }],
     [
       { name: "#4 Rebar - 20' Pc", quantity: "6", uom: "EA", itemCost: "44.46" },
@@ -63,7 +63,15 @@ test("combines uniquely matching estimate items to describe a blended PCO line",
     ],
   );
 
-  assert.equal(line.description, "#4 Rebar - 20' Pc (6 ea) + #6 Rebar - 20' Pc (2 ea)");
+  assert.deepEqual(lines.map((line) => ({
+    description: line.description,
+    quantity: line.quantity,
+    unitCost: line.unit_cost,
+    amount: line.amount,
+  })), [
+    { description: "#4 Rebar - 20' Pc", quantity: 6, unitCost: 7.41, amount: 44.46 },
+    { description: "#6 Rebar - 20' Pc", quantity: 2, unitCost: 16.64, amount: 33.28 },
+  ]);
 });
 
 test("does not invent an estimate description when more than one subset matches", () => {

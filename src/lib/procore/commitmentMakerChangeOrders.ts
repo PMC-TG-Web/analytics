@@ -167,14 +167,21 @@ export function enrichApprovedChangeOrderLinesFromEstimate(
   sourceLines: UnknownRecord[],
   estimateLines: UnknownRecord[],
 ): UnknownRecord[] {
-  return sourceLines.map((line) => {
-    if (text(line.description)) return line;
+  return sourceLines.flatMap((line) => {
+    if (text(line.description)) return [line];
     const matches = matchingEstimateSubsets(line, estimateLines);
-    if (matches.length !== 1) return line;
-    const description = matches[0]
-      .map((match) => `${text(match.name)} (${number(match.quantity)} ${text(match.uom).toLowerCase()})`)
-      .join(" + ");
-    return description ? { ...line, description } : line;
+    if (matches.length !== 1) return [line];
+    return matches[0].map((match) => {
+      const quantity = number(match.quantity) ?? 0;
+      const amount = estimateLineAmount(match) ?? 0;
+      return {
+        ...line,
+        description: text(match.name),
+        quantity,
+        unit_cost: amount / quantity,
+        amount,
+      };
+    });
   });
 }
 

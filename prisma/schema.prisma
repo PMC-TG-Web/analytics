@@ -1755,6 +1755,49 @@ model ProcorePotentialChangeOrderLine {
   @@map("procore_potential_change_order_lines")
 }
 
+/// Durable, target-locked application of one approved Prime CO to a commitment.
+model CommitmentMakerChangeOrderApplication {
+  id                          String   @id @default(cuid())
+  companyId                   String   @map("company_id")
+  projectId                   String   @map("project_id")
+  sourceKind                  String   @map("source_kind")
+  sourceId                    String   @map("source_id")
+  sourceNumber                String?  @map("source_number")
+  sourceTitle                 String?  @map("source_title")
+  targetKind                  String   @map("target_kind")
+  requestedTargetCommitmentId String?  @map("requested_target_commitment_id")
+  targetCommitmentId          String?  @map("target_commitment_id")
+  requestFingerprint          String   @map("request_fingerprint")
+  status                      String   @default("claimed")
+  leaseToken                  String   @map("lease_token")
+  leaseExpiresAt              DateTime @map("lease_expires_at") @db.Timestamptz(6)
+  completedAt                 DateTime? @map("completed_at") @db.Timestamptz(6)
+  lastError                   String?  @map("last_error")
+  createdAt                   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  aliases                     CommitmentMakerChangeOrderAlias[]
+
+  @@index([companyId, projectId])
+  @@index([targetCommitmentId])
+  @@index([status, leaseExpiresAt])
+  @@map("commitment_maker_change_order_applications")
+}
+
+/// Every Procore identity for a source CO; a packaged PCCO also claims its PCO IDs.
+model CommitmentMakerChangeOrderAlias {
+  companyId    String   @map("company_id")
+  projectId    String   @map("project_id")
+  sourceKind   String   @map("source_kind")
+  sourceId     String   @map("source_id")
+  applicationId String  @map("application_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  application  CommitmentMakerChangeOrderApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, projectId, sourceKind, sourceId])
+  @@index([applicationId])
+  @@map("commitment_maker_change_order_aliases")
+}
+
 /// Canonical work scope where estimate, CO, timecard, productivity, and PO sources meet.
 model AnalyticsWorkScope {
   id               String                        @id @default(dbgenerated("(gen_random_uuid())::text"))

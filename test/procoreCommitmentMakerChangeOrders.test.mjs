@@ -218,6 +218,33 @@ test("uses a source marker to resume only the matching commitment change order",
   assert.match(description, /PMC-COMMITMENT-MAKER:700:fingerprint-1/);
 });
 
+test("claims a PCCO and every contained PCO as the same source operation", () => {
+  const { commitmentMakerChangeOrderSourceAliases } = loadModule();
+  const aliases = (changeOrder, potentialChangeOrderIds) => JSON.parse(JSON.stringify(
+    commitmentMakerChangeOrderSourceAliases(changeOrder, potentialChangeOrderIds),
+  ));
+
+  assert.deepEqual(aliases({
+    packageId: "700",
+    number: "002",
+    title: "Added pier",
+    sourceKind: "change_order_package",
+  }, ["100", "101", "100", ""]), [
+    { sourceKind: "change_order_package", sourceId: "700" },
+    { sourceKind: "potential_change_order", sourceId: "100" },
+    { sourceKind: "potential_change_order", sourceId: "101" },
+  ]);
+
+  assert.deepEqual(aliases({
+    packageId: "100",
+    number: "PCO-1",
+    title: "Added pier",
+    sourceKind: "potential_change_order",
+  }, ["ignored"]), [
+    { sourceKind: "potential_change_order", sourceId: "100" },
+  ]);
+});
+
 test("keeps commitment change order resource paths separate from legacy packages", () => {
   const {
     commitmentChangeOrderLineItemsPath,

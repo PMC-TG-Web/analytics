@@ -25,6 +25,7 @@ import {
 } from "@/lib/procore/commitmentMaker";
 import {
   approvedChangeOrderCommitmentGroup,
+  commitmentMakerChangeOrderSourceAliases,
   enrichApprovedChangeOrderLinesFromEstimate,
   isAvailableApprovedPotentialChangeOrder,
   selectExistingChangeOrderPurchaseOrder,
@@ -43,6 +44,14 @@ import {
   type CommitmentMakerTaskRequest,
 } from "@/lib/procoreCommitmentMakerTasks";
 import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
+import {
+  claimCommitmentMakerChangeOrder,
+  CommitmentMakerChangeOrderClaimError,
+  completeCommitmentMakerChangeOrderClaim,
+  failCommitmentMakerChangeOrderClaim,
+  inspectCommitmentMakerChangeOrderClaim,
+  setCommitmentMakerChangeOrderTarget,
+} from "@/lib/procoreCommitmentMakerChangeOrderClaims";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +62,7 @@ type ApprovedChangeOrder = CommitmentMakerChangeOrderContext & {
   status: string;
   updatedAt: string;
   sourceKind: "change_order_package" | "potential_change_order";
+  containedPotentialChangeOrderIds: string[];
 };
 type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 
@@ -243,6 +253,7 @@ function approvedChangeOrder(record: UnknownRecord, fallbackContractId = ""): Ap
     amount: Number.isFinite(rawAmount) ? rawAmount : null,
     updatedAt: readText(record.updated_at ?? record.reviewed_at ?? record.created_at),
     sourceKind: "change_order_package",
+    containedPotentialChangeOrderIds: [],
   };
 }
 
@@ -260,7 +271,21 @@ function approvedPotentialChangeOrder(record: UnknownRecord): ApprovedChangeOrde
     amount: Number.isFinite(rawAmount) ? rawAmount : null,
     updatedAt: readText(record.updated_at ?? record.reviewed_at ?? record.created_at),
     sourceKind: "potential_change_order",
+    containedPotentialChangeOrderIds: [],
   };
+}
+
+function potentialChangeOrderPackageId(record: UnknownRecord): string {
+  const changeOrderPackage = isRecord(record.change_order_package)
+    ? record.change_order_package
+    : isRecord(record.prime_contract_change_order)
+      ? record.prime_contract_change_order
+      : {};
+  return readText(
+    record.change_order_package_id
+    ?? record.prime_contract_change_order_id
+    ?? changeOrderPackage.id,
+  );
 }
 
 async function fetchApprovedChangeOrders(
@@ -297,10 +322,24 @@ async function fetchApprovedChangeOrders(
         `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
     }),
   ]);
+  const potentialChangeOrderIdsByPackage = new Map<string, string[]>();
+  for (const record of potentialChangeOrders) {
+    const packageId = potentialChangeOrderPackageId(record);
+    const changeOrderId = readId(record);
+    if (!packageId || !changeOrderId) continue;
+    potentialChangeOrderIdsByPackage.set(packageId, [
+      ...(potentialChangeOrderIdsByPackage.get(packageId) || []),
+      changeOrderId,
+    ]);
+  }
   return [
     ...packages
-    .map(({ record, contractId }) => approvedChangeOrder(record, contractId))
-    .filter((record): record is ApprovedChangeOrder => Boolean(record)),
+      .map(({ record, contractId }) => approvedChangeOrder(record, contractId))
+      .filter((record): record is ApprovedChangeOrder => Boolean(record))
+      .map((record) => ({
+        ...record,
+        containedPotentialChangeOrderIds: potentialChangeOrderIdsByPackage.get(record.packageId) || [],
+      })),
     ...potentialChangeOrders
       .map(approvedPotentialChangeOrder)
       .filter((record): record is ApprovedChangeOrder => Boolean(record)),
@@ -338,6 +377,7 @@ async function fetchApprovedChangeOrdersFromDatabase(
     amount: record.amount === null ? null : Number(record.amount),
     updatedAt: record.sourceUpdatedAt?.toISOString() || "",
     sourceKind: "change_order_package" as const,
+    containedPotentialChangeOrderIds: [],
   }));
 }
 
@@ -372,6 +412,7 @@ async function fetchApprovedPotentialChangeOrdersFromDatabase(
     amount: record.amount === null ? null : Number(record.amount),
     updatedAt: record.sourceUpdatedAt?.toISOString() || "",
     sourceKind: "potential_change_order" as const,
+    containedPotentialChangeOrderIds: [],
   }));
 }
 
@@ -396,6 +437,23 @@ async function resolveApprovedChangeOrder(params: {
   if (liveMatch) return liveMatch;
   const stored = await fetchApprovedChangeOrdersFromAllDatabaseSources(params.companyId, params.projectId);
   return stored.find((record) => record.packageId === params.packageId) || null;
+}
+
+async function resolveChangeOrderSourceAliases(
+  companyId: string,
+  projectId: string,
+  changeOrder: ApprovedChangeOrder,
+) {
+  const storedPotentialChangeOrders = changeOrder.sourceKind === "change_order_package"
+    ? await prisma.procorePotentialChangeOrder.findMany({
+        where: { companyId, projectId, packageId: changeOrder.packageId },
+        select: { changeOrderId: true },
+      })
+    : [];
+  return commitmentMakerChangeOrderSourceAliases(changeOrder, [
+    ...changeOrder.containedPotentialChangeOrderIds,
+    ...storedPotentialChangeOrders.map((record) => record.changeOrderId),
+  ]);
 }
 
 async function fetchApprovedChangeOrderLines(params: {
@@ -1137,6 +1195,9 @@ async function handleRequest(request: NextRequest) {
   const importFingerprint = createHash("sha256")
     .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
+  const sourceAliases = sourceChangeOrder
+    ? await resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
+    : [];
   const plan = await buildPlan({
     accessToken,
     companyId,
@@ -1147,6 +1208,16 @@ async function handleRequest(request: NextRequest) {
     existingCommitmentId,
     sourceChangeOrderId: sourceChangeOrder?.packageId || "",
   });
+  if (sourceChangeOrder) {
+    const claimError = await inspectCommitmentMakerChangeOrderClaim({
+      companyId,
+      projectId,
+      aliases: sourceAliases,
+      targetKind: target,
+      requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
+    });
+    if (claimError) plan.validationErrors.push(claimError);
+  }
   const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
   const shellyCompanyUser = sourceChangeOrder ? await findShellyCompanyUser() : null;
   let taskAssigneePreview: Awaited<ReturnType<typeof resolveCommitmentMakerChangeOrderTaskAssignees>> | null = null;
@@ -1205,8 +1276,70 @@ async function handleRequest(request: NextRequest) {
     return NextResponse.json({ ...preview, error: "Commitment creation is blocked by validation errors." }, { status: 409 });
   }
 
+  let changeOrderClaim: Awaited<ReturnType<typeof claimCommitmentMakerChangeOrder>> | null = null;
+  if (sourceChangeOrder) {
+    try {
+      changeOrderClaim = await claimCommitmentMakerChangeOrder({
+        companyId,
+        projectId,
+        sourceKind: sourceChangeOrder.sourceKind,
+        sourceId: sourceChangeOrder.packageId,
+        sourceNumber: sourceChangeOrder.number,
+        sourceTitle: sourceChangeOrder.title,
+        aliases: sourceAliases,
+        targetKind: target,
+        requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
+        requestFingerprint: importFingerprint,
+      });
+    } catch (error) {
+      if (error instanceof CommitmentMakerChangeOrderClaimError) {
+        return NextResponse.json({ ...preview, success: false, error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+
+    if (changeOrderClaim.targetCommitmentId) {
+      const claimedCommitment = plan.commitments.find(
+        (commitment) => readId(commitment) === changeOrderClaim?.targetCommitmentId,
+      );
+      if (!claimedCommitment) {
+        await failCommitmentMakerChangeOrderClaim({
+          ...changeOrderClaim,
+          error: `Previously claimed PO ${changeOrderClaim.targetCommitmentId} is no longer available.`,
+        });
+        return NextResponse.json(
+          { ...preview, success: false, error: `The originally claimed PO ${changeOrderClaim.targetCommitmentId} is no longer available; another PO will not be created.` },
+          { status: 409 },
+        );
+      }
+      if (!commitmentUsesParadiseVendor(claimedCommitment, plan.vendor.id)) {
+        const error = `The originally claimed PO ${changeOrderClaim.targetCommitmentId} is no longer assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`;
+        await failCommitmentMakerChangeOrderClaim({
+          ...changeOrderClaim,
+          error,
+        });
+        return NextResponse.json({ ...preview, success: false, error }, { status: 409 });
+      }
+      for (const group of plan.groups) {
+        group.existingContractId = changeOrderClaim.targetCommitmentId;
+        group.number = readText(claimedCommitment.number);
+        group.action = target === "existing_purchase_order" ? "append" : "resume";
+      }
+    }
+  }
+
   if (plan.vendor.willAddToProject) {
-    await addVendorToProject({ accessToken, companyId, projectId, vendorId: plan.vendor.id });
+    try {
+      await addVendorToProject({ accessToken, companyId, projectId, vendorId: plan.vendor.id });
+    } catch (error) {
+      if (changeOrderClaim) {
+        await failCommitmentMakerChangeOrderClaim({
+          ...changeOrderClaim,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      throw error;
+    }
   }
 
   const results: UnknownRecord[] = [];
@@ -1261,6 +1394,12 @@ async function handleRequest(request: NextRequest) {
         }
       }
 
+      if (changeOrderClaim && contractId) {
+        await setCommitmentMakerChangeOrderTarget({
+          ...changeOrderClaim,
+          targetCommitmentId: contractId,
+        });
+      }
       const existingLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
       let createdLineItems = 0;
       let reusedLineItems = 0;
@@ -1411,6 +1550,29 @@ async function handleRequest(request: NextRequest) {
           changes: { projectId, changeOrder: sourceChangeOrder, error: taskError },
         });
       }
+    }
+  }
+
+  if (changeOrderClaim) {
+    const targetCommitmentId = readText(results.find((result) => result.contractId)?.contractId)
+      || changeOrderClaim.targetCommitmentId;
+    if (failure || taskError) {
+      await failCommitmentMakerChangeOrderClaim({
+        ...changeOrderClaim,
+        targetCommitmentId,
+        error: taskError || readText(failure?.error) || "Commitment Maker stopped before completion.",
+      });
+    } else if (targetCommitmentId) {
+      await completeCommitmentMakerChangeOrderClaim({
+        ...changeOrderClaim,
+        targetCommitmentId,
+      });
+    } else {
+      await failCommitmentMakerChangeOrderClaim({
+        ...changeOrderClaim,
+        error: "Commitment Maker finished without a target PO ID.",
+      });
+      taskError = "The change order could not be tied to its target PO.";
     }
   }
 

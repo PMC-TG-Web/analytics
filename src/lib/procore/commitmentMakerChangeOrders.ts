@@ -12,6 +12,15 @@ export type CommitmentMakerApprovedChangeOrder = {
   title: string;
 };
 
+export type CommitmentMakerChangeOrderSource = CommitmentMakerApprovedChangeOrder & {
+  sourceKind: "change_order_package" | "potential_change_order";
+};
+
+export type CommitmentMakerChangeOrderSourceAlias = {
+  sourceKind: "change_order_package" | "potential_change_order";
+  sourceId: string;
+};
+
 export type CommitmentMakerExistingPurchaseOrder = {
   id: string;
   title: string;
@@ -245,6 +254,23 @@ export function commitmentChangeOrderTitle(changeOrder: CommitmentMakerApprovedC
     .filter(Boolean)
     .join(" — ")
     .substring(0, 255);
+}
+
+export function commitmentMakerChangeOrderSourceAliases(
+  changeOrder: CommitmentMakerChangeOrderSource,
+  packagedPotentialChangeOrderIds: string[] = [],
+): CommitmentMakerChangeOrderSourceAlias[] {
+  const aliases = new Map<string, CommitmentMakerChangeOrderSourceAlias>();
+  const addAlias = (sourceKind: CommitmentMakerChangeOrderSourceAlias["sourceKind"], sourceId: string) => {
+    const normalizedSourceId = text(sourceId);
+    if (!normalizedSourceId) return;
+    aliases.set(`${sourceKind}:${normalizedSourceId}`, { sourceKind, sourceId: normalizedSourceId });
+  };
+  addAlias(changeOrder.sourceKind, changeOrder.packageId);
+  if (changeOrder.sourceKind === "change_order_package") {
+    for (const sourceId of packagedPotentialChangeOrderIds) addAlias("potential_change_order", sourceId);
+  }
+  return [...aliases.values()];
 }
 
 export function commitmentChangeOrderSourceMarker(sourceChangeOrderId: string, fingerprint: string): string {

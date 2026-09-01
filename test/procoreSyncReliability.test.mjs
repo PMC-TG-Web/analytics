@@ -11,6 +11,7 @@ import {
   procoreHealthAlertFingerprint,
 } from "../src/lib/procoreSyncHealth.ts";
 import {
+  procoreBackgroundReserve,
   procoreQuotaObservation,
   procoreRateLimitDelayMs,
 } from "../src/lib/procoreRateLimit.ts";
@@ -37,6 +38,13 @@ test("Procore rate-limit waits remain capped for distant reset windows", () => {
     maxDelayMs: 15_000,
     nowMs: 0,
   }), 15_000);
+});
+
+test("Procore background reserve accepts an explicit zero", () => {
+  assert.equal(procoreBackgroundReserve(undefined), 100);
+  assert.equal(procoreBackgroundReserve("invalid"), 100);
+  assert.equal(procoreBackgroundReserve("0"), 0);
+  assert.equal(procoreBackgroundReserve("25"), 25);
 });
 
 test("Procore quota observations reserve background capacity until the provider reset", () => {
@@ -574,6 +582,8 @@ test("the shared Procore client gates background traffic but preserves interacti
   );
   assert.match(procore, /liveApiBypassStore\.run\('background', operation\)/);
   assert.match(procore, /liveApiBypassStore\.run\('interactive', operation\)/);
+  assert.match(procore, /request\.headers\.get\('x-cron-secret'\)/);
+  assert.match(procore, /process\.env\.PROCORE_SYNC_SECRET, process\.env\.CRON_SECRET/);
   assert.match(
     procore,
     /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return liveApiBypassStore\.run\('background', operation\)/,
@@ -581,4 +591,6 @@ test("the shared Procore client gates background traffic but preserves interacti
   assert.match(procore, /requestContext === 'background'/);
   assert.match(procore, /await getProcoreBackgroundCooldown\(companyId\)/);
   assert.match(procore, /deferred\.status = 429/);
+  assert.match(procore, /tokenError\.status = response\.status/);
+  assert.match(procore, /wrapped\.rateLimitUntil = \(error as ErrorWithStatusAndCause\)\.rateLimitUntil/);
 });

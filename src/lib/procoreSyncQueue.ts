@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { cacheProcoreBackgroundCooldown } from "@/lib/procoreQuotaControl";
 
 export type QueuedProject = {
   companyId: string;
@@ -690,7 +691,7 @@ export async function setProcoreRateLimit(params: {
   until: Date;
   error?: string | null;
 }) {
-  await prisma.$executeRawUnsafe(
+  const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `
       INSERT INTO procore_sync_controls (
         company_id, rate_limit_until, last_429_at, last_error, created_at, updated_at
@@ -704,9 +705,11 @@ export async function setProcoreRateLimit(params: {
         last_429_at = NOW(),
         last_error = EXCLUDED.last_error,
         updated_at = NOW()
+      RETURNING rate_limit_until
     `,
     params.companyId,
     params.until,
     params.error || null
   );
+  cacheProcoreBackgroundCooldown(params.companyId, rows[0]?.rate_limit_until || null);
 }

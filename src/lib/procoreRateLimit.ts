@@ -8,6 +8,12 @@ export type ProcoreQuotaObservation = {
   rateLimited: boolean;
 };
 
+export function procoreBackgroundReserve(value: string | undefined) {
+  if (value === undefined || value.trim() === "") return 100;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 100;
+}
+
 function retryAfterDelayMs(value: string | null, nowMs: number): number | null {
   if (!value) return null;
   const seconds = Number(value);

@@ -5,7 +5,11 @@ import {
   getProcoreBackgroundCooldown,
   recordProcoreQuotaObservation,
 } from '@/lib/procoreQuotaControl';
-import { procoreQuotaObservation, procoreRateLimitDelayMs } from '@/lib/procoreRateLimit';
+import {
+  procoreBackgroundReserve,
+  procoreQuotaObservation,
+  procoreRateLimitDelayMs,
+} from '@/lib/procoreRateLimit';
 
 interface ProcoreTokenResponse {
   access_token: string;
@@ -18,6 +22,7 @@ interface ProcoreTokenResponse {
 type ErrorWithStatusAndCause = Error & {
   status?: number;
   cause?: unknown;
+  rateLimitUntil?: Date;
 };
 
 type ProcoreRequestContext = 'background' | 'interactive';
@@ -74,6 +79,9 @@ function getRequestSyncSecret(request: Request): string {
   const headerSecret = request.headers.get('x-sync-secret')?.trim();
   if (headerSecret) return headerSecret;
 
+  const cronSecret = request.headers.get('x-cron-secret')?.trim();
+  if (cronSecret) return cronSecret;
+
   const authorization = request.headers.get('authorization')?.trim() || '';
   const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
   return bearerMatch?.[1]?.trim() || '';
@@ -85,10 +93,9 @@ function hasProcoreAccessTokenCookie(request: Request): boolean {
 }
 
 export function hasValidProcoreSyncSecret(request: Request): boolean {
-  const expectedSecret = (process.env.PROCORE_SYNC_SECRET || '').trim();
-  if (!expectedSecret) return false;
-
-  return getRequestSyncSecret(request) === expectedSecret;
+  const provided = getRequestSyncSecret(request);
+  return Boolean(provided) && [process.env.PROCORE_SYNC_SECRET, process.env.CRON_SECRET]
+    .some((secret) => Boolean(secret?.trim()) && provided === secret!.trim());
 }
 
 export function withProcoreLiveApiBypassForSyncSecret<T>(
@@ -207,7 +214,16 @@ export async function getClientCredentialsToken(): Promise<string> {
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Client credentials token request failed (${response.status}): ${body}`);
+    const quota = procoreQuotaObservation(response.headers, response.status, {
+      reserve: 0,
+      fallbackCooldownMs: 15 * 60_000,
+    });
+    const tokenError = new Error(
+      `Client credentials token request failed (${response.status}): ${body}`,
+    ) as ErrorWithStatusAndCause;
+    tokenError.status = response.status;
+    tokenError.rateLimitUntil = quota.cooldownUntil || undefined;
+    throw tokenError;
   }
   const data = (await response.json()) as ProcoreTokenResponse;
   _cachedServiceToken = {
@@ -319,7 +335,7 @@ export async function makeRequest(
         });
 
         const quota = procoreQuotaObservation(response.headers, response.status, {
-          reserve: Math.max(0, Number.parseInt(process.env.PROCORE_API_BACKGROUND_RESERVE || '100', 10) || 100),
+          reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
           fallbackCooldownMs: 15 * 60_000,
         });
         if (quota.cooldownUntil || quota.rateLimited) {
@@ -352,8 +368,9 @@ export async function makeRequest(
           if (shouldLog) {
             console.error(`Procore API error ${response.status}:`, errorBody);
           }
-          const apiError = new Error(`Procore API error ${response.status}: ${errorBody}`) as Error & { status?: number };
+          const apiError = new Error(`Procore API error ${response.status}: ${errorBody}`) as ErrorWithStatusAndCause;
           apiError.status = response.status;
+          apiError.rateLimitUntil = quota.cooldownUntil || undefined;
           throw apiError;
         }
 
@@ -378,8 +395,9 @@ export async function makeRequest(
       if (cause) console.error(`Cause:`, cause);
     }
 
-    const wrapped = new Error(`API Request Failed: ${msg}`) as Error & { status?: number };
+    const wrapped = new Error(`API Request Failed: ${msg}`) as ErrorWithStatusAndCause;
     if (status > 0) wrapped.status = status;
+    wrapped.rateLimitUntil = (error as ErrorWithStatusAndCause).rateLimitUntil;
     throw wrapped;
   }
 }

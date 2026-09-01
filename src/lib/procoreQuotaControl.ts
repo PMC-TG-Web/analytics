@@ -1,21 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import type { ProcoreQuotaObservation } from "@/lib/procoreRateLimit";
 
-const quotaCooldownCache = new Map<string, { checkedAt: number; until: Date | null }>();
-const QUOTA_CACHE_MS = 5_000;
+const quotaCooldownCache = new Map<string, Date>();
+
+export function cacheProcoreBackgroundCooldown(companyId: string, until: Date | null) {
+  if (!until) return;
+  const cached = quotaCooldownCache.get(companyId);
+  if (!cached || until > cached) quotaCooldownCache.set(companyId, until);
+}
 
 export async function getProcoreBackgroundCooldown(companyId: string, now = new Date()) {
   const cached = quotaCooldownCache.get(companyId);
-  if (cached && now.getTime() - cached.checkedAt < QUOTA_CACHE_MS) {
-    return cached.until && cached.until > now ? cached.until : null;
-  }
+  if (cached && cached > now) return cached;
 
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `SELECT rate_limit_until FROM procore_sync_controls WHERE company_id = $1`,
     companyId,
   );
   const until = rows[0]?.rate_limit_until || null;
-  quotaCooldownCache.set(companyId, { checkedAt: now.getTime(), until });
+  if (until && until > now) cacheProcoreBackgroundCooldown(companyId, until);
+  else quotaCooldownCache.delete(companyId);
   return until && until > now ? until : null;
 }
 
@@ -32,7 +36,7 @@ export async function recordProcoreQuotaObservation(params: {
     && !observation.rateLimited
   ) return;
 
-  await prisma.$executeRawUnsafe(
+  const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `
       INSERT INTO procore_sync_controls (
         company_id, rate_limit_until, last_429_at, last_error,
@@ -65,6 +69,7 @@ export async function recordProcoreQuotaObservation(params: {
         rate_limit_reset_at = COALESCE(EXCLUDED.rate_limit_reset_at, procore_sync_controls.rate_limit_reset_at),
         rate_limit_observed_at = NOW(),
         updated_at = NOW()
+      RETURNING rate_limit_until
     `,
     params.companyId,
     observation.cooldownUntil,
@@ -75,10 +80,5 @@ export async function recordProcoreQuotaObservation(params: {
     observation.resetAt,
   );
 
-  if (observation.cooldownUntil) {
-    quotaCooldownCache.set(params.companyId, {
-      checkedAt: Date.now(),
-      until: observation.cooldownUntil,
-    });
-  }
+  cacheProcoreBackgroundCooldown(params.companyId, rows[0]?.rate_limit_until || null);
 }

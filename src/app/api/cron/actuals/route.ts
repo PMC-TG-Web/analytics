@@ -17,6 +17,7 @@ import {
   procoreSyncDetailHasErrors,
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
+import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -141,15 +142,11 @@ async function responseDetail(response: Response) {
 }
 
 function rateLimitReset(response: Response) {
-  const reset = Number(response.headers.get("x-rate-limit-reset") || 0);
-  const retryAfter = Number(response.headers.get("retry-after") || 0);
-  const fallback = Date.now() + 15 * 60_000;
-  const timestamp = Math.max(
-    fallback,
-    reset > 0 ? reset * 1_000 + 3_000 : 0,
-    retryAfter > 0 ? Date.now() + retryAfter * 1_000 + 2_000 : 0
-  );
-  return new Date(timestamp);
+  return procoreQuotaObservation(response.headers, 429, {
+    reserve: 0,
+    fallbackCooldownMs: 15 * 60_000,
+    resetPaddingMs: 3_000,
+  }).cooldownUntil!;
 }
 
 async function runStep(params: {

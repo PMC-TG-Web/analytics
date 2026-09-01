@@ -406,6 +406,87 @@ async function fetchExistingPurchaseOrdersFromDatabase(companyId: string, projec
     ));
 }
 
+async function fetchCommitmentMakerPlanDataFromDatabase(companyId: string, projectId: string) {
+  const [companyVendorRows, projectVendorRows, commitmentRows, budgetRows] = await Promise.all([
+    prisma.procore_company_vendors_live.findMany({
+      where: { company_id: companyId },
+      select: { vendor_id: true, name: true, payload: true },
+    }),
+    prisma.procoreProjectVendor.findMany({
+      where: { companyId, projectId, softDeleted: false },
+      select: { procoreVendorId: true, name: true, abbreviatedName: true, payload: true },
+    }),
+    prisma.purchaseOrderContract.findMany({
+      where: {
+        procoreCompanyId: companyId,
+        procoreProjectId: projectId,
+        procoreId: { not: null },
+        procoreDeletedAt: null,
+      },
+      select: {
+        procoreId: true,
+        number: true,
+        title: true,
+        status: true,
+        vendorId: true,
+        vendorName: true,
+        customFields: true,
+      },
+    }),
+    prisma.budgetLineItem.findMany({
+      where: { companyId, projectId },
+      select: {
+        budgetLineItemId: true,
+        costCode: true,
+        lineItemType: true,
+        wbsCodeId: true,
+        payload: true,
+      },
+    }),
+  ]);
+  const companyVendorNames = new Map(companyVendorRows.map((vendor) => [vendor.vendor_id, vendor.name || ""]));
+  const commitments = commitmentRows.map((commitment) => {
+    const customFields = isRecord(commitment.customFields) ? commitment.customFields : {};
+    return {
+      id: commitment.procoreId,
+      number: commitment.number,
+      title: commitment.title,
+      status: commitment.status,
+      type: "purchase_order",
+      vendor_id: commitment.vendorId,
+      vendor_name: commitment.vendorName || companyVendorNames.get(commitment.vendorId || "") || "",
+      origin_data: readText(customFields.origin_data ?? customFields.originData),
+    };
+  });
+  const preferredVendorIds = new Set(commitments
+    .filter((commitment) => (
+      normalizeCommitmentMakerVendorName(commitment.vendor_name)
+        === normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME)
+    ))
+    .map((commitment) => readText(commitment.vendor_id))
+    .filter(Boolean));
+  const companyVendors = companyVendorRows
+    .map((vendor) => ({
+      ...(isRecord(vendor.payload) ? vendor.payload : {}),
+      id: vendor.vendor_id,
+      name: vendor.name,
+    }))
+    .sort((left, right) => Number(preferredVendorIds.has(readId(right))) - Number(preferredVendorIds.has(readId(left))));
+  const projectVendors = projectVendorRows.map((vendor) => ({
+    ...(isRecord(vendor.payload) ? vendor.payload : {}),
+    id: vendor.procoreVendorId,
+    name: vendor.name || vendor.abbreviatedName,
+  }));
+  const wbsRecords = budgetRows.map((line) => ({
+    ...(isRecord(line.payload) ? line.payload : {}),
+    id: line.budgetLineItemId,
+    wbs_code_id: line.wbsCodeId,
+    cost_code_string: line.costCode,
+    line_item_type: line.lineItemType,
+  }));
+  return { companyVendors, projectVendors, commitments, wbsRecords };
+}
+
 async function resolveApprovedChangeOrder(params: {
   accessToken: string;
   companyId: string;
@@ -464,8 +545,9 @@ async function fetchApprovedChangeOrderLines(params: {
   companyId: string;
   projectId: string;
   changeOrder: ApprovedChangeOrder;
+  useLive?: boolean;
 }): Promise<UnknownRecord[]> {
-  if (params.changeOrder.sourceKind === "potential_change_order") {
+  if (params.changeOrder.sourceKind === "potential_change_order" && params.useLive !== false) {
     const liveLines = await fetchPaged({
       accessToken: params.accessToken,
       companyId: params.companyId,
@@ -504,17 +586,19 @@ async function fetchApprovedChangeOrderLines(params: {
     }));
   }
 
-  const live = await procoreJson({
-    path: `/rest/v1.0/change_order_packages/${encodeURIComponent(params.changeOrder.packageId)}?project_id=${encodeURIComponent(
-      params.projectId
-    )}&contract_id=${encodeURIComponent(params.changeOrder.contractId)}`,
-    accessToken: params.accessToken,
-    companyId: params.companyId,
-  }).catch(() => null);
-  if (live?.ok) {
-    const detail = unwrapData(live.payload);
-    const lines = asArray(detail, ["line_items", "data"]);
-    if (lines.length > 0) return lines;
+  if (params.useLive !== false) {
+    const live = await procoreJson({
+      path: `/rest/v1.0/change_order_packages/${encodeURIComponent(params.changeOrder.packageId)}?project_id=${encodeURIComponent(
+        params.projectId
+      )}&contract_id=${encodeURIComponent(params.changeOrder.contractId)}`,
+      accessToken: params.accessToken,
+      companyId: params.companyId,
+    }).catch(() => null);
+    if (live?.ok) {
+      const detail = unwrapData(live.payload);
+      const lines = asArray(detail, ["line_items", "data"]);
+      if (lines.length > 0) return lines;
+    }
   }
 
   const stored = await prisma.procoreChangeOrderPackageLine.findMany({
@@ -889,13 +973,21 @@ async function buildPlan(params: {
   target: CommitmentTarget;
   existingCommitmentId: string;
   sourceChangeOrderId: string;
+  useSynchronizedData?: boolean;
 }) {
-  const [companyVendors, projectVendors, commitments, wbsRecords] = await Promise.all([
-    fetchCompanyVendors(params.accessToken, params.companyId),
-    fetchProjectVendors(params.accessToken, params.companyId, params.projectId),
-    fetchCommitments(params.accessToken, params.companyId, params.projectId),
-    fetchProjectWbsRecords(params.accessToken, params.companyId, params.projectId),
-  ]);
+  const { companyVendors, projectVendors, commitments, wbsRecords } = params.useSynchronizedData
+    ? await fetchCommitmentMakerPlanDataFromDatabase(params.companyId, params.projectId)
+    : await Promise.all([
+        fetchCompanyVendors(params.accessToken, params.companyId),
+        fetchProjectVendors(params.accessToken, params.companyId, params.projectId),
+        fetchCommitments(params.accessToken, params.companyId, params.projectId),
+        fetchProjectWbsRecords(params.accessToken, params.companyId, params.projectId),
+      ]).then(([companyVendors, projectVendors, commitments, wbsRecords]) => ({
+        companyVendors,
+        projectVendors,
+        commitments,
+        wbsRecords,
+      }));
   const companyVendor = findParadiseVendor(companyVendors);
   const projectVendor = findParadiseVendor(projectVendors);
   const validationErrors: string[] = [];
@@ -1161,7 +1253,13 @@ async function handleRequest(request: NextRequest) {
   const rawSourceChangeOrderLines = sourceChangeOrder
     ? resolvedSourceChangeOrder?.liveLines !== null
       ? resolvedSourceChangeOrder.liveLines
-      : await fetchApprovedChangeOrderLines({ accessToken, companyId, projectId, changeOrder: sourceChangeOrder })
+      : await fetchApprovedChangeOrderLines({
+          accessToken,
+          companyId,
+          projectId,
+          changeOrder: sourceChangeOrder,
+          useLive: mode === "create",
+        })
     : [];
   const sourceChangeOrderLines = sourceChangeOrder
     ? await enrichChangeOrderLinesFromEstimate({
@@ -1202,7 +1300,20 @@ async function handleRequest(request: NextRequest) {
     .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
   const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
-  const [sourceAliases, plan, shellyCompanyUser] = await Promise.all([
+  const taskAssigneePromise = sourceChangeOrder && mode === "create"
+    ? findShellyCompanyUser().then(async (shellyCompanyUser) => {
+        const assignees = await resolveCommitmentMakerChangeOrderTaskAssignees({
+          request: taskRequest,
+          companyId,
+          projectId,
+          shellyCompanyUser,
+        });
+        return { assignees, shellyCompanyUser, error: null };
+      }).catch(
+        (error: unknown) => ({ assignees: null, shellyCompanyUser: null, error }),
+      )
+    : Promise.resolve({ assignees: null, shellyCompanyUser: null, error: null });
+  const [sourceAliases, plan, taskAssigneeResult] = await Promise.all([
     sourceChangeOrder
       ? resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
       : [],
@@ -1215,31 +1326,19 @@ async function handleRequest(request: NextRequest) {
       target,
       existingCommitmentId,
       sourceChangeOrderId: sourceChangeOrder?.packageId || "",
+      useSynchronizedData: mode === "preview" && Boolean(sourceChangeOrder),
     }),
-    sourceChangeOrder ? findShellyCompanyUser() : null,
+    taskAssigneePromise,
   ]);
-  let taskAssigneePreview: Awaited<ReturnType<typeof resolveCommitmentMakerChangeOrderTaskAssignees>> | null = null;
   if (sourceChangeOrder) {
-    const [claimError, taskAssigneeResult] = await Promise.all([
-      inspectCommitmentMakerChangeOrderClaim({
-        companyId,
-        projectId,
-        aliases: sourceAliases,
-        targetKind: target,
-        requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
-      }),
-      resolveCommitmentMakerChangeOrderTaskAssignees({
-        request: taskRequest,
-        companyId,
-        projectId,
-        shellyCompanyUser,
-      }).then(
-        (assignees) => ({ assignees, error: null }),
-        (error: unknown) => ({ assignees: null, error }),
-      ),
-    ]);
+    const claimError = await inspectCommitmentMakerChangeOrderClaim({
+      companyId,
+      projectId,
+      aliases: sourceAliases,
+      targetKind: target,
+      requestedTargetCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
+    });
     if (claimError) plan.validationErrors.push(claimError);
-    taskAssigneePreview = taskAssigneeResult.assignees;
     if (taskAssigneeResult.error) {
       plan.validationErrors.push(
         `Follow-up tasks: ${taskAssigneeResult.error instanceof Error ? taskAssigneeResult.error.message : String(taskAssigneeResult.error)}`,
@@ -1261,7 +1360,7 @@ async function handleRequest(request: NextRequest) {
     sourceChangeOrder,
     target,
     existingCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
-    taskAssignees: taskAssigneePreview,
+    taskAssignees: taskAssigneeResult.assignees,
     costType: COMMITMENT_MAKER_COST_TYPE,
     previewFingerprint: importFingerprint,
     sourceRowCount,
@@ -1515,7 +1614,7 @@ async function handleRequest(request: NextRequest) {
         projectName: project?.projectName || `Procore Project ${projectId}`,
         changeOrder: sourceChangeOrder,
         taskKinds: ["aia_billing"],
-        shellyCompanyUser,
+        shellyCompanyUser: taskAssigneeResult.shellyCompanyUser,
       });
       await writeAudit({
         action: "change-order-tasks",

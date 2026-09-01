@@ -302,7 +302,7 @@ test("rejects failed preview responses before storing preview state", () => {
   assert.match(page, /!nextPreview\.totals/);
 });
 
-test("resolves only the selected live change order before preview", () => {
+test("keeps approved change-order preview within the interactive response window", () => {
   const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
   const resolver = route.slice(
     route.indexOf("async function resolveApprovedChangeOrder"),
@@ -314,7 +314,10 @@ test("resolves only the selected live change order before preview", () => {
   assert.match(resolver, /change_order_packages\/\$\{encodeURIComponent\(storedMatch\.packageId\)\}/);
   assert.match(resolver, /liveLines: storedMatch\.sourceKind === "change_order_package"/);
   assert.match(route, /resolvedSourceChangeOrder\?\.liveLines !== null/);
+  assert.match(route, /fetchCommitmentMakerPlanDataFromDatabase/);
+  assert.match(route, /useSynchronizedData: mode === "preview" && Boolean\(sourceChangeOrder\)/);
+  assert.match(route, /useLive: mode === "create"/);
+  assert.match(route, /sourceChangeOrder && mode === "create"/);
   assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);
-  assert.match(route, /const \[sourceAliases, plan, shellyCompanyUser\] = await Promise\.all/);
-  assert.match(route, /const \[claimError, taskAssigneeResult\] = await Promise\.all/);
+  assert.match(route, /const \[sourceAliases, plan, taskAssigneeResult\] = await Promise\.all/);
 });

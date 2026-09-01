@@ -289,3 +289,15 @@ test("loads Commitment Maker project data from synchronized tables without block
   assert.match(route, /record\.vendorName \|\| vendorNames\.get\(record\.vendorId \|\| ""\)/);
   assert.doesNotMatch(getHandler, /getClientCredentialsToken|fetchApprovedChangeOrders\(|fetchCommitments\(/);
 });
+
+test("rejects failed preview responses before storing preview state", () => {
+  const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
+  const responseFailureCheck = page.indexOf('if (!response.ok && mode === "preview")');
+  const previewStateUpdate = page.indexOf("setPreview(nextPreview)");
+
+  assert.ok(responseFailureCheck >= 0);
+  assert.ok(previewStateUpdate > responseFailureCheck);
+  assert.match(page, /typeof nextPreview\.success !== "boolean"/);
+  assert.match(page, /!Array\.isArray\(nextPreview\.validationErrors\)/);
+  assert.match(page, /!nextPreview\.totals/);
+});

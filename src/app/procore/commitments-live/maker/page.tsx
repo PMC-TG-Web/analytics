@@ -414,8 +414,23 @@ export default function CommitmentMakerPage() {
       } catch {
         payload = {};
       }
+      if (!response.ok && mode === "preview") {
+        throw new Error(
+          text(asRecord(payload).error)
+          || `The request failed (${response.status}). No Procore changes were confirmed; refresh and retry.`,
+        );
+      }
       if (mode === "preview") {
         const nextPreview = payload as PreviewResponse;
+        if (
+          typeof nextPreview.success !== "boolean"
+          || !Array.isArray(nextPreview.groups)
+          || !Array.isArray(nextPreview.warnings)
+          || !Array.isArray(nextPreview.validationErrors)
+          || !nextPreview.totals
+        ) {
+          throw new Error("Procore returned an incomplete preview. Refresh and try again.");
+        }
         setPreview(nextPreview);
         setResult(null);
         setConfirmed(false);

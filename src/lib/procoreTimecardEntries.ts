@@ -403,6 +403,28 @@ export async function persistTimecardEntries(
 
   const linkedProjectResult = await resolveLinkedProject(params);
   await ensureUnpackedFieldsTable();
+  const expectedProjectId = linkedProjectResult.project?.id ?? null;
+  const expectedCompanyId = params.companyId || null;
+  const existingEntries = params.persistUnpackedFields === false
+    ? await prisma.timecardEntry.findMany({
+        where: {
+          id: {
+            in: entries
+              .map((entry) => String(entry.id ?? "").trim())
+              .filter(Boolean)
+              .map((procoreId) => `tc_${procoreId}_${params.projectId}`),
+          },
+        },
+        select: {
+          id: true,
+          projectId: true,
+          procoreCompanyId: true,
+          procoreProjectId: true,
+          procoreUpdatedAt: true,
+        },
+      })
+    : [];
+  const existingEntriesById = new Map(existingEntries.map((entry) => [entry.id, entry]));
 
   let saved = 0;
   let skipped = 0;
@@ -419,6 +441,19 @@ export async function persistTimecardEntries(
 
     const dateText = normalizeDate(entry.date ?? entry.log_date);
     if (!dateText) { skipped += 1; continue; }
+    const deterministicId = `tc_${procoreId}_${params.projectId}`;
+    const sourceUpdatedAt = toNullableDate(entry.updated_at);
+    const existingEntry = existingEntriesById.get(deterministicId);
+    if (
+      sourceUpdatedAt
+      && existingEntry?.procoreUpdatedAt?.getTime() === sourceUpdatedAt.getTime()
+      && (existingEntry.projectId ?? null) === expectedProjectId
+      && (existingEntry.procoreCompanyId ?? null) === expectedCompanyId
+      && existingEntry.procoreProjectId === params.projectId
+    ) {
+      skipped += 1;
+      continue;
+    }
 
     const party =
       entry.party && typeof entry.party === "object"
@@ -453,7 +488,6 @@ export async function persistTimecardEntries(
       customFields: customFieldsPayload,
       updatedAt: new Date(),
     };
-    const deterministicId = `tc_${procoreId}_${params.projectId}`;
 
     try {
       const savedEntry = await prisma.timecardEntry.upsert({

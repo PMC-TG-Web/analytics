@@ -12,6 +12,11 @@ test('the proven five-minute worker owns health and reconciliation cadence', () 
   });
   assert.deepEqual(procoreAutomationCadence(new Date('2026-08-14T12:10:00.000Z')), {
     runHealthMonitor: false,
+    runProjectReconciliation: false,
+    runActualsReconciliation: false,
+  });
+  assert.deepEqual(procoreAutomationCadence(new Date('2026-08-14T07:10:00.000Z')), {
+    runHealthMonitor: false,
     runProjectReconciliation: true,
     runActualsReconciliation: false,
   });

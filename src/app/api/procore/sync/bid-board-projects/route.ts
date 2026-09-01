@@ -9,7 +9,10 @@ import { prisma } from "@/lib/prisma";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 import { shouldStopBidBoardPagination } from "@/lib/procoreBidBoardPagination";
-import { bidBoardPayloadChanged } from "@/lib/procoreBidBoardChange";
+import {
+  bidBoardPayloadChanged,
+  bidBoardPayloadNeedsPersistence,
+} from "@/lib/procoreBidBoardChange";
 import { assessBidBoardCoverage } from "@/lib/procoreBidBoardCoverage";
 import { queueEstimatingSyncProjects } from "@/lib/procoreSyncQueue";
 
@@ -203,6 +206,20 @@ async function upsertProject(params: {
   const { companyId, project, previousPayload, hasEstimateQueueRecord } = params;
   const bidBoardId = text(project.id || project.bid_board_project_id);
   if (!bidBoardId) return null;
+  const statusRaw = text(project.status) || null;
+  const status = normalizeBidBoardStatus(statusRaw) || "Bid Submitted";
+  const payloadChanged = bidBoardPayloadChanged(previousPayload, project);
+  const result = {
+    bidBoardId,
+    status,
+    sales: numeric(isRecord(project.stats) ? project.stats.total : 0),
+    active: projectIsActive(project),
+    estimateDetailsDue: !hasEstimateQueueRecord || payloadChanged,
+  };
+  if (!bidBoardPayloadNeedsPersistence(previousPayload, project)) {
+    return { ...result, written: false };
+  }
+
   const raw = isRecord(project.raw) ? project.raw : {};
   const projectNumber = text(project.project_number) || null;
   const procoreProjectId = await resolveProcoreProjectId({
@@ -216,8 +233,6 @@ async function upsertProject(params: {
     nestedText(project.customer_company, "id")
     || nestedText(raw.customer_company, "id")
     || null;
-  const statusRaw = text(project.status) || null;
-  const status = normalizeBidBoardStatus(statusRaw) || "Bid Submitted";
   const payload = jsonValue(project);
 
   await Promise.all([
@@ -289,13 +304,7 @@ async function upsertProject(params: {
       : []),
   ]);
 
-  return {
-    bidBoardId,
-    status,
-    sales: numeric(isRecord(project.stats) ? project.stats.total : 0),
-    active: projectIsActive(project),
-    estimateDetailsDue: !hasEstimateQueueRecord || bidBoardPayloadChanged(previousPayload, project),
-  };
+  return { ...result, written: true };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -489,6 +498,8 @@ export async function POST(request: Request) {
         pagesFetched: fetched.pagesFetched,
         fetched: fetched.projects.length,
         persisted: persisted.length,
+        written: persisted.filter((project) => project.written).length,
+        unchanged: persisted.filter((project) => !project.written).length,
         estimateDetailsQueued,
         estimateDetailProjectIds: estimateDetailsDue,
         markedMissing,

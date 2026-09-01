@@ -11,6 +11,7 @@ type PersistProductivityLogsParams = {
   projectName?: string;
   projectNumber?: string;
   createProjectIfMissing?: boolean;
+  persistUnpackedFields?: boolean;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -417,6 +418,25 @@ export async function persistProductivityLogs(
 
   const linkedProjectResult = await resolveLinkedProject(params);
   await ensureUnpackedFieldsTable();
+  const expectedProjectId = linkedProjectResult.project?.id ?? null;
+  const expectedCompanyId = params.companyId || null;
+  const existingLogs = params.persistUnpackedFields === false
+    ? await prisma.productivityLog.findMany({
+        where: {
+          id: {
+            in: logs.map((log) => String(log.id ?? "").trim()).filter(Boolean),
+          },
+        },
+        select: {
+          id: true,
+          projectId: true,
+          procoreCompanyId: true,
+          procoreProjectId: true,
+          procoreUpdatedAt: true,
+        },
+      })
+    : [];
+  const existingLogsById = new Map(existingLogs.map((log) => [log.id, log]));
 
   let saved = 0;
   let skipped = 0;
@@ -430,6 +450,19 @@ export async function persistProductivityLogs(
 
     const dateText = normalizeDate(log.log_date ?? log.date);
     if (!dateText) {
+      skipped += 1;
+      continue;
+    }
+
+    const sourceUpdatedAt = toNullableDate(log.updated_at);
+    const existingLog = existingLogsById.get(procoreId);
+    if (
+      sourceUpdatedAt
+      && existingLog?.procoreUpdatedAt?.getTime() === sourceUpdatedAt.getTime()
+      && (existingLog.projectId ?? null) === expectedProjectId
+      && (existingLog.procoreCompanyId ?? null) === expectedCompanyId
+      && existingLog.procoreProjectId === params.projectId
+    ) {
       skipped += 1;
       continue;
     }
@@ -476,7 +509,9 @@ export async function persistProductivityLogs(
       create: { id: procoreId, ...sharedFields },
     });
 
-    await syncUnpackedFieldsForLog(procoreId, unpacked.jsonFields);
+    if (params.persistUnpackedFields !== false) {
+      await syncUnpackedFieldsForLog(procoreId, unpacked.jsonFields);
+    }
 
     saved += 1;
   }

@@ -192,6 +192,9 @@ export async function POST(request: Request) {
     const concurrency = Math.min(8, Math.max(1, Number.parseInt(String(body.concurrency || "4"), 10) || 4));
     const maxProjects = Math.max(0, Number.parseInt(String(body.maxProjects || "0"), 10) || 0);
     const persist = body.persist === undefined ? true : Boolean(body.persist);
+    const persistUnpackedFields = body.persistUnpackedFields === undefined
+      ? true
+      : Boolean(body.persistUnpackedFields);
 
       const explicitProjectIds = Array.isArray(body.projectIds)
         ? body.projectIds.map((v) => String(v || "").trim()).filter(Boolean)
@@ -256,6 +259,7 @@ export async function POST(request: Request) {
               projectName,
               projectNumber: projectNumber || undefined,
               createProjectIfMissing: true,
+              persistUnpackedFields,
             })
           : {
               attempted: 0,

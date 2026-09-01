@@ -30,3 +30,10 @@ export function bidBoardPayloadChanged(previous: unknown, current: unknown): boo
   if (previous == null) return true;
   return JSON.stringify(canonicalize(previous)) !== JSON.stringify(canonicalize(current));
 }
+
+export function bidBoardPayloadNeedsPersistence(previous: unknown, current: unknown): boolean {
+  if (!previous || typeof previous !== "object" || Array.isArray(previous)) return true;
+  const previousObject = previous as JsonObject;
+  return previousObject.sync_missing_from_procore === true
+    || bidBoardPayloadChanged(previous, current);
+}

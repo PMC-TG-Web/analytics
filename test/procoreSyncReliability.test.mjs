@@ -268,6 +268,7 @@ test("middleware allows secret-authenticated reconciliation routes", async () =>
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
   assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
   assert.match(middleware, /pathname === '\/api\/cron\/project-link-sync'/);
+  assert.match(middleware, /pathname === '\/api\/cron\/commitment-maker-tasks'/);
 });
 
 test("full project reconciliation has timeout headroom and rejects truncated responses", async () => {

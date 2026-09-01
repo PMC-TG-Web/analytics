@@ -24,6 +24,8 @@ export type ProcoreSyncHealthSnapshot = {
   } | null;
 };
 
+const PROJECT_RECONCILIATION_MAX_AGE_MINUTES = 26 * 60;
+
 function ageMinutes(value: Date | string | null, now: Date) {
   if (!value) return Number.POSITIVE_INFINITY;
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
@@ -101,8 +103,8 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   }
 
   const reconciliationAge = ageMinutes(snapshot.projectReconciliation?.last_success_at || null, now);
-  if (reconciliationAge > 120) {
-    issues.push("The full active-project reconciliation has not succeeded within 2 hours.");
+  if (reconciliationAge > PROJECT_RECONCILIATION_MAX_AGE_MINUTES) {
+    issues.push("The full active-project reconciliation has not succeeded within 26 hours.");
   }
 
   for (const row of snapshot.webhookQueue) {

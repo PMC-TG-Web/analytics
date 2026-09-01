@@ -68,13 +68,32 @@ test("health evaluation catches stale reconciliation and stuck webhook work", ()
       oldest_available: "2026-08-10T15:00:00.000Z",
     }],
     projectReconciliation: {
-      last_success_at: "2026-08-10T12:00:00.000Z",
-      last_attempt_at: "2026-08-10T12:00:00.000Z",
+      last_success_at: "2026-08-09T12:00:00.000Z",
+      last_attempt_at: "2026-08-09T12:00:00.000Z",
     },
   }, now);
 
   assert.ok(issues.some((issue) => issue.includes("reconciliation")));
   assert.ok(issues.some((issue) => issue.includes("stuck")));
+});
+
+test("health evaluation allows a completed daily reconciliation cycle", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [{
+      dataset: "actuals",
+      never_succeeded: 0,
+      failed_projects: 0,
+      max_failure_count: 0,
+      newest_success: "2026-08-10T15:30:00.000Z",
+    }],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-08-10T07:10:00.000Z",
+      last_attempt_at: "2026-08-10T07:10:00.000Z",
+    },
+  }, new Date("2026-08-10T16:00:00.000Z"));
+
+  assert.equal(issues.some((issue) => issue.includes("reconciliation")), false);
 });
 
 test("health evaluation reports permanently failed timecard notifications", () => {
@@ -383,6 +402,13 @@ test("background workers prioritize and drain multiple estimate projects per tic
       "estimate draining should run before generic structure/onboarding work",
     );
   }
+
+  assert.match(actualsWorker, /secondaryWork: if \(!reconciliation/);
+  assert.match(actualsWorker, /if \(estimateRateLimited\) \{\s+break secondaryWork;/);
+  assert.ok(
+    actualsWorker.indexOf("break secondaryWork;") < actualsWorker.indexOf("let maxProjects = reconciliation"),
+    "rate-limited secondary work should continue into the Actuals loop",
+  );
 });
 
 test("estimate requeues preserve fair ordering instead of resetting to the epoch", async () => {

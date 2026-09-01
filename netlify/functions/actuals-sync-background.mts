@@ -21,7 +21,7 @@ const handler = async (request: Request) => {
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
   );
-  if (!reconciliation && Date.now() < deadline) {
+  secondaryWork: if (!reconciliation && Date.now() < deadline) {
     const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": expected },
@@ -61,15 +61,7 @@ const handler = async (request: Request) => {
       const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
         || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
       if (estimateRateLimited) {
-        return Response.json({
-          success: false,
-          bidBoardHeaders,
-          projectLinkSync,
-          onboarding,
-          purchaseOrderDiscovery,
-          estimateDetails,
-          results,
-        });
+        break secondaryWork;
       }
       if (!estimateResponse.ok || estimateResult?.success === false) continue;
       if (estimateResult?.skipped) break;
@@ -111,7 +103,7 @@ const handler = async (request: Request) => {
     const rateLimited = Array.isArray(result?.steps)
       && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
     if (rateLimited) {
-      return Response.json({ success: false, bidBoardHeaders, onboarding, purchaseOrderDiscovery, estimateDetails, results });
+      break secondaryWork;
     }
 
     for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
@@ -136,14 +128,7 @@ const handler = async (request: Request) => {
       const poRateLimited = Array.isArray(poResult?.steps)
         && poResult.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
       if (poRateLimited) {
-        return Response.json({
-          success: false,
-          bidBoardHeaders,
-          projectLinkSync,
-          onboarding,
-          purchaseOrderDiscovery,
-          results,
-        });
+        break secondaryWork;
       }
       if (!poResponse.ok || poResult?.success === false) continue;
       if (poResult?.skipped) break;

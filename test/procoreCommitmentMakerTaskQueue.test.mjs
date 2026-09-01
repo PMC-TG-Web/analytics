@@ -60,3 +60,12 @@ test("dedicated scheduler drains commitment task jobs every five minutes", () =>
   assert.match(source, /"x-sync-secret": syncSecret/);
   assert.match(source, /schedule: "\*\/5 \* \* \* \*"/);
 });
+
+test("five-minute sync polls change-order approvals before dispatching task jobs", () => {
+  const source = fs.readFileSync("netlify/functions/scheduled-sync.mts", "utf8");
+  const approvalPoll = source.indexOf("/api/cron/change-order-approvals");
+  const taskDispatch = source.indexOf("/api/background/commitment-maker-tasks");
+
+  assert.ok(approvalPoll > 0);
+  assert.ok(taskDispatch > approvalPoll);
+});

@@ -152,8 +152,9 @@ For steady-state operation, `netlify/functions/scheduled-sync.mts` runs every fi
 
 1. drains queued Procore webhook events;
 2. reconciles productivity-review reminders;
-3. processes timecard notifications; and
-4. dispatches actuals or nightly-structure work according to the America/New_York time window.
+3. processes timecard notifications;
+4. polls PCO/PCCO header status for projects with mirrored change-order activity and dispatches newly approved verification tasks; and
+5. dispatches actuals or nightly-structure work according to the America/New_York time window.
 
 The background wrappers call `/api/cron/actuals`, `/api/cron/nightly-structure`, `/api/cron/project-onboarding`, and `/api/cron/project-reconciliation` in bounded batches. Queue state, locks, retry timestamps, and rate-limit cooldowns live in PostgreSQL so work can resume across invocations. Successful daily structure and estimate records requeue five minutes short of 24 hours so second-level scheduler jitter cannot push them past the final nightly tick. Secret-authenticated operators can pass one exact `projectId` to `/api/cron/nightly-structure` for a targeted structure rerun.
 
@@ -165,7 +166,7 @@ Change-order mirroring treats an unavailable Potential Change Order child-line r
 
 `POST /api/webhooks/procore` verifies `PROCORE_WEBHOOK_SHARED_SECRET`, stores the raw event, and creates queue work in a transaction. It does not perform the full sync inline.
 
-`POST /api/webhooks/procore/process` requires the sync secret, claims due queue entries, dispatches resource-specific handlers, updates canonical and compatibility tables, retries transient failures with backoff, and can enqueue project onboarding work. Potential Change Order and Prime Contract Change Order events fetch the current Procore record and immediately enqueue commitment verification when its authoritative status is Approved. This separation keeps webhook acknowledgement fast and processing durable.
+`POST /api/webhooks/procore/process` requires the sync secret, claims due queue entries, dispatches resource-specific handlers, updates canonical and compatibility tables, retries transient failures with backoff, and can enqueue project onboarding work. Potential Change Order and Prime Contract Change Order handlers fetch the current Procore record and immediately enqueue commitment verification when its authoritative status is Approved if those event resources become available. The production Procore webhook catalog does not currently expose those resources, so `/api/cron/change-order-approvals` provides the active five-minute header-only approval detector. This separation keeps webhook acknowledgement fast and processing durable.
 
 Project onboarding parks explicitly identified internal/demo non-job projects instead of retrying them forever when they have no Bid Board record. Production projects continue to retry until their Procore/Bid Board link becomes available.
 

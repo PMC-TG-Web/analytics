@@ -183,6 +183,22 @@ test("webhook registration requests PCO and prime change-order events", async ()
   assert.match(script, /'Change Order Packages'/);
 });
 
+test("approval polling queues verification before persisting newly approved headers", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/cron/change-order-approvals/route.ts", import.meta.url),
+    "utf8",
+  );
+  const potentialQueue = route.indexOf("await enqueueCommitmentMakerTasks", route.indexOf("persistPotentialChangeOrder"));
+  const potentialPersist = route.indexOf("await upsertPotentialChangeOrder", potentialQueue);
+  const packageQueue = route.indexOf("await enqueueCommitmentMakerTasks", route.indexOf("persistChangeOrderPackage"));
+  const packagePersist = route.indexOf("await upsertChangeOrderPackage", packageQueue);
+
+  assert.ok(potentialQueue > 0 && potentialPersist > potentialQueue);
+  assert.ok(packageQueue > potentialPersist && packagePersist > packageQueue);
+  assert.match(route, /taskKinds: \["commitment_verification"\]/);
+  assert.doesNotMatch(route, /line_items/);
+});
+
 test("health evaluation reports repeatedly failing Project Link Sync jobs", () => {
   const issues = evaluateProcoreSyncHealth({
     datasets: [

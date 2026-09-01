@@ -122,6 +122,26 @@ const handler = async () => {
       + ` reason=${projectLinkBody?.reason ?? "?"}`,
     );
 
+    const changeOrderApprovalResponse = await fetch(
+      `${baseUrl}/api/cron/change-order-approvals`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      },
+    );
+    const changeOrderApprovalBody = await changeOrderApprovalResponse.json().catch(() => null) as Record<string, unknown> | null;
+    console.log(
+      `[scheduled-sync] Change-order approvals ${changeOrderApprovalResponse.ok ? "processed" : "failed"}`
+      + ` - status=${changeOrderApprovalResponse.status}`
+      + ` projects=${changeOrderApprovalBody?.projectsScanned ?? "?"}`
+      + ` pcos=${changeOrderApprovalBody?.potentialChangeOrdersScanned ?? "?"}`
+      + ` pccos=${changeOrderApprovalBody?.packagesScanned ?? "?"}`,
+    );
+
     const commitmentTaskDispatch = await fetch(
       `${baseUrl}/api/background/commitment-maker-tasks`,
       {
@@ -216,11 +236,12 @@ const handler = async () => {
       || (reconciliationStatus >= 200 && reconciliationStatus < 300);
 
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && dispatch.ok && healthOk && reconciliationOk,
+      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && changeOrderApprovalResponse.ok && dispatch.ok && healthOk && reconciliationOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
       timecardNotificationStatus: timecardNotificationResponse.status,
       projectLinkStatus: projectLinkResponse.status,
+      changeOrderApprovalStatus: changeOrderApprovalResponse.status,
       dispatchStatus: dispatch.status,
       healthStatus,
       reconciliationStatus,

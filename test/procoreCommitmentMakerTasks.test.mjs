@@ -90,6 +90,19 @@ test("normalizes an approved Procore change order into task context", () => {
   );
 });
 
+test("uses PMC's Eastern calendar date for due-today verification", () => {
+  const { buildCommitmentMakerChangeOrderTaskSpecs } = loadModule();
+  const specs = buildCommitmentMakerChangeOrderTaskSpecs({
+    projectId: "project",
+    projectNumber: "2601",
+    projectName: "Test Project",
+    changeOrder,
+    now: new Date("2026-09-01T02:00:00.000Z"),
+  });
+
+  assert.equal(specs[1].dueDate, "2026-08-31");
+});
+
 test("creates only a due-today verification task without resolving Shelly", async () => {
   const { ensureCommitmentMakerChangeOrderTasks } = loadModule();
   const created = [];

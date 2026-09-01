@@ -7,6 +7,7 @@ import { notifyMissingProjectManager } from "@/lib/missingProjectManagerNotifica
 
 const SHELLY_EMAIL = "shelly@pmcdecor.com";
 const PROJECT_MANAGER_EMAIL_DOMAIN = "pmcdecor.com";
+const PMC_TIME_ZONE = "America/New_York";
 const AIA_TASK_DUE_OFFSET_DAYS = 7;
 
 type JsonObject = Record<string, unknown>;
@@ -94,6 +95,15 @@ function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+function formatPmcDate(value: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: PMC_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
 function addDays(value: Date, days: number): Date {
   const result = new Date(value.getTime());
   result.setUTCDate(result.getUTCDate() + days);
@@ -147,7 +157,7 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
 }): CommitmentMakerTaskSpec[] {
   const now = params.now || new Date();
   const aiaDueDate = formatDate(addDays(now, AIA_TASK_DUE_OFFSET_DAYS));
-  const verificationDueDate = formatDate(now);
+  const verificationDueDate = formatPmcDate(now);
   const projectLabel = [params.projectNumber, params.projectName]
     .map((value) => text(value))
     .filter(Boolean)

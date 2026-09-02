@@ -60,6 +60,16 @@ function normalizedTitle(value: unknown): string {
   return text(value).toLowerCase().replace(/\s+/g, " ");
 }
 
+export function commitmentMakerChangeOrderReferenceNumber(...values: unknown[]): string {
+  for (const value of values) {
+    const labeled = text(value).match(/\bCO\s*#?\s*0*(\d+)\b/i);
+    if (labeled) return String(Number(labeled[1]));
+    const direct = text(value).match(/^0*(\d+)$/);
+    if (direct) return String(Number(direct[1]));
+  }
+  return "";
+}
+
 /**
  * Procore's Commitment Contracts v2 response does not return origin_data even
  * when it accepted that field on create. Use the server-generated CO title and
@@ -138,17 +148,31 @@ function normalizedUom(value: unknown): string {
   return normalized;
 }
 
-function estimateLineAmount(line: UnknownRecord): number | null {
-  const itemCost = number(line.itemCost ?? line.item_cost) ?? 0;
-  const laborCost = number(line.laborCost ?? line.labor_cost) ?? 0;
-  const amount = itemCost + laborCost;
+type EstimateAmountBasis = "cost" | "sales";
+
+function estimateLineAmount(line: UnknownRecord, basis: EstimateAmountBasis): number | null {
+  const itemAmount = number(
+    basis === "sales"
+      ? line.itemSales ?? line.item_sales
+      : line.itemCost ?? line.item_cost,
+  ) ?? 0;
+  const laborAmount = number(
+    basis === "sales"
+      ? line.laborSales ?? line.labor_sales
+      : line.laborCost ?? line.labor_cost,
+  ) ?? 0;
+  const amount = itemAmount + laborAmount;
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-function matchingEstimateSubsets(sourceLine: UnknownRecord, estimateLines: UnknownRecord[]): UnknownRecord[][] {
+function matchingEstimateSubsets(
+  sourceLine: UnknownRecord,
+  estimateLines: UnknownRecord[],
+): Array<{ lines: UnknownRecord[]; basis: EstimateAmountBasis }> {
   const sourceQuantity = number(sourceLine.quantity);
-  const sourceAmount = number(sourceLine.amount)
+  const signedSourceAmount = number(sourceLine.amount)
     ?? ((sourceQuantity ?? 0) * (number(sourceLine.unit_cost ?? sourceLine.unitCost) ?? 0));
+  const sourceAmount = Math.abs(signedSourceAmount);
   const sourceUom = normalizedUom(sourceLine.uom);
   if (!sourceUom || sourceQuantity === null || sourceQuantity <= 0 || sourceAmount <= 0) return [];
 
@@ -156,29 +180,41 @@ function matchingEstimateSubsets(sourceLine: UnknownRecord, estimateLines: Unkno
     Boolean(text(line.name))
     && normalizedUom(line.uom) === sourceUom
     && (number(line.quantity) ?? 0) > 0
-    && estimateLineAmount(line) !== null
+    && (estimateLineAmount(line, "cost") !== null || estimateLineAmount(line, "sales") !== null)
   ));
   if (candidates.length > 20) return [];
 
-  const matches: UnknownRecord[][] = [];
-  const visit = (start: number, selected: UnknownRecord[], quantity: number, amount: number) => {
-    if (Math.abs(quantity - sourceQuantity) <= 0.0001 && Math.abs(amount - sourceAmount) <= 0.02) {
-      matches.push([...selected]);
+  const matches: Array<{ lines: UnknownRecord[]; basis: EstimateAmountBasis }> = [];
+  const visit = (
+    start: number,
+    selected: UnknownRecord[],
+    quantity: number,
+    costAmount: number,
+    salesAmount: number,
+  ) => {
+    if (Math.abs(quantity - sourceQuantity) <= 0.0001) {
+      const basis = Math.abs(costAmount - sourceAmount) <= 0.02
+        ? "cost"
+        : Math.abs(salesAmount - sourceAmount) <= 0.02
+          ? "sales"
+          : null;
+      if (basis) matches.push({ lines: [...selected], basis });
       return;
     }
-    if (selected.length >= 4 || quantity > sourceQuantity + 0.0001 || amount > sourceAmount + 0.02) return;
+    if (selected.length >= 4 || quantity > sourceQuantity + 0.0001) return;
     for (let index = start; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       visit(
         index + 1,
         [...selected, candidate],
         quantity + (number(candidate.quantity) ?? 0),
-        amount + (estimateLineAmount(candidate) ?? 0),
+        costAmount + (estimateLineAmount(candidate, "cost") ?? 0),
+        salesAmount + (estimateLineAmount(candidate, "sales") ?? 0),
       );
       if (matches.length > 1) return;
     }
   };
-  visit(0, [], 0, 0);
+  visit(0, [], 0, 0, 0);
   return matches;
 }
 
@@ -190,9 +226,12 @@ export function enrichApprovedChangeOrderLinesFromEstimate(
     if (text(line.description)) return [line];
     const matches = matchingEstimateSubsets(line, estimateLines);
     if (matches.length !== 1) return [line];
-    return matches[0].map((match) => {
+    const signedSourceAmount = number(line.amount)
+      ?? ((number(line.quantity) ?? 0) * (number(line.unit_cost ?? line.unitCost) ?? 0));
+    const sign = signedSourceAmount < 0 ? -1 : 1;
+    return matches[0].lines.map((match) => {
       const quantity = number(match.quantity) ?? 0;
-      const amount = estimateLineAmount(match) ?? 0;
+      const amount = (estimateLineAmount(match, matches[0].basis) ?? 0) * sign;
       return {
         ...line,
         description: text(match.name),
@@ -214,6 +253,8 @@ export function approvedChangeOrderCommitmentGroup(
   changeOrder: CommitmentMakerApprovedChangeOrder,
   sourceLines: UnknownRecord[],
 ): CommitmentMakerGroup {
+  const customerReference = commitmentMakerChangeOrderReferenceNumber(changeOrder.title)
+    || changeOrder.number;
   const lineItems = sourceLines.map((line): CommitmentMakerLineItem | null => {
     const wbs = record(line.wbs_code ?? line.wbsCode);
     const costCodeRecord = record(line.cost_code ?? line.costCode);
@@ -232,7 +273,7 @@ export function approvedChangeOrderCommitmentGroup(
       costCode,
       costType: sourceCostType(line, wbs),
       sourceWbsCodeId: text(wbs.id) || null,
-      description: changeOrderLineDescription(changeOrder.number, sourceDescription(line, costCode)),
+      description: changeOrderLineDescription(customerReference, sourceDescription(line, costCode)),
       quantity,
       uom,
       unitCost: Math.round(unitCost * 10_000) / 10_000,
@@ -240,7 +281,7 @@ export function approvedChangeOrderCommitmentGroup(
     };
   }).filter((line): line is CommitmentMakerLineItem => Boolean(line));
 
-  const label = [changeOrder.number ? `CO ${changeOrder.number}` : "Change Order", changeOrder.title]
+  const label = [customerReference ? `CO ${customerReference}` : "Change Order", changeOrder.title]
     .filter(Boolean)
     .join(" — ");
   return {

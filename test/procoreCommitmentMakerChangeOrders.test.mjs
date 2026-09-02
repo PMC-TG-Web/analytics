@@ -52,6 +52,33 @@ test("uses the specific PCO item description instead of the generic cost code na
   );
 });
 
+test("uses the customer CO reference in the title before the package sequence", () => {
+  const {
+    approvedChangeOrderCommitmentGroup,
+    commitmentMakerChangeOrderReferenceNumber,
+  } = loadModule();
+
+  assert.equal(
+    commitmentMakerChangeOrderReferenceNumber('CO#4: Credit Back Cut Off Walls', '003'),
+    '4',
+  );
+  assert.equal(commitmentMakerChangeOrderReferenceNumber('Winter concrete costs', '002'), '2');
+  assert.equal(commitmentMakerChangeOrderReferenceNumber('CO 005 - Added pier', '006'), '5');
+
+  const group = approvedChangeOrderCommitmentGroup(
+    { packageId: '500', number: '003', title: 'CO#4: Credit Back Cut Off Walls' },
+    [{
+      description: 'Site Concrete Labor',
+      quantity: '10',
+      unit_cost: '49.4',
+      uom: 'hours',
+      wbs_code: { id: 'labor', flat_code: '03-300-30-10.L' },
+    }],
+  );
+  assert.equal(group.name, 'CO 4 — CO#4: Credit Back Cut Off Walls');
+  assert.equal(group.lineItems[0].description, 'CO4 - Site Concrete Labor');
+});
+
 
 test("prefixes every split PCO commitment line with the normalized CO number", () => {
   const {
@@ -95,6 +122,39 @@ test("splits uniquely matching estimate items into separate PCO lines", () => {
   })), [
     { description: "#4 Rebar - 20' Pc", quantity: 6, unitCost: 7.41, amount: 44.46 },
     { description: "#6 Rebar - 20' Pc", quantity: 2, unitCost: 16.64, amount: 33.28 },
+  ]);
+});
+
+test("uses estimate sales details for marked-up credit PCO lines", () => {
+  const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
+  const lines = enrichApprovedChangeOrderLinesFromEstimate(
+    [{ quantity: "10", unit_cost: "-49.4", amount: "-494", uom: "hours" }],
+    [
+      {
+        name: "Site Concrete Labor - Ramp",
+        quantity: "6",
+        uom: "HOURS",
+        laborCost: "228",
+        laborSales: "296.4",
+      },
+      {
+        name: "Site Concrete Labor - Curb",
+        quantity: "4",
+        uom: "HOURS",
+        laborCost: "152",
+        laborSales: "197.6",
+      },
+    ],
+  );
+
+  assert.deepEqual(lines.map((line) => ({
+    description: line.description,
+    quantity: line.quantity,
+    unitCost: line.unit_cost,
+    amount: line.amount,
+  })), [
+    { description: "Site Concrete Labor - Ramp", quantity: 6, unitCost: -49.4, amount: -296.4 },
+    { description: "Site Concrete Labor - Curb", quantity: 4, unitCost: -49.4, amount: -197.6 },
   ]);
 });
 

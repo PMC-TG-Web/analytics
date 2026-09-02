@@ -28,6 +28,7 @@ import {
 } from "@/lib/procore/commitmentMaker";
 import {
   approvedChangeOrderCommitmentGroup,
+  commitmentMakerChangeOrderReferenceNumber,
   commitmentMakerChangeOrderSourceAliases,
   enrichApprovedChangeOrderLinesFromEstimate,
   isAvailableApprovedPotentialChangeOrder,
@@ -646,20 +647,16 @@ async function fetchApprovedChangeOrderLines(params: {
   }));
 }
 
-function changeOrderReferenceNumber(value: unknown): string {
-  const direct = readText(value).match(/^0*(\d+)$/);
-  if (direct) return String(Number(direct[1]));
-  const labeled = readText(value).match(/\bCO\s*#?\s*0*(\d+)\b/i);
-  return labeled ? String(Number(labeled[1])) : "";
-}
-
 async function enrichChangeOrderLinesFromEstimate(params: {
   companyId: string;
   projectId: string;
   changeOrder: ApprovedChangeOrder;
   sourceLines: UnknownRecord[];
 }): Promise<UnknownRecord[]> {
-  const referenceNumber = changeOrderReferenceNumber(params.changeOrder.number);
+  const referenceNumber = commitmentMakerChangeOrderReferenceNumber(
+    params.changeOrder.title,
+    params.changeOrder.number,
+  );
   if (!referenceNumber) return params.sourceLines;
 
   const proposals = await prisma.procoreEstimateProposal.findMany({
@@ -674,10 +671,9 @@ async function enrichChangeOrderLinesFromEstimate(params: {
     },
   }).catch(() => []);
   const matchingProposals = proposals.filter(
-    (proposal) => changeOrderReferenceNumber(proposal.proposalName) === referenceNumber,
+    (proposal) => commitmentMakerChangeOrderReferenceNumber(proposal.proposalName) === referenceNumber,
   );
   if (matchingProposals.length !== 1) return params.sourceLines;
-
   const proposal = matchingProposals[0];
   const estimateLines = await prisma.procoreEstimateLineItem.findMany({
     where: {
@@ -690,7 +686,9 @@ async function enrichChangeOrderLinesFromEstimate(params: {
       uom: true,
       quantity: true,
       itemCost: true,
+      itemSales: true,
       laborCost: true,
+      laborSales: true,
     },
     orderBy: { id: "asc" },
   }).catch(() => []);
@@ -701,7 +699,9 @@ async function enrichChangeOrderLinesFromEstimate(params: {
       uom: line.uom,
       quantity: line.quantity === null ? null : Number(line.quantity),
       itemCost: line.itemCost === null ? null : Number(line.itemCost),
+      itemSales: line.itemSales === null ? null : Number(line.itemSales),
       laborCost: line.laborCost === null ? null : Number(line.laborCost),
+      laborSales: line.laborSales === null ? null : Number(line.laborSales),
     })),
   );
 }

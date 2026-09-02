@@ -184,7 +184,7 @@ Commitment Maker plans company/vendor, project/vendor, and commitment data from 
 
 Commitment Maker records each successfully applied PO line's Procore ID and replay payload in its audit. Delete from PO uses those exact IDs, serializes same-PO mutations, and restores only lines deleted by the current request. Applications created before exact ownership recording use a narrower fallback: the successful audit fingerprint and line count must still match, only one exact current PO match may be deleted, and a zero-match line is treated as already absent so an interrupted prior rollback can finish without touching a similar base-contract line.
 
-After a change-order commitment is approved, the browser request durably enqueues AIA-only task work in `ProcoreSyncProjectState` before best-effort background dispatch. A Netlify background function and five-minute scheduler process due retries, keeping task API calls outside the commitment response window. Approval-triggered verification uses the same queue with a distinct task-kind payload, and old payloads without a task kind remain backward compatible. Task creation remains idempotent through the source-change-order tags. Commitment-change-order retries consult both Procore and the durable audit fingerprint, then verify an audited ID live before creating anything; this covers Procore list eventual consistency without reviving a deleted record.
+After a change-order commitment is approved, the browser request attempts the AIA Task Item immediately and records the result. If that attempt fails, it durably enqueues AIA-only recovery work in `ProcoreSyncProjectState`; a Netlify background function and five-minute scheduler process due retries. Approval-triggered verification uses the same queue with a distinct task-kind payload, and old payloads without a task kind remain backward compatible. Task creation remains idempotent through the source-change-order tags. Commitment-change-order retries consult both Procore and the durable audit fingerprint, then verify an audited ID live before creating anything; this covers Procore list eventual consistency without reviving a deleted record.
 
 Project-completion productivity review tasks use the same assignee rule: only active project-team Project Managers with an exact `@pmcdecor.com` email can be newly assigned. Existing task recipients are preserved. If no eligible Project Manager exists, task creation is skipped and an idempotent alert is emailed only to `todd@pmcdecor.com`.
 
@@ -215,6 +215,12 @@ Analytics route handlers combine normalized database facts rather than calling P
 - QBO snapshots for accounting revenue, cost, billing, and profitability views.
 
 Shared calculations belong in modules such as `src/lib/costCodeSalesAnalytics.ts`, `src/lib/estimatingDashboard*.ts`, `src/lib/financialWip.ts`, and the QBO exclusion/contract-value helpers. Prefer adding tested functions there over embedding more calculations in page components.
+
+### PM five-day work queue
+
+`/pm-dashboard` is a personal operational view for the signed-in project manager. It reads only the `pmc_action_items` PostgreSQL mirror and returns overdue open work plus items due during the next five America/New_York calendar days. Ownership is explicit: an RFI, Task Item, or Meeting is included when the user's normalized email appears in its Procore assignees/attendees, or when the canonical `pmc_projects.project_manager` value matches the employee's name or email.
+
+The five-minute Netlify scheduler dispatches `pm-dashboard-sync-background`, which rotates through active canonical projects via `pmc_action_item_sync_state`. `/api/cron/pm-dashboard` uses the service-account lane and centralized Procore client to fetch RFIs, Task Items, and Meetings, then idempotently upserts each successful source snapshot. An unavailable or failed Procore tool preserves its previous rows; a successful empty snapshot clears stale rows for that project and source. Page renders and `/api/pm-dashboard` never call Procore directly.
 
 ## Scheduling
 

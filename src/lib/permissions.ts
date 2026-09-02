@@ -6,14 +6,14 @@ export { resolvePermissionForPath } from './permissionRoutes.js';
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
+    "home", "dashboard", "pm-dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
     "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map"
   ],
   "ADMIN": [
-    "home", "dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
+    "home", "dashboard", "pm-dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
     "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
@@ -27,11 +27,11 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "crew-dispatch", "short-term-schedule", "long-term-schedule", "concrete-orders-schedule", "constants", "handbook", "analytics", "analytics-cost-code-sales"
   ],
   "OPERATIONS": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
+    "home", "pm-dashboard", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "wip", "projects", "field", "equipment", "certifications", "dashboard", "kpi", "handbook"
   ],
   "PMs": [
-    "home", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
+    "home", "pm-dashboard", "scheduling", "short-term-schedule", "crew-dispatch", "crew-management", "productivity",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "project", "wip", "projects", "equipment", "handbook"
   ],
   "FIELD": [

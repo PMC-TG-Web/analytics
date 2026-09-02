@@ -157,6 +157,21 @@ const handler = async () => {
       `[scheduled-sync] Commitment Maker task queue dispatched - status=${commitmentTaskDispatch.status}`,
     );
 
+    const pmDashboardDispatch = await fetch(
+      `${baseUrl}/api/background/pm-dashboard-sync`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      },
+    );
+    console.log(
+      `[scheduled-sync] PM dashboard sync dispatched - status=${pmDashboardDispatch.status}`,
+    );
+
     let healthStatus: number | null = null;
     let healthBody: Record<string, unknown> | null = null;
     if (cadence.runHealthMonitor) {
@@ -236,12 +251,13 @@ const handler = async () => {
       || (reconciliationStatus >= 200 && reconciliationStatus < 300);
 
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && changeOrderApprovalResponse.ok && dispatch.ok && healthOk && reconciliationOk,
+      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && changeOrderApprovalResponse.ok && pmDashboardDispatch.ok && dispatch.ok && healthOk && reconciliationOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
       timecardNotificationStatus: timecardNotificationResponse.status,
       projectLinkStatus: projectLinkResponse.status,
       changeOrderApprovalStatus: changeOrderApprovalResponse.status,
+      pmDashboardStatus: pmDashboardDispatch.status,
       dispatchStatus: dispatch.status,
       healthStatus,
       reconciliationStatus,
@@ -254,7 +270,7 @@ const handler = async () => {
       timecardNotificationBody,
       projectLinkBody,
     }), {
-      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
+      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && pmDashboardDispatch.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

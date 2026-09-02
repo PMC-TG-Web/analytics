@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# Local agent/browser worktrees and temporary evidence
+/.tmp/

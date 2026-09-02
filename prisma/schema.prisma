@@ -2305,6 +2305,8 @@ model PmcProject {
   scopes          PmcProjectScope[]
   scheduleEntries PmcScheduleEntry[]
   allocations     PmcScheduleAllocation[]
+  actionItems     PmcActionItem[]
+  actionItemSyncState PmcActionItemSyncState?
 
   @@id([companyId, procoreProjectId])
   @@index([companyId])
@@ -2315,6 +2317,58 @@ model PmcProject {
   @@index([status])
   @@index([bidBoardStatus])
   @@map("pmc_projects")
+}
+
+/// Read-only mirror of Procore items that can appear on a project manager's
+/// five-day work queue. Browser reads never call Procore directly.
+model PmcActionItem {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId        String    @default("598134325805519") @map("company_id")
+  procoreProjectId String    @map("procore_project_id")
+  sourceType       String    @map("source_type")
+  sourceId         String    @map("source_id")
+  number           String?
+  title            String
+  description      String?
+  status           String?
+  dueAt            DateTime? @map("due_at") @db.Timestamptz(6)
+  startsAt         DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt           DateTime? @map("ends_at") @db.Timestamptz(6)
+  assigneeEmails   String[]  @default([]) @map("assignee_emails")
+  assigneeNames    String[]  @default([]) @map("assignee_names")
+  isOpen           Boolean   @default(true) @map("is_open")
+  sourceUrl        String?   @map("source_url")
+  payload          Json?
+  syncedAt         DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project PmcProject @relation(fields: [companyId, procoreProjectId], references: [companyId, procoreProjectId], onDelete: Cascade)
+
+  @@unique([companyId, procoreProjectId, sourceType, sourceId])
+  @@index([companyId, isOpen, dueAt])
+  @@index([companyId, sourceType, dueAt])
+  @@index([procoreProjectId])
+  @@map("pmc_action_items")
+}
+
+/// Per-project checkpoint used to rotate the PM dashboard mirror through
+/// active projects without repeatedly selecting projects that have no items.
+model PmcActionItemSyncState {
+  companyId        String    @default("598134325805519") @map("company_id")
+  procoreProjectId String    @map("procore_project_id")
+  lastAttemptAt    DateTime? @map("last_attempt_at") @db.Timestamptz(6)
+  lastSuccessAt    DateTime? @map("last_success_at") @db.Timestamptz(6)
+  lastError        String?   @map("last_error")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project PmcProject @relation(fields: [companyId, procoreProjectId], references: [companyId, procoreProjectId], onDelete: Cascade)
+
+  @@id([companyId, procoreProjectId])
+  @@index([companyId, lastAttemptAt])
+  @@index([companyId, lastSuccessAt])
+  @@map("pmc_action_item_sync_state")
 }
 
 /// Canonical estimating/bid-board record keyed by Procore bid board project ID.

@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import {
+  isOpenPmItem,
+  nextCalendarDateKeys,
+  normalizePmActionItem,
+} from '../src/lib/pmDashboard.ts';
+
+test('task normalization resolves assignee IDs through the project directory', () => {
+  const item = normalizePmActionItem({
+    sourceType: 'task',
+    record: {
+      id: 42,
+      title: 'Confirm anchor layout',
+      due_date: '2026-09-03',
+      status: 'Initiated',
+      assigned_id: 7,
+      assignee_ids: [8],
+    },
+    memberDirectory: new Map([
+      ['7', { name: 'Pat Manager', email: 'PAT@PMCDECOR.COM' }],
+      ['8', { name: 'Casey Manager', email: 'casey@pmcdecor.com' }],
+    ]),
+  });
+
+  assert.ok(item);
+  assert.deepEqual(item.assigneeEmails, ['pat@pmcdecor.com', 'casey@pmcdecor.com']);
+  assert.deepEqual(item.assigneeNames, ['Pat Manager', 'Casey Manager']);
+  assert.equal(item.dueAt?.toISOString(), '2026-09-03T12:00:00.000Z');
+  assert.equal(item.isOpen, true);
+});
+
+test('RFI and meeting normalization use their manager and attendee identities', () => {
+  const rfi = normalizePmActionItem({
+    sourceType: 'rfi',
+    record: {
+      id: 81,
+      number: 12,
+      subject: 'Wall opening dimensions',
+      due_date: '2026-09-04',
+      status: 'Open',
+      rfi_manager: { name: 'Pat Manager', login: 'pat@pmcdecor.com' },
+    },
+  });
+  const meeting = normalizePmActionItem({
+    sourceType: 'meeting',
+    record: {
+      id: 90,
+      title: 'OAC Meeting',
+      starts_at: '2026-09-04T14:00:00Z',
+      ends_at: '2026-09-04T15:00:00Z',
+      attendees: [{ name: 'Pat Manager', email: 'pat@pmcdecor.com' }],
+    },
+  });
+
+  assert.equal(rfi?.number, '12');
+  assert.deepEqual(rfi?.assigneeEmails, ['pat@pmcdecor.com']);
+  assert.equal(meeting?.dueAt?.toISOString(), '2026-09-04T14:00:00.000Z');
+  assert.deepEqual(meeting?.assigneeNames, ['Pat Manager']);
+});
+
+test('closed work is excluded while future meetings remain actionable', () => {
+  assert.equal(isOpenPmItem('task', { status: 'Closed' }), false);
+  assert.equal(isOpenPmItem('rfi', { status: 'Completed' }), false);
+  assert.equal(isOpenPmItem('meeting', { status: 'Scheduled' }), true);
+  assert.equal(isOpenPmItem('meeting', { is_cancelled: true }), false);
+});
+
+test('the dashboard produces five stable calendar-day keys across DST boundaries', () => {
+  assert.deepEqual(nextCalendarDateKeys(new Date('2026-10-31T16:00:00Z'), 5), [
+    '2026-10-31',
+    '2026-11-01',
+    '2026-11-02',
+    '2026-11-03',
+    '2026-11-04',
+  ]);
+});
+
+test('page, data API, and secret-authenticated sync route are protected', () => {
+  const permissions = readFileSync(new URL('../src/lib/permissionRoutes.js', import.meta.url), 'utf8');
+  const middleware = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
+  assert.match(permissions, /prefix: '\/pm-dashboard', permission: 'pm-dashboard'/);
+  assert.match(permissions, /prefix: '\/api\/pm-dashboard', permission: 'pm-dashboard'/);
+  assert.match(middleware, /pathname === '\/api\/cron\/pm-dashboard'/);
+});

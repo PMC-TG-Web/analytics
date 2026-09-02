@@ -51,6 +51,7 @@ interface TimeOffRequest {
 
 const NAV_PERMISSION_LABELS: Record<string, string> = {
   'home': 'Home',
+  'pm-dashboard': 'My Work: PM five-day dashboard',
   'dashboard': 'Dashboard',
   'projects': 'Projects',
   'project': 'Project details',

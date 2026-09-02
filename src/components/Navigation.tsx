@@ -25,6 +25,7 @@ interface NavLink {
 
 const navLinks: NavLink[] = [
   { href: "/", label: "Home", page: "home" },
+  { href: "/pm-dashboard", label: "My Work", page: "pm-dashboard" },
   { href: "/dashboard", label: "Dashboard", page: "dashboard" },
   { href: "/projects", label: "Projects", page: "projects" },
   { href: "/procore", label: "Procore", page: "procore" },

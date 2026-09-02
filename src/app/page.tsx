@@ -396,6 +396,7 @@ function getWeekDayPositionForDate(monthStr: string, targetDate: Date): { weekNu
 }
 
 const QUICK_LINKS: Array<{ label: string; href: string; page: string; color: string }> = [
+  { label: "My Work", href: "/pm-dashboard", page: "pm-dashboard", color: "bg-teal-50 text-teal-900 hover:bg-teal-100" },
   { label: "Dashboard", href: "/dashboard", page: "dashboard", color: "bg-stone-50 text-stone-700 hover:bg-stone-100" },
   { label: "WIP Report", href: "/wip", page: "wip", color: "bg-red-50 text-red-900 hover:bg-red-100" },
   { label: "Project Gantt", href: "/project-schedule", page: "project-schedule", color: "bg-gray-50 text-gray-700 hover:bg-gray-100" },

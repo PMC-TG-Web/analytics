@@ -48,6 +48,8 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/analytics/cost-code-sales'), 'analytics-cost-code-sales');
   assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
+  assert.equal(resolvePermissionForPath('/pm-dashboard'), 'pm-dashboard');
+  assert.equal(resolvePermissionForPath('/api/pm-dashboard'), 'pm-dashboard');
 });
 
 test('employee templates include every page-specific navigation permission', () => {
@@ -58,9 +60,15 @@ test('employee templates include every page-specific navigation permission', () 
     'procore-scope-map',
     'analytics-cost-code-sales',
     'accounting-project-profitability',
+    'pm-dashboard',
   ]) {
     assert.ok(NAVIGATION_PERMISSION_OPTIONS.includes(permission), `${permission} is missing`);
   }
+});
+
+test('project manager permissions include the personal work queue', () => {
+  USER_PERMISSIONS['pm@pmcdecor.com'] = ['PMs'];
+  assert.equal(hasPageAccess('pm@pmcdecor.com', 'pm-dashboard'), true);
 });
 
 test('QBO profitability access is included only in administrative permission groups', () => {

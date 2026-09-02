@@ -436,11 +436,13 @@ test("removes only exact PCO lines before releasing the PO assignment", () => {
   const middleware = fs.readFileSync("middleware.ts", "utf8");
   const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
 
-  assert.match(deleteHandler, /Number\(audit\.reusedLineItems\) !== 0/);
+  assert.match(deleteHandler, /!ownedLines && Number\(audit\.reusedLineItems\) !== 0/);
+  assert.match(deleteHandler, /!audit\s*\|\| Number\(audit\.reusedLineItems\) !== 0/);
   assert.match(deleteHandler, /commitmentMakerOwnedLineItemsFromAudit\(audit, expectedLineCount\)/);
   assert.match(deleteHandler, /auditedCommitmentLinesById\(ownedLines, existingLines\)/);
   assert.match(deleteHandler, /historicalCommitmentLineRemovals\(plannedLines, existingLines\)/);
   assert.match(deleteHandler, /alreadyAbsentLineItems = expectedLineCount - lineIds\.length/);
+  assert.match(deleteHandler, /retainedLineItems = Number\(audit\.reusedLineItems\) \|\| 0/);
   assert.match(deleteHandler, /readText\(audit\.fingerprint\) !== plan\.groups\[0\]\.fingerprint/);
   assert.match(deleteHandler, /line_items\/\$\{encodeURIComponent\(lineId\)\}/);
   assert.match(deleteHandler, /method: "DELETE"/);
@@ -449,7 +451,8 @@ test("removes only exact PCO lines before releasing the PO assignment", () => {
   assert.match(deleteHandler, /removalLines\[index\] = \{ \.\.\.removalLines\[index\], id: restoredLineId \}/);
   assert.match(deleteHandler, /auditedCommitmentLinesById\(removalLines, restoredLines\)/);
   assert.match(deleteHandler, /updateCompletedChangeOrderOwnedLines/);
-  assert.match(deleteHandler, /reconciledOwnedLineItems\(ownedLines, restoredLines\)/);
+  assert.match(deleteHandler, /restoredLineIds\.set\(deletedLineId, restoredLineId\)/);
+  assert.match(deleteHandler, /restoredLineIds\.get\(ownedLine\.id\) \|\| ownedLine\.id/);
   assert.match(deleteHandler, /markCommitmentMakerChangeOrderRemovalUncertain/);
   assert.ok(deleteHandler.indexOf('body: { status: "Approved" }') < deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)"));
   assert.ok(deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)") < deleteHandler.indexOf('action: "remove-lines"'));
@@ -458,4 +461,6 @@ test("removes only exact PCO lines before releasing the PO assignment", () => {
   assert.match(middleware, /\['GET', 'POST', 'DELETE'\]/);
   assert.match(page, /Delete from PO/);
   assert.match(page, /The purchase order itself will not be deleted/);
+  assert.match(page, /pre-existing matching line/);
+  assert.match(page, /retained and will be reused/);
 });

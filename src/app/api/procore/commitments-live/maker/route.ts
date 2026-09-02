@@ -2185,7 +2185,12 @@ async function handleDelete(request: NextRequest) {
     if (removalTarget.status !== "removing") {
       return NextResponse.json({ error: "This PO assignment does not need recovery." }, { status: 409 });
     }
-    if (!audit || Number(audit.reusedLineItems) !== 0 || !Number.isInteger(expectedLineCount) || expectedLineCount < 1) {
+    if (
+      !audit
+      || Number(audit.reusedLineItems) !== 0
+      || !Number.isInteger(expectedLineCount)
+      || expectedLineCount < 1
+    ) {
       return NextResponse.json({
         error: "The original successful PO append audit could not be verified. No Procore changes were made.",
       }, { status: 409 });
@@ -2241,7 +2246,7 @@ async function handleDelete(request: NextRequest) {
   }
   if (
     !audit
-    || Number(audit.reusedLineItems) !== 0
+    || (!ownedLines && Number(audit.reusedLineItems) !== 0)
     || !Number.isInteger(expectedLineCount)
     || expectedLineCount < 1
     || (!ownedLines && expectedLineCount !== plannedLines.length)
@@ -2283,6 +2288,7 @@ async function handleDelete(request: NextRequest) {
       : historicalCommitmentLineRemovals(plannedLines, existingLines);
     const lineIds = removalLines.map((line) => line.id);
     const alreadyAbsentLineItems = expectedLineCount - lineIds.length;
+    const retainedLineItems = Number(audit.reusedLineItems) || 0;
     contractPath = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
       projectId
     )}/commitment_contracts/${encodeURIComponent(removalClaim.targetCommitmentId)}`;
@@ -2332,8 +2338,10 @@ async function handleDelete(request: NextRequest) {
       const missingLineIndexes = lineIds
         .map((lineId, index) => remainingIds.has(lineId) ? -1 : index)
         .filter((index) => index >= 0);
+      const restoredLineIds = new Map<string, string>();
       try {
         for (const index of missingLineIndexes) {
+          const deletedLineId = removalLines[index].id;
           const response = await procoreJson({
             path: `${contractPath}/line_items`,
             method: "POST",
@@ -2350,6 +2358,7 @@ async function handleDelete(request: NextRequest) {
           if (!restoredLineId) {
             throw new Error("A restored PO line did not return its new Procore line ID.");
           }
+          restoredLineIds.set(deletedLineId, restoredLineId);
           removalLines[index] = { ...removalLines[index], id: restoredLineId };
         }
         const restoredLines = await fetchContractLineItems({
@@ -2365,7 +2374,10 @@ async function handleDelete(request: NextRequest) {
         if (ownedLines && audit) {
           await updateCompletedChangeOrderOwnedLines(
             audit,
-            reconciledOwnedLineItems(ownedLines, restoredLines),
+            ownedLines.map((ownedLine) => ({
+              ...ownedLine,
+              id: restoredLineIds.get(ownedLine.id) || ownedLine.id,
+            })),
           );
         }
         await restoreApprovedStatus();
@@ -2398,6 +2410,7 @@ async function handleDelete(request: NextRequest) {
         sourceChangeOrder,
         removedLineItems: lineIds.length,
         alreadyAbsentLineItems,
+        retainedLineItems,
         applicationId: removalClaim.applicationId,
       },
     });
@@ -2406,6 +2419,7 @@ async function handleDelete(request: NextRequest) {
       targetCommitmentId: removalClaim.targetCommitmentId,
       removedLineItems: lineIds.length,
       alreadyAbsentLineItems,
+      retainedLineItems,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -14,6 +14,7 @@ import {
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerLineCreatePayload,
   commitmentMakerOwnedLineItemsFromAudit,
+  commitmentMakerSourceWbsCandidate,
   consolidateCommitmentMakerLineItems,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
@@ -1016,6 +1017,16 @@ async function buildPlan(params: {
   }
 
   const wbsIndex = buildWbsIndex(wbsRecords);
+  if (params.useSynchronizedData) {
+    for (const line of params.groups.flatMap((group) => group.lineItems)) {
+      const sourceCandidate = commitmentMakerSourceWbsCandidate(line);
+      if (!sourceCandidate) continue;
+      const candidates = wbsIndex.get(sourceCandidate.costCode) || [];
+      if (!candidates.some((candidate) => candidate.id === sourceCandidate.id)) {
+        wbsIndex.set(sourceCandidate.costCode, [...candidates, sourceCandidate]);
+      }
+    }
+  }
   const purchaseOrders = purchaseOrderCommitments(commitments);
   const targetCommitment = params.target === "existing_purchase_order"
     ? purchaseOrders.find((record) => readId(record) === params.existingCommitmentId) || null

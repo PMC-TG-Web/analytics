@@ -1,5 +1,5 @@
 export const COMMITMENT_MAKER_VENDOR_NAME = "Paradise Masonry, LLC";
-export const COMMITMENT_MAKER_COST_TYPE = "O";
+export const COMMITMENT_MAKER_COST_TYPE = "M";
 
 export type CommitmentMakerCell = string | number | boolean | null | undefined;
 
@@ -497,6 +497,21 @@ function canonicalCostType(value: unknown): string {
   if (["CON", "CONC", "CONCRETE"].includes(normalized)) return "CON";
   if (["O", "OTHER"].includes(normalized)) return "O";
   return normalized;
+}
+
+export function commitmentMakerSourceWbsCandidate(
+  line: CommitmentMakerLineItem,
+): CommitmentMakerWbsCandidate | null {
+  const id = String(line.sourceWbsCodeId || "").trim();
+  const costCode = String(line.costCode || "").trim().toUpperCase().split(".")[0];
+  const costType = canonicalCostType(line.costType) || COMMITMENT_MAKER_COST_TYPE;
+  if (!id || !costCode) return null;
+  return {
+    id,
+    flatCode: `${costCode}.${costType}`,
+    costCode,
+    costType,
+  };
 }
 
 /**

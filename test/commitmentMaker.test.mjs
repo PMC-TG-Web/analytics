@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   combineCommitmentMakerGroups,
   commitmentMakerLineCreatePayload,
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerProjectIdFromSearch,
+  commitmentMakerSourceWbsCandidate,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
@@ -140,7 +142,7 @@ test('ports the production split-with-labor transformation', () => {
     lineItems: [
       {
         costCode: '03-200-10-20',
-        costType: 'O',
+        costType: 'M',
         description: '#4 Rebar - Foundation',
         quantity: 5,
         uom: 'ea',
@@ -149,7 +151,7 @@ test('ports the production split-with-labor transformation', () => {
       },
       {
         costCode: '03-300-00-10',
-        costType: 'O',
+        costType: 'M',
         description: 'Foundation Labor - Foundation',
         quantity: 8,
         uom: 'hours',
@@ -159,6 +161,32 @@ test('ports the production split-with-labor transformation', () => {
     ],
   });
   assert.equal(result.groups[1].lineItems[0].uom, 'sf');
+});
+
+test('defaults unassigned commitment lines to Materials', () => {
+  assert.equal(COMMITMENT_MAKER_COST_TYPE, 'M');
+  assert.equal(parseCommitmentMakerRows([
+    ['Budget Code', 'Description', 'Quantity', 'UOM', 'Unit Price'],
+    ['03-200-10-20', '#4 Rebar', 8, 'ea', 8.15],
+  ]).groups[0].lineItems[0].costType, 'M');
+});
+
+test('keeps an approved change-order WBS ID even when it has no budget line', () => {
+  assert.deepEqual(commitmentMakerSourceWbsCandidate({
+    costCode: '03-200-10-20',
+    costType: '',
+    sourceWbsCodeId: '598136734324413',
+    description: 'CO4 - #4 Rebar',
+    quantity: 8,
+    uom: 'ea',
+    unitCost: 8.15,
+    subtotalOverride: null,
+  }), {
+    id: '598136734324413',
+    flatCode: '03-200-10-20.M',
+    costCode: '03-200-10-20',
+    costType: 'M',
+  });
 });
 
 test('merges repeated group names into one purchase order', () => {

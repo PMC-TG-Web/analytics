@@ -1,5 +1,9 @@
 import type { Config } from "@netlify/functions";
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const handler = async (request: Request) => {
   const expected = (process.env.PROCORE_SYNC_SECRET || "").trim();
   const provided = request.headers.get("x-sync-secret")?.trim() || "";
@@ -30,7 +34,9 @@ const handler = async (request: Request) => {
     Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "3", 10) || 3)
   );
   let maxProjects = reconciliation ? reconciliationCap : 3;
-  for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
+  let projectAttempts = 0;
+  let workerBusyRetries = 0;
+  while (projectAttempts < maxProjects && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/actuals`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": expected },
@@ -48,6 +54,14 @@ const handler = async (request: Request) => {
       totalMs: result?.totalMs,
       queue: result?.queue,
     }));
+    if (result?.skipped && result?.reason === "worker_busy") {
+      workerBusyRetries += 1;
+      if (workerBusyRetries >= 20 || Date.now() + 1_000 >= deadline) break;
+      await wait(1_000);
+      continue;
+    }
+    workerBusyRetries = 0;
+    projectAttempts += 1;
     if (!reconciliation) {
       const recommended = Number(result?.queue?.recommendedBatchSize || 3);
       if (Number.isFinite(recommended)) {

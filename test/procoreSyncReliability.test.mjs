@@ -384,6 +384,8 @@ test("background approval worker drains bounded polling batches", async () => {
   assert.match(worker, /\/api\/cron\/change-order-approvals/);
   assert.match(worker, /PROCORE_CHANGE_ORDER_PROJECTS_PER_TICK \|\| "3"/);
   assert.match(worker, /result\?\.deferred/);
+  assert.match(worker, /result\?\.reason === "worker_busy"/);
+  assert.match(worker, /await wait\(1_000\)/);
   assert.doesNotMatch(worker, /nextOffset/);
 });
 
@@ -591,6 +593,8 @@ test("background workers prioritize and drain multiple estimate projects per tic
   }
 
   assert.match(actualsWorker, /secondaryWork: if \(!reconciliation/);
+  assert.match(actualsWorker, /result\?\.reason === "worker_busy"/);
+  assert.match(actualsWorker, /await wait\(1_000\)/);
   assert.match(actualsWorker, /if \(estimateRateLimited \|\| estimateResult\?\.deferred\) \{\s+break secondaryWork;/);
   assert.ok(
     actualsWorker.indexOf("/api/cron/actuals") < actualsWorker.indexOf('mode: "estimates"'),

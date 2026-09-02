@@ -1,5 +1,9 @@
 import type { Config } from "@netlify/functions";
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const handler = async (request: Request) => {
   const expected = (process.env.PROCORE_SYNC_SECRET || "").trim();
   const provided = request.headers.get("x-sync-secret")?.trim() || "";
@@ -16,9 +20,11 @@ const handler = async (request: Request) => {
   let potentialChangeOrdersScanned = 0;
   let packagesScanned = 0;
   let apiRequests = 0;
+  let projectAttempts = 0;
+  let workerBusyRetries = 0;
   const errors: unknown[] = [];
 
-  for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
+  while (projectAttempts < maxProjects && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/change-order-approvals`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": expected },
@@ -30,6 +36,14 @@ const handler = async (request: Request) => {
     potentialChangeOrdersScanned += Number(result?.potentialChangeOrdersScanned || 0);
     packagesScanned += Number(result?.packagesScanned || 0);
     apiRequests += Number(result?.apiRequests || response.headers.get("x-procore-api-request-count") || 0);
+    if (result?.skipped && result?.reason === "worker_busy") {
+      workerBusyRetries += 1;
+      if (workerBusyRetries >= 20 || Date.now() + 1_000 >= deadline) break;
+      await wait(1_000);
+      continue;
+    }
+    workerBusyRetries = 0;
+    projectAttempts += 1;
     if (!response.ok || result?.success === false) {
       errors.push(result?.error || `project:${result?.projectId || "unknown"} status:${response.status}`);
     }

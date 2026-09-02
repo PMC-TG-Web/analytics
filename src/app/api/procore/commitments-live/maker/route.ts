@@ -42,10 +42,7 @@ import {
   verifyCommitmentMakerAccessToken,
 } from "@/lib/commitmentMakerAccess";
 import {
-  ensureCommitmentMakerChangeOrderTasks,
-  resolveCommitmentMakerChangeOrderTaskAssignees,
   type CommitmentMakerChangeOrderContext,
-  type CommitmentMakerTaskRequest,
 } from "@/lib/procoreCommitmentMakerTasks";
 import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
 import {
@@ -80,6 +77,16 @@ type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_GROUPS = 100;
 const MAX_LINE_ITEMS = 5_000;
+const PROCORE_READ_TIMEOUT_MS = 8_000;
+const PROCORE_MUTATION_TIMEOUT_MS = 12_000;
+const LINE_CREATE_CONCURRENCY = 4;
+
+class ProcoreMutationOutcomeUnknownError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProcoreMutationOutcomeUnknownError";
+  }
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -139,32 +146,58 @@ async function procoreJson(params: {
   const method = params.method || "GET";
   const maxRetries = method === "GET" ? 1 : 0;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${params.accessToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "Procore-Company-Id": params.companyId,
-      },
-      body: params.body === undefined ? undefined : JSON.stringify(params.body),
-    });
-    if (response.status === 429 && attempt < maxRetries) {
-      const delayMs = procoreRateLimitDelayMs(response.headers, {
-        fallbackMs: 1_000,
-        // Keep interactive requests comfortably inside Netlify's synchronous
-        // response window. Background syncs may wait for the full reset epoch.
-        maxDelayMs: 5_000,
+    try {
+      const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${params.accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Procore-Company-Id": params.companyId,
+        },
+        body: params.body === undefined ? undefined : JSON.stringify(params.body),
+        signal: AbortSignal.timeout(method === "GET" ? PROCORE_READ_TIMEOUT_MS : PROCORE_MUTATION_TIMEOUT_MS),
       });
-      await response.body?.cancel().catch(() => undefined);
-      console.warn(`Commitment Maker live read was rate limited; retrying in ${delayMs}ms.`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      continue;
+      if (response.status === 429 && attempt < maxRetries) {
+        const delayMs = procoreRateLimitDelayMs(response.headers, {
+          fallbackMs: 1_000,
+          // Keep interactive requests comfortably inside Netlify's synchronous
+          // response window. Background syncs may wait for the full reset epoch.
+          maxDelayMs: 5_000,
+        });
+        await response.body?.cancel().catch(() => undefined);
+        console.warn(`Commitment Maker live read was rate limited; retrying in ${delayMs}ms.`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      const payload = parseUpstreamPayload(await response.text());
+      return { ok: response.ok, status: response.status, payload, path };
+    } catch (error) {
+      const timedOut = error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name);
+      return {
+        ok: false,
+        status: method === "GET" ? (timedOut ? 504 : 502) : 504,
+        payload: {
+          error: method === "GET"
+            ? timedOut
+              ? "Procore did not respond before the interactive read deadline."
+              : "The Procore read failed before a response was received."
+            : "Procore did not confirm the mutation before the connection ended; its outcome is unknown.",
+        },
+        path,
+      };
     }
-    const payload = parseUpstreamPayload(await response.text());
-    return { ok: response.ok, status: response.status, payload, path };
   }
   return { ok: false, status: 429, payload: { error: "Procore rate limit retries were exhausted." }, path };
+}
+
+function rejectedMutation(action: string, response: ProcoreResponse): Error {
+  if (response.status === 504) {
+    return new ProcoreMutationOutcomeUnknownError(
+      `${action} was not confirmed before the Procore timeout. Procore may still have applied it. Wait five minutes, refresh the preview, and retry only if Commitment Maker still shows the change order as available.`,
+    );
+  }
+  return new Error(`${action} (${response.status}): ${JSON.stringify(response.payload)}`);
 }
 
 async function fetchPaged(params: {
@@ -524,11 +557,13 @@ async function resolveApprovedChangeOrder(params: {
     path,
     accessToken: params.accessToken,
     companyId: params.companyId,
-  }).catch(() => null);
-  if (!response?.ok) return { changeOrder: storedMatch, liveLines: null };
+  });
+  if (!response.ok) {
+    throw new Error(`The selected change order could not be verified live (${response.status})${upstreamError(response)}.`);
+  }
 
   const liveRecord = unwrapData(response.payload);
-  if (!isRecord(liveRecord)) return { changeOrder: storedMatch, liveLines: null };
+  if (!isRecord(liveRecord)) throw new Error("Procore returned an invalid live change-order record.");
   const liveMatch = storedMatch.sourceKind === "potential_change_order"
     ? approvedPotentialChangeOrder(liveRecord)
     : approvedChangeOrder(liveRecord, storedMatch.contractId);
@@ -566,7 +601,7 @@ async function fetchApprovedChangeOrderLines(params: {
   useLive?: boolean;
 }): Promise<UnknownRecord[]> {
   if (params.changeOrder.sourceKind === "potential_change_order" && params.useLive !== false) {
-    const liveLines = await fetchPaged({
+    return fetchPaged({
       accessToken: params.accessToken,
       companyId: params.companyId,
       keys: ["data", "line_items"],
@@ -574,8 +609,9 @@ async function fetchApprovedChangeOrderLines(params: {
         `/rest/v1.0/potential_change_orders/${encodeURIComponent(params.changeOrder.packageId)}/line_items?project_id=${encodeURIComponent(
           params.projectId
         )}&page=${page}&per_page=100`,
-    }).catch(() => []);
-    if (liveLines.length > 0) return liveLines;
+    });
+  }
+  if (params.changeOrder.sourceKind === "potential_change_order") {
     const storedLines = await prisma.procorePotentialChangeOrderLine.findMany({
       where: {
         companyId: params.companyId,
@@ -966,6 +1002,9 @@ async function addVendorToProject(params: {
     if (response.ok || response.status === 409 || (response.status === 422 && /already|exists|added/.test(responseText))) {
       return;
     }
+    if (response.status === 504) {
+      throw rejectedMutation(`Adding ${COMMITMENT_MAKER_VENDOR_NAME} to the project`, response);
+    }
   }
   throw new Error(`Paradise Masonry could not be added to Procore project ${params.projectId}.`);
 }
@@ -991,8 +1030,9 @@ async function buildPlan(params: {
   existingCommitmentId: string;
   sourceChangeOrderId: string;
   useSynchronizedData?: boolean;
+  useLiveWbsRecords?: boolean;
 }) {
-  const { companyVendors, projectVendors, commitments, wbsRecords } = params.useSynchronizedData
+  const planData = params.useSynchronizedData
     ? await fetchCommitmentMakerPlanDataFromDatabase(params.companyId, params.projectId)
     : await Promise.all([
         fetchCompanyVendors(params.accessToken, params.companyId),
@@ -1005,6 +1045,10 @@ async function buildPlan(params: {
         commitments,
         wbsRecords,
       }));
+  const { companyVendors, projectVendors, commitments } = planData;
+  const wbsRecords = params.useLiveWbsRecords
+    ? await fetchProjectWbsRecords(params.accessToken, params.companyId, params.projectId)
+    : planData.wbsRecords;
   const companyVendor = findParadiseVendor(companyVendors);
   const projectVendor = findParadiseVendor(projectVendors);
   const validationErrors: string[] = [];
@@ -1045,10 +1089,7 @@ async function buildPlan(params: {
   const existingNumbers = purchaseOrders.map((record) => record.number);
   const newGroupCount = params.target === "existing_purchase_order" ? 0 : params.groups.filter((group) => {
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
-    const existing = findExistingByFingerprint(commitments, fingerprint)
-      || (params.sourceChangeOrderId
-        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, COMMITMENT_MAKER_VENDOR_NAME)
-        : null);
+    const existing = findExistingByFingerprint(commitments, fingerprint);
     return !existing;
   }).length;
   const availableNumbers = planNextPurchaseOrderNumbers(existingNumbers, newGroupCount);
@@ -1062,10 +1103,7 @@ async function buildPlan(params: {
     }
     const fingerprint = groupFingerprint(params.projectId, params.importFingerprint, group);
     const existing = targetCommitment
-      || findExistingByFingerprint(commitments, fingerprint)
-      || (params.sourceChangeOrderId
-        ? findExistingChangeOrderPurchaseOrder(purchaseOrders, group.name, COMMITMENT_MAKER_VENDOR_NAME)
-        : null);
+      || findExistingByFingerprint(commitments, fingerprint);
     if (existing && !commitmentUsesParadiseVendor(existing, vendorId)) {
       validationErrors.push(
         `Group "${group.name}" matches an earlier import, but that Procore PO is no longer assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`
@@ -1327,39 +1365,6 @@ async function findCompletedChangeOrderAudit(params: {
   return null;
 }
 
-async function findShellyCompanyUser(): Promise<UnknownRecord | null> {
-  const rows = await prisma.$queryRawUnsafe<Array<{ payload: UnknownRecord }>>(
-    `
-      SELECT payload
-      FROM procore_company_users_live
-      WHERE LOWER(COALESCE(login, payload->>'login', payload->>'email', payload->>'email_address', '')) = 'shelly@pmcdecor.com'
-      LIMIT 1
-    `,
-  );
-  return rows[0]?.payload || null;
-}
-
-function commitmentMakerTaskRequest(params: {
-  accessToken: string;
-  companyId: string;
-}): CommitmentMakerTaskRequest {
-  return async ({ path, method, body }) => {
-    const response = await procoreJson({
-      path,
-      method,
-      body,
-      accessToken: params.accessToken,
-      companyId: params.companyId,
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Procore rejected the follow-up task request (${response.status}): ${JSON.stringify(response.payload)}`,
-      );
-    }
-    return response.payload;
-  };
-}
-
 async function handleRequest(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as UnknownRecord;
   const mode = readText(body.mode).toLowerCase();
@@ -1475,21 +1480,7 @@ async function handleRequest(request: NextRequest) {
   const importFingerprint = createHash("sha256")
     .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
-  const taskRequest = commitmentMakerTaskRequest({ accessToken, companyId });
-  const taskAssigneePromise = sourceChangeOrder && mode === "create"
-    ? findShellyCompanyUser().then(async (shellyCompanyUser) => {
-        const assignees = await resolveCommitmentMakerChangeOrderTaskAssignees({
-          request: taskRequest,
-          companyId,
-          projectId,
-          shellyCompanyUser,
-        });
-        return { assignees, shellyCompanyUser, error: null };
-      }).catch(
-        (error: unknown) => ({ assignees: null, shellyCompanyUser: null, error }),
-      )
-    : Promise.resolve({ assignees: null, shellyCompanyUser: null, error: null });
-  const [sourceAliases, plan, taskAssigneeResult] = await Promise.all([
+  const [sourceAliases, plan] = await Promise.all([
     sourceChangeOrder
       ? resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
       : [],
@@ -1502,10 +1493,25 @@ async function handleRequest(request: NextRequest) {
       target,
       existingCommitmentId,
       sourceChangeOrderId: sourceChangeOrder?.packageId || "",
-      useSynchronizedData: mode === "preview" && Boolean(sourceChangeOrder),
+      useSynchronizedData: true,
+      useLiveWbsRecords: !sourceChangeOrder,
     }),
-    taskAssigneePromise,
   ]);
+  const liveCommitments = mode === "create"
+    ? await fetchCommitments(accessToken, companyId, projectId)
+    : [];
+  if (mode === "create") {
+    for (const group of plan.groups.filter((candidate) => candidate.existingContractId)) {
+      const liveCommitment = liveCommitments.find(
+        (commitment) => readId(commitment) === group.existingContractId,
+      );
+      if (!liveCommitment) {
+        plan.validationErrors.push(`PO ${group.number || group.existingContractId} could not be verified live on this project.`);
+      } else if (!commitmentUsesParadiseVendor(liveCommitment, plan.vendor.id)) {
+        plan.validationErrors.push(`PO ${group.number || group.existingContractId} is not currently assigned to ${COMMITMENT_MAKER_VENDOR_NAME}.`);
+      }
+    }
+  }
   let removableTargetCommitmentId = "";
   let removalStatus: "completed" | "removing" | "" = "";
   let removalError = "";
@@ -1524,11 +1530,6 @@ async function handleRequest(request: NextRequest) {
     removableTargetCommitmentId = removalTarget?.targetCommitmentId || "";
     removalStatus = removalTarget?.status || "";
     removalError = removalTarget?.lastError || "";
-    if (taskAssigneeResult.error) {
-      plan.validationErrors.push(
-        `Follow-up tasks: ${taskAssigneeResult.error instanceof Error ? taskAssigneeResult.error.message : String(taskAssigneeResult.error)}`,
-      );
-    }
   }
 
   const preview = {
@@ -1548,7 +1549,7 @@ async function handleRequest(request: NextRequest) {
     removalError,
     target,
     existingCommitmentId: target === "existing_purchase_order" ? existingCommitmentId : "",
-    taskAssignees: taskAssigneeResult.assignees,
+    taskAssignees: null,
     costType: COMMITMENT_MAKER_COST_TYPE,
     previewFingerprint: importFingerprint,
     sourceRowCount,
@@ -1597,7 +1598,7 @@ async function handleRequest(request: NextRequest) {
     }
 
     if (changeOrderClaim.targetCommitmentId) {
-      const claimedCommitment = plan.commitments.find(
+      const claimedCommitment = liveCommitments.find(
         (commitment) => readId(commitment) === changeOrderClaim?.targetCommitmentId,
       );
       if (!claimedCommitment) {
@@ -1642,14 +1643,21 @@ async function handleRequest(request: NextRequest) {
 
   const results: UnknownRecord[] = [];
   let failure: UnknownRecord | null = null;
+  const currentCommitments = [...liveCommitments];
   for (const group of plan.groups) {
     let contractId = group.existingContractId;
     let createdContract = false;
     let actualNumber = group.number;
     try {
       if (!contractId) {
-        const refreshedCommitments = await fetchCommitments(accessToken, companyId, projectId);
-        const duplicate = findExistingByFingerprint(refreshedCommitments, group.fingerprint);
+        const duplicate = findExistingByFingerprint(currentCommitments, group.fingerprint)
+          || (sourceChangeOrder && changeOrderClaim?.reconcileUnconfirmedCreate
+            ? findExistingChangeOrderPurchaseOrder(
+                currentCommitments,
+                group.name,
+                COMMITMENT_MAKER_VENDOR_NAME,
+              )
+            : null);
         if (duplicate) {
           if (commitmentVendorId(duplicate) !== plan.vendor.id) {
             throw new Error(
@@ -1659,7 +1667,7 @@ async function handleRequest(request: NextRequest) {
           contractId = readId(duplicate);
         } else {
           const refreshedNumber = planNextPurchaseOrderNumbers(
-            purchaseOrderCommitments(refreshedCommitments).map((record) => record.number),
+            purchaseOrderCommitments(currentCommitments).map((record) => record.number),
             1
           )[0];
           actualNumber = refreshedNumber;
@@ -1683,12 +1691,20 @@ async function handleRequest(request: NextRequest) {
             },
           });
           if (!response.ok) {
-            throw new Error(`Procore rejected PO ${refreshedNumber} (${response.status}): ${JSON.stringify(response.payload)}`);
+            throw rejectedMutation(`Procore rejected PO ${refreshedNumber}`, response);
           }
           const created = unwrapData(response.payload);
           contractId = readId(created);
           createdContract = true;
           if (!contractId) throw new Error(`Procore created PO ${refreshedNumber} without returning its ID.`);
+          currentCommitments.push({
+            id: contractId,
+            number: refreshedNumber,
+            title: group.name,
+            status: "Draft",
+            type: "purchase_order",
+            vendor_id: plan.vendor.id,
+          });
         }
       }
 
@@ -1701,26 +1717,38 @@ async function handleRequest(request: NextRequest) {
       const existingLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
       let createdLineItems = 0;
       let reusedLineItems = 0;
+      const missingLines: PlannedLine[] = [];
       for (const line of group.lineItems) {
         if (lineAlreadyExists(line, existingLines)) {
           reusedLineItems += 1;
           continue;
         }
-        const response = await procoreJson({
-          path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
-            projectId
-          )}/commitment_contracts/${encodeURIComponent(contractId)}/line_items`,
-          method: "POST",
-          accessToken,
-          companyId,
-          body: commitmentMakerLineCreatePayload(line),
-        });
-        if (!response.ok) {
-          throw new Error(
-            `Procore rejected line "${line.description}" (${response.status}): ${JSON.stringify(response.payload)}`
-          );
+        missingLines.push(line);
+      }
+      for (let index = 0; index < missingLines.length; index += LINE_CREATE_CONCURRENCY) {
+        const batch = missingLines.slice(index, index + LINE_CREATE_CONCURRENCY);
+        const outcomes = await Promise.allSettled(batch.map(async (line) => {
+          const response = await procoreJson({
+            path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+              projectId
+            )}/commitment_contracts/${encodeURIComponent(contractId)}/line_items`,
+            method: "POST",
+            accessToken,
+            companyId,
+            body: commitmentMakerLineCreatePayload(line),
+          });
+          if (!response.ok) {
+            throw rejectedMutation(`Procore rejected line "${line.description}"`, response);
+          }
+        }));
+        const failures = outcomes
+          .filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected")
+          .map((outcome) => outcome.reason);
+        if (failures.length > 0) {
+          throw failures.find((error) => error instanceof ProcoreMutationOutcomeUnknownError)
+            || failures[0];
         }
-        createdLineItems += 1;
+        createdLineItems += batch.length;
       }
 
       const populatedLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
@@ -1741,7 +1769,7 @@ async function handleRequest(request: NextRequest) {
         body: { status: "Approved" },
       });
       if (!approveResponse.ok) {
-        throw new Error(`PO ${actualNumber} was populated but could not be approved (${approveResponse.status}).`);
+        throw rejectedMutation(`PO ${actualNumber} was populated but could not be approved`, approveResponse);
       }
 
       const result = {
@@ -1777,6 +1805,7 @@ async function handleRequest(request: NextRequest) {
         contractId: contractId || null,
         status: contractId ? "Draft - attention required" : "Not created",
         error: error instanceof Error ? error.message : String(error),
+        outcomeUnknown: error instanceof ProcoreMutationOutcomeUnknownError,
       };
       results.push(failure);
       await writeAudit({
@@ -1789,74 +1818,48 @@ async function handleRequest(request: NextRequest) {
     }
   }
 
-  let taskResult: Awaited<ReturnType<typeof ensureCommitmentMakerChangeOrderTasks>> | null = null;
   let taskError = "";
   let tasksQueued = false;
   if (!failure && sourceChangeOrder) {
     try {
-      const project = await prisma.pmcProject.findUnique({
-        where: {
-          companyId_procoreProjectId: {
-            companyId,
-            procoreProjectId: projectId,
-          },
-        },
-        select: { projectNumber: true, projectName: true },
-      });
-      taskResult = await ensureCommitmentMakerChangeOrderTasks({
-        request: taskRequest,
+      await enqueueCommitmentMakerTasks({
         companyId,
         projectId,
-        projectNumber: project?.projectNumber || null,
-        projectName: project?.projectName || `Procore Project ${projectId}`,
         changeOrder: sourceChangeOrder,
+        userEmail,
         taskKinds: ["aia_billing"],
-        shellyCompanyUser: taskAssigneeResult.shellyCompanyUser,
       });
+      tasksQueued = true;
       await writeAudit({
-        action: "change-order-tasks",
+        action: "change-order-tasks-queued",
         entityId: sourceChangeOrder.packageId,
         userEmail,
-        changes: { projectId, changeOrder: sourceChangeOrder, taskResult },
+        changes: { projectId, changeOrder: sourceChangeOrder },
       });
-    } catch (immediateTaskError) {
-      const immediateError = immediateTaskError instanceof Error ? immediateTaskError.message : String(immediateTaskError);
-      try {
-        await enqueueCommitmentMakerTasks({
-          companyId,
-          projectId,
-          changeOrder: sourceChangeOrder,
-          userEmail,
-          taskKinds: ["aia_billing"],
-        });
-        tasksQueued = true;
-        await writeAudit({
-          action: "change-order-tasks-queued",
-          entityId: sourceChangeOrder.packageId,
-          userEmail,
-          changes: { projectId, changeOrder: sourceChangeOrder, immediateError },
-        });
-        const syncSecret = String(process.env.PROCORE_SYNC_SECRET || "").trim();
-        if (syncSecret) {
+      const syncSecret = String(process.env.PROCORE_SYNC_SECRET || "").trim();
+      if (syncSecret) {
+        try {
           const dispatchResponse = await fetch(`${request.nextUrl.origin}/api/background/commitment-maker-tasks`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-sync-secret": syncSecret },
             body: "{}",
+            signal: AbortSignal.timeout(3_000),
           });
           if (!dispatchResponse.ok && dispatchResponse.status !== 202) {
             console.warn(`Commitment Maker task background dispatch returned ${dispatchResponse.status}; the durable queue will retry.`);
           }
+        } catch (dispatchError) {
+          console.warn("Commitment Maker task background dispatch failed; the durable queue will retry.", dispatchError);
         }
-      } catch (queueError) {
-        const queueMessage = queueError instanceof Error ? queueError.message : String(queueError);
-        taskError = `${immediateError} Queue fallback failed: ${queueMessage}`;
-        await writeAudit({
-          action: "change-order-task-error",
-          entityId: sourceChangeOrder.packageId,
-          userEmail,
-          changes: { projectId, changeOrder: sourceChangeOrder, error: taskError },
-        });
       }
+    } catch (queueError) {
+      taskError = queueError instanceof Error ? queueError.message : String(queueError);
+      await writeAudit({
+        action: "change-order-task-error",
+        entityId: sourceChangeOrder.packageId,
+        userEmail,
+        changes: { projectId, changeOrder: sourceChangeOrder, error: taskError },
+      });
     }
   }
 
@@ -1864,11 +1867,13 @@ async function handleRequest(request: NextRequest) {
     const targetCommitmentId = readText(results.find((result) => result.contractId)?.contractId)
       || changeOrderClaim.targetCommitmentId;
     if (failure || taskError) {
-      await failCommitmentMakerChangeOrderClaim({
-        ...changeOrderClaim,
-        targetCommitmentId,
-        error: taskError || readText(failure?.error) || "Commitment Maker stopped before completion.",
-      });
+      if (failure?.outcomeUnknown !== true) {
+        await failCommitmentMakerChangeOrderClaim({
+          ...changeOrderClaim,
+          targetCommitmentId,
+          error: taskError || readText(failure?.error) || "Commitment Maker stopped before completion.",
+        });
+      }
     } else if (targetCommitmentId) {
       await completeCommitmentMakerChangeOrderClaim({
         ...changeOrderClaim,
@@ -1893,15 +1898,18 @@ async function handleRequest(request: NextRequest) {
       vendor: plan.vendor,
       results,
       sourceChangeOrder,
-      taskResult,
+      taskResult: null,
       tasksQueued,
+      outcomeUnknown: failure?.outcomeUnknown === true,
       taskError: taskError || undefined,
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && target !== "existing_purchase_order").length,
       addedToExisting: results.filter((result) => result.success === true && target === "existing_purchase_order").length,
       failed: failure ? 1 : 0,
       error: failure
-        ? "Commitment creation stopped after an error. Any affected purchase order may require review."
+        ? failure.outcomeUnknown === true
+          ? readText(failure.error)
+          : "Commitment creation stopped after an error. Any affected purchase order may require review."
         : taskError
           ? "The commitments were created, but the required change-order follow-up tasks need attention. Retry to repair the tasks without duplicating the POs."
           : undefined,

@@ -95,6 +95,7 @@ type PreviewResponse = {
 type CreateResult = {
   success: boolean;
   error?: string;
+  outcomeUnknown?: boolean;
   created: number;
   resumed: number;
   failed: number;
@@ -188,6 +189,7 @@ export default function CommitmentMakerPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [createOutcomeUnknown, setCreateOutcomeUnknown] = useState(false);
   const [removeConfirmation, setRemoveConfirmation] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [combineSelection, setCombineSelection] = useState<Record<string, boolean>>({});
@@ -378,6 +380,7 @@ export default function CommitmentMakerPage() {
     mode: "preview" | "create",
     parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
   ) {
+    let receivedResponse = false;
     setBusy(true);
     setError("");
     if (mode === "create") setResult(null);
@@ -413,6 +416,7 @@ export default function CommitmentMakerPage() {
         }),
       });
       const responseText = await response.text();
+      receivedResponse = true;
       let payload: unknown = {};
       try {
         payload = responseText ? JSON.parse(responseText) : {};
@@ -422,7 +426,7 @@ export default function CommitmentMakerPage() {
       if (!response.ok && mode === "preview") {
         throw new Error(
           text(asRecord(payload).error)
-          || `The request failed (${response.status}). No Procore changes were confirmed; refresh and retry.`,
+          || `The preview request failed (${response.status}). No creation request was sent; refresh and preview again.`,
         );
       }
       if (mode === "preview") {
@@ -437,6 +441,7 @@ export default function CommitmentMakerPage() {
           throw new Error("Procore returned an incomplete preview. Refresh and try again.");
         }
         setPreview(nextPreview);
+        setCreateOutcomeUnknown(false);
         setResult(null);
         setConfirmed(false);
         setRemoveConfirmation(false);
@@ -447,14 +452,26 @@ export default function CommitmentMakerPage() {
         );
       } else if (Array.isArray(asRecord(payload).results)) {
         setResult(payload as CreateResult);
+        if (asRecord(payload).outcomeUnknown === true) {
+          setCreateOutcomeUnknown(true);
+          setConfirmed(false);
+        }
       }
       if (!response.ok) {
+        if (mode === "create" && (response.status === 504 || asRecord(payload).outcomeUnknown === true)) {
+          setCreateOutcomeUnknown(true);
+          setConfirmed(false);
+        }
         throw new Error(
           text(asRecord(payload).error)
-          || `The request failed (${response.status}). No Procore changes were confirmed; refresh and retry.`,
+          || `The creation request ended without a final response (${response.status}). Procore may still have applied part or all of it. Wait five minutes, refresh the preview, and create again only if the change order is still available.`,
         );
       }
     } catch (requestError) {
+      if (mode === "create" && !receivedResponse) {
+        setCreateOutcomeUnknown(true);
+        setConfirmed(false);
+      }
       setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {
       setBusy(false);
@@ -634,7 +651,7 @@ export default function CommitmentMakerPage() {
   );
   const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !busy);
   const readyToCreate = Boolean(
-    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success
+    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success && !createOutcomeUnknown
   );
 
   return (

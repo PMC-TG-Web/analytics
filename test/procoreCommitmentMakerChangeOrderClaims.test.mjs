@@ -88,6 +88,28 @@ test("allows only failed or expired retries for the original target", () => {
   );
 });
 
+test("allows title recovery only for an expired unconfirmed create claim", () => {
+  const { commitmentMakerClaimCanReconcileByTitle } = loadModule();
+
+  assert.equal(commitmentMakerClaimCanReconcileByTitle(claim({
+    status: "claimed",
+    targetCommitmentId: null,
+  }), now), true);
+  assert.equal(commitmentMakerClaimCanReconcileByTitle(claim({
+    status: "failed",
+    targetCommitmentId: null,
+  }), now), false);
+  assert.equal(commitmentMakerClaimCanReconcileByTitle(claim({
+    status: "claimed",
+    targetCommitmentId: null,
+    leaseExpiresAt: new Date("2026-09-01T16:05:00.000Z"),
+  }), now), false);
+  assert.equal(commitmentMakerClaimCanReconcileByTitle(claim({
+    status: "claimed",
+    targetCommitmentId: "800",
+  }), now), false);
+});
+
 test("allows a verified removal to be re-added but keeps an in-progress removal blocked", () => {
   const { commitmentMakerChangeOrderClaimBlockReason } = loadModule();
   assert.equal(
@@ -285,5 +307,6 @@ test("enforces source uniqueness before any Procore mutation", () => {
   assert.match(migration, /potential_change_order\.package_id = application\.source_id/);
   assert.ok(route.indexOf("claimCommitmentMakerChangeOrder({") < route.indexOf("addVendorToProject({"));
   assert.ok(route.indexOf("setCommitmentMakerChangeOrderTarget({") < route.indexOf("fetchContractLineItems({"));
+  assert.match(route, /const claimedCommitment = liveCommitments\.find/);
   assert.match(route, /!commitmentUsesParadiseVendor\(claimedCommitment, plan\.vendor\.id\)/);
 });

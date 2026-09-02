@@ -121,6 +121,12 @@ function targetLabel(application: ExistingClaim): string {
   return application.targetCommitmentId || application.requestedTargetCommitmentId || "another purchase order";
 }
 
+export function commitmentMakerClaimCanReconcileByTitle(application: ExistingClaim, now = new Date()): boolean {
+  return application.status === "claimed"
+    && application.leaseExpiresAt <= now
+    && !application.targetCommitmentId;
+}
+
 export function commitmentMakerChangeOrderClaimBlockReason(
   application: ExistingClaim,
   params: Pick<ClaimParams, "targetKind" | "requestedTargetCommitmentId">,
@@ -170,6 +176,7 @@ export async function claimCommitmentMakerChangeOrder(params: ClaimParams) {
     const existing = await findApplicationForAliases(transaction, params);
     if (existing) {
       assertClaimAvailable(existing, params, now);
+      const reconcileUnconfirmedCreate = commitmentMakerClaimCanReconcileByTitle(existing, now);
       const renewed = await transaction.commitmentMakerChangeOrderApplication.updateMany({
         where: {
           id: existing.id,
@@ -211,7 +218,12 @@ export async function claimCommitmentMakerChangeOrder(params: ClaimParams) {
           })),
         });
       }
-      return { applicationId: existing.id, leaseToken, targetCommitmentId: existing.targetCommitmentId || "" };
+      return {
+        applicationId: existing.id,
+        leaseToken,
+        targetCommitmentId: existing.targetCommitmentId || "",
+        reconcileUnconfirmedCreate,
+      };
     }
 
     const historical = await findHistoricalApplication(transaction, params);
@@ -243,7 +255,7 @@ export async function claimCommitmentMakerChangeOrder(params: ClaimParams) {
         },
       },
     });
-    return { applicationId: created.id, leaseToken, targetCommitmentId: "" };
+    return { applicationId: created.id, leaseToken, targetCommitmentId: "", reconcileUnconfirmedCreate: false };
   });
 
   try {

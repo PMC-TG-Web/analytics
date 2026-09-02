@@ -41,16 +41,16 @@ test("commitment task retries back off and cap at one hour", () => {
   );
 });
 
-test("maker creates tasks immediately and queues only after that attempt fails", () => {
+test("maker durably queues follow-up tasks before best-effort background dispatch", () => {
   const source = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
-  const immediateCreate = source.indexOf("taskResult = await ensureCommitmentMakerChangeOrderTasks");
-  const fallbackCatch = source.indexOf("catch (immediateTaskError)", immediateCreate);
-  const fallbackQueue = source.indexOf("await enqueueCommitmentMakerTasks", fallbackCatch);
+  const queue = source.indexOf("await enqueueCommitmentMakerTasks");
+  const dispatch = source.indexOf("/api/background/commitment-maker-tasks", queue);
 
-  assert.ok(immediateCreate > 0);
-  assert.ok(fallbackCatch > immediateCreate);
-  assert.ok(fallbackQueue > fallbackCatch);
-  assert.match(source.slice(immediateCreate, fallbackQueue + 500), /taskKinds: \["aia_billing"\]/);
+  assert.ok(queue > 0);
+  assert.ok(dispatch > queue);
+  assert.match(source.slice(queue, dispatch), /taskKinds: \["aia_billing"\]/);
+  assert.doesNotMatch(source, /ensureCommitmentMakerChangeOrderTasks/);
+  assert.match(source.slice(dispatch, dispatch + 500), /AbortSignal\.timeout\(3_000\)/);
 });
 
 test("dedicated scheduler drains commitment task jobs every five minutes", () => {

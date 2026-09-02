@@ -376,12 +376,39 @@ test("keeps approved change-order preview within the interactive response window
   assert.match(resolver, /liveLines: storedMatch\.sourceKind === "change_order_package"/);
   assert.match(route, /resolvedSourceChangeOrder\?\.liveLines !== null/);
   assert.match(route, /fetchCommitmentMakerPlanDataFromDatabase/);
-  assert.match(route, /useSynchronizedData: mode === "preview" && Boolean\(sourceChangeOrder\)/);
+  assert.match(route, /useSynchronizedData: true/);
   assert.match(route, /const requiresLiveProcore = mode === "create" \|\| !changeOrderPackageId/);
   assert.match(route, /useLive: mode === "create"/);
-  assert.match(route, /sourceChangeOrder && mode === "create"/);
+  assert.match(route, /await enqueueCommitmentMakerTasks/);
+  assert.doesNotMatch(route, /resolveCommitmentMakerChangeOrderTaskAssignees/);
   assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);
-  assert.match(route, /const \[sourceAliases, plan, taskAssigneeResult\] = await Promise\.all/);
+  assert.match(route, /const \[sourceAliases, plan\] = await Promise\.all/);
+});
+
+test("bounds live Procore calls and safely shortens detailed line creation", () => {
+  const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
+  const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
+
+  assert.match(route, /PROCORE_READ_TIMEOUT_MS = 8_000/);
+  assert.match(route, /PROCORE_MUTATION_TIMEOUT_MS = 12_000/);
+  assert.match(route, /signal: AbortSignal\.timeout/);
+  assert.ok(route.indexOf("await response.text()") < route.indexOf("} catch (error) {"));
+  assert.match(route, /LINE_CREATE_CONCURRENCY = 4/);
+  assert.match(route, /await Promise\.allSettled\(batch\.map/);
+  assert.match(route, /failures\.find\(\(error\) => error instanceof ProcoreMutationOutcomeUnknownError\)/);
+  assert.match(route, /error instanceof ProcoreMutationOutcomeUnknownError/);
+  assert.match(route, /if \(failure\?\.outcomeUnknown !== true\)/);
+  assert.match(route, /changeOrderClaim\?\.reconcileUnconfirmedCreate/);
+  assert.match(route, /useLiveWbsRecords: !sourceChangeOrder/);
+  assert.match(route, /could not be verified live on this project/);
+  assert.match(route, /The selected change order could not be verified live/);
+  assert.match(route, /Adding \$\{COMMITMENT_MAKER_VENDOR_NAME\} to the project/);
+  assert.doesNotMatch(page, /No Procore changes were confirmed/);
+  assert.match(page, /Procore may still have applied part or all of it/);
+  assert.match(page, /!createOutcomeUnknown/);
+  assert.match(page, /setCreateOutcomeUnknown\(true\)/);
+  assert.match(page, /mode === "create" && !receivedResponse/);
+  assert.ok(page.indexOf("const responseText = await response.text()") < page.indexOf("receivedResponse = true"));
 });
 
 test("removes only exact PCO lines before releasing the PO assignment", () => {

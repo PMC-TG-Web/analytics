@@ -322,10 +322,55 @@ export async function failCommitmentMakerChangeOrderClaim(params: {
 
 export async function getCommitmentMakerChangeOrderRemovalTarget(params: Pick<ClaimParams,
   "companyId" | "projectId" | "aliases"
->): Promise<{ applicationId: string; targetCommitmentId: string } | null> {
+>): Promise<{
+  applicationId: string;
+  targetCommitmentId: string;
+  status: "completed" | "removing";
+  lastError: string | null;
+} | null> {
   const application = await findApplicationForAliases(prisma, params);
-  if (!application || application.status !== "completed" || !application.targetCommitmentId) return null;
-  return { applicationId: application.id, targetCommitmentId: application.targetCommitmentId };
+  if (
+    !application
+    || !["completed", "removing"].includes(application.status)
+    || !application.targetCommitmentId
+  ) return null;
+  return {
+    applicationId: application.id,
+    targetCommitmentId: application.targetCommitmentId,
+    status: application.status as "completed" | "removing",
+    lastError: application.lastError,
+  };
+}
+
+export async function claimCommitmentMakerChangeOrderRemovalRecovery(params: Pick<ClaimParams,
+  "companyId" | "projectId" | "aliases"
+>) {
+  const leaseToken = randomUUID();
+  const now = new Date();
+  const leaseExpiresAt = new Date(now.getTime() + CLAIM_LEASE_MS);
+  return prisma.$transaction(async (transaction) => {
+    const application = await findApplicationForAliases(transaction, params);
+    if (!application?.targetCommitmentId || application.status !== "removing") {
+      throw new CommitmentMakerChangeOrderClaimError("This change order does not have an uncertain PO removal to repair.");
+    }
+    const updated = await transaction.commitmentMakerChangeOrderApplication.updateMany({
+      where: {
+        id: application.id,
+        status: "removing",
+        targetCommitmentId: application.targetCommitmentId,
+        leaseExpiresAt: { lte: now },
+      },
+      data: { leaseToken, leaseExpiresAt },
+    });
+    if (updated.count !== 1) {
+      throw new CommitmentMakerChangeOrderClaimError("This PO recovery is already running. Refresh and try again shortly.");
+    }
+    return {
+      applicationId: application.id,
+      leaseToken,
+      targetCommitmentId: application.targetCommitmentId,
+    };
+  });
 }
 
 export async function claimCommitmentMakerChangeOrderRemoval(params: Pick<ClaimParams,
@@ -406,6 +451,27 @@ export async function failCommitmentMakerChangeOrderRemoval(params: {
     },
   });
   if (updated.count !== 1) throw new Error("The Commitment Maker removal claim could not be restored.");
+}
+
+export async function completeCommitmentMakerChangeOrderRemovalRecovery(params: {
+  applicationId: string;
+  leaseToken: string;
+  targetCommitmentId: string;
+}): Promise<void> {
+  const updated = await prisma.commitmentMakerChangeOrderApplication.updateMany({
+    where: {
+      id: params.applicationId,
+      leaseToken: params.leaseToken,
+      status: "removing",
+      targetCommitmentId: params.targetCommitmentId,
+    },
+    data: {
+      status: "completed",
+      leaseExpiresAt: new Date(),
+      lastError: null,
+    },
+  });
+  if (updated.count !== 1) throw new Error("The Commitment Maker removal recovery could not be completed.");
 }
 
 export async function markCommitmentMakerChangeOrderRemovalUncertain(params: {

@@ -80,6 +80,8 @@ type PreviewResponse = {
   sourceType: "estimate" | "approved_change_order";
   sourceChangeOrder: ApprovedChangeOrder | null;
   removableTargetCommitmentId: string;
+  removalStatus: "completed" | "removing" | "";
+  removalError: string;
   target: "new_purchase_order" | "existing_purchase_order";
   existingCommitmentId: string;
   taskAssignees: {
@@ -516,6 +518,52 @@ export default function CommitmentMakerPage() {
     );
   }
 
+  async function repairPurchaseOrderAssignment() {
+    if (!preview?.sourceChangeOrder || !preview.removableTargetCommitmentId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/procore/commitments-live/maker", {
+        method: "DELETE",
+        headers: (() => {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          const search = new URLSearchParams(window.location.search);
+          const linkedProjectId = commitmentMakerProjectIdFromSearch(window.location.search);
+          const accessToken = text(search.get("access"));
+          if (linkedProjectId && linkedProjectId === projectId && accessToken) {
+            headers["X-Commitment-Maker-Project-Id"] = linkedProjectId;
+            headers["X-Commitment-Maker-Access"] = accessToken;
+          }
+          return headers;
+        })(),
+        body: JSON.stringify({
+          projectId,
+          changeOrderPackageId: preview.sourceChangeOrder.packageId,
+          recoverRemoval: true,
+        }),
+      });
+      const responseText = await response.text();
+      let payload: unknown = {};
+      try {
+        payload = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        payload = {};
+      }
+      if (!response.ok) {
+        throw new Error(text(asRecord(payload).error) || `PO recovery failed (${response.status}).`);
+      }
+      const verifiedLineItems = Number(asRecord(payload).verifiedLineItems) || 0;
+      await callMaker("preview");
+      setCombineMessage(
+        `${verifiedLineItems} original PO line${verifiedLineItems === 1 ? " was" : "s were"} verified. The PO assignment is ready again.`,
+      );
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function combineSelectedGroups() {
     if (!parsedWorkbook || !preview) return;
     const selectedNames = preview.groups
@@ -867,7 +915,21 @@ export default function CommitmentMakerPage() {
                   {preview.validationErrors.map((message) => <li key={message}>{message}</li>)}
                 </ul>
                 {preview.sourceChangeOrder && preview.removableTargetCommitmentId && (
-                  removeConfirmation ? (
+                  preview.removalStatus === "removing" ? (
+                    <div className="mt-4 border-t border-red-200 pt-3">
+                      <p className="font-semibold">
+                        The previous removal had an uncertain Procore response. Verify the original lines before trying again.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void repairPurchaseOrderAssignment()}
+                        disabled={busy}
+                        className="mt-3 rounded-md bg-amber-700 px-4 py-2 font-black text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busy ? "Repairing PO..." : "Repair PO assignment"}
+                      </button>
+                    </div>
+                  ) : removeConfirmation ? (
                     <div className="mt-4 border-t border-red-200 pt-3">
                       <p className="font-semibold">
                         Delete this change order&apos;s lines from PO {preview.removableTargetCommitmentId}? The purchase order itself will not be deleted.

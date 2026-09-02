@@ -191,6 +191,62 @@ test("keeps an uncertain Procore removal blocked", async () => {
   assert.equal(update.data.lastError, "Could not verify the restored lines");
 });
 
+test("leases only an expired uncertain removal for recovery", async () => {
+  let update;
+  const application = {
+    id: "application-1",
+    status: "removing",
+    targetCommitmentId: "800",
+    leaseExpiresAt: new Date(0),
+  };
+  const prisma = {
+    $transaction: async (callback) => callback(prisma),
+    commitmentMakerChangeOrderAlias: {
+      findMany: async () => [{ applicationId: application.id, application }],
+    },
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        update = request;
+        return { count: 1 };
+      },
+    },
+  };
+  const { claimCommitmentMakerChangeOrderRemovalRecovery } = loadModule(prisma);
+  const recovery = await claimCommitmentMakerChangeOrderRemovalRecovery({
+    companyId: "company-1",
+    projectId: "project-1",
+    aliases: [{ sourceKind: "potential_change_order", sourceId: "100" }],
+  });
+
+  assert.equal(update.where.status, "removing");
+  assert.equal(Number.isNaN(Date.parse(String(update.where.leaseExpiresAt.lte))), false);
+  assert.equal(update.data.leaseToken, "lease-token");
+  assert.equal(recovery.targetCommitmentId, "800");
+});
+
+test("returns a verified uncertain removal to completed", async () => {
+  let update;
+  const prisma = {
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        update = request;
+        return { count: 1 };
+      },
+    },
+  };
+  const { completeCommitmentMakerChangeOrderRemovalRecovery } = loadModule(prisma);
+  await completeCommitmentMakerChangeOrderRemovalRecovery({
+    applicationId: "application-1",
+    leaseToken: "lease-token",
+    targetCommitmentId: "800",
+  });
+
+  assert.equal(update.where.status, "removing");
+  assert.equal(update.data.status, "completed");
+  assert.equal(update.data.lastError, null);
+  assert.equal(update.data.targetCommitmentId, undefined);
+});
+
 test("blocks historical successful imports that are not yet in the claim ledger", async () => {
   const prisma = {
     commitmentMakerChangeOrderAlias: {

@@ -43,6 +43,13 @@ function ownedLineRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export function commitmentMakerVendorIsAssignedToProject(vendor: unknown, projectId: string): boolean {
+  const record = ownedLineRecord(vendor);
+  const projectIds = record.project_ids ?? record.projectIds;
+  return Boolean(projectId) && Array.isArray(projectIds)
+    && projectIds.some((value) => String(value).trim() === projectId);
+}
+
 export function commitmentMakerOwnedLineItemsFromAudit(
   auditValue: unknown,
   expectedCount: number,

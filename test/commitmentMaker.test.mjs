@@ -9,6 +9,7 @@ import {
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerProjectIdFromSearch,
   commitmentMakerSourceWbsCandidate,
+  commitmentMakerVendorIsAssignedToProject,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
   parseCommitmentMakerRows,
@@ -89,6 +90,19 @@ test('rejects incomplete or duplicate saved PO line ownership', () => {
 
 test('uses the fixed Paradise Masonry vendor', () => {
   assert.equal(COMMITMENT_MAKER_VENDOR_NAME, 'Paradise Masonry, LLC');
+});
+
+test('recognizes company-vendor project membership from Procore project IDs', () => {
+  assert.equal(commitmentMakerVendorIsAssignedToProject({
+    project_ids: [598134326663255, '598134326664157'],
+  }, '598134326663255'), true);
+  assert.equal(commitmentMakerVendorIsAssignedToProject({
+    projectIds: ['598134326663255'],
+  }, '598134326663255'), true);
+  assert.equal(commitmentMakerVendorIsAssignedToProject({
+    project_ids: [598134326664157],
+  }, '598134326663255'), false);
+  assert.equal(commitmentMakerVendorIsAssignedToProject({}, '598134326663255'), false);
 });
 
 test('excludes estimate-to-contract balancing rows from commitment lines', () => {

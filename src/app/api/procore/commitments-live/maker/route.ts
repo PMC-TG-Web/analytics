@@ -15,6 +15,7 @@ import {
   commitmentMakerLineCreatePayload,
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerSourceWbsCandidate,
+  commitmentMakerVendorIsAssignedToProject,
   consolidateCommitmentMakerLineItems,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
@@ -507,20 +508,29 @@ async function fetchCommitmentMakerPlanDataFromDatabase(companyId: string, proje
       origin_data: readText(customFields.origin_data ?? customFields.originData),
     };
   });
-  const preferredVendorIds = new Set(commitments
+  const preferredVendorUsage = commitments
     .filter((commitment) => (
       normalizeCommitmentMakerVendorName(commitment.vendor_name)
         === normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME)
     ))
     .map((commitment) => readText(commitment.vendor_id))
-    .filter(Boolean));
+    .filter(Boolean)
+    .reduce((counts, vendorId) => counts.set(vendorId, (counts.get(vendorId) || 0) + 1), new Map<string, number>());
   const companyVendors = companyVendorRows
-    .map((vendor) => ({
-      ...(isRecord(vendor.payload) ? vendor.payload : {}),
-      id: vendor.vendor_id,
-      name: vendor.name,
-    }))
-    .sort((left, right) => Number(preferredVendorIds.has(readId(right))) - Number(preferredVendorIds.has(readId(left))));
+    .map((vendor) => {
+      const payload = isRecord(vendor.payload) ? vendor.payload : {};
+      return {
+        ...payload,
+        id: vendor.vendor_id,
+        name: vendor.name,
+        company_vendor: payload.company_vendor === true,
+      };
+    })
+    .sort((left, right) => (
+      (preferredVendorUsage.get(readId(right)) || 0) - (preferredVendorUsage.get(readId(left)) || 0)
+      || Number(right.company_vendor === true) - Number(left.company_vendor === true)
+      || readId(left).localeCompare(readId(right))
+    ));
   const projectVendors = projectVendorRows.map((vendor) => ({
     ...(isRecord(vendor.payload) ? vendor.payload : {}),
     id: vendor.procoreVendorId,
@@ -1049,14 +1059,30 @@ async function buildPlan(params: {
   const wbsRecords = params.useLiveWbsRecords
     ? await fetchProjectWbsRecords(params.accessToken, params.companyId, params.projectId)
     : planData.wbsRecords;
-  const companyVendor = findParadiseVendor(companyVendors);
-  const projectVendor = findParadiseVendor(projectVendors);
+  const purchaseOrders = purchaseOrderCommitments(commitments);
+  const targetCommitment = params.target === "existing_purchase_order"
+    ? purchaseOrders.find((record) => readId(record) === params.existingCommitmentId) || null
+    : null;
+  const targetVendorId = targetCommitment ? commitmentVendorId(targetCommitment) : "";
+  const companyVendor = companyVendors.find((vendor) => (
+    readId(vendor) === targetVendorId
+    && normalizeCommitmentMakerVendorName(vendorName(vendor))
+      === normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME)
+  )) || findParadiseVendor(companyVendors);
   const validationErrors: string[] = [];
   const warnings: string[] = [];
   if (!companyVendor) validationErrors.push(`${COMMITMENT_MAKER_VENDOR_NAME} was not found in the Procore company directory.`);
   const vendorId = readId(companyVendor);
+  const projectVendor = projectVendors.find((vendor) => readId(vendor) === vendorId)
+    || findParadiseVendor(projectVendors);
+  const assignedFromCompanyDirectory = commitmentMakerVendorIsAssignedToProject(companyVendor, params.projectId);
+  const assignedToProject = Boolean(
+    (targetCommitment && commitmentVendorId(targetCommitment) === vendorId)
+    || assignedFromCompanyDirectory
+    || (projectVendor && readId(projectVendor) === vendorId),
+  );
   if (companyVendor && !vendorId) validationErrors.push(`${COMMITMENT_MAKER_VENDOR_NAME} does not have a usable Procore vendor ID.`);
-  if (projectVendor && vendorId && readId(projectVendor) !== vendorId) {
+  if (projectVendor && vendorId && readId(projectVendor) !== vendorId && !assignedFromCompanyDirectory) {
     validationErrors.push(`${COMMITMENT_MAKER_VENDOR_NAME} resolved to inconsistent company and project vendor IDs.`);
   }
 
@@ -1071,10 +1097,6 @@ async function buildPlan(params: {
       }
     }
   }
-  const purchaseOrders = purchaseOrderCommitments(commitments);
-  const targetCommitment = params.target === "existing_purchase_order"
-    ? purchaseOrders.find((record) => readId(record) === params.existingCommitmentId) || null
-    : null;
   if (params.target === "existing_purchase_order" && !params.existingCommitmentId) {
     validationErrors.push("Select the existing purchase order that will receive these lines.");
   } else if (params.target === "existing_purchase_order" && !targetCommitment) {
@@ -1149,8 +1171,12 @@ async function buildPlan(params: {
     vendor: {
       id: vendorId,
       name: companyVendor ? vendorName(companyVendor) : COMMITMENT_MAKER_VENDOR_NAME,
-      assignedToProject: Boolean(projectVendor),
-      willAddToProject: Boolean(companyVendor && !projectVendor),
+      assignedToProject,
+      willAddToProject: Boolean(
+        companyVendor
+        && params.target !== "existing_purchase_order"
+        && (!projectVendor || readId(projectVendor) !== vendorId),
+      ),
     },
     commitments,
     groups,

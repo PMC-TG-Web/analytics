@@ -347,6 +347,9 @@ test("loads Commitment Maker project data from synchronized tables without block
   assert.match(getHandler, /fetchExistingPurchaseOrdersFromDatabase/);
   assert.match(route, /procore_company_vendors_live\.findMany/);
   assert.match(route, /record\.vendorName \|\| vendorNames\.get\(record\.vendorId \|\| ""\)/);
+  assert.match(route, /const targetVendorId = targetCommitment \? commitmentVendorId\(targetCommitment\) : ""/);
+  assert.match(route, /preferredVendorUsage\.get\(readId\(right\)\)/);
+  assert.match(route, /params\.target !== "existing_purchase_order"/);
   assert.doesNotMatch(getHandler, /getClientCredentialsToken|fetchApprovedChangeOrders\(|fetchCommitments\(/);
 });
 

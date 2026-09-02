@@ -38,6 +38,7 @@ async function runProjectReconciliation(request: NextRequest, syncSecret: string
       signal: AbortSignal.timeout(12 * 60_000),
     });
     const detail = await response.json().catch(() => null);
+    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
     const summary = detail && typeof detail === "object" && !Array.isArray(detail)
       ? (detail as Record<string, unknown>).summary
       : null;
@@ -53,7 +54,7 @@ async function runProjectReconciliation(request: NextRequest, syncSecret: string
         finishedAt: new Date(),
         success,
         totalMs,
-        steps: [{ step: "all-active-projects", status: success ? "ok" : "error", httpStatus: response.status }],
+        steps: [{ step: "all-active-projects", status: success ? "ok" : "error", httpStatus: response.status, apiRequests }],
         error,
       },
     });
@@ -63,6 +64,7 @@ async function runProjectReconciliation(request: NextRequest, syncSecret: string
       companyId,
       logId: log.id.toString(),
       totalMs,
+      apiRequests,
       detail,
     };
   } catch (error) {

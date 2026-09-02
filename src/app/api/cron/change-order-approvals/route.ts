@@ -3,11 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getClientCredentialsToken,
+  getCurrentProcoreRequestMetrics,
   hasValidProcoreSyncSecret,
   makeRequest,
   procoreConfig,
   withProcoreLiveApiBypassForSyncSecret,
 } from "@/lib/procore";
+import {
+  acquireProcoreWorker,
+  claimDueProject,
+  deferProjectSync,
+  finishProjectSync,
+  getSyncQueueStats,
+  releaseProcoreWorker,
+  seedChangeOrderApprovalQueue,
+  type QueuedProject,
+} from "@/lib/procoreSyncQueue";
 import { upsertChangeOrderPackage } from "@/lib/procoreChangeOrderPackages";
 import {
   commitmentMakerChangeOrderContextFromRecord,
@@ -17,13 +28,11 @@ import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQue
 import { upsertPotentialChangeOrder } from "@/lib/procorePotentialChangeOrders";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 780;
+export const maxDuration = 180;
+
+const DATASET = "change_order_approvals";
 
 type JsonObject = Record<string, unknown>;
-
-type CandidateProject = {
-  project_id: string;
-};
 
 function asObject(value: unknown): JsonObject | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -49,6 +58,34 @@ function text(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function errorStatus(error: unknown) {
+  return Number((error as { status?: unknown })?.status || 0);
+}
+
+function errorRateLimitUntil(error: unknown) {
+  if (errorStatus(error) !== 429) return null;
+  const supplied = (error as { rateLimitUntil?: unknown })?.rateLimitUntil;
+  const parsed = supplied instanceof Date ? supplied : new Date(String(supplied || ""));
+  return Number.isFinite(parsed.getTime())
+    ? parsed
+    : new Date(Date.now() + 15 * 60_000);
+}
+
+async function approvalPollingMinutes(companyId: string, projectId: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<{ status: string | null }>>(
+    `
+      SELECT COALESCE(NULLIF(BTRIM(bid_board_status), ''), NULLIF(BTRIM(status), '')) AS status
+      FROM pmc_projects
+      WHERE company_id = $1 AND procore_project_id = $2
+      LIMIT 1
+    `,
+    companyId,
+    projectId,
+  );
+  const status = String(rows[0]?.status || "").trim().toLowerCase();
+  return ["active", "in progress", "course of construction"].includes(status) ? 90 : 6 * 60;
 }
 
 async function fetchAll(params: {
@@ -144,38 +181,55 @@ export async function POST(request: NextRequest) {
   }
 
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
-    const body = await request.json().catch(() => ({}));
-    const offset = Math.max(0, Number.parseInt(String(body?.offset || "0"), 10) || 0);
-    const limit = Math.min(6, Math.max(1, Number.parseInt(String(body?.limit || "4"), 10) || 4));
     const companyId = String(procoreConfig.companyId || "").trim();
     if (!companyId) {
       return NextResponse.json({ success: false, error: "PROCORE_COMPANY_ID is not configured." }, { status: 503 });
     }
+    const worker = await acquireProcoreWorker(companyId, 3);
+    if (!worker.acquired) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: worker.reason,
+        dataset: DATASET,
+        rateLimitUntil: worker.control?.rate_limit_until || null,
+      });
+    }
 
-    const projects = await prisma.$queryRawUnsafe<CandidateProject[]>(`
-      SELECT DISTINCT project_id
-      FROM (
-        SELECT project_id FROM procore_potential_change_orders WHERE company_id = $1
-        UNION
-        SELECT project_id FROM procore_change_order_packages WHERE company_id = $1
-      ) AS change_order_projects
-      ORDER BY project_id
-    `, companyId);
-    const projectBatch = projects.slice(offset, offset + limit);
-    const accessToken = await getClientCredentialsToken();
-    let potentialChangeOrdersScanned = 0;
-    let packagesScanned = 0;
-    const errors: string[] = [];
+    let project: QueuedProject | null = null;
+    let logId: bigint | null = null;
+    const startedAt = Date.now();
+    try {
+      await seedChangeOrderApprovalQueue(companyId, DATASET);
+      project = await claimDueProject({ companyId, dataset: DATASET, leaseId: worker.leaseId, leaseMinutes: 3 });
+      if (!project) {
+        return NextResponse.json({ success: true, skipped: true, reason: "no_project_due", dataset: DATASET });
+      }
+      const selection = {
+        step: "select-project",
+        status: "ok",
+        projectId: project.projectId,
+        projectNumber: project.projectNumber,
+        projectName: project.projectName,
+        dataset: DATASET,
+      };
+      const log = await prisma.syncLog.create({
+        data: { companyId, triggeredBy: "change-order-approval-queue", steps: [selection] },
+        select: { id: true },
+      }).catch(() => null);
+      logId = log?.id ?? null;
 
-    for (const { project_id: projectId } of projectBatch) {
       try {
+        const accessToken = await getClientCredentialsToken();
+        let potentialChangeOrdersScanned = 0;
+        let packagesScanned = 0;
         const potentialChangeOrders = await fetchAll({
           accessToken,
           companyId,
-          pathForPage: (page) => `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
+          pathForPage: (page) => `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
         });
         for (const record of potentialChangeOrders) {
-          if (await persistPotentialChangeOrder({ companyId, projectId, record })) {
+          if (await persistPotentialChangeOrder({ companyId, projectId: project.projectId, record })) {
             potentialChangeOrdersScanned += 1;
           }
         }
@@ -183,7 +237,7 @@ export async function POST(request: NextRequest) {
         const primeContracts = await fetchAll({
           accessToken,
           companyId,
-          pathForPage: (page) => `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
+          pathForPage: (page) => `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
         });
         for (const contract of primeContracts) {
           const contractId = text(contract.id);
@@ -191,29 +245,85 @@ export async function POST(request: NextRequest) {
           const packages = await fetchAll({
             accessToken,
             companyId,
-            pathForPage: (page) => `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(projectId)}&contract_id=${encodeURIComponent(contractId)}&page=${page}&per_page=100`,
+            pathForPage: (page) => `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(project!.projectId)}&contract_id=${encodeURIComponent(contractId)}&page=${page}&per_page=100`,
           });
           for (const record of packages) {
-            if (await persistChangeOrderPackage({ companyId, projectId, contractId, record })) {
+            if (await persistChangeOrderPackage({ companyId, projectId: project.projectId, contractId, record })) {
               packagesScanned += 1;
             }
           }
         }
-      } catch (error) {
-        errors.push(`project:${projectId} ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
 
-    return NextResponse.json({
-      success: errors.length === 0,
-      projectsScanned: projectBatch.length,
-      totalProjects: projects.length,
-      nextOffset: offset + projectBatch.length < projects.length
-        ? offset + projectBatch.length
-        : null,
-      potentialChangeOrdersScanned,
-      packagesScanned,
-      errors: errors.slice(0, 25),
-    }, { status: errors.length === 0 ? 200 : 500 });
+        const apiRequests = getCurrentProcoreRequestMetrics().apiRequests;
+        const nextRunMinutes = await approvalPollingMinutes(companyId, project.projectId);
+        const result = { selection, potentialChangeOrdersScanned, packagesScanned, apiRequests, nextRunMinutes };
+        await finishProjectSync({ project, success: true, nextRunMinutes, result });
+        const queue = await getSyncQueueStats(companyId, DATASET);
+        if (logId !== null) {
+          await prisma.syncLog.update({
+            where: { id: logId },
+            data: { finishedAt: new Date(), success: true, totalMs: Date.now() - startedAt, steps: [selection, result] },
+          }).catch(() => undefined);
+        }
+        return NextResponse.json({
+          success: true,
+          dataset: DATASET,
+          projectId: project.projectId,
+          projectsScanned: 1,
+          potentialChangeOrdersScanned,
+          packagesScanned,
+          apiRequests,
+          queue,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const rateLimitUntil = errorRateLimitUntil(error);
+        const apiRequests = getCurrentProcoreRequestMetrics().apiRequests;
+        if (rateLimitUntil) {
+          await deferProjectSync({
+            project,
+            until: rateLimitUntil,
+            result: { selection, deferredBy: "procore-rate-limit", apiRequests },
+          });
+        } else {
+          await finishProjectSync({ project, success: false, nextRunMinutes: 30, error: message, result: { selection, apiRequests } });
+        }
+        if (logId !== null) {
+          await prisma.syncLog.update({
+            where: { id: logId },
+            data: {
+              finishedAt: new Date(),
+              success: Boolean(rateLimitUntil),
+              totalMs: Date.now() - startedAt,
+              steps: [selection, { step: "approval-headers", status: rateLimitUntil ? "deferred" : "error", apiRequests }],
+              error: rateLimitUntil ? null : message.slice(0, 4_000),
+            },
+          }).catch(() => undefined);
+        }
+        return NextResponse.json({
+          success: Boolean(rateLimitUntil),
+          completed: false,
+          deferred: Boolean(rateLimitUntil),
+          reason: rateLimitUntil ? "rate_limit_cooldown" : "project_failed",
+          dataset: DATASET,
+          projectId: project.projectId,
+          rateLimitUntil,
+          apiRequests,
+          error: rateLimitUntil ? undefined : message,
+        }, { status: rateLimitUntil ? 200 : 502 });
+      }
+    } finally {
+      if (project) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE procore_sync_project_states SET locked_by = NULL, locked_until = NULL, updated_at = NOW()
+           WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,
+          companyId,
+          project.projectId,
+          DATASET,
+          worker.leaseId,
+        ).catch(() => undefined);
+      }
+      await releaseProcoreWorker(companyId, worker.leaseId).catch(() => undefined);
+    }
   });
 }

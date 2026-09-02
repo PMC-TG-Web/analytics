@@ -12,9 +12,14 @@ import {
   setProcoreRateLimit,
   type QueuedProject,
 } from "@/lib/procoreSyncQueue";
-import { procoreLookbackWindow } from "@/lib/procoreDateWindow";
+import {
+  buildIncrementalActualsWindow,
+  buildReconciliationActualsWindow,
+  procoreLookbackWindow,
+} from "@/lib/procoreDateWindow";
 import {
   procoreSyncDetailHasErrors,
+  procoreSyncRateLimitUntil,
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
@@ -28,7 +33,23 @@ type StepResult = {
   httpStatus: number;
   rateLimited?: boolean;
   rateLimitUntil?: string;
+  rateLimitInherited?: boolean;
+  apiRequests?: number;
   detail?: unknown;
+};
+
+type ActualsWindow = {
+  startDate: string;
+  endDate: string;
+  mode: string;
+  overlapDays?: number;
+  reconciliationCursor?: {
+    offsetDays: number;
+    nextOffsetDays: number;
+    totalLookbackDays: number;
+    chunkDays: number;
+    completedCycle: boolean;
+  };
 };
 
 const ACTUALS_DATASET = "actuals";
@@ -56,24 +77,42 @@ function parseProjectIds(value: unknown) {
   return values.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
-function dateWindow(body: Record<string, unknown>, reconciliation: boolean) {
+function dateWindow(
+  body: Record<string, unknown>,
+  reconciliation: boolean,
+  project: QueuedProject,
+): ActualsWindow {
   const valid = (value: unknown) => {
     const text = String(value || "").trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
   };
   const explicitStart = valid(body.startDate || body.start_date);
   const explicitEnd = valid(body.endDate || body.end_date);
-  const lookbackDays = Math.min(
-    reconciliation ? 730 : 120,
-    Math.max(1, Number(
-      body.lookbackDays
-        || (reconciliation ? process.env.PROCORE_RECONCILIATION_LOOKBACK_DAYS || 400 : process.env.PROCORE_ACTUALS_SYNC_LOOKBACK_DAYS || 45)
-    ) || (reconciliation ? 400 : 45))
-  );
-  const window = procoreLookbackWindow(new Date(), lookbackDays);
+  const now = new Date();
+  if (explicitStart || explicitEnd) {
+    const fallback = procoreLookbackWindow(now, reconciliation ? 100 : 45);
+    return {
+      startDate: explicitStart || fallback.startDate,
+      endDate: explicitEnd || fallback.endDate,
+      mode: "explicit",
+    };
+  }
+  if (reconciliation) {
+    return buildReconciliationActualsWindow({
+      now,
+      lastResult: project.lastResult,
+      totalLookbackDays: Number(body.lookbackDays || process.env.PROCORE_RECONCILIATION_LOOKBACK_DAYS || 400),
+      chunkDays: Number(body.chunkDays || process.env.PROCORE_RECONCILIATION_CHUNK_DAYS || 100),
+    });
+  }
+  const window = buildIncrementalActualsWindow({
+    now,
+    lastSuccessAt: project.lastSuccessAt,
+    initialLookbackDays: Number(body.lookbackDays || process.env.PROCORE_ACTUALS_SYNC_LOOKBACK_DAYS || 45),
+    overlapDays: Number(body.overlapDays || process.env.PROCORE_ACTUALS_SYNC_OVERLAP_DAYS || 3),
+  });
   return {
-    startDate: explicitStart || window.startDate,
-    endDate: explicitEnd || window.endDate,
+    ...window,
   };
 }
 
@@ -82,9 +121,19 @@ function boundedNumber(value: unknown, fallback: number, minimum: number, maximu
   return Math.min(maximum, Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback));
 }
 
-async function pollingCadence(companyId: string, projectId: string, reconciliation: boolean) {
+async function pollingCadence(
+  companyId: string,
+  projectId: string,
+  reconciliation: boolean,
+  reconciliationCompleted = true,
+) {
   if (reconciliation) {
-    return { class: "weekly-reconciliation", nextRunMinutes: 7 * 24 * 60, latestActivity: null, projectStatus: null };
+    return {
+      class: "rotating-reconciliation",
+      nextRunMinutes: reconciliationCompleted ? 24 * 60 : 5,
+      latestActivity: null,
+      projectStatus: null,
+    };
   }
   const rows = await prisma.$queryRawUnsafe<Array<{
     latest_activity: Date | null;
@@ -141,12 +190,17 @@ async function responseDetail(response: Response) {
   try { return text ? JSON.parse(text) : {}; } catch { return text; }
 }
 
-function rateLimitReset(response: Response) {
-  return procoreQuotaObservation(response.headers, 429, {
+function rateLimitReset(response: Response, detail: unknown) {
+  const headerValue = response.headers.get("x-procore-rate-limit-until");
+  const headerDate = headerValue ? new Date(headerValue) : null;
+  const inherited = procoreSyncRateLimitUntil(detail)
+    || (headerDate && Number.isFinite(headerDate.getTime()) ? headerDate : null);
+  if (inherited) return { until: inherited, inherited: true };
+  return { until: procoreQuotaObservation(response.headers, 429, {
     reserve: 0,
     fallbackCooldownMs: 15 * 60_000,
     resetPaddingMs: 3_000,
-  }).cooldownUntil!;
+  }).cooldownUntil!, inherited: false };
 }
 
 async function runStep(params: {
@@ -166,13 +220,16 @@ async function runStep(params: {
     const detail = await responseDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
     const ok = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
-    const until = rateLimited ? rateLimitReset(response) : null;
+    const reset = rateLimited ? rateLimitReset(response, detail) : null;
+    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
     return {
       step: params.step,
       status: ok ? "ok" : "error",
       httpStatus: response.status,
       rateLimited,
-      rateLimitUntil: until?.toISOString(),
+      rateLimitUntil: reset?.until.toISOString(),
+      rateLimitInherited: reset?.inherited,
+      apiRequests,
       detail,
     };
   } catch (error) {
@@ -246,7 +303,8 @@ async function runActualsSync(request: NextRequest) {
       return NextResponse.json({ success: true, skipped: true, reason: "no_project_due", dataset });
     }
 
-    const { startDate, endDate } = dateWindow(body, reconciliation);
+    const syncWindow = dateWindow(body, reconciliation, project);
+    const { startDate, endDate } = syncWindow;
     const perPage = Math.min(200, Math.max(1, Number(body.perPage || process.env.PROCORE_ACTUALS_SYNC_PER_PAGE || 100) || 100));
     const selection = {
       step: "select-project",
@@ -299,15 +357,30 @@ async function runActualsSync(request: NextRequest) {
     const limited = steps.find((step) => step.rateLimited);
     const error = success ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Actuals sync failed").slice(0, 4_000);
     const polling = success
-      ? await pollingCadence(companyId, project.projectId, reconciliation)
+      ? await pollingCadence(
+          companyId,
+          project.projectId,
+          reconciliation,
+          Boolean(syncWindow.reconciliationCursor?.completedCycle),
+        )
       : null;
     const rateLimitUntil = limited?.rateLimitUntil ? new Date(limited.rateLimitUntil) : null;
     if (rateLimitUntil) {
-      await setProcoreRateLimit({ companyId, until: rateLimitUntil, error });
+      if (!limited?.rateLimitInherited) {
+        await setProcoreRateLimit({ companyId, until: rateLimitUntil, error });
+      }
       await deferProjectSync({
         project,
         until: rateLimitUntil,
-        result: { selection, startDate, endDate, polling, steps, deferredBy: "procore-rate-limit" },
+        result: {
+          selection,
+          startDate,
+          endDate,
+          polling,
+          steps,
+          deferredBy: "procore-rate-limit",
+          reconciliationCursor: (project.lastResult as Record<string, unknown> | null)?.reconciliationCursor,
+        },
       });
     } else {
       await finishProjectSync({
@@ -315,7 +388,16 @@ async function runActualsSync(request: NextRequest) {
         success,
         nextRunMinutes: success ? polling?.nextRunMinutes || 90 : 15,
         error,
-        result: { selection, startDate, endDate, polling, steps },
+        result: {
+          selection,
+          startDate,
+          endDate,
+          polling,
+          steps,
+          reconciliationCursor: success
+            ? syncWindow.reconciliationCursor
+            : (project.lastResult as Record<string, unknown> | null)?.reconciliationCursor,
+        },
       });
     }
 
@@ -329,15 +411,23 @@ async function runActualsSync(request: NextRequest) {
     if (logId !== null) {
       await prisma.syncLog.update({
         where: { id: logId },
-        data: { finishedAt: new Date(), success, totalMs, steps: [selection, ...steps] as object[], error },
+        data: {
+          finishedAt: new Date(),
+          success: success || Boolean(rateLimitUntil),
+          totalMs,
+          steps: [selection, ...steps] as object[],
+          error: rateLimitUntil ? null : error,
+        },
       }).catch(() => undefined);
     }
     return NextResponse.json({
-      success,
+      success: success || Boolean(rateLimitUntil),
+      completed: success,
+      deferred: Boolean(rateLimitUntil),
       companyId,
       projectId: project.projectId,
       dataset,
-      syncWindow: { startDate, endDate },
+      syncWindow,
       polling,
       queue: {
         projectCount: queueStats.project_count,
@@ -350,7 +440,7 @@ async function runActualsSync(request: NextRequest) {
       logId: logId?.toString() || null,
       totalMs,
       steps,
-    }, { status: success ? 200 : 207 });
+    }, { status: success || rateLimitUntil ? 200 : 207 });
   } finally {
     if (project) {
       await prisma.$executeRawUnsafe(

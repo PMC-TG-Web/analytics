@@ -16,6 +16,7 @@ import {
 } from "@/lib/procoreSyncQueue";
 import {
   procoreSyncDetailHasErrors,
+  procoreSyncRateLimitUntil,
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
@@ -34,7 +35,7 @@ const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 const DAILY_REQUEUE_MINUTES = 24 * 60 - 5;
 const BID_BOARD_SYNC_INTERVAL_MINUTES = Math.min(
   360,
-  Math.max(15, Number.parseInt(process.env.PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES || "15", 10) || 15)
+  Math.max(60, Number.parseInt(process.env.PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES || "60", 10) || 60)
 );
 
 type StepResult = {
@@ -43,6 +44,8 @@ type StepResult = {
   httpStatus: number;
   rateLimited?: boolean;
   rateLimitUntil?: string;
+  rateLimitInherited?: boolean;
+  apiRequests?: number;
   detail?: unknown;
 };
 
@@ -60,12 +63,17 @@ async function readDetail(response: Response) {
   try { return text ? JSON.parse(text) : {}; } catch { return text; }
 }
 
-function resetAt(response: Response) {
-  return procoreQuotaObservation(response.headers, 429, {
+function resetAt(response: Response, detail: unknown) {
+  const headerValue = response.headers.get("x-procore-rate-limit-until");
+  const headerDate = headerValue ? new Date(headerValue) : null;
+  const inherited = procoreSyncRateLimitUntil(detail)
+    || (headerDate && Number.isFinite(headerDate.getTime()) ? headerDate : null);
+  if (inherited) return { until: inherited, inherited: true };
+  return { until: procoreQuotaObservation(response.headers, 429, {
     reserve: 0,
     fallbackCooldownMs: 15 * 60_000,
     resetPaddingMs: 3_000,
-  }).cooldownUntil!;
+  }).cooldownUntil!, inherited: false };
 }
 
 async function runStep(params: {
@@ -92,13 +100,16 @@ async function runStep(params: {
     });
     const detail = await readDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
-    const until = rateLimited ? resetAt(response) : null;
+    const reset = rateLimited ? resetAt(response, detail) : null;
+    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
     return {
       step: params.step,
       status: response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited ? "ok" : "error",
       httpStatus: response.status,
       rateLimited,
-      rateLimitUntil: until?.toISOString(),
+      rateLimitUntil: reset?.until.toISOString(),
+      rateLimitInherited: reset?.inherited,
+      apiRequests,
       detail,
     } satisfies StepResult;
   } catch (error) {
@@ -200,11 +211,13 @@ export async function POST(request: NextRequest) {
         ? new Date(step.rateLimitUntil)
         : null;
       if (rateLimitUntil) {
-        await setProcoreRateLimit({
-          companyId: COMPANY_ID,
-          until: rateLimitUntil,
-          error,
-        });
+        if (!step.rateLimitInherited) {
+          await setProcoreRateLimit({
+            companyId: COMPANY_ID,
+            until: rateLimitUntil,
+            error,
+          });
+        }
         await deferProjectSync({
           project: poDiscoveryProject,
           until: rateLimitUntil,
@@ -226,15 +239,17 @@ export async function POST(request: NextRequest) {
           where: { id: logId },
           data: {
             finishedAt: new Date(),
-            success,
+            success: success || Boolean(rateLimitUntil),
             totalMs,
             steps: [selection, step, { step: "cached-line-count", status: "ok", lineCount }] as object[],
-            error,
+            error: rateLimitUntil ? null : error,
           },
         }).catch(() => undefined);
       }
       return NextResponse.json({
-        success,
+        success: success || Boolean(rateLimitUntil),
+        completed: success,
+        deferred: Boolean(rateLimitUntil),
         companyId: COMPANY_ID,
         projectId: poDiscoveryProject.projectId,
         projectNumber: poDiscoveryProject.projectNumber,
@@ -243,7 +258,7 @@ export async function POST(request: NextRequest) {
         lineCount,
         totalMs,
         steps: [step],
-      }, { status: success ? 200 : 207 });
+      }, { status: success || rateLimitUntil ? 200 : 207 });
     }
 
     if (!estimateOnly) {
@@ -286,11 +301,13 @@ export async function POST(request: NextRequest) {
         ? new Date(step.rateLimitUntil)
         : null;
       if (rateLimitUntil) {
-        await setProcoreRateLimit({
-          companyId: COMPANY_ID,
-          until: rateLimitUntil,
-          error,
-        });
+        if (!step.rateLimitInherited) {
+          await setProcoreRateLimit({
+            companyId: COMPANY_ID,
+            until: rateLimitUntil,
+            error,
+          });
+        }
         await deferProjectSync({
           project: bidBoardProject,
           until: rateLimitUntil,
@@ -310,17 +327,25 @@ export async function POST(request: NextRequest) {
       if (logId !== null) {
         await prisma.syncLog.update({
           where: { id: logId },
-          data: { finishedAt: new Date(), success, totalMs, steps: [selection, step] as object[], error },
+          data: {
+            finishedAt: new Date(),
+            success: success || Boolean(rateLimitUntil),
+            totalMs,
+            steps: [selection, step] as object[],
+            error: rateLimitUntil ? null : error,
+          },
         }).catch(() => undefined);
       }
       return NextResponse.json({
-        success,
+        success: success || Boolean(rateLimitUntil),
+        completed: success,
+        deferred: Boolean(rateLimitUntil),
         companyId: COMPANY_ID,
         dataset: BID_BOARD_DATASET,
         logId: logId?.toString() || null,
         totalMs,
         steps: [step],
-      }, { status: success ? 200 : 207 });
+      }, { status: success || rateLimitUntil ? 200 : 207 });
     }
 
     if (bidBoardOnly) {
@@ -388,15 +413,19 @@ export async function POST(request: NextRequest) {
       const detail = await readDetail(response);
       const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
       const success = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
-      const until = rateLimited ? resetAt(response) : null;
+      const reset = rateLimited ? resetAt(response, detail) : null;
+      const until = reset?.until || null;
+      const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
       const error = success ? null : JSON.stringify(detail).slice(0, 4_000);
-      if (until) await setProcoreRateLimit({ companyId: COMPANY_ID, until, error });
+      if (until && !reset?.inherited) {
+        await setProcoreRateLimit({ companyId: COMPANY_ID, until, error });
+      }
       for (const estimateProject of estimatingProjects) {
         if (until) {
           await deferProjectSync({
             project: estimateProject,
             until,
-            result: { detail, deferredBy: "procore-rate-limit" },
+            result: { detail, apiRequests, deferredBy: "procore-rate-limit" },
           });
         } else {
           await finishProjectSync({
@@ -404,17 +433,20 @@ export async function POST(request: NextRequest) {
             success,
             nextRunMinutes: success ? DAILY_REQUEUE_MINUTES : 30,
             error,
-            result: detail,
+            result: { detail, apiRequests },
           });
         }
       }
       return NextResponse.json({
-        success,
+        success: success || Boolean(until),
+        completed: success,
+        deferred: Boolean(until),
         companyId: COMPANY_ID,
         dataset: ESTIMATING_DATASET,
         projectIds: estimatingProjects.map((item) => item.projectId),
         detail,
-      }, { status: success ? 200 : 207 });
+        apiRequests,
+      }, { status: success || until ? 200 : 207 });
     }
 
     const selection = {
@@ -466,7 +498,9 @@ export async function POST(request: NextRequest) {
     const error = success ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Nightly structural sync failed").slice(0, 4_000);
     const rateLimitUntil = rateLimit?.rateLimitUntil ? new Date(rateLimit.rateLimitUntil) : null;
     if (rateLimitUntil) {
-      await setProcoreRateLimit({ companyId: COMPANY_ID, until: rateLimitUntil, error });
+      if (!rateLimit?.rateLimitInherited) {
+        await setProcoreRateLimit({ companyId: COMPANY_ID, until: rateLimitUntil, error });
+      }
       await deferProjectSync({
         project,
         until: rateLimitUntil,
@@ -486,18 +520,26 @@ export async function POST(request: NextRequest) {
     if (logId !== null) {
       await prisma.syncLog.update({
         where: { id: logId },
-        data: { finishedAt: new Date(), success, totalMs, steps: [selection, ...steps] as object[], error },
+        data: {
+          finishedAt: new Date(),
+          success: success || Boolean(rateLimitUntil),
+          totalMs,
+          steps: [selection, ...steps] as object[],
+          error: rateLimitUntil ? null : error,
+        },
       }).catch(() => undefined);
     }
     return NextResponse.json({
-      success,
+      success: success || Boolean(rateLimitUntil),
+      completed: success,
+      deferred: Boolean(rateLimitUntil),
       companyId: COMPANY_ID,
       projectId: project.projectId,
       dataset: DATASET,
       logId: logId?.toString() || null,
       totalMs,
       steps,
-    }, { status: success ? 200 : 207 });
+    }, { status: success || rateLimitUntil ? 200 : 207 });
   } finally {
     if (bidBoardProject) {
       await prisma.$executeRawUnsafe(

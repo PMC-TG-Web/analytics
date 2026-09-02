@@ -9,6 +9,8 @@ export type QueuedProject = {
   dataset: string;
   projectNumber: string | null;
   projectName: string | null;
+  lastSuccessAt: Date | null;
+  lastResult: unknown;
   leaseId: string;
 };
 
@@ -18,6 +20,8 @@ type DbProjectRow = {
   dataset: string;
   project_number: string | null;
   project_name: string | null;
+  last_success_at: Date | null;
+  last_result: unknown;
 };
 
 type ControlRow = {
@@ -287,6 +291,99 @@ export async function seedMissingPurchaseOrderLineQueue(companyId: string, datas
     companyId,
     dataset
   );
+}
+
+export async function seedChangeOrderApprovalQueue(companyId: string, dataset: string) {
+  const seeded = await prisma.$executeRawUnsafe(
+    `
+      WITH candidates AS (
+        SELECT
+          project.company_id,
+          project.procore_project_id AS project_id,
+          project.project_number,
+          project.project_name
+        FROM pmc_projects project
+        WHERE project.company_id = $1
+          AND NULLIF(BTRIM(project.procore_project_id), '') IS NOT NULL
+          AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+          AND (
+            LOWER(COALESCE(NULLIF(BTRIM(project.bid_board_status), ''), NULLIF(BTRIM(project.status), ''), ''))
+              IN ('active', 'in progress', 'course of construction')
+            OR EXISTS (
+              SELECT 1 FROM procore_potential_change_orders potential
+              WHERE potential.company_id = project.company_id
+                AND potential.project_id = project.procore_project_id
+            )
+            OR EXISTS (
+              SELECT 1 FROM procore_change_order_packages package
+              WHERE package.company_id = project.company_id
+                AND package.project_id = project.procore_project_id
+            )
+          )
+      )
+      INSERT INTO procore_sync_project_states (
+        company_id, project_id, dataset, project_number, project_name,
+        next_run_at, created_at, updated_at
+      )
+      SELECT company_id, project_id, $2, project_number, project_name, NOW(), NOW(), NOW()
+      FROM candidates
+      ON CONFLICT (company_id, project_id, dataset)
+      DO UPDATE SET
+        project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),
+        project_name = COALESCE(EXCLUDED.project_name, procore_sync_project_states.project_name),
+        next_run_at = CASE
+          WHEN procore_sync_project_states.last_error = 'Excluded because the project is no longer active and has no mirrored change orders.'
+          THEN NOW()
+          ELSE procore_sync_project_states.next_run_at
+        END,
+        last_error = CASE
+          WHEN procore_sync_project_states.last_error = 'Excluded because the project is no longer active and has no mirrored change orders.'
+          THEN NULL
+          ELSE procore_sync_project_states.last_error
+        END,
+        updated_at = NOW()
+    `,
+    companyId,
+    dataset,
+  );
+
+  await prisma.$executeRawUnsafe(
+    `
+      UPDATE procore_sync_project_states state
+      SET next_run_at = NOW() + INTERVAL '100 years',
+          locked_by = NULL,
+          locked_until = NULL,
+          failure_count = 0,
+          last_error = 'Excluded because the project is no longer active and has no mirrored change orders.',
+          updated_at = NOW()
+      WHERE state.company_id = $1
+        AND state.dataset = $2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pmc_projects project
+          WHERE project.company_id = state.company_id
+            AND project.procore_project_id = state.project_id
+            AND LOWER(BTRIM(project.project_name)) NOT LIKE '%template%'
+            AND (
+              LOWER(COALESCE(NULLIF(BTRIM(project.bid_board_status), ''), NULLIF(BTRIM(project.status), ''), ''))
+                IN ('active', 'in progress', 'course of construction')
+              OR EXISTS (
+                SELECT 1 FROM procore_potential_change_orders potential
+                WHERE potential.company_id = project.company_id
+                  AND potential.project_id = project.procore_project_id
+              )
+              OR EXISTS (
+                SELECT 1 FROM procore_change_order_packages package
+                WHERE package.company_id = project.company_id
+                  AND package.project_id = project.procore_project_id
+              )
+            )
+        )
+    `,
+    companyId,
+    dataset,
+  );
+  return seeded;
 }
 
 export async function getSyncQueueStats(companyId: string, dataset: string) {
@@ -565,7 +662,8 @@ export async function claimDueProject(params: {
           updated_at = NOW()
       FROM candidate
       WHERE s.id = candidate.id
-      RETURNING s.company_id, s.project_id, s.dataset, s.project_number, s.project_name
+      RETURNING s.company_id, s.project_id, s.dataset, s.project_number, s.project_name,
+                s.last_success_at, s.last_result
     `,
     params.companyId,
     params.dataset,
@@ -582,6 +680,8 @@ export async function claimDueProject(params: {
     dataset: row.dataset,
     projectNumber: row.project_number,
     projectName: row.project_name,
+    lastSuccessAt: row.last_success_at,
+    lastResult: row.last_result,
     leaseId: params.leaseId,
   } satisfies QueuedProject;
 }

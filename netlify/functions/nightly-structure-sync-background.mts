@@ -31,6 +31,10 @@ const handler = async (request: Request) => {
     reason: headerResult?.reason,
   }));
 
+  if (headerResult?.deferred || headerResult?.reason === "rate_limit_cooldown") {
+    return Response.json({ success: true, deferred: true, bidBoardHeaders, estimateResults, results });
+  }
+
   for (let index = 0; index < estimateCap && Date.now() < deadline; index += 1) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
@@ -50,7 +54,7 @@ const handler = async (request: Request) => {
     }));
     const rateLimited = Boolean(result?.detail?.rateLimited)
       || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(result));
-    if (result?.skipped || rateLimited) break;
+    if (result?.skipped || result?.deferred || rateLimited) break;
   }
 
   const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {

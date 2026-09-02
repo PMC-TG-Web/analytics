@@ -25,9 +25,45 @@ type ErrorWithStatusAndCause = Error & {
   rateLimitUntil?: Date;
 };
 
-type ProcoreRequestContext = 'background' | 'interactive';
+type ProcoreRequestContext = {
+  lane: 'background' | 'interactive';
+  apiRequests: number;
+  rateLimitUntil: Date | null;
+};
 
 const liveApiBypassStore = new AsyncLocalStorage<ProcoreRequestContext>();
+
+export function getCurrentProcoreRequestMetrics() {
+  const context = liveApiBypassStore.getStore();
+  return {
+    apiRequests: context?.apiRequests || 0,
+    rateLimitUntil: context?.rateLimitUntil || null,
+  };
+}
+
+function recordContextRateLimit(context: ProcoreRequestContext | undefined, until: Date | null) {
+  if (!context || !until) return;
+  if (!context.rateLimitUntil || until > context.rateLimitUntil) {
+    context.rateLimitUntil = until;
+  }
+}
+
+async function runWithProcoreRequestContext<T>(
+  lane: ProcoreRequestContext['lane'],
+  operation: () => Promise<T>,
+): Promise<T> {
+  const context: ProcoreRequestContext = { lane, apiRequests: 0, rateLimitUntil: null };
+  return liveApiBypassStore.run(context, async () => {
+    const result = await operation();
+    if (result instanceof Response) {
+      result.headers.set('x-procore-api-request-count', String(context.apiRequests));
+      if (context.rateLimitUntil) {
+        result.headers.set('x-procore-rate-limit-until', context.rateLimitUntil.toISOString());
+      }
+    }
+    return result;
+  });
+}
 
 export const procoreConfig = {
   clientId: (process.env.PROCORE_CLIENT_ID || '').trim(),
@@ -106,7 +142,7 @@ export function withProcoreLiveApiBypassForSyncSecret<T>(
     return operation();
   }
 
-  return liveApiBypassStore.run('background', operation);
+  return runWithProcoreRequestContext('background', operation);
 }
 
 export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
@@ -114,13 +150,13 @@ export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
   operation: () => Promise<T>
 ): Promise<T> {
   if (hasValidProcoreSyncSecret(request)) {
-    return liveApiBypassStore.run('background', operation);
+    return runWithProcoreRequestContext('background', operation);
   }
   if (!hasProcoreAccessTokenCookie(request)) {
     return operation();
   }
 
-  return liveApiBypassStore.run('interactive', operation);
+  return runWithProcoreRequestContext('interactive', operation);
 }
 
 function sleep(ms: number) {
@@ -297,9 +333,10 @@ export async function makeRequest(
     throw new Error('MISSING_COMPANY_ID: The Procore Company ID is not configured.');
   }
 
-  if (requestContext === 'background') {
+  if (requestContext?.lane === 'background') {
     const cooldownUntil = await getProcoreBackgroundCooldown(companyId);
     if (cooldownUntil) {
+      recordContextRateLimit(requestContext, cooldownUntil);
       const deferred = new Error(
         `Procore background rate limit cooldown is active until ${cooldownUntil.toISOString()}.`,
       ) as Error & { status?: number; rateLimitUntil?: Date };
@@ -328,6 +365,7 @@ export async function makeRequest(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
       try {
+        if (requestContext) requestContext.apiRequests += 1;
         const response = await fetch(url, {
           ...options,
           signal: controller.signal,
@@ -338,6 +376,7 @@ export async function makeRequest(
           reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
           fallbackCooldownMs: 15 * 60_000,
         });
+        recordContextRateLimit(requestContext, quota.cooldownUntil);
         if (quota.cooldownUntil || quota.rateLimited) {
           await recordProcoreQuotaObservation({
             companyId,

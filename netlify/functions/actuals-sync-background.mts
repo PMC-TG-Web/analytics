@@ -27,7 +27,7 @@ const handler = async (request: Request) => {
   );
   const reconciliationCap = Math.min(
     3,
-    Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "2", 10) || 2)
+    Math.max(1, Number.parseInt(process.env.PROCORE_RECONCILIATION_MAX_PROJECTS_PER_TICK || "3", 10) || 3)
   );
   let maxProjects = reconciliation ? reconciliationCap : 3;
   for (let index = 0; index < maxProjects && Date.now() < deadline; index += 1) {
@@ -76,6 +76,9 @@ const handler = async (request: Request) => {
       reason: headerResult?.reason,
       totalMs: headerResult?.totalMs,
     }));
+    if (headerResult?.deferred || headerResult?.reason === "rate_limit_cooldown") {
+      break secondaryWork;
+    }
 
     // Estimate details are customer-facing dashboard data. Drain them before
     // onboarding and purchase-order discovery so slower secondary work cannot
@@ -99,7 +102,7 @@ const handler = async (request: Request) => {
       }));
       const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
         || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
-      if (estimateRateLimited) {
+      if (estimateRateLimited || estimateResult?.deferred) {
         break secondaryWork;
       }
       if (!estimateResponse.ok || estimateResult?.success === false) continue;

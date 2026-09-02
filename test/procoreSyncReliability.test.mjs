@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   procoreApiErrorIsNotFound,
   procoreSyncDetailHasErrors,
+  procoreSyncRateLimitUntil,
   procoreSyncResponseIsRateLimited,
 } from "../src/lib/procoreSyncResponse.ts";
 import {
@@ -134,6 +135,16 @@ test("active rate limits and endpoint errors are still failures", () => {
   assert.equal(procoreSyncDetailHasErrors({ success: true, errors: ["project failed"] }), true);
 });
 
+test("nested cooldown details preserve the provider reset instead of inventing 15 minutes", () => {
+  assert.equal(
+    procoreSyncRateLimitUntil({
+      success: false,
+      errors: ["Procore background rate limit cooldown is active until 2026-09-02T11:35:22.500Z."],
+    })?.toISOString(),
+    "2026-09-02T11:35:22.500Z",
+  );
+});
+
 test("health evaluation catches stale reconciliation and stuck webhook work", () => {
   const now = new Date("2026-08-10T16:00:00.000Z");
   const issues = evaluateProcoreSyncHealth({
@@ -176,6 +187,51 @@ test("health evaluation allows a completed daily reconciliation cycle", () => {
   }, new Date("2026-08-10T16:00:00.000Z"));
 
   assert.equal(issues.some((issue) => issue.includes("reconciliation")), false);
+});
+
+test("health evaluation catches an old Actuals queue even while one project is succeeding", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [{
+      dataset: "actuals",
+      never_succeeded: 0,
+      failed_projects: 0,
+      max_failure_count: 0,
+      due_projects: 14,
+      oldest_due: "2026-09-02T10:00:00.000Z",
+      newest_success: "2026-09-02T12:55:00.000Z",
+    }],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-09-02T07:10:00.000Z",
+      last_attempt_at: "2026-09-02T07:10:00.000Z",
+    },
+  }, new Date("2026-09-02T13:00:00.000Z"));
+
+  assert.ok(issues.includes("14 Actuals project(s) have been waiting for more than 2 hours."));
+});
+
+test("health evaluation catches an overdue change-order approval queue", () => {
+  const issues = evaluateProcoreSyncHealth({
+    datasets: [
+      { dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0, newest_success: "2026-09-02T12:55:00.000Z" },
+      {
+        dataset: "change_order_approvals",
+        never_succeeded: 0,
+        failed_projects: 0,
+        max_failure_count: 0,
+        due_projects: 5,
+        oldest_due: "2026-09-02T09:00:00.000Z",
+        newest_success: "2026-09-02T12:00:00.000Z",
+      },
+    ],
+    webhookQueue: [],
+    projectReconciliation: {
+      last_success_at: "2026-09-02T07:10:00.000Z",
+      last_attempt_at: "2026-09-02T07:10:00.000Z",
+    },
+  }, new Date("2026-09-02T13:00:00.000Z"));
+
+  assert.ok(issues.includes("5 change-order approval project(s) have been waiting for more than 3 hours."));
 });
 
 test("health evaluation reports permanently failed timecard notifications", () => {
@@ -236,6 +292,21 @@ test("nightly structure supports targeted reruns and a scheduler-tick requeue ma
   assert.match(route, /projectId: requestedProjectId \|\| undefined/);
   assert.match(route, /const DAILY_REQUEUE_MINUTES = 24 \* 60 - 5/);
   assert.match(route, /success \? DAILY_REQUEUE_MINUTES : 30/);
+  assert.match(route, /PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES \|\| "60"/);
+  assert.match(route, /x-procore-api-request-count/);
+});
+
+test("Actuals uses watermarks and rotating reconciliation cursors", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/cron/actuals/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /buildIncrementalActualsWindow/);
+  assert.match(route, /buildReconciliationActualsWindow/);
+  assert.match(route, /PROCORE_ACTUALS_SYNC_OVERLAP_DAYS \|\| 3/);
+  assert.match(route, /reconciliationCursor/);
+  assert.match(route, /rateLimitInherited/);
+  assert.match(route, /apiRequests/);
 });
 
 test("missing potential-change-order child lines are warnings, not project errors", async () => {
@@ -298,8 +369,11 @@ test("approval polling queues verification before persisting newly approved head
   assert.ok(packageQueue > potentialPersist && packagePersist > packageQueue);
   assert.match(route, /taskKinds: \["commitment_verification"\]/);
   assert.doesNotMatch(route, /line_items/);
-  assert.match(route, /const limit = Math\.min\(6/);
-  assert.match(route, /nextOffset:/);
+  assert.match(route, /seedChangeOrderApprovalQueue/);
+  assert.match(route, /acquireProcoreWorker/);
+  assert.match(route, /claimDueProject/);
+  assert.match(route, /nextRunMinutes/);
+  assert.doesNotMatch(route, /projects\.slice\(offset/);
 });
 
 test("background approval worker drains bounded polling batches", async () => {
@@ -308,8 +382,9 @@ test("background approval worker drains bounded polling batches", async () => {
     "utf8",
   );
   assert.match(worker, /\/api\/cron\/change-order-approvals/);
-  assert.match(worker, /nextOffset/);
-  assert.match(worker, /12 \* 60_000/);
+  assert.match(worker, /PROCORE_CHANGE_ORDER_PROJECTS_PER_TICK \|\| "3"/);
+  assert.match(worker, /result\?\.deferred/);
+  assert.doesNotMatch(worker, /nextOffset/);
 });
 
 test("middleware allows secret-authenticated change-order background work", async () => {
@@ -516,7 +591,7 @@ test("background workers prioritize and drain multiple estimate projects per tic
   }
 
   assert.match(actualsWorker, /secondaryWork: if \(!reconciliation/);
-  assert.match(actualsWorker, /if \(estimateRateLimited\) \{\s+break secondaryWork;/);
+  assert.match(actualsWorker, /if \(estimateRateLimited \|\| estimateResult\?\.deferred\) \{\s+break secondaryWork;/);
   assert.ok(
     actualsWorker.indexOf("/api/cron/actuals") < actualsWorker.indexOf('mode: "estimates"'),
     "Actuals should run before secondary estimate work can start a shared rate-limit cooldown",
@@ -580,15 +655,17 @@ test("the shared Procore client gates background traffic but preserves interacti
     new URL("../src/lib/procore.ts", import.meta.url),
     "utf8",
   );
-  assert.match(procore, /liveApiBypassStore\.run\('background', operation\)/);
-  assert.match(procore, /liveApiBypassStore\.run\('interactive', operation\)/);
+  assert.match(procore, /runWithProcoreRequestContext\('background', operation\)/);
+  assert.match(procore, /runWithProcoreRequestContext\('interactive', operation\)/);
   assert.match(procore, /request\.headers\.get\('x-cron-secret'\)/);
   assert.match(procore, /process\.env\.PROCORE_SYNC_SECRET, process\.env\.CRON_SECRET/);
   assert.match(
     procore,
-    /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return liveApiBypassStore\.run\('background', operation\)/,
+    /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return runWithProcoreRequestContext\('background', operation\)/,
   );
-  assert.match(procore, /requestContext === 'background'/);
+  assert.match(procore, /requestContext\?\.lane === 'background'/);
+  assert.match(procore, /x-procore-api-request-count/);
+  assert.match(procore, /x-procore-rate-limit-until/);
   assert.match(procore, /await getProcoreBackgroundCooldown\(companyId\)/);
   assert.match(procore, /deferred\.status = 429/);
   assert.match(procore, /tokenError\.status = response\.status/);

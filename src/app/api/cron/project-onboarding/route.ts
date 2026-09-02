@@ -14,6 +14,7 @@ import {
 import { procoreLookbackWindow } from "@/lib/procoreDateWindow";
 import {
   procoreSyncDetailHasErrors,
+  procoreSyncRateLimitUntil,
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
@@ -31,6 +32,8 @@ type StepResult = {
   httpStatus: number;
   rateLimited?: boolean;
   rateLimitUntil?: string;
+  rateLimitInherited?: boolean;
+  apiRequests?: number;
   detail?: unknown;
 };
 
@@ -43,12 +46,17 @@ function authorized(request: NextRequest) {
   return Boolean(provided) && (provided === syncSecret || (!!cronSecret && provided === cronSecret));
 }
 
-function rateLimitReset(response: Response) {
-  return procoreQuotaObservation(response.headers, 429, {
+function rateLimitReset(response: Response, detail: unknown) {
+  const headerValue = response.headers.get("x-procore-rate-limit-until");
+  const headerDate = headerValue ? new Date(headerValue) : null;
+  const inherited = procoreSyncRateLimitUntil(detail)
+    || (headerDate && Number.isFinite(headerDate.getTime()) ? headerDate : null);
+  if (inherited) return { until: inherited, inherited: true };
+  return { until: procoreQuotaObservation(response.headers, 429, {
     reserve: 0,
     fallbackCooldownMs: 15 * 60_000,
     resetPaddingMs: 3_000,
-  }).cooldownUntil!;
+  }).cooldownUntil!, inherited: false };
 }
 
 async function responseDetail(response: Response) {
@@ -80,13 +88,16 @@ async function runStep(params: {
     const detail = await responseDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
     const success = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
-    const until = rateLimited ? rateLimitReset(response) : null;
+    const reset = rateLimited ? rateLimitReset(response, detail) : null;
+    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
     return {
       step: params.step,
       status: success ? "ok" : "error",
       httpStatus: response.status,
       rateLimited,
-      rateLimitUntil: until?.toISOString(),
+      rateLimitUntil: reset?.until.toISOString(),
+      rateLimitInherited: reset?.inherited,
+      apiRequests,
       detail,
     };
   } catch (error) {
@@ -424,11 +435,13 @@ export async function POST(request: NextRequest) {
     const error = success ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
     const rateLimitUntil = limited?.rateLimitUntil ? new Date(limited.rateLimitUntil) : null;
     if (rateLimitUntil) {
-      await setProcoreRateLimit({
-        companyId: COMPANY_ID,
-        until: rateLimitUntil,
-        error,
-      });
+      if (!limited?.rateLimitInherited) {
+        await setProcoreRateLimit({
+          companyId: COMPANY_ID,
+          until: rateLimitUntil,
+          error,
+        });
+      }
     }
     if (success) {
       await markRelatedQueuesCurrent({
@@ -459,15 +472,17 @@ export async function POST(request: NextRequest) {
         where: { id: logId },
         data: {
           finishedAt: new Date(),
-          success,
+          success: success || Boolean(rateLimitUntil),
           totalMs,
           steps: [selection, ...steps] as object[],
-          error,
+          error: rateLimitUntil ? null : error,
         },
       }).catch(() => undefined);
     }
     return NextResponse.json({
-      success,
+      success: success || Boolean(rateLimitUntil),
+      completed: success,
+      deferred: Boolean(rateLimitUntil),
       companyId: COMPANY_ID,
       dataset: DATASET,
       projectId: project.projectId,
@@ -475,7 +490,7 @@ export async function POST(request: NextRequest) {
       logId: logId?.toString() || null,
       totalMs,
       steps,
-    }, { status: success ? 200 : 207 });
+    }, { status: success || rateLimitUntil ? 200 : 207 });
   } finally {
     if (project) {
       await prisma.$executeRawUnsafe(

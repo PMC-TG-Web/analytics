@@ -77,6 +77,15 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   const actualsIsStale = !actuals || ageMinutes(actuals.newest_success, now) > 180;
   if (actualsIsStale && !actualsStalenessMonitoringPaused(now)) {
     issues.push(`Actuals have not completed successfully within 3 hours.${quotaSuffix}`);
+  } else if (
+    actuals
+    && Number(actuals.due_projects || 0) > 0
+    && ageMinutes(actuals.oldest_due || null, now) > 120
+    && !actualsStalenessMonitoringPaused(now)
+  ) {
+    issues.push(
+      `${actuals.due_projects} Actuals project(s) have been waiting for more than 2 hours.${quotaSuffix}`,
+    );
   } else if (actuals && actuals.failed_projects > 5) {
     issues.push(`${actuals.failed_projects} actuals projects are failing.`);
   }
@@ -84,6 +93,15 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   const structure = datasets.get("nightly_structure");
   if (structure && structure.failed_projects > 5) {
     issues.push(`${structure.failed_projects} nightly structure projects are failing.`);
+  } else if (
+    structure
+    && Number(structure.due_projects || 0) > 0
+    && ageMinutes(structure.oldest_due || null, now) > 6 * 60
+    && !actualsStalenessMonitoringPaused(now)
+  ) {
+    issues.push(
+      `${structure.due_projects} nightly structure project(s) have been waiting for more than 6 hours.${quotaSuffix}`,
+    );
   }
 
   const bidBoardHeaders = datasets.get("nightly_bid_board_headers");
@@ -91,6 +109,12 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     issues.push(
       `${bidBoardHeaders.failed_projects} Bid Board header sync job(s) are repeatedly failing.`,
     );
+  } else if (
+    bidBoardHeaders
+    && Number(bidBoardHeaders.due_projects || 0) > 0
+    && ageMinutes(bidBoardHeaders.oldest_due || null, now) > 120
+  ) {
+    issues.push(`Bid Board headers have been waiting for more than 2 hours.${quotaSuffix}`);
   }
 
   const estimates = datasets.get("nightly_estimates");
@@ -119,6 +143,19 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     issues.push(
       `${projectLinks.failed_projects} Project Link Sync job(s) are repeatedly failing.`,
     );
+  }
+
+  const changeOrderApprovals = datasets.get("change_order_approvals");
+  if (
+    changeOrderApprovals
+    && Number(changeOrderApprovals.due_projects || 0) > 0
+    && ageMinutes(changeOrderApprovals.oldest_due || null, now) > 180
+  ) {
+    issues.push(
+      `${changeOrderApprovals.due_projects} change-order approval project(s) have been waiting for more than 3 hours.${quotaSuffix}`,
+    );
+  } else if (changeOrderApprovals && changeOrderApprovals.max_failure_count >= 3) {
+    issues.push(`${changeOrderApprovals.failed_projects} change-order approval project(s) are repeatedly failing.`);
   }
 
   const reconciliationAge = ageMinutes(snapshot.projectReconciliation?.last_success_at || null, now);

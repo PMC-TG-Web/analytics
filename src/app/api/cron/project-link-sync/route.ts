@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
-import { getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import {
+  getClientCredentialsToken,
+  getCurrentProcoreRequestMetrics,
+  withProcoreLiveApiBypassForSyncSecret,
+} from "@/lib/procore";
 import {
   syncCommitmentMakerProjectLink,
   syncJobScheduleProjectLink,
@@ -44,7 +48,7 @@ function errorRateLimitUntil(error: unknown) {
   if (errorStatus(error) !== 429) return null;
   const provided = (error as { rateLimitUntil?: unknown })?.rateLimitUntil;
   const parsed = provided instanceof Date ? provided : new Date(String(provided || ""));
-  return Number.isFinite(parsed.getTime()) && parsed > new Date()
+  return Number.isFinite(parsed.getTime())
     ? parsed
     : new Date(Date.now() + 15 * 60_000);
 }
@@ -130,6 +134,7 @@ async function run(request: NextRequest) {
       if (errors.length > 0) {
         throw new Error(errors.join(" | "));
       }
+      result.apiRequests = getCurrentProcoreRequestMetrics().apiRequests;
       const jobScheduleStatus = String(
         (result.jobSchedule as { status?: unknown } | undefined)?.status || "",
       );

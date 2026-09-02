@@ -68,6 +68,18 @@ test("blocks completed and concurrently leased source CO applications", () => {
   );
 });
 
+test("keeps an uncertain partial PO update blocked after its lease expires", () => {
+  const { commitmentMakerChangeOrderClaimBlockReason } = loadModule();
+  assert.equal(
+    commitmentMakerChangeOrderClaimBlockReason(
+      claim({ status: "uncertain" }),
+      { targetKind: "existing_purchase_order", requestedTargetCommitmentId: "800" },
+      now,
+    ),
+    "This change order has an uncertain partial update on PO 800 and requires review before retrying.",
+  );
+});
+
 test("allows only failed or expired retries for the original target", () => {
   const { commitmentMakerChangeOrderClaimBlockReason } = loadModule();
   assert.equal(
@@ -188,6 +200,30 @@ test("restores the completed claim when Procore removal fails", async () => {
   assert.equal(update.where.status, "removing");
   assert.equal(update.data.status, "completed");
   assert.equal(update.data.lastError, "Procore deletion failed");
+});
+
+test("marks a claim uncertain when accepted line ownership cannot be saved", async () => {
+  let update;
+  const prisma = {
+    commitmentMakerChangeOrderApplication: {
+      updateMany: async (request) => {
+        update = request;
+        return { count: 1 };
+      },
+    },
+  };
+  const { markCommitmentMakerChangeOrderClaimUncertain } = loadModule(prisma);
+  await markCommitmentMakerChangeOrderClaimUncertain({
+    applicationId: "application-1",
+    leaseToken: "lease-token",
+    targetCommitmentId: "800",
+    error: "Accepted PO line ownership could not be saved",
+  });
+
+  assert.equal(update.where.status, "claimed");
+  assert.equal(update.data.status, "uncertain");
+  assert.equal(update.data.targetCommitmentId, "800");
+  assert.equal(update.data.lastError, "Accepted PO line ownership could not be saved");
 });
 
 test("keeps an uncertain Procore removal blocked", async () => {

@@ -58,6 +58,7 @@ import {
   failCommitmentMakerChangeOrderRemoval,
   getCommitmentMakerChangeOrderRemovalTarget,
   inspectCommitmentMakerChangeOrderClaim,
+  markCommitmentMakerChangeOrderClaimUncertain,
   markCommitmentMakerChangeOrderRemovalUncertain,
   setCommitmentMakerChangeOrderTarget,
 } from "@/lib/procoreCommitmentMakerChangeOrderClaims";
@@ -80,7 +81,6 @@ const MAX_GROUPS = 100;
 const MAX_LINE_ITEMS = 5_000;
 const PROCORE_READ_TIMEOUT_MS = 8_000;
 const PROCORE_MUTATION_TIMEOUT_MS = 12_000;
-const LINE_CREATE_CONCURRENCY = 4;
 
 class ProcoreMutationOutcomeUnknownError extends Error {
   constructor(message: string) {
@@ -1275,10 +1275,31 @@ function commitmentLineMatchesPayload(
   );
 }
 
+function commitmentLinePayloadMatchesPlanned(
+  payload: CommitmentMakerOwnedLineItem["payload"],
+  line: PlannedLine,
+): boolean {
+  return (
+    payload.wbs_code_id === (line.wbsCodeId || "")
+    && payload.description === line.description
+    && Math.abs(payload.quantity - line.quantity) < 0.0001
+    && Math.abs(payload.unit_cost - line.unitCost) < 0.005
+    && payload.uom.toLowerCase() === line.uom.toLowerCase()
+  );
+}
+
 type CommitmentLineRemoval = {
   id: string;
   payload: CommitmentMakerOwnedLineItem["payload"];
 };
+
+function auditedCommitmentLinesById(
+  ownedLines: CommitmentMakerOwnedLineItem[],
+  records: UnknownRecord[],
+): CommitmentLineRemoval[] {
+  const recordIds = new Set(records.map(readId).filter(Boolean));
+  return ownedLines.filter((ownedLine) => recordIds.has(ownedLine.id));
+}
 
 function auditedCommitmentLineRemovals(
   ownedLines: CommitmentMakerOwnedLineItem[],
@@ -1303,6 +1324,24 @@ function auditedCommitmentLineRemovals(
     );
   }
   return removals;
+}
+
+function reconciledOwnedLineItems(
+  ownedLines: CommitmentMakerOwnedLineItem[],
+  records: UnknownRecord[],
+): CommitmentMakerOwnedLineItem[] {
+  return ownedLines.map((ownedLine) => {
+    if (records.some((record) => readId(record) === ownedLine.id)) return ownedLine;
+    const payloadMatches = records.filter((record) => commitmentLineMatchesPayload(ownedLine.payload, record));
+    if (payloadMatches.length > 1) {
+      throw new CommitmentMakerChangeOrderClaimError(
+        `Saved line "${ownedLine.payload.description}" has more than one exact match on the PO; ownership was not changed.`,
+      );
+    }
+    return payloadMatches.length === 1
+      ? { ...ownedLine, id: readId(payloadMatches[0]) }
+      : ownedLine;
+  });
 }
 
 function historicalCommitmentLineRemovals(
@@ -1348,7 +1387,7 @@ async function writeAudit(params: {
   entityId: string;
   userEmail: string;
   changes: unknown;
-}) {
+}): Promise<boolean> {
   try {
     await prisma.auditLog.create({
       data: {
@@ -1359,8 +1398,10 @@ async function writeAudit(params: {
         changes: JSON.parse(JSON.stringify(params.changes)),
       },
     });
+    return true;
   } catch (error) {
     console.error("Commitment Maker audit log write failed:", error);
+    return false;
   }
 }
 
@@ -1376,7 +1417,7 @@ async function findCompletedChangeOrderAudit(params: {
       action: { in: ["create", "resume", "append-lines"] },
     },
     orderBy: { createdAt: "desc" },
-    select: { changes: true },
+    select: { id: true, changes: true },
   });
   for (const audit of audits) {
     const changes = isRecord(audit.changes) ? audit.changes : {};
@@ -1385,10 +1426,49 @@ async function findCompletedChangeOrderAudit(params: {
       readText(changes.projectId) === params.projectId
       && readText(source.packageId) === params.sourceChangeOrderId
     ) {
-      return changes;
+      return { ...changes, auditLogId: audit.id };
     }
   }
   return null;
+}
+
+async function findIncompleteChangeOrderOwnedLines(params: {
+  applicationId: string;
+  targetCommitmentId: string;
+}): Promise<CommitmentMakerOwnedLineItem[]> {
+  const audits = await prisma.auditLog.findMany({
+    where: {
+      entity: "ProcoreCommitmentMaker",
+      entityId: params.targetCommitmentId,
+      action: "error",
+    },
+    orderBy: { createdAt: "desc" },
+    select: { changes: true },
+  });
+  const ownedLinesById = new Map<string, CommitmentMakerOwnedLineItem>();
+  for (const audit of audits.reverse()) {
+    const changes = isRecord(audit.changes) ? audit.changes : {};
+    if (readText(changes.applicationId) !== params.applicationId) continue;
+    const expectedCount = Array.isArray(changes.ownedLineItems) ? changes.ownedLineItems.length : 0;
+    for (const ownedLine of commitmentMakerOwnedLineItemsFromAudit(changes, expectedCount) || []) {
+      ownedLinesById.set(ownedLine.id, ownedLine);
+    }
+  }
+  return [...ownedLinesById.values()];
+}
+
+async function updateCompletedChangeOrderOwnedLines(
+  audit: UnknownRecord,
+  ownedLineItems: CommitmentMakerOwnedLineItem[],
+): Promise<void> {
+  const auditLogId = readText(audit.auditLogId);
+  if (!auditLogId) throw new Error("The successful PO ownership audit ID is missing.");
+  const changes: UnknownRecord = { ...audit, ownedLineItems };
+  delete changes.auditLogId;
+  await prisma.auditLog.update({
+    where: { id: auditLogId },
+    data: { changes: JSON.parse(JSON.stringify(changes)) },
+  });
 }
 
 async function handleRequest(request: NextRequest) {
@@ -1674,6 +1754,8 @@ async function handleRequest(request: NextRequest) {
     let contractId = group.existingContractId;
     let createdContract = false;
     let actualNumber = group.number;
+    let reusedLineItems = 0;
+    const ownedLineItems: CommitmentMakerOwnedLineItem[] = [];
     try {
       if (!contractId) {
         const duplicate = findExistingByFingerprint(currentCommitments, group.fingerprint)
@@ -1741,49 +1823,67 @@ async function handleRequest(request: NextRequest) {
         });
       }
       const existingLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
-      let createdLineItems = 0;
-      let reusedLineItems = 0;
+      const priorOwnedLineItems = changeOrderClaim
+        ? await findIncompleteChangeOrderOwnedLines({
+            applicationId: changeOrderClaim.applicationId,
+            targetCommitmentId: contractId,
+          })
+        : [];
+      const verifiedPriorOwnedLines = auditedCommitmentLinesById(priorOwnedLineItems, existingLines);
+      const usedPriorOwnedLineIds = new Set<string>();
       const missingLines: PlannedLine[] = [];
       for (const line of group.lineItems) {
-        if (lineAlreadyExists(line, existingLines)) {
-          reusedLineItems += 1;
+        const matchingExistingLines = existingLines.filter((record) => commitmentLineMatches(line, record));
+        if (matchingExistingLines.length > 0) {
+          const priorOwnedLine = verifiedPriorOwnedLines.find((ownedLine) => (
+            !usedPriorOwnedLineIds.has(ownedLine.id)
+            && matchingExistingLines.some((record) => readId(record) === ownedLine.id)
+            && commitmentLineMatchesPayload(ownedLine.payload, matchingExistingLines.find(
+              (record) => readId(record) === ownedLine.id,
+            ) || {})
+            &&
+            commitmentLinePayloadMatchesPlanned(ownedLine.payload, line)
+          ));
+          if (priorOwnedLine) {
+            ownedLineItems.push(priorOwnedLine);
+            usedPriorOwnedLineIds.add(priorOwnedLine.id);
+          } else {
+            reusedLineItems += 1;
+          }
           continue;
         }
         missingLines.push(line);
       }
-      for (let index = 0; index < missingLines.length; index += LINE_CREATE_CONCURRENCY) {
-        const batch = missingLines.slice(index, index + LINE_CREATE_CONCURRENCY);
-        const outcomes = await Promise.allSettled(batch.map(async (line) => {
-          const response = await procoreJson({
-            path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
-              projectId
-            )}/commitment_contracts/${encodeURIComponent(contractId)}/line_items`,
-            method: "POST",
-            accessToken,
-            companyId,
-            body: commitmentMakerLineCreatePayload(line),
-          });
-          if (!response.ok) {
-            throw rejectedMutation(`Procore rejected line "${line.description}"`, response);
-          }
-        }));
-        const failures = outcomes
-          .filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected")
-          .map((outcome) => outcome.reason);
-        if (failures.length > 0) {
-          throw failures.find((error) => error instanceof ProcoreMutationOutcomeUnknownError)
-            || failures[0];
+      for (const line of missingLines) {
+        const payload = commitmentMakerLineCreatePayload(line);
+        const response = await procoreJson({
+          path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
+            projectId
+          )}/commitment_contracts/${encodeURIComponent(contractId)}/line_items`,
+          method: "POST",
+          accessToken,
+          companyId,
+          body: payload,
+        });
+        if (!response.ok) {
+          throw rejectedMutation(`Procore rejected line "${line.description}"`, response);
         }
-        createdLineItems += batch.length;
+        const lineId = readId(unwrapData(response.payload));
+        if (!lineId) {
+          throw new ProcoreMutationOutcomeUnknownError(
+            `Procore accepted line "${line.description}" without returning its ID. Refresh after five minutes so the PO can be reviewed safely.`,
+          );
+        }
+        ownedLineItems.push({ id: lineId, payload });
       }
 
       const populatedLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
-      const ownedLines = exactCommitmentLines(group.lineItems, populatedLines);
-      const ownedLineItems = ownedLines.map((record, index) => ({
-        id: readId(record),
-        line: group.lineItems[index],
-        payload: commitmentMakerLineCreatePayload(group.lineItems[index]),
-      }));
+      const verifiedOwnedLineItems = auditedCommitmentLinesById(ownedLineItems, populatedLines);
+      if (verifiedOwnedLineItems.length !== ownedLineItems.length) {
+        throw new ProcoreMutationOutcomeUnknownError(
+          `Only ${verifiedOwnedLineItems.length} of ${ownedLineItems.length} confirmed PO lines could be verified after creation. Refresh after five minutes so the PO can be reviewed safely.`,
+        );
+      }
 
       const approveResponse = await procoreJson({
         path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
@@ -1804,12 +1904,11 @@ async function handleRequest(request: NextRequest) {
         number: actualNumber,
         contractId,
         createdContract,
-        createdLineItems,
+        createdLineItems: ownedLineItems.length,
         reusedLineItems,
         status: "Approved",
       };
-      results.push(result);
-      await writeAudit({
+      const auditRecorded = await writeAudit({
         action: createdContract ? "create" : group.action === "append" ? "append-lines" : "resume",
         entityId: contractId,
         userEmail,
@@ -1823,6 +1922,10 @@ async function handleRequest(request: NextRequest) {
           ...result,
         },
       });
+      if (!auditRecorded) {
+        throw new Error("The PO was updated, but its line ownership audit could not be saved.");
+      }
+      results.push(result);
     } catch (error) {
       failure = {
         success: false,
@@ -1832,14 +1935,32 @@ async function handleRequest(request: NextRequest) {
         status: contractId ? "Draft - attention required" : "Not created",
         error: error instanceof Error ? error.message : String(error),
         outcomeUnknown: error instanceof ProcoreMutationOutcomeUnknownError,
+        createdLineItems: ownedLineItems.length,
+        reusedLineItems,
       };
       results.push(failure);
-      await writeAudit({
+      const errorAuditRecorded = await writeAudit({
         action: "error",
         entityId: contractId || group.fingerprint,
         userEmail,
-        changes: { projectId, fileName: effectiveFileName, sheetName: selectedSheetName, ...failure },
+        changes: {
+          projectId,
+          fileName: effectiveFileName,
+          sheetName: selectedSheetName,
+          applicationId: changeOrderClaim?.applicationId,
+          ownedLineItems,
+          ...failure,
+        },
       });
+      if (!errorAuditRecorded && changeOrderClaim && ownedLineItems.length > 0) {
+        failure.outcomeUnknown = true;
+        failure.error = `${readText(failure.error)} The accepted PO line ownership could not be saved, so automated retry is blocked.`;
+        await markCommitmentMakerChangeOrderClaimUncertain({
+          ...changeOrderClaim,
+          targetCommitmentId: contractId || changeOrderClaim.targetCommitmentId,
+          error: readText(failure.error),
+        });
+      }
       break;
     }
   }
@@ -1935,7 +2056,7 @@ async function handleRequest(request: NextRequest) {
       error: failure
         ? failure.outcomeUnknown === true
           ? readText(failure.error)
-          : "Commitment creation stopped after an error. Any affected purchase order may require review."
+          : `${readText(failure.error)} ${Number(failure.createdLineItems) || 0} line(s) from this change order are confirmed on the PO. Preview again to safely add the remaining lines.`
         : taskError
           ? "The commitments were created, but the required change-order follow-up tasks need attention. Retry to repair the tasks without duplicating the POs."
           : undefined,
@@ -2080,13 +2201,19 @@ async function handleDelete(request: NextRequest) {
       projectId,
       contractId: recoveryClaim.targetCommitmentId,
     });
-    const verifiedLineCount = ownedLines
-      ? auditedCommitmentLineRemovals(ownedLines, currentLines).length
+    const recoveredOwnedLines = ownedLines
+      ? reconciledOwnedLineItems(ownedLines, currentLines)
+      : null;
+    const verifiedLineCount = recoveredOwnedLines
+      ? auditedCommitmentLinesById(recoveredOwnedLines, currentLines).length
       : countExactCommitmentLines(plannedLines, currentLines);
     if (verifiedLineCount !== expectedLineCount) {
       const recoveryError = `Recovery verified ${verifiedLineCount} of ${expectedLineCount} original PO lines. No Procore changes were made.`;
       await markCommitmentMakerChangeOrderRemovalUncertain({ ...recoveryClaim, error: recoveryError });
       return NextResponse.json({ error: recoveryError }, { status: 409 });
+    }
+    if (recoveredOwnedLines && audit) {
+      await updateCompletedChangeOrderOwnedLines(audit, recoveredOwnedLines);
     }
     await completeCommitmentMakerChangeOrderRemovalRecovery(recoveryClaim);
     await writeAudit({
@@ -2152,7 +2279,7 @@ async function handleDelete(request: NextRequest) {
       contractId: removalClaim.targetCommitmentId,
     });
     const removalLines = ownedLines
-      ? auditedCommitmentLineRemovals(ownedLines, existingLines)
+      ? auditedCommitmentLinesById(ownedLines, existingLines)
       : historicalCommitmentLineRemovals(plannedLines, existingLines);
     const lineIds = removalLines.map((line) => line.id);
     const alreadyAbsentLineItems = expectedLineCount - lineIds.length;
@@ -2219,6 +2346,11 @@ async function handleDelete(request: NextRequest) {
               `Not every deleted PO line could be restored: Procore returned ${response.status}${upstreamError(response)}`,
             );
           }
+          const restoredLineId = readId(unwrapData(response.payload));
+          if (!restoredLineId) {
+            throw new Error("A restored PO line did not return its new Procore line ID.");
+          }
+          removalLines[index] = { ...removalLines[index], id: restoredLineId };
         }
         const restoredLines = await fetchContractLineItems({
           accessToken,
@@ -2226,9 +2358,15 @@ async function handleDelete(request: NextRequest) {
           projectId,
           contractId: removalClaim.targetCommitmentId,
         });
-        const restoredLineCount = auditedCommitmentLineRemovals(removalLines, restoredLines).length;
+        const restoredLineCount = auditedCommitmentLinesById(removalLines, restoredLines).length;
         if (restoredLineCount !== removalLines.length) {
           throw new Error(`Only ${restoredLineCount} of ${removalLines.length} deleted PO lines could be verified after restoration.`);
+        }
+        if (ownedLines && audit) {
+          await updateCompletedChangeOrderOwnedLines(
+            audit,
+            reconciledOwnedLineItems(ownedLines, restoredLines),
+          );
         }
         await restoreApprovedStatus();
       } catch (recoveryError) {

@@ -145,6 +145,9 @@ export function commitmentMakerChangeOrderClaimBlockReason(
   if (application.status === "removing") {
     return `This change order is being removed from PO ${targetLabel(application)}.`;
   }
+  if (application.status === "uncertain") {
+    return `This change order has an uncertain partial update on PO ${targetLabel(application)} and requires review before retrying.`;
+  }
   if (application.status === "claimed" && application.leaseExpiresAt > now) {
     return "This change order is already being added to a purchase order.";
   }
@@ -330,6 +333,24 @@ export async function failCommitmentMakerChangeOrderClaim(params: {
       lastError: params.error.substring(0, 4_000),
     },
   });
+}
+
+export async function markCommitmentMakerChangeOrderClaimUncertain(params: {
+  applicationId: string;
+  leaseToken: string;
+  targetCommitmentId?: string;
+  error: string;
+}): Promise<void> {
+  const updated = await prisma.commitmentMakerChangeOrderApplication.updateMany({
+    where: { id: params.applicationId, leaseToken: params.leaseToken, status: "claimed" },
+    data: {
+      status: "uncertain",
+      targetCommitmentId: params.targetCommitmentId || undefined,
+      leaseExpiresAt: new Date(),
+      lastError: params.error.substring(0, 4_000),
+    },
+  });
+  if (updated.count !== 1) throw new Error("The uncertain Commitment Maker change-order claim could not be recorded.");
 }
 
 export async function getCommitmentMakerChangeOrderRemovalTarget(params: Pick<ClaimParams,

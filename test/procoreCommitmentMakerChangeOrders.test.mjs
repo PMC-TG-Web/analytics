@@ -388,7 +388,7 @@ test("keeps approved change-order preview within the interactive response window
   assert.match(route, /const \[sourceAliases, plan\] = await Promise\.all/);
 });
 
-test("bounds live Procore calls and safely shortens detailed line creation", () => {
+test("bounds live Procore calls and serializes resumable same-PO line creation", () => {
   const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
   const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
 
@@ -396,9 +396,22 @@ test("bounds live Procore calls and safely shortens detailed line creation", () 
   assert.match(route, /PROCORE_MUTATION_TIMEOUT_MS = 12_000/);
   assert.match(route, /signal: AbortSignal\.timeout/);
   assert.ok(route.indexOf("await response.text()") < route.indexOf("} catch (error) {"));
-  assert.match(route, /LINE_CREATE_CONCURRENCY = 4/);
-  assert.match(route, /await Promise\.allSettled\(batch\.map/);
-  assert.match(route, /failures\.find\(\(error\) => error instanceof ProcoreMutationOutcomeUnknownError\)/);
+  assert.match(route, /for \(const line of missingLines\)/);
+  assert.doesNotMatch(route, /Promise\.allSettled\(batch\.map/);
+  assert.match(route, /findIncompleteChangeOrderOwnedLines/);
+  assert.match(route, /for \(const audit of audits\.reverse\(\)\)/);
+  assert.match(route, /ownedLinesById\.set\(ownedLine\.id, ownedLine\)/);
+  assert.match(route, /verifiedPriorOwnedLines/);
+  assert.match(route, /auditedCommitmentLinesById\(priorOwnedLineItems, existingLines\)/);
+  assert.match(route, /matchingExistingLines\.some\(\(record\) => readId\(record\) === ownedLine\.id\)/);
+  assert.match(route, /commitmentLineMatchesPayload\(ownedLine\.payload, matchingExistingLines\.find/);
+  assert.match(route, /const lineId = readId\(unwrapData\(response\.payload\)\)/);
+  assert.match(route, /ownedLineItems\.push\(\{ id: lineId, payload \}\)/);
+  assert.match(route, /applicationId: changeOrderClaim\?\.applicationId/);
+  assert.match(route, /ownedLineItems,/);
+  assert.match(route, /if \(!errorAuditRecorded && changeOrderClaim && ownedLineItems\.length > 0\)/);
+  assert.match(route, /markCommitmentMakerChangeOrderClaimUncertain/);
+  assert.match(route, /Preview again to safely add the remaining lines/);
   assert.match(route, /error instanceof ProcoreMutationOutcomeUnknownError/);
   assert.match(route, /if \(failure\?\.outcomeUnknown !== true\)/);
   assert.match(route, /changeOrderClaim\?\.reconcileUnconfirmedCreate/);
@@ -425,7 +438,7 @@ test("removes only exact PCO lines before releasing the PO assignment", () => {
 
   assert.match(deleteHandler, /Number\(audit\.reusedLineItems\) !== 0/);
   assert.match(deleteHandler, /commitmentMakerOwnedLineItemsFromAudit\(audit, expectedLineCount\)/);
-  assert.match(deleteHandler, /auditedCommitmentLineRemovals\(ownedLines, existingLines\)/);
+  assert.match(deleteHandler, /auditedCommitmentLinesById\(ownedLines, existingLines\)/);
   assert.match(deleteHandler, /historicalCommitmentLineRemovals\(plannedLines, existingLines\)/);
   assert.match(deleteHandler, /alreadyAbsentLineItems = expectedLineCount - lineIds\.length/);
   assert.match(deleteHandler, /readText\(audit\.fingerprint\) !== plan\.groups\[0\]\.fingerprint/);
@@ -433,7 +446,10 @@ test("removes only exact PCO lines before releasing the PO assignment", () => {
   assert.match(deleteHandler, /method: "DELETE"/);
   assert.match(deleteHandler, /remainingIds\.has\(lineId\)/);
   assert.match(deleteHandler, /body: removalLines\[index\]\.payload/);
-  assert.match(deleteHandler, /auditedCommitmentLineRemovals\(removalLines, restoredLines\)/);
+  assert.match(deleteHandler, /removalLines\[index\] = \{ \.\.\.removalLines\[index\], id: restoredLineId \}/);
+  assert.match(deleteHandler, /auditedCommitmentLinesById\(removalLines, restoredLines\)/);
+  assert.match(deleteHandler, /updateCompletedChangeOrderOwnedLines/);
+  assert.match(deleteHandler, /reconciledOwnedLineItems\(ownedLines, restoredLines\)/);
   assert.match(deleteHandler, /markCommitmentMakerChangeOrderRemovalUncertain/);
   assert.ok(deleteHandler.indexOf('body: { status: "Approved" }') < deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)"));
   assert.ok(deleteHandler.indexOf("completeCommitmentMakerChangeOrderRemoval(removalClaim)") < deleteHandler.indexOf('action: "remove-lines"'));

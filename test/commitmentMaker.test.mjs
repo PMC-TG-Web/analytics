@@ -5,6 +5,7 @@ import {
   COMMITMENT_MAKER_VENDOR_NAME,
   combineCommitmentMakerGroups,
   commitmentMakerLineCreatePayload,
+  commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerProjectIdFromSearch,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
@@ -40,6 +41,48 @@ test('keeps a resolved project WBS ID on the commitment line request', () => {
 
   assert.equal(payload.wbs_code_id, '12345');
   assert.equal(payload.amount, 376.65);
+});
+
+test('reads exact PO line ownership and replay payloads from a successful audit', () => {
+  const owned = commitmentMakerOwnedLineItemsFromAudit({
+    ownedLineItems: [{
+      id: '598134422367524',
+      payload: {
+        description: 'CO2 - Foundation Wood Forms',
+        quantity: 52,
+        unit_cost: 1.42,
+        amount: 73.84,
+        uom: 'sf',
+        wbs_code_id: '598136733263448',
+      },
+    }],
+  }, 1);
+
+  assert.equal(owned?.[0].id, '598134422367524');
+  assert.equal(owned?.[0].payload.wbs_code_id, '598136733263448');
+  assert.equal(commitmentMakerOwnedLineItemsFromAudit({ createdLineItems: 1 }, 1), null);
+});
+
+test('rejects incomplete or duplicate saved PO line ownership', () => {
+  const line = {
+    id: '598134422367524',
+    payload: {
+      description: 'CO2 - Foundation Wood Forms',
+      quantity: 52,
+      unit_cost: 1.42,
+      amount: 73.84,
+      uom: 'sf',
+      wbs_code_id: '598136733263448',
+    },
+  };
+  assert.throws(
+    () => commitmentMakerOwnedLineItemsFromAudit({ ownedLineItems: [line] }, 2),
+    /ownership is incomplete/,
+  );
+  assert.throws(
+    () => commitmentMakerOwnedLineItemsFromAudit({ ownedLineItems: [line, line] }, 2),
+    /duplicate Procore line IDs/,
+  );
 });
 
 test('uses the fixed Paradise Masonry vendor', () => {

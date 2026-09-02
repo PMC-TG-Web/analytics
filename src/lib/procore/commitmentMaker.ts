@@ -32,6 +32,66 @@ export function commitmentMakerLineCreatePayload(line: CommitmentMakerPlannedLin
   };
 }
 
+export type CommitmentMakerOwnedLineItem = {
+  id: string;
+  payload: ReturnType<typeof commitmentMakerLineCreatePayload>;
+};
+
+function ownedLineRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+export function commitmentMakerOwnedLineItemsFromAudit(
+  auditValue: unknown,
+  expectedCount: number,
+): CommitmentMakerOwnedLineItem[] | null {
+  const audit = ownedLineRecord(auditValue);
+  if (!("ownedLineItems" in audit)) return null;
+  if (!Array.isArray(audit.ownedLineItems) || audit.ownedLineItems.length !== expectedCount) {
+    throw new Error("The saved PO line ownership is incomplete.");
+  }
+
+  const ownedLines = audit.ownedLineItems.map((value) => {
+    const item = ownedLineRecord(value);
+    const payload = ownedLineRecord(item.payload);
+    const id = String(item.id || "").trim();
+    const description = String(payload.description || "").trim();
+    const uom = String(payload.uom || "").trim();
+    const wbsCodeId = String(payload.wbs_code_id || "").trim();
+    const quantity = Number(payload.quantity);
+    const unitCost = Number(payload.unit_cost);
+    const amount = Number(payload.amount);
+    if (
+      !/^\d+$/.test(id)
+      || !description
+      || !uom
+      || !/^\d+$/.test(wbsCodeId)
+      || !Number.isFinite(quantity)
+      || !Number.isFinite(unitCost)
+      || !Number.isFinite(amount)
+    ) {
+      throw new Error("The saved PO line ownership contains an invalid line or replay payload.");
+    }
+    return {
+      id,
+      payload: {
+        description,
+        quantity,
+        unit_cost: unitCost,
+        amount,
+        uom,
+        wbs_code_id: wbsCodeId,
+      },
+    };
+  });
+  if (new Set(ownedLines.map((line) => line.id)).size !== ownedLines.length) {
+    throw new Error("The saved PO line ownership contains duplicate Procore line IDs.");
+  }
+  return ownedLines;
+}
+
 export type CommitmentMakerGroup = {
   name: string;
   lineItems: CommitmentMakerLineItem[];

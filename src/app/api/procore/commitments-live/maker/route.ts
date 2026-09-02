@@ -13,6 +13,7 @@ import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerLineCreatePayload,
+  commitmentMakerOwnedLineItemsFromAudit,
   consolidateCommitmentMakerLineItems,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
@@ -22,6 +23,7 @@ import {
   selectCommitmentMakerWbsCandidate,
   type CommitmentMakerGroup,
   type CommitmentMakerLineItem,
+  type CommitmentMakerOwnedLineItem,
 } from "@/lib/procore/commitmentMaker";
 import {
   approvedChangeOrderCommitmentGroup,
@@ -1180,8 +1182,75 @@ function exactCommitmentLines(lines: PlannedLine[], records: UnknownRecord[]): U
   return matchesByLine;
 }
 
-function exactCommitmentLineIds(lines: PlannedLine[], records: UnknownRecord[]): string[] {
-  return exactCommitmentLines(lines, records).map(readId);
+function commitmentLineMatchesPayload(
+  payload: CommitmentMakerOwnedLineItem["payload"],
+  record: UnknownRecord,
+): boolean {
+  const recordWbsId = readText(record.wbs_code_id ?? nestedRecord(record, "wbs_code").id);
+  const quantity = Number(record.quantity);
+  const unitCost = Number(record.unit_cost);
+  return (
+    recordWbsId === payload.wbs_code_id
+    && readText(record.description) === payload.description
+    && Number.isFinite(quantity)
+    && Math.abs(quantity - payload.quantity) < 0.0001
+    && Number.isFinite(unitCost)
+    && Math.abs(unitCost - payload.unit_cost) < 0.005
+    && readText(record.uom).toLowerCase() === payload.uom.toLowerCase()
+  );
+}
+
+type CommitmentLineRemoval = {
+  id: string;
+  payload: CommitmentMakerOwnedLineItem["payload"];
+};
+
+function auditedCommitmentLineRemovals(
+  ownedLines: CommitmentMakerOwnedLineItem[],
+  records: UnknownRecord[],
+): CommitmentLineRemoval[] {
+  const removals = ownedLines.flatMap((ownedLine) => {
+    const idMatch = records.find((record) => readId(record) === ownedLine.id);
+    if (idMatch) return [{ id: ownedLine.id, payload: ownedLine.payload }];
+    const payloadMatches = records.filter((record) => commitmentLineMatchesPayload(ownedLine.payload, record));
+    if (payloadMatches.length > 1) {
+      throw new CommitmentMakerChangeOrderClaimError(
+        `Saved line "${ownedLine.payload.description}" has more than one exact match on the PO; no lines were deleted.`,
+      );
+    }
+    return payloadMatches.length === 1
+      ? [{ id: readId(payloadMatches[0]), payload: ownedLine.payload }]
+      : [];
+  });
+  if (new Set(removals.map((line) => line.id)).size !== removals.length) {
+    throw new CommitmentMakerChangeOrderClaimError(
+      "Two saved source lines resolve to the same PO line; no lines were deleted.",
+    );
+  }
+  return removals;
+}
+
+function historicalCommitmentLineRemovals(
+  lines: PlannedLine[],
+  records: UnknownRecord[],
+): CommitmentLineRemoval[] {
+  const removals = lines.flatMap((line) => {
+    const matches = records.filter((record) => commitmentLineMatches(line, record));
+    if (matches.length > 1) {
+      throw new CommitmentMakerChangeOrderClaimError(
+        `Line "${line.description}" has more than one exact match on the PO; no lines were deleted.`,
+      );
+    }
+    return matches.length === 1
+      ? [{ id: readId(matches[0]), payload: commitmentMakerLineCreatePayload(line) }]
+      : [];
+  });
+  if (removals.some((line) => !line.id) || new Set(removals.map((line) => line.id)).size !== removals.length) {
+    throw new CommitmentMakerChangeOrderClaimError(
+      "The historical source lines do not resolve to unique Procore line IDs; no lines were deleted.",
+    );
+  }
+  return removals;
 }
 
 function countExactCommitmentLines(lines: PlannedLine[], records: UnknownRecord[]): number {
@@ -1935,11 +2004,21 @@ async function handleDelete(request: NextRequest) {
     targetCommitmentId: removalTarget.targetCommitmentId,
   });
   const plannedLines = plan.groups[0].lineItems;
+  const expectedLineCount = Number(audit?.createdLineItems);
+  let ownedLines: CommitmentMakerOwnedLineItem[] | null = null;
+  try {
+    ownedLines = audit
+      ? commitmentMakerOwnedLineItemsFromAudit(audit, expectedLineCount)
+      : null;
+  } catch (error) {
+    return NextResponse.json({
+      error: `${error instanceof Error ? error.message : String(error)} No Procore changes were made.`,
+    }, { status: 409 });
+  }
   if (body.recoverRemoval === true) {
     if (removalTarget.status !== "removing") {
       return NextResponse.json({ error: "This PO assignment does not need recovery." }, { status: 409 });
     }
-    const expectedLineCount = Number(audit?.createdLineItems);
     if (!audit || Number(audit.reusedLineItems) !== 0 || !Number.isInteger(expectedLineCount) || expectedLineCount < 1) {
       return NextResponse.json({
         error: "The original successful PO append audit could not be verified. No Procore changes were made.",
@@ -1956,7 +2035,9 @@ async function handleDelete(request: NextRequest) {
       projectId,
       contractId: recoveryClaim.targetCommitmentId,
     });
-    const verifiedLineCount = countExactCommitmentLines(plannedLines, currentLines);
+    const verifiedLineCount = ownedLines
+      ? auditedCommitmentLineRemovals(ownedLines, currentLines).length
+      : countExactCommitmentLines(plannedLines, currentLines);
     if (verifiedLineCount !== expectedLineCount) {
       const recoveryError = `Recovery verified ${verifiedLineCount} of ${expectedLineCount} original PO lines. No Procore changes were made.`;
       await markCommitmentMakerChangeOrderRemovalUncertain({ ...recoveryClaim, error: recoveryError });
@@ -1989,7 +2070,10 @@ async function handleDelete(request: NextRequest) {
   if (
     !audit
     || Number(audit.reusedLineItems) !== 0
-    || Number(audit.createdLineItems) !== plannedLines.length
+    || !Number.isInteger(expectedLineCount)
+    || expectedLineCount < 1
+    || (!ownedLines && expectedLineCount !== plannedLines.length)
+    || (!ownedLines && readText(audit.fingerprint) !== plan.groups[0].fingerprint)
   ) {
     return NextResponse.json({
       error: "The original add did not create every matched PO line, so automatic removal is blocked.",
@@ -2022,21 +2106,27 @@ async function handleDelete(request: NextRequest) {
       projectId,
       contractId: removalClaim.targetCommitmentId,
     });
-    const lineIds = exactCommitmentLineIds(plannedLines, existingLines);
+    const removalLines = ownedLines
+      ? auditedCommitmentLineRemovals(ownedLines, existingLines)
+      : historicalCommitmentLineRemovals(plannedLines, existingLines);
+    const lineIds = removalLines.map((line) => line.id);
+    const alreadyAbsentLineItems = expectedLineCount - lineIds.length;
     contractPath = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
       projectId
     )}/commitment_contracts/${encodeURIComponent(removalClaim.targetCommitmentId)}`;
-    const draftResponse = await procoreJson({
-      path: contractPath,
-      method: "PATCH",
-      accessToken,
-      companyId,
-      body: { status: "Draft" },
-    });
-    if (!draftResponse.ok) {
-      throw new Error(`Procore would not move the PO to Draft (${draftResponse.status}); no lines were deleted.`);
+    if (lineIds.length > 0) {
+      const draftResponse = await procoreJson({
+        path: contractPath,
+        method: "PATCH",
+        accessToken,
+        companyId,
+        body: { status: "Draft" },
+      });
+      if (!draftResponse.ok) {
+        throw new Error(`Procore would not move the PO to Draft (${draftResponse.status}); no lines were deleted.`);
+      }
+      claimCanReturnToCompleted = false;
     }
-    claimCanReturnToCompleted = false;
 
     let deleteError = "";
     for (const lineId of lineIds) {
@@ -2077,7 +2167,7 @@ async function handleDelete(request: NextRequest) {
             method: "POST",
             accessToken,
             companyId,
-            body: commitmentMakerLineCreatePayload(plannedLines[index]),
+            body: removalLines[index].payload,
           });
           if (!response.ok) {
             throw new Error(
@@ -2091,7 +2181,10 @@ async function handleDelete(request: NextRequest) {
           projectId,
           contractId: removalClaim.targetCommitmentId,
         });
-        exactCommitmentLineIds(plannedLines, restoredLines);
+        const restoredLineCount = auditedCommitmentLineRemovals(removalLines, restoredLines).length;
+        if (restoredLineCount !== removalLines.length) {
+          throw new Error(`Only ${restoredLineCount} of ${removalLines.length} deleted PO lines could be verified after restoration.`);
+        }
         await restoreApprovedStatus();
       } catch (recoveryError) {
         const recoveryMessage = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
@@ -2103,11 +2196,13 @@ async function handleDelete(request: NextRequest) {
       );
     }
 
-    try {
-      await restoreApprovedStatus();
-    } catch (approvalError) {
-      const approvalMessage = approvalError instanceof Error ? approvalError.message : String(approvalError);
-      throw new Error(`All ${lineIds.length} target lines were deleted, but ${approvalMessage}`);
+    if (lineIds.length > 0) {
+      try {
+        await restoreApprovedStatus();
+      } catch (approvalError) {
+        const approvalMessage = approvalError instanceof Error ? approvalError.message : String(approvalError);
+        throw new Error(`All ${lineIds.length} target lines were deleted, but ${approvalMessage}`);
+      }
     }
 
     await completeCommitmentMakerChangeOrderRemoval(removalClaim);
@@ -2119,6 +2214,7 @@ async function handleDelete(request: NextRequest) {
         projectId,
         sourceChangeOrder,
         removedLineItems: lineIds.length,
+        alreadyAbsentLineItems,
         applicationId: removalClaim.applicationId,
       },
     });
@@ -2126,6 +2222,7 @@ async function handleDelete(request: NextRequest) {
       success: true,
       targetCommitmentId: removalClaim.targetCommitmentId,
       removedLineItems: lineIds.length,
+      alreadyAbsentLineItems,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

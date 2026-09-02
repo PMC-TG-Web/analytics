@@ -472,6 +472,7 @@ export default function CommitmentMakerPage() {
     setError("");
     setRemoveConfirmation(false);
     let removedLineItems = 0;
+    let alreadyAbsentLineItems = 0;
     try {
       const response = await fetch("/api/procore/commitments-live/maker", {
         method: "DELETE",
@@ -502,6 +503,7 @@ export default function CommitmentMakerPage() {
         throw new Error(text(asRecord(payload).error) || `Removal failed (${response.status}).`);
       }
       removedLineItems = Number(asRecord(payload).removedLineItems) || 0;
+      alreadyAbsentLineItems = Number(asRecord(payload).alreadyAbsentLineItems) || 0;
       setPreview(null);
       setResult(null);
       setConfirmed(false);
@@ -513,8 +515,11 @@ export default function CommitmentMakerPage() {
     }
 
     await callMaker("preview");
+    const absentMessage = alreadyAbsentLineItems > 0
+      ? ` ${alreadyAbsentLineItems} line${alreadyAbsentLineItems === 1 ? " was" : "s were"} already absent from the PO.`
+      : "";
     setCombineMessage(
-      `${removedLineItems} line${removedLineItems === 1 ? " was" : "s were"} deleted from ${targetLabel}. The change order can now be added again.`,
+      `${removedLineItems} line${removedLineItems === 1 ? " was" : "s were"} deleted from ${targetLabel}.${absentMessage} The change order can now be added again.`,
     );
   }
 

@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { getRequestUserEmail } from "@/lib/requestUser";
-import { buildProcoreItemUrl, nextCalendarDateKeys, PM_DASHBOARD_TIME_ZONE } from "@/lib/pmDashboard";
+import {
+  buildProcoreItemUrl,
+  dateKeyAfter,
+  nextBusinessDateKeys,
+  PM_DASHBOARD_TIME_ZONE,
+} from "@/lib/pmDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +43,8 @@ export async function GET(request: NextRequest) {
   if (!email) return jsonNoStore({ success: false, error: "Authentication required." }, { status: 401 });
 
   try {
+    const dateKeys = nextBusinessDateKeys(new Date(), 5);
+    const windowEndDateKey = dateKeyAfter(dateKeys.at(-1) || dateKeys[0]);
     const employee = await prisma.employee.findFirst({
       where: { email: { equals: email, mode: "insensitive" }, isActive: true },
       select: { firstName: true, lastName: true },
@@ -73,15 +80,22 @@ export async function GET(request: NextRequest) {
       WHERE i."company_id" = ${companyId}
         AND i."is_open" = true
         AND i."due_at" IS NOT NULL
-        AND i."due_at" < (
-          ((CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date + INTERVAL '5 days')
-          AT TIME ZONE 'America/New_York'
-        )
+        AND i."due_at" < (${windowEndDateKey}::date AT TIME ZONE 'America/New_York')
         AND (
           i."source_type" <> 'meeting'
           OR i."due_at" >= (
             (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date
             AT TIME ZONE 'America/New_York'
+          )
+        )
+        AND (
+          (
+            i."source_type" <> 'meeting'
+            AND (i."due_at" AT TIME ZONE 'America/New_York')::date
+              < (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date
+          )
+          OR (
+            EXTRACT(ISODOW FROM i."due_at" AT TIME ZONE 'America/New_York') BETWEEN 1 AND 5
           )
         )
         AND (
@@ -116,7 +130,7 @@ export async function GET(request: NextRequest) {
       },
       window: {
         timeZone: PM_DASHBOARD_TIME_ZONE,
-        dateKeys: nextCalendarDateKeys(new Date(), 5),
+        dateKeys,
       },
       latestSync: latestSync?.toISOString() || null,
       items: items.map((item) => ({

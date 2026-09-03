@@ -218,7 +218,7 @@ Shared calculations belong in modules such as `src/lib/costCodeSalesAnalytics.ts
 
 ### PM five-day work queue
 
-`/pm-dashboard` is a personal operational view for the signed-in project manager. It reads only the `pmc_action_items` PostgreSQL mirror and returns overdue open work plus items due during the next five America/New_York calendar days. Ownership is explicit: an RFI, Task Item, or Meeting is included when the user's normalized email appears in its Procore assignees/attendees, or when the canonical `pmc_projects.project_manager` value matches the employee's name or email.
+`/pm-dashboard` is a personal operational view for the signed-in project manager. It reads only the `pmc_action_items` PostgreSQL mirror and returns overdue open work plus items due during the next five America/New_York workdays, skipping Saturday and Sunday. Ownership is explicit: an RFI, Task Item, or Meeting is included when the user's normalized email appears in its Procore assignees/attendees, or when the canonical `pmc_projects.project_manager` value matches the employee's name or email.
 
 The five-minute Netlify scheduler dispatches `pm-dashboard-sync-background`, which rotates through active canonical projects via `pmc_action_item_sync_state`. `/api/cron/pm-dashboard` uses the service-account lane and centralized Procore client to fetch RFIs, Task Items, and Meetings, then idempotently upserts each successful source snapshot. An unavailable or failed Procore tool preserves its previous rows; a successful empty snapshot clears stale rows for that project and source. Page renders and `/api/pm-dashboard` never call Procore directly.
 

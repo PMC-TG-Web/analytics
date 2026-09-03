@@ -177,7 +177,7 @@ export default function PmDashboardPage() {
               <span className="h-2 w-2 rounded-full bg-teal-500" />
               Personal work queue
             </div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">My next 5 days</h1>
+            <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">My next 5 workdays</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">
               {data?.user?.name ? `${data.user.name} · ` : ""}Open RFIs, tasks, and upcoming meetings across your projects.
             </p>
@@ -211,7 +211,7 @@ export default function PmDashboardPage() {
           <>
             <section className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Work queue summary">
               {[
-                ["Open items", counts.total, "Overdue + next five days", "text-slate-950"],
+                ["Open items", counts.total, "Overdue + next five workdays", "text-slate-950"],
                 ["Overdue", counts.overdue, counts.overdue ? "Needs attention" : "Nothing overdue", counts.overdue ? "text-rose-700" : "text-emerald-700"],
                 ["Due today", counts.today, "Tasks, RFIs, and meetings", "text-teal-700"],
                 ["Meetings", counts.meetings, "Upcoming in this window", "text-violet-700"],

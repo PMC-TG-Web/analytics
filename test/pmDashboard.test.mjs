@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 
 import {
   buildProcoreItemUrl,
+  dateKeyAfter,
   isOpenPmItem,
-  nextCalendarDateKeys,
+  nextBusinessDateKeys,
   normalizePmActionItem,
 } from '../src/lib/pmDashboard.ts';
 
@@ -107,14 +108,22 @@ test('closed work is excluded while future meetings remain actionable', () => {
   assert.equal(isOpenPmItem('meeting', { is_cancelled: true }), false);
 });
 
-test('the dashboard produces five stable calendar-day keys across DST boundaries', () => {
-  assert.deepEqual(nextCalendarDateKeys(new Date('2026-10-31T16:00:00Z'), 5), [
-    '2026-10-31',
-    '2026-11-01',
+test('the dashboard produces five stable workday keys across weekends and DST boundaries', () => {
+  assert.deepEqual(nextBusinessDateKeys(new Date('2026-10-31T16:00:00Z'), 5), [
     '2026-11-02',
     '2026-11-03',
     '2026-11-04',
+    '2026-11-05',
+    '2026-11-06',
   ]);
+  assert.deepEqual(nextBusinessDateKeys(new Date('2026-09-04T16:00:00Z'), 5), [
+    '2026-09-04',
+    '2026-09-07',
+    '2026-09-08',
+    '2026-09-09',
+    '2026-09-10',
+  ]);
+  assert.equal(dateKeyAfter('2026-09-10'), '2026-09-11');
 });
 
 test('page, data API, and secret-authenticated sync route are protected', () => {

@@ -252,11 +252,25 @@ export function dateKeyInTimeZone(date: Date, timeZone = PM_DASHBOARD_TIME_ZONE)
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-export function nextCalendarDateKeys(now = new Date(), days = 5): string[] {
+export function nextBusinessDateKeys(now = new Date(), days = 5): string[] {
   const noonUtc = new Date(`${dateKeyInTimeZone(now)}T12:00:00Z`);
-  return Array.from({ length: Math.max(0, days) }, (_, index) => {
-    const date = new Date(noonUtc);
-    date.setUTCDate(date.getUTCDate() + index);
-    return date.toISOString().slice(0, 10);
-  });
+  const dateKeys: string[] = [];
+  const date = new Date(noonUtc);
+
+  while (dateKeys.length < Math.max(0, days)) {
+    const weekday = date.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) {
+      dateKeys.push(date.toISOString().slice(0, 10));
+    }
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+
+  return dateKeys;
+}
+
+export function dateKeyAfter(dateKey: string): string {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }

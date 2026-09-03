@@ -124,3 +124,8 @@ test('page, data API, and secret-authenticated sync route are protected', () => 
   assert.match(permissions, /prefix: '\/api\/pm-dashboard', permission: 'pm-dashboard'/);
   assert.match(middleware, /pathname === '\/api\/cron\/pm-dashboard'/);
 });
+
+test('the PM dashboard omits the global app navigation for the Procore side panel', () => {
+  const appChrome = readFileSync(new URL('../src/components/AppChrome.tsx', import.meta.url), 'utf8');
+  assert.match(appChrome, /NAV_HIDDEN_PREFIXES[\s\S]*"\/pm-dashboard"/);
+});

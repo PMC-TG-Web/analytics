@@ -276,6 +276,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/api/background/change-order-approvals' ||
     pathname === '/api/background/commitment-maker-tasks' ||
     pathname === '/api/background/pm-dashboard-sync' ||
+    pathname === '/api/background/calendar-sync' ||
     pathname === '/api/background/project-reconciliation';
   const isNetlifyScheduledSyncFunctionRoute =
     pathname === '/.netlify/functions/scheduled-sync' ||
@@ -463,7 +464,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/cron/nightly-structure/') ||
     pathname === '/api/cron/productivity-review-reminders' ||
     pathname === '/api/cron/timecard-notifications' ||
-    pathname === '/api/cron/pm-dashboard'
+    pathname === '/api/cron/pm-dashboard' ||
+    pathname === '/api/cron/calendar-sync'
   ) {
     return NextResponse.next();
   }

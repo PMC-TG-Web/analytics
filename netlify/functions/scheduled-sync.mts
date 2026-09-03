@@ -175,6 +175,21 @@ const handler = async () => {
       `[scheduled-sync] PM dashboard sync dispatched - status=${pmDashboardDispatch.status}`,
     );
 
+    const calendarDispatch = await fetch(
+      `${baseUrl}/api/background/calendar-sync`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-secret": syncSecret,
+        },
+        body: "{}",
+      },
+    );
+    console.log(
+      `[scheduled-sync] Outlook calendar sync dispatched - status=${calendarDispatch.status}`,
+    );
+
     let healthStatus: number | null = null;
     let healthBody: Record<string, unknown> | null = null;
     if (cadence.runHealthMonitor) {

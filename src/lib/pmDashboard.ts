@@ -4,6 +4,10 @@ export const DEFAULT_PROCORE_WEB_ORIGIN = "https://us02.procore.com";
 export const PM_ACTION_ITEM_TYPES = ["rfi", "task", "meeting"] as const;
 export type PmActionItemType = (typeof PM_ACTION_ITEM_TYPES)[number];
 
+/** Everything the dashboard renders: Procore action items plus mirrored Outlook events. */
+export const PM_DASHBOARD_ITEM_TYPES = [...PM_ACTION_ITEM_TYPES, "outlook"] as const;
+export type PmDashboardItemType = (typeof PM_DASHBOARD_ITEM_TYPES)[number];
+
 export type UnknownRecord = Record<string, unknown>;
 
 export type PmActionItemInput = {

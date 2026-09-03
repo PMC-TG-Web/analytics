@@ -2371,6 +2371,52 @@ model PmcActionItemSyncState {
   @@map("pmc_action_item_sync_state")
 }
 
+/// Read-only mirror of Outlook calendar events for PM dashboard users, filled by
+/// the Microsoft Graph calendar sync. Private events are stored as "Busy" with
+/// no location or attendees. Never written back to Exchange.
+model PmcCalendarEvent {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userEmail        String    @map("user_email")
+  graphEventId     String    @map("graph_event_id")
+  iCalUid          String?   @map("ical_uid")
+  seriesMasterId   String?   @map("series_master_id")
+  subject          String
+  location         String?
+  startsAt         DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt           DateTime  @map("ends_at") @db.Timestamptz(6)
+  isAllDay         Boolean   @default(false) @map("is_all_day")
+  isCancelled      Boolean   @default(false) @map("is_cancelled")
+  showAs           String?   @map("show_as")
+  sensitivity      String?
+  organizerEmail   String?   @map("organizer_email")
+  attendeeEmails   String[]  @default([]) @map("attendee_emails")
+  onlineMeetingUrl String?   @map("online_meeting_url")
+  webLink          String?   @map("web_link")
+  syncedAt         DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userEmail, graphEventId])
+  @@index([userEmail, startsAt])
+  @@map("pmc_calendar_events")
+}
+
+/// Per-mailbox checkpoint for the Graph calendar sync. access_denied_at records
+/// an Exchange application-access-policy block so non-members back off for a day.
+model PmcCalendarSyncState {
+  userEmail      String    @id @map("user_email")
+  lastAttemptAt  DateTime? @map("last_attempt_at") @db.Timestamptz(6)
+  lastSuccessAt  DateTime? @map("last_success_at") @db.Timestamptz(6)
+  lastError      String?   @map("last_error")
+  accessDeniedAt DateTime? @map("access_denied_at") @db.Timestamptz(6)
+  eventCount     Int       @default(0) @map("event_count")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([lastAttemptAt])
+  @@map("pmc_calendar_sync_state")
+}
+
 /// Canonical estimating/bid-board record keyed by Procore bid board project ID.
 /// Some estimating jobs do not have a Procore project ID yet, so they live here
 /// until Procore links them to a project.

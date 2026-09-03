@@ -32,6 +32,22 @@ type DashboardRow = {
   project_manager: string | null;
 };
 
+type CalendarRow = {
+  id: string;
+  graph_event_id: string;
+  subject: string;
+  location: string | null;
+  starts_at: Date;
+  ends_at: Date;
+  is_all_day: boolean;
+  show_as: string | null;
+  sensitivity: string | null;
+  attendee_emails: string[];
+  online_meeting_url: string | null;
+  web_link: string | null;
+  synced_at: Date;
+};
+
 function jsonNoStore(body: unknown, init?: ResponseInit) {
   const response = NextResponse.json(body, init);
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -113,6 +129,35 @@ export async function GET(request: NextRequest) {
       if (!latest || item.synced_at > latest) return item.synced_at;
       return latest;
     }, null);
+
+    // Outlook mirror: only the signed-in user's own calendar, same window.
+    // Cancelled and "free" (FYI/tentative-free) blocks are not work items.
+    const calendarEvents = await prisma.$queryRaw<CalendarRow[]>`
+      SELECT
+        c."id", c."graph_event_id", c."subject", c."location", c."starts_at", c."ends_at",
+        c."is_all_day", c."show_as", c."sensitivity", c."attendee_emails",
+        c."online_meeting_url", c."web_link", c."synced_at"
+      FROM "pmc_calendar_events" c
+      WHERE c."user_email" = ${email.toLowerCase()}
+        AND c."is_cancelled" = false
+        AND COALESCE(c."show_as", '') <> 'free'
+        AND c."starts_at" < (${windowEndDateKey}::date AT TIME ZONE 'America/New_York')
+        AND c."ends_at" > (
+          (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date
+          AT TIME ZONE 'America/New_York'
+        )
+        AND EXTRACT(ISODOW FROM c."starts_at" AT TIME ZONE 'America/New_York') BETWEEN 1 AND 5
+      ORDER BY c."starts_at" ASC, c."subject" ASC
+    `.catch((calendarError) => {
+      // The mirror is optional; a missing table or sync outage must not hide Procore work.
+      console.error("PM dashboard calendar mirror unavailable:", calendarError);
+      return [] as CalendarRow[];
+    });
+    const calendarState = calendarEvents.length
+      ? await prisma.$queryRaw<Array<{ latest: Date | null }>>`
+          SELECT "last_success_at" AS "latest" FROM "pmc_calendar_sync_state" WHERE "user_email" = ${email.toLowerCase()}
+        `.catch(() => [] as Array<{ latest: Date | null }>)
+      : [];
     const latestState = await prisma.$queryRaw<Array<{ latest: Date | null }>>`
       SELECT MAX("last_success_at") AS "latest"
       FROM "pmc_action_item_sync_state"
@@ -133,7 +178,12 @@ export async function GET(request: NextRequest) {
         dateKeys,
       },
       latestSync: latestSync?.toISOString() || null,
-      items: items.map((item) => ({
+      calendar: {
+        connected: calendarEvents.length > 0 || Boolean(calendarState[0]?.latest),
+        latestSync: calendarState[0]?.latest?.toISOString() || null,
+      },
+      items: [
+        ...items.map((item) => ({
         id: item.id,
         type: item.source_type,
         sourceId: item.source_id,
@@ -160,6 +210,23 @@ export async function GET(request: NextRequest) {
           manager: item.project_manager,
         },
       })),
+        ...calendarEvents.map((event) => ({
+          id: `outlook:${event.id}`,
+          type: "outlook" as const,
+          sourceId: event.graph_event_id,
+          number: null,
+          title: event.subject,
+          description: event.location,
+          status: event.is_all_day ? "All day" : (event.show_as && event.show_as !== "busy" ? event.show_as : null),
+          dueAt: event.starts_at.toISOString(),
+          startsAt: event.starts_at.toISOString(),
+          endsAt: event.ends_at.toISOString(),
+          assigneeEmails: event.attendee_emails,
+          assigneeNames: [],
+          sourceUrl: event.online_meeting_url || event.web_link,
+          project: null,
+        })),
+      ],
     });
   } catch (error) {
     console.error("Failed to load PM dashboard:", error);

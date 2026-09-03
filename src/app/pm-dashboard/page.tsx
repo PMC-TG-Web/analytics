@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { dateKeyInTimeZone, PM_DASHBOARD_TIME_ZONE, type PmActionItemType } from "@/lib/pmDashboard";
+import { dateKeyInTimeZone, PM_DASHBOARD_TIME_ZONE, type PmDashboardItemType } from "@/lib/pmDashboard";
 
 type DashboardItem = {
   id: string;
-  type: PmActionItemType;
+  type: PmDashboardItemType;
   sourceId: string;
   number: string | null;
   title: string;
@@ -18,7 +18,7 @@ type DashboardItem = {
   assigneeEmails: string[];
   assigneeNames: string[];
   sourceUrl: string | null;
-  project: { id: string; number: string | null; name: string; manager: string | null };
+  project: { id: string; number: string | null; name: string; manager: string | null } | null;
 };
 
 type DashboardResponse = {
@@ -27,14 +27,19 @@ type DashboardResponse = {
   user?: { email: string; name: string };
   window?: { timeZone: string; dateKeys: string[] };
   latestSync?: string | null;
+  calendar?: { connected: boolean; latestSync: string | null };
   items?: DashboardItem[];
 };
 
-const TYPE_META: Record<PmActionItemType, { label: string; short: string; color: string; dot: string }> = {
+const TYPE_META: Record<PmDashboardItemType, { label: string; short: string; color: string; dot: string }> = {
   rfi: { label: "RFIs", short: "R", color: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
   task: { label: "Tasks", short: "T", color: "border-blue-200 bg-blue-50 text-blue-800", dot: "bg-blue-500" },
   meeting: { label: "Meetings", short: "M", color: "border-violet-200 bg-violet-50 text-violet-800", dot: "bg-violet-500" },
+  outlook: { label: "Outlook", short: "O", color: "border-sky-200 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
 };
+
+// Timed items (Procore meetings, Outlook events) are never "overdue"; they simply pass.
+const TIMED_TYPES: ReadonlySet<PmDashboardItemType> = new Set(["meeting", "outlook"]);
 
 function itemDateKey(item: DashboardItem): string {
   return dateKeyInTimeZone(new Date(item.dueAt), PM_DASHBOARD_TIME_ZONE);
@@ -54,16 +59,22 @@ function formatDay(dateKey: string, todayKey: string): { eyebrow: string; title:
 }
 
 function formatTime(item: DashboardItem): string {
-  if (item.type !== "meeting" || !item.startsAt) return "Due";
-  return new Intl.DateTimeFormat("en-US", {
+  if (!TIMED_TYPES.has(item.type) || !item.startsAt) return "Due";
+  if (item.type === "outlook" && item.status === "All day") return "All day";
+  const formatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: PM_DASHBOARD_TIME_ZONE,
-  }).format(new Date(item.startsAt));
+  });
+  const start = formatter.format(new Date(item.startsAt));
+  return item.type === "outlook" && item.endsAt ? `${start} – ${formatter.format(new Date(item.endsAt))}` : start;
 }
 
 function ItemCard({ item, overdue = false }: { item: DashboardItem; overdue?: boolean }) {
   const meta = TYPE_META[item.type];
+  const subtitle = item.project
+    ? `${item.project.number ? `${item.project.number} · ` : ""}${item.project.name}`
+    : item.description || "Outlook calendar";
   const content = (
     <article className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
       <div className="flex items-start gap-2.5">
@@ -75,9 +86,7 @@ function ItemCard({ item, overdue = false }: { item: DashboardItem; overdue?: bo
             <p className="line-clamp-2 text-sm font-extrabold leading-5 text-slate-900">{item.title}</p>
             {item.sourceUrl && <span className="text-sm text-slate-400 transition group-hover:text-teal-700" aria-hidden="true">↗</span>}
           </div>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
-            {item.project.number ? `${item.project.number} · ` : ""}{item.project.name}
-          </p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">{subtitle}</p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide">
@@ -85,13 +94,14 @@ function ItemCard({ item, overdue = false }: { item: DashboardItem; overdue?: bo
           {overdue ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: PM_DASHBOARD_TIME_ZONE }).format(new Date(item.dueAt)) : formatTime(item)}
         </span>
         {item.number && <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">#{item.number}</span>}
-        {item.status && <span className="truncate rounded-full bg-slate-100 px-2 py-1 text-slate-600">{item.status}</span>}
+        {item.status && item.status !== "All day" && <span className="truncate rounded-full bg-slate-100 px-2 py-1 text-slate-600">{item.status}</span>}
       </div>
     </article>
   );
 
+  const linkLabel = item.type === "outlook" ? `Open ${item.title} in Outlook` : `Open ${item.title} in Procore`;
   return item.sourceUrl ? (
-    <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="block no-underline" aria-label={`Open ${item.title} in Procore`}>
+    <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="block no-underline" aria-label={linkLabel}>
       {content}
     </a>
   ) : content;
@@ -119,7 +129,7 @@ export default function PmDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTypes, setActiveTypes] = useState<Set<PmActionItemType>>(new Set(["rfi", "task", "meeting"]));
+  const [activeTypes, setActiveTypes] = useState<Set<PmDashboardItemType>>(new Set(["rfi", "task", "meeting", "outlook"]));
   const [projectId, setProjectId] = useState("all");
 
   const load = useCallback(async (refresh = false) => {
@@ -145,19 +155,19 @@ export default function PmDashboardPage() {
   const dateKeys = data?.window?.dateKeys || [];
   const todayKey = dateKeys[0] || dateKeyInTimeZone(new Date(), PM_DASHBOARD_TIME_ZONE);
   const filtered = useMemo(() => items.filter((item) => (
-    activeTypes.has(item.type) && (projectId === "all" || item.project.id === projectId)
+    activeTypes.has(item.type) && (projectId === "all" || item.project?.id === projectId)
   )), [activeTypes, items, projectId]);
-  const overdue = filtered.filter((item) => item.type !== "meeting" && itemDateKey(item) < todayKey);
-  const projects = useMemo(() => Array.from(new Map(items.map((item) => [item.project.id, item.project])).values())
+  const overdue = filtered.filter((item) => !TIMED_TYPES.has(item.type) && itemDateKey(item) < todayKey);
+  const projects = useMemo(() => Array.from(new Map(items.flatMap((item) => (item.project ? [[item.project.id, item.project] as const] : []))).values())
     .sort((a, b) => a.name.localeCompare(b.name)), [items]);
   const counts = {
     total: filtered.length,
     overdue: overdue.length,
     today: filtered.filter((item) => itemDateKey(item) === todayKey).length,
-    meetings: filtered.filter((item) => item.type === "meeting").length,
+    meetings: filtered.filter((item) => TIMED_TYPES.has(item.type)).length,
   };
 
-  const toggleType = (type: PmActionItemType) => {
+  const toggleType = (type: PmDashboardItemType) => {
     setActiveTypes((current) => {
       const next = new Set(current);
       if (next.has(type) && next.size > 1) next.delete(type);
@@ -179,7 +189,7 @@ export default function PmDashboardPage() {
             </div>
             <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">My next 5 workdays</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">
-              {data?.user?.name ? `${data.user.name} · ` : ""}Open RFIs, tasks, and upcoming meetings across your projects.
+              {data?.user?.name ? `${data.user.name} · ` : ""}Open RFIs, tasks, and upcoming meetings across your projects{data?.calendar?.connected ? ", plus your Outlook calendar" : ""}.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -214,7 +224,7 @@ export default function PmDashboardPage() {
                 ["Open items", counts.total, "Overdue + next five workdays", "text-slate-950"],
                 ["Overdue", counts.overdue, counts.overdue ? "Needs attention" : "Nothing overdue", counts.overdue ? "text-rose-700" : "text-emerald-700"],
                 ["Due today", counts.today, "Tasks, RFIs, and meetings", "text-teal-700"],
-                ["Meetings", counts.meetings, "Upcoming in this window", "text-violet-700"],
+                ["Meetings & events", counts.meetings, "Upcoming in this window", "text-violet-700"],
               ].map(([label, value, detail, color]) => (
                 <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
@@ -226,7 +236,7 @@ export default function PmDashboardPage() {
 
             <section className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2" aria-label="Filter item types">
-                {(Object.keys(TYPE_META) as PmActionItemType[]).map((type) => {
+                {(Object.keys(TYPE_META) as PmDashboardItemType[]).map((type) => {
                   const active = activeTypes.has(type);
                   const meta = TYPE_META[type];
                   const count = items.filter((item) => item.type === type).length;

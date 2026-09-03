@@ -13,6 +13,7 @@ const handler = async (request: Request) => {
   let failed = 0;
   let skippedReason: string | null = null;
   let rateLimited = false;
+  let busyRetries = 0;
   const errors: unknown[] = [];
 
   while (Date.now() < deadline) {
@@ -29,11 +30,18 @@ const handler = async (request: Request) => {
       errors.push(result?.error || `PM dashboard sync returned ${response.status}`);
       break;
     }
-    // Another worker holds the lease or Procore is cooling down: yield this tick.
     if (result?.skipped === true) {
+      // The actuals worker re-acquires the shared lease between projects, so a
+      // brief bounded wait lets this sweep slip in; a cooldown means stop now.
+      if (result?.reason === "worker_busy" && busyRetries < 20) {
+        busyRetries += 1;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        continue;
+      }
       skippedReason = String(result?.reason || "skipped");
       break;
     }
+    busyRetries = 0;
     if (result?.rateLimited === true) {
       rateLimited = true;
       break;

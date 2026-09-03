@@ -138,3 +138,16 @@ test('the PM dashboard omits the global app navigation for the Procore side pane
   const appChrome = readFileSync(new URL('../src/components/AppChrome.tsx', import.meta.url), 'utf8');
   assert.match(appChrome, /NAV_HIDDEN_PREFIXES[\s\S]*"\/pm-dashboard"/);
 });
+
+test('the PM dashboard uses a verified Procore user session when Auth0 is absent', () => {
+  const middleware = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
+  const callback = readFileSync(new URL('../src/app/api/auth/procore/callback/route.ts', import.meta.url), 'utf8');
+  const requestUser = readFileSync(new URL('../src/lib/requestUser.ts', import.meta.url), 'utf8');
+
+  assert.match(middleware, /verifyProcoreUserSessionCookieValue/);
+  assert.match(middleware, /pathname === '\/pm-dashboard'/);
+  assert.match(middleware, /checkDatabasePermission\(request, requiredPermissions\)/);
+  assert.match(callback, /\/rest\/v1\.0\/me/);
+  assert.match(callback, /createProcoreUserSessionCookieValue/);
+  assert.match(requestUser, /PROCORE_USER_SESSION_COOKIE/);
+});

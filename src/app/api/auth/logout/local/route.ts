@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { PROCORE_USER_SESSION_COOKIE } from '@/lib/procoreUserSession';
 
 function buildLogoutCookieResponse() {
   const response = NextResponse.json({ success: true });
@@ -10,6 +11,7 @@ function buildLogoutCookieResponse() {
     'procore_refresh_token',
     'procore_company_id',
     'procore_scope',
+    PROCORE_USER_SESSION_COOKIE,
   ];
 
   cookieNames.forEach((cookieName) => {

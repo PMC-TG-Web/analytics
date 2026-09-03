@@ -1,7 +1,12 @@
 // OAuth callback handler for Procore
 import { NextResponse } from "next/server";
-import { getAccessToken, getProcoreRedirectUri } from "@/lib/procore";
+import { getAccessToken, getProcoreRedirectUri, procoreConfig } from "@/lib/procore";
 import { cookies } from "next/headers";
+import {
+  createProcoreUserSessionCookieValue,
+  getProcoreUserSessionCookieOptions,
+  PROCORE_USER_SESSION_COOKIE,
+} from "@/lib/procoreUserSession";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -53,6 +58,25 @@ export async function GET(request: Request) {
     
     // Exchange the authorization code for an access token
     const tokenResponse = await getAccessToken(code, redirectUri);
+    const sessionMaxAge = Math.max(1, tokenResponse.expires_in || 7200);
+    const meResponse = await fetch(`${procoreConfig.apiUrl}/rest/v1.0/me`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${tokenResponse.access_token}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+    const procoreUser = meResponse.ok
+      ? await meResponse.json().catch(() => null) as Record<string, unknown> | null
+      : null;
+    const procoreUserEmail = String(
+      procoreUser?.login || procoreUser?.email || procoreUser?.email_address || "",
+    ).trim().toLowerCase();
+    const procoreUserSession = await createProcoreUserSessionCookieValue(
+      procoreUserEmail,
+      sessionMaxAge,
+    );
 
     // Store the tokens in cookies (session storage)
     // Store access token (expires in 2 hours by default)
@@ -61,8 +85,18 @@ export async function GET(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
-      maxAge: tokenResponse.expires_in || 7200, // 2 hours default
+      maxAge: sessionMaxAge,
     });
+
+    if (procoreUserSession) {
+      cookieStore.set(
+        PROCORE_USER_SESSION_COOKIE,
+        procoreUserSession,
+        getProcoreUserSessionCookieOptions(sessionMaxAge),
+      );
+    } else {
+      cookieStore.delete(PROCORE_USER_SESSION_COOKIE);
+    }
 
     // Store refresh token if provided (expires in 30 days typically)
     if (tokenResponse.refresh_token) {
@@ -80,7 +114,7 @@ export async function GET(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
-      maxAge: tokenResponse.expires_in || 7200,
+      maxAge: sessionMaxAge,
     });
 
     const grantedScope = String(tokenResponse.scope || "").trim();
@@ -90,7 +124,7 @@ export async function GET(request: Request) {
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         path: "/",
-        maxAge: tokenResponse.expires_in || 7200,
+        maxAge: sessionMaxAge,
       });
     } else {
       cookieStore.delete("procore_scope");

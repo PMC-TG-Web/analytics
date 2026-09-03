@@ -1,5 +1,9 @@
 import { NextRequest } from 'next/server';
 import { auth0 } from '@/lib/auth0';
+import {
+  PROCORE_USER_SESSION_COOKIE,
+  verifyProcoreUserSessionCookieValue,
+} from '@/lib/procoreUserSession';
 
 export async function getRequestUserEmail(request: NextRequest): Promise<string | null> {
   const isDev = process.env.NODE_ENV !== 'production';
@@ -18,7 +22,13 @@ export async function getRequestUserEmail(request: NextRequest): Promise<string 
   }
 
   const session = await auth0.getSession(request);
-  return session?.user?.email?.trim().toLowerCase() || null;
+  const auth0Email = session?.user?.email?.trim().toLowerCase();
+  if (auth0Email) return auth0Email;
+
+  const procoreSession = await verifyProcoreUserSessionCookieValue(
+    request.cookies.get(PROCORE_USER_SESSION_COOKIE)?.value,
+  );
+  return procoreSession?.email || null;
 }
 
 /**

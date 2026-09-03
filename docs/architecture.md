@@ -82,6 +82,8 @@ The important boundary is that interactive analytics reads use PostgreSQL. Proco
 
 `src/lib/auth0.ts` configures the Auth0 client. `middleware.ts` enforces sessions for normal pages and APIs, returns JSON errors to unauthorized API callers, and redirects browser requests to login where appropriate. Session cookies use `SameSite=None` and `Secure` so the application can operate inside an allowed Procore iframe.
 
+`/pm-dashboard` also accepts a short-lived signed local identity established by the existing Procore OAuth callback. The callback resolves the authenticated user through Procore's `/rest/v1.0/me` endpoint; middleware still checks the local `pm-dashboard` permission before allowing the page or its data API. A request without either an Auth0 session or that verified Procore identity is redirected into Procore OAuth rather than receiving anonymous access.
+
 ### Permission resolution
 
 The access path is:

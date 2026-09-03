@@ -20,6 +20,10 @@ import {
   COMMITMENT_MAKER_PROJECT_HEADER,
   verifyCommitmentMakerAccessToken,
 } from '@/lib/commitmentMakerAccess';
+import {
+  PROCORE_USER_SESSION_COOKIE,
+  verifyProcoreUserSessionCookieValue,
+} from '@/lib/procoreUserSession';
 
 const API_RATE_LIMIT = 300;
 const API_RATE_WINDOW_MS = 60 * 1000;
@@ -204,6 +208,10 @@ function isAnalyticsMobileBypassPath(pathname: string): boolean {
   }
 
   return pathname === '/api/analytics/commitment-productivity' || pathname.startsWith('/api/analytics/commitment-productivity/');
+}
+
+function isPmDashboardPath(pathname: string): boolean {
+  return pathname === '/pm-dashboard' || pathname === '/api/pm-dashboard';
 }
 
 async function checkDatabasePermission(request: NextRequest, permissions: string[]): Promise<PermissionCheckResult> {
@@ -512,7 +520,57 @@ export async function middleware(request: NextRequest) {
   }
 
   const session = await auth0.getSession(request);
+  const procoreUserSession = !session && isPmDashboardPath(pathname)
+    ? await verifyProcoreUserSessionCookieValue(
+        request.cookies.get(PROCORE_USER_SESSION_COOKIE)?.value,
+      )
+    : null;
+
+  if (procoreUserSession && request.method.toUpperCase() === 'GET') {
+    const requiredPermissions = resolvePermissionsForRequest(request);
+    const cachedPermissions = await verifyPermissionCookieValue(
+      request.cookies.get(PERMISSION_COOKIE_NAME)?.value,
+      procoreUserSession.email,
+    );
+    const cachedAllowed = cachedPermissions?.permissions.some(
+      (permission) => requiredPermissions.some(
+        (requiredPermission) => permission.toLowerCase() === requiredPermission.toLowerCase(),
+      ),
+    ) === true;
+    const permissionCheck = cachedAllowed
+      ? { allowed: true, permissionsCookie: null }
+      : await checkDatabasePermission(request, requiredPermissions);
+
+    if (!permissionCheck.allowed) {
+      if (isApiRoute) {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden', requiredPermissions },
+          { status: 403 },
+        );
+      }
+
+      const forbiddenUrl = new URL('/forbidden', request.url);
+      forbiddenUrl.searchParams.set('from', `${pathname}${request.nextUrl.search}`);
+      forbiddenUrl.searchParams.set('permission', requiredPermissions.join(','));
+      return NextResponse.redirect(forbiddenUrl);
+    }
+
+    const response = NextResponse.next();
+    if (apiRateLimit) {
+      response.headers.set('X-RateLimit-Limit', String(apiRateLimit.limit));
+      response.headers.set('X-RateLimit-Remaining', String(apiRateLimit.remaining));
+      response.headers.set('X-RateLimit-Reset', String(Math.floor(apiRateLimit.resetAt / 1000)));
+    }
+    return applyPermissionCookie(response, permissionCheck.permissionsCookie || null);
+  }
+
   if (!session) {
+    if (request.method.toUpperCase() === 'GET' && pathname === '/pm-dashboard') {
+      const procoreLoginUrl = new URL('/api/auth/procore/login', request.url);
+      procoreLoginUrl.searchParams.set('returnTo', `${pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(procoreLoginUrl);
+    }
+
     if (request.method.toUpperCase() === 'GET' && (pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
       if (isTrustedProcoreEntryRequest(request)) {
         const response = NextResponse.next();

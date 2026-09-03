@@ -222,6 +222,8 @@ Shared calculations belong in modules such as `src/lib/costCodeSalesAnalytics.ts
 
 The five-minute Netlify scheduler dispatches `pm-dashboard-sync-background`, which rotates through active canonical projects via `pmc_action_item_sync_state`. `/api/cron/pm-dashboard` uses the service-account lane and centralized Procore client to fetch RFIs, Task Items, and Meetings, then idempotently upserts each successful source snapshot. An unavailable or failed Procore tool preserves its previous rows; a successful empty snapshot clears stale rows for that project and source. Page renders and `/api/pm-dashboard` never call Procore directly.
 
+Each dashboard card resolves to the exact Procore record. Procore-supplied deep links are preserved when they point to a Procore host; Task Item and Meeting links are generated from the canonical project and source IDs when the API omits them. `PROCORE_WEB_ORIGIN` can override the default `https://us02.procore.com` tenant origin.
+
 ## Scheduling
 
 Scheduling currently spans three representations:

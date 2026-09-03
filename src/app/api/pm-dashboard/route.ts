@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { getRequestUserEmail } from "@/lib/requestUser";
-import { nextCalendarDateKeys, PM_DASHBOARD_TIME_ZONE } from "@/lib/pmDashboard";
+import { buildProcoreItemUrl, nextCalendarDateKeys, PM_DASHBOARD_TIME_ZONE } from "@/lib/pmDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +132,13 @@ export async function GET(request: NextRequest) {
         endsAt: item.ends_at?.toISOString() || null,
         assigneeEmails: item.assignee_emails,
         assigneeNames: item.assignee_names,
-        sourceUrl: item.source_url,
+        sourceUrl: buildProcoreItemUrl({
+          sourceType: item.source_type as "rfi" | "task" | "meeting",
+          projectId: item.procore_project_id,
+          sourceId: item.source_id,
+          existingUrl: item.source_url,
+          procoreWebOrigin: process.env.PROCORE_WEB_ORIGIN,
+        }),
         project: {
           id: item.procore_project_id,
           number: item.project_number,

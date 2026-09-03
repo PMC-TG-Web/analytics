@@ -199,6 +199,8 @@ async function readSource(params: {
       .map((record) => normalizePmActionItem({
         sourceType: params.sourceType,
         record,
+        projectId: params.project.procoreProjectId,
+        procoreWebOrigin: process.env.PROCORE_WEB_ORIGIN,
         memberDirectory: directory,
       }))
       .filter((item): item is PmActionItemInput => item !== null),

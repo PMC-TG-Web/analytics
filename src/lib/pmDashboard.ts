@@ -1,4 +1,5 @@
 export const PM_DASHBOARD_TIME_ZONE = "America/New_York";
+export const DEFAULT_PROCORE_WEB_ORIGIN = "https://us02.procore.com";
 
 export const PM_ACTION_ITEM_TYPES = ["rfi", "task", "meeting"] as const;
 export type PmActionItemType = (typeof PM_ACTION_ITEM_TYPES)[number];
@@ -49,6 +50,45 @@ function unique(values: string[]): string[] {
 function normalizeEmail(value: unknown): string {
   const email = text(value).toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+function safeProcoreUrl(value: unknown): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const hostname = url.hostname.toLowerCase();
+    return url.protocol === "https:" && (hostname === "procore.com" || hostname.endsWith(".procore.com"))
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildProcoreItemUrl(params: {
+  sourceType: PmActionItemType;
+  projectId: unknown;
+  sourceId: unknown;
+  existingUrl?: unknown;
+  procoreWebOrigin?: unknown;
+}): string | null {
+  const existingUrl = safeProcoreUrl(params.existingUrl);
+  if (existingUrl) return existingUrl;
+
+  const projectId = text(params.projectId);
+  const sourceId = text(params.sourceId);
+  if (!projectId || !sourceId) return null;
+
+  const configuredOrigin = safeProcoreUrl(params.procoreWebOrigin);
+  const origin = configuredOrigin ? new URL(configuredOrigin).origin : DEFAULT_PROCORE_WEB_ORIGIN;
+  const projectPath = `/${encodeURIComponent(projectId)}/project`;
+  const itemPath = params.sourceType === "rfi"
+    ? `${projectPath}/rfi/show/${encodeURIComponent(sourceId)}`
+    : params.sourceType === "task"
+      ? `${projectPath}/task_items/${encodeURIComponent(sourceId)}`
+      : `${projectPath}/meetings/${encodeURIComponent(sourceId)}`;
+  return new URL(itemPath, origin).toString();
 }
 
 function memberIdentity(value: unknown, directory: Map<string, MemberIdentity>): MemberIdentity | null {
@@ -145,6 +185,8 @@ function sourceMemberFields(sourceType: PmActionItemType): string[] {
 export function normalizePmActionItem(params: {
   sourceType: PmActionItemType;
   record: UnknownRecord;
+  projectId?: unknown;
+  procoreWebOrigin?: unknown;
   memberDirectory?: Map<string, MemberIdentity>;
 }): PmActionItemInput | null {
   const { sourceType, record } = params;
@@ -163,7 +205,13 @@ export function normalizePmActionItem(params: {
   const number = firstText(record, ["number", "rfi_number", "position"]);
   const title = firstText(record, ["title", "subject", "name"])
     || `${sourceType === "rfi" ? "RFI" : sourceType === "meeting" ? "Meeting" : "Task"}${number ? ` ${number}` : ""}`;
-  const sourceUrl = firstText(record, ["url", "link", "web_url"]);
+  const sourceUrl = buildProcoreItemUrl({
+    sourceType,
+    projectId: params.projectId,
+    sourceId,
+    existingUrl: firstText(record, ["url", "link", "web_url"]),
+    procoreWebOrigin: params.procoreWebOrigin,
+  });
 
   return {
     sourceType,
@@ -178,7 +226,7 @@ export function normalizePmActionItem(params: {
     assigneeEmails,
     assigneeNames,
     isOpen: isOpenPmItem(sourceType, record),
-    sourceUrl: /^https?:\/\//i.test(sourceUrl) ? sourceUrl : null,
+    sourceUrl,
     payload: record,
   };
 }

@@ -3,14 +3,52 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  buildProcoreItemUrl,
   isOpenPmItem,
   nextCalendarDateKeys,
   normalizePmActionItem,
 } from '../src/lib/pmDashboard.ts';
 
+test('each dashboard item resolves to its exact Procore record', () => {
+  assert.equal(
+    buildProcoreItemUrl({ sourceType: 'rfi', projectId: 123, sourceId: 81 }),
+    'https://us02.procore.com/123/project/rfi/show/81',
+  );
+  assert.equal(
+    buildProcoreItemUrl({ sourceType: 'task', projectId: 123, sourceId: 42 }),
+    'https://us02.procore.com/123/project/task_items/42',
+  );
+  assert.equal(
+    buildProcoreItemUrl({ sourceType: 'meeting', projectId: 123, sourceId: 90 }),
+    'https://us02.procore.com/123/project/meetings/90',
+  );
+});
+
+test('Procore-supplied deep links win while unrelated meeting links are ignored', () => {
+  assert.equal(
+    buildProcoreItemUrl({
+      sourceType: 'rfi',
+      projectId: 123,
+      sourceId: 81,
+      existingUrl: 'https://us02.procore.com/123/project/rfi/show/81?view=compact',
+    }),
+    'https://us02.procore.com/123/project/rfi/show/81?view=compact',
+  );
+  assert.equal(
+    buildProcoreItemUrl({
+      sourceType: 'meeting',
+      projectId: 123,
+      sourceId: 90,
+      existingUrl: 'https://meet.example.com/video-call',
+    }),
+    'https://us02.procore.com/123/project/meetings/90',
+  );
+});
+
 test('task normalization resolves assignee IDs through the project directory', () => {
   const item = normalizePmActionItem({
     sourceType: 'task',
+    projectId: 123,
     record: {
       id: 42,
       title: 'Confirm anchor layout',
@@ -30,6 +68,7 @@ test('task normalization resolves assignee IDs through the project directory', (
   assert.deepEqual(item.assigneeNames, ['Pat Manager', 'Casey Manager']);
   assert.equal(item.dueAt?.toISOString(), '2026-09-03T12:00:00.000Z');
   assert.equal(item.isOpen, true);
+  assert.equal(item.sourceUrl, 'https://us02.procore.com/123/project/task_items/42');
 });
 
 test('RFI and meeting normalization use their manager and attendee identities', () => {

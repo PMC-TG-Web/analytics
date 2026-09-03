@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   for (const project of projects) {
     const result = await withProcoreLiveApiBypassForSyncSecret(request, () => syncPmDashboardProject(project));
     results.push(result);
-    if (result.errors.some((entry) => /429|rate limit|cooldown/i.test(entry.error))) {
+    if (result.rateLimited) {
       rateLimited = true;
       break;
     }

@@ -380,12 +380,17 @@ export async function syncPmDashboardActionItem(
   return { outcome: "upserted", item };
 }
 
+function isRateLimitMessage(message: string): boolean {
+  return /\b429\b|rate limit|cooldown/i.test(message);
+}
+
 export async function syncPmDashboardProject(project: SyncProject) {
   const attemptedAt = new Date();
   const token = await getClientCredentialsToken();
   const memberDirectory = await companyMemberDirectory(project.companyId);
   const sourceResults: SourceResult[] = [];
   const errors: Array<{ sourceType: PmActionItemType; error: string }> = [];
+  let rateLimited = false;
 
   for (const sourceType of ["rfi", "task", "meeting"] as const) {
     try {
@@ -393,10 +398,17 @@ export async function syncPmDashboardProject(project: SyncProject) {
       await persistSource(project, result);
       sourceResults.push(result);
     } catch (error) {
-      errors.push({ sourceType, error: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push({ sourceType, error: message });
+      if (isRateLimitMessage(message)) {
+        rateLimited = true;
+        break;
+      }
     }
   }
 
+  // A provider cooldown is not an attempt: leave last_attempt_at alone so the
+  // project is picked up again as soon as the window reopens.
   await prisma.pmcActionItemSyncState.upsert({
     where: {
       companyId_procoreProjectId: {
@@ -407,12 +419,12 @@ export async function syncPmDashboardProject(project: SyncProject) {
     create: {
       companyId: project.companyId,
       procoreProjectId: project.procoreProjectId,
-      lastAttemptAt: attemptedAt,
+      lastAttemptAt: rateLimited ? null : attemptedAt,
       lastSuccessAt: errors.length === 0 ? new Date() : null,
       lastError: errors.length ? JSON.stringify(errors).slice(0, 4000) : null,
     },
     update: {
-      lastAttemptAt: attemptedAt,
+      ...(rateLimited ? {} : { lastAttemptAt: attemptedAt }),
       ...(errors.length === 0 ? { lastSuccessAt: new Date() } : {}),
       lastError: errors.length ? JSON.stringify(errors).slice(0, 4000) : null,
     },
@@ -422,6 +434,7 @@ export async function syncPmDashboardProject(project: SyncProject) {
     projectId: project.procoreProjectId,
     projectName: project.projectName,
     success: errors.length === 0,
+    rateLimited,
     counts: Object.fromEntries(sourceResults.map((result) => [result.sourceType, result.items.length])),
     warnings: sourceResults.flatMap((result) => result.warning ? [result.warning] : []),
     errors,

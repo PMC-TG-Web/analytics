@@ -2,6 +2,7 @@ import { makeRequest } from "@/lib/procore";
 import {
   WEBHOOK_NAMESPACE,
   WEBHOOK_PAYLOAD_VERSION,
+  hookSecretMatches,
   projectWebhookPlanForGroups,
   resolveTriggerPlan,
   triggerKeySet,
@@ -13,6 +14,7 @@ export type ProjectWebhookEnsureResult = {
   projectId: string;
   hookId: string | null;
   hookCreated: boolean;
+  secretRepaired: boolean;
   triggersCreated: number;
   triggersExisting: number;
   unavailable: string[];
@@ -73,6 +75,7 @@ export async function ensureProjectWebhookHook(params: {
     || existingHooks.find((h) => String(h.namespace || "").trim() === WEBHOOK_NAMESPACE)
     || null;
   let hookCreated = false;
+  let secretRepaired = false;
 
   if (!hook) {
     hook = record(await makeRequest(`${base}/hooks`, token, {
@@ -87,6 +90,14 @@ export async function ensureProjectWebhookHook(params: {
     }, companyId));
     apiRequests += 1;
     hookCreated = true;
+  } else if (!hookSecretMatches(hook, sharedSecret) && hook.id != null) {
+    await makeRequest(`${base}/hooks/${encodeURIComponent(String(hook.id))}`, token, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ destination_headers: { Authorization: `Bearer ${sharedSecret}` } }),
+    }, companyId);
+    apiRequests += 1;
+    secretRepaired = true;
   }
 
   const hookId = hook?.id != null ? String(hook.id) : null;
@@ -133,6 +144,7 @@ export async function ensureProjectWebhookHook(params: {
     projectId,
     hookId,
     hookCreated,
+    secretRepaired,
     triggersCreated,
     triggersExisting: existingTriggers.length,
     unavailable: resolution.filter((r) => r.reason).map((r) => `${r.requested}: ${r.reason}`),

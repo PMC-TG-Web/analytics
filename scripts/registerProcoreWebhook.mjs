@@ -39,6 +39,7 @@ import { fileURLToPath } from 'url';
 import {
   COMPANY_WEBHOOK_TRIGGER_PLAN,
   WEBHOOK_PAYLOAD_VERSION,
+  hookSecretMatches as sharedHookSecretMatches,
   projectWebhookPlanForGroups,
   resolveProjectWebhookGroups,
   resolveTriggerPlan,
@@ -46,7 +47,8 @@ import {
 } from '../src/lib/procoreWebhookPlan.js';
 
 // ─── Minimal .env loader ────────────────────────────────────────────────────
-function loadEnvFile(filePath) {
+// Precedence matches Next.js: real environment > .env.local > .env.
+function loadEnvFile(filePath, { override = false } = {}) {
   try {
     const lines = readFileSync(filePath, 'utf8').split('\n');
     for (const line of lines) {
@@ -59,17 +61,18 @@ function loadEnvFile(filePath) {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      if (!process.env[key]) process.env[key] = val;
+      if (override ? !realEnvKeys.has(key) : !process.env[key]) process.env[key] = val;
     }
   } catch {
     // file may not exist — that's fine
   }
 }
 
+const realEnvKeys = new Set(Object.keys(process.env));
 const __dirname = resolve(fileURLToPath(import.meta.url), '..');
 const root = resolve(__dirname, '..');
 loadEnvFile(resolve(root, '.env'));
-loadEnvFile(resolve(root, '.env.local'));
+loadEnvFile(resolve(root, '.env.local'), { override: true });
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const CLIENT_ID = process.env.PROCORE_CLIENT_ID;
@@ -290,6 +293,16 @@ async function createProjectTrigger(token, projectId, hookId, resourceName, even
   });
 }
 
+function hookSecretMatches(hook) {
+  return sharedHookSecretMatches(hook, SHARED_SECRET);
+}
+
+async function patchProjectHookSecret(token, projectId, hookId) {
+  return procoreFetch(token, 'PATCH', `${projectBase(projectId)}/hooks/${hookId}`, {
+    destination_headers: { Authorization: `Bearer ${SHARED_SECRET}` },
+  });
+}
+
 /**
  * Idempotently ensure one project has a namespace hook carrying the requested
  * trigger groups. Returns counts so the bulk command can report progress.
@@ -304,12 +317,19 @@ async function ensureProjectHook(token, projectId, { groups, dryRun = false, pac
     || hooks[0]
     || null;
   let hookCreated = false;
+  let secretRepaired = false;
 
   if (!hook && !dryRun) {
     const created = await createProjectHook(token, projectId);
     await wait();
     hook = created?.data ?? created;
     hookCreated = true;
+  } else if (hook && !hookSecretMatches(hook)) {
+    if (!dryRun) {
+      await patchProjectHookSecret(token, projectId, hook.id);
+      await wait();
+    }
+    secretRepaired = true;
   }
   const hookId = hook?.id != null ? String(hook.id) : null;
 
@@ -350,6 +370,7 @@ async function ensureProjectHook(token, projectId, { groups, dryRun = false, pac
     projectId,
     hookId,
     hookCreated,
+    secretRepaired,
     existing: existingTriggers.length,
     planned: planned.length,
     created,
@@ -435,7 +456,7 @@ async function cmdRegisterProjects(args) {
   console.log('Fetching access token...');
   const token = await getToken();
   const catalogCache = { value: null };
-  const totals = { hooksCreated: 0, triggersCreated: 0, alreadyCurrent: 0, failed: 0 };
+  const totals = { hooksCreated: 0, secretsRepaired: 0, triggersCreated: 0, alreadyCurrent: 0, failed: 0 };
 
   for (let i = 0; i < projects.length; i++) {
     const project = projects[i];
@@ -443,12 +464,13 @@ async function cmdRegisterProjects(args) {
     try {
       const result = await ensureProjectHook(token, project.id, { groups, dryRun, paceMs, catalogCache });
       totals.hooksCreated += result.hookCreated ? 1 : 0;
+      totals.secretsRepaired += result.secretRepaired ? 1 : 0;
       totals.triggersCreated += result.created;
-      if (!result.hookCreated && result.planned === 0) totals.alreadyCurrent++;
+      if (!result.hookCreated && !result.secretRepaired && result.planned === 0) totals.alreadyCurrent++;
       if (result.failures.length) totals.failed++;
       const summary = dryRun
-        ? `would create hook=${!result.hookId} triggers=${result.planned}`
-        : `hook=${result.hookCreated ? 'created' : 'existing'} triggers +${result.created}/${result.planned} (had ${result.existing})`;
+        ? `would create hook=${!result.hookId} repairSecret=${result.secretRepaired} triggers=${result.planned}`
+        : `hook=${result.hookCreated ? 'created' : result.secretRepaired ? 'secret-repaired' : 'existing'} triggers +${result.created}/${result.planned} (had ${result.existing})`;
       console.log(`${label}: ${summary}${result.failures.length ? ` FAILURES: ${result.failures.join('; ')}` : ''}`);
       if (i === 0 && result.unavailable.length) {
         console.log(`  unavailable in project catalog: ${result.unavailable.join('; ')}`);
@@ -463,7 +485,7 @@ async function cmdRegisterProjects(args) {
     }
   }
 
-  console.log(`\nDone. hooksCreated=${totals.hooksCreated} triggersCreated=${totals.triggersCreated} alreadyCurrent=${totals.alreadyCurrent} failed=${totals.failed}`);
+  console.log(`\nDone. hooksCreated=${totals.hooksCreated} secretsRepaired=${totals.secretsRepaired} triggersCreated=${totals.triggersCreated} alreadyCurrent=${totals.alreadyCurrent} failed=${totals.failed}`);
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────

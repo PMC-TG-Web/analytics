@@ -449,11 +449,22 @@ test("webhook trigger resolution honours catalog actions and skips existing trig
 });
 
 test("project-level webhook registration exists in the script, the lib, and onboarding", async () => {
+  const { hookSecretMatches } = await import("../src/lib/procoreWebhookPlan.js");
+  // Procore masks destination headers to the last four characters.
+  assert.equal(hookSecretMatches({ destination_headers: { Authorization: "*****9Uh2" } }, "abc9Uh2"), true);
+  assert.equal(hookSecretMatches({ destination_headers: { Authorization: "*****lrPl" } }, "abc9Uh2"), false);
+  assert.equal(hookSecretMatches({ destination_headers: {} }, "abc9Uh2"), false);
+  assert.equal(hookSecretMatches(null, "abc9Uh2"), false);
+
   const script = await readFile(
     new URL("../scripts/registerProcoreWebhook.mjs", import.meta.url),
     "utf8",
   );
-  const lib = await readFile(
+  // .env.local must win over .env, matching Next.js precedence.
+  assert.match(script, /loadEnvFile\(resolve\(root, '\.env\.local'\), \{ override: true \}\)/);
+  assert.match(script, /result\.secretRepaired \? 'secret-repaired'/);
+  assert.match(script, /async function patchProjectHookSecret/);
+  const libSource = await readFile(
     new URL("../src/lib/procoreProjectWebhooks.ts", import.meta.url),
     "utf8",
   );
@@ -464,8 +475,9 @@ test("project-level webhook registration exists in the script, the lib, and onbo
   assert.match(script, /--register-projects/);
   assert.match(script, /projects\/\$\{encodeURIComponent\(projectId\)\}\/webhooks/);
   assert.match(script, /if \(\/\\b429\\b\/\.test\(err\.message\)\) throw err;/);
-  assert.match(lib, /export async function ensureProjectWebhookHook/);
-  assert.match(lib, /await makeRequest\(/);
+  assert.match(libSource, /export async function ensureProjectWebhookHook/);
+  assert.match(libSource, /await makeRequest\(/);
+  assert.match(libSource, /method: "PATCH"/);
   assert.match(onboarding, /ensureProjectWebhookHook\(/);
   assert.match(onboarding, /step: "project-webhooks"/);
 });

@@ -122,3 +122,18 @@ export function triggerKeySet(triggers) {
     triggers.map((t) => `${String(t?.resource_name || '').toLowerCase()}::${String(t?.event_type || '').toLowerCase()}`),
   );
 }
+
+/**
+ * Procore returns destination_headers masked as "*****<last4>"; that is enough
+ * to detect a hook registered with a different shared secret.
+ * @param {{ destination_headers?: unknown } | null | undefined} hook
+ * @param {string} sharedSecret
+ */
+export function hookSecretMatches(hook, sharedSecret) {
+  const headersValue = hook && typeof hook === 'object' ? hook.destination_headers : null;
+  const masked = headersValue && typeof headersValue === 'object'
+    ? String(/** @type {Record<string, unknown>} */ (headersValue).Authorization || '')
+    : '';
+  const tail = masked.replace(/^\**/, '');
+  return tail.length > 0 && String(sharedSecret || '').endsWith(tail);
+}

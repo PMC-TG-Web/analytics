@@ -1,32 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { procoreConfig } from '@/lib/procore';
+import {
+  COMPANY_WEBHOOK_TRIGGER_PLAN,
+  WEBHOOK_NAMESPACE,
+  resolveTriggerPlan,
+} from '@/lib/procoreWebhookPlan';
 
 const API_URL = (process.env.PROCORE_API_URL || 'https://api.procore.com').replace(/\/$/, '');
-const WEBHOOK_NAMESPACE = 'pmc-analytics';
 
-// Desired resources; final trigger set is filtered to what the company supports.
-const DESIRED_TRIGGER_PLAN = [
-  { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Bid Board Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Estimating Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
-];
+// Company-level hook only. Project-tool resources (RFIs, Task Items, Meetings,
+// change orders, timecards) require per-project hooks; see
+// scripts/registerProcoreWebhook.mjs --register-projects and project onboarding.
 
 type ResourceCatalogItem = {
   name: string;
   actions: string[];
-};
-
-const RESOURCE_ALIASES: Record<string, string[]> = {
-  Projects: ['Projects'],
-  'Bid Board Projects': ['Bid Board Projects', 'Bidboard Projects', 'Bid Board Projects V2'],
-  'Estimating Projects': ['Estimating Projects', 'Bid Board Projects', 'Bidboard Projects', 'Projects'],
-  'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
-  'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
-  'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
 };
 
 function getDestinationUrl(): string {
@@ -249,47 +238,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
-  const resolvedResources: Array<{ requested: string; matched?: string; reason?: string }> = [];
-  const triggerPlan: Array<{ resourceName: string; eventType: string }> = [];
-  const plannedTriggerKeys = new Set<string>();
-
-  for (const desired of DESIRED_TRIGGER_PLAN) {
-    const aliases = RESOURCE_ALIASES[desired.resourceName] || [desired.resourceName];
-    const matched = aliases
-      .map((alias) => catalogByName.get(alias.toLowerCase()))
-      .find((item) => Boolean(item));
-
-    if (!matched) {
-      resolvedResources.push({
-        requested: desired.resourceName,
-        reason: 'resource not available for this company/payload_version',
-      });
-      continue;
-    }
-
-    const allowed = new Set(matched.actions);
-    const validEvents = desired.eventTypes
-      .map((e) => e.toLowerCase())
-      .filter((e) => allowed.has(e));
-
-    if (!validEvents.length) {
-      resolvedResources.push({
-        requested: desired.resourceName,
-        matched: matched.name,
-        reason: `no overlapping actions; available=${matched.actions.join(',')}`,
-      });
-      continue;
-    }
-
-    resolvedResources.push({ requested: desired.resourceName, matched: matched.name });
-    for (const eventType of validEvents) {
-      const triggerKey = `${matched.name.toLowerCase()}::${eventType.toLowerCase()}`;
-      if (plannedTriggerKeys.has(triggerKey)) continue;
-      triggerPlan.push({ resourceName: matched.name, eventType });
-      plannedTriggerKeys.add(triggerKey);
-    }
-  }
+  const { planned: triggerPlan, resolution: resolvedResources } = resolveTriggerPlan(
+    COMPANY_WEBHOOK_TRIGGER_PLAN,
+    resourceCatalog,
+  );
 
   // Create the hook
   const hookRes = await procoreFetch(token, 'POST', `/rest/v2.0/companies/${companyId}/webhooks/hooks`, {

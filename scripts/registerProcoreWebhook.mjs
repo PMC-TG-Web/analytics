@@ -3,17 +3,31 @@
  *
  * Registers (or lists) Procore webhook hooks and triggers for this application.
  *
+ * Procore has two webhook catalogs. Company-level hooks only receive company/
+ * portfolio resources (Projects, Company Users, ...). Project-tool resources
+ * (RFIs, Task Items, Meetings, change orders, timecards, ...) must be registered
+ * on a hook per project. The trigger plan lives in src/lib/procoreWebhookPlan.js
+ * and is shared with the onboarding worker.
+ *
  * Usage:
- *   node scripts/registerProcoreWebhook.mjs                  # list existing hooks
- *   node scripts/registerProcoreWebhook.mjs --register       # register hook + triggers
- *   node scripts/registerProcoreWebhook.mjs --delete <hookId> # delete a hook
- *   node scripts/registerProcoreWebhook.mjs --cleanup [keepHookId] # delete old hooks in namespace
+ *   node scripts/registerProcoreWebhook.mjs                  # list company hook(s)
+ *   node scripts/registerProcoreWebhook.mjs --resources [payloadVersion] [projectId]
+ *                                                            # dump webhook resource catalog (company, or project when projectId given)
+ *   node scripts/registerProcoreWebhook.mjs --register       # register company hook + triggers
+ *   node scripts/registerProcoreWebhook.mjs --register-project <projectId> [--groups priority,actuals]
+ *                                                            # register one project hook + triggers
+ *   node scripts/registerProcoreWebhook.mjs --register-projects [--groups priority] [--limit N] [--dry-run] [--pace-ms 1100]
+ *                                                            # register hooks for all active pmc_projects (paced, idempotent, resumable)
+ *   node scripts/registerProcoreWebhook.mjs --list-project <projectId>   # list a project's hooks + triggers
+ *   node scripts/registerProcoreWebhook.mjs --delete <hookId> # delete a company hook
+ *   node scripts/registerProcoreWebhook.mjs --cleanup [keepHookId] # delete old company hooks in namespace
  *
  * Required env vars (loads .env then .env.local):
  *   PROCORE_CLIENT_ID
  *   PROCORE_CLIENT_SECRET
  *   PROCORE_COMPANY_ID
  *   PROCORE_WEBHOOK_SHARED_SECRET
+ *   DATABASE_URL             (only for --register-projects)
  *   PROCORE_API_URL          (default: https://api.procore.com)
  *   PROCORE_TOKEN_URL        (default: https://api.procore.com/oauth/token)
  *   WEBHOOK_DESTINATION_URL  (override, default: https://analyticspmc.netlify.app/api/webhooks/procore)
@@ -22,6 +36,14 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  COMPANY_WEBHOOK_TRIGGER_PLAN,
+  WEBHOOK_PAYLOAD_VERSION,
+  projectWebhookPlanForGroups,
+  resolveProjectWebhookGroups,
+  resolveTriggerPlan,
+  triggerKeySet,
+} from '../src/lib/procoreWebhookPlan.js';
 
 // ─── Minimal .env loader ────────────────────────────────────────────────────
 function loadEnvFile(filePath) {
@@ -60,28 +82,16 @@ const DESTINATION_URL = process.env.WEBHOOK_DESTINATION_URL || 'https://analytic
 const WEBHOOK_NAMESPACE = process.env.PROCORE_WEBHOOK_NAMESPACE || 'pmc-analytics';
 const ACTIVE_HOOK_ID = (process.env.PROCORE_WEBHOOK_HOOK_ID || '').trim();
 
-// Desired resources; final trigger set is filtered to supported resources/actions.
-const DESIRED_TRIGGERS = [
-  { resourceName: 'Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Bid Board Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Estimating Projects', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Commitment Contracts', eventTypes: ['create', 'update', 'delete'] },
-  { resourceName: 'Potential Change Orders', eventTypes: ['create', 'update'] },
-  { resourceName: 'Prime Contract Change Orders', eventTypes: ['create', 'update'] },
-];
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-const RESOURCE_ALIASES = {
-  'Projects': ['Projects'],
-  'Bid Board Projects': ['Bid Board Projects', 'Bidboard Projects', 'Bid Board Projects V2'],
-  'Estimating Projects': ['Estimating Projects', 'Bid Board Projects', 'Bidboard Projects', 'Projects'],
-  'Timecard Entries': ['Timecard Entries', 'Timecards', 'Timecard Entries V2'],
-  'Productivity Logs': ['Productivity Logs', 'Manpower Logs'],
-  'Commitment Contracts': ['Commitment Contracts', 'Subcontracts'],
-  'Potential Change Orders': ['Potential Change Orders'],
-  'Prime Contract Change Orders': ['Prime Contract Change Orders', 'Change Order Packages'],
-};
+function flagValue(args, name, fallback) {
+  const idx = args.indexOf(name);
+  if (idx === -1) return fallback;
+  const value = args[idx + 1];
+  return value === undefined || value.startsWith('--') ? fallback : value;
+}
 
 // ─── OAuth token ─────────────────────────────────────────────────────────────
 async function getToken() {
@@ -108,51 +118,66 @@ async function getToken() {
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 async function apiGet(token, path) {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Procore-Company-Id': COMPANY_ID,
-      Accept: 'application/json',
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`GET ${path} failed ${res.status}: ${text}`);
-  }
-  return res.json();
+  return procoreFetch(token, 'GET', path);
 }
 
 async function apiPost(token, path, payload) {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Procore-Company-Id': COMPANY_ID,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`POST ${path} failed ${res.status}: ${text}`);
-  }
-  return res.json();
+  return procoreFetch(token, 'POST', path, payload);
 }
 
 async function apiDelete(token, path) {
+  return procoreFetch(token, 'DELETE', path);
+}
+
+// Procore's window is hourly; on 429 wait for x-rate-limit-reset (bounded)
+// rather than failing a long paced run. Set WEBHOOK_MAX_429_WAIT_MS=0 to fail fast.
+const MAX_429_WAIT_MS = Number(process.env.WEBHOOK_MAX_429_WAIT_MS ?? 20 * 60_000);
+
+// Long paced runs outlive the 1h client-credentials token; refresh on 401.
+let _refreshedToken = null;
+
+async function procoreFetch(token, method, path, payload, attempt = 0) {
   const res = await fetch(`${API_URL}${path}`, {
-    method: 'DELETE',
+    method,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${_refreshedToken || token}`,
       'Procore-Company-Id': COMPANY_ID,
+      Accept: 'application/json',
+      ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
   });
+
+  if (res.status === 401 && attempt < 1) {
+    await res.text().catch(() => '');
+    console.warn('  401 - access token expired; fetching a fresh token...');
+    _refreshedToken = await getToken();
+    return procoreFetch(token, method, path, payload, attempt + 1);
+  }
+
+  if (res.status === 429 && attempt < 2 && MAX_429_WAIT_MS > 0) {
+    const resetSec = Number(res.headers.get('x-rate-limit-reset'));
+    const retryAfterSec = Number(res.headers.get('retry-after'));
+    const waitMs = Math.min(
+      MAX_429_WAIT_MS,
+      Math.max(
+        5_000,
+        Number.isFinite(resetSec) && resetSec > 0 ? resetSec * 1000 - Date.now() + 2_000 : 0,
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : 0,
+      ),
+    );
+    await res.text().catch(() => '');
+    console.warn(`  429 on ${method} ${path.split('?')[0]} - waiting ${Math.round(waitMs / 1000)}s for the Procore window to reset...`);
+    await sleep(waitMs);
+    return procoreFetch(token, method, path, payload, attempt + 1);
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`DELETE ${path} failed ${res.status}: ${text}`);
+    throw new Error(`${method} ${path} failed ${res.status}: ${text}`);
   }
-  return res.status === 204 ? null : res.json().catch(() => null);
+  if (res.status === 204) return null;
+  return res.json().catch(() => null);
 }
 
 // ─── Webhook hook & trigger operations ───────────────────────────────────────
@@ -166,19 +191,23 @@ async function listHooks(token) {
 }
 
 async function listTriggers(token, hookId) {
-  const data = await apiGet(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}/triggers`);
+  const data = await apiGet(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}/triggers?page=1&per_page=100`);
   return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
-async function listResourcesAll(token) {
+async function listResourcesAll(token, payloadVersion = 'v2.0', projectId = '') {
   const perPage = 100;
   const maxPages = 20;
   const all = [];
+  const versionParam = payloadVersion ? `payload_version=${encodeURIComponent(payloadVersion)}&` : '';
+  const scope = projectId
+    ? `/rest/v2.0/companies/${COMPANY_ID}/projects/${encodeURIComponent(projectId)}/webhooks/resources`
+    : `/rest/v2.0/companies/${COMPANY_ID}/webhooks/resources`;
 
   for (let page = 1; page <= maxPages; page++) {
     const data = await apiGet(
       token,
-      `/rest/v2.0/companies/${COMPANY_ID}/webhooks/resources?payload_version=v2.0&page=${page}&per_page=${perPage}`
+      `${scope}?${versionParam}page=${page}&per_page=${perPage}`
     );
     const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
     if (!items.length) break;
@@ -189,6 +218,8 @@ async function listResourcesAll(token) {
         actions: Array.isArray(item?.actions)
           ? item.actions.map((a) => String(a).trim().toLowerCase()).filter(Boolean)
           : [],
+        payloadVersion: String(item?.payload_version || '').trim(),
+        tool: String(item?.tool || item?.category || '').trim(),
       });
     }
 
@@ -221,7 +252,239 @@ async function deleteHook(token, hookId) {
   return apiDelete(token, `/rest/v2.0/companies/${COMPANY_ID}/webhooks/hooks/${hookId}`);
 }
 
+// ─── Project-level hook & trigger operations ─────────────────────────────────
+
+function projectBase(projectId) {
+  return `/rest/v2.0/companies/${COMPANY_ID}/projects/${encodeURIComponent(projectId)}/webhooks`;
+}
+
+async function listProjectHooks(token, projectId) {
+  const data = await apiGet(
+    token,
+    `${projectBase(projectId)}/hooks?namespace=${encodeURIComponent(WEBHOOK_NAMESPACE)}`
+  );
+  return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+}
+
+async function listProjectTriggers(token, projectId, hookId) {
+  const data = await apiGet(token, `${projectBase(projectId)}/hooks/${hookId}/triggers?page=1&per_page=100`);
+  return Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+}
+
+async function createProjectHook(token, projectId) {
+  return apiPost(token, `${projectBase(projectId)}/hooks`, {
+    payload_version: WEBHOOK_PAYLOAD_VERSION,
+    namespace: WEBHOOK_NAMESPACE,
+    destination_url: DESTINATION_URL,
+    destination_headers: {
+      Authorization: `Bearer ${SHARED_SECRET}`,
+    },
+  });
+}
+
+async function createProjectTrigger(token, projectId, hookId, resourceName, eventType) {
+  return apiPost(token, `${projectBase(projectId)}/hooks/${hookId}/triggers`, {
+    resource_name: resourceName,
+    event_type: eventType,
+    api_version: WEBHOOK_PAYLOAD_VERSION,
+  });
+}
+
+/**
+ * Idempotently ensure one project has a namespace hook carrying the requested
+ * trigger groups. Returns counts so the bulk command can report progress.
+ * `paceMs` spaces every Procore request to stay well under the hourly quota.
+ */
+async function ensureProjectHook(token, projectId, { groups, dryRun = false, paceMs = 0, catalogCache = null } = {}) {
+  const wait = () => (paceMs > 0 ? sleep(paceMs) : Promise.resolve());
+
+  const hooks = await listProjectHooks(token, projectId);
+  await wait();
+  let hook = hooks.find((h) => String(h?.destination_url || '').trim() === DESTINATION_URL)
+    || hooks[0]
+    || null;
+  let hookCreated = false;
+
+  if (!hook && !dryRun) {
+    const created = await createProjectHook(token, projectId);
+    await wait();
+    hook = created?.data ?? created;
+    hookCreated = true;
+  }
+  const hookId = hook?.id != null ? String(hook.id) : null;
+
+  // The project catalog is identical across projects with the same tool set;
+  // reuse one fetch for the bulk run to save ~1 request per project.
+  let catalog = catalogCache?.value || null;
+  if (!catalog) {
+    catalog = await listResourcesAll(token, WEBHOOK_PAYLOAD_VERSION, projectId);
+    await wait();
+    if (catalogCache) catalogCache.value = catalog;
+  }
+
+  const existingTriggers = hookId ? await listProjectTriggers(token, projectId, hookId) : [];
+  if (hookId) await wait();
+
+  const { planned, resolution } = resolveTriggerPlan(
+    projectWebhookPlanForGroups(groups),
+    catalog,
+    triggerKeySet(existingTriggers),
+  );
+
+  let created = 0;
+  const failures = [];
+  if (!dryRun && hookId) {
+    for (const { resourceName, eventType } of planned) {
+      try {
+        await createProjectTrigger(token, projectId, hookId, resourceName, eventType);
+        created++;
+      } catch (err) {
+        failures.push(`${resourceName}/${eventType}: ${err.message}`);
+        if (/\b429\b/.test(err.message)) throw err;
+      }
+      await wait();
+    }
+  }
+
+  return {
+    projectId,
+    hookId,
+    hookCreated,
+    existing: existingTriggers.length,
+    planned: planned.length,
+    created,
+    failures,
+    unavailable: resolution.filter((r) => r.reason).map((r) => `${r.requested} (${r.reason})`),
+  };
+}
+
+async function loadActiveProjectIds(limit) {
+  const { PrismaClient } = await import('@prisma/client');
+  const prisma = new PrismaClient();
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `
+        SELECT procore_project_id AS id, project_name AS name
+        FROM pmc_projects
+        WHERE company_id = $1
+          AND lower(COALESCE(status, '')) NOT LIKE '%complete%'
+          AND lower(COALESCE(status, '')) NOT LIKE '%closed%'
+          AND lower(COALESCE(status, '')) NOT LIKE '%cancel%'
+        ORDER BY procore_updated_at DESC NULLS LAST, project_name
+        ${limit ? `LIMIT ${Number(limit)}` : ''}
+      `,
+      COMPANY_ID,
+    );
+    return rows.map((r) => ({ id: String(r.id), name: String(r.name || '') }));
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function cmdListProject(projectId) {
+  if (!projectId) {
+    console.error('Usage: --list-project <projectId>');
+    process.exit(1);
+  }
+  console.log('Fetching access token...');
+  const token = await getToken();
+  const hooks = await listProjectHooks(token, projectId);
+  console.log(`${hooks.length} hook(s) in namespace ${WEBHOOK_NAMESPACE} for project ${projectId}`);
+  for (const hook of hooks) {
+    console.log(`\nHook id=${hook.id}`);
+    console.log(`  destination: ${hook.destination_url}`);
+    console.log(`  status:      ${hook.status}`);
+    const triggers = await listProjectTriggers(token, projectId, hook.id);
+    console.log(triggers.length ? '  triggers:' : '  triggers: (none)');
+    for (const t of triggers) console.log(`    - ${t.resource_name} / ${t.event_type}`);
+  }
+}
+
+async function cmdRegisterProject(projectId, args) {
+  if (!projectId) {
+    console.error('Usage: --register-project <projectId> [--groups priority,actuals]');
+    process.exit(1);
+  }
+  if (!SHARED_SECRET) {
+    console.error('ERROR: PROCORE_WEBHOOK_SHARED_SECRET is not set');
+    process.exit(1);
+  }
+  const groups = resolveProjectWebhookGroups(flagValue(args, '--groups', ''));
+  const dryRun = args.includes('--dry-run');
+  console.log('Fetching access token...');
+  const token = await getToken();
+  console.log(`${dryRun ? '[dry-run] ' : ''}Ensuring project hook for ${projectId} (groups=${groups.join(',')}) → ${DESTINATION_URL}`);
+  const result = await ensureProjectHook(token, projectId, { groups, dryRun, paceMs: 300 });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+async function cmdRegisterProjects(args) {
+  if (!SHARED_SECRET) {
+    console.error('ERROR: PROCORE_WEBHOOK_SHARED_SECRET is not set');
+    process.exit(1);
+  }
+  const groups = resolveProjectWebhookGroups(flagValue(args, '--groups', ''));
+  const limit = Number(flagValue(args, '--limit', '0')) || 0;
+  const paceMs = Math.max(0, Number(flagValue(args, '--pace-ms', '1100')) || 1100);
+  const dryRun = args.includes('--dry-run');
+
+  console.log('Loading active projects from pmc_projects...');
+  const projects = await loadActiveProjectIds(limit);
+  console.log(`${projects.length} project(s) selected. groups=${groups.join(',')} pace=${paceMs}ms${dryRun ? ' [dry-run]' : ''}`);
+
+  console.log('Fetching access token...');
+  const token = await getToken();
+  const catalogCache = { value: null };
+  const totals = { hooksCreated: 0, triggersCreated: 0, alreadyCurrent: 0, failed: 0 };
+
+  for (let i = 0; i < projects.length; i++) {
+    const project = projects[i];
+    const label = `[${i + 1}/${projects.length}] ${project.id} ${project.name}`.trim();
+    try {
+      const result = await ensureProjectHook(token, project.id, { groups, dryRun, paceMs, catalogCache });
+      totals.hooksCreated += result.hookCreated ? 1 : 0;
+      totals.triggersCreated += result.created;
+      if (!result.hookCreated && result.planned === 0) totals.alreadyCurrent++;
+      if (result.failures.length) totals.failed++;
+      const summary = dryRun
+        ? `would create hook=${!result.hookId} triggers=${result.planned}`
+        : `hook=${result.hookCreated ? 'created' : 'existing'} triggers +${result.created}/${result.planned} (had ${result.existing})`;
+      console.log(`${label}: ${summary}${result.failures.length ? ` FAILURES: ${result.failures.join('; ')}` : ''}`);
+      if (i === 0 && result.unavailable.length) {
+        console.log(`  unavailable in project catalog: ${result.unavailable.join('; ')}`);
+      }
+    } catch (err) {
+      totals.failed++;
+      console.error(`${label}: ERROR ${err.message}`);
+      if (/\b429\b/.test(err.message)) {
+        console.error('Procore rate limit reached; stopping. Re-run later — the command is idempotent and resumes where it left off.');
+        break;
+      }
+    }
+  }
+
+  console.log(`\nDone. hooksCreated=${totals.hooksCreated} triggersCreated=${totals.triggersCreated} alreadyCurrent=${totals.alreadyCurrent} failed=${totals.failed}`);
+}
+
 // ─── Commands ─────────────────────────────────────────────────────────────────
+
+async function cmdResources(payloadVersion, projectId) {
+  console.log('Fetching access token...');
+  const token = await getToken();
+  const version = payloadVersion === 'all' ? '' : (payloadVersion || 'v2.0');
+  const scopeLabel = projectId ? `project ${projectId}` : `company ${COMPANY_ID}`;
+  console.log(`Webhook resource catalog for ${scopeLabel}${version ? ` (payload_version=${version})` : ' (all payload versions)'}`);
+  const resources = await listResourcesAll(token, version, projectId || '');
+  if (!resources.length) {
+    console.log('No resources returned.');
+    return;
+  }
+  resources.sort((a, b) => a.name.localeCompare(b.name));
+  for (const r of resources) {
+    console.log(`  - ${r.name}  [${r.actions.join(',')}]${r.payloadVersion ? `  payload=${r.payloadVersion}` : ''}${r.tool ? `  tool=${r.tool}` : ''}`);
+  }
+  console.log(`\n${resources.length} resource(s).`);
+}
 
 async function cmdList() {
   console.log('Fetching access token...');
@@ -300,7 +563,6 @@ async function cmdRegister() {
 
   console.log('Fetching supported webhook resources...');
   const resourceCatalog = await listResourcesAll(token);
-  const catalogByName = new Map(resourceCatalog.map((r) => [r.name.toLowerCase(), r]));
 
   let existingTriggers = [];
   try {
@@ -308,41 +570,14 @@ async function cmdRegister() {
   } catch (err) {
     console.warn('Unable to read existing triggers for hook; proceeding without dedupe:', err.message);
   }
-  const existingTriggerKeys = new Set(
-    existingTriggers.map((t) => `${String(t.resource_name || '').toLowerCase()}::${String(t.event_type || '').toLowerCase()}`)
+
+  const { planned: triggerPlan, resolution } = resolveTriggerPlan(
+    COMPANY_WEBHOOK_TRIGGER_PLAN,
+    resourceCatalog,
+    triggerKeySet(existingTriggers),
   );
-  const plannedTriggerKeys = new Set(existingTriggerKeys);
-
-  const triggerPlan = [];
-  for (const desired of DESIRED_TRIGGERS) {
-    const aliases = RESOURCE_ALIASES[desired.resourceName] || [desired.resourceName];
-    const matched = aliases
-      .map((alias) => catalogByName.get(alias.toLowerCase()))
-      .find((item) => Boolean(item));
-
-    if (!matched) {
-      console.log(`  - skipping ${desired.resourceName}: not available for this company`);
-      continue;
-    }
-
-    const allowed = new Set(matched.actions);
-    const validEvents = desired.eventTypes
-      .map((e) => e.toLowerCase())
-      .filter((e) => allowed.has(e));
-
-    if (!validEvents.length) {
-      console.log(`  - skipping ${desired.resourceName}: no overlapping actions (available: ${matched.actions.join(',')})`);
-      continue;
-    }
-
-    for (const eventType of validEvents) {
-      const triggerKey = `${matched.name.toLowerCase()}::${eventType.toLowerCase()}`;
-      if (plannedTriggerKeys.has(triggerKey)) {
-        continue;
-      }
-      triggerPlan.push({ resourceName: matched.name, eventType });
-      plannedTriggerKeys.add(triggerKey);
-    }
+  for (const entry of resolution) {
+    if (entry.reason) console.log(`  - skipping ${entry.requested}: ${entry.reason}`);
   }
 
   if (!triggerPlan.length && existingTriggers.length === 0) {
@@ -432,6 +667,14 @@ if (!CLIENT_ID || !CLIENT_SECRET || !COMPANY_ID) {
 
 if (args[0] === '--register') {
   cmdRegister().catch((e) => { console.error(e); process.exit(1); });
+} else if (args[0] === '--register-project') {
+  cmdRegisterProject(args[1], args.slice(2)).catch((e) => { console.error(e); process.exit(1); });
+} else if (args[0] === '--register-projects') {
+  cmdRegisterProjects(args.slice(1)).catch((e) => { console.error(e); process.exit(1); });
+} else if (args[0] === '--list-project') {
+  cmdListProject(args[1]).catch((e) => { console.error(e); process.exit(1); });
+} else if (args[0] === '--resources') {
+  cmdResources(args[1], args[2]).catch((e) => { console.error(e); process.exit(1); });
 } else if (args[0] === '--delete') {
   cmdDelete(args[1]).catch((e) => { console.error(e); process.exit(1); });
 } else if (args[0] === '--cleanup') {

@@ -207,11 +207,12 @@ async function readSource(params: {
   };
 }
 
-async function persistSource(project: SyncProject, result: SourceResult): Promise<void> {
-  if (!result.supported) return;
-  const sourceIds = result.items.map((item) => item.sourceId);
-  const syncedAt = new Date();
-  const writes: Prisma.PrismaPromise<unknown>[] = result.items.map((item) => prisma.pmcActionItem.upsert({
+function actionItemUpsert(
+  project: Pick<SyncProject, "companyId" | "procoreProjectId">,
+  item: PmActionItemInput,
+  syncedAt: Date,
+) {
+  return prisma.pmcActionItem.upsert({
     where: {
       companyId_procoreProjectId_sourceType_sourceId: {
         companyId: project.companyId,
@@ -254,7 +255,14 @@ async function persistSource(project: SyncProject, result: SourceResult): Promis
       payload: item.payload as Prisma.InputJsonValue,
       syncedAt,
     },
-  }));
+  });
+}
+
+async function persistSource(project: SyncProject, result: SourceResult): Promise<void> {
+  if (!result.supported) return;
+  const sourceIds = result.items.map((item) => item.sourceId);
+  const syncedAt = new Date();
+  const writes: Prisma.PrismaPromise<unknown>[] = result.items.map((item) => actionItemUpsert(project, item, syncedAt));
   writes.push(prisma.pmcActionItem.deleteMany({
     where: {
       companyId: project.companyId,
@@ -264,6 +272,112 @@ async function persistSource(project: SyncProject, result: SourceResult): Promis
     },
   }));
   await prisma.$transaction(writes);
+}
+
+type ActionItemRef = {
+  companyId: string;
+  procoreProjectId: string;
+  sourceType: PmActionItemType;
+  sourceId: string;
+};
+
+function singleItemPaths(ref: ActionItemRef): string[] {
+  const projectId = encodeURIComponent(ref.procoreProjectId);
+  const sourceId = encodeURIComponent(ref.sourceId);
+  if (ref.sourceType === "rfi") {
+    return [
+      `/rest/v1.0/projects/${projectId}/rfis/${sourceId}`,
+      `/rest/v1.0/rfis/${sourceId}?project_id=${projectId}`,
+    ];
+  }
+  if (ref.sourceType === "task") {
+    return [`/rest/v1.0/task_items/${sourceId}?project_id=${projectId}`];
+  }
+  return [`/rest/v1.1/projects/${projectId}/meetings/${sourceId}`];
+}
+
+function unwrapSingleRecord(payload: unknown): UnknownRecord | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const record = payload as UnknownRecord;
+  for (const key of ["data", "rfi", "task_item", "meeting"]) {
+    const nested = record[key];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) return nested as UnknownRecord;
+  }
+  return record;
+}
+
+export async function deletePmDashboardActionItem(ref: ActionItemRef): Promise<number> {
+  const result = await prisma.pmcActionItem.deleteMany({
+    where: {
+      companyId: ref.companyId,
+      procoreProjectId: ref.procoreProjectId,
+      sourceType: ref.sourceType,
+      sourceId: ref.sourceId,
+    },
+  });
+  return result.count;
+}
+
+/**
+ * Webhook-driven single-record refresh. Costs one Procore request per event
+ * instead of the multi-call per-project sweep used by syncPmDashboardProject.
+ * A 404 removes the local mirror row; any other error propagates so the
+ * webhook queue can retry.
+ */
+export async function syncPmDashboardActionItem(
+  ref: ActionItemRef,
+  options?: { token?: string },
+): Promise<{ outcome: "upserted" | "deleted" | "skipped"; item?: PmActionItemInput }> {
+  const token = options?.token || await getClientCredentialsToken();
+  let record: UnknownRecord | null = null;
+  let lastNotFound: unknown = null;
+
+  for (const path of singleItemPaths(ref)) {
+    try {
+      record = unwrapSingleRecord(await makeRequest(
+        path,
+        token,
+        { cache: "no-store" },
+        ref.companyId,
+        [404],
+      ));
+      if (record) break;
+    } catch (error) {
+      if (errorStatus(error) === 404) {
+        lastNotFound = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!record) {
+    if (lastNotFound) {
+      await deletePmDashboardActionItem(ref);
+      return { outcome: "deleted" };
+    }
+    return { outcome: "skipped" };
+  }
+
+  if (ref.sourceType === "meeting") {
+    const annotated = annotateMeetingGroups([record])[0] || record;
+    // The show endpoint lacks list grouping; parent_id is the series root.
+    const parentId = String(record.parent_id ?? record.parentId ?? "").trim();
+    record = parentId ? { ...annotated, __meeting_series_group_id: parentId } : annotated;
+  }
+
+  const memberDirectory = await companyMemberDirectory(ref.companyId);
+  const item = normalizePmActionItem({
+    sourceType: ref.sourceType,
+    record,
+    projectId: ref.procoreProjectId,
+    procoreWebOrigin: process.env.PROCORE_WEB_ORIGIN,
+    memberDirectory,
+  });
+  if (!item) return { outcome: "skipped" };
+
+  await actionItemUpsert(ref, item, new Date());
+  return { outcome: "upserted", item };
 }
 
 export async function syncPmDashboardProject(project: SyncProject) {

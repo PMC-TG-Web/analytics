@@ -19,6 +19,8 @@ import {
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
 import { shouldParkProjectOnboarding } from "@/lib/projectOnboardingPolicy";
+import { getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import { ensureProjectWebhookHook } from "@/lib/procoreProjectWebhooks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -362,6 +364,31 @@ export async function POST(request: NextRequest) {
     };
     const steps: StepResult[] = [];
 
+    // Project-tool webhooks (RFIs, tasks, meetings, change orders) live on a
+    // per-project hook. Registration is non-blocking so a permissions issue
+    // never stalls the rest of onboarding; the sync sweeps remain the fallback.
+    const webhookStep = await withProcoreLiveApiBypassForSyncSecret(request, async (): Promise<StepResult> => {
+      try {
+        const result = await ensureProjectWebhookHook({
+          companyId: COMPANY_ID,
+          projectId: project!.projectId,
+          token: await getClientCredentialsToken(),
+        });
+        return { step: "project-webhooks", status: "ok", httpStatus: 200, apiRequests: result.apiRequests, detail: result };
+      } catch (error) {
+        const status = Number((error as { status?: number })?.status || 0);
+        const until = (error as { rateLimitUntil?: Date })?.rateLimitUntil;
+        return {
+          step: "project-webhooks",
+          status: "error",
+          httpStatus: status || 500,
+          rateLimited: status === 429,
+          rateLimitUntil: until ? until.toISOString() : undefined,
+          detail: error instanceof Error ? error.message.slice(0, 1_000) : String(error),
+        };
+      }
+    });
+
     const headerStep = await runStep({
       origin,
       secret,
@@ -429,7 +456,7 @@ export async function POST(request: NextRequest) {
     }
 
     const success = steps.length === 8 && steps.every((step) => step.status === "ok");
-    const limited = steps.find((step) => step.rateLimited);
+    const limited = steps.find((step) => step.rateLimited) || (webhookStep.rateLimited ? webhookStep : undefined);
     const failedStep = steps.find((step) => step.status === "error");
     const waitingForProcore = failedStep?.httpStatus === 202 || failedStep?.httpStatus === 404;
     const error = success ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
@@ -454,7 +481,7 @@ export async function POST(request: NextRequest) {
       await deferProjectSync({
         project,
         until: rateLimitUntil,
-        result: { selection, bidBoardIds, steps, deferredBy: "procore-rate-limit" },
+        result: { selection, bidBoardIds, webhookStep, steps, deferredBy: "procore-rate-limit" },
       });
     } else {
       await finishProjectSync({
@@ -462,7 +489,7 @@ export async function POST(request: NextRequest) {
         success,
         nextRunMinutes: success ? 365 * 24 * 60 : waitingForProcore ? 30 : 15,
         error,
-        result: { selection, bidBoardIds, steps },
+        result: { selection, bidBoardIds, webhookStep, steps },
       });
     }
 
@@ -474,7 +501,7 @@ export async function POST(request: NextRequest) {
           finishedAt: new Date(),
           success: success || Boolean(rateLimitUntil),
           totalMs,
-          steps: [selection, ...steps] as object[],
+          steps: [selection, webhookStep, ...steps] as object[],
           error: rateLimitUntil ? null : error,
         },
       }).catch(() => undefined);
@@ -489,6 +516,7 @@ export async function POST(request: NextRequest) {
       bidBoardIds,
       logId: logId?.toString() || null,
       totalMs,
+      webhookStep,
       steps,
     }, { status: success || rateLimitUntil ? 200 : 207 });
   } finally {

@@ -2,25 +2,37 @@ import { prisma } from "@/lib/prisma";
 import type { ProcoreQuotaObservation } from "@/lib/procoreRateLimit";
 
 const quotaCooldownCache = new Map<string, Date>();
+// Short negative cache: a paced sync issues many requests per second and
+// should not hit the database for every one when no cooldown is active.
+const noCooldownCheckedAt = new Map<string, number>();
+const NO_COOLDOWN_TTL_MS = 10_000;
 
 export function cacheProcoreBackgroundCooldown(companyId: string, until: Date | null) {
   if (!until) return;
   const cached = quotaCooldownCache.get(companyId);
   if (!cached || until > cached) quotaCooldownCache.set(companyId, until);
+  noCooldownCheckedAt.delete(companyId);
 }
 
 export async function getProcoreBackgroundCooldown(companyId: string, now = new Date()) {
   const cached = quotaCooldownCache.get(companyId);
   if (cached && cached > now) return cached;
 
+  const checkedAt = noCooldownCheckedAt.get(companyId);
+  if (checkedAt !== undefined && now.getTime() - checkedAt < NO_COOLDOWN_TTL_MS) return null;
+
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `SELECT rate_limit_until FROM procore_sync_controls WHERE company_id = $1`,
     companyId,
   );
   const until = rows[0]?.rate_limit_until || null;
-  if (until && until > now) cacheProcoreBackgroundCooldown(companyId, until);
-  else quotaCooldownCache.delete(companyId);
-  return until && until > now ? until : null;
+  if (until && until > now) {
+    cacheProcoreBackgroundCooldown(companyId, until);
+    return until;
+  }
+  quotaCooldownCache.delete(companyId);
+  noCooldownCheckedAt.set(companyId, now.getTime());
+  return null;
 }
 
 export async function recordProcoreQuotaObservation(params: {

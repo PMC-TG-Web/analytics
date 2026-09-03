@@ -47,6 +47,26 @@ export function procoreRateLimitDelayMs(
   return Math.min(Math.max(0, options.maxDelayMs), Math.ceil(requestedDelayMs));
 }
 
+/**
+ * A 429 is only worth retrying in-process when the window reopens within the
+ * retry budget. Once the hourly window is exhausted, every capped retry is a
+ * guaranteed 429 that still counts against quota; callers should fail fast and
+ * rely on the persisted cooldown instead.
+ */
+export function procoreRateLimitRetryable(
+  headers: HeaderReader,
+  options: { maxDelayMs: number; nowMs?: number },
+): boolean {
+  const nowMs = options.nowMs ?? Date.now();
+  const retryAfterMs = retryAfterDelayMs(headers.get("retry-after"), nowMs);
+  const resetSeconds = Number(headers.get("x-rate-limit-reset"));
+  const resetDelayMs = Number.isFinite(resetSeconds) && resetSeconds > 0
+    ? resetSeconds * 1_000 - nowMs
+    : null;
+  const requiredMs = Math.max(retryAfterMs ?? 0, resetDelayMs ?? 0);
+  return requiredMs <= Math.max(0, options.maxDelayMs);
+}
+
 function nonNegativeHeaderNumber(headers: HeaderReader, names: string[]) {
   for (const name of names) {
     const raw = headers.get(name);

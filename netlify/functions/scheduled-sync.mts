@@ -142,6 +142,9 @@ const handler = async () => {
       + ` pccos=${changeOrderApprovalBody?.packagesScanned ?? "?"}`,
     );
 
+    // Runs right after the approvals poll so newly enqueued verification tasks
+    // execute this tick; the standalone schedule covers the idle case. The
+    // runner only calls Procore when a job exists, so the overlap is cheap.
     const commitmentTaskDispatch = await fetch(
       `${baseUrl}/api/background/commitment-maker-tasks`,
       {

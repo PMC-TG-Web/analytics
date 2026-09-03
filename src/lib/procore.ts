@@ -9,6 +9,7 @@ import {
   procoreBackgroundReserve,
   procoreQuotaObservation,
   procoreRateLimitDelayMs,
+  procoreRateLimitRetryable,
 } from '@/lib/procoreRateLimit';
 
 interface ProcoreTokenResponse {
@@ -388,16 +389,21 @@ export async function makeRequest(
         }
 
         if (response.status === 429 && attempt < maxRetries) {
-          const expoBackoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
-          const jitter = Math.floor(Math.random() * 250);
-          const delayMs = procoreRateLimitDelayMs(response.headers, {
-            fallbackMs: Math.max(baseDelayMs, expoBackoff) + jitter,
-            maxDelayMs,
-          });
-          await response.body?.cancel().catch(() => undefined);
-          console.warn(`[Procore API] Rate limited (429). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries}).`);
-          await sleep(delayMs);
-          continue;
+          if (!procoreRateLimitRetryable(response.headers, { maxDelayMs })) {
+            const untilIso = quota.cooldownUntil ? quota.cooldownUntil.toISOString() : 'unknown';
+            console.warn(`[Procore API] Rate limited (429); window resets at ${untilIso}, beyond retry budget. Not retrying.`);
+          } else {
+            const expoBackoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
+            const jitter = Math.floor(Math.random() * 250);
+            const delayMs = procoreRateLimitDelayMs(response.headers, {
+              fallbackMs: Math.max(baseDelayMs, expoBackoff) + jitter,
+              maxDelayMs,
+            });
+            await response.body?.cancel().catch(() => undefined);
+            console.warn(`[Procore API] Rate limited (429). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries}).`);
+            await sleep(delayMs);
+            continue;
+          }
         }
 
         if (!response.ok) {

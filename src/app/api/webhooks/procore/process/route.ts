@@ -29,6 +29,9 @@ import {
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
 import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
+import { deletePmDashboardActionItem, syncPmDashboardActionItem } from '@/lib/pmDashboardSync';
+import type { PmActionItemType } from '@/lib/pmDashboard';
+import { getProcoreBackgroundCooldown } from '@/lib/procoreQuotaControl';
 
 const MAX_BATCH_SIZE = 100;
 
@@ -171,6 +174,25 @@ function unwrapBidBoardProjectPayload(payload: unknown): JsonObject | null {
 
 async function getServiceToken(): Promise<string> {
   return getClientCredentialsToken();
+}
+
+function errorStatus(error: unknown): number {
+  return Number((error as { status?: number })?.status || 0);
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return errorStatus(error) === 404;
+}
+
+function errorRateLimitUntil(error: unknown): Date | null {
+  const until = (error as { rateLimitUntil?: Date | string })?.rateLimitUntil;
+  if (until instanceof Date && Number.isFinite(until.getTime())) return until;
+  if (typeof until === 'string') {
+    const parsed = new Date(until);
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  if (errorStatus(error) === 429) return new Date(Date.now() + 15 * 60_000);
+  return null;
 }
 
 async function upsertCanonicalProjectFromWebhook(params: {
@@ -747,8 +769,10 @@ async function handleProjectsEvent(event: {
     const endpoint = `/rest/v1.0/projects/${resourceId}?company_id=${companyId}`;
     const raw = await makeRequest(endpoint, token, undefined, companyId, [404]);
     project = asObj(raw);
-  } catch {
-    return;
+  } catch (error) {
+    // A 404 means the project no longer exists in Procore; anything else must retry.
+    if (isNotFoundError(error)) return;
+    throw error;
   }
 
   if (!project) return;
@@ -1167,7 +1191,8 @@ async function handleTimecardsEvent(event: {
       companyId || undefined,
       [404]
     );
-  } catch {
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
     // 404 — entry deleted; soft-delete locally
     await prisma.$executeRawUnsafe(
       `UPDATE "TimecardEntry"
@@ -1228,7 +1253,8 @@ async function handleProductivityEvent(event: {
       companyId || undefined,
       [404]
     );
-  } catch {
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
     await prisma.$executeRawUnsafe(
       `UPDATE "ProductivityLog"
           SET "procoreDeletedAt" = NOW(), "updatedAt" = NOW()
@@ -1289,7 +1315,8 @@ async function handleCommitmentsEvent(event: {
       companyId,
       [404]
     );
-  } catch {
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
     await prisma.$executeRawUnsafe(
       `UPDATE "CommitmentContract"
           SET "procoreDeletedAt" = NOW(), "updatedAt" = NOW()
@@ -1411,8 +1438,9 @@ async function handleChangeOrderEvent(event: {
         packageContractId = contractId;
         break;
       }
-    } catch {
-      // A project can have multiple prime contracts; continue until the package is found.
+    } catch (error) {
+      // A project can have multiple prime contracts; a 404 just means "not this one".
+      if (!isNotFoundError(error)) throw error;
     }
   }
   if (!packageRecord || !packageContractId) {
@@ -1426,6 +1454,38 @@ async function handleChangeOrderEvent(event: {
     contractId: packageContractId,
     record: packageRecord,
   });
+}
+
+// ─── PM dashboard action items (RFIs, Task Items, Meetings) ────────────────
+
+function pmActionItemSourceType(resource: string): PmActionItemType | null {
+  if (resource === 'rfis' || resource === 'rfi') return 'rfi';
+  if (resource === 'task items' || resource === 'task item' || resource === 'tasks') return 'task';
+  if (resource === 'meetings' || resource === 'meeting') return 'meeting';
+  return null;
+}
+
+async function handlePmActionItemEvent(event: {
+  companyId: string | null;
+  projectId: string | null;
+  resourceId: string | null;
+  eventType: string | null;
+}, sourceType: PmActionItemType): Promise<void> {
+  const companyId = (event.companyId || procoreConfig.companyId || '').trim();
+  const projectId = (event.projectId || '').trim();
+  const resourceId = (event.resourceId || '').trim();
+
+  if (!companyId) throw new Error(`handlePmActionItemEvent(${sourceType}): missing companyId`);
+  if (!projectId) throw new Error(`handlePmActionItemEvent(${sourceType}): missing projectId`);
+  if (!resourceId) throw new Error(`handlePmActionItemEvent(${sourceType}): missing resourceId`);
+
+  const ref = { companyId, procoreProjectId: projectId, sourceType, sourceId: resourceId };
+  if (String(event.eventType || '').toLowerCase() === 'delete') {
+    await deletePmDashboardActionItem(ref);
+    return;
+  }
+
+  await syncPmDashboardActionItem(ref, { token: await getServiceToken() });
 }
 
 // ─── Event dispatch ──────────────────────────────────────────────────────────
@@ -1467,6 +1527,11 @@ async function processEvent(event: {
 
   if (isPotentialChangeOrderResource(resource) || isPrimeChangeOrderResource(resource)) {
     return handleChangeOrderEvent(event);
+  }
+
+  const pmSourceType = pmActionItemSourceType(resource);
+  if (pmSourceType) {
+    return handlePmActionItemEvent(event, pmSourceType);
   }
 
   // Unrecognised resources are acknowledged so they are marked completed rather
@@ -1625,6 +1690,25 @@ export async function POST(request: NextRequest) {
   const workerId = `manual:${Date.now()}`;
   const now = new Date();
 
+  // Every handler needs at least one Procore GET; claiming during a cooldown
+  // would only burn retry attempts. Defer the whole batch instead.
+  const cooldownCompanyId = String(procoreConfig.companyId || '').trim();
+  const cooldownUntil = cooldownCompanyId ? await getProcoreBackgroundCooldown(cooldownCompanyId, now) : null;
+  if (cooldownUntil && !dryRun) {
+    return NextResponse.json({
+      success: true,
+      deferred: true,
+      reason: 'rate_limit_cooldown',
+      rateLimitUntil: cooldownUntil.toISOString(),
+      scanned: 0,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      coalesced: 0,
+      deferredDuplicates: 0,
+    });
+  }
+
   const candidates = await prisma.procoreWebhookQueue.findMany({
     where: {
       status: 'pending',
@@ -1662,12 +1746,26 @@ export async function POST(request: NextRequest) {
   let failed = 0;
   let coalesced = 0;
   let deferredDuplicates = 0;
+  let rateLimitDeferred = 0;
   let onboardingQueued = 0;
+  let batchRateLimitUntil: Date | null = null;
   const completedWorkKeys = new Set<string>();
   const failedWorkKeys = new Map<string, string>();
 
   for (const queueItem of candidates) {
     const workKey = getWebhookWorkKey(queueItem.event);
+
+    // Once Procore rate-limits us mid-batch, park the rest of the batch at the
+    // cooldown end instead of claiming them and failing one by one.
+    if (batchRateLimitUntil) {
+      await prisma.procoreWebhookQueue.updateMany({
+        where: { id: queueItem.id, status: 'pending' },
+        data: { availableAt: batchRateLimitUntil },
+      });
+      rateLimitDeferred += 1;
+      continue;
+    }
+
     const claimResult = await prisma.procoreWebhookQueue.updateMany({
       where: {
         id: queueItem.id,
@@ -1764,6 +1862,28 @@ export async function POST(request: NextRequest) {
       processed += 1;
       completedWorkKeys.add(workKey);
     } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 1000) : 'Unknown processing failure';
+      const rateLimitUntil = errorRateLimitUntil(error);
+
+      if (rateLimitUntil) {
+        // Provider throttling is not an event failure: release the claim, give
+        // the attempt back, and make the item due when the cooldown ends.
+        await prisma.procoreWebhookQueue.update({
+          where: { id: queueItem.id },
+          data: {
+            status: 'pending',
+            availableAt: rateLimitUntil,
+            lockedAt: null,
+            lockedBy: null,
+            attempts: { decrement: 1 },
+            lastError: `Deferred by Procore rate limit until ${rateLimitUntil.toISOString()}`,
+          },
+        });
+        batchRateLimitUntil = rateLimitUntil;
+        rateLimitDeferred += 1;
+        continue;
+      }
+
       const attempted = queueItem.attempts + 1;
       const shouldFailPermanently = attempted >= queueItem.maxAttempts;
       const nextAvailableAt = shouldFailPermanently
@@ -1777,15 +1897,12 @@ export async function POST(request: NextRequest) {
           availableAt: nextAvailableAt,
           lockedAt: null,
           lockedBy: null,
-          lastError: error instanceof Error ? error.message.slice(0, 1000) : 'Unknown processing failure',
+          lastError: message,
         },
       });
 
       failed += 1;
-      failedWorkKeys.set(
-        workKey,
-        error instanceof Error ? error.message.slice(0, 1000) : 'Unknown processing failure'
-      );
+      failedWorkKeys.set(workKey, message);
     }
   }
 
@@ -1798,6 +1915,8 @@ export async function POST(request: NextRequest) {
     failed,
     coalesced,
     deferredDuplicates,
+    rateLimitDeferred,
+    rateLimitUntil: batchRateLimitUntil ? batchRateLimitUntil.toISOString() : null,
     onboardingQueued,
   });
   });

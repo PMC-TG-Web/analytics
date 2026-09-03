@@ -15,11 +15,59 @@ import {
   procoreBackgroundReserve,
   procoreQuotaObservation,
   procoreRateLimitDelayMs,
+  procoreRateLimitRetryable,
 } from "../src/lib/procoreRateLimit.ts";
 
 function headers(values) {
   return { get: (name) => values[name.toLowerCase()] ?? null };
 }
+
+test("Procore 429s are only retried in-process when the window reopens within the retry budget", () => {
+  const nowMs = Date.parse("2026-09-03T12:00:00.000Z");
+  assert.equal(procoreRateLimitRetryable(headers({
+    "x-rate-limit-reset": String(Date.parse("2026-09-03T12:00:08.000Z") / 1_000),
+  }), { maxDelayMs: 15_000, nowMs }), true);
+  assert.equal(procoreRateLimitRetryable(headers({
+    "x-rate-limit-reset": String(Date.parse("2026-09-03T12:11:00.000Z") / 1_000),
+  }), { maxDelayMs: 15_000, nowMs }), false);
+  assert.equal(procoreRateLimitRetryable(headers({ "retry-after": "600" }), { maxDelayMs: 15_000, nowMs }), false);
+  assert.equal(procoreRateLimitRetryable(headers({}), { maxDelayMs: 15_000, nowMs }), true);
+});
+
+test("the shared Procore client skips doomed retries once the window is exhausted", async () => {
+  const client = await readFile(new URL("../src/lib/procore.ts", import.meta.url), "utf8");
+  assert.match(client, /if \(!procoreRateLimitRetryable\(response\.headers, \{ maxDelayMs \}\)\)/);
+  assert.match(client, /beyond retry budget\. Not retrying\./);
+});
+
+test("webhook processing treats provider throttling as a deferral, not an event failure", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/webhooks/procore/process/route.ts", import.meta.url),
+    "utf8",
+  );
+  // Batch-level: defer before claiming anything during an active cooldown.
+  assert.match(route, /getProcoreBackgroundCooldown\(cooldownCompanyId, now\)/);
+  assert.match(route, /reason: 'rate_limit_cooldown'/);
+  // Item-level: give the attempt back and make it due at the cooldown end.
+  assert.match(route, /attempts: \{ decrement: 1 \}/);
+  assert.match(route, /availableAt: rateLimitUntil,/);
+  assert.match(route, /batchRateLimitUntil = rateLimitUntil;/);
+  // Handlers only soft-delete on a real 404.
+  const softDeleteGuards = route.match(/if \(!isNotFoundError\(error\)\) throw error;/g) || [];
+  assert.ok(softDeleteGuards.length >= 4, `expected 404 guards on every soft-delete path, found ${softDeleteGuards.length}`);
+  assert.doesNotMatch(route, /\} catch \{\n\s+\/\/ 404 — entry deleted/);
+});
+
+test("PM dashboard sweep shares the worker lease and yields on rate limits", async () => {
+  const route = await readFile(new URL("../src/app/api/cron/pm-dashboard/route.ts", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../netlify/functions/pm-dashboard-sync-background.mts", import.meta.url), "utf8");
+  assert.match(route, /acquireProcoreWorker\(companyId, 4\)/);
+  assert.match(route, /releaseProcoreWorker\(companyId, worker\.leaseId\)/);
+  assert.match(route, /const DEFAULT_REPOLL_MINUTES = 90;/);
+  assert.match(route, /nextBatch: !rateLimited && !requestedProjectId/);
+  assert.match(worker, /result\?\.skipped === true/);
+  assert.match(worker, /result\?\.rateLimited === true/);
+});
 
 test("Procore retries wait for the server's rate-limit reset epoch", () => {
   const nowMs = Date.parse("2026-08-31T16:35:12.000Z");
@@ -346,13 +394,102 @@ test("webhook processing handles approved PCO and prime change-order resources",
 });
 
 test("webhook registration requests PCO and prime change-order events", async () => {
+  const plan = await import("../src/lib/procoreWebhookPlan.js");
+  const names = plan.PROJECT_WEBHOOK_TRIGGER_PLAN.map((entry) => entry.resourceName);
+  assert.ok(names.includes("Potential Change Orders"));
+  assert.ok(names.includes("Change Order Packages"));
+  assert.ok(plan.RESOURCE_ALIASES["Change Order Packages"].includes("Prime Contract Change Orders"));
+});
+
+test("webhook plan separates company-level and project-level resources", async () => {
+  const plan = await import("../src/lib/procoreWebhookPlan.js");
+  const company = plan.COMPANY_WEBHOOK_TRIGGER_PLAN.map((entry) => entry.resourceName);
+  const project = plan.PROJECT_WEBHOOK_TRIGGER_PLAN.map((entry) => entry.resourceName);
+
+  assert.ok(company.includes("Projects"));
+  for (const name of ["RFIs", "Task Items", "Meetings", "Potential Change Orders", "Change Order Packages"]) {
+    assert.ok(project.includes(name), `${name} must be a project-level trigger`);
+    assert.ok(!company.includes(name), `${name} is not exposed by the company catalog`);
+  }
+
+  const priority = plan.projectWebhookPlanForGroups(["priority"]).map((entry) => entry.resourceName);
+  assert.deepEqual(priority, ["RFIs", "Task Items", "Meetings", "Potential Change Orders", "Change Order Packages"]);
+  assert.deepEqual(plan.resolveProjectWebhookGroups(undefined), ["priority"]);
+  assert.deepEqual(plan.resolveProjectWebhookGroups("priority, actuals"), ["priority", "actuals"]);
+});
+
+test("webhook trigger resolution honours catalog actions and skips existing triggers", async () => {
+  const { resolveTriggerPlan, triggerKeySet } = await import("../src/lib/procoreWebhookPlan.js");
+  const catalog = [
+    { name: "RFIs", actions: ["create", "update", "delete"] },
+    { name: "Task Items", actions: ["create", "update"] },
+    { name: "Change Order Packages", actions: ["create", "update", "delete"] },
+  ];
+  const existing = triggerKeySet([{ resource_name: "RFIs", event_type: "CREATE" }]);
+  const { planned, resolution } = resolveTriggerPlan(
+    [
+      { resourceName: "RFIs", eventTypes: ["create", "update", "delete"] },
+      { resourceName: "Task Items", eventTypes: ["create", "update", "delete"] },
+      { resourceName: "Prime Contract Change Orders", eventTypes: ["create", "update"] },
+      { resourceName: "Meetings", eventTypes: ["create"] },
+    ],
+    catalog,
+    existing,
+  );
+
+  assert.deepEqual(planned, [
+    { resourceName: "RFIs", eventType: "update" },
+    { resourceName: "RFIs", eventType: "delete" },
+    { resourceName: "Task Items", eventType: "create" },
+    { resourceName: "Task Items", eventType: "update" },
+    { resourceName: "Change Order Packages", eventType: "create" },
+    { resourceName: "Change Order Packages", eventType: "update" },
+  ]);
+  assert.ok(resolution.some((entry) => entry.requested === "Meetings" && entry.reason));
+});
+
+test("project-level webhook registration exists in the script, the lib, and onboarding", async () => {
   const script = await readFile(
     new URL("../scripts/registerProcoreWebhook.mjs", import.meta.url),
     "utf8",
   );
-  assert.match(script, /resourceName: 'Potential Change Orders'/);
-  assert.match(script, /resourceName: 'Prime Contract Change Orders'/);
-  assert.match(script, /'Change Order Packages'/);
+  const lib = await readFile(
+    new URL("../src/lib/procoreProjectWebhooks.ts", import.meta.url),
+    "utf8",
+  );
+  const onboarding = await readFile(
+    new URL("../src/app/api/cron/project-onboarding/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(script, /--register-projects/);
+  assert.match(script, /projects\/\$\{encodeURIComponent\(projectId\)\}\/webhooks/);
+  assert.match(script, /if \(\/\\b429\\b\/\.test\(err\.message\)\) throw err;/);
+  assert.match(lib, /export async function ensureProjectWebhookHook/);
+  assert.match(lib, /await makeRequest\(/);
+  assert.match(onboarding, /ensureProjectWebhookHook\(/);
+  assert.match(onboarding, /step: "project-webhooks"/);
+});
+
+test("webhook processing routes RFI, Task Item, and Meeting events to single-record PM dashboard sync", async () => {
+  const route = await readFile(
+    new URL("../src/app/api/webhooks/procore/process/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /resource === 'rfis' \|\| resource === 'rfi'/);
+  assert.match(route, /resource === 'task items'/);
+  assert.match(route, /resource === 'meetings'/);
+  assert.match(route, /return handlePmActionItemEvent\(event, pmSourceType\)/);
+  assert.match(route, /await deletePmDashboardActionItem\(ref\)/);
+  assert.match(route, /await syncPmDashboardActionItem\(ref/);
+
+  const sync = await readFile(
+    new URL("../src/lib/pmDashboardSync.ts", import.meta.url),
+    "utf8",
+  );
+  // A 404 must remove the mirror row; every other error must propagate for queue retry.
+  assert.match(sync, /if \(errorStatus\(error\) === 404\)/);
+  assert.match(sync, /throw error;/);
+  assert.match(sync, /await deletePmDashboardActionItem\(ref\);\s*return \{ outcome: "deleted" \};/);
 });
 
 test("approval polling queues verification before persisting newly approved headers", async () => {

@@ -11,6 +11,8 @@ const handler = async (request: Request) => {
   const deadline = Date.now() + 12 * 60_000;
   let scanned = 0;
   let failed = 0;
+  let skippedReason: string | null = null;
+  let rateLimited = false;
   const errors: unknown[] = [];
 
   while (Date.now() < deadline) {
@@ -27,6 +29,15 @@ const handler = async (request: Request) => {
       errors.push(result?.error || `PM dashboard sync returned ${response.status}`);
       break;
     }
+    // Another worker holds the lease or Procore is cooling down: yield this tick.
+    if (result?.skipped === true) {
+      skippedReason = String(result?.reason || "skipped");
+      break;
+    }
+    if (result?.rateLimited === true) {
+      rateLimited = true;
+      break;
+    }
     if (result?.nextBatch !== true || Number(result?.scanned || 0) === 0) break;
   }
 
@@ -36,9 +47,11 @@ const handler = async (request: Request) => {
     success,
     scanned,
     failed,
+    rateLimited,
+    skippedReason,
     errorCount: errors.length,
   }));
-  return Response.json({ success, scanned, failed, errors }, { status: success ? 200 : 500 });
+  return Response.json({ success, scanned, failed, rateLimited, skippedReason, errors }, { status: success ? 200 : 500 });
 };
 
 export default handler;

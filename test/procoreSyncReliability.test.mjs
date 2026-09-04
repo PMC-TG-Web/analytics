@@ -183,6 +183,15 @@ test("active rate limits and endpoint errors are still failures", () => {
   assert.equal(procoreSyncDetailHasErrors({ success: true, errors: ["project failed"] }), true);
 });
 
+test("secret-authenticated workers bypass the per-IP heavy route limiter", async () => {
+  const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
+  // Netlify workers share egress IPs; a 6-per-10-minute IP limit on /api/procore/sync
+  // produced self-inflicted 429s that were recorded as Procore cooldowns.
+  assert.match(middleware, /const bypassHeavyLimit = ratePolicy\.keyPrefix === 'heavy' && hasValidSyncSecret\(request\);/);
+  assert.match(middleware, /apiRateLimit = bypassHeavyLimit\s*\?\s*null/);
+  assert.match(middleware, /if \(apiRateLimit\?\.limited\)/);
+});
+
 test("nested cooldown details preserve the provider reset instead of inventing 15 minutes", () => {
   assert.equal(
     procoreSyncRateLimitUntil({

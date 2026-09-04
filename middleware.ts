@@ -346,13 +346,20 @@ export async function middleware(request: NextRequest) {
 
     const clientId = getClientIdentifier(request.headers);
     const ratePolicy = getApiRatePolicy(pathname);
-    apiRateLimit = checkRateLimit({
-      key: `${ratePolicy.keyPrefix}:${clientId}:${pathname}`,
-      limit: ratePolicy.limit,
-      windowMs: ratePolicy.windowMs,
-    });
+    // The IP limiter protects sync/estimating routes from browser abuse. Workers
+    // authenticate with the sync secret and share Netlify egress IPs; limiting
+    // them here produced self-inflicted 429s that were recorded as Procore
+    // cooldowns and stalled every queue. Procore quota is enforced in makeRequest.
+    const bypassHeavyLimit = ratePolicy.keyPrefix === 'heavy' && hasValidSyncSecret(request);
+    apiRateLimit = bypassHeavyLimit
+      ? null
+      : checkRateLimit({
+          key: `${ratePolicy.keyPrefix}:${clientId}:${pathname}`,
+          limit: ratePolicy.limit,
+          windowMs: ratePolicy.windowMs,
+        });
 
-    if (apiRateLimit.limited) {
+    if (apiRateLimit?.limited) {
       return NextResponse.json(
         { success: false, error: 'Too many requests' },
         {

@@ -791,6 +791,26 @@ export async function setProcoreRateLimit(params: {
   until: Date;
   error?: string | null;
 }) {
+  // A worker refused by makeRequest because a cooldown is already active is not
+  // a new provider signal. Re-stamping last_429_at/last_error from that refusal
+  // made the health view look like Procore kept throttling us and hid the
+  // original cause. Only extend the window if this observation is later.
+  const echoedCooldown = /background rate limit cooldown is active/i.test(String(params.error || ""));
+  if (echoedCooldown) {
+    await prisma.$executeRawUnsafe(
+      `
+        UPDATE procore_sync_controls
+        SET rate_limit_until = GREATEST(COALESCE(rate_limit_until, $2), $2),
+            updated_at = NOW()
+        WHERE company_id = $1
+      `,
+      params.companyId,
+      params.until,
+    );
+    cacheProcoreBackgroundCooldown(params.companyId, params.until);
+    return;
+  }
+
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `
       INSERT INTO procore_sync_controls (

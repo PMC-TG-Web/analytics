@@ -1,4 +1,12 @@
 import type { Config } from "@netlify/functions";
+import { procoreWorkerRetryPlan } from "../../src/lib/procoreWorkerBackoff.js";
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_WORKER_BUSY_RETRIES = 20;
+const MAX_COOLDOWN_WAITS = 6;
 
 const handler = async (request: Request) => {
   const secret = (process.env.PROCORE_SYNC_SECRET || "").trim();
@@ -13,25 +21,36 @@ const handler = async (request: Request) => {
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
   );
+  const structureCap = Math.min(
+    6,
+    Math.max(1, Number.parseInt(process.env.PROCORE_STRUCTURE_MAX_PROJECTS_PER_TICK || "3", 10) || 3),
+  );
 
   // Refresh Bid Board headers first so changed estimates enter the queue, then
   // drain estimate details before slower nightly structure work.
-  const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-sync-secret": secret },
-    body: JSON.stringify({ mode: "bid-board-headers" }),
-  });
-  const headerResult = await headerResponse.json().catch(() => null);
-  const bidBoardHeaders = { status: headerResponse.status, result: headerResult };
-  console.log(JSON.stringify({
-    event: "nightly-bid-board-header-sync-background",
-    status: headerResponse.status,
-    success: headerResult?.success,
-    skipped: headerResult?.skipped,
-    reason: headerResult?.reason,
-  }));
+  let bidBoardHeaders: unknown = null;
+  let headerPlan = procoreWorkerRetryPlan(null);
+  for (let attempt = 0; attempt < MAX_COOLDOWN_WAITS && Date.now() < deadline; attempt += 1) {
+    const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-sync-secret": secret },
+      body: JSON.stringify({ mode: "bid-board-headers" }),
+    });
+    const headerResult = await headerResponse.json().catch(() => null);
+    bidBoardHeaders = { status: headerResponse.status, result: headerResult };
+    console.log(JSON.stringify({
+      event: "nightly-bid-board-header-sync-background",
+      status: headerResponse.status,
+      success: headerResult?.success,
+      skipped: headerResult?.skipped,
+      reason: headerResult?.reason,
+    }));
+    headerPlan = procoreWorkerRetryPlan(headerResult, { deadlineMs: deadline });
+    if (headerPlan.action !== "wait") break;
+    await wait(headerPlan.waitMs);
+  }
 
-  if (headerResult?.deferred || headerResult?.reason === "rate_limit_cooldown") {
+  if (headerPlan.action !== "proceed" && headerPlan.reason === "rate_limit_cooldown") {
     return Response.json({ success: true, deferred: true, bidBoardHeaders, estimateResults, results });
   }
 
@@ -52,9 +71,12 @@ const handler = async (request: Request) => {
       reason: result?.reason,
       projectIds: result?.projectIds,
     }));
-    const rateLimited = Boolean(result?.detail?.rateLimited)
-      || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(result));
-    if (result?.skipped || result?.deferred || rateLimited) break;
+    const plan = procoreWorkerRetryPlan(result, { deadlineMs: deadline });
+    if (plan.action === "wait") {
+      await wait(plan.waitMs);
+      continue;
+    }
+    if (plan.action === "stop") break;
   }
 
   const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {
@@ -74,7 +96,10 @@ const handler = async (request: Request) => {
     result: projectLinkResult?.result,
   }));
 
-  for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {
+  let structureAttempts = 0;
+  let workerBusyRetries = 0;
+  let cooldownWaits = 0;
+  while (structureAttempts < structureCap && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": secret },
@@ -91,10 +116,22 @@ const handler = async (request: Request) => {
       projectId: result?.projectId,
       totalMs: result?.totalMs,
     }));
-    const rateLimited = Array.isArray(result?.steps)
-      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-    if (result?.skipped || rateLimited) break;
-    if (!response.ok || result?.success === false) continue;
+    const plan = procoreWorkerRetryPlan(result, { deadlineMs: deadline });
+    if (plan.action === "wait") {
+      if (plan.reason === "worker_busy") {
+        workerBusyRetries += 1;
+        if (workerBusyRetries >= MAX_WORKER_BUSY_RETRIES) break;
+      } else {
+        cooldownWaits += 1;
+        if (cooldownWaits >= MAX_COOLDOWN_WAITS) break;
+      }
+      console.log(JSON.stringify({ event: "nightly-structure-sync-background-wait", reason: plan.reason, waitMs: plan.waitMs }));
+      await wait(plan.waitMs);
+      continue;
+    }
+    if (plan.action === "stop") break;
+    workerBusyRetries = 0;
+    structureAttempts += 1;
   }
 
   return Response.json({ success: true, projectLinkSync, bidBoardHeaders, estimateResults, results });

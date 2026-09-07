@@ -751,9 +751,16 @@ test("background workers prioritize and drain multiple estimate projects per tic
   }
 
   assert.match(actualsWorker, /secondaryWork: if \(!reconciliation/);
-  assert.match(actualsWorker, /result\?\.reason === "worker_busy"/);
-  assert.match(actualsWorker, /await wait\(1_000\)/);
-  assert.match(actualsWorker, /if \(estimateRateLimited \|\| estimateResult\?\.deferred\) \{\s+break secondaryWork;/);
+  for (const worker of [actualsWorker, nightlyWorker]) {
+    // Brief shared-lease/quota pauses are waited out instead of ending the tick.
+    assert.match(worker, /procoreWorkerRetryPlan\(result, \{ deadlineMs: deadline \}\)/);
+    assert.match(worker, /plan\.reason === "worker_busy"/);
+    assert.match(worker, /await wait\(plan\.waitMs\)/);
+  }
+  assert.match(
+    actualsWorker,
+    /if \(estimatePlan\.reason === "rate_limit_cooldown"\) break secondaryWork;/,
+  );
   assert.ok(
     actualsWorker.indexOf("/api/cron/actuals") < actualsWorker.indexOf('mode: "estimates"'),
     "Actuals should run before secondary estimate work can start a shared rate-limit cooldown",

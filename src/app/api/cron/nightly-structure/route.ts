@@ -441,6 +441,7 @@ export async function POST(request: NextRequest) {
         success: success || Boolean(until),
         completed: success,
         deferred: Boolean(until),
+        rateLimitUntil: until ? until.toISOString() : null,
         companyId: COMPANY_ID,
         dataset: ESTIMATING_DATASET,
         projectIds: estimatingProjects.map((item) => item.projectId),

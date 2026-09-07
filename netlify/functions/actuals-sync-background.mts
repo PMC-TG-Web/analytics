@@ -1,8 +1,12 @@
 import type { Config } from "@netlify/functions";
+import { procoreWorkerRetryPlan } from "../../src/lib/procoreWorkerBackoff.js";
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const MAX_WORKER_BUSY_RETRIES = 20;
+const MAX_COOLDOWN_WAITS = 6;
 
 const handler = async (request: Request) => {
   const expected = (process.env.PROCORE_SYNC_SECRET || "").trim();
@@ -36,6 +40,7 @@ const handler = async (request: Request) => {
   let maxProjects = reconciliation ? reconciliationCap : 3;
   let projectAttempts = 0;
   let workerBusyRetries = 0;
+  let cooldownWaits = 0;
   while (projectAttempts < maxProjects && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/actuals`, {
       method: "POST",
@@ -54,12 +59,20 @@ const handler = async (request: Request) => {
       totalMs: result?.totalMs,
       queue: result?.queue,
     }));
-    if (result?.skipped && result?.reason === "worker_busy") {
-      workerBusyRetries += 1;
-      if (workerBusyRetries >= 20 || Date.now() + 1_000 >= deadline) break;
-      await wait(1_000);
+    const plan = procoreWorkerRetryPlan(result, { deadlineMs: deadline });
+    if (plan.action === "wait") {
+      if (plan.reason === "worker_busy") {
+        workerBusyRetries += 1;
+        if (workerBusyRetries >= MAX_WORKER_BUSY_RETRIES) break;
+      } else {
+        cooldownWaits += 1;
+        if (cooldownWaits >= MAX_COOLDOWN_WAITS) break;
+      }
+      console.log(JSON.stringify({ event: "actuals-sync-background-wait", reason: plan.reason, waitMs: plan.waitMs }));
+      await wait(plan.waitMs);
       continue;
     }
+    if (plan.action === "stop") break;
     workerBusyRetries = 0;
     projectAttempts += 1;
     if (!reconciliation) {
@@ -68,29 +81,32 @@ const handler = async (request: Request) => {
         maxProjects = Math.min(configuredCap, Math.max(maxProjects, Math.ceil(recommended)));
       }
     }
-    const rateLimited = Array.isArray(result?.steps)
-      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-    if (result?.skipped || rateLimited) break;
     if (!response.ok || result?.success === false) continue;
   }
 
   secondaryWork: if (!reconciliation && Date.now() < deadline) {
-    const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": expected },
-      body: JSON.stringify({ mode: "bid-board-headers" }),
-    });
-    const headerResult = await headerResponse.json().catch(() => null);
-    bidBoardHeaders = { status: headerResponse.status, result: headerResult };
-    console.log(JSON.stringify({
-      event: "bid-board-header-sync-background",
-      status: headerResponse.status,
-      success: headerResult?.success,
-      skipped: headerResult?.skipped,
-      reason: headerResult?.reason,
-      totalMs: headerResult?.totalMs,
-    }));
-    if (headerResult?.deferred || headerResult?.reason === "rate_limit_cooldown") {
+    let headerPlan = procoreWorkerRetryPlan(null);
+    for (let attempt = 0; attempt < MAX_COOLDOWN_WAITS && Date.now() < deadline; attempt += 1) {
+      const headerResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: JSON.stringify({ mode: "bid-board-headers" }),
+      });
+      const headerResult = await headerResponse.json().catch(() => null);
+      bidBoardHeaders = { status: headerResponse.status, result: headerResult };
+      console.log(JSON.stringify({
+        event: "bid-board-header-sync-background",
+        status: headerResponse.status,
+        success: headerResult?.success,
+        skipped: headerResult?.skipped,
+        reason: headerResult?.reason,
+        totalMs: headerResult?.totalMs,
+      }));
+      headerPlan = procoreWorkerRetryPlan(headerResult, { deadlineMs: deadline });
+      if (headerPlan.action !== "wait") break;
+      await wait(headerPlan.waitMs);
+    }
+    if (headerPlan.action !== "proceed" && headerPlan.reason === "rate_limit_cooldown") {
       break secondaryWork;
     }
 
@@ -114,13 +130,16 @@ const handler = async (request: Request) => {
         reason: estimateResult?.reason,
         projectIds: estimateResult?.projectIds,
       }));
-      const estimateRateLimited = Boolean(estimateResult?.detail?.rateLimited)
-        || /\b429\b|rate limit|too many requests/i.test(JSON.stringify(estimateResult));
-      if (estimateRateLimited || estimateResult?.deferred) {
-        break secondaryWork;
+      const estimatePlan = procoreWorkerRetryPlan(estimateResult, { deadlineMs: deadline });
+      if (estimatePlan.action === "wait") {
+        await wait(estimatePlan.waitMs);
+        continue;
+      }
+      if (estimatePlan.action === "stop") {
+        if (estimatePlan.reason === "rate_limit_cooldown") break secondaryWork;
+        break;
       }
       if (!estimateResponse.ok || estimateResult?.success === false) continue;
-      if (estimateResult?.skipped) break;
     }
 
     const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {
@@ -181,13 +200,16 @@ const handler = async (request: Request) => {
         lineCount: poResult?.lineCount,
         totalMs: poResult?.totalMs,
       }));
-      const poRateLimited = Array.isArray(poResult?.steps)
-        && poResult.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-      if (poRateLimited) {
-        break secondaryWork;
+      const poPlan = procoreWorkerRetryPlan(poResult, { deadlineMs: deadline });
+      if (poPlan.action === "wait") {
+        await wait(poPlan.waitMs);
+        continue;
+      }
+      if (poPlan.action === "stop") {
+        if (poPlan.reason === "rate_limit_cooldown") break secondaryWork;
+        break;
       }
       if (!poResponse.ok || poResult?.success === false) continue;
-      if (poResult?.skipped) break;
     }
   }
   return Response.json({

@@ -230,6 +230,8 @@ Analytics route handlers combine normalized database facts rather than calling P
 
 Shared calculations belong in modules such as `src/lib/costCodeSalesAnalytics.ts`, `src/lib/estimatingDashboard*.ts`, `src/lib/financialWip.ts`, and the QBO exclusion/contract-value helpers. Prefer adding tested functions there over embedding more calculations in page components.
 
+The KPI Estimates by Month Actual Hours row resolves each month from an explicit `KPIEntry.estimatesActualHours` override first, then the saved Actual Hours row in the `KPI_CARDS` Estimates By Month configuration, then calculated bid hours. Card values use the shared year/month indexing, including when all years are displayed. Explicit zero overrides are preserved. Validate this precedence with `node --test test/kpiEstimateHours.test.mjs`.
+
 ### PM five-day work queue
 
 `/pm-dashboard` is a personal operational view for the signed-in project manager. It reads only the `pmc_action_items` PostgreSQL mirror and returns overdue open work plus items due during the next five America/New_York workdays, skipping Saturday and Sunday. Ownership is explicit: an RFI, Task Item, or Meeting is included when the user's normalized email appears in its Procore assignees/attendees, or when the canonical `pmc_projects.project_manager` value matches the employee's name or email.

@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
+import { resolveEstimateActualHours } from "@/lib/kpiEstimateHours";
 import {
   getKpiCardValue,
   getKpiCardValueIndex,
@@ -3100,7 +3101,12 @@ function KPIPageContent({
                   });
 
                   const actHoursColor = rowColors[rowIndex % 2];
+                  const estimateRowsFromCards = cardLoadData[normalizeCardName("Estimates By Month")] || [];
+                  const savedActualHoursRow = estimateRowsFromCards.find((row) =>
+                    ["actual hours", "act hrs", "act hours"].includes(normalizeCardName(row.kpi || ""))
+                  );
                   const allActHoursYears = Array.from(new Set<string>([
+                    ...KPI_CARD_YEARS.map(String),
                     ...Object.keys(bidSubmittedHoursYearMonthMap),
                     ...kpiData
                       .map((entry) => String(((entry ?? {}) as Record<string, unknown>).year || '').trim())
@@ -3113,14 +3119,12 @@ function KPIPageContent({
                       return String(record.year || '').trim() === targetYear && Number(record.month) === month;
                     });
                     const manualValueRaw = ((matchingEntry ?? {}) as Record<string, unknown>).estimatesActualHours;
-                    const manualValue = Number(manualValueRaw);
-                    const hasManualValue = manualValueRaw !== undefined && manualValueRaw !== null && Number.isFinite(manualValue);
                     const calculatedValue = bidSubmittedHoursYearMonthMap[targetYear]?.[month] || 0;
-
-                    return {
-                      hours: hasManualValue ? manualValue : calculatedValue,
-                      isManual: hasManualValue,
-                    };
+                    return resolveEstimateActualHours(
+                      manualValueRaw,
+                      getKpiCardValue(savedActualHoursRow?.values, targetYear, month),
+                      calculatedValue,
+                    );
                   };
 
                   const actHoursMonthValues = monthNames.map((_, idx) => {
@@ -3152,7 +3156,6 @@ function KPIPageContent({
                     };
                   });
                   const hasManualActHours = actHoursMonthValues.some(({ isManual }) => isManual);
-                  const estimateRowsFromCards = cardLoadData[normalizeCardName("Estimates By Month")] || [];
                   const fallbackEstimateRows = [
                     { kpi: "Goal", values: Array(12).fill("6,700,000") },
                     { kpi: "Goal Hours", values: Array(12).fill("29,000") },

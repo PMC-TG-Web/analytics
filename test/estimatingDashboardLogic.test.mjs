@@ -227,17 +227,22 @@ test('project totals add item and labor amounts once', () => {
   });
 });
 
-test('dashboard COGS includes labor and materials but excludes equipment and subcontractors', () => {
+test('dashboard COGS includes material item cost but excludes labor, equipment, and subcontractors', () => {
   assert.equal(estimateCogsCost({
     itemCost: '80',
     laborCost: '20',
     payload: { cost_item: { type: 'PART' } },
-  }), 100);
+  }), 80);
   assert.equal(estimateCogsCost({
     itemCost: '50',
     laborCost: '25',
     payload: { cost_item: { type: 'LABOR' } },
-  }), 75);
+  }), 0);
+  assert.equal(estimateCogsCost({
+    itemCost: '50',
+    laborCost: '25',
+    payload: { cost_item: { cost_type_code: 'L' } },
+  }), 0);
   assert.equal(estimateCogsCost({
     itemCost: '500',
     laborCost: '25',

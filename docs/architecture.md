@@ -230,6 +230,8 @@ Analytics route handlers combine normalized database facts rather than calling P
 
 Shared calculations belong in modules such as `src/lib/costCodeSalesAnalytics.ts`, `src/lib/estimatingDashboard*.ts`, `src/lib/financialWip.ts`, and the QBO exclusion/contract-value helpers. Prefer adding tested functions there over embedding more calculations in page components.
 
+Estimating dashboard COGS uses material/part item cost only. Labor cost is excluded from its numerator, so COGS per hour represents non-labor COGS divided by estimated labor hours. Equipment and subcontractor lines remain excluded in full. The shared `estimateCogsCost` calculation feeds the dashboard summary, status breakdowns, project drill-through, contractor views, and their exports.
+
 The KPI Estimates by Month Actual Hours row resolves each month from an explicit `KPIEntry.estimatesActualHours` override first, then the saved Actual Hours row in the `KPI_CARDS` Estimates By Month configuration, then calculated bid hours. Card values use the shared year/month indexing, including when all years are displayed. Explicit zero overrides are preserved. Validate this precedence with `node --test test/kpiEstimateHours.test.mjs`.
 
 ### PM five-day work queue

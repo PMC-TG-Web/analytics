@@ -284,7 +284,8 @@ export function classifyEstimateCostType(line: EstimateAmountLine): string {
 }
 
 /**
- * Dashboard COGS includes direct labor and material/part costs only.
+ * Dashboard COGS includes material/part item costs only.
+ * Labor cost is excluded so COGS per hour measures non-labor cost per labor hour.
  * Equipment and subcontractor lines are intentionally excluded in full.
  */
 export function estimateCogsCost(line: EstimateAmountLine): number {
@@ -292,12 +293,14 @@ export function estimateCogsCost(line: EstimateAmountLine): number {
   const costItem = recordValue(payload.cost_item);
   const type = String(costItem.type ?? "").trim().toUpperCase();
   const costTypeCode = String(costItem.cost_type_code ?? "").trim().toUpperCase();
-  const excluded = type === "SUBCONTRACTOR"
+  const excluded = type === "LABOR"
+    || costTypeCode === "L"
+    || type === "SUBCONTRACTOR"
     || type === "EQUIPMENT"
     || costTypeCode === "S"
     || costTypeCode === "E";
 
-  return excluded ? 0 : numericValue(line.itemCost) + numericValue(line.laborCost);
+  return excluded ? 0 : numericValue(line.itemCost);
 }
 
 export function addEstimateLineAmounts(

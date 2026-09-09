@@ -8,7 +8,8 @@ import {
 } from "@/lib/productivityWeightedCompletion";
 
 const PROJECT_REVIEW_EMAILS = [
-  "ProjectEnd@pmcdecor.com",
+  "todd@pmcdecor.com",
+  "david@pmcdecor.com",
 ];
 
 type ProductivityLine = {
@@ -106,7 +107,7 @@ type ProjectReview = {
   reviewedAt: string | null;
   reviewedByEmail: string | null;
   notificationEmail: string | null;
-  notificationStatus: "not_sent" | "pending" | "sent" | "failed";
+  notificationStatus: "not_sent" | "queued" | "pending" | "sent" | "failed";
   notificationError: string | null;
   weightedCompletion: number | null;
   updatedAt: string;
@@ -1070,7 +1071,7 @@ export default function ProductivityAnalyticsPage() {
     if (review?.status !== "completed") return;
     const confirmed = window.confirm(
       `Un-review ${[project.projectNumber, project.projectName].filter(Boolean).join(" · ")}?\n\n`
-      + "The email already delivered to the office cannot be recalled. The project can be reviewed again later.",
+      + "An office review task already created in Procore will remain. The project can be reviewed again later.",
     );
     if (!confirmed) return;
 
@@ -1326,7 +1327,7 @@ export default function ProductivityAnalyticsPage() {
                     && projectReview.notificationStatus === "failed";
                   const reviewPending =
                     projectReview?.status === "completed"
-                    && projectReview.notificationStatus === "pending";
+                    && ["pending", "queued"].includes(projectReview.notificationStatus);
                   const reviewEligibleAt = projectReview?.reviewEligibleAt
                     ? new Date(projectReview.reviewEligibleAt)
                     : null;
@@ -1344,13 +1345,13 @@ export default function ProductivityAnalyticsPage() {
                   const reviewTitle = reviewSent
                     ? `Reviewed by ${projectReview.reviewedByEmail || "unknown"}${projectReview.reviewedAt ? ` on ${new Date(projectReview.reviewedAt).toLocaleString()}` : ""}. Click to un-review.`
                     : reviewFailed
-                      ? "The review is saved, but the notification email needs to be retried."
+                      ? "The review is saved. Office task creation will retry automatically."
                       : reviewPending
-                        ? "The office notification is being sent."
+                        ? "The office review task is queued for creation."
                         : reviewCoolingDown
                           ? `Review available ${formatDate(projectReview?.reviewEligibleAt || null)}, 30 days after the Bid Board was marked Complete.`
                           : reviewEligible
-                            ? "Mark this project reviewed and notify the office."
+                            ? "Mark this project reviewed and create a task for Todd and David."
                             : "This project must be marked Complete on the Procore Bid Board before the 30-day cooldown starts.";
                   return (
                     <section key={project.projectId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1405,9 +1406,9 @@ export default function ProductivityAnalyticsPage() {
                             {reviewSent
                               ? `✓ Reviewed${projectReview.reviewedAt ? ` ${formatDate(projectReview.reviewedAt)}` : ""}`
                               : reviewFailed
-                                ? "! Email failed"
+                                ? "! Office task retrying"
                                 : reviewPending
-                                  ? "◷ Email sending"
+                                  ? "◷ Office task queued"
                                   : reviewCoolingDown
                                     ? `◷ Review ${formatDate(projectReview?.reviewEligibleAt || null)}`
                                     : reviewEligible
@@ -1670,7 +1671,7 @@ export default function ProductivityAnalyticsPage() {
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Office notifications</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Follow-up task assignees</p>
                 <div className="mt-1 space-y-0.5">
                   {PROJECT_REVIEW_EMAILS.map((email) => (
                     <p key={email} className="text-sm font-black text-slate-900">{email}</p>
@@ -1698,11 +1699,11 @@ export default function ProductivityAnalyticsPage() {
                   className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-black text-white hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
                 >
                   {reviewSubmitting
-                    ? "Saving and sending…"
+                    ? "Saving review…"
                     : reviewsByProject[reviewDialog.project.projectId]?.status === "completed"
                       && reviewsByProject[reviewDialog.project.projectId]?.notificationStatus !== "sent"
-                      ? "Retry office email"
-                      : "Complete review and email"}
+                      ? "Retry office task"
+                      : "Complete review"}
                 </button>
               </div>
             </div>

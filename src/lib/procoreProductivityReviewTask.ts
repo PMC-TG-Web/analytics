@@ -97,6 +97,7 @@ async function fetchAll(params: {
     const pageRows = asRows(payload);
     rows.push(...pageRows);
     if (pageRows.length < 100) break;
+    if (page === 10) throw new Error('Procore pagination limit reached; refusing to create a task from an incomplete list.');
   }
   return rows;
 }
@@ -139,14 +140,11 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
 }) {
   const completedAt = params.completedAt || new Date();
   const dueDate = formatDate(addDays(completedAt, TASK_DUE_OFFSET_DAYS));
-  const existingTasks = await makeRequest(
-    `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}&page=1&per_page=100`,
-    params.token,
-    undefined,
-    params.companyId,
-    [404]
-  );
-  const existingTask = asRows(existingTasks).find((task) => (
+  const existingTasks = await fetchAll({
+    ...params,
+    path: `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}`,
+  });
+  const existingTask = existingTasks.find((task) => (
     String(task.title || '').trim().toLowerCase() === TASK_TITLE.toLowerCase()
     && normalizeDate(task.due_date || task.dueDate) === dueDate
     && String(task.description || '').includes(TASK_TAG)
@@ -260,4 +258,62 @@ export async function ensureProductivityReviewTaskOnComplete(params: {
     notified: false,
     sentTaskIds: [],
   };
+}
+
+/** One office handoff per saved Field Productivity review, never per Procore task event. */
+export async function ensureProductivityOfficeReviewTask(params: {
+  token: string;
+  companyId: string;
+  projectId: string;
+  reviewId: string;
+  completionCount: number;
+  projectName: string;
+  reviewedByEmail: string;
+}) {
+  const tag = `[analytics:productivity-office-review:${params.reviewId}:${params.completionCount}]`;
+  const tasks = await fetchAll({
+    ...params,
+    path: `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}`,
+  });
+  const existing = tasks.find((task) => String(task.description || '').includes(tag));
+  if (existing) {
+    const id = readId(existing.id);
+    if (!id) throw new Error('The existing office review task is missing its ID.');
+    return { taskId: id, created: false };
+  }
+  const users = await fetchAll({
+    ...params,
+    path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,
+  });
+  const assigneeIds = ['todd@pmcdecor.com', 'david@pmcdecor.com'].map((email) => {
+    const matches = users.filter((user) => user.is_active !== false
+      && String(user.email || user.login || '').trim().toLowerCase() === email);
+    const id = matches.length === 1 ? readNumber(matches[0].id) : null;
+    if (!id || !Number.isSafeInteger(id) || id <= 0) {
+      throw new Error(`${email} must resolve to one active Procore project user before creating the office review task.`);
+    }
+    return id;
+  });
+  const result = asObject(await makeRequest(
+    `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}`,
+    params.token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_item: {
+        title: 'Field Productivity Office Review',
+        description: [tag, `Project: ${params.projectName}`,
+          `Field Productivity review completed by: ${params.reviewedByEmail}`,
+          'Todd and David: review the completed field productivity information.'].join('\n'),
+        status: 'initiated',
+        assigned_id: assigneeIds[0],
+        assignee_ids: assigneeIds,
+        distribution_member_ids: [],
+      } }),
+    },
+    params.companyId,
+  ));
+  const taskId = readId(result?.id) || readId(asObject(result?.task_item)?.id);
+  if (!taskId) throw new Error('Procore created the office review task without returning its ID.');
+  return { taskId, created: true };
 }

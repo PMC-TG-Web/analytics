@@ -228,3 +228,57 @@ test("emails Todd and skips task creation when no internal project manager exist
   assert.equal(result.taskId, null);
   assert.equal(result.fallbackEmail.recipient, "todd@pmcdecor.com");
 });
+
+const officeParams = {
+  token: 'token', companyId: 'company', projectId: 'project',
+  reviewId: 'review-1', completionCount: 1, projectName: 'Test Project',
+  reviewedByEmail: 'pm@pmcdecor.com',
+};
+
+test('office handoff creates one task assigned to Todd and David without an invented due date', async () => {
+  let created;
+  const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+    if (options?.method === 'POST') {
+      created = JSON.parse(options.body).task_item;
+      return { id: 99 };
+    }
+    if (path.includes('/users?')) return [
+      { id: 1, email: 'todd@pmcdecor.com' },
+      { id: 2, login: 'DAVID@pmcdecor.com' },
+      { id: 3, email: 'pm@pmcdecor.com' },
+    ];
+    return [];
+  });
+  assert.equal((await ensureProductivityOfficeReviewTask(officeParams)).taskId, '99');
+  assert.deepEqual(created.assignee_ids, [1, 2]);
+  assert.equal(created.title, 'Field Productivity Office Review');
+  assert.equal(created.due_date, undefined);
+  assert.match(created.description, /office-review:review-1:1/);
+});
+
+test('office handoff retry finds its tag on later pages without another mutation', async () => {
+  let calls = 0;
+  const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+    assert.equal(options, undefined);
+    calls++;
+    return path.includes('page=1&')
+      ? Array.from({ length: 100 }, (_, id) => ({ id, description: 'unrelated' }))
+      : [{ id: 99, description: '[analytics:productivity-office-review:review-1:1]' }];
+  });
+  const result = await ensureProductivityOfficeReviewTask(officeParams);
+  assert.equal(result.created, false);
+  assert.equal(result.taskId, '99');
+  assert.equal(calls, 2);
+});
+
+test('office handoff fails without both exact active assignees and never creates a partial task', async () => {
+  const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+    assert.notEqual(options?.method, 'POST');
+    return path.includes('/users?') ? [
+      { id: 1, email: 'todd@pmcdecor.com' },
+      { id: 2, email: 'david@pmcdecor.com', is_active: false },
+      { id: 3, email: 'david@example.com' },
+    ] : [];
+  });
+  await assert.rejects(ensureProductivityOfficeReviewTask(officeParams), /david@pmcdecor.com/);
+});

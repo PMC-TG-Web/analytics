@@ -1,3 +1,4 @@
+import { parseBidBoardStatusChangedAt } from "@/lib/productivityReviewCooldown";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
@@ -875,7 +876,7 @@ async function handleProjectsEvent(event: {
       projectId: procoreProjectId,
       projectNumber,
       projectName,
-      completedAt: new Date(),
+      completedAt: parseBidBoardStatusChangedAt(project, new Date()),
     });
     console.log('[procore-webhook] productivity review task ensured for complete project', {
       companyId,
@@ -1105,7 +1106,7 @@ async function handleBidBoardProjectsEvent(event: {
         projectId: procoreProjectId,
         projectNumber,
         projectName,
-        completedAt: new Date(),
+        completedAt: parseBidBoardStatusChangedAt(project, new Date()),
       });
       console.log('[procore-webhook] productivity review task ensured for complete bid board project', {
         companyId,

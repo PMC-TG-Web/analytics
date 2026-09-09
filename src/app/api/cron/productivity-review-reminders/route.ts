@@ -1,3 +1,4 @@
+import { processProductivityOfficeReviews } from "@/lib/productivityOfficeReviewWorker";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
@@ -9,11 +10,9 @@ import {
 } from "@/lib/productivityReviewCooldown";
 import {
   buildProductivityCompleteEmail,
-  buildProductivityReadyEmail,
 } from "@/lib/productivityReviewEmail";
 import {
   getProductivityCompleteNotificationConfig,
-  getProductivityReviewNotificationConfig,
 } from "@/lib/productivityReviewNotifications";
 import {
   getClientCredentialsToken,
@@ -59,17 +58,6 @@ function projectMetadataChanged(
   );
 }
 
-function resolveReviewAnchorDate(params: {
-  projectCreatedAt: Date | null | undefined;
-  completedAt: Date;
-}): Date {
-  const createdAt = params.projectCreatedAt;
-  if (createdAt && Number.isFinite(createdAt.getTime())) {
-    return createdAt;
-  }
-  return params.completedAt;
-}
-
 async function processReminders(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -101,22 +89,6 @@ async function processReminders(request: NextRequest) {
   }
 
   const projectIds = [...canonicalByProject.keys()];
-  const pmcProjects = projectIds.length
-    ? await prisma.pmcProject.findMany({
-        where: { companyId, procoreProjectId: { in: projectIds } },
-        select: {
-          procoreProjectId: true,
-          procoreCreatedAt: true,
-          createdAt: true,
-        },
-      })
-    : [];
-  const projectCreatedAtById = new Map(
-    pmcProjects.map((project) => [
-      project.procoreProjectId,
-      project.procoreCreatedAt || project.createdAt,
-    ]),
-  );
   const existingRows = projectIds.length
     ? await prisma.productivityProjectReview.findMany({
         where: { companyId, projectId: { in: projectIds } },
@@ -140,11 +112,7 @@ async function processReminders(request: NextRequest) {
 
     if (complete) {
       const completedAt = parseBidBoardStatusChangedAt(bidBoard.payload, bidBoard.syncedAt);
-      const reviewAnchorAt = resolveReviewAnchorDate({
-        projectCreatedAt: projectCreatedAtById.get(projectId),
-        completedAt,
-      });
-      const reviewEligibleAt = calculateReviewEligibleAt(reviewAnchorAt);
+      const reviewEligibleAt = calculateReviewEligibleAt(completedAt);
       const sameCycle =
         existing
         && isCompleteBidBoardStatus(existing.bidBoardStatus)
@@ -162,7 +130,7 @@ async function processReminders(request: NextRequest) {
             ...baseData,
             cooldownStartedAt: completedAt,
             reviewEligibleAt,
-            reminderStatus: "scheduled",
+            reminderStatus: "not_needed",
             completionNoticeStatus: "scheduled",
             status: "open",
           },
@@ -177,7 +145,7 @@ async function processReminders(request: NextRequest) {
             ...baseData,
             cooldownStartedAt: completedAt,
             reviewEligibleAt,
-            reminderStatus: reviewedThisCycle ? "not_needed" : "scheduled",
+            reminderStatus: "not_needed",
             reminderSentAt: null,
             reminderId: null,
             reminderError: null,
@@ -199,10 +167,10 @@ async function processReminders(request: NextRequest) {
         else scheduled += 1;
         completionNoticesScheduled += 1;
       } else {
-        if (projectMetadataChanged(existing, baseData)) {
+        if (projectMetadataChanged(existing, baseData) || !sameInstant(existing.reviewEligibleAt, reviewEligibleAt) || existing.reminderStatus !== "not_needed") {
           await prisma.productivityProjectReview.update({
             where: { id: existing.id },
-            data: baseData,
+            data: { ...baseData, reviewEligibleAt, reminderStatus: "not_needed" },
           });
         }
       }
@@ -268,30 +236,11 @@ async function processReminders(request: NextRequest) {
     orderBy: { cooldownStartedAt: "asc" },
     take: 20,
   });
-  const due = await prisma.productivityProjectReview.findMany({
-    where: {
-      companyId,
-      bidBoardStatus: "Complete",
-      status: { not: "completed" },
-      reviewEligibleAt: { lte: now },
-      OR: [
-        { reminderStatus: { in: ["scheduled", "failed"] } },
-        { reminderStatus: "pending", updatedAt: { lte: stalePendingBefore } },
-      ],
-    },
-    orderBy: { reviewEligibleAt: "asc" },
-    take: 20,
-  });
-
   const completionNotification = getProductivityCompleteNotificationConfig();
-  const reviewNotification = getProductivityReviewNotificationConfig();
   const completionResend = new Resend(completionNotification.apiKey);
-  const reviewResend = new Resend(reviewNotification.apiKey);
   const baseUrl = String(process.env.APP_BASE_URL || request.nextUrl.origin).replace(/\/$/, "");
   let completionNoticesSent = 0;
   let completionNoticesFailed = 0;
-  let sent = 0;
-  let failed = 0;
   let procoreToken: string | null = null;
 
   for (const review of completionNoticesDue) {
@@ -365,66 +314,8 @@ async function processReminders(request: NextRequest) {
     }
   }
 
-  for (const review of due) {
-    const claimed = await prisma.productivityProjectReview.updateMany({
-      where: {
-        id: review.id,
-        OR: [
-          { reminderStatus: { in: ["scheduled", "failed"] } },
-          { reminderStatus: "pending", updatedAt: { lte: stalePendingBefore } },
-        ],
-      },
-      data: {
-        reminderStatus: "pending",
-        reminderError: null,
-      },
-    });
-    if (!claimed.count) continue;
-
-    const projectUrl = new URL("/analytics/productivity", baseUrl);
-    projectUrl.searchParams.set("projectId", review.projectId);
-    const email = buildProductivityReadyEmail({
-      projectNumber: review.projectNumber,
-      projectName: review.projectName,
-      completedAt: review.cooldownStartedAt || now,
-      eligibleAt: review.reviewEligibleAt || now,
-      projectUrl: projectUrl.toString(),
-    });
-
-    try {
-      if (!reviewNotification.apiKey) throw new Error("RESEND_API_KEY is not configured.");
-      const result = await reviewResend.emails.send({
-        from: reviewNotification.from,
-        to: reviewNotification.to,
-        subject: email.subject,
-        text: email.text,
-        html: email.html,
-      }, {
-        idempotencyKey: `pmc-productivity-ready-${review.projectId}-${(review.reviewEligibleAt || now).getTime()}`,
-      });
-      if (result.error) throw new Error(result.error.message);
-      await prisma.productivityProjectReview.update({
-        where: { id: review.id },
-        data: {
-          reminderStatus: "sent",
-          reminderSentAt: new Date(),
-          reminderId: result.data?.id || null,
-          reminderError: null,
-        },
-      });
-      sent += 1;
-    } catch (error) {
-      await prisma.productivityProjectReview.update({
-        where: { id: review.id },
-        data: {
-          reminderStatus: "failed",
-          reminderError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
-        },
-      });
-      failed += 1;
-    }
-  }
-
+  const officeReviews = await processProductivityOfficeReviews(companyId);
+  const failed = officeReviews.failed;
   return NextResponse.json({
     success: failed === 0 && completionNoticesFailed === 0,
     scanned: canonicalByProject.size,
@@ -435,8 +326,9 @@ async function processReminders(request: NextRequest) {
     completionNoticesDue: completionNoticesDue.length,
     completionNoticesSent,
     completionNoticesFailed,
-    due: due.length,
-    sent,
+    officeReviews,
+    due: officeReviews.scanned,
+    sent: officeReviews.created,
     failed,
   }, { status: failed === 0 && completionNoticesFailed === 0 ? 200 : 502 });
 }

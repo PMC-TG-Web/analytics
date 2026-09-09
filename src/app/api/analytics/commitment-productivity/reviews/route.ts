@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { getRequestUserEmail } from "@/lib/requestUser";
-import {
-  buildProductivityReviewEmail,
-} from "@/lib/productivityReviewEmail";
-import { getProductivityReviewNotificationConfig } from "@/lib/productivityReviewNotifications";
 import { isReviewEligible } from "@/lib/productivityReviewCooldown";
 
 export const dynamic = "force-dynamic";
@@ -119,8 +114,7 @@ async function completeReview(request: NextRequest) {
 
   const companyId = text(body.companyId || process.env.PROCORE_COMPANY_ID);
   const projectId = text(body.projectId);
-  const notificationConfig = getProductivityReviewNotificationConfig();
-  const notificationEmails = notificationConfig.to;
+  const notificationEmails = ["todd@pmcdecor.com", "david@pmcdecor.com"];
   const notificationEmail = notificationEmails.join(", ");
   const retryNotification = body.retryNotification === true;
   if (!companyId || !projectId) {
@@ -175,7 +169,7 @@ async function completeReview(request: NextRequest) {
     incomingCompletionSnapshot !== Prisma.JsonNull && reviewHistory.length
       ? { ...incomingCompletionSnapshot, reviewHistory } as Prisma.InputJsonObject
       : incomingCompletionSnapshot;
-  if (existing?.status === "completed" && existing.notificationStatus === "sent") {
+  if (existing?.status === "completed" && ["sent", "queued"].includes(existing.notificationStatus)) {
     return NextResponse.json({
       success: true,
       alreadyCompleted: true,
@@ -202,13 +196,13 @@ async function completeReview(request: NextRequest) {
       { status: 409 },
     );
   }
-  const stalePendingBefore = new Date(Date.now() - 5 * 60 * 1000);
+  const stalePendingBefore = new Date(Date.now() - 10 * 60 * 1000);
   if (
     existing?.notificationStatus === "pending"
     && existing.updatedAt > stalePendingBefore
   ) {
     return NextResponse.json(
-      { success: false, error: "The review notification is already being sent." },
+      { success: false, error: "The office review task is already being created." },
       { status: 409 },
     );
   }
@@ -222,6 +216,7 @@ async function completeReview(request: NextRequest) {
     const claimed = await prisma.productivityProjectReview.updateMany({
       where: {
         id: existing.id,
+        updatedAt: existing.updatedAt,
         OR: [
           { notificationStatus: { not: "pending" } },
           { updatedAt: { lte: stalePendingBefore } },
@@ -236,7 +231,7 @@ async function completeReview(request: NextRequest) {
           ? existing.reviewedByEmail || reviewerEmail
           : reviewerEmail,
         notificationEmail,
-        notificationStatus: "pending",
+        notificationStatus: "queued",
         notificationId: null,
         notificationError: null,
         reminderStatus: "not_needed",
@@ -248,7 +243,7 @@ async function completeReview(request: NextRequest) {
     });
     if (claimed.count === 0) {
       return NextResponse.json(
-        { success: false, error: "The review notification is already being sent." },
+        { success: false, error: "The office review task is already being created." },
         { status: 409 },
       );
     }
@@ -267,7 +262,7 @@ async function completeReview(request: NextRequest) {
           reviewedAt,
           reviewedByEmail: reviewerEmail,
           notificationEmail,
-          notificationStatus: "pending",
+          notificationStatus: "queued",
           reminderStatus: "not_needed",
           weightedCompletion,
           completionSnapshot,
@@ -285,61 +280,7 @@ async function completeReview(request: NextRequest) {
     }
   }
 
-  const apiKey = notificationConfig.apiKey;
-  const fromEmail = notificationConfig.from;
-  const appBaseUrl = text(process.env.APP_BASE_URL) || request.nextUrl.origin;
-  const projectUrl = new URL("/analytics/productivity", appBaseUrl);
-  projectUrl.searchParams.set("projectId", projectId);
-  const email = buildProductivityReviewEmail({
-    projectId,
-    projectNumber: project.projectNumber,
-    projectName: project.projectName,
-    reviewerEmail: pendingReview.reviewedByEmail || reviewerEmail,
-    reviewedAt,
-    weightedCompletion,
-    recipientEmail: notificationEmail,
-    projectUrl: projectUrl.toString(),
-  });
-
-  try {
-    if (!apiKey) throw new Error("RESEND_API_KEY is not configured.");
-    const result = await new Resend(apiKey).emails.send({
-      from: fromEmail,
-      to: notificationEmails,
-      subject: email.subject,
-      text: email.text,
-      html: email.html,
-    });
-    if (result.error) throw new Error(result.error.message);
-
-    const sentReview = await prisma.productivityProjectReview.update({
-      where: { id: pendingReview.id },
-      data: {
-        notificationStatus: "sent",
-        notificationId: result.data?.id || null,
-        notificationError: null,
-      },
-    });
-    return NextResponse.json({ success: true, review: serializeReview(sentReview) });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const failedReview = await prisma.productivityProjectReview.update({
-      where: { id: pendingReview.id },
-      data: {
-        notificationStatus: "failed",
-        notificationError: message.slice(0, 1000),
-      },
-    });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "The project was marked reviewed, but the email could not be sent.",
-        details: message,
-        review: serializeReview(failedReview),
-      },
-      { status: 502 },
-    );
-  }
+  return NextResponse.json({ success: true, review: serializeReview(pendingReview) });
 }
 
 export async function POST(request: NextRequest) {
@@ -389,6 +330,14 @@ async function unreviewProject(request: NextRequest) {
     });
   }
 
+  if (existing.notificationStatus === "pending"
+    && existing.updatedAt > new Date(Date.now() - 10 * 60_000)) {
+    return NextResponse.json(
+      { success: false, error: "The office review task is being created. Please try again after it finishes." },
+      { status: 409 },
+    );
+  }
+
   const previousSnapshot =
     existing.completionSnapshot
     && typeof existing.completionSnapshot === "object"
@@ -414,8 +363,8 @@ async function unreviewProject(request: NextRequest) {
     ],
   };
 
-  const review = await prisma.productivityProjectReview.update({
-    where: { id: existing.id },
+  const changed = await prisma.productivityProjectReview.updateMany({
+    where: { id: existing.id, updatedAt: existing.updatedAt },
     data: {
       status: "open",
       notificationStatus: "not_sent",
@@ -423,6 +372,14 @@ async function unreviewProject(request: NextRequest) {
       completionSnapshot,
     },
   });
+
+  if (!changed.count) {
+    return NextResponse.json(
+      { success: false, error: "The review changed while this request was being processed. Please refresh and try again." },
+      { status: 409 },
+    );
+  }
+  const review = await prisma.productivityProjectReview.findUniqueOrThrow({ where: { id: existing.id } });
 
   return NextResponse.json({ success: true, review: serializeReview(review) });
 }

@@ -391,11 +391,19 @@ test("keeps approved change-order preview within the interactive response window
 test("bounds live Procore calls and serializes resumable same-PO line creation", () => {
   const route = fs.readFileSync("src/app/api/procore/commitments-live/maker/route.ts", "utf8");
   const page = fs.readFileSync("src/app/procore/commitments-live/maker/page.tsx", "utf8");
+  const client = fs.readFileSync("src/lib/procoreCommitmentMakerClient.ts", "utf8");
 
-  assert.match(route, /PROCORE_READ_TIMEOUT_MS = 8_000/);
-  assert.match(route, /PROCORE_MUTATION_TIMEOUT_MS = 12_000/);
-  assert.match(route, /signal: AbortSignal\.timeout/);
-  assert.ok(route.indexOf("await response.text()") < route.indexOf("} catch (error) {"));
+  assert.match(client, /PROCORE_READ_TIMEOUT_MS = 8_000/);
+  assert.match(client, /PROCORE_MUTATION_TIMEOUT_MS = 12_000/);
+  assert.match(client, /signal: AbortSignal\.timeout/);
+  assert.ok(client.indexOf("await response.text()") < client.indexOf("} catch (error) {"));
+  assert.match(route, /withProcoreClient\(\(\) => handleRequest\(request\)\)/);
+  assert.match(route, /withProcoreClient\(\(\) => handleDelete\(request\)\)/);
+  assert.match(route, /recordProcoreQuotaObservation\(\{ companyId, observation \}\)/);
+  assert.match(route, /rateLimited: error instanceof CommitmentMakerRateLimitError/);
+  assert.match(route, /failure\?\.rateLimited === true && failure.outcomeUnknown !== true \? 429/);
+  assert.match(page, /Creation paused — progress saved/);
+  assert.match(page, /result\?\.rateLimited === true && result.outcomeUnknown !== true/);
   assert.match(route, /for \(const line of missingLines\)/);
   assert.doesNotMatch(route, /Promise\.allSettled\(batch\.map/);
   assert.match(route, /findIncompleteChangeOrderOwnedLines/);

@@ -96,6 +96,8 @@ type CreateResult = {
   success: boolean;
   error?: string;
   outcomeUnknown?: boolean;
+  rateLimited?: boolean;
+  rateLimitUntil?: string;
   created: number;
   resumed: number;
   failed: number;
@@ -187,6 +189,7 @@ export default function CommitmentMakerPage() {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rateLimitUntil, setRateLimitUntil] = useState("");
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [createOutcomeUnknown, setCreateOutcomeUnknown] = useState(false);
@@ -380,6 +383,7 @@ export default function CommitmentMakerPage() {
     mode: "preview" | "create",
     parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
   ) {
+    if (rateLimitUntil && Date.parse(rateLimitUntil) > Date.now()) return;
     let receivedResponse = false;
     setBusy(true);
     setError("");
@@ -422,6 +426,14 @@ export default function CommitmentMakerPage() {
         payload = responseText ? JSON.parse(responseText) : {};
       } catch {
         payload = {};
+      }
+      const retryAt = text(asRecord(payload).rateLimitUntil);
+      if (asRecord(payload).rateLimited === true && Date.parse(retryAt) > Date.now()) {
+        setRateLimitUntil(retryAt);
+      }
+      if (mode === "create" && asRecord(payload).rateLimited === true) {
+        setPreview(null);
+        setConfirmed(false);
       }
       if (!response.ok && mode === "preview") {
         throw new Error(
@@ -477,6 +489,12 @@ export default function CommitmentMakerPage() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!rateLimitUntil) return;
+    const timer = window.setTimeout(() => setRateLimitUntil(""), Math.max(0, Date.parse(rateLimitUntil) - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [rateLimitUntil]);
 
   async function deleteFromPurchaseOrder() {
     if (!preview?.sourceChangeOrder || !preview.removableTargetCommitmentId) return;
@@ -642,6 +660,7 @@ export default function CommitmentMakerPage() {
     projectId
     && (sourceType === "approved_change_order" || (parsedWorkbook && sheetName))
     && !busy
+    && !rateLimitUntil
     && (sourceType === "estimate" || changeOrderPackageId)
     && (sourceType === "estimate" || commitmentTarget === "new_purchase_order" || existingCommitmentId)
   );
@@ -656,8 +675,9 @@ export default function CommitmentMakerPage() {
   );
   const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !busy);
   const readyToCreate = Boolean(
-    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success && !createOutcomeUnknown
+    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !rateLimitUntil && !result?.success && !createOutcomeUnknown
   );
+  const pausedForRateLimit = result?.rateLimited === true && result.outcomeUnknown !== true;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -863,6 +883,12 @@ export default function CommitmentMakerPage() {
           </div>
         </section>
 
+        {rateLimitUntil && !createOutcomeUnknown && (
+          <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            Procore is temporarily limiting requests. Confirmed lines are saved. Wait until {new Date(rateLimitUntil).toLocaleTimeString()}, then preview again to continue adding missing lines.
+          </p>
+        )}
+
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {[
             [
@@ -885,8 +911,8 @@ export default function CommitmentMakerPage() {
           ))}
         </section>
 
-        {error && (
-          <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+        {error && (!pausedForRateLimit || error !== result?.error) && (
+          <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${rateLimitUntil && !createOutcomeUnknown ? "border-amber-300 bg-amber-50 text-amber-900" : "border-red-300 bg-red-50 text-red-800"}`}>
             {error}
           </div>
         )}
@@ -1165,14 +1191,17 @@ export default function CommitmentMakerPage() {
         )}
 
         {result && (
-          <section className={`rounded-2xl border p-6 shadow-sm ${result.success ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
-            <h2 className={`text-lg font-black ${result.success ? "text-emerald-900" : "text-red-900"}`}>
-              {result.success ? "Commitments created successfully" : "Commitment creation needs attention"}
+          <section className={`rounded-2xl border p-6 shadow-sm ${result.success ? "border-emerald-300 bg-emerald-50" : pausedForRateLimit ? "border-amber-300 bg-amber-50" : "border-red-300 bg-red-50"}`}>
+            <h2 className={`text-lg font-black ${result.success ? "text-emerald-900" : pausedForRateLimit ? "text-amber-900" : "text-red-900"}`}>
+              {result.success ? "Commitments created successfully" : pausedForRateLimit ? "Creation paused — progress saved" : "Commitment creation needs attention"}
             </h2>
             <p className="mt-1 text-sm">
-              Created {result.created || 0} PO(s), updated {result.addedToExisting || 0} existing PO(s), resumed {result.resumed || 0}, failed {result.failed || 0}.
+              Created {result.created || 0} PO(s), updated {result.addedToExisting || 0} existing PO(s), resumed {result.resumed || 0}, {pausedForRateLimit ? "paused" : "failed"} {result.failed || 0}.
             </p>
-            {result.error && <p className="mt-2 text-sm font-semibold text-red-800">{result.error}</p>}
+            {result.error && <p className={`mt-2 text-sm font-semibold ${pausedForRateLimit ? "text-amber-900" : "text-red-800"}`}>{result.error}</p>}
+            {pausedForRateLimit && result.rateLimitUntil && (
+              <p className="mt-2 text-sm text-amber-900">Requests may resume after {new Date(result.rateLimitUntil).toLocaleTimeString()}. Preview again to continue.</p>
+            )}
             <div className="mt-4 space-y-2">
               {(result.results || []).map((item) => (
                 <div key={`${item.group}-${item.contractId || item.number}`} className="rounded-lg border border-white/80 bg-white px-4 py-3 text-sm">
@@ -1182,7 +1211,7 @@ export default function CommitmentMakerPage() {
                     {item.createdLineItems !== undefined ? ` · ${item.createdLineItems} lines created` : ""}
                     {item.reusedLineItems ? ` · ${item.reusedLineItems} existing lines reused` : ""}
                   </p>
-                  {item.error && <p className="mt-2 text-xs font-semibold text-red-700">{item.error}</p>}
+                  {item.error && <p className={`mt-2 text-xs font-semibold ${pausedForRateLimit ? "text-amber-900" : "text-red-700"}`}>{item.error}</p>}
                 </div>
               ))}
             </div>

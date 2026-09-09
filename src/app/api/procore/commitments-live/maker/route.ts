@@ -36,7 +36,14 @@ import {
   selectExistingChangeOrderPurchaseOrder,
 } from "@/lib/procore/commitmentMakerChangeOrders";
 import { getCurrentUserEmail } from "@/lib/requestUser";
-import { procoreRateLimitDelayMs } from "@/lib/procoreRateLimit";
+import { procoreBackgroundReserve } from "@/lib/procoreRateLimit";
+import { recordProcoreQuotaObservation } from "@/lib/procoreQuotaControl";
+import {
+  commitmentMakerProcoreJson as procoreJson,
+  CommitmentMakerRateLimitError,
+  withCommitmentMakerProcoreClient,
+  type CommitmentMakerProcoreResponse as ProcoreResponse,
+} from "@/lib/procoreCommitmentMakerClient";
 import {
   COMMITMENT_MAKER_ACCESS_HEADER,
   COMMITMENT_MAKER_PROJECT_HEADER,
@@ -66,7 +73,6 @@ import {
 export const dynamic = "force-dynamic";
 
 type UnknownRecord = Record<string, unknown>;
-type ProcoreResponse = { ok: boolean; status: number; payload: unknown; path: string };
 type ApprovedChangeOrder = CommitmentMakerChangeOrderContext & {
   contractId: string;
   status: string;
@@ -79,8 +85,6 @@ type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_GROUPS = 100;
 const MAX_LINE_ITEMS = 5_000;
-const PROCORE_READ_TIMEOUT_MS = 8_000;
-const PROCORE_MUTATION_TIMEOUT_MS = 12_000;
 
 class ProcoreMutationOutcomeUnknownError extends Error {
   constructor(message: string) {
@@ -123,73 +127,29 @@ function asArray(value: unknown, keys: string[]): UnknownRecord[] {
   return [];
 }
 
-function parseUpstreamPayload(raw: string): unknown {
-  try {
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return raw || {};
-  }
-}
-
 function upstreamError(response: ProcoreResponse): string {
   const detail = JSON.stringify(response.payload);
   return detail && detail !== "{}" ? `: ${detail.slice(0, 2_000)}` : "";
 }
 
-async function procoreJson(params: {
-  path: string;
-  accessToken: string;
-  companyId: string;
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
-  body?: unknown;
-}): Promise<ProcoreResponse> {
-  const path = params.path.startsWith("/") ? params.path : `/${params.path}`;
-  const method = params.method || "GET";
-  const maxRetries = method === "GET" ? 1 : 0;
-  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    try {
-      const response = await fetch(`${procoreConfig.apiUrl}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${params.accessToken}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "Procore-Company-Id": params.companyId,
-        },
-        body: params.body === undefined ? undefined : JSON.stringify(params.body),
-        signal: AbortSignal.timeout(method === "GET" ? PROCORE_READ_TIMEOUT_MS : PROCORE_MUTATION_TIMEOUT_MS),
-      });
-      if (response.status === 429 && attempt < maxRetries) {
-        const delayMs = procoreRateLimitDelayMs(response.headers, {
-          fallbackMs: 1_000,
-          // Keep interactive requests comfortably inside Netlify's synchronous
-          // response window. Background syncs may wait for the full reset epoch.
-          maxDelayMs: 5_000,
-        });
-        await response.body?.cancel().catch(() => undefined);
-        console.warn(`Commitment Maker live read was rate limited; retrying in ${delayMs}ms.`);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        continue;
-      }
-      const payload = parseUpstreamPayload(await response.text());
-      return { ok: response.ok, status: response.status, payload, path };
-    } catch (error) {
-      const timedOut = error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name);
-      return {
-        ok: false,
-        status: method === "GET" ? (timedOut ? 504 : 502) : 504,
-        payload: {
-          error: method === "GET"
-            ? timedOut
-              ? "Procore did not respond before the interactive read deadline."
-              : "The Procore read failed before a response was received."
-            : "Procore did not confirm the mutation before the connection ended; its outcome is unknown.",
-        },
-        path,
-      };
-    }
-  }
-  return { ok: false, status: 429, payload: { error: "Procore rate limit retries were exhausted." }, path };
+function withProcoreClient<T>(operation: () => Promise<T>) {
+  return withCommitmentMakerProcoreClient({
+    apiUrl: procoreConfig.apiUrl,
+    reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
+    observeQuota: (companyId, observation) => recordProcoreQuotaObservation({ companyId, observation }),
+  }, operation);
+}
+
+function rateLimitResponse(error: CommitmentMakerRateLimitError) {
+  return NextResponse.json({
+    success: false,
+    rateLimited: true,
+    rateLimitUntil: error.rateLimitUntil,
+    error: `${error.message} Wait until the rate limit resets, then preview again to continue.`,
+  }, {
+    status: 429,
+    headers: { "Retry-After": String(Math.max(1, Math.ceil((Date.parse(error.rateLimitUntil) - Date.now()) / 1_000))) },
+  });
 }
 
 function rejectedMutation(action: string, response: ProcoreResponse): Error {
@@ -242,6 +202,7 @@ async function fetchCompanyVendors(accessToken: string, companyId: string): Prom
       });
       if (records.length > 0) return records;
     } catch (error) {
+      if (error instanceof CommitmentMakerRateLimitError) throw error;
       lastError = error;
     }
   }
@@ -266,6 +227,7 @@ async function fetchProjectVendors(
           `/rest/${version}/projects/${encodeURIComponent(projectId)}/vendors?page=${page}&per_page=100`,
       });
     } catch (error) {
+      if (error instanceof CommitmentMakerRateLimitError) throw error;
       lastError = error;
     }
   }
@@ -1932,7 +1894,11 @@ async function handleRequest(request: NextRequest) {
         group: group.name,
         number: actualNumber,
         contractId: contractId || null,
-        status: contractId ? "Draft - attention required" : "Not created",
+        status: error instanceof CommitmentMakerRateLimitError
+          ? "Paused - Procore rate limit"
+          : contractId ? "Draft - attention required" : "Not created",
+        rateLimited: error instanceof CommitmentMakerRateLimitError,
+        rateLimitUntil: error instanceof CommitmentMakerRateLimitError ? error.rateLimitUntil : undefined,
         error: error instanceof Error ? error.message : String(error),
         outcomeUnknown: error instanceof ProcoreMutationOutcomeUnknownError,
         createdLineItems: ownedLineItems.length,
@@ -2049,6 +2015,8 @@ async function handleRequest(request: NextRequest) {
       tasksQueued,
       outcomeUnknown: failure?.outcomeUnknown === true,
       taskError: taskError || undefined,
+      rateLimited: failure?.rateLimited === true,
+      rateLimitUntil: failure?.rateLimitUntil,
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && target !== "existing_purchase_order").length,
       addedToExisting: results.filter((result) => result.success === true && target === "existing_purchase_order").length,
@@ -2056,12 +2024,17 @@ async function handleRequest(request: NextRequest) {
       error: failure
         ? failure.outcomeUnknown === true
           ? readText(failure.error)
-          : `${readText(failure.error)} ${Number(failure.createdLineItems) || 0} line(s) from this change order are confirmed on the PO. Preview again to safely add the remaining lines.`
+          : `${readText(failure.error)} ${Number(failure.createdLineItems) || 0} line(s) from this import are confirmed on the PO. ${failure.rateLimited ? "Wait until the rate limit resets. " : ""}Preview again to safely add the remaining lines.`
         : taskError
           ? "The commitments were created, but the required change-order follow-up tasks need attention. Retry to repair the tasks without duplicating the POs."
           : undefined,
     },
-    { status: failure || taskError ? 502 : 200 }
+    {
+      status: failure?.rateLimited === true && failure.outcomeUnknown !== true ? 429 : failure || taskError ? 502 : 200,
+      headers: failure?.rateLimited === true ? {
+        "Retry-After": String(Math.max(1, Math.ceil((Date.parse(readText(failure.rateLimitUntil)) - Date.now()) / 1_000))),
+      } : undefined,
+    }
   );
 }
 
@@ -2509,8 +2482,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Cross-site request rejected." }, { status: 403 });
   }
   try {
-    return await handleRequest(request);
+    return await withProcoreClient(() => handleRequest(request));
   } catch (error) {
+    if (error instanceof CommitmentMakerRateLimitError) return rateLimitResponse(error);
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Procore Commitment Maker error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -2528,7 +2502,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Cross-site request rejected." }, { status: 403 });
   }
   try {
-    return await handleDelete(request);
+    return await withProcoreClient(() => handleDelete(request));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Procore Commitment Maker removal error:", message);

@@ -5,6 +5,8 @@ import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   combineCommitmentMakerGroups,
+  consolidateCommitmentMakerLineItems,
+  commitmentMakerLineAmount,
   commitmentMakerLineCreatePayload,
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerProjectIdFromSearch,
@@ -246,7 +248,7 @@ test('combines selected purchase orders and aggregates matching line quantities'
   assert.equal(result[1].lineItems[0].quantity, 4);
 });
 
-test('combined purchase orders keep differently priced lines separate', () => {
+test('combined purchase orders use a weighted unit cost for differently priced lines', () => {
   const base = {
     costCode: '03-300-30-20',
     costType: 'O',
@@ -261,8 +263,54 @@ test('combined purchase orders keep differently priced lines separate', () => {
     { name: 'B', lineItems: [{ ...base, quantity: 3, unitCost: 145 }] },
   ], ['A', 'B'], 'Combined Concrete');
 
-  assert.equal(result[0].lineItems.length, 2);
-  assert.deepEqual(result[0].lineItems.map((line) => line.quantity), [2, 3]);
+  assert.equal(result[0].lineItems.length, 1);
+  assert.equal(result[0].lineItems[0].quantity, 5);
+  assert.equal(result[0].lineItems[0].unitCost, 143);
+  assert.equal(commitmentMakerLineAmount(result[0].lineItems[0]), 715);
+  assert.equal(base.quantity, 2);
+});
+
+test('combined amounts survive unit-cost rounding, another combination, and server normalization', () => {
+  const base = { costCode: '03-300-30-20', costType: 'M', description: 'Concrete',
+    quantity: 10000, uom: 'cy', unitCost: 1, subtotalOverride: null };
+  const combined = combineCommitmentMakerGroups([
+    { name: 'A', lineItems: [base] },
+    { name: 'B', lineItems: [{ ...base, quantity: 1, unitCost: 1.01 }] },
+  ], ['A', 'B'], 'AB');
+  const line = combined[0].lineItems[0];
+  assert.equal(line.quantity, 10001);
+  assert.equal(line.unitCost, 1);
+  assert.equal(line.subtotalOverride, 10001.01);
+  const normalized = consolidateCommitmentMakerLineItems(JSON.parse(JSON.stringify([line])))[0];
+  assert.equal(commitmentMakerLineCreatePayload({ ...normalized, wbsCodeId: '123' }).amount, 10001.01);
+  assert.deepEqual(normalized, line);
+  const combinedAgain = combineCommitmentMakerGroups([
+    ...combined, { name: 'C', lineItems: [{ ...base, quantity: 2, unitCost: 2 }] },
+  ], ['AB', 'C'], 'ABC')[0].lineItems[0];
+  assert.equal(combinedAgain.quantity, 10003);
+  assert.equal(commitmentMakerLineAmount(combinedAgain), 10005.01);
+});
+
+test('different units, descriptions, cost types, WBS IDs, and quantity signs stay separate', () => {
+  const base = { costCode: '03-300-30-20', costType: 'M', sourceWbsCodeId: '123', description: 'Concrete',
+    quantity: 2, uom: 'cy', unitCost: 140, subtotalOverride: null };
+  const others = [
+    { ...base, unitCost: 145, uom: 'ea' },
+    { ...base, unitCost: 145, description: 'Other concrete' },
+    { ...base, unitCost: 145, costType: 'S' },
+    { ...base, unitCost: 145, sourceWbsCodeId: '456' },
+    { ...base, unitCost: 145, quantity: -2 },
+  ];
+  const combined = combineCommitmentMakerGroups([
+    { name: 'A', lineItems: [base] }, { name: 'B', lineItems: others },
+  ], ['A', 'B'], 'Combined');
+  assert.equal(combined[0].lineItems.length, 6);
+});
+
+test('ordinary imports retain separate prices until the user combines purchase orders', () => {
+  const base = { costCode: '03-300-30-20', costType: 'M', description: 'Concrete',
+    quantity: 2, uom: 'cy', unitCost: 140.001, subtotalOverride: null };
+  assert.equal(consolidateCommitmentMakerLineItems([base, { ...base, unitCost: 140.002 }]).length, 2);
 });
 
 test('combining purchase orders requires two selections and a unique title', () => {

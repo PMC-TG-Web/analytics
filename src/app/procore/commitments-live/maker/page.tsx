@@ -7,6 +7,7 @@ import Navigation from "@/components/Navigation";
 import { runCommitmentMakerRequest } from "@/lib/commitmentMakerRequest";
 import {
   combineCommitmentMakerGroups,
+  commitmentMakerLineAmount,
   commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
   type CommitmentMakerParseResult,
@@ -46,6 +47,7 @@ type PreviewLine = {
   quantity: number;
   uom: string;
   unitCost: number;
+  subtotalOverride: number | null;
   wbsCodeId: string | null;
   wbsFlatCode: string | null;
 };
@@ -164,8 +166,8 @@ function projectOptions(payload: unknown): ProjectOption[] {
     .sort((a, b) => `${a.number} ${a.name}`.localeCompare(`${b.number} ${b.name}`));
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
+function formatCurrency(value: number, maximumFractionDigits = 2): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits }).format(value || 0);
 }
 
 export default function CommitmentMakerPage() {
@@ -1026,7 +1028,7 @@ export default function CommitmentMakerPage() {
                   <div>
                     <h3 className="text-sm font-black text-violet-950">Combine proposed purchase orders</h3>
                     <p className="mt-1 text-xs text-violet-800">
-                      Select two or more new POs below. Matching budget code, description, UOM, cost type, and unit cost lines will become one line with the quantities added together.
+                      Select two or more new POs below. Lines with the same budget code, description, unit, and cost type combine even when unit costs differ. Quantities are added and the weighted unit cost preserves the combined amount.
                     </p>
                   </div>
                   {groupingChanged && (
@@ -1128,8 +1130,8 @@ export default function CommitmentMakerPage() {
                                 <td className="px-3 py-2">{line.description}</td>
                                 <td className="px-3 py-2 text-right">{line.quantity}</td>
                                 <td className="px-3 py-2">{line.uom}</td>
-                                <td className="px-3 py-2 text-right">{formatCurrency(line.unitCost)}</td>
-                                <td className="px-3 py-2 text-right font-semibold">{formatCurrency(line.quantity * line.unitCost)}</td>
+                                <td className="px-3 py-2 text-right">{formatCurrency(line.unitCost, 4)}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{formatCurrency(commitmentMakerLineAmount(line))}</td>
                               </tr>
                             ))}
                           </tbody>

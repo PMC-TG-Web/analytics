@@ -11,8 +11,12 @@ export type CommitmentMakerLineItem = {
   quantity: number;
   uom: string;
   unitCost: number;
-  subtotalOverride: null;
+  subtotalOverride: number | null;
 };
+
+export function commitmentMakerLineAmount(line: Pick<CommitmentMakerLineItem, "quantity" | "unitCost" | "subtotalOverride">): number {
+  return Math.round((line.subtotalOverride ?? line.quantity * line.unitCost) * 100) / 100;
+}
 
 export type CommitmentMakerPlannedLineItem = CommitmentMakerLineItem & {
   wbsCodeId: string | null;
@@ -26,7 +30,7 @@ export function commitmentMakerLineCreatePayload(line: CommitmentMakerPlannedLin
     description: line.description,
     quantity: line.quantity,
     unit_cost: line.unitCost,
-    amount: Math.round(line.quantity * line.unitCost * 100) / 100,
+    amount: commitmentMakerLineAmount(line),
     uom: line.uom,
     wbs_code_id: line.wbsCodeId,
   };
@@ -108,31 +112,46 @@ function normalizedLineKeyPart(value: unknown): string {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function commitmentMakerLineKey(line: CommitmentMakerLineItem): string {
+function commitmentMakerLineKey(line: CommitmentMakerLineItem, combineDifferentUnitCosts: boolean): string {
   return [
     normalizedLineKeyPart(line.costCode).replace(/\s+/g, ""),
     normalizedLineKeyPart(line.costType),
     normalizedLineKeyPart(line.sourceWbsCodeId),
     normalizedLineKeyPart(line.description),
     normalizedLineKeyPart(line.uom),
-    String(Math.round(line.unitCost * 100)),
+    // Keep credits and positive quantities separate so their sum cannot erase
+    // a priced line or produce a zero-quantity weighted unit cost.
+    String(Math.sign(line.quantity)),
+    ...(combineDifferentUnitCosts ? [] : [String(line.unitCost)]),
   ].join("|");
 }
 
 export function consolidateCommitmentMakerLineItems(
   lineItems: CommitmentMakerLineItem[],
+  options: { combineDifferentUnitCosts?: boolean } = {},
 ): CommitmentMakerLineItem[] {
-  const consolidated = new Map<string, CommitmentMakerLineItem>();
+  const consolidated = new Map<string, { line: CommitmentMakerLineItem; amountCents: number; weighted: boolean }>();
   for (const line of lineItems) {
-    const key = commitmentMakerLineKey(line);
+    const key = commitmentMakerLineKey(line, options.combineDifferentUnitCosts === true);
     const existing = consolidated.get(key);
     if (existing) {
-      existing.quantity = Math.round((existing.quantity + line.quantity) * 1_000_000) / 1_000_000;
+      existing.weighted ||= existing.line.unitCost !== line.unitCost || line.subtotalOverride !== null;
+      existing.amountCents += Math.round(commitmentMakerLineAmount(line) * 100);
+      existing.line.quantity = Math.round((existing.line.quantity + line.quantity) * 1_000_000) / 1_000_000;
     } else {
-      consolidated.set(key, { ...line });
+      consolidated.set(key, { line: { ...line }, amountCents: Math.round(commitmentMakerLineAmount(line) * 100), weighted: line.subtotalOverride !== null });
     }
   }
-  return [...consolidated.values()];
+  return [...consolidated.values()].map(({ line, amountCents, weighted }) => {
+    const amount = amountCents / 100;
+    if (weighted && line.quantity !== 0) {
+      line.unitCost = Math.round(amount / line.quantity * 10_000) / 10_000;
+    }
+    // Procore accepts an explicit amount. Retain it when four-decimal unit
+    // pricing cannot represent the original total exactly.
+    if (weighted || Math.round(line.quantity * line.unitCost * 100) !== amountCents) line.subtotalOverride = amount;
+    return line;
+  });
 }
 
 function normalizedGroupName(value: unknown): string {
@@ -167,7 +186,7 @@ export function combineCommitmentMakerGroups(
   const firstSelectedIndex = groups.findIndex((group) => selectedNames.has(normalizedGroupName(group.name)));
   const combined: CommitmentMakerGroup = {
     name: combinedName,
-    lineItems: consolidateCommitmentMakerLineItems(selected.flatMap((group) => group.lineItems)),
+    lineItems: consolidateCommitmentMakerLineItems(selected.flatMap((group) => group.lineItems), { combineDifferentUnitCosts: true }),
   };
   const result: CommitmentMakerGroup[] = [];
   for (let index = 0; index < groups.length; index += 1) {

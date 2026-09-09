@@ -13,6 +13,7 @@ import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   commitmentMakerLineCreatePayload,
+  commitmentMakerLineAmount,
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerSourceWbsCandidate,
   commitmentMakerVendorIsAssignedToProject,
@@ -932,11 +933,15 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
       const uom = readText(rawLine.uom);
       const quantity = Number(rawLine.quantity);
       const unitCost = Number(rawLine.unitCost);
+      const subtotalOverride = rawLine.subtotalOverride == null ? null : Number(rawLine.subtotalOverride);
       if (!costCode || !description || !uom || !Number.isFinite(quantity) || quantity <= 0) {
         throw new Error(`Group "${name}" line ${lineIndex + 1} is missing a valid cost code, description, quantity, or UOM.`);
       }
       if (!Number.isFinite(unitCost) || unitCost < 0) {
         throw new Error(`Group "${name}" line ${lineIndex + 1} has an invalid unit cost.`);
+      }
+      if (subtotalOverride !== null && (!Number.isFinite(subtotalOverride) || subtotalOverride < 0)) {
+        throw new Error(`Group "${name}" line ${lineIndex + 1} has an invalid amount.`);
       }
       if (isCommitmentMakerEstimateMatchingLine(costCode, description)) return null;
       return {
@@ -945,8 +950,8 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
         description,
         quantity,
         uom,
-        unitCost: Math.round(unitCost * 100) / 100,
-        subtotalOverride: null,
+        unitCost: Math.round(unitCost * 10_000) / 10_000,
+        subtotalOverride: subtotalOverride === null ? null : Math.round(subtotalOverride * 100) / 100,
       };
     }).filter((line): line is CommitmentMakerLineItem => line !== null));
     totalLineItems += lineItems.length;
@@ -1124,7 +1129,7 @@ async function buildPlan(params: {
       fingerprint,
       lineItems: plannedLines,
       total: plannedLines.reduce(
-        (sum, line) => sum + Math.round(line.quantity * line.unitCost * 100) / 100,
+        (sum, line) => sum + commitmentMakerLineAmount(line),
         0,
       ),
     });
@@ -1187,6 +1192,7 @@ function commitmentLineMatches(line: PlannedLine, record: UnknownRecord): boolea
     Math.abs(quantity - line.quantity) < 0.0001 &&
     Number.isFinite(unitCost) &&
     Math.abs(unitCost - line.unitCost) < 0.005 &&
+    (line.subtotalOverride === null || (record.amount != null && Math.abs(Number(record.amount) - commitmentMakerLineAmount(line)) < 0.005)) &&
     readText(record.uom).toLowerCase() === line.uom.toLowerCase()
   );
 }
@@ -1234,6 +1240,8 @@ function commitmentLineMatchesPayload(
     && Math.abs(quantity - payload.quantity) < 0.0001
     && Number.isFinite(unitCost)
     && Math.abs(unitCost - payload.unit_cost) < 0.005
+    && (payload.amount === Math.round(payload.quantity * payload.unit_cost * 100) / 100
+      || (record.amount != null && Math.abs(Number(record.amount) - payload.amount) < 0.005))
     && readText(record.uom).toLowerCase() === payload.uom.toLowerCase()
   );
 }
@@ -1247,6 +1255,7 @@ function commitmentLinePayloadMatchesPlanned(
     && payload.description === line.description
     && Math.abs(payload.quantity - line.quantity) < 0.0001
     && Math.abs(payload.unit_cost - line.unitCost) < 0.005
+    && Math.abs(payload.amount - commitmentMakerLineAmount(line)) < 0.005
     && payload.uom.toLowerCase() === line.uom.toLowerCase()
   );
 }

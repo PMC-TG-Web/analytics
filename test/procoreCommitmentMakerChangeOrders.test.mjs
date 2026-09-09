@@ -402,8 +402,9 @@ test("bounds live Procore calls and serializes resumable same-PO line creation",
   assert.match(route, /recordProcoreQuotaObservation\(\{ companyId, observation \}\)/);
   assert.match(route, /rateLimited: error instanceof CommitmentMakerRateLimitError/);
   assert.match(route, /failure\?\.rateLimited === true && failure.outcomeUnknown !== true \? 429/);
-  assert.match(page, /Creation paused — progress saved/);
-  assert.match(page, /result\?\.rateLimited === true && result.outcomeUnknown !== true/);
+  assert.match(page, /runCommitmentMakerRequest/);
+  assert.match(page, /Processing your request/);
+  assert.doesNotMatch(page, /Creation paused|Requests may resume after|temporarily limiting requests/);
   assert.match(route, /for \(const line of missingLines\)/);
   assert.doesNotMatch(route, /Promise\.allSettled\(batch\.map/);
   assert.match(route, /findIncompleteChangeOrderOwnedLines/);
@@ -432,7 +433,8 @@ test("bounds live Procore calls and serializes resumable same-PO line creation",
   assert.match(page, /!createOutcomeUnknown/);
   assert.match(page, /setCreateOutcomeUnknown\(true\)/);
   assert.match(page, /mode === "create" && !receivedResponse/);
-  assert.ok(page.indexOf("const responseText = await response.text()") < page.indexOf("receivedResponse = true"));
+  assert.match(page, /onResponse: \(\) => \{ receivedResponse = true; \}/);
+  assert.match(page, /receivedResponse = false;\s*return fetch/);
 });
 
 test("removes only exact PCO lines before releasing the PO assignment", () => {

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Navigation from "@/components/Navigation";
+import { runCommitmentMakerRequest } from "@/lib/commitmentMakerRequest";
 import {
   combineCommitmentMakerGroups,
   commitmentMakerProjectIdFromSearch,
@@ -189,7 +190,7 @@ export default function CommitmentMakerPage() {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [rateLimitUntil, setRateLimitUntil] = useState("");
+  const makerRequest = useRef<AbortController | null>(null);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [createOutcomeUnknown, setCreateOutcomeUnknown] = useState(false);
@@ -383,13 +384,15 @@ export default function CommitmentMakerPage() {
     mode: "preview" | "create",
     parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
   ) {
-    if (rateLimitUntil && Date.parse(rateLimitUntil) > Date.now()) return;
+    if (makerRequest.current) return;
+    const controller = new AbortController();
+    makerRequest.current = controller;
     let receivedResponse = false;
     setBusy(true);
     setError("");
     if (mode === "create") setResult(null);
     try {
-      const response = await fetch("/api/procore/commitments-live/maker", {
+      const requestOptions: RequestInit = {
         method: "POST",
         headers: (() => {
           const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -418,23 +421,17 @@ export default function CommitmentMakerPage() {
             : undefined,
           previewFingerprint: mode === "create" ? preview?.previewFingerprint : undefined,
         }),
+        signal: controller.signal,
+      };
+      const { response, payload } = await runCommitmentMakerRequest({
+        signal: controller.signal,
+        request: () => {
+          receivedResponse = false;
+          return fetch("/api/procore/commitments-live/maker", requestOptions);
+        },
+        onResponse: () => { receivedResponse = true; },
       });
-      const responseText = await response.text();
-      receivedResponse = true;
-      let payload: unknown = {};
-      try {
-        payload = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        payload = {};
-      }
-      const retryAt = text(asRecord(payload).rateLimitUntil);
-      if (asRecord(payload).rateLimited === true && Date.parse(retryAt) > Date.now()) {
-        setRateLimitUntil(retryAt);
-      }
-      if (mode === "create" && asRecord(payload).rateLimited === true) {
-        setPreview(null);
-        setConfirmed(false);
-      }
+      if (controller.signal.aborted) return;
       if (!response.ok && mode === "preview") {
         throw new Error(
           text(asRecord(payload).error)
@@ -480,21 +477,19 @@ export default function CommitmentMakerPage() {
         );
       }
     } catch (requestError) {
+      if (controller.signal.aborted) return;
       if (mode === "create" && !receivedResponse) {
         setCreateOutcomeUnknown(true);
         setConfirmed(false);
       }
       setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {
-      setBusy(false);
+      makerRequest.current = null;
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
 
-  useEffect(() => {
-    if (!rateLimitUntil) return;
-    const timer = window.setTimeout(() => setRateLimitUntil(""), Math.max(0, Date.parse(rateLimitUntil) - Date.now()));
-    return () => window.clearTimeout(timer);
-  }, [rateLimitUntil]);
+  useEffect(() => () => makerRequest.current?.abort(), []);
 
   async function deleteFromPurchaseOrder() {
     if (!preview?.sourceChangeOrder || !preview.removableTargetCommitmentId) return;
@@ -660,7 +655,6 @@ export default function CommitmentMakerPage() {
     projectId
     && (sourceType === "approved_change_order" || (parsedWorkbook && sheetName))
     && !busy
-    && !rateLimitUntil
     && (sourceType === "estimate" || changeOrderPackageId)
     && (sourceType === "estimate" || commitmentTarget === "new_purchase_order" || existingCommitmentId)
   );
@@ -675,9 +669,8 @@ export default function CommitmentMakerPage() {
   );
   const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !busy);
   const readyToCreate = Boolean(
-    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !rateLimitUntil && !result?.success && !createOutcomeUnknown
+    preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success && !createOutcomeUnknown
   );
-  const pausedForRateLimit = result?.rateLimited === true && result.outcomeUnknown !== true;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -883,10 +876,11 @@ export default function CommitmentMakerPage() {
           </div>
         </section>
 
-        {rateLimitUntil && !createOutcomeUnknown && (
-          <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-            Procore is temporarily limiting requests. Confirmed lines are saved. Wait until {new Date(rateLimitUntil).toLocaleTimeString()}, then preview again to continue adding missing lines.
-          </p>
+        {busy && (
+          <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-700">
+            <span aria-hidden="true" className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600 motion-reduce:animate-none" />
+            <span>Processing your request…</span>
+          </div>
         )}
 
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -911,8 +905,8 @@ export default function CommitmentMakerPage() {
           ))}
         </section>
 
-        {error && (!pausedForRateLimit || error !== result?.error) && (
-          <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${rateLimitUntil && !createOutcomeUnknown ? "border-amber-300 bg-amber-50 text-amber-900" : "border-red-300 bg-red-50 text-red-800"}`}>
+        {error && (
+          <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
             {error}
           </div>
         )}
@@ -1163,9 +1157,11 @@ export default function CommitmentMakerPage() {
                 <button
                   type="button"
                   disabled={!readyToCreate}
+                  aria-busy={busy}
                   onClick={() => void callMaker("create")}
-                  className="mt-4 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
+                  {busy && <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none" />}
                   {busy
                     ? preview.target === "existing_purchase_order" ? "Adding Lines..." : "Creating Purchase Orders..."
                     : preview.target === "existing_purchase_order"
@@ -1191,17 +1187,15 @@ export default function CommitmentMakerPage() {
         )}
 
         {result && (
-          <section className={`rounded-2xl border p-6 shadow-sm ${result.success ? "border-emerald-300 bg-emerald-50" : pausedForRateLimit ? "border-amber-300 bg-amber-50" : "border-red-300 bg-red-50"}`}>
-            <h2 className={`text-lg font-black ${result.success ? "text-emerald-900" : pausedForRateLimit ? "text-amber-900" : "text-red-900"}`}>
-              {result.success ? "Commitments created successfully" : pausedForRateLimit ? "Creation paused — progress saved" : "Commitment creation needs attention"}
+          <section className={`rounded-2xl border p-6 shadow-sm ${result.success ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
+            <h2 className={`text-lg font-black ${result.success ? "text-emerald-900" : "text-red-900"}`}>
+              {result.success ? "Commitments created successfully" : "Commitment creation needs attention"}
             </h2>
             <p className="mt-1 text-sm">
-              Created {result.created || 0} PO(s), updated {result.addedToExisting || 0} existing PO(s), resumed {result.resumed || 0}, {pausedForRateLimit ? "paused" : "failed"} {result.failed || 0}.
+              Completed {(result.created || 0) + (result.resumed || 0)} purchase order(s), updated {result.addedToExisting || 0} existing purchase order(s).
+              {result.failed ? ` ${result.failed} purchase order(s) need attention.` : ""}
             </p>
-            {result.error && <p className={`mt-2 text-sm font-semibold ${pausedForRateLimit ? "text-amber-900" : "text-red-800"}`}>{result.error}</p>}
-            {pausedForRateLimit && result.rateLimitUntil && (
-              <p className="mt-2 text-sm text-amber-900">Requests may resume after {new Date(result.rateLimitUntil).toLocaleTimeString()}. Preview again to continue.</p>
-            )}
+            {result.error && <p className="mt-2 text-sm font-semibold text-red-800">{result.error}</p>}
             <div className="mt-4 space-y-2">
               {(result.results || []).map((item) => (
                 <div key={`${item.group}-${item.contractId || item.number}`} className="rounded-lg border border-white/80 bg-white px-4 py-3 text-sm">
@@ -1211,7 +1205,7 @@ export default function CommitmentMakerPage() {
                     {item.createdLineItems !== undefined ? ` · ${item.createdLineItems} lines created` : ""}
                     {item.reusedLineItems ? ` · ${item.reusedLineItems} existing lines reused` : ""}
                   </p>
-                  {item.error && <p className={`mt-2 text-xs font-semibold ${pausedForRateLimit ? "text-amber-900" : "text-red-700"}`}>{item.error}</p>}
+                  {item.error && <p className="mt-2 text-xs font-semibold text-red-700">{item.error}</p>}
                 </div>
               ))}
             </div>

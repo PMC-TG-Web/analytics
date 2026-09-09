@@ -144,6 +144,7 @@ function rateLimitResponse(error: CommitmentMakerRateLimitError) {
   return NextResponse.json({
     success: false,
     rateLimited: true,
+    retryable: true,
     rateLimitUntil: error.rateLimitUntil,
     error: `${error.message} Wait until the rate limit resets, then preview again to continue.`,
   }, {
@@ -2017,6 +2018,10 @@ async function handleRequest(request: NextRequest) {
       taskError: taskError || undefined,
       rateLimited: failure?.rateLimited === true,
       rateLimitUntil: failure?.rateLimitUntil,
+      // A CO claim binds the retry to its original PO. Estimate imports without
+      // that claim can only repeat automatically before any PO has been created.
+      retryable: failure?.rateLimited === true && failure.outcomeUnknown !== true && !taskError
+        && (Boolean(changeOrderClaim) || results.every((result) => !result.contractId && result.success !== true)),
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && target !== "existing_purchase_order").length,
       addedToExisting: results.filter((result) => result.success === true && target === "existing_purchase_order").length,

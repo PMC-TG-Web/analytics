@@ -416,13 +416,13 @@ test("webhook plan separates company-level and project-level resources", async (
   const project = plan.PROJECT_WEBHOOK_TRIGGER_PLAN.map((entry) => entry.resourceName);
 
   assert.ok(company.includes("Projects"));
-  for (const name of ["RFIs", "Task Items", "Meetings", "Potential Change Orders", "Change Order Packages"]) {
+  for (const name of ["RFIs", "Task Items", "Meetings", "Change Events", "Potential Change Orders", "Change Order Packages"]) {
     assert.ok(project.includes(name), `${name} must be a project-level trigger`);
     assert.ok(!company.includes(name), `${name} is not exposed by the company catalog`);
   }
 
   const priority = plan.projectWebhookPlanForGroups(["priority"]).map((entry) => entry.resourceName);
-  assert.deepEqual(priority, ["RFIs", "Task Items", "Meetings", "Potential Change Orders", "Change Order Packages"]);
+  assert.deepEqual(priority, ["RFIs", "Task Items", "Meetings", "Change Events", "Potential Change Orders", "Change Order Packages"]);
   assert.deepEqual(plan.resolveProjectWebhookGroups(undefined), ["priority", "actuals"]);
   assert.deepEqual(plan.resolveProjectWebhookGroups("priority, actuals"), ["priority", "actuals"]);
 });
@@ -491,7 +491,7 @@ test("project-level webhook registration exists in the script, the lib, and onbo
   assert.match(onboarding, /step: "project-webhooks"/);
 });
 
-test("webhook processing routes RFI, Task Item, and Meeting events to single-record PM dashboard sync", async () => {
+test("webhook processing routes RFI, Task Item, Meeting, and Change Event events to single-record PM dashboard sync", async () => {
   const route = await readFile(
     new URL("../src/app/api/webhooks/procore/process/route.ts", import.meta.url),
     "utf8",
@@ -499,6 +499,7 @@ test("webhook processing routes RFI, Task Item, and Meeting events to single-rec
   assert.match(route, /resource === 'rfis' \|\| resource === 'rfi'/);
   assert.match(route, /resource === 'task items'/);
   assert.match(route, /resource === 'meetings'/);
+  assert.match(route, /resource === 'change events'/);
   assert.match(route, /return handlePmActionItemEvent\(event, pmSourceType\)/);
   assert.match(route, /await deletePmDashboardActionItem\(ref\)/);
   assert.match(route, /await syncPmDashboardActionItem\(ref/);

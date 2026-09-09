@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { dateKeyInTimeZone, PM_DASHBOARD_TIME_ZONE, type PmDashboardItemType } from "@/lib/pmDashboard";
@@ -181,6 +182,11 @@ export default function PmDashboardPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
+        <nav className="mb-5 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="PM dashboard views">
+          <span className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-black text-white">5-Day Work</span>
+          <Link href="/pm-dashboard/changes" className="rounded-lg px-3 py-2 text-xs font-black text-slate-500 no-underline transition hover:text-teal-800">Open Changes</Link>
+        </nav>
+
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">

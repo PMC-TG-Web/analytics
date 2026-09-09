@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
        AND p."procore_project_id" = i."procore_project_id"
       WHERE i."company_id" = ${companyId}
         AND i."is_open" = true
+        AND i."source_type" IN ('rfi', 'task', 'meeting')
         AND i."due_at" IS NOT NULL
         AND i."due_at" < (${windowEndDateKey}::date AT TIME ZONE 'America/New_York')
         AND (

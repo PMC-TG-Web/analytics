@@ -176,6 +176,16 @@ async function readSource(params: {
       ],
       keys: ["rfis"],
     });
+  } else if (params.sourceType === "change_event") {
+    result = await fetchFirstSupported({
+      token: params.token,
+      companyId: params.project.companyId,
+      paths: [
+        `/rest/v1.1/change_events?project_id=${projectId}`,
+        `/rest/v1.0/change_events?project_id=${projectId}`,
+      ],
+      keys: ["change_events"],
+    });
   } else {
     try {
       const rows = await fetchMeetings({
@@ -293,13 +303,19 @@ function singleItemPaths(ref: ActionItemRef): string[] {
   if (ref.sourceType === "task") {
     return [`/rest/v1.0/task_items/${sourceId}?project_id=${projectId}`];
   }
+  if (ref.sourceType === "change_event") {
+    return [
+      `/rest/v1.1/change_events/${sourceId}?project_id=${projectId}`,
+      `/rest/v1.0/change_events/${sourceId}?project_id=${projectId}`,
+    ];
+  }
   return [`/rest/v1.1/projects/${projectId}/meetings/${sourceId}`];
 }
 
 function unwrapSingleRecord(payload: unknown): UnknownRecord | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const record = payload as UnknownRecord;
-  for (const key of ["data", "rfi", "task_item", "meeting"]) {
+  for (const key of ["data", "rfi", "task_item", "meeting", "change_event"]) {
     const nested = record[key];
     if (nested && typeof nested === "object" && !Array.isArray(nested)) return nested as UnknownRecord;
   }
@@ -392,7 +408,7 @@ export async function syncPmDashboardProject(project: SyncProject) {
   const errors: Array<{ sourceType: PmActionItemType; error: string }> = [];
   let rateLimited = false;
 
-  for (const sourceType of ["rfi", "task", "meeting"] as const) {
+  for (const sourceType of ["rfi", "task", "meeting", "change_event"] as const) {
     try {
       const result = await readSource({ project, sourceType, token, memberDirectory });
       await persistSource(project, result);

@@ -1,11 +1,11 @@
 export const PM_DASHBOARD_TIME_ZONE = "America/New_York";
 export const DEFAULT_PROCORE_WEB_ORIGIN = "https://us02.procore.com";
 
-export const PM_ACTION_ITEM_TYPES = ["rfi", "task", "meeting"] as const;
+export const PM_ACTION_ITEM_TYPES = ["rfi", "task", "meeting", "change_event"] as const;
 export type PmActionItemType = (typeof PM_ACTION_ITEM_TYPES)[number];
 
 /** Everything the dashboard renders: Procore action items plus mirrored Outlook events. */
-export const PM_DASHBOARD_ITEM_TYPES = [...PM_ACTION_ITEM_TYPES, "outlook"] as const;
+export const PM_DASHBOARD_ITEM_TYPES = ["rfi", "task", "meeting", "outlook"] as const;
 export type PmDashboardItemType = (typeof PM_DASHBOARD_ITEM_TYPES)[number];
 
 export type UnknownRecord = Record<string, unknown>;
@@ -91,7 +91,9 @@ export function buildProcoreItemUrl(params: {
     ? `${projectPath}/rfi/show/${encodeURIComponent(sourceId)}`
     : params.sourceType === "task"
       ? `${projectPath}/task_items/${encodeURIComponent(sourceId)}`
-      : `${projectPath}/meetings/${encodeURIComponent(sourceId)}`;
+      : params.sourceType === "meeting"
+        ? `${projectPath}/meetings/${encodeURIComponent(sourceId)}`
+        : `${projectPath}/change_events/${encodeURIComponent(sourceId)}`;
   return new URL(itemPath, origin).toString();
 }
 
@@ -154,7 +156,10 @@ export function isOpenPmItem(sourceType: PmActionItemType, record: UnknownRecord
     return cancelled !== true && text(record.status).toLowerCase() !== "cancelled";
   }
 
-  const status = firstText(record, ["status", "state"]).toLowerCase();
+  const nestedStatus = isRecord(record.change_event_status)
+    ? firstText(record.change_event_status, ["name", "mapped_to_status"])
+    : "";
+  const status = (firstText(record, ["status", "state"]) || nestedStatus).toLowerCase();
   if (!status) return true;
   return ![
     "closed",
@@ -164,6 +169,7 @@ export function isOpenPmItem(sourceType: PmActionItemType, record: UnknownRecord
     "voided",
     "recycled",
     "deleted",
+    ...(sourceType === "change_event" ? [] : ["approved", "rejected"]),
   ].includes(status);
 }
 
@@ -182,6 +188,9 @@ function sourceMemberFields(sourceType: PmActionItemType): string[] {
   }
   if (sourceType === "meeting") {
     return ["attendees", "meeting_attendees", "invitees", "participants"];
+  }
+  if (sourceType === "change_event") {
+    return ["assigned", "assignee", "created_by"];
   }
   return ["assigned", "assigned_to", "assignee", "assignees", "assigned_id", "assignee_ids"];
 }
@@ -206,9 +215,12 @@ export function normalizePmActionItem(params: {
   const dueAt = sourceType === "meeting"
     ? startsAt
     : toProcoreDate(record.due_date ?? record.due_at ?? record.deadline);
-  const number = firstText(record, ["number", "rfi_number", "position"]);
+  const number = firstText(record, ["alphanumeric_number", "number", "rfi_number", "position"]);
+  const nestedStatus = isRecord(record.change_event_status)
+    ? firstText(record.change_event_status, ["name", "mapped_to_status"])
+    : "";
   const title = firstText(record, ["title", "subject", "name"])
-    || `${sourceType === "rfi" ? "RFI" : sourceType === "meeting" ? "Meeting" : "Task"}${number ? ` ${number}` : ""}`;
+    || `${sourceType === "rfi" ? "RFI" : sourceType === "meeting" ? "Meeting" : sourceType === "change_event" ? "Change Event" : "Task"}${number ? ` ${number}` : ""}`;
   const sourceUrl = buildProcoreItemUrl({
     sourceType,
     projectId: params.projectId,
@@ -223,7 +235,7 @@ export function normalizePmActionItem(params: {
     number: number || null,
     title,
     description: firstText(record, ["description", "question", "overview", "agenda"]) || null,
-    status: firstText(record, ["status", "state", "mode"]) || null,
+    status: firstText(record, ["status", "state", "mode"]) || nestedStatus || null,
     dueAt,
     startsAt,
     endsAt,

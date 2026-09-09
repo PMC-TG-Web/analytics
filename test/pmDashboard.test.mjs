@@ -23,6 +23,10 @@ test('each dashboard item resolves to its exact Procore record', () => {
     buildProcoreItemUrl({ sourceType: 'meeting', projectId: 123, sourceId: 90 }),
     'https://us02.procore.com/123/project/meetings/90',
   );
+  assert.equal(
+    buildProcoreItemUrl({ sourceType: 'change_event', projectId: 123, sourceId: 91 }),
+    'https://us02.procore.com/123/project/change_events/91',
+  );
 });
 
 test('Procore-supplied deep links win while unrelated meeting links are ignored', () => {
@@ -106,6 +110,8 @@ test('closed work is excluded while future meetings remain actionable', () => {
   assert.equal(isOpenPmItem('rfi', { status: 'Completed' }), false);
   assert.equal(isOpenPmItem('meeting', { status: 'Scheduled' }), true);
   assert.equal(isOpenPmItem('meeting', { is_cancelled: true }), false);
+  assert.equal(isOpenPmItem('change_event', { change_event_status: { name: 'Closed' } }), false);
+  assert.equal(isOpenPmItem('change_event', { status: 'Pending' }), true);
 });
 
 test('the dashboard produces five stable workday keys across weekends and DST boundaries', () => {
@@ -145,7 +151,7 @@ test('the PM dashboard uses a verified Procore user session when Auth0 is absent
   const requestUser = readFileSync(new URL('../src/lib/requestUser.ts', import.meta.url), 'utf8');
 
   assert.match(middleware, /verifyProcoreUserSessionCookieValue/);
-  assert.match(middleware, /pathname === '\/pm-dashboard'/);
+  assert.match(middleware, /pathname\.startsWith\('\/pm-dashboard\/'\)/);
   assert.match(middleware, /checkDatabasePermission\(request, requiredPermissions\)/);
   assert.match(callback, /\/rest\/v1\.0\/me/);
   assert.match(callback, /createProcoreUserSessionCookieValue/);

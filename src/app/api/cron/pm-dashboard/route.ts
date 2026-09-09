@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const DEFAULT_COMPANY_ID = "598134325805519";
-// RFIs, Task Items, and Meetings arrive via project webhooks; this sweep is the
+// RFIs, Task Items, Meetings, and Change Events arrive via project webhooks; this sweep is the
 // reconciliation safety net, so it no longer needs a 15-minute cadence.
 const DEFAULT_REPOLL_MINUTES = 90;
 

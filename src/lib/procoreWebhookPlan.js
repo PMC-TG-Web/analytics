@@ -27,6 +27,7 @@ export const PROJECT_WEBHOOK_TRIGGER_PLAN = [
   { group: 'priority', resourceName: 'RFIs', eventTypes: ['create', 'update', 'delete'] },
   { group: 'priority', resourceName: 'Task Items', eventTypes: ['create', 'update', 'delete'] },
   { group: 'priority', resourceName: 'Meetings', eventTypes: ['create', 'update', 'delete'] },
+  { group: 'priority', resourceName: 'Change Events', eventTypes: ['create', 'update', 'delete'] },
   { group: 'priority', resourceName: 'Potential Change Orders', eventTypes: ['create', 'update'] },
   { group: 'priority', resourceName: 'Change Order Packages', eventTypes: ['create', 'update'] },
   { group: 'actuals', resourceName: 'Timecard Entries', eventTypes: ['create', 'update', 'delete'] },
@@ -48,6 +49,7 @@ export const RESOURCE_ALIASES = {
   RFIs: ['RFIs', 'RFI'],
   'Task Items': ['Task Items'],
   Meetings: ['Meetings'],
+  'Change Events': ['Change Events'],
 };
 
 /**

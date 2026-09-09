@@ -1461,12 +1461,13 @@ async function handleChangeOrderEvent(event: {
   });
 }
 
-// ─── PM dashboard action items (RFIs, Task Items, Meetings) ────────────────
+// ─── PM dashboard action items (RFIs, Task Items, Meetings, Change Events) ─
 
 function pmActionItemSourceType(resource: string): PmActionItemType | null {
   if (resource === 'rfis' || resource === 'rfi') return 'rfi';
   if (resource === 'task items' || resource === 'task item' || resource === 'tasks') return 'task';
   if (resource === 'meetings' || resource === 'meeting') return 'meeting';
+  if (resource === 'change events' || resource === 'change event') return 'change_event';
   return null;
 }
 

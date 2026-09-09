@@ -211,7 +211,10 @@ function isAnalyticsMobileBypassPath(pathname: string): boolean {
 }
 
 function isPmDashboardPath(pathname: string): boolean {
-  return pathname === '/pm-dashboard' || pathname === '/api/pm-dashboard';
+  return pathname === '/pm-dashboard'
+    || pathname.startsWith('/pm-dashboard/')
+    || pathname === '/api/pm-dashboard'
+    || pathname.startsWith('/api/pm-dashboard/');
 }
 
 async function checkDatabasePermission(request: NextRequest, permissions: string[]): Promise<PermissionCheckResult> {
@@ -574,7 +577,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!session) {
-    if (request.method.toUpperCase() === 'GET' && pathname === '/pm-dashboard') {
+    if (request.method.toUpperCase() === 'GET' && (pathname === '/pm-dashboard' || pathname.startsWith('/pm-dashboard/'))) {
       const procoreLoginUrl = new URL('/api/auth/procore/login', request.url);
       procoreLoginUrl.searchParams.set('returnTo', `${pathname}${request.nextUrl.search}`);
       return NextResponse.redirect(procoreLoginUrl);

@@ -19,8 +19,8 @@ import {
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
 import { shouldParkProjectOnboarding } from "@/lib/projectOnboardingPolicy";
-import { getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
-import { ensureProjectWebhookHook } from "@/lib/procoreProjectWebhooks";
+import { withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import { maintainProjectWebhooks } from "@/lib/procoreWebhookMaintenance";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -310,7 +310,10 @@ export async function POST(request: NextRequest) {
       leaseId: worker.leaseId,
     });
     if (!project) {
-      return NextResponse.json({ success: true, skipped: true, reason: "no_project_due", dataset: DATASET });
+      const maintenance = await withProcoreLiveApiBypassForSyncSecret(request, () => maintainProjectWebhooks({
+        companyId: COMPANY_ID, leaseId: worker.leaseId,
+      }));
+      return NextResponse.json(maintenance, { status: maintenance.success ? 200 : 207 });
     }
 
     if (shouldParkProjectOnboarding(project)) {
@@ -364,30 +367,19 @@ export async function POST(request: NextRequest) {
     };
     const steps: StepResult[] = [];
 
-    // Project-tool webhooks (RFIs, tasks, meetings, change orders) live on a
-    // per-project hook. Registration is non-blocking so a permissions issue
-    // never stalls the rest of onboarding; the sync sweeps remain the fallback.
-    const webhookStep = await withProcoreLiveApiBypassForSyncSecret(request, async (): Promise<StepResult> => {
-      try {
-        const result = await ensureProjectWebhookHook({
-          companyId: COMPANY_ID,
-          projectId: project!.projectId,
-          token: await getClientCredentialsToken(),
-        });
-        return { step: "project-webhooks", status: "ok", httpStatus: 200, apiRequests: result.apiRequests, detail: result };
-      } catch (error) {
-        const status = Number((error as { status?: number })?.status || 0);
-        const until = (error as { rateLimitUntil?: Date })?.rateLimitUntil;
-        return {
-          step: "project-webhooks",
-          status: "error",
-          httpStatus: status || 500,
-          rateLimited: status === 429,
-          rateLimitUntil: until ? until.toISOString() : undefined,
-          detail: error instanceof Error ? error.message.slice(0, 1_000) : String(error),
-        };
-      }
-    });
+    // Registration owns a separate retry record; a failure cannot be hidden by
+    // an otherwise successful onboarding job that parks itself for a year.
+    const webhookMaintenance = await withProcoreLiveApiBypassForSyncSecret(request, () => maintainProjectWebhooks({
+      companyId: COMPANY_ID, projectId: project!.projectId, leaseId: worker.leaseId,
+    }));
+    const webhookStep: StepResult = {
+      step: "project-webhooks", status: webhookMaintenance.completed ? "ok" : "error",
+      httpStatus: webhookMaintenance.success ? 200 : 500,
+      rateLimited: webhookMaintenance.deferred,
+      rateLimitUntil: webhookMaintenance.rateLimitUntil,
+      rateLimitInherited: true,
+      detail: webhookMaintenance,
+    };
 
     const headerStep = await runStep({
       origin,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { purchaseOrderDiscoveryPolling } from "@/lib/procorePollingPolicy";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
 import {
@@ -204,6 +205,11 @@ export async function POST(request: NextRequest) {
       );
       const lineCount = Number(countRows[0]?.line_count || 0);
       const success = step.status === "ok";
+      const polling = purchaseOrderDiscoveryPolling({
+        previousEmptyChecks: (poDiscoveryProject.lastResult as Record<string, unknown> | null)?.emptyChecks,
+        success,
+        lineCount,
+      });
       const error = success
         ? null
         : JSON.stringify(step.detail || "Purchase order discovery failed").slice(0, 4_000);
@@ -221,15 +227,15 @@ export async function POST(request: NextRequest) {
         await deferProjectSync({
           project: poDiscoveryProject,
           until: rateLimitUntil,
-          result: { selection, step, lineCount, deferredBy: "procore-rate-limit" },
+          result: { selection, step, lineCount, emptyChecks: polling.emptyChecks, deferredBy: "procore-rate-limit" },
         });
       } else {
         await finishProjectSync({
           project: poDiscoveryProject,
           success,
-          nextRunMinutes: success && lineCount > 0 ? 365 * 24 * 60 : 30,
+          nextRunMinutes: polling.nextRunMinutes,
           error,
-          result: { selection, step, lineCount },
+          result: { selection, step, lineCount, ...polling },
         });
       }
 

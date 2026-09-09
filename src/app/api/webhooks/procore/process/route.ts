@@ -33,8 +33,12 @@ import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQue
 import { deletePmDashboardActionItem, syncPmDashboardActionItem } from '@/lib/pmDashboardSync';
 import type { PmActionItemType } from '@/lib/pmDashboard';
 import { getProcoreBackgroundCooldown } from '@/lib/procoreQuotaControl';
+import { randomUUID } from 'node:crypto';
+import { recoverStaleWebhookClaims } from '@/lib/procoreWebhookRecovery';
+import { acquireProcoreWorker, releaseProcoreWorker } from '@/lib/procoreSyncQueue';
 
 const MAX_BATCH_SIZE = 100;
+export const maxDuration = 300;
 
 // ─── Helpers shared across handlers ─────────────────────────────────────────
 
@@ -1688,8 +1692,9 @@ export async function POST(request: NextRequest) {
   }
 
   const batchSize = Math.min(MAX_BATCH_SIZE, requestedBatchSize);
-  const workerId = `manual:${Date.now()}`;
+  const workerId = `webhook:${randomUUID()}`;
   const now = new Date();
+  const recovery = dryRun ? { recovered: 0, failed: 0 } : await recoverStaleWebhookClaims(prisma, now);
 
   // Every handler needs at least one Procore GET; claiming during a cooldown
   // would only burn retry attempts. Defer the whole batch instead.
@@ -1742,6 +1747,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Serialize webhook reads with the other company workers as well as fencing
+  // each event claim. Polling and a long webhook batch share the same quota.
+  const worker = candidates.length ? await acquireProcoreWorker(cooldownCompanyId, 8) : null;
+  if (worker && !worker.acquired) {
+    return NextResponse.json({ success: true, deferred: true, reason: worker.reason,
+      rateLimitUntil: worker.control?.rate_limit_until || null,
+      scanned: 0, claimed: 0, processed: 0, failed: 0, coalesced: 0, deferredDuplicates: 0, recovery });
+  }
+  try {
+
   let claimed = 0;
   let processed = 0;
   let failed = 0;
@@ -1752,8 +1767,10 @@ export async function POST(request: NextRequest) {
   let batchRateLimitUntil: Date | null = null;
   const completedWorkKeys = new Set<string>();
   const failedWorkKeys = new Map<string, string>();
+  const deadline = Date.now() + 4 * 60_000;
 
   for (const queueItem of candidates) {
+    if (Date.now() >= deadline) break;
     const workKey = getWebhookWorkKey(queueItem.event);
 
     // Once Procore rate-limits us mid-batch, park the rest of the batch at the
@@ -1771,6 +1788,7 @@ export async function POST(request: NextRequest) {
       where: {
         id: queueItem.id,
         status: 'pending',
+        availableAt: { lte: new Date() },
       },
       data: {
         status: 'processing',
@@ -1789,11 +1807,13 @@ export async function POST(request: NextRequest) {
     if (completedWorkKeys.has(workKey)) {
       await prisma.$transaction([
         prisma.procoreWebhookQueue.update({
-          where: { id: queueItem.id },
+          where: { id: queueItem.id, status: 'processing', lockedBy: workerId },
           data: {
             status: 'completed',
             processedAt: new Date(),
             lastError: null,
+            lockedAt: null,
+            lockedBy: null,
           },
         }),
         prisma.procoreWebhookEvent.update({
@@ -1811,7 +1831,7 @@ export async function POST(request: NextRequest) {
       const attempted = queueItem.attempts + 1;
       const shouldFailPermanently = attempted >= queueItem.maxAttempts;
       await prisma.procoreWebhookQueue.update({
-        where: { id: queueItem.id },
+        where: { id: queueItem.id, status: 'processing', lockedBy: workerId },
         data: {
           status: shouldFailPermanently ? 'failed' : 'pending',
           availableAt: shouldFailPermanently
@@ -1848,11 +1868,13 @@ export async function POST(request: NextRequest) {
 
       await prisma.$transaction([
         prisma.procoreWebhookQueue.update({
-          where: { id: queueItem.id },
+          where: { id: queueItem.id, status: 'processing', lockedBy: workerId },
           data: {
             status: 'completed',
             processedAt: new Date(),
             lastError: null,
+            lockedAt: null,
+            lockedBy: null,
           },
         }),
         prisma.procoreWebhookEvent.update({
@@ -1870,7 +1892,7 @@ export async function POST(request: NextRequest) {
         // Provider throttling is not an event failure: release the claim, give
         // the attempt back, and make the item due when the cooldown ends.
         await prisma.procoreWebhookQueue.update({
-          where: { id: queueItem.id },
+          where: { id: queueItem.id, status: 'processing', lockedBy: workerId },
           data: {
             status: 'pending',
             availableAt: rateLimitUntil,
@@ -1892,7 +1914,7 @@ export async function POST(request: NextRequest) {
         : new Date(Date.now() + nextRetryDelayMs(attempted));
 
       await prisma.procoreWebhookQueue.update({
-        where: { id: queueItem.id },
+        where: { id: queueItem.id, status: 'processing', lockedBy: workerId },
         data: {
           status: shouldFailPermanently ? 'failed' : 'pending',
           availableAt: nextAvailableAt,
@@ -1919,6 +1941,10 @@ export async function POST(request: NextRequest) {
     rateLimitDeferred,
     rateLimitUntil: batchRateLimitUntil ? batchRateLimitUntil.toISOString() : null,
     onboardingQueued,
+    recovery,
   });
+  } finally {
+    if (worker?.acquired) await releaseProcoreWorker(cooldownCompanyId, worker.leaseId);
+  }
   });
 }

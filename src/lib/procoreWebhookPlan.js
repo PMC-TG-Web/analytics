@@ -33,7 +33,7 @@ export const PROJECT_WEBHOOK_TRIGGER_PLAN = [
   { group: 'actuals', resourceName: 'Productivity Logs', eventTypes: ['create', 'update', 'delete'] },
 ];
 
-export const DEFAULT_PROJECT_WEBHOOK_GROUPS = ['priority'];
+export const DEFAULT_PROJECT_WEBHOOK_GROUPS = ['priority', 'actuals'];
 
 export const RESOURCE_ALIASES = {
   Projects: ['Projects'],
@@ -121,6 +121,16 @@ export function triggerKeySet(triggers) {
   return new Set(
     triggers.map((t) => `${String(t?.resource_name || '').toLowerCase()}::${String(t?.event_type || '').toLowerCase()}`),
   );
+}
+
+/** All create/update/delete Actuals triggers must exist before polling can slow.
+ * @param {Array<{ resource_name?: unknown; event_type?: unknown }>} triggers
+ */
+export function hasActualsWebhookCoverage(triggers) {
+  const keys = triggerKeySet(triggers);
+  return PROJECT_WEBHOOK_TRIGGER_PLAN.filter((entry) => entry.group === 'actuals').every((entry) =>
+    (RESOURCE_ALIASES[entry.resourceName] || [entry.resourceName]).some((name) =>
+      entry.eventTypes.every((event) => keys.has(`${name.toLowerCase()}::${event}`))));
 }
 
 /**

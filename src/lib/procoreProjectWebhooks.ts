@@ -1,12 +1,13 @@
-import { makeRequest } from "@/lib/procore";
+import type { makeRequest as ProcoreRequest } from "@/lib/procore";
 import {
   WEBHOOK_NAMESPACE,
   WEBHOOK_PAYLOAD_VERSION,
   hookSecretMatches,
+  hasActualsWebhookCoverage,
   projectWebhookPlanForGroups,
   resolveTriggerPlan,
   triggerKeySet,
-} from "@/lib/procoreWebhookPlan";
+} from "./procoreWebhookPlan.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -19,6 +20,8 @@ export type ProjectWebhookEnsureResult = {
   triggersExisting: number;
   unavailable: string[];
   apiRequests: number;
+  actualsCovered: boolean;
+  verifiedAt: string;
 };
 
 function rows(payload: unknown): UnknownRecord[] {
@@ -52,8 +55,10 @@ export async function ensureProjectWebhookHook(params: {
   token: string;
   groups?: string[];
   sharedSecret?: string;
+  request?: typeof ProcoreRequest;
 }): Promise<ProjectWebhookEnsureResult> {
   const { companyId, projectId, token } = params;
+  const makeRequest = params.request ?? (await import("@/lib/procore")).makeRequest;
   const sharedSecret = (params.sharedSecret ?? process.env.PROCORE_WEBHOOK_SHARED_SECRET ?? "").trim();
   if (!sharedSecret) throw new Error("PROCORE_WEBHOOK_SHARED_SECRET is not configured.");
 
@@ -90,11 +95,11 @@ export async function ensureProjectWebhookHook(params: {
     }, companyId));
     apiRequests += 1;
     hookCreated = true;
-  } else if (!hookSecretMatches(hook, sharedSecret) && hook.id != null) {
+  } else if ((!hookSecretMatches(hook, sharedSecret) || hook.destination_url !== destination) && hook.id != null) {
     await makeRequest(`${base}/hooks/${encodeURIComponent(String(hook.id))}`, token, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ destination_headers: { Authorization: `Bearer ${sharedSecret}` } }),
+      body: JSON.stringify({ destination_url: destination, destination_headers: { Authorization: `Bearer ${sharedSecret}` } }),
     }, companyId);
     apiRequests += 1;
     secretRepaired = true;
@@ -140,6 +145,19 @@ export async function ensureProjectWebhookHook(params: {
     triggersCreated += 1;
   }
 
+  // Read back provider state. A successful POST (or a partially completed prior
+  // run) is not sufficient evidence that the delivery path is configured.
+  const verifiedHook = record(await makeRequest(`${base}/hooks/${encodeURIComponent(hookId)}`, token, { cache: "no-store" }, companyId));
+  const verifiedTriggers = rows(await makeRequest(`${base}/hooks/${encodeURIComponent(hookId)}/triggers?page=1&per_page=100`, token, { cache: "no-store" }, companyId));
+  apiRequests += 2;
+  if (String(verifiedHook?.status || "").toLowerCase() !== "active"
+    || verifiedHook?.destination_url !== destination
+    || !hookSecretMatches(verifiedHook, sharedSecret)) {
+    throw new Error(`Project ${projectId}: webhook destination, secret, or active status could not be verified.`);
+  }
+  const missing = resolveTriggerPlan(projectWebhookPlanForGroups(params.groups || []), catalog, triggerKeySet(verifiedTriggers)).planned;
+  if (missing.length) throw new Error(`Project ${projectId}: ${missing.length} webhook trigger(s) still missing after registration.`);
+
   return {
     projectId,
     hookId,
@@ -149,5 +167,7 @@ export async function ensureProjectWebhookHook(params: {
     triggersExisting: existingTriggers.length,
     unavailable: resolution.filter((r) => r.reason).map((r) => `${r.requested}: ${r.reason}`),
     apiRequests,
+    actualsCovered: hasActualsWebhookCoverage(verifiedTriggers),
+    verifiedAt: new Date().toISOString(),
   };
 }

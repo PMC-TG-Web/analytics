@@ -423,7 +423,7 @@ test("webhook plan separates company-level and project-level resources", async (
 
   const priority = plan.projectWebhookPlanForGroups(["priority"]).map((entry) => entry.resourceName);
   assert.deepEqual(priority, ["RFIs", "Task Items", "Meetings", "Potential Change Orders", "Change Order Packages"]);
-  assert.deepEqual(plan.resolveProjectWebhookGroups(undefined), ["priority"]);
+  assert.deepEqual(plan.resolveProjectWebhookGroups(undefined), ["priority", "actuals"]);
   assert.deepEqual(plan.resolveProjectWebhookGroups("priority, actuals"), ["priority", "actuals"]);
 });
 
@@ -487,7 +487,7 @@ test("project-level webhook registration exists in the script, the lib, and onbo
   assert.match(libSource, /export async function ensureProjectWebhookHook/);
   assert.match(libSource, /await makeRequest\(/);
   assert.match(libSource, /method: "PATCH"/);
-  assert.match(onboarding, /ensureProjectWebhookHook\(/);
+  assert.match(onboarding, /maintainProjectWebhooks\(/);
   assert.match(onboarding, /step: "project-webhooks"/);
 });
 

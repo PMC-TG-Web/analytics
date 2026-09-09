@@ -23,6 +23,7 @@ import {
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
+import { actualsPollingMinutes } from "@/lib/procorePollingPolicy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -177,9 +178,28 @@ async function pollingCadence(
   const recentlyActive = Boolean(row.latest_activity && row.latest_activity.getTime() >= recentThreshold);
   const activeStatus = status === "in progress" || status === "active" || status === "course of construction";
   const active = recentlyActive || activeStatus;
+  const [webhooks, lastEvent] = active ? await Promise.all([
+    prisma.procoreSyncProjectState.findUnique({
+      where: { companyId_projectId_dataset: { companyId, projectId, dataset: "project_webhooks" } },
+      select: { lastSuccessAt: true, lastResult: true, failureCount: true },
+    }),
+    prisma.procoreWebhookEvent.findFirst({
+      where: { companyId, projectId, processedAt: { not: null },
+        resourceName: { in: ["Timecard Entries", "Timecards", "Timecard Entries V2", "Productivity Logs", "Manpower Logs"] } },
+      orderBy: { receivedAt: "desc" },
+      select: { receivedAt: true },
+    }),
+  ]) : [null, null];
+  const nextRunMinutes = actualsPollingMinutes({
+    active, recentlyActive, activeMinutes: activeInterval, idleMinutes: idleInterval,
+    webhookCoverage: (webhooks?.lastResult as Record<string, unknown> | null)?.actualsCovered,
+    webhookVerifiedAt: webhooks?.lastSuccessAt || null,
+    webhookFailureCount: webhooks?.failureCount || 0,
+    lastActualsEventAt: lastEvent?.receivedAt || null,
+  });
   return {
     class: active ? "active" : "idle",
-    nextRunMinutes: active ? activeInterval : idleInterval,
+    nextRunMinutes,
     latestActivity: row.latest_activity?.toISOString() || null,
     projectStatus: row.project_status,
   };

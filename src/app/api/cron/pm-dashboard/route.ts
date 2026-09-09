@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasValidProcoreSyncSecret, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import { syncPmDashboardProject } from "@/lib/pmDashboardSync";
 import { acquireProcoreWorker, releaseProcoreWorker } from "@/lib/procoreSyncQueue";
+import { pmDashboardPollingMinutes } from "@/lib/procorePollingPolicy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -22,6 +23,9 @@ type SyncProjectRow = {
   companyId: string;
   procoreProjectId: string;
   projectName: string;
+  status?: string | null;
+  bidBoardStatus?: string | null;
+  lastAttemptAt?: Date | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-  const projects = requestedProjectId
+  const candidates = requestedProjectId
     ? await prisma.$queryRaw<SyncProjectRow[]>`
         SELECT
           p."company_id" AS "companyId",
@@ -68,22 +72,28 @@ export async function POST(request: NextRequest) {
         SELECT
           p."company_id" AS "companyId",
           p."procore_project_id" AS "procoreProjectId",
-          p."project_name" AS "projectName"
+          p."project_name" AS "projectName",
+          p."status" AS "status",
+          p."bid_board_status" AS "bidBoardStatus",
+          s."last_attempt_at" AS "lastAttemptAt"
         FROM "pmc_projects" p
         LEFT JOIN "pmc_action_item_sync_state" s
           ON s."company_id" = p."company_id"
          AND s."procore_project_id" = p."procore_project_id"
         WHERE p."company_id" = ${companyId}
-          AND lower(COALESCE(p."status", '')) NOT LIKE '%complete%'
-          AND lower(COALESCE(p."status", '')) NOT LIKE '%closed%'
-          AND lower(COALESCE(p."status", '')) NOT LIKE '%cancel%'
-          AND (
-            s."last_attempt_at" IS NULL
-            OR s."last_attempt_at" < CURRENT_TIMESTAMP - (${intervalMinutes} * INTERVAL '1 minute')
-          )
-        ORDER BY s."last_attempt_at" ASC NULLS FIRST, p."project_name" ASC
-        LIMIT ${limit}
       `;
+  const nowMs = Date.now();
+  const projects = requestedProjectId ? candidates : candidates
+    .map((project) => ({ project, minutes: pmDashboardPollingMinutes(project, intervalMinutes) }))
+    .filter((candidate) => candidate.minutes !== null)
+    .map(({ project, minutes }) => ({
+      project,
+      dueAt: project.lastAttemptAt ? project.lastAttemptAt.getTime() + minutes! * 60_000 : 0,
+    }))
+    .filter(({ dueAt }) => dueAt <= nowMs)
+    .sort((a, b) => a.dueAt - b.dueAt || a.project.procoreProjectId.localeCompare(b.project.procoreProjectId))
+    .slice(0, limit)
+    .map(({ project }) => project);
 
   const results = [];
   let rateLimited = false;

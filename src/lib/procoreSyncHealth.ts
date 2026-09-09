@@ -74,7 +74,11 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
     ? ` Procore background quota recovery is active until ${cooldownUntil!.toISOString()}.`
     : "";
   const actuals = datasets.get("actuals");
-  const actualsIsStale = !actuals || ageMinutes(actuals.newest_success, now) > 180;
+  // Explicit queue due times include activity/webhook-based polling intervals.
+  // Keep the legacy newest-success check for older snapshots without queue age.
+  const actualsOverdue = actuals?.due_projects === undefined
+    || (Number(actuals.due_projects) > 0 && ageMinutes(actuals.oldest_due || null, now) > 120);
+  const actualsIsStale = !actuals || (actualsOverdue && ageMinutes(actuals.newest_success, now) > 180);
   if (actualsIsStale && !actualsStalenessMonitoringPaused(now)) {
     issues.push(`Actuals have not completed successfully within 3 hours.${quotaSuffix}`);
   } else if (
@@ -139,6 +143,13 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   }
 
   const projectLinks = datasets.get("project_home_links");
+  const projectWebhooks = datasets.get("project_webhooks");
+  if (projectWebhooks && projectWebhooks.max_failure_count >= 3) {
+    issues.push(`${projectWebhooks.failed_projects} project webhook registration job(s) are repeatedly failing.`);
+  } else if (projectWebhooks && Number(projectWebhooks.due_projects || 0) > 0
+    && ageMinutes(projectWebhooks.oldest_due || null, now) > 24 * 60) {
+    issues.push(`Project webhook maintenance has been overdue for more than 24 hours.${quotaSuffix}`);
+  }
   if (projectLinks && projectLinks.max_failure_count >= 3) {
     issues.push(
       `${projectLinks.failed_projects} Project Link Sync job(s) are repeatedly failing.`,

@@ -140,6 +140,7 @@ export type EstimatingDashboardProject = {
   laborCost: number;
   cogsCost: number;
   pmcGroup: Record<string, number>;
+  cogsByGroup: Record<string, number>;
   pmcBreakdown: Record<string, number>;
   concreteGroup: Record<string, number>;
   dateCreated?: string | null;
@@ -176,6 +177,7 @@ type DashboardSummary = {
     hours: number;
     count: number;
     laborByGroup: Record<string, number>;
+    cogsByGroup: Record<string, number>;
     concreteByGroup: Record<string, number>;
   }>;
   contractors: Record<string, {
@@ -347,6 +349,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     cogsCost: number;
     lineCount: number;
     laborByGroup: Record<string, number>;
+    cogsByGroup: Record<string, number>;
     concreteByGroup: Record<string, number>;
   }>();
 
@@ -387,10 +390,17 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       cogsCost: 0,
       lineCount: 0,
       laborByGroup: {},
+      cogsByGroup: {},
       concreteByGroup: {},
     };
     addEstimateLineAmounts(totals, line);
-    totals.cogsCost += estimateCogsCost(line);
+    const lineCogs = estimateCogsCost(line);
+    totals.cogsCost += lineCogs;
+    if (lineCogs > 0) {
+      const scopeKey = line.groupId ? `${boardId}:${line.proposalId}:${line.groupId}` : "";
+      const cogsGroup = scopeLaborGroup.get(scopeKey) ?? "Other COGS";
+      totals.cogsByGroup[cogsGroup] = (totals.cogsByGroup[cogsGroup] ?? 0) + lineCogs;
+    }
     totals.lineCount += 1;
     const hours = numericValue(line.laborHours);
     if (hours > 0) {
@@ -437,6 +447,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       cogsCost: 0,
       lineCount: 0,
       laborByGroup: {},
+      cogsByGroup: {},
       concreteByGroup: {},
     };
     const linked = (board.procoreProjectId ? pmcByProcore.get(board.procoreProjectId) : undefined) ?? pmcByBoard.get(boardId);
@@ -498,6 +509,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       laborCost: totals.laborCost,
       cogsCost: totals.cogsCost,
       pmcGroup: totals.laborByGroup,
+      cogsByGroup: totals.cogsByGroup,
       pmcBreakdown: totals.laborByGroup,
       concreteGroup: totals.concreteByGroup,
       dateCreated: newestDate(payload.created_on, board.createdAt),
@@ -522,6 +534,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         approvedPrimeChangeOrderHours,
         approvedPrimeChangeOrderCount: approvedChangeOrderTotals?.primeCount ?? 0,
         pmcGroup: totals.laborByGroup,
+        cogsByGroup: totals.cogsByGroup,
         concreteGroup: totals.concreteByGroup,
         estimateLineCount: totals.lineCount,
         estimatingSource: hasBidBoardTotal
@@ -597,6 +610,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       hours: 0,
       count: 0,
       laborByGroup: {},
+      cogsByGroup: {},
       concreteByGroup: {},
     };
     statusGroup.sales += project.sales;
@@ -614,6 +628,9 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       statusGroup.laborByGroup[group] = (statusGroup.laborByGroup[group] ?? 0) + hours;
       summary.pmcGroupHours[group] = (summary.pmcGroupHours[group] ?? 0) + hours;
       summary.laborBreakdown[group] = (summary.laborBreakdown[group] ?? 0) + hours;
+    }
+    for (const [group, cogs] of Object.entries(project.cogsByGroup)) {
+      statusGroup.cogsByGroup[group] = (statusGroup.cogsByGroup[group] ?? 0) + cogs;
     }
     for (const [group, yards] of Object.entries(project.concreteGroup)) {
       statusGroup.concreteByGroup[group] = (statusGroup.concreteByGroup[group] ?? 0) + yards;

@@ -572,19 +572,38 @@ function DashboardContent() {
                   cogsCost = 0,
                   hours,
                   laborByGroup,
+                  cogsByGroup,
                 } = metrics;
               const rph = hours ? sales / hours : 0;
               const cogsPerHour = hours ? Number(cogsCost) / Number(hours) : 0;
               const markup = cost ? ((sales - cost) / cost) * 100 : 0;
-              const excludedGroupPatterns = ['part', 'equipment', 'subcontract'];
+              const displayedPmcGroups = new Set([
+                'site concrete labor',
+                'slab on grade labor',
+                'wall labor',
+                'foundation labor',
+              ]);
               
               const laborGroupEntries = Object.entries(laborByGroup || {})
                 .filter(([groupName, value]) => {
                   if (value === 0) return false;
-                  const normalized = (groupName as string).toLowerCase();
-                  return !excludedGroupPatterns.some((pattern) => normalized.includes(pattern));
+                  return displayedPmcGroups.has(groupName.toLowerCase());
                 })
                 .sort((a, b) => (b[1] as number) - (a[1] as number));
+              const groupNames = new Set([
+                ...laborGroupEntries.map(([groupName]) => groupName),
+                ...Object.entries(cogsByGroup || {})
+                  .filter(([groupName, value]) => value !== 0 && displayedPmcGroups.has(groupName.toLowerCase()))
+                  .map(([groupName]) => groupName),
+              ]);
+              const pmcGroupEntries = [...groupNames]
+                .filter((groupName) => displayedPmcGroups.has(groupName.toLowerCase()))
+                .map((groupName) => [
+                  groupName,
+                  laborByGroup?.[groupName] ?? 0,
+                  cogsByGroup?.[groupName] ?? 0,
+                ] as const)
+                .sort((a, b) => (b[1] + b[2]) - (a[1] + a[2]));
 
               return (
                 <div key={status} className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 flex flex-col hover:shadow-lg transition-shadow">
@@ -677,17 +696,27 @@ function DashboardContent() {
                   <div className="mt-auto pt-4 border-t border-gray-100">
                     <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
-                       Hours by PMC Group
+                       Hours / COGS per Hr by PMC Group
                     </div>
-                    {laborGroupEntries.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic font-medium py-2">No hours reported</div>
+                    {pmcGroupEntries.length > 0 && (
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 px-2 mb-1 text-[8px] font-black text-gray-300 uppercase tracking-widest">
+                        <span></span>
+                        <span>Hrs</span>
+                        <span>COGS / Hr</span>
+                      </div>
+                    )}
+                    {pmcGroupEntries.length === 0 ? (
+                      <div className="text-xs text-gray-400 italic font-medium py-2">No hours or COGS reported</div>
                     ) : (
                       <div className="space-y-1.5">
-                        {laborGroupEntries.map(([pmcGroup, labor]) => (
-                          <div key={pmcGroup} className="flex justify-between items-center text-[11px] bg-gray-50 px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
-                            <span className="text-gray-500 font-bold uppercase tracking-tight truncate max-w-[140px]">{pmcGroup}</span>
-                            <span className="text-gray-900 font-black">
-                              {(labor as number).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {pmcGroupEntries.map(([pmcGroup, labor, cogs]) => (
+                          <div key={pmcGroup} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-center text-[11px] bg-gray-50 px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
+                            <span className="text-gray-500 font-bold uppercase tracking-tight truncate">{pmcGroup}</span>
+                            <span className="text-gray-900 font-black tabular-nums" title="Hours">
+                              {labor.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-orange-600 font-black tabular-nums" title="COGS per hour">
+                              {`$${(labor > 0 ? cogs / labor : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                             </span>
                           </div>
                         ))}

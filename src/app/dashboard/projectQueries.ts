@@ -106,6 +106,7 @@ export type DashboardSummary = {
     hours: number; 
     count: number;
     laborByGroup?: Record<string, number>;
+    cogsByGroup?: Record<string, number>;
     concreteByGroup?: Record<string, number>;
   }>;
   contractors: Record<string, { 

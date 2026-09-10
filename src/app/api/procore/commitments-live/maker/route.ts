@@ -491,8 +491,8 @@ async function fetchCommitmentMakerPlanDataFromDatabase(companyId: string, proje
       };
     })
     .sort((left, right) => (
-      (preferredVendorUsage.get(readId(right)) || 0) - (preferredVendorUsage.get(readId(left)) || 0)
-      || Number(right.company_vendor === true) - Number(left.company_vendor === true)
+      Number(right.company_vendor === true) - Number(left.company_vendor === true)
+      || (preferredVendorUsage.get(readId(right)) || 0) - (preferredVendorUsage.get(readId(left)) || 0)
       || readId(left).localeCompare(readId(right))
     ));
   const projectVendors = projectVendorRows.map((vendor) => ({
@@ -967,6 +967,19 @@ async function addVendorToProject(params: {
   projectId: string;
   vendorId: string;
 }) {
+  // The synchronized project directory can lag the company directory. Verify
+  // the exact selected ID before attempting an unnecessary enrollment write.
+  const projectVendors = await fetchProjectVendors(params.accessToken, params.companyId, params.projectId);
+  const existingVendor = projectVendors.find((vendor) => readId(vendor) === params.vendorId);
+  if (existingVendor) {
+    if (normalizeCommitmentMakerVendorName(vendorName(existingVendor)) !== normalizeCommitmentMakerVendorName(COMMITMENT_MAKER_VENDOR_NAME)) {
+      throw new Error("The selected vendor no longer matches Paradise Masonry in this project's directory.");
+    }
+    if (existingVendor.is_active === false) {
+      throw new Error("Paradise Masonry is inactive in this project's Procore directory. Activate the vendor before creating the PO.");
+    }
+    return;
+  }
   for (const version of ["v1.1", "v1.0"]) {
     const response = await procoreJson({
       path: `/rest/${version}/projects/${encodeURIComponent(params.projectId)}/vendors/${encodeURIComponent(

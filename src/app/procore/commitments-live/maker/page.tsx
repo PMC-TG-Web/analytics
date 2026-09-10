@@ -673,6 +673,9 @@ export default function CommitmentMakerPage() {
   const readyToCreate = Boolean(
     preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success && !createOutcomeUnknown
   );
+  const visibleWarnings = (preview?.warnings || []).filter((message) => (
+    !/^\d+ change-order line\(s\) without usable quantity, cost, or WBS data were excluded\.$/.test(message)
+  ));
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -1016,9 +1019,9 @@ export default function CommitmentMakerPage() {
               </div>
             )}
 
-            {preview.warnings.length > 0 && (
+            {visibleWarnings.length > 0 && (
               <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                {preview.warnings.map((message) => <p key={message}>{message}</p>)}
+                {visibleWarnings.map((message) => <p key={message}>{message}</p>)}
               </div>
             )}
 

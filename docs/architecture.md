@@ -118,6 +118,8 @@ Commitment Maker live calls use `src/lib/procoreCommitmentMakerClient.ts` in a r
 
 When users combine new purchase orders, matching cost code, cost type, source WBS ID, description, and UOM lines merge even if unit costs differ. Opposite quantity signs remain separate. The combined line uses a quantity-weighted unit cost at four decimal places and retains the summed original line amounts in `subtotalOverride`; preview totals, server normalization, and Procore payloads use that explicit amount to avoid rounding drift. Ordinary imports keep different prices separate until the user chooses Combine. Validate with `node --test test/commitmentMaker.test.mjs`.
 
+Approved change-order imports accept finite negative quantities and unit costs, retaining the source sign and any explicit line amount that differs after unit-cost rounding. Zero/missing quantities and missing/invalid unit costs remain excluded. Estimate-detail enrichment matches the absolute credit quantity and amount, then preserves the signed quantity and amount on its output. If an approved-CO preview finds no mirrored lines, it performs a bounded live read for that exact project and source ID, rechecks Approved status, and uses the returned detail; previews with stored lines continue to use PostgreSQL. This fallback does not create or modify anything in Procore. Validate with `node --test test/procoreCommitmentMakerChangeOrders.test.mjs`.
+
 ### IDs and source systems
 
 Keep these identifiers distinct:

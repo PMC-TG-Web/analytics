@@ -97,6 +97,8 @@ export function selectExistingChangeOrderPurchaseOrder<T extends CommitmentMaker
 }
 
 function number(value: unknown): number | null {
+  if (value == null || (typeof value === "string" && !value.trim())) return null;
+  if (typeof value !== "string" && typeof value !== "number") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -169,9 +171,10 @@ function matchingEstimateSubsets(
   sourceLine: UnknownRecord,
   estimateLines: UnknownRecord[],
 ): Array<{ lines: UnknownRecord[]; basis: EstimateAmountBasis }> {
-  const sourceQuantity = number(sourceLine.quantity);
+  const signedSourceQuantity = number(sourceLine.quantity);
+  const sourceQuantity = signedSourceQuantity === null ? null : Math.abs(signedSourceQuantity);
   const signedSourceAmount = number(sourceLine.amount)
-    ?? ((sourceQuantity ?? 0) * (number(sourceLine.unit_cost ?? sourceLine.unitCost) ?? 0));
+    ?? ((signedSourceQuantity ?? 0) * (number(sourceLine.unit_cost ?? sourceLine.unitCost) ?? 0));
   const sourceAmount = Math.abs(signedSourceAmount);
   const sourceUom = normalizedUom(sourceLine.uom);
   if (!sourceUom || sourceQuantity === null || sourceQuantity <= 0 || sourceAmount <= 0) return [];
@@ -230,7 +233,7 @@ export function enrichApprovedChangeOrderLinesFromEstimate(
       ?? ((number(line.quantity) ?? 0) * (number(line.unit_cost ?? line.unitCost) ?? 0));
     const sign = signedSourceAmount < 0 ? -1 : 1;
     return matches[0].lines.map((match) => {
-      const quantity = number(match.quantity) ?? 0;
+      const quantity = (number(match.quantity) ?? 0) * ((number(line.quantity) ?? 0) < 0 ? -1 : 1);
       const amount = (estimateLineAmount(match, matches[0].basis) ?? 0) * sign;
       return {
         ...line,
@@ -268,7 +271,9 @@ export function approvedChangeOrderCommitmentGroup(
     const quantity = number(line.quantity);
     const unitCost = number(line.unit_cost ?? line.unitCost);
     const uom = text(line.uom) || "ls";
-    if (!costCode || quantity === null || quantity <= 0 || unitCost === null || unitCost < 0) return null;
+    if (!costCode || quantity === null || quantity === 0 || unitCost === null) return null;
+    const amount = number(line.amount);
+    const roundedUnitCost = Math.round(unitCost * 10_000) / 10_000;
     return {
       costCode,
       costType: sourceCostType(line, wbs),
@@ -276,8 +281,10 @@ export function approvedChangeOrderCommitmentGroup(
       description: changeOrderLineDescription(customerReference, sourceDescription(line, costCode)),
       quantity,
       uom,
-      unitCost: Math.round(unitCost * 10_000) / 10_000,
-      subtotalOverride: null,
+      unitCost: roundedUnitCost,
+      subtotalOverride: amount !== null && Math.round(amount * 100) !== Math.round(quantity * roundedUnitCost * 100)
+        ? Math.round(amount * 100) / 100
+        : null,
     };
   }).filter((line): line is CommitmentMakerLineItem => Boolean(line));
 

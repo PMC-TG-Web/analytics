@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
+import { commitmentMakerLineCreatePayload } from "../src/lib/procore/commitmentMaker.ts";
 
 function loadModule() {
   const source = fs.readFileSync("src/lib/procore/commitmentMakerChangeOrders.ts", "utf8");
@@ -126,7 +127,7 @@ test("splits uniquely matching estimate items into separate PCO lines", () => {
 });
 
 test("uses estimate sales details for marked-up credit PCO lines", () => {
-  const { enrichApprovedChangeOrderLinesFromEstimate } = loadModule();
+  const { enrichApprovedChangeOrderLinesFromEstimate, approvedChangeOrderCommitmentGroup } = loadModule();
   const lines = enrichApprovedChangeOrderLinesFromEstimate(
     [{ quantity: "10", unit_cost: "-49.4", amount: "-494", uom: "hours" }],
     [
@@ -156,6 +157,56 @@ test("uses estimate sales details for marked-up credit PCO lines", () => {
     { description: "Site Concrete Labor - Ramp", quantity: 6, unitCost: -49.4, amount: -296.4 },
     { description: "Site Concrete Labor - Curb", quantity: 4, unitCost: -49.4, amount: -197.6 },
   ]);
+  const group = approvedChangeOrderCommitmentGroup({ packageId: "credit", number: "002", title: "Credit" },
+    lines.map((line) => ({ ...line, cost_code: "03-300-30-10" })));
+  assert.equal(group.lineItems.length, 2);
+  assert.equal(group.lineItems.reduce((total, line) => total + line.quantity * line.unitCost, 0), -494);
+});
+
+test("imports credits expressed as negative quantity or negative unit cost without flipping signs", () => {
+  const { approvedChangeOrderCommitmentGroup } = loadModule();
+  const group = approvedChangeOrderCommitmentGroup({ packageId: "credit", number: "002", title: "Credit Seal Hard" }, [
+    { description: "Seal Hard", quantity: 10, unit_cost: -3.5, wbs_code: { id: "wbs-1", flat_code: "03-300-20-20.M" } },
+    { description: "Labor", quantity: -2, unit_cost: 40, wbs_code: { id: "wbs-2", flat_code: "03-300-20-10.L" } },
+  ]);
+  assert.equal(group.lineItems.length, 2);
+  assert.deepEqual(group.lineItems.map((line) => [line.quantity, line.unitCost, line.sourceWbsCodeId]), [[10, -3.5, "wbs-1"], [-2, 40, "wbs-2"]]);
+  assert.equal(group.lineItems.reduce((total, line) => total + line.quantity * line.unitCost, 0), -115);
+});
+
+test("preserves the explicit credit amount when unit-price precision differs", () => {
+  const { approvedChangeOrderCommitmentGroup } = loadModule();
+  const group = approvedChangeOrderCommitmentGroup({ packageId: "credit", number: "002", title: "Credit" }, [
+    { cost_code: "03-300-20-20", quantity: 10000, unit_cost: -0.307178, amount: -3071.78 },
+  ]);
+  assert.equal(group.lineItems[0].unitCost, -0.3072);
+  assert.equal(group.lineItems[0].subtotalOverride, -3071.78);
+  assert.equal(commitmentMakerLineCreatePayload({ ...group.lineItems[0], wbsCodeId: "123" }).amount, -3071.78);
+});
+
+test("credit enrichment matches absolute quantities and retains signed quantity and amount", () => {
+  const { enrichApprovedChangeOrderLinesFromEstimate, approvedChangeOrderCommitmentGroup } = loadModule();
+  const lines = enrichApprovedChangeOrderLinesFromEstimate([
+    { cost_code: "03-300-20-20", quantity: -5, unit_cost: 10, amount: null, uom: "ea" },
+  ], [{ name: "Seal Hard", quantity: 5, itemCost: 50, uom: "ea" }]);
+  assert.equal(lines[0].description, "Seal Hard");
+  assert.equal(lines[0].quantity, -5);
+  assert.equal(lines[0].unit_cost, 10);
+  assert.equal(lines[0].amount, -50);
+  assert.equal(approvedChangeOrderCommitmentGroup({ packageId: "credit", number: "2", title: "Credit" }, lines).lineItems.length, 1);
+});
+
+test("missing, nonnumeric, and zero quantities remain invalid while zero-cost labor remains valid", () => {
+  const { approvedChangeOrderCommitmentGroup } = loadModule();
+  const base = { cost_code: "03-300-20-10", quantity: 2, unit_cost: -40 };
+  const group = approvedChangeOrderCommitmentGroup({ packageId: "credit", number: "2", title: "Credit" }, [
+    { ...base, quantity: 0 }, { ...base, quantity: null }, { ...base, quantity: "" },
+    { ...base, quantity: "invalid" }, { ...base, unit_cost: null },
+    { ...base, unit_cost: "" }, { ...base, unit_cost: NaN }, { ...base, quantity: true },
+    { ...base, unit_cost: 0 },
+  ]);
+  assert.equal(group.lineItems.length, 1);
+  assert.equal(group.lineItems[0].unitCost, 0);
 });
 
 test("does not invent an estimate description when more than one subset matches", () => {
@@ -386,6 +437,10 @@ test("keeps approved change-order preview within the interactive response window
   assert.doesNotMatch(route, /resolveCommitmentMakerChangeOrderTaskAssignees/);
   assert.doesNotMatch(route, /async function fetchApprovedChangeOrders\(/);
   assert.match(route, /const \[sourceAliases, plan\] = await Promise\.all/);
+  assert.match(route, /mode === "preview" && sourceChangeOrder && rawSourceChangeOrderLines\.length === 0/);
+  assert.match(route, /const freshSource = await resolveApprovedChangeOrder\(\{\s*accessToken, companyId, projectId, packageId: changeOrderPackageId, useLive: true/);
+  assert.match(route, /if \(!freshSource\)/);
+  assert.match(route, /rawSourceChangeOrderLines = freshSource\.liveLines \?\? await fetchApprovedChangeOrderLines/);
 });
 
 test("bounds live Procore calls and serializes resumable same-PO line creation", () => {

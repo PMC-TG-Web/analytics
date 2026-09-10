@@ -1502,14 +1502,14 @@ async function handleRequest(request: NextRequest) {
         useLive: mode === "create",
       })
     : null;
-  const sourceChangeOrder = resolvedSourceChangeOrder?.changeOrder || null;
+  let sourceChangeOrder = resolvedSourceChangeOrder?.changeOrder || null;
   if (changeOrderPackageId && !sourceChangeOrder) {
     return NextResponse.json(
       { error: "The selected change order is not currently approved for this Procore project." },
       { status: 409 },
     );
   }
-  const rawSourceChangeOrderLines = sourceChangeOrder
+  let rawSourceChangeOrderLines = sourceChangeOrder
     ? resolvedSourceChangeOrder?.liveLines !== null
       ? resolvedSourceChangeOrder.liveLines
       : await fetchApprovedChangeOrderLines({
@@ -1520,6 +1520,30 @@ async function handleRequest(request: NextRequest) {
           useLive: mode === "create",
         })
     : [];
+  // Header sync can precede line sync. Only an empty mirror needs this bounded
+  // live read; ordinary previews continue to use their synchronized detail.
+  if (mode === "preview" && sourceChangeOrder && rawSourceChangeOrderLines.length === 0) {
+    try {
+      accessToken = await getClientCredentialsToken();
+    } catch (serviceTokenError) {
+      if (!cookieToken) throw serviceTokenError;
+      accessToken = cookieToken;
+      tokenSource = "user_oauth_fallback";
+    }
+    const freshSource = await resolveApprovedChangeOrder({
+      accessToken, companyId, projectId, packageId: changeOrderPackageId, useLive: true,
+    });
+    if (!freshSource) {
+      return NextResponse.json(
+        { error: "The selected change order is not currently approved for this Procore project." },
+        { status: 409 },
+      );
+    }
+    sourceChangeOrder = freshSource.changeOrder;
+    rawSourceChangeOrderLines = freshSource.liveLines ?? await fetchApprovedChangeOrderLines({
+      accessToken, companyId, projectId, changeOrder: sourceChangeOrder, useLive: true,
+    });
+  }
   const sourceChangeOrderLines = sourceChangeOrder
     ? await enrichChangeOrderLinesFromEstimate({
         companyId,

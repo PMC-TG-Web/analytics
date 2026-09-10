@@ -3,10 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getKpiCardYearValues } from "@/lib/kpiCardMonths";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractValue";
+import { financialContractBases } from "@/lib/financialContractBases";
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
-  calculateSoldContractValue,
+  calculateEstimatingSoldContracts,
+  isInternalFinancialProject,
 } from "@/lib/financialWip";
 import {
   excludeMarkedQboProjects,
@@ -91,6 +93,7 @@ export async function GET(request: NextRequest) {
       excludedQboCustomerIds,
       estimatingProjects,
       canonicalProcoreProjects,
+      primeContracts,
     ] = await Promise.all([
       prisma.$queryRawUnsafe<DbRow[]>(
         `
@@ -270,7 +273,20 @@ export async function GET(request: NextRequest) {
           status: true,
         },
       }),
+      prisma.procore_prime_contracts_live.findMany({
+        where: { company_id: companyId },
+        select: {
+          company_id: true,
+          prime_contract_id: true,
+          project_id: true,
+          project_procore_id: true,
+          status: true,
+          payload: true,
+        },
+      }),
     ]);
+
+    const originalContractByProjectId = financialContractBases(primeContracts, companyId);
 
     const projects = projectRows.map((row) => ({
       projectId: String(row.project_id),
@@ -391,7 +407,7 @@ export async function GET(request: NextRequest) {
     const visibleQboProjects = excludeMarkedQboProjects(
       allQboProjects,
       excludedQboCustomerIds,
-    );
+    ).filter((project) => !isInternalFinancialProject(project));
     const financialProjectRows = visibleQboProjects.map((row) => {
         const billing = recordValue(selectedBilling[row.qboCustomerId]?.billing);
         const netBilled = nullableNumberValue(billing.netBilled);
@@ -403,7 +419,9 @@ export async function GET(request: NextRequest) {
           : null;
         const contract = resolveProjectContractValue({
           procoreProjectId: row.procoreProjectId,
-          procoreBaseEstimate: procoreProject?.sales,
+          procoreBaseEstimate: row.procoreProjectId && originalContractByProjectId.has(row.procoreProjectId)
+            ? originalContractByProjectId.get(row.procoreProjectId)
+            : procoreProject?.sales,
           procoreApprovedChangeOrders: procoreProject?.approvedChangeOrderAmount,
           qboEstimateTotal: nullableNumberValue(billing.estimateTotal),
           netBilled,
@@ -447,8 +465,13 @@ export async function GET(request: NextRequest) {
       wipProjectRows.map(({ financial }) => financial),
       averageMonthlyRevenue,
     );
-    const soldThisYear = calculateSoldContractValue(
-      financialProjectRows.map(({ financial }) => financial),
+    const soldThisYear = calculateEstimatingSoldContracts(
+      estimatingProjects.map((project) => ({
+        ...project,
+        originalContractValue: project.procoreProjectId
+          ? originalContractByProjectId.get(project.procoreProjectId)
+          : undefined,
+      })),
       currentYear,
     );
     const qboIncomeReconciliation = incomeReconciliationSource.companyIncome == null
@@ -496,6 +519,7 @@ export async function GET(request: NextRequest) {
       },
       financialWip: {
         ...financialWip,
+        soldProjects: soldThisYear.projects,
         summary: {
           ...financialWip.summary,
           contractYear: currentYear,

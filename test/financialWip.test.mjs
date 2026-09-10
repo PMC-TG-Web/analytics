@@ -4,6 +4,8 @@ import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
   calculateSoldContractValue,
+  calculateEstimatingSoldContracts,
+  isInternalFinancialProject,
   projectNumberMatchesYear,
 } from "../src/lib/financialWip.ts";
 
@@ -111,4 +113,79 @@ test("sold contract value uses one current-year project population", () => {
     contractProjectCount: 2,
     contractValue: 1_250_000.25,
   });
+});
+
+function estimate(overrides = {}) {
+  return {
+    bidBoardId: "board-1",
+    procoreProjectId: "procore-1",
+    projectNumber: "2603 - WC",
+    projectName: "Test Project",
+    status: "In Progress",
+    projectArchived: false,
+    sales: 1000,
+    approvedChangeOrderAmount: 50,
+    ...overrides,
+  };
+}
+
+test("Financial WIP excludes PMC Operations by its internal job number or exact name", () => {
+  assert.equal(isInternalFinancialProject({ procoreProjectNumber: " PMC-OPS " }), true);
+  assert.equal(isInternalFinancialProject({ projectName: "pmc operations" }), true);
+  assert.equal(isInternalFinancialProject({ procoreProjectName: "PMC Operations" }), true);
+  assert.equal(isInternalFinancialProject({ projectName: "PMC Operations Addition", procoreProjectNumber: "2601 - POA" }), false);
+  assert.equal(isInternalFinancialProject({ projectName: "Dutch Cousins Campground", procoreProjectNumber: "2510 - DCC" }), false);
+  assert.equal(isInternalFinancialProject({}), false);
+});
+
+test("sold projects include accepted jobs without Procore or QBO setup and completed jobs", () => {
+  const result = calculateEstimatingSoldContracts([
+    estimate(),
+    estimate({ bidBoardId: "board-2", procoreProjectId: null, status: "Accepted", sales: 2000, approvedChangeOrderAmount: 0 }),
+    estimate({ bidBoardId: "board-3", procoreProjectId: "procore-3", status: "Complete", sales: 3000 }),
+  ], 2026);
+  assert.equal(result.projectCount, 3);
+  assert.equal(result.contractProjectCount, 3);
+  assert.equal(result.contractValue, 6100);
+  assert.equal(result.projects.reduce((sum, row) => sum + row.contractValue, 0), result.contractValue);
+  assert.ok(result.projects.some(row => row.id === "bid:board-2"));
+});
+
+test("sold projects exclude unsold statuses, archived jobs, and previous-year numbers", () => {
+  const result = calculateEstimatingSoldContracts([
+    ...["Bid Submitted", "Estimating", "Lost", "Cancelled", "Unknown", ""].map((status, index) =>
+      estimate({ procoreProjectId: `unsold-${index}`, status })),
+    estimate({ procoreProjectId: "archived", projectArchived: true }),
+    estimate({ procoreProjectId: "previous", projectNumber: "2508 - SC" }),
+    estimate({ procoreProjectId: "no-number", projectNumber: "" }),
+    estimate({ status: " ACCEPTED " }),
+  ], 2026);
+  assert.equal(result.projectCount, 1);
+  assert.equal(result.contractValue, 1050);
+});
+
+test("sold projects deduplicate explicit IDs while retaining distinct jobs with the same name and number", () => {
+  const result = calculateEstimatingSoldContracts([
+    estimate(),
+    estimate({ bidBoardId: "alternate-board" }),
+    estimate({ procoreProjectId: null, bidBoardId: "accepted-board", status: "Accepted" }),
+    estimate({ procoreProjectId: null, bidBoardId: "accepted-board", status: "Accepted" }),
+    estimate({ procoreProjectId: "procore-2", bidBoardId: "board-2" }),
+  ], 2026);
+  assert.equal(result.projectCount, 3);
+  assert.equal(result.contractValue, 3150);
+});
+
+test("sold contract coverage preserves missing estimates and explicit zero values", () => {
+  const result = calculateEstimatingSoldContracts([
+    estimate({ sales: null }),
+    estimate({ procoreProjectId: "missing-source", sales: 0, customFields: { estimatingSource: "no estimate" } }),
+    estimate({ procoreProjectId: "zero", sales: 0, approvedChangeOrderAmount: 0 }),
+    estimate({ procoreProjectId: "invalid", sales: Number.NaN }),
+    estimate({ procoreProjectId: "decimal", sales: 1000.126, approvedChangeOrderAmount: -10.12 }),
+  ], 2026);
+  assert.equal(result.projectCount, 5);
+  assert.equal(result.contractProjectCount, 2);
+  assert.equal(result.contractValue, 990.01);
+  assert.equal(result.projects.find(row => row.id === "procore:zero").contractValue, 0);
 });

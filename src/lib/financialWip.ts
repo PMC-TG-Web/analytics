@@ -38,6 +38,17 @@ function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+export function isInternalFinancialProject(project: {
+  projectName?: string | null;
+  procoreProjectName?: string | null;
+  procoreProjectNumber?: string | null;
+}) {
+  const normalize = (value: string | null | undefined) => String(value || "").trim().toLowerCase();
+  return normalize(project.procoreProjectNumber) === "pmc-ops"
+    || normalize(project.projectName) === "pmc operations"
+    || normalize(project.procoreProjectName) === "pmc operations";
+}
+
 export function projectNumberMatchesYear(projectNumber: unknown, year: number): boolean {
   if (!Number.isInteger(year) || year < 2000 || year > 2099) return false;
   const value = String(projectNumber || "").trim();
@@ -72,6 +83,63 @@ export function calculateSoldContractValue(
     contractValue: roundCurrency(
       contractProjects.reduce((sum, value) => sum + value, 0),
     ),
+  };
+}
+
+type SoldEstimateInput = {
+  bidBoardId: string;
+  procoreProjectId?: string | null;
+  projectNumber?: string;
+  projectName?: string;
+  status?: string;
+  projectArchived: boolean;
+  sales: unknown;
+  originalContractValue?: number | null;
+  approvedChangeOrderAmount: unknown;
+  customFields?: Record<string, unknown>;
+};
+
+export function calculateEstimatingSoldContracts(projects: SoldEstimateInput[], year: number) {
+  const soldStatuses = new Set([
+    "accepted", "awarded", "in progress", "active", "course of construction",
+    "complete", "completed", "post-construction",
+  ]);
+  const seen = new Set<string>();
+  const rows = [];
+  for (const project of projects) {
+    if (project.projectArchived
+      || !soldStatuses.has(String(project.status || "").trim().toLowerCase())
+      || !projectNumberMatchesYear(project.projectNumber, year)) continue;
+
+    // The caller supplies one company's current estimating records. Accepted
+    // jobs may only have a Bid Board ID; never join them by name or job number.
+    const procoreId = String(project.procoreProjectId || "").trim();
+    const boardId = String(project.bidBoardId || "").trim();
+    if (!procoreId && !boardId) continue;
+    const id = procoreId ? `procore:${procoreId}` : `bid:${boardId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const baseEstimate = project.originalContractValue !== undefined
+      ? finiteNumber(project.originalContractValue)
+      : project.customFields?.estimatingSource === "no estimate"
+        ? null : finiteNumber(project.sales);
+    const approvedChangeOrders = finiteNumber(project.approvedChangeOrderAmount) ?? 0;
+    rows.push({
+      id,
+      procoreProjectId: procoreId || null,
+      bidBoardId: boardId,
+      procoreProjectNumber: project.projectNumber || null,
+      projectName: project.projectName || "Unnamed Project",
+      status: project.status || null,
+      baseEstimate: baseEstimate == null ? null : roundCurrency(baseEstimate),
+      approvedChangeOrders: roundCurrency(approvedChangeOrders),
+      contractValue: baseEstimate == null ? null : roundCurrency(baseEstimate + approvedChangeOrders),
+    });
+  }
+  return {
+    ...calculateSoldContractValue(rows, year),
+    projects: rows.sort((left, right) => left.projectName.localeCompare(right.projectName)),
   };
 }
 

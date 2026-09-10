@@ -34,6 +34,7 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/constants', permission: 'constants' },
   { prefix: '/certifications', permission: 'certifications' },
   { prefix: '/kpi', permission: 'kpi' },
+  { prefix: '/market-outlook', permission: 'analytics' },
   { prefix: '/wip', permission: 'wip' },
   { prefix: '/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/analytics', permission: 'analytics' },

@@ -12,6 +12,7 @@
     "procore:webhook:list": "node scripts/registerProcoreWebhook.mjs",
     "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
     "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",
+    "procore:job-costs": "node scripts/syncProcoreJobCostsBrowser.mjs",
     "verify:headers": "node scripts/verifyIframeHeaders.mjs",
     "qbo:profitability:import": "node scripts/importQboProjectProfitability.mjs",
     "postinstall": "prisma generate"
@@ -47,6 +48,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "playwright-core": "^1.62.1",
     "prisma": "6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"

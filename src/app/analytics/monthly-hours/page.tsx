@@ -145,6 +145,15 @@ type ApiResponse = {
       total: number;
     } | null;
     projects: FinancialWipProject[];
+    soldProjects?: Array<{
+      id: string;
+      procoreProjectNumber: string | null;
+      projectName: string;
+      status: string | null;
+      baseEstimate: number | null;
+      approvedChangeOrders: number;
+      contractValue: number | null;
+    }>;
   };
   projects?: ProjectHours[];
 };
@@ -199,7 +208,7 @@ export default function MonthlyHoursPage() {
         const response = await fetch("/api/analytics/monthly-hours", { cache: "no-store" });
         const body = await response.json() as ApiResponse;
         if (!response.ok || !body.success) {
-          throw new Error(body.details || body.error || "Unable to load monthly hours.");
+          throw new Error(body.details || body.error || "Unable to load Financial WIP.");
         }
         if (active) setData(body);
       } catch (loadError) {
@@ -303,60 +312,32 @@ export default function MonthlyHoursPage() {
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="border-b border-slate-300 pb-5">
-          <p className="text-xs font-black uppercase tracking-widest text-teal-700">Analytics / Labor</p>
-          <h1 className="mt-1 text-3xl font-black">Monthly Hours &amp; Revenue</h1>
-          <p className="mt-1 text-sm text-slate-600">Monthly labor, billing history, and sold contract backlog for projects currently in progress.</p>
+          <p className="text-xs font-black uppercase tracking-widest text-teal-700">Analytics / Financials</p>
+          <h1 className="mt-1 text-3xl font-black">Financial WIP</h1>
+          <p className="mt-1 text-sm text-slate-600">Sold contracts, year-to-date billing, remaining contract balances, and monthly revenue.</p>
         </header>
 
-        {loading && <div className="border border-slate-200 bg-white p-8 text-sm font-bold text-slate-500">Loading monthly hours...</div>}
+        {loading && <div className="border border-slate-200 bg-white p-8 text-sm font-bold text-slate-500">Loading Financial WIP...</div>}
         {error && <div className="border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800">{error}</div>}
 
         {!loading && !error && data?.summary && (
           <>
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                ["In-progress projects", data.summary.projectCount],
-                ["Expected hours", hours.format(data.summary.expectedHours)],
-                ["Hours used", hours.format(data.summary.usedHours)],
-                ["Hours left", hours.format(data.summary.remainingHours)],
-                ["YTD revenue hours average", hours.format(data.summary.averageMonthlyHours)],
-                [
-                  "Labor lead time",
-                  data.summary.leadTimeMonths === null
-                    ? "—"
-                    : `${hours.format(data.summary.leadTimeMonths)} months`,
-                ],
-              ].map(([label, value]) => (
-                <div key={label} className="border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                  <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-                  <p className="mt-1 text-2xl font-black text-slate-900">{value}</p>
-                  {label === "YTD revenue hours average" && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      {data.summary.averageSource} · {monthLabel(data.summary.averagePeriodStart || undefined)} through {monthLabel(data.summary.averagePeriodEnd || undefined)} · {data.summary.averageMonthCount} months
-                    </p>
-                  )}
-                </div>
-              ))}
-            </section>
-
             {financialWip && (
               <section className="overflow-hidden border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-900 px-5 py-5 text-white">
                   <p className="text-xs font-black uppercase tracking-widest text-emerald-300">WIP (Work In Progress)</p>
                   <h2 className="mt-1 text-xl font-black">Sold contract backlog and financial lead time</h2>
                   <p className="mt-1 text-xs text-slate-300">
-                    Positive unbilled dollars ÷ KPI average billed YTD per month. Overbilling is reported separately and does not reduce WIP.
+                    Positive unbilled dollars ÷ KPI average billed YTD per month.
                   </p>
                 </div>
-                <div className="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
                   {[
-                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} contracts · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} projects have contract values`],
+                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} job numbers · Accepted, in progress & completed · Includes approved COs · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} valued`],
                     ["YTD billed", money.format(financialWip.qboIncomeReconciliation?.companyIncome || 0), `Companywide QBO P&L Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
-                    ["Open A/R", financialWip.qboOpenReceivables ? money.format(financialWip.qboOpenReceivables.total) : "—", financialWip.qboOpenReceivables ? `QBO A/R Aging Summary as of ${dateLabel(financialWip.qboOpenReceivables.reportDate)}` : "Awaiting the next QBO import"],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
                     ["Financial lead time", financialLeadTimeMonths === null ? "—" : `${hours.format(financialLeadTimeMonths)} months`, financialLeadTimeMonths === null ? "KPI billed average unavailable" : `WIP horizon through ${monthLabel(financialProjectionEnd)}`],
-                    ["Overbilled", money.format(financialWip.summary.overbilledDollars), "Shown separately from WIP"],
                   ].map(([label, value, detail]) => (
                     <div key={label} className="bg-white px-5 py-4">
                       <p className="text-xs font-black uppercase text-slate-500">{label}</p>
@@ -365,6 +346,33 @@ export default function MonthlyHoursPage() {
                     </div>
                   ))}
                 </div>
+                {financialWip.soldProjects && (
+                  <details className="border-t border-slate-200 px-5 py-3">
+                    <summary className="cursor-pointer text-sm font-bold text-slate-700">Sold this year: project breakdown ({financialWip.soldProjects.length})</summary>
+                    <p className="mt-2 text-xs text-slate-500">Year follows the job number. Includes accepted, in-progress, and completed jobs, including jobs awaiting QuickBooks setup. Values use the recorded approved original contract when available, otherwise the estimate, plus approved change orders.</p>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="border-b border-slate-200 text-xs text-slate-500">
+                          <tr>
+                            <th className="p-2">Job number</th><th className="p-2">Project</th><th className="p-2">Status</th>
+                            <th className="p-2 text-right">Original contract / estimate</th><th className="p-2 text-right">Approved COs</th><th className="p-2 text-right">Contract value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {financialWip.soldProjects.map((project) => (
+                            <tr key={project.id} className="border-b border-slate-100">
+                              <td className="p-2 whitespace-nowrap">{project.procoreProjectNumber}</td><td className="p-2">{project.projectName}</td><td className="p-2 whitespace-nowrap">{project.status}</td>
+                              <td className="p-2 text-right">{project.baseEstimate == null ? "—" : money.format(project.baseEstimate)}</td>
+                              <td className="p-2 text-right">{money.format(project.approvedChangeOrders)}</td>
+                              <td className="p-2 text-right font-semibold">{project.contractValue == null ? "—" : money.format(project.contractValue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot><tr className="font-bold"><td colSpan={5} className="p-2">Total sold this year</td><td className="p-2 text-right">{money.format(financialWip.summary.soldContractValue)}</td></tr></tfoot>
+                      </table>
+                    </div>
+                  </details>
+                )}
                 <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
                   {`Viewing companywide QBO YTD Total Income; WIP separately uses lifetime billing for ${financialWip.summary.billedProjectCount} not-complete projects`}
                   {` · Contract WIP always uses ${financialWip.summary.billingAccountingMethod || "QBO"} lifetime billing from ${dateLabel(financialWip.summary.billingPeriodStart)} through ${dateLabel(financialWip.summary.billingPeriodEnd)}`}

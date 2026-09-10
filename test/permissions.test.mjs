@@ -46,6 +46,7 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/api/procore/test'), 'diagnostics');
   assert.equal(resolvePermissionForPath('/api/procore/sync/all-projects'), 'admin');
   assert.equal(resolvePermissionForPath('/analytics/cost-code-sales'), 'analytics-cost-code-sales');
+  assert.equal(resolvePermissionForPath('/market-outlook'), 'analytics');
   assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/pm-dashboard'), 'pm-dashboard');

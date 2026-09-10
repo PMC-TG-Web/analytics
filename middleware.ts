@@ -532,13 +532,19 @@ export async function middleware(request: NextRequest) {
   }
 
   const session = await auth0.getSession(request);
-  const procoreUserSession = !session && isPmDashboardPath(pathname)
+  // Review writes need a verified reviewer, even when the page was opened via
+  // the read-only Procore link bypass. Keep this exception route/method scoped.
+  const acceptsProcoreUserSession =
+    (isPmDashboardPath(pathname) && request.method.toUpperCase() === 'GET')
+    || (pathname === '/api/analytics/commitment-productivity/reviews'
+      && ['POST', 'DELETE'].includes(request.method.toUpperCase()));
+  const procoreUserSession = !session && acceptsProcoreUserSession
     ? await verifyProcoreUserSessionCookieValue(
         request.cookies.get(PROCORE_USER_SESSION_COOKIE)?.value,
       )
     : null;
 
-  if (procoreUserSession && request.method.toUpperCase() === 'GET') {
+  if (procoreUserSession) {
     const requiredPermissions = resolvePermissionsForRequest(request);
     const cachedPermissions = await verifyPermissionCookieValue(
       request.cookies.get(PERMISSION_COOKIE_NAME)?.value,

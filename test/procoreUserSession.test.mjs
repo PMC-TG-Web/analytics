@@ -15,7 +15,9 @@ test('Procore user sessions are signed, normalized, and reject tampering', async
     assert.ok(value);
     assert.equal((await verifyProcoreUserSessionCookieValue(value))?.email, 'mervin@pmcdecor.com');
 
-    const tampered = `${value.slice(0, -1)}${value.endsWith('a') ? 'b' : 'a'}`;
+    // Change a signature byte, not the final base64 character's unused padding bits.
+    const [payload, signature] = value.split('.');
+    const tampered = `${payload}.${signature.startsWith('a') ? 'b' : 'a'}${signature.slice(1)}`;
     assert.equal(await verifyProcoreUserSessionCookieValue(tampered), null);
     assert.equal(await createProcoreUserSessionCookieValue('not-an-email', 120), null);
   } finally {

@@ -84,6 +84,8 @@ The important boundary is that interactive analytics reads use PostgreSQL. Proco
 
 `/pm-dashboard` also accepts a short-lived signed local identity established by the existing Procore OAuth callback. The callback resolves the authenticated user through Procore's `/rest/v1.0/me` endpoint; middleware still checks the local `pm-dashboard` permission before allowing the page or its data API. A request without either an Auth0 session or that verified Procore identity is redirected into Procore OAuth rather than receiving anonymous access.
 
+Field Productivity review completion and undo (`POST`/`DELETE /api/analytics/commitment-productivity/reviews`) also accept that verified Procore identity, with the same `analytics` permission as the page and the existing same-origin CSRF check. The read-only Procore link cookie cannot authorize a review write. Review attribution uses the verified session email; if no session is available, the completion dialog offers Procore sign-in and requires the user to submit again afterward. Validate with `node --test test/productivityReviewAuth.test.mjs test/permissions.test.mjs test/procoreUserSession.test.mjs`.
+
 ### Permission resolution
 
 The access path is:

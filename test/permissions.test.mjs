@@ -51,6 +51,8 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/pm-dashboard'), 'pm-dashboard');
   assert.equal(resolvePermissionForPath('/api/pm-dashboard'), 'pm-dashboard');
+  assert.equal(resolvePermissionForPath('/analytics/productivity'), 'analytics');
+  assert.equal(resolvePermissionForPath('/api/analytics/commitment-productivity/reviews'), 'analytics');
 });
 
 test('employee templates include every page-specific navigation permission', () => {

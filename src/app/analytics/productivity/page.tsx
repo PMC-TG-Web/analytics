@@ -782,6 +782,7 @@ export default function ProductivityAnalyticsPage() {
   const [reviewDialog, setReviewDialog] = useState<ReviewDialogState | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewLoginUrl, setReviewLoginUrl] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1020,6 +1021,7 @@ export default function ProductivityAnalyticsPage() {
 
   const openReview = (project: ProjectGroup, completion: WeightedCompletion) => {
     setReviewError(null);
+    setReviewLoginUrl(null);
     setReviewDialog({ project, completion });
   };
 
@@ -1048,6 +1050,11 @@ export default function ProductivityAnalyticsPage() {
         }),
       });
       const data = await readJsonResponse<ReviewApiResponse>(response);
+      if (response.status === 401) {
+        const returnTo = window.location.pathname + window.location.search + window.location.hash;
+        setReviewLoginUrl(`/api/auth/procore/login?${new URLSearchParams({ returnTo })}`);
+        throw new Error("Sign in with Procore to record your name on this review. After signing in, click Complete review again.");
+      }
       if (data.review) {
         setReviewsByProject((current) => ({
           ...current,
@@ -1681,6 +1688,11 @@ export default function ProductivityAnalyticsPage() {
               {reviewError && (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
                   {reviewError}
+                  {reviewLoginUrl && (
+                    <a href={reviewLoginUrl} target="_top" className="mt-2 block font-black underline">
+                      Sign in with Procore
+                    </a>
+                  )}
                 </div>
               )}
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

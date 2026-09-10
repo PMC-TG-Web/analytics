@@ -43,6 +43,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/analytics/commitment-productivity/reviews', permission: 'analytics' },
   { prefix: '/api/admin', permission: 'admin' },
   { prefix: '/api/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/api/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },

@@ -523,8 +523,11 @@ async function resolveApprovedChangeOrder(params: {
   if (!storedMatch) return null;
   if (!params.useLive) return { changeOrder: storedMatch, liveLines: null };
 
+  // Procore's Show PCO endpoint requires contract_id alongside project_id; omitting it returns 404.
   const path = storedMatch.sourceKind === "potential_change_order"
-    ? `/rest/v1.0/potential_change_orders/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(params.projectId)}`
+    ? `/rest/v1.0/potential_change_orders/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(
+        params.projectId
+      )}&contract_id=${encodeURIComponent(storedMatch.contractId)}`
     : `/rest/v1.0/change_order_packages/${encodeURIComponent(storedMatch.packageId)}?project_id=${encodeURIComponent(
         params.projectId
       )}&contract_id=${encodeURIComponent(storedMatch.contractId)}`;

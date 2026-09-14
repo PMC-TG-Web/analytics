@@ -14,6 +14,7 @@ import {
   commitmentMakerVendorIsAssignedToProject,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
+  normalizeCommitmentMakerCostType,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
   selectCommitmentMakerWbsCandidate,
@@ -367,6 +368,35 @@ test('does not guess when multiple project WBS types exist and O is absent', () 
   ];
 
   assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O'), null);
+});
+
+test('falls back to the single Other budget code when the requested type is absent', () => {
+  const laborOrOther = [
+    { id: 'labor', flatCode: '03-300-20-10.L', costCode: '03-300-20-10', costType: 'L' },
+    { id: 'other', flatCode: '03-300-20-10.O', costCode: '03-300-20-10', costType: 'O' },
+  ];
+  const commitmentOrOther = [
+    { id: 'commitment', flatCode: '03-300-20-30.C', costCode: '03-300-20-30', costType: 'C' },
+    { id: 'other', flatCode: '03-300-20-30.O', costCode: '03-300-20-30', costType: 'Other' },
+  ];
+
+  assert.equal(selectCommitmentMakerWbsCandidate(laborOrOther, 'M')?.id, 'other');
+  assert.equal(selectCommitmentMakerWbsCandidate(laborOrOther, 'Labor')?.id, 'labor');
+  assert.equal(selectCommitmentMakerWbsCandidate(commitmentOrOther, 'M')?.id, 'other');
+});
+
+test('reads a workbook Cost Type column when present', () => {
+  const result = parseCommitmentMakerRows([
+    ['Budget Code', 'Cost Type', 'Cost Catalog Item', 'Quantity', 'UoM (Quantity)', 'Unit Cost'],
+    ['SOG', '', '', '', 'Mixed', ''],
+    ['03-300-20-10 - SOG', 'Labor', 'Labor Slab On Grade', '40', 'hr', '$38'],
+    ['03-300-20-20 - SOG', 'Materials', 'Ready Mix Concrete', '10', 'cu yd', '$140'],
+    ['03-200-10-20 - SOG', '', '#4 Rebar', '2', 'ea', '$7.18'],
+  ]);
+
+  assert.deepEqual(result.groups[0].lineItems.map((line) => line.costType), ['L', 'M', 'M']);
+  assert.equal(normalizeCommitmentMakerCostType('Other'), 'O');
+  assert.equal(normalizeCommitmentMakerCostType(''), '');
 });
 
 test('uses the approved change-order source WBS ID when multiple types share a cost code', () => {

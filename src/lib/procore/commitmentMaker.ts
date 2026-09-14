@@ -213,6 +213,7 @@ export type CommitmentMakerParseResult = {
 
 const COLUMN_ALIASES = {
   costCode: ["Budget Code", "Cost Code"],
+  costType: ["Cost Type", "Cost Code Type"],
   description: ["Cost Catalog Item", "Description", "Cost item", "Cost Name"],
   quantity: ["Quantity", "Total Quantity"],
   uom: ["UoM (Quantity)", "UoM", "UOM", "Unit of Measure"],
@@ -396,6 +397,8 @@ export function parseCommitmentMakerRows(
     uom: findHeaderIndex(headers, COLUMN_ALIASES.uom),
     unitCost: findHeaderIndex(headers, COLUMN_ALIASES.unitCost),
   };
+  // Optional: estimate exports that carry a Cost Type column drive the budget-code type per line.
+  const costTypeIndex = findHeaderIndex(headers, COLUMN_ALIASES.costType);
   const missing = Object.entries(indices)
     .filter(([, index]) => index === -1)
     .map(([field]) => field);
@@ -473,7 +476,8 @@ export function parseCommitmentMakerRows(
       description = suffixDescription(description, originalBudgetCode);
       parsedLineItems.push({
         costCode,
-        costType: COMMITMENT_MAKER_COST_TYPE,
+        costType: (costTypeIndex === -1 ? "" : normalizeCommitmentMakerCostType(row[costTypeIndex]))
+          || COMMITMENT_MAKER_COST_TYPE,
         description,
         quantity,
         uom,
@@ -518,12 +522,19 @@ function canonicalCostType(value: unknown): string {
   const normalized = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
   if (["L", "LAB", "LABOR"].includes(normalized)) return "L";
   if (["M", "MAT", "MATERIAL", "MATERIALS"].includes(normalized)) return "M";
+  if (["E", "EQUIP", "EQUIPMENT"].includes(normalized)) return "E";
   if (["S", "SUB", "SUBCONTRACT", "SUBCONTRACTOR", "SUBCONTRACTORS"].includes(normalized)) return "S";
   if (["C", "COMMITMENT", "COMMITMENTS"].includes(normalized)) return "C";
   if (["CON", "CONC", "CONCRETE"].includes(normalized)) return "CON";
   if (["O", "OTHER"].includes(normalized)) return "O";
   return normalized;
 }
+
+export function normalizeCommitmentMakerCostType(value: unknown): string {
+  return canonicalCostType(value);
+}
+
+const COMMITMENT_MAKER_FALLBACK_COST_TYPE = "O";
 
 export function commitmentMakerSourceWbsCandidate(
   line: CommitmentMakerLineItem,
@@ -541,9 +552,10 @@ export function commitmentMakerSourceWbsCandidate(
 }
 
 /**
- * Prefer the converter's requested cost type when it exists. A Procore project
- * may use a different type for the same cost code; using that code is
- * safe only when the project has exactly one possible WBS candidate.
+ * Prefer the converter's requested cost type when it exists. When the project
+ * does not carry that type for the cost code, the Other (`O`) budget code is
+ * the company's catch-all and is used when it is the single such candidate.
+ * Any other multi-type ambiguity is left unresolved rather than guessed.
  */
 export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCandidate>(
   candidates: T[],
@@ -559,7 +571,11 @@ export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCa
   const typed = candidates.filter((candidate) => canonicalCostType(candidate.costType) === requested);
   if (typed.length === 1) return typed[0];
   if (typed.length > 1) return null;
-  return candidates.length === 1 ? candidates[0] : null;
+  if (candidates.length === 1) return candidates[0];
+  const fallback = candidates.filter(
+    (candidate) => canonicalCostType(candidate.costType) === COMMITMENT_MAKER_FALLBACK_COST_TYPE,
+  );
+  return fallback.length === 1 ? fallback[0] : null;
 }
 
 export function planNextPurchaseOrderNumbers(existingNumbers: unknown[], count: number): string[] {

@@ -20,6 +20,7 @@ import {
   consolidateCommitmentMakerLineItems,
   isCommitmentMakerExcludedLine,
   isCommitmentMakerEstimateMatchingLine,
+  normalizeCommitmentMakerCostType,
   normalizeCommitmentMakerVendorName,
   parseCommitmentMakerRows,
   planNextPurchaseOrderNumbers,
@@ -946,7 +947,7 @@ function groupsFromPayload(value: unknown): CommitmentMakerGroup[] {
       if (isCommitmentMakerEstimateMatchingLine(costCode, description)) return null;
       return {
         costCode,
-        costType: COMMITMENT_MAKER_COST_TYPE,
+        costType: normalizeCommitmentMakerCostType(rawLine.costType) || COMMITMENT_MAKER_COST_TYPE,
         description,
         quantity,
         uom,

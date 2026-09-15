@@ -4,6 +4,7 @@ import { getKpiCardYearValues } from "@/lib/kpiCardMonths";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractValue";
 import { financialContractBases } from "@/lib/financialContractBases";
+import { loadFinancialSoldDates } from "@/lib/loadFinancialSoldDates";
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
       estimatingProjects,
       canonicalProcoreProjects,
       primeContracts,
+      soldDates,
     ] = await Promise.all([
       prisma.$queryRawUnsafe<DbRow[]>(
         `
@@ -284,6 +286,7 @@ export async function GET(request: NextRequest) {
           payload: true,
         },
       }),
+      loadFinancialSoldDates(companyId),
     ]);
 
     const originalContractByProjectId = financialContractBases(primeContracts, companyId);
@@ -468,6 +471,7 @@ export async function GET(request: NextRequest) {
     const soldThisYear = calculateEstimatingSoldContracts(
       estimatingProjects.map((project) => ({
         ...project,
+        ...soldDates.get(project.procoreProjectId),
         originalContractValue: project.procoreProjectId
           ? originalContractByProjectId.get(project.procoreProjectId)
           : undefined,

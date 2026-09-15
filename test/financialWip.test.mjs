@@ -7,6 +7,9 @@ import {
   calculateEstimatingSoldContracts,
   isInternalFinancialProject,
   projectNumberMatchesYear,
+  financialDate,
+  financialSoldDates,
+  resolveSoldYear,
 } from "../src/lib/financialWip.ts";
 
 function project(overrides) {
@@ -188,4 +191,77 @@ test("sold contract coverage preserves missing estimates and explicit zero value
   assert.equal(result.contractProjectCount, 2);
   assert.equal(result.contractValue, 990.01);
   assert.equal(result.projects.find(row => row.id === "procore:zero").contractValue, 0);
+});
+
+test("sold year uses contract date, then project number, then project start date", () => {
+  const cases = [
+    [{ contractDate: "2025-12-31", procoreProjectNumber: "2601-TEST", startDate: "2027-01-01" }, 2025, "contract_date"],
+    [{ contractDate: new Date("2026-01-01T00:00:00Z"), procoreProjectNumber: "2501-TEST" }, 2026, "contract_date"],
+    [{ contractDate: "bad", procoreProjectNumber: "2501-TEST", startDate: "2026-02-01" }, 2025, "project_number"],
+    [{ contractDate: "", procoreProjectNumber: "WG-26-001", startDate: "2025-02-01" }, 2026, "project_number"],
+    [{ contractDate: null, procoreProjectNumber: "NO-YEAR", startDate: "2026-02-01" }, 2026, "start_date"],
+    [{ procoreProjectNumber: null, startDate: "2025-02-01" }, 2025, "start_date"],
+    [{ procoreProjectNumber: "PMC-OPS", startDate: "bad" }, null, null],
+  ];
+  for (const [input, soldYear, soldYearSource] of cases) {
+    assert.deepEqual(resolveSoldYear(input), { soldYear, soldYearSource });
+  }
+});
+
+test("sold dates validate calendar days and preserve the recorded year across timezones", () => {
+  for (const invalid of ["2026-02-30", "2026-02-29", "2026-13-01", "2026-00-01", "2026", "", null, 0, new Date(NaN)]) {
+    assert.equal(financialDate(invalid), null);
+  }
+  assert.equal(financialDate("2024-02-29"), "2024-02-29");
+  assert.equal(financialDate("2025-12-31T23:00:00-05:00"), "2025-12-31");
+  assert.equal(financialDate("2026-01-01T01:00:00+05:00"), "2026-01-01");
+});
+
+test("sold breakdown and total use identical date precedence without changing values or identity rules", () => {
+  const result = calculateEstimatingSoldContracts([
+    estimate({ contractDate: "2025-12-31" }),
+    estimate({ procoreProjectId: "prior-number", projectNumber: "2501-TEST", contractDate: "2026-02-01" }),
+    estimate({ procoreProjectId: "prior-number", projectNumber: "2501-TEST", contractDate: "2026-02-01" }),
+    estimate({ procoreProjectId: "start-only", projectNumber: "NO-YEAR", startDate: "2026-03-01", sales: 2000 }),
+    estimate({ procoreProjectId: "job-year", contractDate: "invalid", startDate: "2025-03-01", sales: 3000 }),
+    estimate({ procoreProjectId: "archived", projectArchived: true, contractDate: "2026-01-01" }),
+    estimate({ procoreProjectId: "unsold", status: "Lost", contractDate: "2026-01-01" }),
+  ], 2026);
+  assert.equal(result.projectCount, 3);
+  assert.equal(result.contractValue, 6150);
+  assert.equal(result.projects.reduce((sum, row) => sum + row.contractValue, 0), result.contractValue);
+  assert.deepEqual(new Set(result.projects.map(row => row.soldYearSource)), new Set(["contract_date", "start_date", "project_number"]));
+  assert.equal(calculateSoldContractValue(result.projects, 2026).contractValue, result.contractValue);
+  assert.equal(calculateEstimatingSoldContracts([estimate()], NaN).projectCount, 0);
+});
+
+test("sold date mirrors use scoped external IDs and the earliest approved contract date", () => {
+  const contract = (overrides = {}) => ({
+    company_id: "company", project_procore_id: "project", project_id: "local-wrong",
+    status: "Approved", contract_date: "2026-02-01", payload: {}, ...overrides,
+  });
+  const staging = (overrides = {}) => ({
+    companyId: "company", source: "procore_v1_projects", externalId: "project",
+    procoreProjectId: "project", payload: { start_date: "2026-05-01" }, ...overrides,
+  });
+  const contracts = [
+    contract(), contract({ contract_date: new Date("2025-12-01T00:00:00Z"), status: "Executed" }),
+    contract({ contract_date: "2024-01-01", status: "Draft" }),
+    contract({ contract_date: "2023-01-01", payload: { deleted_at: "2026-01-01" } }),
+    contract({ contract_date: "2022-01-01", company_id: "other" }),
+    contract({ project_procore_id: "payload-date", contract_date: null, payload: { contract_date: "2026-03-01" } }),
+    contract({ project_procore_id: "invalid", contract_date: "2026-02-30" }),
+  ];
+  const projects = [
+    staging(), staging({ companyId: "other", payload: { start_date: "2024-01-01" } }),
+    staging({ source: "procore_bid_board", payload: { start_date: "2023-01-01" } }),
+    staging({ procoreProjectId: null, externalId: "unlinked", payload: { start_date: "2026-04-01" } }),
+  ];
+  const dates = financialSoldDates(contracts, projects, "company");
+  assert.deepEqual(dates.get("project"), { contractDate: "2025-12-01", startDate: "2026-05-01" });
+  assert.deepEqual(dates.get("payload-date"), { contractDate: "2026-03-01", startDate: null });
+  assert.deepEqual(dates.get("unlinked"), { contractDate: null, startDate: "2026-04-01" });
+  assert.equal(dates.has("local-wrong"), false);
+  assert.equal(dates.has("invalid"), false);
+  assert.deepEqual(financialSoldDates([...contracts].reverse(), projects, "company"), dates);
 });

@@ -150,6 +150,10 @@ type ApiResponse = {
       procoreProjectNumber: string | null;
       projectName: string;
       status: string | null;
+      contractDate: string | null;
+      startDate: string | null;
+      soldYear: number;
+      soldYearSource: "contract_date" | "project_number" | "start_date";
       baseEstimate: number | null;
       approvedChangeOrders: number;
       contractValue: number | null;
@@ -333,7 +337,7 @@ export default function MonthlyHoursPage() {
                 </div>
                 <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
                   {[
-                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} job numbers · Accepted, in progress & completed · Includes approved COs · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} valued`],
+                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} · Contract date → job number → start date · Accepted, in progress & completed · Includes approved COs · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} valued`],
                     ["YTD billed", money.format(financialWip.qboIncomeReconciliation?.companyIncome || 0), `Companywide QBO P&L Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
@@ -349,12 +353,13 @@ export default function MonthlyHoursPage() {
                 {financialWip.soldProjects && (
                   <details className="border-t border-slate-200 px-5 py-3">
                     <summary className="cursor-pointer text-sm font-bold text-slate-700">Sold this year: project breakdown ({financialWip.soldProjects.length})</summary>
-                    <p className="mt-2 text-xs text-slate-500">Year follows the job number. Includes accepted, in-progress, and completed jobs, including jobs awaiting QuickBooks setup. Values use the recorded approved original contract when available, otherwise the estimate, plus approved change orders.</p>
+                    <p className="mt-2 text-xs text-slate-500">Year follows the earliest approved contract date, then the job number, then the Procore project start date. Each fallback applies only when the previous source is missing or invalid. Includes accepted, in-progress, and completed jobs, including jobs awaiting QuickBooks setup. Values use the recorded approved original contract when available, otherwise the estimate, plus approved change orders.</p>
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead className="border-b border-slate-200 text-xs text-slate-500">
                           <tr>
                             <th className="p-2">Job number</th><th className="p-2">Project</th><th className="p-2">Status</th>
+                            <th className="p-2">Sold year source</th>
                             <th className="p-2 text-right">Original contract / estimate</th><th className="p-2 text-right">Approved COs</th><th className="p-2 text-right">Contract value</th>
                           </tr>
                         </thead>
@@ -362,13 +367,18 @@ export default function MonthlyHoursPage() {
                           {financialWip.soldProjects.map((project) => (
                             <tr key={project.id} className="border-b border-slate-100">
                               <td className="p-2 whitespace-nowrap">{project.procoreProjectNumber}</td><td className="p-2">{project.projectName}</td><td className="p-2 whitespace-nowrap">{project.status}</td>
+                              <td className="p-2 whitespace-nowrap">{project.soldYearSource === "contract_date"
+                                ? `Contract: ${dateLabel(project.contractDate)}`
+                                : project.soldYearSource === "start_date"
+                                  ? `Start: ${dateLabel(project.startDate)}`
+                                  : `Job number: ${project.soldYear}`}</td>
                               <td className="p-2 text-right">{project.baseEstimate == null ? "—" : money.format(project.baseEstimate)}</td>
                               <td className="p-2 text-right">{money.format(project.approvedChangeOrders)}</td>
                               <td className="p-2 text-right font-semibold">{project.contractValue == null ? "—" : money.format(project.contractValue)}</td>
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot><tr className="font-bold"><td colSpan={5} className="p-2">Total sold this year</td><td className="p-2 text-right">{money.format(financialWip.summary.soldContractValue)}</td></tr></tfoot>
+                        <tfoot><tr className="font-bold"><td colSpan={6} className="p-2">Total sold this year</td><td className="p-2 text-right">{money.format(financialWip.summary.soldContractValue)}</td></tr></tfoot>
                       </table>
                     </div>
                   </details>

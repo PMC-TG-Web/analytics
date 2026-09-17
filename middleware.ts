@@ -36,6 +36,7 @@ const COMMITMENT_MAKER_API_PATH = '/api/procore/commitments-live/maker';
 
 const PERMISSION_FALLBACKS: Record<string, string> = {
   'accounting-project-profitability': 'admin',
+  'accounting-direct-cost-bills': 'admin',
   'analytics-cost-code-sales': 'analytics',
   'procore-timecards': 'procore',
   'procore-line-items': 'procore',

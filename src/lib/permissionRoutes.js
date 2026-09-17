@@ -38,6 +38,7 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/wip', permission: 'wip' },
   { prefix: '/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/analytics', permission: 'analytics' },
+  { prefix: '/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/', permission: 'home' },
 ];
@@ -45,6 +46,7 @@ export const PATH_PERMISSION_RULES = [
 const API_PERMISSION_RULES = [
   { prefix: '/api/analytics/commitment-productivity/reviews', permission: 'analytics' },
   { prefix: '/api/admin', permission: 'admin' },
+  { prefix: '/api/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/api/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/api/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/api/debug', permission: 'diagnostics' },

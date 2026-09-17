@@ -2,6 +2,32 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Transient transport to the single QBO host; OAuth tokens and bill ledger stay on that host.
+model QboBillRelayJob {
+  id          String   @id
+  hostId      String   @map("host_id")
+  companyId   String   @map("company_id")
+  operation   String
+  payload     Json
+  state       String   @default("queued")
+  result      Json?
+  error       String?
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+  @@index([hostId, companyId, state, createdAt])
+  @@map("qbo_bill_relay_jobs")
+}
+
+model QboBillRelayHost {
+  id          String   @id
+  companyId   String   @map("company_id")
+  writesEnabled Boolean @default(false) @map("writes_enabled")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@map("qbo_bill_relay_hosts")
+}
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")

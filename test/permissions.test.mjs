@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   getUserPermissions,
@@ -13,6 +14,15 @@ Object.keys(USER_PERMISSIONS).forEach((email) => delete USER_PERMISSIONS[email])
 Object.assign(USER_PERMISSIONS, {
   'todd@pmcdecor.com': ['OWNER'],
   'david@pmcdecor.com': ['dashboard', 'employees', 'onboarding'],
+});
+
+test('Next.js src entry point wires the existing middleware and matching scope', () => {
+  const entry = readFileSync(new URL('../src/middleware.ts', import.meta.url), 'utf8');
+  const policy = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
+  assert.match(entry, /export \{ middleware \} from '\.\.\/middleware'/);
+  const matcher = source => source.match(/matcher:\s*\[([\s\S]*?)\]/)?.[1].trim();
+  assert.ok(matcher(entry));
+  assert.equal(matcher(entry), matcher(policy));
 });
 
 test('hasPageAccess is case-insensitive for user emails and permission names', () => {
@@ -49,6 +59,10 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/market-outlook'), 'analytics');
   assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
+  assert.equal(resolvePermissionForPath('/accounting/direct-cost-bills'), 'accounting-direct-cost-bills');
+  assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills'), 'accounting-direct-cost-bills');
+  assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/sync'), 'accounting-direct-cost-bills');
+  assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/setup'), 'accounting-direct-cost-bills');
   assert.equal(resolvePermissionForPath('/pm-dashboard'), 'pm-dashboard');
   assert.equal(resolvePermissionForPath('/api/pm-dashboard'), 'pm-dashboard');
   assert.equal(resolvePermissionForPath('/analytics/productivity'), 'analytics');
@@ -63,6 +77,7 @@ test('employee templates include every page-specific navigation permission', () 
     'procore-scope-map',
     'analytics-cost-code-sales',
     'accounting-project-profitability',
+    'accounting-direct-cost-bills',
     'pm-dashboard',
   ]) {
     assert.ok(NAVIGATION_PERMISSION_OPTIONS.includes(permission), `${permission} is missing`);
@@ -82,4 +97,19 @@ test('QBO profitability access is included only in administrative permission gro
 test('resolvePermissionForPath falls back to home only for the root page', () => {
   assert.equal(resolvePermissionForPath('/'), 'home');
   assert.equal(resolvePermissionForPath('/unknown-route'), null);
+});
+
+test('direct cost bills can be granted independently of QBO profitability', () => {
+  USER_PERMISSIONS['bill-operator@example.test'] = ['accounting-direct-cost-bills'];
+  USER_PERMISSIONS['profitability-reader@example.test'] = ['accounting-project-profitability'];
+  try {
+    assert.equal(hasPageAccess('bill-operator@example.test', 'accounting-direct-cost-bills'), true);
+    assert.equal(hasPageAccess('bill-operator@example.test', 'accounting-project-profitability'), false);
+    assert.equal(hasPageAccess('profitability-reader@example.test', 'accounting-direct-cost-bills'), false);
+    const employeeSource = readFileSync(new URL('../src/app/employees/page.tsx', import.meta.url), 'utf8');
+    assert.match(employeeSource, /'accounting-direct-cost-bills': 'QBO Direct Costs'/);
+  } finally {
+    delete USER_PERMISSIONS['bill-operator@example.test'];
+    delete USER_PERMISSIONS['profitability-reader@example.test'];
+  }
 });

@@ -10,14 +10,14 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
     "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "diagnostics", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
-    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map"
+    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map", "accounting-direct-cost-bills"
   ],
   "ADMIN": [
     "home", "dashboard", "pm-dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 
     "employees", "certifications", "onboarding", "kpi-cards-management", "holidays", "handbook", "admin", "reporting", "analytics", "analytics-cost-code-sales", "accounting-project-profitability",
-    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map"
+    "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map", "accounting-direct-cost-bills"
   ],
   "HR": [
     "home", "employees", "certifications", "onboarding", "crew-dispatch", "holidays", "handbook"
@@ -270,6 +270,7 @@ export const NAVIGATION_PERMISSION_OPTIONS: string[] = Array.from(
     ...PATH_PERMISSION_RULES.map((rule) => rule.permission),
     'analytics-cost-code-sales',
     'accounting-project-profitability',
+    'accounting-direct-cost-bills',
     'procore-timecards',
     'procore-line-items',
     'procore-commitments',

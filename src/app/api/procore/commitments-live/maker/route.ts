@@ -725,8 +725,11 @@ async function fetchProjectWbsRecords(
   companyId: string,
   projectId: string
 ): Promise<UnknownRecord[]> {
-  const [wbsCodes, budgetLineItems] = await Promise.all([
-    fetchPaged({
+  const failures: Error[] = [];
+  // WBS is authoritative and includes codes without budget lines. Read the
+  // budget only as a fallback, rather than spending quota on both collections.
+  try {
+    const wbsCodes = await fetchPaged({
       accessToken,
       companyId,
       keys: ["data", "wbs_codes", "codes"],
@@ -734,19 +737,31 @@ async function fetchProjectWbsRecords(
         `/rest/v1.0/projects/${encodeURIComponent(
           projectId
         )}/work_breakdown_structure/wbs_codes?page=${page}&per_page=100`,
-    }).catch(() => []),
-    fetchPaged({
+    });
+    if (wbsCodes.length > 0) return wbsCodes;
+  } catch (error) {
+    // Preserve the typed pause so the browser keeps its loading state and
+    // continues after the provider reset, before any PO mutation takes place.
+    if (error instanceof CommitmentMakerRateLimitError) throw error;
+    failures.push(error instanceof Error ? error : new Error(String(error)));
+  }
+  try {
+    const budgetLineItems = await fetchPaged({
       accessToken,
       companyId,
       keys: ["data", "budget_line_items"],
       pathForPage: (page) =>
         `/rest/v1.1/budget_line_items?project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=100`,
-    }).catch(() => []),
-  ]);
-  if (wbsCodes.length === 0 && budgetLineItems.length === 0) {
-    throw new Error("No project WBS or budget codes could be read from Procore.");
+    });
+    if (budgetLineItems.length > 0) return budgetLineItems;
+  } catch (error) {
+    if (error instanceof CommitmentMakerRateLimitError) throw error;
+    failures.push(error instanceof Error ? error : new Error(String(error)));
   }
-  return [...wbsCodes, ...budgetLineItems];
+  if (failures.length > 0) {
+    throw new Error(`Could not read budget codes for Procore project ${projectId}. ${failures.map((error) => error.message).join(" ")}`);
+  }
+  throw new Error(`Procore returned no WBS or budget codes for project ${projectId}.`);
 }
 
 function nestedRecord(record: UnknownRecord, key: string): UnknownRecord {

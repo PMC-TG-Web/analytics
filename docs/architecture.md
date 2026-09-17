@@ -128,6 +128,8 @@ Commitment Maker vendor enrollment verifies exact project membership through the
 
 Commitment Maker's project selector reads the configured company's `PmcProject` identity/display fields through `GET /api/procore/commitments-live/maker/projects`. This endpoint inherits `procore-commitments` authorization, so a user with Commitment Maker access does not also need the broader `procore` permission for `/api/procore/projects`. The collection requires an authenticated Analytics session; signed Project Home links remain limited to their single project. Validate with `node --test test/commitmentMakerProjects.test.mjs`.
 
+Commitment Maker reads the project's live WBS first and skips the redundant budget collection when WBS codes are available. Empty or unavailable WBS reads may fall back to live budget lines. A 429 from either collection propagates unchanged to the existing silent browser continuation; failed reads retain their actual cause, and only successful empty reads are reported as missing codes. Validate with `node --test test/commitmentMakerWbsRead.test.mjs`.
+
 ### IDs and source systems
 
 Keep these identifiers distinct:

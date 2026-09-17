@@ -126,6 +126,8 @@ Approved change-order imports accept finite negative quantities and unit costs, 
 
 Commitment Maker vendor enrollment verifies exact project membership through the bounded live client before attempting an add. A same-name record with a different ID is not proof of enrollment; historical project-scoped vendor IDs remain attached to existing POs, while new POs prefer the canonical company-directory vendor. Validate with `node --test test/commitmentMakerVendorEnrollment.test.mjs`.
 
+Commitment Maker's project selector reads the configured company's `PmcProject` identity/display fields through `GET /api/procore/commitments-live/maker/projects`. This endpoint inherits `procore-commitments` authorization, so a user with Commitment Maker access does not also need the broader `procore` permission for `/api/procore/projects`. The collection requires an authenticated Analytics session; signed Project Home links remain limited to their single project. Validate with `node --test test/commitmentMakerProjects.test.mjs`.
+
 ### IDs and source systems
 
 Keep these identifiers distinct:

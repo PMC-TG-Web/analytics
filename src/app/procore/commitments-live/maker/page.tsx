@@ -230,7 +230,7 @@ export default function CommitmentMakerPage() {
           }
           return;
         }
-        const response = await fetch("/api/procore/projects", { cache: "no-store" });
+        const response = await fetch("/api/procore/commitments-live/maker/projects", { cache: "no-store" });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(text(asRecord(payload).error) || "Projects could not be loaded.");
         if (!cancelled) {

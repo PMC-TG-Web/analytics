@@ -534,7 +534,7 @@ export function normalizeCommitmentMakerCostType(value: unknown): string {
   return canonicalCostType(value);
 }
 
-const COMMITMENT_MAKER_FALLBACK_COST_TYPE = "O";
+const COMMITMENT_MAKER_FALLBACK_COST_TYPES = ["O", "C"];
 
 export function commitmentMakerSourceWbsCandidate(
   line: CommitmentMakerLineItem,
@@ -553,8 +553,10 @@ export function commitmentMakerSourceWbsCandidate(
 
 /**
  * Prefer the converter's requested cost type when it exists. When the project
- * does not carry that type for the cost code, the Other (`O`) budget code is
- * the company's catch-all and is used when it is the single such candidate.
+ * does not carry that type for the cost code, prefer the company's Other (`O`)
+ * catch-all, then its Commitments (`C`) code. Older projects can carry C alongside
+ * equipment/material codes instead of the estimate's subcontract cost type.
+ * Each fallback must identify exactly one WBS code.
  * Any other multi-type ambiguity is left unresolved rather than guessed.
  */
 export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCandidate>(
@@ -572,10 +574,11 @@ export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCa
   if (typed.length === 1) return typed[0];
   if (typed.length > 1) return null;
   if (candidates.length === 1) return candidates[0];
-  const fallback = candidates.filter(
-    (candidate) => canonicalCostType(candidate.costType) === COMMITMENT_MAKER_FALLBACK_COST_TYPE,
-  );
-  return fallback.length === 1 ? fallback[0] : null;
+  for (const costType of COMMITMENT_MAKER_FALLBACK_COST_TYPES) {
+    const fallback = candidates.filter((candidate) => canonicalCostType(candidate.costType) === costType);
+    if (fallback.length > 0) return fallback.length === 1 ? fallback[0] : null;
+  }
+  return null;
 }
 
 export function planNextPurchaseOrderNumbers(existingNumbers: unknown[], count: number): string[] {

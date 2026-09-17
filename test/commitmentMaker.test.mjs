@@ -385,6 +385,46 @@ test('falls back to the single Other budget code when the requested type is abse
   assert.equal(selectCommitmentMakerWbsCandidate(commitmentOrOther, 'M')?.id, 'other');
 });
 
+test('resolves project 598134326714493 subcontract lines to its Commitments budget codes', () => {
+  const parsed = parseCommitmentMakerRows([
+    ['Budget Code', 'Cost Type', 'Cost Catalog Item', 'Quantity', 'UoM (Quantity)', 'Unit Cost'],
+    ['Office Slab On Deck', '', '', '', 'Mixed', ''],
+    ['03-300-40-30 - Concrete Pumping', 'Subcontractor', 'Boom Pump', '1', 'ea', '500'],
+    ['31-100-10-40 - Excavation Sub', 'S', 'Dump Truck', '1', 'ea', '100'],
+  ]);
+  // Preserve the workbook types through the same JSON round-trip as preview/create.
+  const lines = JSON.parse(JSON.stringify(parsed.groups[0].lineItems));
+  for (const [index, nativeType] of ['E', 'M'].entries()) {
+    const line = lines[index];
+    const candidates = [
+      { id: 'native', flatCode: `${line.costCode}.${nativeType}`, costCode: line.costCode, costType: nativeType },
+      { id: 'commitment', flatCode: `${line.costCode}.C`, costCode: line.costCode, costType: 'Commitments' },
+    ];
+    assert.equal(line.costType, 'S');
+    assert.equal(selectCommitmentMakerWbsCandidate(candidates, line.costType)?.flatCode, `${line.costCode}.C`);
+    assert.equal(selectCommitmentMakerWbsCandidate(candidates, nativeType)?.id, 'native');
+    assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'S', 'native')?.id, 'native');
+  }
+});
+
+test('Commitments fallback preserves Other precedence and rejects duplicate fallback codes', () => {
+  const candidate = (id, costType) => ({ id, costType, costCode: '03-300-40-30', flatCode: `03-300-40-30.${costType}` });
+  const commitment = candidate('commitment', 'C');
+  const other = candidate('other', 'O');
+  assert.equal(selectCommitmentMakerWbsCandidate([commitment, other], 'S')?.id, 'other');
+  assert.equal(selectCommitmentMakerWbsCandidate([commitment, other], 'C')?.id, 'commitment');
+  assert.equal(selectCommitmentMakerWbsCandidate([commitment, candidate('duplicate', 'C')], 'S'), null);
+  assert.equal(selectCommitmentMakerWbsCandidate([commitment, other, candidate('duplicate', 'O')], 'S'), null);
+});
+
+test('untyped concrete pumping resolves to Commitments when Materials is unavailable', () => {
+  const candidates = [
+    { id: 'equipment', flatCode: '03-300-40-30.E', costCode: '03-300-40-30', costType: 'E' },
+    { id: 'commitment', flatCode: '03-300-40-30.C', costCode: '03-300-40-30', costType: 'C' },
+  ];
+  assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'M')?.id, 'commitment');
+});
+
 test('reads a workbook Cost Type column when present', () => {
   const result = parseCommitmentMakerRows([
     ['Budget Code', 'Cost Type', 'Cost Catalog Item', 'Quantity', 'UoM (Quantity)', 'Unit Cost'],

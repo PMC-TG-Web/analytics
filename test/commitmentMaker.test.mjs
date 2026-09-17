@@ -5,6 +5,7 @@ import {
   COMMITMENT_MAKER_COST_TYPE,
   COMMITMENT_MAKER_VENDOR_NAME,
   combineCommitmentMakerGroups,
+  commitmentMakerCombinedTitle,
   consolidateCommitmentMakerLineItems,
   commitmentMakerLineAmount,
   commitmentMakerLineCreatePayload,
@@ -217,6 +218,30 @@ test('merges repeated group names into one purchase order', () => {
   const result = parseCommitmentMakerRows(rows);
   assert.equal(result.groups.length, 1);
   assert.equal(result.groups[0].lineItems[0].quantity, 3);
+});
+
+test('combined titles use up to 40 characters per selected PO in display order', () => {
+  const longTitle = '1234567890123456789012345678901234567890 extra description';
+  assert.equal(commitmentMakerCombinedTitle([longTitle, 'Sidewalk', 'Office Slab']),
+    '1234567890123456789012345678901234567890 | Sidewalk | Office Slab');
+  assert.equal(commitmentMakerCombinedTitle(['Sidewalk', 'Office Slab']), 'Sidewalk | Office Slab');
+  assert.equal(commitmentMakerCombinedTitle(['Office Slab']), 'Office Slab');
+  assert.equal(commitmentMakerCombinedTitle([]), '');
+  assert.equal(commitmentMakerCombinedTitle(['a'.repeat(39) + '🏗' + ' extra', 'Pad']), 'a'.repeat(39) + '🏗 | Pad');
+});
+
+test('generated combined titles retain every selection and respect the existing title validation', () => {
+  const line = { costCode: '03-300-30-20', costType: 'M', description: 'Concrete', quantity: 1,
+    uom: 'cy', unitCost: 100, subtotalOverride: null };
+  const groups = Array.from({ length: 7 }, (_, i) => ({ name: `${i} ${'Slab '.repeat(10)}`, lineItems: [line] }));
+  const selectedNames = groups.map((group) => group.name);
+  const generated = commitmentMakerCombinedTitle(selectedNames);
+  assert.equal(generated.split(' | ').length, 7);
+  assert.throws(() => combineCommitmentMakerGroups(groups, selectedNames, generated), /255 characters/);
+  assert.equal(combineCommitmentMakerGroups(groups, selectedNames, 'All Slabs')[0].name, 'All Slabs');
+  const twoNames = selectedNames.slice(0, 2);
+  const title = commitmentMakerCombinedTitle(twoNames);
+  assert.equal(combineCommitmentMakerGroups(groups, twoNames, title)[0].name, title);
 });
 
 test('combines selected purchase orders and aggregates matching line quantities', () => {

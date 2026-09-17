@@ -158,6 +158,10 @@ function normalizedGroupName(value: unknown): string {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function commitmentMakerCombinedTitle(selectedGroupNames: string[]): string {
+  return selectedGroupNames.map((name) => Array.from(name.trim()).slice(0, 40).join("")).join(" | ");
+}
+
 export function combineCommitmentMakerGroups(
   groups: CommitmentMakerGroup[],
   selectedGroupNames: string[],

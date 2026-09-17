@@ -7,6 +7,7 @@ import Navigation from "@/components/Navigation";
 import { runCommitmentMakerRequest } from "@/lib/commitmentMakerRequest";
 import {
   combineCommitmentMakerGroups,
+  commitmentMakerCombinedTitle,
   commitmentMakerLineAmount,
   commitmentMakerProjectIdFromSearch,
   parseCommitmentMakerRows,
@@ -669,7 +670,8 @@ export default function CommitmentMakerPage() {
     && originalParsedWorkbook
     && JSON.stringify(parsedWorkbook.groups) !== JSON.stringify(originalParsedWorkbook.groups)
   );
-  const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !busy);
+  const combinedTitleTooLong = combinedGroupName.trim().length > 255;
+  const readyToCombine = Boolean(selectedCombineNames.length >= 2 && combinedGroupName.trim() && !combinedTitleTooLong && !busy);
   const readyToCreate = Boolean(
     preview?.success && confirmed && selectedCombineNames.length === 0 && !busy && !result?.success && !createOutcomeUnknown
   );
@@ -1050,13 +1052,19 @@ export default function CommitmentMakerPage() {
                     <span className="text-xs font-black uppercase tracking-wider text-violet-800">Combined PO title</span>
                     <input
                       type="text"
-                      maxLength={255}
                       value={combinedGroupName}
+                      aria-invalid={combinedTitleTooLong}
+                      aria-describedby="combined-po-title-help"
                       disabled={busy}
                       onChange={(event) => setCombinedGroupName(event.target.value)}
-                      placeholder="Enter the title for the combined PO"
+                      placeholder="Select POs to fill in the title automatically"
                       className="mt-1.5 w-full rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
                     />
+                    <span id="combined-po-title-help" className={`mt-1 block text-xs ${combinedTitleTooLong ? "font-semibold text-red-700" : "text-violet-800"}`}>
+                      {combinedTitleTooLong
+                        ? `Title is ${combinedGroupName.trim().length} characters. Shorten it to 255 or fewer before combining.`
+                        : "Uses the first 40 characters of each selected PO title. You can edit it before combining."}
+                    </span>
                   </label>
                   <button
                     type="button"
@@ -1091,7 +1099,12 @@ export default function CommitmentMakerPage() {
                             disabled={busy || group.action === "resume"}
                             onChange={(event) => {
                               setConfirmed(false);
-                              setCombineSelection((current) => ({ ...current, [group.name]: event.target.checked }));
+                              const nextSelection = { ...combineSelection, [group.name]: event.target.checked };
+                              setCombineSelection(nextSelection);
+                              setCombinedGroupName(commitmentMakerCombinedTitle(
+                                preview.groups.filter((candidate) => nextSelection[candidate.name] === true)
+                                  .map((candidate) => candidate.name),
+                              ));
                             }}
                             className="h-5 w-5 rounded border-slate-300 text-violet-700"
                           />

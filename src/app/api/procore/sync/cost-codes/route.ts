@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { coordinatedProcoreFetch } from "@/lib/procoreRequestGate";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { procoreConfig } from "@/lib/procore";
@@ -79,14 +80,14 @@ type ProcoreCostCode = {
 };
 
 async function fetchCostCodePage(url: string, accessToken: string, companyId: string) {
-  const response = await fetch(url, {
+  const response = await coordinatedProcoreFetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken.trim()}`,
       Accept: "application/json",
       "Procore-Company-Id": companyId,
     },
     cache: "no-store",
-  });
+  }, companyId);
 
   if (!response.ok) {
     const errorBody = await response.text();

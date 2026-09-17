@@ -431,7 +431,7 @@ test("keeps approved change-order preview within the interactive response window
   assert.match(route, /resolvedSourceChangeOrder\?\.liveLines !== null/);
   assert.match(route, /fetchCommitmentMakerPlanDataFromDatabase/);
   assert.match(route, /useSynchronizedData: true/);
-  assert.match(route, /const requiresLiveProcore = mode === "create" \|\| !changeOrderPackageId/);
+  assert.match(route, /const requiresLiveProcore = mode === "create";/);
   assert.match(route, /useLive: mode === "create"/);
   assert.match(route, /await enqueueCommitmentMakerTasks/);
   assert.doesNotMatch(route, /resolveCommitmentMakerChangeOrderTaskAssignees/);
@@ -479,7 +479,8 @@ test("bounds live Procore calls and serializes resumable same-PO line creation",
   assert.match(route, /error instanceof ProcoreMutationOutcomeUnknownError/);
   assert.match(route, /if \(failure\?\.outcomeUnknown !== true\)/);
   assert.match(route, /changeOrderClaim\?\.reconcileUnconfirmedCreate/);
-  assert.match(route, /useLiveWbsRecords: !sourceChangeOrder/);
+  assert.match(route, /wbsRecordsOverride: workbookWbsRecords/);
+  assert.match(route, /forceLive: mode === "create", load: loadLiveWbs/);
   assert.match(route, /could not be verified live on this project/);
   assert.match(route, /The selected change order could not be verified live/);
   assert.match(route, /Adding \$\{COMMITMENT_MAKER_VENDOR_NAME\} to the project/);

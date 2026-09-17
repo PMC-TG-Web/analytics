@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { coordinatedProcoreFetch } from "@/lib/procoreRequestGate";
 import {
   getClientCredentialsToken,
   hasValidProcoreSyncSecret,
@@ -125,7 +126,7 @@ async function fetchAllBidBoardProjects(params: {
         per_page: "100",
         "filters[by_status]": "All",
       });
-      const response = await fetch(
+      const response = await coordinatedProcoreFetch(
         `${host}/rest/v2.0/companies/${encodeURIComponent(params.companyId)}/estimating/bid_board_projects?${search}`,
         {
           headers: {
@@ -134,7 +135,7 @@ async function fetchAllBidBoardProjects(params: {
             "Procore-Company-Id": params.companyId,
           },
           signal: AbortSignal.timeout(90_000),
-        }
+        }, params.companyId
       );
       if (!response.ok) {
         const detail = await response.text();
@@ -143,6 +144,7 @@ async function fetchAllBidBoardProjects(params: {
           new Error(`Procore Bid Board request failed (${response.status}): ${detail.slice(0, 2_000)}`),
           { status: response.status, responseHeaders: response.headers }
         );
+        if (response.status === 429) throw lastError;
         break;
       }
 

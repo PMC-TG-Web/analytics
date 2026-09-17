@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
+import { acquireProcoreRequestPermit, completeProcoreRequestPermit } from "@/lib/procoreRequestGate";
+import { readCommitmentMakerWbs } from "@/lib/procoreWbsCache";
 import * as XLSX from "xlsx";
 
 import { prisma } from "@/lib/prisma";
@@ -139,6 +141,8 @@ function withProcoreClient<T>(operation: () => Promise<T>) {
     apiUrl: procoreConfig.apiUrl,
     reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
     observeQuota: (companyId, observation) => recordProcoreQuotaObservation({ companyId, observation }),
+    acquirePermit: (companyId) => acquireProcoreRequestPermit(companyId, "interactive"),
+    completePermit: completeProcoreRequestPermit,
   }, operation);
 }
 
@@ -1041,6 +1045,7 @@ async function buildPlan(params: {
   sourceChangeOrderId: string;
   useSynchronizedData?: boolean;
   useLiveWbsRecords?: boolean;
+  wbsRecordsOverride?: UnknownRecord[];
 }) {
   const planData = params.useSynchronizedData
     ? await fetchCommitmentMakerPlanDataFromDatabase(params.companyId, params.projectId)
@@ -1056,9 +1061,9 @@ async function buildPlan(params: {
         wbsRecords,
       }));
   const { companyVendors, projectVendors, commitments } = planData;
-  const wbsRecords = params.useLiveWbsRecords
+  const wbsRecords = params.wbsRecordsOverride ?? (params.useLiveWbsRecords
     ? await fetchProjectWbsRecords(params.accessToken, params.companyId, params.projectId)
-    : planData.wbsRecords;
+    : planData.wbsRecords);
   const purchaseOrders = purchaseOrderCommitments(commitments);
   const targetCommitment = params.target === "existing_purchase_order"
     ? purchaseOrders.find((record) => readId(record) === params.existingCommitmentId) || null
@@ -1515,7 +1520,7 @@ async function handleRequest(request: NextRequest) {
   const cookieToken = readText(request.cookies.get("procore_access_token")?.value);
   let accessToken = "";
   let tokenSource = "client_credentials";
-  const requiresLiveProcore = mode === "create" || !changeOrderPackageId;
+  const requiresLiveProcore = mode === "create";
   if (requiresLiveProcore) {
     try {
       accessToken = await getClientCredentialsToken();
@@ -1614,6 +1619,30 @@ async function handleRequest(request: NextRequest) {
   const importFingerprint = createHash("sha256")
     .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
     .digest("hex");
+  let loadedWbsLive = false;
+  const loadLiveWbs = async () => {
+    loadedWbsLive = true;
+    if (!accessToken) {
+      try { accessToken = await getClientCredentialsToken(); }
+      catch (error) {
+        if (!cookieToken) throw error;
+        accessToken = cookieToken;
+        tokenSource = "user_oauth_fallback";
+      }
+    }
+    return fetchProjectWbsRecords(accessToken, companyId, projectId);
+  };
+  let workbookWbsRecords = sourceChangeOrder ? undefined : await readCommitmentMakerWbs({
+    companyId, projectId, forceLive: mode === "create", load: loadLiveWbs,
+  });
+  if (mode === "preview" && workbookWbsRecords && !loadedWbsLive) {
+    const index = buildWbsIndex(workbookWbsRecords);
+    // New project codes may have been added since the last preview. Refresh once
+    // if the cached snapshot cannot resolve this workbook, before rejecting it.
+    if (groups.some(group => group.lineItems.some(line => !resolveWbs(line, index)))) {
+      workbookWbsRecords = await readCommitmentMakerWbs({ companyId, projectId, forceLive: true, load: loadLiveWbs });
+    }
+  }
   const [sourceAliases, plan] = await Promise.all([
     sourceChangeOrder
       ? resolveChangeOrderSourceAliases(companyId, projectId, sourceChangeOrder)
@@ -1628,7 +1657,7 @@ async function handleRequest(request: NextRequest) {
       existingCommitmentId,
       sourceChangeOrderId: sourceChangeOrder?.packageId || "",
       useSynchronizedData: true,
-      useLiveWbsRecords: !sourceChangeOrder,
+      wbsRecordsOverride: workbookWbsRecords,
     }),
   ]);
   const liveCommitments = mode === "create"

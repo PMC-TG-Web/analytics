@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { procoreQuotaObservation, procoreRateLimitDelayMs, type ProcoreQuotaObservation } from "@/lib/procoreRateLimit";
+import type { ProcoreRequestPermit } from "@/lib/procoreRequestGate";
 
 export type CommitmentMakerProcoreResponse = { ok: boolean; status: number; payload: unknown; path: string };
 type RequestParams = {
@@ -31,6 +32,8 @@ export function createCommitmentMakerProcoreClient(options: {
   apiUrl: string;
   reserve: number;
   observeQuota: (companyId: string, observation: ProcoreQuotaObservation) => Promise<unknown>;
+  acquirePermit?: (companyId: string) => Promise<{ permit: ProcoreRequestPermit | null; retryAt: number }>;
+  completePermit?: (params: { permit: ProcoreRequestPermit; observation: ProcoreQuotaObservation | null; method: string; path: string; status: number }) => Promise<unknown>;
   fetch?: typeof fetch;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -55,8 +58,20 @@ export function createCommitmentMakerProcoreClient(options: {
         await sleep(delayMs);
       }
 
+      const admission = await options.acquirePermit?.(params.companyId);
+      if (admission?.retryAt) {
+        const waitMs = Math.max(1, admission.retryAt - now());
+        if (waitMs > remainingWaitMs) throw new CommitmentMakerRateLimitError(admission.retryAt);
+        remainingWaitMs -= waitMs;
+        await sleep(waitMs);
+        attempt -= 1; // Local queue contention does not consume a provider retry.
+        continue;
+      }
+
       let response: Response;
       let payload: unknown;
+      let observed: ProcoreQuotaObservation | null = null;
+      let status = 0;
       try {
         response = await send(`${options.apiUrl}${path}`, {
           method,
@@ -69,6 +84,10 @@ export function createCommitmentMakerProcoreClient(options: {
           body,
           cache: "no-store",
           signal: AbortSignal.timeout(method === "GET" ? PROCORE_READ_TIMEOUT_MS : PROCORE_MUTATION_TIMEOUT_MS),
+        });
+        status = response.status;
+        observed = procoreQuotaObservation(response.headers, response.status, {
+          reserve: options.reserve, fallbackCooldownMs: 60_000, nowMs: now(),
         });
         // An explicit 429 is a rejection, even if its response body cannot be read.
         if (response.status === 429) {
@@ -88,6 +107,11 @@ export function createCommitmentMakerProcoreClient(options: {
             : "Procore did not confirm the mutation before the connection ended; its outcome is unknown." },
           path,
         };
+      } finally {
+        if (admission?.permit && options.completePermit) {
+          try { await options.completePermit({ permit: admission.permit, observation: observed, method, path, status }); }
+          catch { console.warn("Commitment Maker could not complete shared request accounting."); }
+        }
       }
 
       const observation = procoreQuotaObservation(response.headers, response.status, {

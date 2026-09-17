@@ -90,8 +90,8 @@ test("Procore rate-limit waits remain capped for distant reset windows", () => {
 });
 
 test("Procore background reserve accepts an explicit zero", () => {
-  assert.equal(procoreBackgroundReserve(undefined), 100);
-  assert.equal(procoreBackgroundReserve("invalid"), 100);
+  assert.equal(procoreBackgroundReserve(undefined), 200);
+  assert.equal(procoreBackgroundReserve("invalid"), 200);
   assert.equal(procoreBackgroundReserve("0"), 0);
   assert.equal(procoreBackgroundReserve("25"), 25);
 });

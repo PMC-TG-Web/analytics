@@ -2,6 +2,7 @@
 // Fetches all estimating catalogs from the Procore Estimating API and caches them
 // in procore_estimating_catalogs_live.
 import { NextResponse } from "next/server";
+import { coordinatedProcoreFetch } from "@/lib/procoreRequestGate";
 import { cookies } from "next/headers";
 import { procoreConfig, getClientCredentialsToken } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
@@ -107,11 +108,11 @@ export async function POST(request: Request) {
           const url = `${endpointBase}?page=${page}&per_page=${perPage}`;
 
           try {
-            const response = await fetch(url, {
+            const response = await coordinatedProcoreFetch(url, {
               method: "GET",
               headers,
               cache: "no-store",
-            });
+            }, companyId);
 
             const text = await response.text();
 

@@ -1,5 +1,6 @@
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { waitForProcoreRequestPermit, completeProcoreRequestPermit } from '@/lib/procoreRequestGate';
 
 import {
   getProcoreBackgroundCooldown,
@@ -10,6 +11,7 @@ import {
   procoreQuotaObservation,
   procoreRateLimitDelayMs,
   procoreRateLimitRetryable,
+  type ProcoreQuotaObservation,
 } from '@/lib/procoreRateLimit';
 
 interface ProcoreTokenResponse {
@@ -363,6 +365,17 @@ export async function makeRequest(
     };
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      const admission = await waitForProcoreRequestPermit(companyId, requestContext?.lane || 'interactive');
+      if (!admission.permit) {
+        const until = new Date(admission.retryAt);
+        recordContextRateLimit(requestContext, until);
+        const deferred = new Error('Procore request deferred to preserve shared API capacity.') as ErrorWithStatusAndCause;
+        deferred.status = 429;
+        deferred.rateLimitUntil = until;
+        throw deferred;
+      }
+      let observation: ProcoreQuotaObservation | null = null;
+      let observedStatus = 0;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
       try {
@@ -377,6 +390,8 @@ export async function makeRequest(
           reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
           fallbackCooldownMs: 15 * 60_000,
         });
+        observation = quota;
+        observedStatus = response.status;
         recordContextRateLimit(requestContext, quota.cooldownUntil);
         if (quota.cooldownUntil || quota.rateLimited) {
           await recordProcoreQuotaObservation({
@@ -422,6 +437,10 @@ export async function makeRequest(
         return response.json();
       } finally {
         clearTimeout(timeoutId);
+        await completeProcoreRequestPermit({
+          permit: admission.permit, observation, status: observedStatus,
+          method: options?.method || 'GET', path: endpoint,
+        }).catch(() => console.warn('[Procore API] Shared request accounting could not be completed.'));
       }
     }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { coordinatedProcoreFetch } from "@/lib/procoreRequestGate";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { procoreConfig } from "@/lib/procore";
@@ -186,12 +187,12 @@ export async function POST(request: Request) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
-        const response = await fetch(url, {
+        const response = await coordinatedProcoreFetch(url, {
           method: "GET",
           headers: requestHeaders,
           cache: "no-store",
           signal: controller.signal,
-        });
+        }, companyId);
 
         const bodyText = await response.text();
         let json: unknown = null;

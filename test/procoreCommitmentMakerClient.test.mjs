@@ -32,7 +32,7 @@ const params = { companyId: "company", accessToken: "test-token", path: "/line_i
 const ok = (id = 1, headers = {}) => new Response(JSON.stringify({ id }), { status: 201, headers });
 const throttled = (seconds) => new Response("rate limited", { status: 429, headers: { "Retry-After": String(seconds) } });
 
-function fixture(responses, observeQuota) {
+function fixture(responses, observeQuota, coordination = {}) {
   let time = start;
   const calls = [], waits = [], observations = [];
   const client = createCommitmentMakerProcoreClient({
@@ -40,6 +40,7 @@ function fixture(responses, observeQuota) {
     now: () => time,
     sleep: async (ms) => { waits.push(ms); time += ms; },
     observeQuota: observeQuota ?? (async (company, observation) => observations.push({ company, observation })),
+    ...coordination,
     fetch: async (url, options) => {
       calls.push({ url, ...options });
       const next = responses.shift();
@@ -74,6 +75,50 @@ test("19 confirmed lines are not replayed when line 20 is throttled", async () =
   assert.deepEqual(accepted, Array.from({ length: 20 }, (_, i) => i + 1));
   assert.equal(f.calls.length, 21);
   assert.deepEqual(f.calls.map((call) => JSON.parse(call.body).line), [...accepted, 20]);
+});
+
+test("a shared cooldown defers without consuming a provider request", async () => {
+  const f = fixture([], undefined, {
+    acquirePermit: async () => ({ permit: null, retryAt: start + 60_000 }),
+  });
+  await assert.rejects(f.client(params), error => error instanceof CommitmentMakerRateLimitError);
+  assert.equal(f.calls.length, 0);
+});
+
+test("a busy shared gate waits within the request budget then releases the accepted write", async () => {
+  let attempt = 0;
+  const completions = [];
+  const permit = { companyId: 'company', lane: 'interactive', leaseId: 'owned' };
+  const f = fixture([ok(123)], undefined, {
+    acquirePermit: async () => ++attempt === 1 ? { permit: null, retryAt: start + 250 } : { permit, retryAt: 0 },
+    completePermit: async completion => completions.push(completion),
+  });
+  assert.equal((await f.client(params)).payload.id, 123);
+  assert.deepEqual(f.waits, [250]);
+  assert.equal(f.calls.length, 1);
+  assert.equal(completions[0].permit, permit);
+  assert.equal(completions[0].status, 201);
+});
+
+test("an unknown write outcome releases shared capacity without replaying the mutation", async () => {
+  const completions = [];
+  const f = fixture([new Error('socket disconnected')], undefined, {
+    acquirePermit: async () => ({ permit: { companyId: 'company', lane: 'interactive', leaseId: 'owned' }, retryAt: 0 }),
+    completePermit: async completion => completions.push(completion),
+  });
+  assert.equal((await f.client(params)).status, 504);
+  assert.equal(f.calls.length, 1);
+  assert.equal(completions.length, 1);
+  assert.equal(completions[0].status, 0);
+});
+
+test("shared accounting failure cannot cause a successful write to be sent again", async () => {
+  const f = fixture([ok(123)], undefined, {
+    acquirePermit: async () => ({ permit: { companyId: 'company', lane: 'interactive', leaseId: 'owned' }, retryAt: 0 }),
+    completePermit: async () => { throw new Error('database unavailable'); },
+  });
+  assert.equal((await f.client(params)).payload.id, 123);
+  assert.equal(f.calls.length, 1);
 });
 
 test("long reset is returned intact without sending another request early", async () => {

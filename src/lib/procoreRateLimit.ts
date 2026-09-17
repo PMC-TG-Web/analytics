@@ -14,9 +14,9 @@ export type ProcoreQuotaObservation = {
 };
 
 export function procoreBackgroundReserve(value: string | undefined) {
-  if (value === undefined || value.trim() === "") return 100;
+  if (value === undefined || value.trim() === "") return 200;
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 100;
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 200;
 }
 
 function retryAfterDelayMs(value: string | null, nowMs: number): number | null {
@@ -111,7 +111,7 @@ export function procoreQuotaObservation(
   const configuredReserve = Math.max(0, options.reserve);
   const effectiveReserve = limit === null
     ? configuredReserve
-    : Math.min(configuredReserve, Math.max(1, Math.floor(limit * 0.2)));
+    : Math.min(configuredReserve, Math.max(1, Math.floor(limit * 0.25)));
   const reserveReached = remaining !== null && remaining <= effectiveReserve;
   const fallbackMs = rateLimited
     ? options.fallbackCooldownMs

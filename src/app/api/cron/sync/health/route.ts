@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { procoreApiUsageSummary } from "@/lib/procoreRequestGate";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
 import { Resend } from "resend";
 import { parsePmcdecorEmailList } from "@/lib/timecardNotification";
@@ -126,7 +127,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   const companyId = String(request.nextUrl.searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
-  return NextResponse.json({ success: true, ...await loadHealth(companyId) });
+  const [health, apiUsage] = await Promise.all([loadHealth(companyId), procoreApiUsageSummary(companyId)]);
+  return NextResponse.json({ success: true, ...health, apiUsage });
 }
 
 function getSyncHealthAlertRecipients(

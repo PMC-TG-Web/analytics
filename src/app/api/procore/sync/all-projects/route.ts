@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { coordinatedProcoreFetch } from "@/lib/procoreRequestGate";
 import { cookies } from "next/headers";
 import {
   makeRequest,
@@ -1071,14 +1072,14 @@ async function runAllProjectsSync(request: Request) {
           }
 
           const url = `${host.replace(/\/$/, '')}/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects?${params.toString()}`;
-          const response = await fetch(url, {
+          const response = await coordinatedProcoreFetch(url, {
             method: 'GET',
             headers: {
               Authorization: `Bearer ${String(token).trim()}`,
               Accept: 'application/json',
               'Procore-Company-Id': companyId,
             },
-          });
+          }, companyId);
 
           if (!response.ok) {
             const errorBody = await response.text();

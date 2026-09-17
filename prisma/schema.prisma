@@ -137,6 +137,41 @@ model ProcoreSyncProjectState {
   @@map("procore_sync_project_states")
 }
 
+model ProcoreRequestGate {
+  companyId        String    @id @map("company_id")
+  leaseId          String?   @map("lease_id")
+  leaseUntil       DateTime? @map("lease_until") @db.Timestamptz(6)
+  interactiveUntil DateTime? @map("interactive_until") @db.Timestamptz(6)
+  blockedUntil     DateTime? @map("blocked_until") @db.Timestamptz(6)
+  windows          Json      @default("[]")
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("procore_request_gates")
+}
+
+model ProcoreWbsCache {
+  companyId String   @map("company_id")
+  projectId String   @map("project_id")
+  records   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@id([companyId, projectId])
+  @@map("procore_wbs_caches")
+}
+
+model ProcoreApiUsage {
+  companyId String   @map("company_id")
+  hour      DateTime @db.Timestamptz(6)
+  lane      String
+  endpoint  String
+  status    Int
+  requests  Int      @default(0)
+
+  @@id([companyId, hour, lane, endpoint, status])
+  @@index([hour], map: "procore_api_usage_hour_idx")
+  @@map("procore_api_usage")
+}
+
 model ProcoreSyncControl {
   companyId       String    @id @map("company_id")
   workerLockedBy  String?   @map("worker_locked_by")

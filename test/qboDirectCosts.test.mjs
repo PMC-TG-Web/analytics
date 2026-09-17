@@ -16,7 +16,7 @@ test('sums used quantities and prices once per line with decimal rounding', () =
 test('excludes zero usage, unapproved logs and billing-file records', () => {
   const result = aggregateDirectCosts([log('1', 0), log('2', 100, { status: 'pending' }), log('3', 50, { lineItemHolderTitle: 'Billing File - SOG' })], [item], new Map());
   assert.equal(result.total, '0.00');
-  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0 });
+  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0 });
 });
 
 test('omits the four concrete material codes before pricing, but keeps labor and other materials', () => {
@@ -38,6 +38,21 @@ test('resolves explicit aliases and blocks ambiguous, missing, duplicate, or neg
     [[log('1', null)], [item]], [[log('1', 2), log('1', 2)], [item]],
     [[log('1', 2)], [{ ...item, unitCost: null }]], [[log('1', 2)], [{ ...item, uom: null }]],
   ]) assert.ok(aggregateDirectCosts(logs, items, new Map()).issues.length);
+});
+
+test('omits only the four named pumping items at 03-300-40-30 before price validation', () => {
+  for (const description of ['Line Dragon', 'Boom Pump Rental w/Operator', 'Telebelt (4 hr minimum)', ' Trailer Pump (Includes 3 hr)\u00a0', 'LINE  DRAGON']) {
+    const result = aggregateDirectCosts([log('1', 2, { lineItemId: 'old' })], [{ ...item, description, costCode: '03-300-40-30', costType: 'Other', unitCost: 0, uom: null }], new Map([['old', '10']]));
+    assert.equal(result.lines.length, 0);
+    assert.equal(result.total, '0.00');
+    assert.equal(result.excluded.pumpingEquipment, 1);
+    assert.deepEqual(result.issues, []);
+  }
+  for (const overrides of [
+    { description: 'Different equipment', costCode: '03-300-40-30' },
+    { description: 'Line Dragon', costCode: '03-300-20-30' },
+    { description: 'Line Dragon', costCode: '03-300-40-30', costType: 'Labor' },
+  ]) assert.equal(aggregateDirectCosts([log('1', 2)], [{ ...item, ...overrides }], new Map()).lines.length, 1);
 });
 test('calendar-month bounds support year rollover and reject malformed input', () => {
   assert.equal(directCostMonth('2026-12').end.toISOString(), '2027-01-01T00:00:00.000Z');

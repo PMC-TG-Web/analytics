@@ -8,6 +8,18 @@ export const EXCLUDED_CONCRETE_COST_CODES = new Set([
   '03-300-20-20', // Slab On Grade Concrete
   '03-300-30-20', // Site Concrete
 ]);
+const EXCLUDED_PUMPING_ITEMS = new Set([
+  'line dragon',
+  'boom pump rental w/operator',
+  'telebelt (4 hr minimum)',
+  'trailer pump (includes 3 hr)',
+]);
+function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
+  const name = (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  return item.costCode?.trim() === '03-300-40-30'
+    && !/^(labor|l)$/i.test(item.costType?.trim() || '')
+    && EXCLUDED_PUMPING_ITEMS.has(name);
+}
 export function directCostMonth(month: string) {
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a valid month (YYYY-MM).');
   const start = new Date(`${month}-01T00:00:00.000Z`);
@@ -47,7 +59,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
     issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, target: item ? 'purchaseOrder' : 'dailyLog' });
   };
-  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0 };
+  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0 };
   const seen = new Set<string>();
   const itemMap = new Map<string, DirectCostItem[]>();
   for (const item of items) {
@@ -68,6 +80,9 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const matches = itemMap.get(itemId || '') || [];
     if (matches.length !== 1) { addIssue(`${sourceLabel}: expected one matching Procore cost line; found ${matches.length}.`, log); continue; }
     const item = matches[0];
+    if (isExcludedPumpingItem(item, sourceName)) {
+      excluded.pumpingEquipment++; continue;
+    }
     if (EXCLUDED_CONCRETE_COST_CODES.has(item.costCode || '') && !/^(labor|l)$/i.test(item.costType || '')) {
       excluded.concrete++; continue;
     }

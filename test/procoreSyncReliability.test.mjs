@@ -153,6 +153,39 @@ test("Procore 429 observations use a bounded fallback when reset headers are abs
   assert.equal(observation.cooldownUntil?.toISOString(), "2026-09-01T18:45:00.000Z");
 });
 
+test("successful reserve observations without a usable reset only pause briefly", () => {
+  const nowMs = Date.parse("2026-09-17T11:11:00.000Z");
+  for (const reset of [undefined, "invalid", "0", String((nowMs - 60_000) / 1_000)]) {
+    const quotaHeaders = headers({
+      "x-rate-limit-limit": "25",
+      "x-rate-limit-remaining": "5",
+      "x-rate-limit-reset": reset,
+    });
+    const options = { reserve: 100, fallbackCooldownMs: 15 * 60_000, nowMs };
+    const success = procoreQuotaObservation(quotaHeaders, 200, options);
+    assert.equal(success.resetAt, null);
+    assert.equal(success.cooldownUntil?.getTime(), nowMs + 30_000);
+    assert.equal(procoreQuotaObservation(quotaHeaders, 429, options).cooldownUntil?.getTime(), nowMs + 15 * 60_000);
+  }
+});
+
+test("quota cooldown honors the later provider hint and reset boundary padding", () => {
+  const nowMs = Date.parse("2026-09-17T11:11:00.000Z");
+  const options = { reserve: 100, fallbackCooldownMs: 15 * 60_000, nowMs };
+  for (const status of [200, 429]) {
+    const quotaHeaders = { "x-rate-limit-limit": "25", "x-rate-limit-remaining": "5" };
+    assert.equal(procoreQuotaObservation(headers({
+      ...quotaHeaders, "x-rate-limit-reset": String(nowMs / 1_000),
+    }), status, options).cooldownUntil?.getTime(), nowMs + 1_500);
+    assert.equal(procoreQuotaObservation(headers({
+      ...quotaHeaders, "x-rate-limit-reset": String((nowMs + 10_000) / 1_000), "retry-after": "120",
+    }), status, options).cooldownUntil?.getTime(), nowMs + 121_500);
+    assert.equal(procoreQuotaObservation(headers({
+      ...quotaHeaders, "x-rate-limit-reset": String((nowMs + 120_000) / 1_000), "retry-after": "10",
+    }), status, options).cooldownUntil?.getTime(), nowMs + 121_500);
+  }
+});
+
 test("successful responses without quota headers do not create a false cooldown", () => {
   const observation = procoreQuotaObservation(headers({}), 200, {
     reserve: 100,

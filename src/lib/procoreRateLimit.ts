@@ -1,5 +1,10 @@
 type HeaderReader = Pick<Headers, "get">;
 
+// A successful low-water observation is a precaution, not an actual rejection.
+// Missing/expired reset headers must not turn a short rolling window into the
+// conservative 15-minute fallback used for an unexplained 429.
+const RESERVE_FALLBACK_COOLDOWN_MS = 30_000;
+
 export type ProcoreQuotaObservation = {
   limit: number | null;
   remaining: number | null;
@@ -92,19 +97,27 @@ export function procoreQuotaObservation(
   const remaining = nonNegativeHeaderNumber(headers, ["x-rate-limit-remaining", "x-ratelimit-remaining"]);
   const resetSeconds = nonNegativeHeaderNumber(headers, ["x-rate-limit-reset", "x-ratelimit-reset"]);
   const retryAfterMs = retryAfterDelayMs(headers.get("retry-after"), nowMs);
-  const resetAtMs = resetSeconds && resetSeconds * 1_000 > nowMs
-    ? resetSeconds * 1_000 + (options.resetPaddingMs ?? 1_500)
-    : retryAfterMs !== null
-      ? nowMs + retryAfterMs + (options.resetPaddingMs ?? 1_500)
-      : null;
+  const paddingMs = Math.max(0, options.resetPaddingMs ?? 1_500);
+  const resetEpochMs = resetSeconds !== null && resetSeconds > 0
+    ? resetSeconds * 1_000 + paddingMs
+    : 0;
+  // Honor both hints: Retry-After can extend beyond x-rate-limit-reset.
+  const providerUntilMs = Math.max(
+    resetEpochMs,
+    retryAfterMs === null ? 0 : nowMs + retryAfterMs + paddingMs,
+  );
+  const resetAtMs = providerUntilMs > nowMs ? providerUntilMs : null;
   const rateLimited = status === 429;
   const configuredReserve = Math.max(0, options.reserve);
   const effectiveReserve = limit === null
     ? configuredReserve
     : Math.min(configuredReserve, Math.max(1, Math.floor(limit * 0.2)));
   const reserveReached = remaining !== null && remaining <= effectiveReserve;
+  const fallbackMs = rateLimited
+    ? options.fallbackCooldownMs
+    : Math.min(options.fallbackCooldownMs, RESERVE_FALLBACK_COOLDOWN_MS);
   const cooldownUntilMs = rateLimited || reserveReached
-    ? resetAtMs ?? nowMs + Math.max(1_000, options.fallbackCooldownMs)
+    ? resetAtMs ?? nowMs + Math.max(1_000, fallbackMs)
     : null;
 
   return {

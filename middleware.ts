@@ -678,7 +678,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // These are Netlify functions, not Next.js routes. Matching them here sends
+  // NextResponse.next() through the Next.js handler and can produce a 404.
+  // Each excluded function validates x-sync-secret before doing any work.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!api/background/(?:actuals-sync|nightly-structure-sync|change-order-approvals|commitment-maker-tasks|pm-dashboard-sync|calendar-sync|project-reconciliation)/?$|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

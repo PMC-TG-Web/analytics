@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ success: true, ...await loadHealth(companyId) });
 }
 
-export function getSyncHealthAlertRecipients(
+function getSyncHealthAlertRecipients(
   configuredRecipients = process.env.SYNC_HEALTH_ALERT_TO_EMAILS,
 ) {
   return parsePmcdecorEmailList(

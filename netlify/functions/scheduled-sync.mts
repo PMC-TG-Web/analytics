@@ -244,7 +244,9 @@ const handler = async () => {
       ? "/api/background/nightly-structure-sync"
       : "/api/background/actuals-sync";
     const workerBody = cadence.runActualsReconciliation ? { mode: "reconcile" } : {};
-    const skipActualsDispatch = cadence.runProjectReconciliation
+    const reconciliationDispatched = cadence.runProjectReconciliation
+      && reconciliationStatus === 202;
+    const skipActualsDispatch = reconciliationDispatched
       || (actualsPaused && workerName === "actuals-sync-background");
     const dispatch = skipActualsDispatch
       ? new Response(null, { status: 204 })
@@ -258,7 +260,7 @@ const handler = async () => {
         });
     console.log(
       skipActualsDispatch
-        ? cadence.runProjectReconciliation
+        ? reconciliationDispatched
           ? `[scheduled-sync] Skipped ${workerName} while full project reconciliation was dispatched.`
           : `[scheduled-sync] Skipped ${workerName} because PROCORE_ACTUALS_SYNC_PAUSED is enabled.`
         : `[scheduled-sync] Dispatched ${workerName} - status=${dispatch.status} mode=${cadence.runActualsReconciliation ? "reconcile" : "normal"}`,
@@ -266,16 +268,21 @@ const handler = async () => {
 
     const healthOk = healthStatus == null || (healthStatus >= 200 && healthStatus < 300);
     const reconciliationOk = reconciliationStatus == null
-      || (reconciliationStatus >= 200 && reconciliationStatus < 300);
+      || reconciliationStatus === 202;
+    const allOk = ok && reminderResponse.ok && timecardNotificationResponse.ok
+      && projectLinkResponse.ok && changeOrderApprovalResponse.ok && commitmentTaskDispatch.ok
+      && pmDashboardDispatch.ok && calendarDispatch.ok && dispatch.ok && healthOk && reconciliationOk;
 
     return new Response(JSON.stringify({
-      ok: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && changeOrderApprovalResponse.ok && pmDashboardDispatch.ok && dispatch.ok && healthOk && reconciliationOk,
+      ok: allOk,
       processStatus: response.status,
       reminderStatus: reminderResponse.status,
       timecardNotificationStatus: timecardNotificationResponse.status,
       projectLinkStatus: projectLinkResponse.status,
       changeOrderApprovalStatus: changeOrderApprovalResponse.status,
+      commitmentTaskStatus: commitmentTaskDispatch.status,
       pmDashboardStatus: pmDashboardDispatch.status,
+      calendarStatus: calendarDispatch.status,
       dispatchStatus: dispatch.status,
       healthStatus,
       reconciliationStatus,
@@ -288,7 +295,7 @@ const handler = async () => {
       timecardNotificationBody,
       projectLinkBody,
     }), {
-      status: ok && reminderResponse.ok && timecardNotificationResponse.ok && projectLinkResponse.ok && pmDashboardDispatch.ok && dispatch.ok && healthOk && reconciliationOk ? 200 : 500,
+      status: allOk ? 200 : 500,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {

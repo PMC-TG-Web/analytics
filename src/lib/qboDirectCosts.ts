@@ -15,7 +15,9 @@ const EXCLUDED_PUMPING_ITEMS = new Set([
   'trailer pump (includes 3 hr)',
 ]);
 function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
-  const name = (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const name = (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+    // Change-order labels do not change the equipment being excluded.
+    .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '');
   return item.costCode?.trim() === '03-300-40-30'
     && !/^(labor|l)$/i.test(item.costType?.trim() || '')
     && EXCLUDED_PUMPING_ITEMS.has(name);

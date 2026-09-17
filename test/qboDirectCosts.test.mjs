@@ -54,6 +54,25 @@ test('omits only the four named pumping items at 03-300-40-30 before price valid
     { description: 'Line Dragon', costCode: '03-300-40-30', costType: 'Labor' },
   ]) assert.equal(aggregateDirectCosts([log('1', 2)], [{ ...item, ...overrides }], new Map()).lines.length, 1);
 });
+test('excludes change-order-prefixed pumping items while preserving other descriptions, codes and labor', () => {
+  for (const description of ['CO6 - Trailer Pump (Includes 3 hr)', 'CO12 - Line Dragon', 'co 3 \u2013 Boom Pump Rental w/Operator', 'CO4\u2014Telebelt (4 hr minimum)']) {
+    const result = aggregateDirectCosts([log('1', 2)], [{ ...item, description, costCode: '03-300-40-30', costType: 'Other', unitCost: 0, uom: null }], new Map());
+    assert.equal(result.lines.length, 0);
+    assert.equal(result.total, '0.00');
+    assert.equal(result.excluded.pumpingEquipment, 1);
+    assert.deepEqual(result.issues, []);
+  }
+  for (const overrides of [
+    { description: 'CO6 - Trailer Pump (Includes 3 hr) additional supplies' },
+    { description: 'CO6 - Different equipment' },
+    { description: 'CO6 - Trailer Pump (Includes 3 hr)', costCode: '03-300-20-30' },
+    { description: 'CO6 - Trailer Pump (Includes 3 hr)', costType: 'Labor' },
+  ]) {
+    const result = aggregateDirectCosts([log('1', 2)], [{ ...item, costCode: '03-300-40-30', costType: 'Other', ...overrides }], new Map());
+    assert.equal(result.lines.length, 1);
+    assert.equal(result.excluded.pumpingEquipment, 0);
+  }
+});
 test('calendar-month bounds support year rollover and reject malformed input', () => {
   assert.equal(directCostMonth('2026-12').end.toISOString(), '2027-01-01T00:00:00.000Z');
   for (const value of ['2026-13', '2026-1', '', "2026-09' OR TRUE"]) assert.throws(() => directCostMonth(value));

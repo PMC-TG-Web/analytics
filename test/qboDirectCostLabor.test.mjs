@@ -21,6 +21,33 @@ test('zero hours stay zero, fallback hours are supported, duplicates and negativ
   assert.ok(aggregateDirectCostLabor([card('1', 1), card('1', 1)], [rate()]).issues.length);
   assert.ok(aggregateDirectCostLabor([card('1', -1)], [rate()]).issues.length);
 });
+
+test('multiple travel rates use the lowest rate once for all hours with matching rate evidence', () => {
+  const travel = ['72.37', '70.85', '77.37', '70.850'].map((value, i) => ({ ...rate(value), costCode: '01-300-10-30', lineItemId: String(101 + i) }));
+  for (const rates of [travel, [...travel].reverse()]) {
+    const r = aggregateDirectCostLabor([card('1', 10, '01-300-10-30'), card('2', 14, '01-300-10-30')], [...rates, rate('65')]);
+    assert.deepEqual(r.issues, []);
+    assert.equal(r.totalHours, '24'); assert.equal(r.lines.length, 1);
+    assert.equal(r.total, '1700.40'); assert.equal(r.lines[0].unitCost, '70.85');
+    assert.equal(r.lines[0].rateSelection, 'Lowest travel rate');
+    assert.equal(r.lines[0].sourceLogs.length, 2);
+    assert.deepEqual(r.lines[0].rateSources.map(s => s.lineItemId).sort(), ['102', '104']);
+  }
+  const fallback = aggregateDirectCostLabor([card('1', 3, '01-300-10-40')], travel);
+  assert.equal(fallback.lines[0].unitCost, '70.85');
+  assert.equal(fallback.lines[0].rateSelection, 'Travel fallback (lowest rate)');
+  assert.equal(fallback.lines[0].lineKey, 'labor:01-300-10-40');
+  assert.equal(aggregateDirectCostLabor([card('1', 3)], [rate('70.85'), rate('72.37'), ...travel]).lines.length, 0);
+});
+
+test('missing travel still falls back to SOG and invalid travel values are not selected as the lowest rate', () => {
+  const cards = [card('1', 24, '01-300-10-30')];
+  assert.equal(aggregateDirectCostLabor(cards, [rate('70.85')]).lines[0].rateSelection, 'SOG fallback');
+  for (const value of ['0', '-1', 'NaN', null]) {
+    const r = aggregateDirectCostLabor(cards, [{ ...rate(value), costCode: '01-300-10-30' }, rate('70.85')]);
+    assert.equal(r.total, '1700.40'); assert.equal(r.lines[0].rateSelection, 'SOG fallback');
+  }
+});
 test('uses category then SOG then travel while preserving the original cost category', () => {
   const code = '01-300-10-40', cards = [card('1', 3, code)];
   const travel = { ...rate('40'), costCode: '01-300-10-30' };

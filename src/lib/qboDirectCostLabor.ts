@@ -19,7 +19,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
   }
   const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([costCode, group]) => {
     let sources: LaborRate[] = [], rate: string | null = null, rateCostCode: string | null = null;
-    let conflicting = false;
+    let conflicting = false, lowestTravel = false;
     // User-defined project rate precedence; never cross project/estimate boundaries.
     for (const candidate of [...new Set([costCode, '03-300-20-10', '01-300-10-30'])]) {
       const candidates = rates.filter(r => r.costCode.replace(/\.L$/i, '') === candidate);
@@ -28,6 +28,11 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
         catch { return false; }
       });
       const unique = new Set(valid.map(r => new Prisma.Decimal(r.rate!).toString()));
+      if (candidate === '01-300-10-30' && unique.size > 1 && valid.length === candidates.length) {
+        rate = [...unique].sort((a, b) => new Prisma.Decimal(a).comparedTo(b))[0];
+        sources = valid.filter(r => new Prisma.Decimal(r.rate!).eq(rate!)).sort((a, b) => a.lineItemId.localeCompare(b.lineItemId));
+        rateCostCode = candidate; lowestTravel = true; break;
+      }
       if (unique.size > 1) { conflicting = true; break; }
       if (unique.size === 1 && valid.length === candidates.length) {
         sources = candidates; rate = [...unique][0]; rateCostCode = candidate; break;
@@ -39,7 +44,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
       description: group.description, costCode, costType: 'Labor', quantity: group.hours.toString(),
       unitCost: rate, uom: 'hr', amount: rate === null ? null : group.hours.mul(rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
       rateCostCode,
-      rateSelection: rateCostCode === null ? 'unresolved' : rateCostCode === costCode ? 'category' : rateCostCode === '03-300-20-10' ? 'SOG fallback' : 'Travel fallback',
+      rateSelection: rateCostCode === null ? 'unresolved' : lowestTravel ? (rateCostCode === costCode ? 'Lowest travel rate' : 'Travel fallback (lowest rate)') : rateCostCode === costCode ? 'category' : rateCostCode === '03-300-20-10' ? 'SOG fallback' : 'Travel fallback',
       rateUpdatedAt: sources.map(s => s.updatedAt).sort().at(-1) || null,
       rateSources: sources.map(s => ({ bidBoardId: s.bidBoardId, proposalId: s.proposalId, lineItemId: s.lineItemId, costCode: s.costCode, rate: s.rate })),
       sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),

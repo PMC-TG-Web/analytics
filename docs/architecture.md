@@ -138,6 +138,8 @@ Commitment Maker defaults to **Procore Primary Estimate**. Its existing project 
 
 Primary-estimate creation atomically claims one base-estimate application per company/project in `commitment_maker_estimate_imports`. Each accepted PO ID is persisted before writing its lines. Explicit rate-limit failures can resume only the identical source/grouping against those same targets, including after page reload; completed, uncertain or still-running imports cannot be claimed again. A crashed running attempt requires reconciliation, rather than expiring into a duplicate create. Successful historical workbook audits also block a second base-estimate import. Workbook upload and approved-CO flows remain available. Validate with `node --test test/commitmentMakerPrimaryEstimate.test.mjs test/commitmentMaker.test.mjs`; opt-in PostgreSQL validation is `PROCORE_ESTIMATE_DATABASE_TEST=1 node --test test/commitmentMakerPrimaryEstimate.database.test.mjs`, which uses temporary tables and rolls back all writes.
 
+Estimate line responses can omit Cost Catalog budget assignments. The primary-estimate reader retrieves referenced catalog items through the same company-scoped interactive client, paginates shared catalogs, and deduplicates exact item lookups (including custom items). Only cost code and cost type are copied from the exact linked item; estimate-specific assignments and all estimate quantities/prices take precedence. Coding-aware snapshots are versioned so older uncoded caches cannot bypass the lookup. A failed catalog read cannot publish a partial snapshot or use stale catalog assignments for creation.
+
 ### IDs and source systems
 
 Keep these identifiers distinct:

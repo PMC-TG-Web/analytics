@@ -46,6 +46,39 @@ function costCode(value: unknown): string {
   return text(code.full_code || code.code || code.flat_code || value);
 }
 
+/** Estimate-specific assignments take precedence over the linked catalog default. */
+export function primaryEstimateCostAssignment(line: RecordValue) {
+  const item = estimateRecord(line.cost_item);
+  const budget = estimateRecord(line.budget_code);
+  const lineCode = costCode(line.cost_code) || costCode(budget) || costCode(line.wbs_code);
+  const code = lineCode || costCode(item.cost_code);
+  const explicitType = estimateRecord(line.cost_code_type);
+  const type = text(explicitType.code || explicitType.name || line.cost_code_type || line.cost_type_code)
+    || (code.includes('.') ? code.split('.').at(-1) : '')
+    || (!lineCode ? text(item.cost_type_code) : '') || 'M';
+  return { code, type };
+}
+
+/** Only copy coding fields from the exact linked item; estimate pricing stays authoritative. */
+export function enrichPrimaryEstimateBudgetCodes(lines: RecordValue[], catalogItems: RecordValue[]): RecordValue[] {
+  const byId = new Map<string, RecordValue>();
+  for (const item of catalogItems) {
+    const id = text(item.id);
+    if (!id || byId.has(id)) throw new PrimaryEstimateError('Procore returned conflicting Cost Catalog records. Refresh and try again.');
+    byId.set(id, item);
+  }
+  return lines.map(line => {
+    if (primaryEstimateCostAssignment(line).code) return line;
+    const item = estimateRecord(line.cost_item);
+    const catalog = byId.get(text(item.id));
+    if (!catalog) return line;
+    if (text(item.catalog_id) && text(catalog.catalog_id) && text(item.catalog_id) !== text(catalog.catalog_id)) {
+      throw new PrimaryEstimateError('The estimate and Cost Catalog item links disagree. Refresh and try again.');
+    }
+    return { ...line, cost_item: { ...item, cost_code: catalog.cost_code, cost_type_code: catalog.cost_type_code } };
+  });
+}
+
 /** Match the workbook's exclusions and zero-priced hourly labor, using estimate cost (not sales). */
 export function parsePrimaryCommitmentEstimate(lines: RecordValue[], groupRecords: RecordValue[]): CommitmentMakerParseResult {
   if (!lines.length) throw new PrimaryEstimateError('The primary estimate has no line items.');
@@ -56,8 +89,8 @@ export function parsePrimaryCommitmentEstimate(lines: RecordValue[], groupRecord
   for (const line of [...lines].sort((a, b) => text(a.id).localeCompare(text(b.id), undefined, { numeric: true }))) {
     const item = estimateRecord(line.cost_item);
     const description = text(line.name || line.description || item.name);
-    const budget = estimateRecord(line.budget_code);
-    const originalCode = costCode(line.cost_code || item.cost_code || budget.flat_code || line.wbs_code);
+    const assignment = primaryEstimateCostAssignment(line);
+    const originalCode = assignment.code;
     const baseCode = originalCode.substring(0, 12).trim();
     const rawUnit = text(item.unit || line.uom || line.unit).toLowerCase().replace(/[_\s]+/g, '');
     const hourly = ['hr', 'hrs', 'hour', 'hours'].includes(rawUnit);
@@ -79,11 +112,8 @@ export function parsePrimaryCommitmentEstimate(lines: RecordValue[], groupRecord
     const key = groupName.toLowerCase().replace(/\s+/g, ' ');
     const group = groups.get(key) || { name: groupName, lineItems: [] };
     const uom = hourly ? 'hours' : ({ cuyd: 'cy', sqft: 'sf', each: 'ea' }[rawUnit] || rawUnit);
-    const explicitType = estimateRecord(line.cost_code_type);
-    const requestedType = text(explicitType.code || explicitType.name || line.cost_code_type)
-      || (originalCode.includes('.') ? originalCode.split('.').at(-1) : '') || 'M';
     group.lineItems.push({
-      costCode: baseCode, costType: normalizeCommitmentMakerCostType(requestedType),
+      costCode: baseCode, costType: normalizeCommitmentMakerCostType(assignment.type),
       description, quantity, uom, unitCost: Math.round(unitCost * 10_000) / 10_000,
       subtotalOverride: hourly ? 0 : amount === null ? null : Math.round(amount * 100) / 100,
     });

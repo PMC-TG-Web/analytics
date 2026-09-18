@@ -70,6 +70,37 @@ test('missing budget codes remain visible for validation; missing groups or pric
   assert.throws(() => logic.parsePrimaryCommitmentEstimate([line({ item_cost: null, cost_item: { unit: 'EA' } })], [group]), /missing quantity, cost/);
 });
 
+test('exact catalog item assignments supply codes and types without replacing estimate prices', () => {
+  const original = line({ cost_code: null, cost_code_type: null,
+    cost_item: { id: 100, catalog_id: 20, unit: 'EA', unit_cost: 3.33333 } });
+  const enriched = logic.enrichPrimaryEstimateBudgetCodes([original], [
+    { id: 100, catalog_id: 20, cost_code: '03-300-00-20', cost_type_code: 'CON', unit_cost: 999 },
+  ]);
+  const parsed = logic.parsePrimaryCommitmentEstimate(enriched, [group]).groups[0].lineItems[0];
+  assert.equal(parsed.costCode, '03-300-00-20');
+  assert.equal(parsed.costType, 'CON');
+  assert.equal(parsed.unitCost, 3.3333);
+  assert.equal(maker.commitmentMakerLineAmount(parsed), 10);
+  assert.equal(original.cost_item.cost_code, undefined);
+  assert.equal(logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 101, name: original.name, cost_code: 'wrong' }])[0], original);
+  assert.throws(() => logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 100, catalog_id: 21 }]), /links disagree/);
+  assert.throws(() => logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 100 }, { id: 100 }]), /conflicting/);
+});
+
+test('estimate-specific codes and cost types take priority over catalog defaults', () => {
+  const catalog = [{ id: 100, cost_code: '03-300-00-20', cost_type_code: 'CON' }];
+  for (const coding of [{ cost_code: '03-200-10-20' }, { budget_code: { flat_code: '03-200-10-20.L' } }, { wbs_code: '03-200-10-20.L' }]) {
+    const original = line({ cost_code: null, cost_code_type: null, cost_item: { id: 100, unit: 'EA', cost_code: '03-300-00-20', cost_type_code: 'CON' }, ...coding });
+    const [enriched] = logic.enrichPrimaryEstimateBudgetCodes([original], catalog);
+    assert.equal(enriched, original);
+    const parsed = logic.parsePrimaryCommitmentEstimate([enriched], [group]).groups[0].lineItems[0];
+    assert.equal(parsed.costCode, '03-200-10-20');
+    assert.equal(parsed.costType, coding.cost_code ? 'M' : 'L');
+  }
+  const [enriched] = logic.enrichPrimaryEstimateBudgetCodes([line({ cost_code: null, cost_code_type: 'E', cost_item: { id: 100, unit: 'EA' } })], catalog);
+  assert.equal(logic.primaryEstimateCostAssignment(enriched).type, 'E');
+});
+
 test('combine commands rebuild only authoritative groups and reject invented scope', () => {
   const a = logic.parsePrimaryCommitmentEstimate([line()], [group]).groups;
   const groups = [...a, { ...a[0], name: 'Walls', lineItems: [{ ...a[0].lineItems[0], unitCost: 5, subtotalOverride: 15 }] }];
@@ -92,7 +123,7 @@ test('only known rate-limit failures with unchanged source can resume an estimat
   assert.match(imports.primaryEstimateImportBlock({ ...state, status: 'completed' }, 'same'), /already imported into PO 001/);
 });
 
-function sourceFixture({ cached = null, failPath = '', malformed = false } = {}) {
+function sourceFixture({ cached = null, failPath = '', malformed = false, lines = [line()], catalogPages = [], catalogDetail = null } = {}) {
   const calls = [];
   const writes = [];
   const prisma = {
@@ -102,10 +133,13 @@ function sourceFixture({ cached = null, failPath = '', malformed = false } = {})
     $queryRaw: async () => cached ? [cached] : [],
     $executeRaw: async (...args) => { writes.push(args); return 1; },
   };
-  const api = async ({ path }) => {
+  const api = async ({ path, companyId }) => {
+    assert.equal(companyId, 'co');
     calls.push(path);
     if (path.includes(failPath) && failPath) throw new Error('Rate limited');
-    const payload = path.includes('/line_items?') ? (malformed ? { unexpected: [] } : [line()])
+    const payload = path.includes('/catalogs/items/') ? catalogDetail
+      : path.includes('/catalogs/') ? catalogPages[Number(new URL(path, 'https://example.test').searchParams.get('page')) - 1]
+      : path.includes('/line_items?') ? (malformed ? { unexpected: [] } : lines)
       : path.includes('/line_item_groups?') ? [group] : [primary];
     return { ok: true, status: 200, payload };
   };
@@ -117,7 +151,7 @@ function sourceFixture({ cached = null, failPath = '', malformed = false } = {})
 }
 
 test('warm preview skips live reads; create rereads the primary and all detail', async () => {
-  const snapshot = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], fetchedAt: new Date().toISOString() };
+  const snapshot = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], fetchedAt: new Date().toISOString(), budgetCodesVersion: 1 };
   const fixture = sourceFixture({ cached: { snapshot, fetched_at: new Date() } });
   const options = { companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' };
   assert.deepEqual(await fixture.source.readPrimaryCommitmentEstimate(options), snapshot);
@@ -125,6 +159,35 @@ test('warm preview skips live reads; create rereads the primary and all detail',
   await fixture.source.readPrimaryCommitmentEstimate({ ...options, forceLive: true });
   assert.equal(fixture.calls.length, 4);
   assert.equal(fixture.writes.length, 1);
+});
+
+test('catalog reads are company-scoped, paginated and deduplicated; old snapshots are refreshed', async () => {
+  const lines = [1, 2, 3].map(id => line({ id, cost_code: null, cost_code_type: null, cost_item: { id: id === 3 ? '101' : '100', catalog_id: '20', unit: 'EA' } }));
+  const fixture = sourceFixture({ lines, cached: { snapshot: { bidBoardProjectId: '123', lines }, fetched_at: new Date() }, catalogPages: [
+    Array.from({ length: 100 }, (_, id) => ({ id: String(id + 200) })),
+    ['100', '101'].map(id => ({ id, catalog_id: '20', cost_code: '03-300-00-20', cost_type_code: 'CON' })),
+  ] });
+  const result = await fixture.source.readPrimaryCommitmentEstimate({ companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' });
+  assert.equal(result.budgetCodesVersion, 1);
+  assert.equal(result.lines.length, 3);
+  assert.ok(result.lines.every(line => logic.primaryEstimateCostAssignment(line).code === '03-300-00-20'));
+  assert.deepEqual(fixture.calls.filter(path => path.includes('/catalogs/')), [
+    '/rest/v2.0/companies/co/estimating/catalogs/20/items?page=1&per_page=100',
+    '/rest/v2.0/companies/co/estimating/catalogs/20/items?page=2&per_page=100',
+  ]);
+});
+
+test('unlisted custom catalog items use one exact detail lookup; failed coding reads do not cache', async () => {
+  const lines = [1, 2].map(id => line({ id, cost_code: null, cost_item: { id: '100', unit: 'EA' } }));
+  const options = { companyId: 'co', projectId: 'project', forceLive: true, getToken: async () => 'test' };
+  const fixture = sourceFixture({ lines, catalogDetail: { id: '100', cost_code: '03-200-10-20' } });
+  await fixture.source.readPrimaryCommitmentEstimate(options);
+  assert.equal(fixture.calls.filter(path => path.includes('/catalogs/items/')).length, 1);
+  for (const config of [{ failPath: '/catalogs/' }, { catalogDetail: { id: 'wrong', cost_code: '03-200-10-20' } }]) {
+    const failed = sourceFixture({ lines, ...config });
+    await assert.rejects(failed.source.readPrimaryCommitmentEstimate(options));
+    assert.equal(failed.writes.length, 0);
+  }
 });
 
 test('partial or malformed detail reads never publish a cache or fall back during create', async () => {

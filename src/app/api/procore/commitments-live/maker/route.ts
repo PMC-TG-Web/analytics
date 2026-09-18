@@ -1142,7 +1142,7 @@ async function buildPlan(params: {
     const plannedLines: PlannedLine[] = [];
     for (const line of group.lineItems) {
       if (!line.costCode) {
-        validationErrors.push(`Group "${group.name}": "${line.description}" has no budget code in the source estimate. Assign its budget code in Procore, then refresh the estimate.`);
+        validationErrors.push(`Group "${group.name}": "${line.description}" has no usable budget code in the estimate or its linked Cost Catalog item. Check its assignment in Procore, then refresh the estimate.`);
         plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
         continue;
       }

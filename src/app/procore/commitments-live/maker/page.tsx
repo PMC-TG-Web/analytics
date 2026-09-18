@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import Navigation from "@/components/Navigation";
 import { runCommitmentMakerRequest } from "@/lib/commitmentMakerRequest";
-import type { EstimateCombination } from "@/lib/procore/commitmentMakerEstimate";
+import { applyPrimaryEstimateCombinations, type EstimateCombination } from "@/lib/procore/commitmentMakerEstimate";
 import {
   combineCommitmentMakerGroups,
   commitmentMakerCombinedTitle,
@@ -471,7 +471,7 @@ export default function CommitmentMakerPage() {
         if (sourceType === "primary_estimate" && nextPreview.parsedSource) {
           setOriginalParsedWorkbook(nextPreview.parsedSource);
           setEstimateCombinations(nextPreview.estimateCombinations || []);
-          setParsedWorkbook({ ...nextPreview.parsedSource, groups: nextPreview.groups.map(group => ({ name: group.name, lineItems: group.lineItems })) });
+          setParsedWorkbook({ ...nextPreview.parsedSource, groups: applyPrimaryEstimateCombinations(nextPreview.parsedSource.groups, nextPreview.estimateCombinations || []) });
           if (nextPreview.sourceEstimate) setPrimaryEstimate(nextPreview.sourceEstimate);
         }
         setCreateOutcomeUnknown(false);

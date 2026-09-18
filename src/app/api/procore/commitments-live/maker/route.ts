@@ -3,6 +3,9 @@ import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { acquireProcoreRequestPermit, completeProcoreRequestPermit } from "@/lib/procoreRequestGate";
 import { readCommitmentMakerWbs } from "@/lib/procoreWbsCache";
+import { primaryCommitmentEstimateSummary, readPrimaryCommitmentEstimate } from "@/lib/procoreCommitmentMakerEstimateSource";
+import { applyPrimaryEstimateCombinations, parsePrimaryCommitmentEstimate, PrimaryEstimateError } from "@/lib/procore/commitmentMakerEstimate";
+import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
 import * as XLSX from "xlsx";
 
 import { prisma } from "@/lib/prisma";
@@ -1138,6 +1141,11 @@ async function buildPlan(params: {
     }
     const plannedLines: PlannedLine[] = [];
     for (const line of group.lineItems) {
+      if (!line.costCode) {
+        validationErrors.push(`Group "${group.name}": "${line.description}" has no budget code in the source estimate. Assign its budget code in Procore, then refresh the estimate.`);
+        plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
+        continue;
+      }
       const match = resolveWbs(line, wbsIndex);
       if (!match) {
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
@@ -1490,6 +1498,7 @@ async function handleRequest(request: NextRequest) {
   const fileName = readText(body.fileName) || "estimate.xlsx";
   const previewFingerprint = readText(body.previewFingerprint);
   const changeOrderPackageId = readText(body.changeOrderPackageId ?? body.change_order_package_id);
+  const usePrimaryEstimate = body.sourceType === "primary_estimate";
   const target: CommitmentTarget = body.target === "existing_purchase_order"
     ? "existing_purchase_order"
     : "new_purchase_order";
@@ -1497,7 +1506,10 @@ async function handleRequest(request: NextRequest) {
 
   if (!projectId) return NextResponse.json({ error: "Select a Procore project." }, { status: 400 });
   if (!companyId) return NextResponse.json({ error: "Missing Procore company ID." }, { status: 400 });
-  if (!changeOrderPackageId && !workbookBase64 && !Array.isArray(body.groups)) {
+  if (usePrimaryEstimate && (changeOrderPackageId || workbookBase64 || companyId !== procoreConfig.companyId)) {
+    return NextResponse.json({ error: "Select one source in the configured Procore company." }, { status: 400 });
+  }
+  if (!usePrimaryEstimate && !changeOrderPackageId && !workbookBase64 && !Array.isArray(body.groups)) {
     return NextResponse.json({ error: "Upload an estimate workbook." }, { status: 400 });
   }
   if (!changeOrderPackageId && target === "existing_purchase_order") {
@@ -1521,6 +1533,17 @@ async function handleRequest(request: NextRequest) {
   let accessToken = "";
   let tokenSource = "client_credentials";
   const requiresLiveProcore = mode === "create";
+  const getEstimateToken = async () => {
+    if (!accessToken) {
+      try { accessToken = await getClientCredentialsToken(); }
+      catch (error) {
+        if (!cookieToken) throw error;
+        accessToken = cookieToken;
+        tokenSource = "user_oauth_fallback";
+      }
+    }
+    return accessToken;
+  };
   if (requiresLiveProcore) {
     try {
       accessToken = await getClientCredentialsToken();
@@ -1589,15 +1612,26 @@ async function handleRequest(request: NextRequest) {
         sourceLines: rawSourceChangeOrderLines,
       })
     : rawSourceChangeOrderLines;
-  const workbookImport = !sourceChangeOrder && workbookBase64
+  const primarySnapshot = usePrimaryEstimate ? await readPrimaryCommitmentEstimate({
+    companyId, projectId, forceLive: mode === "create" || body.refreshEstimate === true, getToken: getEstimateToken,
+  }) : null;
+  const primaryParsed = primarySnapshot ? parsePrimaryCommitmentEstimate(primarySnapshot.lines, primarySnapshot.groups) : null;
+  const estimateImportState = usePrimaryEstimate ? await readPrimaryEstimateImport({ companyId, projectId }) : null;
+  const estimateCombinations = body.estimateCombinations ?? estimateImportState?.combinations ?? [];
+  const sourceEstimate = primarySnapshot ? {
+    proposalId: String(primarySnapshot.proposal.id), name: String(primarySnapshot.proposal.name || "Primary Estimate"),
+    bidBoardProjectId: primarySnapshot.bidBoardProjectId, syncedAt: primarySnapshot.fetchedAt,
+  } : null;
+  const workbookImport = !sourceChangeOrder && !usePrimaryEstimate && workbookBase64
     ? workbookFromBase64(workbookBase64, sheetName, fileName)
     : null;
   const selectedSheetName = sourceChangeOrder
     ? "Approved Change Order"
-    : workbookImport?.selectedSheetName || sheetName || "Imported Estimate";
+    : primarySnapshot ? "Primary Estimate" : workbookImport?.selectedSheetName || sheetName || "Imported Estimate";
   const sourceGroups = sourceChangeOrder
     ? [approvedChangeOrderCommitmentGroup(sourceChangeOrder, sourceChangeOrderLines)]
-    : workbookImport?.parsed.groups || groupsFromPayload(body.groups);
+    : primaryParsed ? applyPrimaryEstimateCombinations(primaryParsed.groups, estimateCombinations)
+      : workbookImport?.parsed.groups || groupsFromPayload(body.groups);
   const groups = sourceGroups.map((group) => ({
     ...group,
     lineItems: group.lineItems.filter((line) => (
@@ -1606,18 +1640,21 @@ async function handleRequest(request: NextRequest) {
   }));
   const sourceRowCount = sourceChangeOrder
     ? sourceChangeOrderLines.length
-    : workbookImport?.parsed.sourceRowCount || Number(body.sourceRowCount) || 0;
+    : primaryParsed?.sourceRowCount ?? (workbookImport?.parsed.sourceRowCount || Number(body.sourceRowCount) || 0);
   const skippedRows = sourceChangeOrder
     ? sourceChangeOrderLines.length - groups[0].lineItems.length
-    : workbookImport?.parsed.skippedRows || Number(body.skippedRows) || 0;
+    : primaryParsed?.skippedRows ?? (workbookImport?.parsed.skippedRows || Number(body.skippedRows) || 0);
   const warnings = sourceChangeOrder
     ? skippedRows > 0 ? [`${skippedRows} change-order line(s) without usable quantity, cost, or WBS data were excluded.`] : []
-    : workbookImport?.parsed.warnings || (Array.isArray(body.warnings) ? body.warnings.map(readText).filter(Boolean) : []);
+    : primaryParsed?.warnings || workbookImport?.parsed.warnings || (Array.isArray(body.warnings) ? body.warnings.map(readText).filter(Boolean) : []);
   const effectiveFileName = sourceChangeOrder
     ? `Procore CO ${sourceChangeOrder.number || sourceChangeOrder.packageId}`
-    : fileName;
+    : sourceEstimate ? sourceEstimate.name : fileName;
   const importFingerprint = createHash("sha256")
-    .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups }))
+    .update(JSON.stringify({ projectId, changeOrderPackageId, target, existingCommitmentId, selectedSheetName, groups,
+      ...(sourceEstimate ? { estimateIdentity: [companyId, sourceEstimate.bidBoardProjectId, sourceEstimate.proposalId],
+        estimateUpdatedAt: primarySnapshot?.proposal.updated_at } : {}),
+    }))
     .digest("hex");
   let loadedWbsLive = false;
   const loadLiveWbs = async () => {
@@ -1663,6 +1700,20 @@ async function handleRequest(request: NextRequest) {
   const liveCommitments = mode === "create"
     ? await fetchCommitments(accessToken, companyId, projectId)
     : [];
+  if (usePrimaryEstimate) {
+    const block = primaryEstimateImportBlock(estimateImportState, importFingerprint);
+    if (block) plan.validationErrors.push(block);
+    if (!block && estimateImportState) {
+      for (const group of plan.groups) {
+        const prior = estimateImportState.targets.find(target => target.name === group.name);
+        if (prior) {
+          group.existingContractId = prior.id;
+          group.number = prior.number;
+          group.action = "resume";
+        }
+      }
+    }
+  }
   if (mode === "create") {
     for (const group of plan.groups.filter((candidate) => candidate.existingContractId)) {
       const liveCommitment = liveCommitments.find(
@@ -1705,7 +1756,10 @@ async function handleRequest(request: NextRequest) {
     vendor: plan.vendor,
     contractType: "Purchase Order",
     finalStatus: "Approved",
-    sourceType: sourceChangeOrder ? "approved_change_order" : "estimate",
+    sourceType: sourceChangeOrder ? "approved_change_order" : usePrimaryEstimate ? "primary_estimate" : "estimate",
+    sourceEstimate,
+    parsedSource: primaryParsed,
+    estimateCombinations: usePrimaryEstimate ? estimateCombinations : undefined,
     sourceChangeOrder,
     removableTargetCommitmentId,
     removalStatus,
@@ -1805,6 +1859,9 @@ async function handleRequest(request: NextRequest) {
   }
 
   const results: UnknownRecord[] = [];
+  const estimateClaim = usePrimaryEstimate ? await claimPrimaryEstimateImport({ companyId, projectId,
+    fingerprint: importFingerprint, combinations: estimateCombinations }) : null;
+  const estimateTargets = [...(estimateImportState?.targets || [])];
   let failure: UnknownRecord | null = null;
   const currentCommitments = [...liveCommitments];
   for (const group of plan.groups) {
@@ -1878,6 +1935,12 @@ async function handleRequest(request: NextRequest) {
           ...changeOrderClaim,
           targetCommitmentId: contractId,
         });
+      }
+      if (estimateClaim && contractId && !estimateTargets.some(target => target.id === contractId)) {
+        estimateTargets.push({ name: group.name, id: contractId, number: actualNumber });
+        // Persist the PO ID before adding any lines so a rate-limit continuation
+        // resumes the same target even though Procore omits origin_data on reads.
+        await savePrimaryEstimateImport(estimateClaim, estimateTargets);
       }
       const existingLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
       const priorOwnedLineItems = changeOrderClaim
@@ -1974,6 +2037,7 @@ async function handleRequest(request: NextRequest) {
           fileName: effectiveFileName,
           sheetName: selectedSheetName,
           sourceChangeOrder,
+          sourceEstimate,
           fingerprint: group.fingerprint,
           ownedLineItems,
           ...result,
@@ -2009,6 +2073,7 @@ async function handleRequest(request: NextRequest) {
           fileName: effectiveFileName,
           sheetName: selectedSheetName,
           applicationId: changeOrderClaim?.applicationId,
+          sourceEstimate,
           ownedLineItems,
           ...failure,
         },
@@ -2027,6 +2092,10 @@ async function handleRequest(request: NextRequest) {
   }
 
   let taskError = "";
+  if (estimateClaim) {
+    await savePrimaryEstimateImport(estimateClaim, estimateTargets,
+      !failure ? "completed" : failure.rateLimited === true && failure.outcomeUnknown !== true ? "retryable" : "uncertain");
+  }
   let tasksQueued = false;
   if (!failure && sourceChangeOrder) {
     try {
@@ -2112,10 +2181,10 @@ async function handleRequest(request: NextRequest) {
       taskError: taskError || undefined,
       rateLimited: failure?.rateLimited === true,
       rateLimitUntil: failure?.rateLimitUntil,
-      // A CO claim binds the retry to its original PO. Estimate imports without
-      // that claim can only repeat automatically before any PO has been created.
+      // Durable CO/primary-estimate claims bind continuations to their POs.
+      // Workbook imports can repeat automatically only before a PO is created.
       retryable: failure?.rateLimited === true && failure.outcomeUnknown !== true && !taskError
-        && (Boolean(changeOrderClaim) || results.every((result) => !result.contractId && result.success !== true)),
+        && (Boolean(changeOrderClaim) || Boolean(estimateClaim) || results.every((result) => !result.contractId && result.success !== true)),
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && target !== "existing_purchase_order").length,
       addedToExisting: results.filter((result) => result.success === true && target === "existing_purchase_order").length,
@@ -2545,9 +2614,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "This project was not found in Analytics." }, { status: 404 });
     }
 
-    const [approvedChangeOrders, existingCommitments] = await Promise.all([
+    const [approvedChangeOrders, existingCommitments, primaryEstimate] = await Promise.all([
       fetchApprovedChangeOrdersFromAllDatabaseSources(procoreConfig.companyId, projectId),
       fetchExistingPurchaseOrdersFromDatabase(procoreConfig.companyId, projectId),
+      primaryCommitmentEstimateSummary(procoreConfig.companyId, projectId),
     ]);
 
     return NextResponse.json({
@@ -2560,6 +2630,7 @@ export async function GET(request: NextRequest) {
       },
       approvedChangeOrders,
       existingCommitments,
+      primaryEstimate,
       changeOrderSource: "database",
       changeOrderWarning: "",
     });
@@ -2584,6 +2655,7 @@ export async function POST(request: NextRequest) {
     return await withProcoreClient(() => handleRequest(request));
   } catch (error) {
     if (error instanceof CommitmentMakerRateLimitError) return rateLimitResponse(error);
+    if (error instanceof PrimaryEstimateError) return NextResponse.json({ error: error.message }, { status: error.status });
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Procore Commitment Maker error:", message);
     return NextResponse.json({ error: message }, { status: 500 });

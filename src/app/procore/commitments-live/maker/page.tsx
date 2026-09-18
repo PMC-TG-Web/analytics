@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import Navigation from "@/components/Navigation";
 import { runCommitmentMakerRequest } from "@/lib/commitmentMakerRequest";
+import type { EstimateCombination } from "@/lib/procore/commitmentMakerEstimate";
 import {
   combineCommitmentMakerGroups,
   commitmentMakerCombinedTitle,
@@ -81,7 +82,10 @@ type PreviewResponse = {
   };
   contractType: string;
   finalStatus: string;
-  sourceType: "estimate" | "approved_change_order";
+  sourceType: "estimate" | "primary_estimate" | "approved_change_order";
+  sourceEstimate?: { proposalId: string; name: string; syncedAt: string } | null;
+  parsedSource?: CommitmentMakerParseResult | null;
+  estimateCombinations?: EstimateCombination[];
   sourceChangeOrder: ApprovedChangeOrder | null;
   removableTargetCommitmentId: string;
   removalStatus: "completed" | "removing" | "";
@@ -176,7 +180,9 @@ export default function CommitmentMakerPage() {
   const [projectsBusy, setProjectsBusy] = useState(true);
   const [projectId, setProjectId] = useState("");
   const [projectLocked, setProjectLocked] = useState(false);
-  const [sourceType, setSourceType] = useState<"estimate" | "approved_change_order">("estimate");
+  const [sourceType, setSourceType] = useState<"estimate" | "primary_estimate" | "approved_change_order">("primary_estimate");
+  const [primaryEstimate, setPrimaryEstimate] = useState<{ proposalId: string; name: string; syncedAt: string; error?: string } | null>(null);
+  const [estimateCombinations, setEstimateCombinations] = useState<EstimateCombination[]>([]);
   const [approvedChangeOrders, setApprovedChangeOrders] = useState<ApprovedChangeOrder[]>([]);
   const [changeOrdersBusy, setChangeOrdersBusy] = useState(false);
   const [changeOrderWarning, setChangeOrderWarning] = useState("");
@@ -257,6 +263,7 @@ export default function CommitmentMakerPage() {
       setChangeOrderPackageId("");
       setExistingCommitmentId("");
       setChangeOrderWarning("");
+      setPrimaryEstimate(null);
       if (!projectId) return;
       setChangeOrdersBusy(true);
       try {
@@ -295,10 +302,13 @@ export default function CommitmentMakerPage() {
           setApprovedChangeOrders(records);
           setExistingCommitments(commitments);
           setChangeOrderWarning(text(asRecord(payload).changeOrderWarning));
+          const primary = asRecord(asRecord(payload).primaryEstimate);
+          setPrimaryEstimate({ proposalId: text(primary.proposalId), name: text(primary.name), syncedAt: text(primary.syncedAt), error: text(primary.error) });
         }
       } catch (loadError) {
         if (!cancelled) {
           setChangeOrderWarning(loadError instanceof Error ? loadError.message : String(loadError));
+          setPrimaryEstimate({ proposalId: "", name: "", syncedAt: "", error: "Project information could not be loaded. Preview to check the primary estimate." });
         }
       } finally {
         if (!cancelled) setChangeOrdersBusy(false);
@@ -386,6 +396,8 @@ export default function CommitmentMakerPage() {
   async function callMaker(
     mode: "preview" | "create",
     parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
+    combinationsOverride: EstimateCombination[] = estimateCombinations,
+    refreshEstimate = false,
   ) {
     if (makerRequest.current) return;
     const controller = new AbortController();
@@ -411,9 +423,12 @@ export default function CommitmentMakerPage() {
         body: JSON.stringify({
           mode,
           projectId,
+          sourceType,
+          estimateCombinations: sourceType === "primary_estimate" && (parsedOverride || combinationsOverride.length || refreshEstimate) ? combinationsOverride : undefined,
+          refreshEstimate: sourceType === "primary_estimate" && refreshEstimate,
           fileName,
           sheetName,
-          groups: parsedOverride?.groups,
+          groups: sourceType === "primary_estimate" ? undefined : parsedOverride?.groups,
           sourceRowCount: parsedOverride?.sourceRowCount,
           skippedRows: parsedOverride?.skippedRows,
           warnings: parsedOverride?.warnings,
@@ -453,6 +468,12 @@ export default function CommitmentMakerPage() {
           throw new Error("Procore returned an incomplete preview. Refresh and try again.");
         }
         setPreview(nextPreview);
+        if (sourceType === "primary_estimate" && nextPreview.parsedSource) {
+          setOriginalParsedWorkbook(nextPreview.parsedSource);
+          setEstimateCombinations(nextPreview.estimateCombinations || []);
+          setParsedWorkbook({ ...nextPreview.parsedSource, groups: nextPreview.groups.map(group => ({ name: group.name, lineItems: group.lineItems })) });
+          if (nextPreview.sourceEstimate) setPrimaryEstimate(nextPreview.sourceEstimate);
+        }
         setCreateOutcomeUnknown(false);
         setResult(null);
         setConfirmed(false);
@@ -627,6 +648,10 @@ export default function CommitmentMakerPage() {
         combinedGroupName,
       );
       const nextParsed = { ...parsedWorkbook, groups: combinedGroups };
+      const nextCombinations = sourceType === "primary_estimate"
+        ? [...estimateCombinations, { selectedNames, name: combinedGroupName }]
+        : estimateCombinations;
+      setEstimateCombinations(nextCombinations);
       setParsedWorkbook(nextParsed);
       setPreview(null);
       setResult(null);
@@ -635,7 +660,7 @@ export default function CommitmentMakerPage() {
       setCombineSelection({});
       setCombinedGroupName("");
       setCombineMessage(`Combined ${selectedNames.length} proposed POs into "${combinedGroupName.trim()}" and consolidated matching quantities.`);
-      await callMaker("preview", nextParsed);
+      await callMaker("preview", nextParsed, nextCombinations);
     } catch (combineError) {
       setError(combineError instanceof Error ? combineError.message : String(combineError));
     }
@@ -651,15 +676,17 @@ export default function CommitmentMakerPage() {
     setCombineSelection({});
     setCombinedGroupName("");
     setCombineMessage("Restored the original estimate groupings.");
-    await callMaker("preview", originalParsedWorkbook);
+    setEstimateCombinations([]);
+    await callMaker("preview", originalParsedWorkbook, []);
   }
 
   const readyToPreview = Boolean(
     projectId
-    && (sourceType === "approved_change_order" || (parsedWorkbook && sheetName))
+    && (sourceType !== "estimate" || (parsedWorkbook && sheetName))
     && !busy
-    && (sourceType === "estimate" || changeOrderPackageId)
-    && (sourceType === "estimate" || commitmentTarget === "new_purchase_order" || existingCommitmentId)
+    && (sourceType !== "primary_estimate" || !changeOrdersBusy)
+    && (sourceType !== "approved_change_order" || changeOrderPackageId)
+    && (sourceType !== "approved_change_order" || commitmentTarget === "new_purchase_order" || existingCommitmentId)
   );
   const selectedCombineNames = preview?.groups
     .filter((group) => combineSelection[group.name] === true)
@@ -719,7 +746,11 @@ export default function CommitmentMakerPage() {
                 disabled={projectsBusy || busy || projectLocked}
                 onChange={(event) => {
                   setProjectId(event.target.value);
-                  setSourceType("estimate");
+                  setSourceType("primary_estimate");
+                  setPrimaryEstimate(null);
+                  setEstimateCombinations([]);
+                  setParsedWorkbook(null);
+                  setOriginalParsedWorkbook(null);
                   setChangeOrderPackageId("");
                   setCommitmentTarget("new_purchase_order");
                   setExistingCommitmentId("");
@@ -749,8 +780,15 @@ export default function CommitmentMakerPage() {
                 onChange={(event) => {
                   const nextSource = event.target.value === "approved_change_order"
                     ? "approved_change_order"
-                    : "estimate";
+                    : event.target.value === "primary_estimate" ? "primary_estimate" : "estimate";
                   setSourceType(nextSource);
+                  setEstimateCombinations([]);
+                  setParsedWorkbook(null);
+                  setOriginalParsedWorkbook(null);
+                  setSheetNames([]);
+                  setSheetName("");
+                  setFileName("");
+                  setWorkbookBuffer(null);
                   setChangeOrderPackageId("");
                   setCommitmentTarget("new_purchase_order");
                   setExistingCommitmentId("");
@@ -758,7 +796,8 @@ export default function CommitmentMakerPage() {
                 }}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900"
               >
-                <option value="estimate">Base Estimate</option>
+                <option value="primary_estimate">Procore Primary Estimate</option>
+                <option value="estimate">Upload Estimate Workbook</option>
                 <option value="approved_change_order">Approved Change Order</option>
               </select>
             </label>
@@ -838,6 +877,23 @@ export default function CommitmentMakerPage() {
                   </label>
                 )}
               </>
+            ) : sourceType === "primary_estimate" ? (
+              <div className="xl:col-span-3">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-600">3. Primary Estimate</p>
+                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                  {changeOrdersBusy ? (
+                    <span role="status" className="flex items-center gap-2 text-slate-600">
+                      <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+                      Loading primary estimate…
+                    </span>
+                  ) : primaryEstimate?.name ? (
+                    <>
+                      <p className="font-bold text-slate-900">{primaryEstimate.name} <span className="ml-2 text-xs text-emerald-700">Primary</span></p>
+                      {primaryEstimate.syncedAt && <p className="mt-1 text-xs text-slate-500">Last refreshed {new Date(primaryEstimate.syncedAt).toLocaleString()}</p>}
+                    </>
+                  ) : <p className="text-slate-600">{primaryEstimate?.error || "Select a project to load its primary estimate."}</p>}
+                </div>
+              </div>
             ) : (
               <>
                 <label className="block">
@@ -877,6 +933,15 @@ export default function CommitmentMakerPage() {
             >
               {busy ? "Checking Procore..." : "Preview and Validate"}
             </button>
+            {sourceType === "primary_estimate" && (
+              <button type="button" disabled={!readyToPreview} onClick={() => {
+                invalidatePreview();
+                setEstimateCombinations([]);
+                void callMaker("preview", null, [], true);
+              }} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50">
+                Refresh from Procore
+              </button>
+            )}
             <p className="text-xs text-slate-500">
               Previewing does not create or change anything in Procore.
             </p>
@@ -898,7 +963,7 @@ export default function CommitmentMakerPage() {
                 ? selectedChangeOrder
                   ? `CO ${selectedChangeOrder.number || selectedChangeOrder.packageId} — ${selectedChangeOrder.title}`
                   : "Select an approved change order"
-                : "Base Estimate",
+                : sourceType === "primary_estimate" ? `Primary Estimate${primaryEstimate?.name ? ` — ${primaryEstimate.name}` : ""}` : "Estimate Workbook",
             ],
             ["Vendor", "Paradise Masonry, LLC"],
             ["Type", sourceType === "approved_change_order" && commitmentTarget === "existing_purchase_order" ? "Purchase Order Lines" : "Purchase Order"],
@@ -925,7 +990,7 @@ export default function CommitmentMakerPage() {
                 <h2 className="text-lg font-black text-slate-900">Validated Preview</h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {selectedProject ? `${selectedProject.number} — ${selectedProject.name}` : preview.projectId}
-                  {preview.sourceType === "estimate" ? ` · ${preview.fileName} · ${preview.sheetName}` : " · Live Procore change-order lines"}
+                  {preview.sourceType !== "approved_change_order" ? ` · ${preview.fileName} · ${preview.sheetName}` : " · Live Procore change-order lines"}
                 </p>
                 {preview.sourceChangeOrder && (
                   <p className="mt-1 text-sm font-bold text-indigo-700">

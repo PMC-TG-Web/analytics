@@ -72,9 +72,8 @@ export function enrichPrimaryEstimateBudgetCodes(lines: RecordValue[], catalogIt
     const item = estimateRecord(line.cost_item);
     const catalog = byId.get(text(item.id));
     if (!catalog) return line;
-    if (text(item.catalog_id) && text(catalog.catalog_id) && text(item.catalog_id) !== text(catalog.catalog_id)) {
-      throw new PrimaryEstimateError('The estimate and Cost Catalog item links disagree. Refresh and try again.');
-    }
+    // Items can move to another catalog after the estimate was saved. The item ID
+    // remains authoritative; the estimate's copied catalog_id can be historical.
     return { ...line, cost_item: { ...item, cost_code: catalog.cost_code, cost_type_code: catalog.cost_type_code } };
   });
 }

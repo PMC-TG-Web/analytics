@@ -83,7 +83,8 @@ test('exact catalog item assignments supply codes and types without replacing es
   assert.equal(maker.commitmentMakerLineAmount(parsed), 10);
   assert.equal(original.cost_item.cost_code, undefined);
   assert.equal(logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 101, name: original.name, cost_code: 'wrong' }])[0], original);
-  assert.throws(() => logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 100, catalog_id: 21 }]), /links disagree/);
+  assert.equal(logic.primaryEstimateCostAssignment(logic.enrichPrimaryEstimateBudgetCodes([original],
+    [{ id: 100, catalog_id: 21, cost_code: '03-300-00-20' }])[0]).code, '03-300-00-20');
   assert.throws(() => logic.enrichPrimaryEstimateBudgetCodes([original], [{ id: 100 }, { id: 100 }]), /conflicting/);
 });
 
@@ -123,7 +124,7 @@ test('only known rate-limit failures with unchanged source can resume an estimat
   assert.match(imports.primaryEstimateImportBlock({ ...state, status: 'completed' }, 'same'), /already imported into PO 001/);
 });
 
-function sourceFixture({ cached = null, failPath = '', malformed = false, lines = [line()], catalogPages = [], catalogDetail = null } = {}) {
+function sourceFixture({ cached = null, failPath = '', malformed = false, lines = [line()], catalogDetail = null } = {}) {
   const calls = [];
   const writes = [];
   const prisma = {
@@ -137,8 +138,7 @@ function sourceFixture({ cached = null, failPath = '', malformed = false, lines 
     assert.equal(companyId, 'co');
     calls.push(path);
     if (path.includes(failPath) && failPath) throw new Error('Rate limited');
-    const payload = path.includes('/catalogs/items/') ? catalogDetail
-      : path.includes('/catalogs/') ? catalogPages[Number(new URL(path, 'https://example.test').searchParams.get('page')) - 1]
+    const payload = path.includes('/catalogs/items/') ? (typeof catalogDetail === 'function' ? catalogDetail(path.split('/').at(-1)) : catalogDetail)
       : path.includes('/line_items?') ? (malformed ? { unexpected: [] } : lines)
       : path.includes('/line_item_groups?') ? [group] : [primary];
     return { ok: true, status: 200, payload };
@@ -161,19 +161,17 @@ test('warm preview skips live reads; create rereads the primary and all detail',
   assert.equal(fixture.writes.length, 1);
 });
 
-test('catalog reads are company-scoped, paginated and deduplicated; old snapshots are refreshed', async () => {
+test('catalog reads use exact company/item IDs despite moved catalogs; old snapshots are refreshed', async () => {
   const lines = [1, 2, 3].map(id => line({ id, cost_code: null, cost_code_type: null, cost_item: { id: id === 3 ? '101' : '100', catalog_id: '20', unit: 'EA' } }));
-  const fixture = sourceFixture({ lines, cached: { snapshot: { bidBoardProjectId: '123', lines }, fetched_at: new Date() }, catalogPages: [
-    Array.from({ length: 100 }, (_, id) => ({ id: String(id + 200) })),
-    ['100', '101'].map(id => ({ id, catalog_id: '20', cost_code: '03-300-00-20', cost_type_code: 'CON' })),
-  ] });
+  const fixture = sourceFixture({ lines, cached: { snapshot: { bidBoardProjectId: '123', lines }, fetched_at: new Date() },
+    catalogDetail: id => ({ id, catalog_id: '30', cost_code: '03-300-00-20', cost_type_code: 'CON' }) });
   const result = await fixture.source.readPrimaryCommitmentEstimate({ companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' });
   assert.equal(result.budgetCodesVersion, 1);
   assert.equal(result.lines.length, 3);
   assert.ok(result.lines.every(line => logic.primaryEstimateCostAssignment(line).code === '03-300-00-20'));
   assert.deepEqual(fixture.calls.filter(path => path.includes('/catalogs/')), [
-    '/rest/v2.0/companies/co/estimating/catalogs/20/items?page=1&per_page=100',
-    '/rest/v2.0/companies/co/estimating/catalogs/20/items?page=2&per_page=100',
+    '/rest/v2.0/companies/co/estimating/catalogs/items/100',
+    '/rest/v2.0/companies/co/estimating/catalogs/items/101',
   ]);
 });
 

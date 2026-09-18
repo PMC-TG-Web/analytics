@@ -51,18 +51,16 @@ export async function readPrimaryCommitmentEstimate(options: {
   }
   const token = await options.getToken();
   const base = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(bidBoardProjectId)}`;
-  let catalogReads = 0;
   async function read(path: string, catalog = false) {
-    if (catalog && ++catalogReads > 100) throw new PrimaryEstimateError('The estimate references too many Cost Catalog records to import at once.');
     const response = await commitmentMakerProcoreJson({ companyId, accessToken: token, path });
     if (!response.ok) throw new PrimaryEstimateError(`The ${catalog ? 'estimate Cost Catalog assignments' : 'primary estimate'} could not be read from Procore (${response.status}).`);
     return response.payload;
   }
-  async function pages(path: string, keys: string[], maxPages: number, wanted?: Set<string>): Promise<RecordValue[]> {
+  async function pages(path: string, keys: string[], maxPages: number): Promise<RecordValue[]> {
     const rows: RecordValue[] = [];
     const seen = new Set<string>();
     for (let page = 1; page <= maxPages; page += 1) {
-      const payload = await read(`${path}?page=${page}&per_page=100`, !!wanted);
+      const payload = await read(`${path}?page=${page}&per_page=100`);
       const root = estimateRecord(payload);
       const batch = Array.isArray(payload) ? payload : keys.map(key => root[key]).find(Array.isArray);
       if (!Array.isArray(batch)) throw new PrimaryEstimateError('Procore returned an incomplete estimate response. Refresh and try again.');
@@ -73,7 +71,7 @@ export async function readPrimaryCommitmentEstimate(options: {
         seen.add(id);
         rows.push(record);
       }
-      if (batch.length < 100 || (wanted && [...wanted].every(id => seen.has(id)))) return rows;
+      if (batch.length < 100) return rows;
     }
     throw new PrimaryEstimateError('The primary estimate exceeds the supported import size.');
   }
@@ -82,36 +80,19 @@ export async function readPrimaryCommitmentEstimate(options: {
   const detail = `${base}/proposals/${encodeURIComponent(String(proposal.id))}`;
   const groups = await pages(`${detail}/line_item_groups`, ['data', 'line_item_groups', 'groups'], 2);
   const sourceLines = await pages(`${detail}/line_items`, ['data', 'line_items', 'items'], 51);
-  // Estimate line responses omit catalog coding fields. Read each referenced catalog
-  // in batches, then join only exact item IDs inside the authenticated company.
-  const neededItems = new Map<string, RecordValue>();
-  const catalogs = new Map<string, Set<string>>();
+  // Catalog IDs copied into old estimates can be historical after an item moves.
+  // Resolve each unique item directly inside the authenticated company instead.
+  const neededItems = new Set<string>();
   for (const line of sourceLines) {
     if (primaryEstimateCostAssignment(line).code) continue;
     const item = estimateRecord(line.cost_item);
     const id = String(item.id || '');
     if (!id) continue;
-    neededItems.set(id, item);
-    const catalogId = String(item.catalog_id ?? '');
-    if (catalogId) {
-      const ids = catalogs.get(catalogId) || new Set<string>();
-      ids.add(id);
-      catalogs.set(catalogId, ids);
-    }
+    neededItems.add(id);
   }
   const catalogBase = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/catalogs`;
   const codingItems = new Map<string, RecordValue>();
-  for (const [catalogId, ids] of catalogs) {
-    if (ids.size === 1) continue; // A single exact read is cheaper than scanning a catalog.
-    const items = await pages(`${catalogBase}/${encodeURIComponent(catalogId)}/items`, ['data', 'items', 'cost_items'], 51, ids);
-    for (const item of items) if (ids.has(String(item.id))) {
-      if (codingItems.has(String(item.id))) throw new PrimaryEstimateError('Procore returned conflicting Cost Catalog item links.');
-      codingItems.set(String(item.id), item);
-    }
-  }
-  // Custom items may not belong to a listed catalog. Deduplicate detail reads too.
-  for (const id of neededItems.keys()) {
-    if (codingItems.has(id)) continue;
+  for (const id of neededItems) {
     const payload = estimateRecord(await read(`${catalogBase}/items/${encodeURIComponent(id)}`, true));
     const item = payload.id ? payload : estimateRecord(payload.data || payload.item);
     if (String(item.id) !== id) throw new PrimaryEstimateError('A linked estimate Cost Catalog item could not be read. Refresh and try again.');

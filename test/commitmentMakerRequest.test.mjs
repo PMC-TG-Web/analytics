@@ -112,3 +112,40 @@ test('invalid preparation and cancelled waits cannot submit another request', as
   await assert.rejects(runCommitmentMakerRequest(paused.options), { name: 'AbortError' });
   assert.equal(paused.calls(), 1);
 });
+
+
+test('a gateway timeout polls saved status without repeating creation', async () => {
+  const f = fixture([response(504, {})]);
+  let polls = 0;
+  f.options.readCreationStatus = async () => ++polls === 1
+    ? response(200, { creationStatus: 'processing' })
+    : response(200, { creationStatus: 'completed', success: true, results: [{ contractId: 'po-1' }] });
+  const result = await runCommitmentMakerRequest(f.options);
+  assert.equal(result.payload.success, true);
+  assert.equal(f.calls(), 1);
+  assert.equal(polls, 2);
+  assert.deepEqual(f.waits, [5000]);
+});
+
+test('a disconnected create can recover its confirmed result without another POST', async () => {
+  const f = fixture([new Error('disconnected')]);
+  f.options.readCreationStatus = async () => response(200, { creationStatus: 'completed', success: true, results: [] });
+  assert.equal((await runCommitmentMakerRequest(f.options)).payload.success, true);
+  assert.equal(f.calls(), 1);
+});
+
+test('unconfirmed status never becomes success or authorizes a replay', async () => {
+  const f = fixture([response(504, {})]);
+  f.options.readCreationStatus = async () => response(200, { creationStatus: 'unknown' });
+  assert.equal((await runCommitmentMakerRequest(f.options)).response.status, 504);
+  assert.equal(f.calls(), 1);
+  assert.equal(f.waits.length, 60);
+});
+
+test('leaving during status polling cancels recovery without another write', async () => {
+  const f = fixture([response(504, {})]);
+  f.options.readCreationStatus = async () => response(200, { creationStatus: 'processing' });
+  f.options.wait = async () => f.controller.abort();
+  await assert.rejects(runCommitmentMakerRequest(f.options), { name: 'AbortError' });
+  assert.equal(f.calls(), 1);
+});

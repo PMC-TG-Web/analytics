@@ -443,6 +443,12 @@ export default function CommitmentMakerPage() {
       };
       const { response, payload } = await runCommitmentMakerRequest({
         signal: controller.signal,
+        readCreationStatus: mode === "create" && sourceType === "primary_estimate" && preview?.previewFingerprint
+          ? () => fetch(`/api/procore/commitments-live/maker?${new URLSearchParams({ projectId, creationFingerprint: preview.previewFingerprint })}`, {
+              headers: requestOptions.headers, cache: "no-store",
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+            })
+          : undefined,
         request: (preparationId) => {
           receivedResponse = false;
           return fetch("/api/procore/commitments-live/maker", { ...requestOptions,
@@ -499,7 +505,9 @@ export default function CommitmentMakerPage() {
         }
         throw new Error(
           text(asRecord(payload).error)
-          || `The creation request ended without a final response (${response.status}). Procore may still have applied part or all of it. Wait five minutes, refresh the preview, and create again only if the change order is still available.`,
+          || (sourceType === "primary_estimate"
+            ? "We could not confirm the final import result. Some or all POs may have been created. Check the project's POs before starting another import."
+            : `The creation request ended without a final response (${response.status}). Procore may still have applied part or all of it. Wait five minutes, refresh the preview, and create again only if the change order is still available.`),
         );
       }
     } catch (requestError) {

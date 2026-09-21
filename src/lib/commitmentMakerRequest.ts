@@ -22,6 +22,7 @@ export async function runCommitmentMakerRequest(options: {
   request: (preparationId?: string) => Promise<Response>;
   signal: AbortSignal;
   onResponse: () => void;
+  readCreationStatus?: () => Promise<Response>;
   now?: () => number;
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 }) {
@@ -31,16 +32,48 @@ export async function runCommitmentMakerRequest(options: {
   let preparationId: string | undefined;
   let preparationSteps = 0;
   let attempt = 0;
+  const recoverCreation = async () => {
+    if (!options.readCreationStatus) return null;
+    const recoveryDeadline = now() + 5 * 60_000;
+    for (let poll = 0; poll < 60 && now() < recoveryDeadline; poll += 1) {
+      options.signal.throwIfAborted();
+      try {
+        const response = await options.readCreationStatus();
+        const payload = await response.json() as MakerPayload;
+        if (response.ok && payload.creationStatus === 'completed' && payload.success === true && Array.isArray(payload.results)) {
+          options.onResponse();
+          return { response, payload };
+        }
+        if ([401, 403, 404].includes(response.status)) return null;
+      } catch { options.signal.throwIfAborted(); }
+      await wait(5_000, options.signal);
+    }
+    return null;
+  };
   for (;;) {
     options.signal.throwIfAborted();
-    const response = await options.request(preparationId);
-    const responseText = await response.text();
+    let response: Response;
+    let responseText: string;
+    try {
+      response = await options.request(preparationId);
+      responseText = await response.text();
+    } catch (error) {
+      options.signal.throwIfAborted();
+      const recovered = await recoverCreation();
+      if (recovered) return recovered;
+      throw error;
+    }
     options.onResponse();
     let payload: MakerPayload = {};
     try {
       const parsed: unknown = responseText ? JSON.parse(responseText) : {};
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as MakerPayload;
     } catch { /* The caller handles incomplete responses without replaying writes. */ }
+
+    if ([502, 504].includes(response.status) && !Array.isArray(payload.results)) {
+      const recovered = await recoverCreation();
+      if (recovered) return recovered;
+    }
 
     if (response.status === 202 && payload.preparing === true && payload.retryable === true && payload.outcomeUnknown !== true) {
       const until = typeof payload.resumeAt === 'string' ? Date.parse(payload.resumeAt) : NaN;

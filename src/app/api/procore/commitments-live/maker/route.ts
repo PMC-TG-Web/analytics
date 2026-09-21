@@ -1,6 +1,7 @@
 import { withCommitmentMakerProcoreConnection } from '@/lib/procoreConnection';
 import { getCommitmentMakerProcoreToken } from '@/lib/procoreCommitmentMakerAuth';
 import { createHash } from "node:crypto";
+import { primaryEstimateCreationStatus } from "@/lib/commitmentMakerCreationStatus";
 
 import { NextRequest, NextResponse } from "next/server";
 import { acquireProcoreRequestPermit, completeProcoreRequestPermit } from "@/lib/procoreRequestGate";
@@ -2593,6 +2594,23 @@ export async function GET(request: NextRequest) {
 
     if (!project) {
       return NextResponse.json({ error: "This project was not found in Analytics." }, { status: 404 });
+    }
+
+    const creationFingerprint = readText(request.nextUrl.searchParams.get("creationFingerprint"));
+    if (creationFingerprint) {
+      if (!/^[a-f0-9]{64}$/.test(creationFingerprint)) {
+        return NextResponse.json({ error: "Invalid creation fingerprint." }, { status: 400 });
+      }
+      const state = await readPrimaryEstimateImport({ companyId: procoreConfig.companyId, projectId });
+      const audits = state?.status === "completed" && state.fingerprint === creationFingerprint
+        ? await prisma.auditLog.findMany({ where: { entity: "ProcoreCommitmentMaker",
+            entityId: { in: state.targets.map(target => target.id) },
+            action: { in: ["create", "resume"] }, changes: { path: ["projectId"], equals: projectId } },
+          orderBy: { createdAt: "desc" }, select: { entityId: true, changes: true } })
+        : [];
+      return NextResponse.json(primaryEstimateCreationStatus(state, creationFingerprint, audits), {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const [approvedChangeOrders, existingCommitments, primaryEstimate] = await Promise.all([

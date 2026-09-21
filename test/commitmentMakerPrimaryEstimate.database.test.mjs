@@ -22,7 +22,7 @@ test('primary estimate claims preserve PO targets, reject duplicate ownership an
       }).outputText;
       new Function('require', 'module', 'exports', code)(id => {
         if (id === 'node:crypto') return { randomUUID };
-        if (id === '@/lib/prisma') return { prisma: { $queryRaw: tx.$queryRaw.bind(tx), $executeRaw: tx.$executeRaw.bind(tx), auditLog: { findMany: async () => [] } } };
+        if (id === '@/lib/prisma') return { prisma: { $queryRaw: tx.$queryRaw.bind(tx), $executeRaw: tx.$executeRaw.bind(tx), auditLog: { findMany: async () => [] }, $transaction: fn => fn({ $executeRaw: tx.$executeRaw.bind(tx), auditLog: { create: async () => ({}) } }) } };
         if (id === '@/lib/procore/commitmentMakerEstimate') return { PrimaryEstimateError: Error };
         assert.fail(`Unexpected dependency ${id}`);
       }, module, module.exports);
@@ -43,6 +43,15 @@ test('primary estimate claims preserve PO targets, reject duplicate ownership an
       await api.savePrimaryEstimateImport(resumed, targets, 'completed');
       await assert.rejects(api.claimPrimaryEstimateImport(identity), /already being imported/);
       assert.equal(await api.readPrimaryEstimateImport({ ...identity, companyId: 'another' }), null);
+      const completed = await api.readPrimaryEstimateImport(identity);
+      await api.releaseDeletedEstimateImport(identity, completed, 'test');
+      assert.equal((await api.readPrimaryEstimateImport(identity)).status, 'deleted');
+      const replacement = await api.claimPrimaryEstimateImport({ ...identity, fingerprint: 'new', combinations: ['changed'] });
+      assert.deepEqual((await api.readPrimaryEstimateImport(identity)).targets, []);
+      assert.equal((await api.readPrimaryEstimateImport(identity)).fingerprint, 'new');
+      await assert.rejects(api.releaseDeletedEstimateImport(identity, completed, 'test'), /changed while checking/);
+      await assert.rejects(api.savePrimaryEstimateImport(resumed, targets), /ownership could not be saved/);
+      await api.savePrimaryEstimateImport(replacement, targets, 'completed');
       throw rollback;
     }, { timeout: 15000 });
   } catch (error) { if (error !== rollback) throw error; }

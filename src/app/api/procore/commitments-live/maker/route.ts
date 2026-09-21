@@ -9,7 +9,7 @@ import { readCommitmentMakerWbs } from "@/lib/procoreWbsCache";
 import { primaryCommitmentEstimateSummary, readPrimaryCommitmentEstimate } from "@/lib/procoreCommitmentMakerEstimateSource";
 import { EstimateReadPending } from "@/lib/procoreCommitmentEstimateRead";
 import { applyPrimaryEstimateCombinations, parsePrimaryCommitmentEstimate, PrimaryEstimateError } from "@/lib/procore/commitmentMakerEstimate";
-import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
+import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport, verifyDeletedEstimateTargets, releaseDeletedEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
 import * as XLSX from "xlsx";
 
 import { prisma } from "@/lib/prisma";
@@ -1609,7 +1609,23 @@ async function handleRequest(request: NextRequest) {
     mode, preparationId: readText(body.estimatePreparationId),
   }) : null;
   const primaryParsed = primarySnapshot ? parsePrimaryCommitmentEstimate(primarySnapshot.lines, primarySnapshot.groups) : null;
-  const estimateImportState = usePrimaryEstimate ? await readPrimaryEstimateImport({ companyId, projectId }) : null;
+  let verifiedEstimateCommitments: UnknownRecord[] | null = null;
+  let estimateImportState = usePrimaryEstimate ? await readPrimaryEstimateImport({ companyId, projectId }) : null;
+  if (estimateImportState && ["completed", "deleted"].includes(estimateImportState.status)) {
+    const deleted = await verifyDeletedEstimateTargets(estimateImportState, {
+      listIds: async () => {
+        verifiedEstimateCommitments = await fetchCommitments(await getEstimateToken(), companyId, projectId);
+        return verifiedEstimateCommitments.map(readId);
+      },
+      isNotFound: async (id) => {
+        const response = await procoreJson({ accessToken: await getEstimateToken(), companyId,
+          path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(projectId)}/commitment_contracts/${encodeURIComponent(id)}` });
+        return response.status === 404 && isRecord(response.payload) && nestedRecord(response.payload, "error").code === "NOT_FOUND";
+      },
+    });
+    if (!deleted && estimateImportState.status === "deleted") throw new PrimaryEstimateError("The previously deleted POs could not be confirmed absent. Review the project commitments before importing again.");
+    if (deleted && estimateImportState.status === "completed") estimateImportState = await releaseDeletedEstimateImport({ companyId, projectId }, estimateImportState, userEmail);
+  }
   const estimateCombinations = body.estimateCombinations ?? estimateImportState?.combinations ?? [];
   const sourceEstimate = primarySnapshot ? {
     proposalId: String(primarySnapshot.proposal.id), name: String(primarySnapshot.proposal.name || "Primary Estimate"),
@@ -1689,9 +1705,17 @@ async function handleRequest(request: NextRequest) {
     ? await fetchCommitments(accessToken, companyId, projectId)
     : [];
   if (usePrimaryEstimate) {
+    if (estimateImportState?.status === "deleted") {
+      const deletedIds = new Set(estimateImportState.targets.map(target => target.id));
+      for (const group of plan.groups) {
+        if (deletedIds.has(group.existingContractId)) { group.existingContractId = ""; group.action = "create"; }
+      }
+      const numbers = planNextPurchaseOrderNumbers((verifiedEstimateCommitments || []).map(record => record.number), plan.groups.length);
+      plan.groups.forEach((group, index) => { if (group.action === "create") group.number = numbers[index]; });
+    }
     const block = primaryEstimateImportBlock(estimateImportState, importFingerprint);
     if (block) plan.validationErrors.push(block);
-    if (!block && estimateImportState) {
+    if (!block && estimateImportState && estimateImportState.status !== "deleted") {
       for (const group of plan.groups) {
         const prior = estimateImportState.targets.find(target => target.name === group.name);
         if (prior) {
@@ -1849,7 +1873,7 @@ async function handleRequest(request: NextRequest) {
   const results: UnknownRecord[] = [];
   const estimateClaim = usePrimaryEstimate ? await claimPrimaryEstimateImport({ companyId, projectId,
     fingerprint: importFingerprint, combinations: estimateCombinations }) : null;
-  const estimateTargets = [...(estimateImportState?.targets || [])];
+  const estimateTargets = estimateImportState?.status === "deleted" ? [] : [...(estimateImportState?.targets || [])];
   let failure: UnknownRecord | null = null;
   const currentCommitments = [...liveCommitments];
   for (const group of plan.groups) {

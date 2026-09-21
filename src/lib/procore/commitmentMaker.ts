@@ -127,15 +127,30 @@ function commitmentMakerLineKey(line: CommitmentMakerLineItem, combineDifferentU
 }
 
 const LABOR_DESCRIPTIONS_BY_CODE: Record<string, string> = {
-  "03-300-00-10": "Labor Foundation",
-  "03-300-00-12": "Labor Continuous Footing",
-  "03-300-00-14": "Labor Pier",
-  "03-300-00-16": "Labor Spreadfooting",
-  "03-300-10-10": "Labor Wall",
   "03-300-20-10": "Labor Slab On Grade",
+  "05-100-10-30": "Labor Bollards",
+  "03-300-00-10": "Labor Foundation",
+  "03-100-10-10": "Labor Foundation Forms",
+  "03-200-10-10": "Labor Foundation Rebar",
+  "03-300-00-12": "Labor Continuous Footing",
+  "03-300-00-16": "Labor Spreadfooting",
+  "03-300-00-14": "Labor Pier",
+  "03-100-20-10": "Labor Wall Forms",
+  "03-300-10-10": "Labor Wall",
+  "03-200-20-10": "Labor Wall Rebar",
+  "03-100-30-10": "Labor Site Concrete Forms",
+  "03-200-30-10": "Labor Slab on Grade Rebar",
   "03-300-20-70": "Labor Non Contracted",
   "03-300-30-10": "Labor Site Concrete",
+  "03-200-40-10": "Labor Site Rebar",
+  "02-400-10-10": "Labor Demo",
+  "03-400-10-10": "Labor Concrete Sawing",
+  "02-500-10-10": "Labor Remediation",
+  "01-300-10-30": "Labor Travel",
+  "03-150-10-10": "Labor Waterstop",
   "03-300-40-70": "Labor Interior Sealer",
+  "31-100-10-10": "Labor Stone Grading",
+  "31-100-10-20": "Labor Excavation And Backfill"
 };
 
 /** Scope generic hourly labels by the exact company cost code, never group names. */

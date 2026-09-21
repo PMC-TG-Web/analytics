@@ -512,6 +512,7 @@ test('uses the approved change-order source WBS ID when multiple types share a c
 
 
 test('generic hourly labor receives scope from its exact cost code before combining', () => {
+  assert.equal(commitmentMakerLaborDescription('1. Labor', '05-100-10-30', 'hours'), 'Labor Bollards');
   assert.equal(commitmentMakerLaborDescription('1. Labor', '03-300-20-10', 'hours'), 'Labor Slab On Grade');
   assert.equal(commitmentMakerLaborDescription('Labor', '03-300-30-10.L', 'HR'), 'Labor Site Concrete');
   assert.equal(commitmentMakerLaborDescription('Hours Labor', '03-300-10-10', 'hours'), 'Labor Wall');

@@ -22,17 +22,17 @@ import {
   selectCommitmentMakerWbsCandidate,
 } from '../src/lib/procore/commitmentMaker.ts';
 
-test('CY requires exactly one real CON code, overriding source IDs and all fallbacks', () => {
+test('CY requires exactly one real M code, overriding source IDs and all fallbacks', () => {
   const candidate = (id, type) => ({ id, costCode: '03-300-00-20', costType: type, flatCode: `03-300-00-20.${type}` });
   const other = candidate('other', 'O');
-  const concrete = candidate('concrete', 'CON');
+  const material = candidate('material', 'M');
   for (const uom of ['cy', 'CY', ' Cy ', 'cu yd']) {
-    assert.equal(selectCommitmentMakerWbsCandidate([other, concrete], 'O', 'other', uom)?.id, 'concrete');
+    assert.equal(selectCommitmentMakerWbsCandidate([other, material], 'O', 'other', uom)?.id, 'material');
     assert.equal(selectCommitmentMakerWbsCandidate([other], 'O', 'other', uom), null);
-    assert.equal(selectCommitmentMakerWbsCandidate([concrete, candidate('duplicate', 'CON')], 'CON', 'concrete', uom), null);
-    assert.equal(selectCommitmentMakerWbsCandidate([], 'CON', null, uom), null);
+    assert.equal(selectCommitmentMakerWbsCandidate([material, candidate('duplicate', 'M')], 'M', 'material', uom), null);
+    assert.equal(selectCommitmentMakerWbsCandidate([], 'M', null, uom), null);
   }
-  assert.equal(selectCommitmentMakerWbsCandidate([other, concrete], 'O', 'other', 'ea')?.id, 'other');
+  assert.equal(selectCommitmentMakerWbsCandidate([other, material], 'O', 'other', 'ea')?.id, 'other');
   assert.equal(commitmentMakerSourceWbsCandidate({ costCode: other.costCode, costType: 'O',
     sourceWbsCodeId: 'other', description: 'Concrete credit', quantity: -48,
     uom: 'cy', unitCost: 140.98, subtotalOverride: null }), null);
@@ -40,7 +40,7 @@ test('CY requires exactly one real CON code, overriding source IDs and all fallb
   assert.match(route, /selectCommitmentMakerWbsCandidate\(candidates, line.costType, line.sourceWbsCodeId, line.uom\)/);
 });
 
-test('combined CY lines submit the CON WBS ID with unchanged descriptions and totals', () => {
+test('combined CY lines submit the M WBS ID with unchanged descriptions and totals', () => {
   const line = { costCode: '03-300-00-20', costType: 'O', description: '4500 Psi Kinsley Concrete',
     quantity: 48, uom: 'cy', unitCost: 140.98, subtotalOverride: null };
   const [group] = combineCommitmentMakerGroups([
@@ -48,10 +48,10 @@ test('combined CY lines submit the CON WBS ID with unchanged descriptions and to
   ], ['A', 'B'], 'Combined');
   const combined = group.lineItems[0];
   const match = selectCommitmentMakerWbsCandidate([
-    { id: 'concrete', costCode: line.costCode, costType: 'CON', flatCode: `${line.costCode}.CON` },
+    { id: 'material', costCode: line.costCode, costType: 'M', flatCode: `${line.costCode}.M` },
   ], combined.costType, combined.sourceWbsCodeId, combined.uom);
   const payload = commitmentMakerLineCreatePayload({ ...combined, wbsCodeId: match.id });
-  assert.equal(payload.wbs_code_id, 'concrete');
+  assert.equal(payload.wbs_code_id, 'material');
   assert.equal(payload.description, line.description);
   assert.equal(payload.quantity, 50);
   assert.equal(payload.amount, 7067.04);

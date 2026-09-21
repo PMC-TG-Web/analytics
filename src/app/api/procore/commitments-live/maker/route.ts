@@ -22,7 +22,7 @@ import {
   commitmentMakerLineCreatePayload,
   commitmentMakerLineAmount,
   commitmentMakerOwnedLineItemsFromAudit,
-  commitmentMakerRequiresConcreteCode,
+  commitmentMakerRequiresMaterialCode,
   commitmentMakerSourceWbsCandidate,
   commitmentMakerVendorIsAssignedToProject,
   consolidateCommitmentMakerLineItems,
@@ -1151,8 +1151,8 @@ async function buildPlan(params: {
       }
       const match = resolveWbs(line, wbsIndex);
       if (!match) {
-        if (commitmentMakerRequiresConcreteCode(line.uom)) {
-          validationErrors.push(`Group "${group.name}": "${line.description}" uses CY and requires exactly one ${line.costCode}.CON Budget Code in this project. Add or correct that code in Procore, then preview again.`);
+        if (commitmentMakerRequiresMaterialCode(line.uom)) {
+          validationErrors.push(`Group "${group.name}": "${line.description}" uses CY and requires exactly one ${line.costCode}.M Budget Code in this project. Add or correct that code in Procore, then preview again.`);
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }

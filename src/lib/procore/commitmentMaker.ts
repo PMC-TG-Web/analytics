@@ -540,16 +540,16 @@ export function normalizeCommitmentMakerCostType(value: unknown): string {
 
 const COMMITMENT_MAKER_FALLBACK_COST_TYPES = ["O", "C"];
 
-export function commitmentMakerRequiresConcreteCode(uom: string): boolean {
+export function commitmentMakerRequiresMaterialCode(uom: string): boolean {
   return ["cy", "cu yd", "cu_yd", "cu. yd.", "cubic yard", "cubic yards"].includes(uom.trim().toLowerCase());
 }
 
 export function commitmentMakerSourceWbsCandidate(
   line: CommitmentMakerLineItem,
 ): CommitmentMakerWbsCandidate | null {
-  // CY must resolve against the project's actual .CON code, never a synthetic
+  // CY must resolve against the project's actual .M code, never a synthetic
   // candidate made from the source line's old cost type or WBS ID.
-  if (commitmentMakerRequiresConcreteCode(line.uom)) return null;
+  if (commitmentMakerRequiresMaterialCode(line.uom)) return null;
   const id = String(line.sourceWbsCodeId || "").trim();
   const costCode = String(line.costCode || "").trim().toUpperCase().split(".")[0];
   const costType = canonicalCostType(line.costType) || COMMITMENT_MAKER_COST_TYPE;
@@ -576,11 +576,11 @@ export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCa
   sourceWbsCodeId?: string | null,
   uom?: string,
 ): T | null {
-  if (commitmentMakerRequiresConcreteCode(uom || "")) {
-    const concrete = candidates.filter((candidate) => (
-      candidate.flatCode.trim().toUpperCase().endsWith(".CON")
+  if (commitmentMakerRequiresMaterialCode(uom || "")) {
+    const material = candidates.filter((candidate) => (
+      candidate.flatCode.trim().toUpperCase().endsWith(".M")
     ));
-    return concrete.length === 1 ? concrete[0] : null;
+    return material.length === 1 ? material[0] : null;
   }
   const sourceId = String(sourceWbsCodeId || "").trim();
   if (sourceId) {

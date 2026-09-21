@@ -10,10 +10,15 @@ export const BILL_CATALOG_DATASET = 'qbo_cost_catalog';
 export const BILL_CATALOG_PROJECT = '__company__';
 export const BILL_CATALOG_MAX_AGE_MS = 24 * 60 * 60_000;
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-export const catalogName = (value: string) => value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ')
-  .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '')
-  .replace(/\s+-\s+(sog|foundation|foundations|wall|site)$/, '')
-  .replace(/\s+-\s+/g, ' ').replace(/\s+/g, '');
+export function catalogName(value: string) {
+  let name = value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ')
+    .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '')
+    .replace(/\s+-\s+(sog|foundation|foundations|wall|site)$/, '');
+  // Rebar spacing describes installation, not the bar size or purchased length.
+  // Only remove a terminal, explicitly labelled on-center spacing annotation.
+  if (/^#\d+\s+rebar\b/.test(name)) name = name.replace(/\s+[-\u2013\u2014]\s+\d+(?:\.\d+)?\s*["\u2033]\s*o\.?\s*c\.?(?:\s*e\.?\s*w\.?)?$/, '');
+  return name.replace(/\s+-\s+/g, ' ').replace(/\s+/g, '');
+}
 export function catalogUnit(value: string) {
   const unit = value.trim().toLowerCase().replace(/[.\s_]/g, '');
   if (['ea', 'each', 'pc', 'pcs', 'piece', 'pieces'].includes(unit)) return 'ea';

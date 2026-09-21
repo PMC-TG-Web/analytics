@@ -27,6 +27,17 @@ test('explicit catalog ID wins over edited descriptions but not code/unit mismat
   assert.match(match({ ...item(), catalogItemId: '999' }).issue, /no matching/);
   assert.match(match({ ...item(), catalogItemId: '123', costCode: '03-200-30-21' }).issue, /different cost code/);
 });
+
+test('rebar placement spacing does not change the purchased bar identity', () => {
+  for (const spacing of ['12" OCEW', '12" O.C. E.W.', '16" OC']) {
+    const r = match({ ...item(), description: `CO6 - #4 Rebar - 20' Pc - ${spacing}` });
+    assert.equal(r.issue, null); assert.equal(r.evidence.itemId, '123'); assert.equal(r.unitCost, 8.07173);
+  }
+  for (const name of ['#5 Rebar - 20\' Pc - 12" OCEW', '#4 Rebar - 10\' Pc - 12" OCEW', '#4 Rebar - 20\' Pc - epoxy coated', '#4 Rebar - 20\' Pc - 12"']) {
+    assert.match(match({ ...item(), description: name }).issue, /no matching/);
+  }
+  assert.match(match({ ...item(), description: 'CO6 - #4 Rebar - 20\' Pc - 12" OCEW', uom: 'LF' }).issue, /unit/);
+});
 test('ambiguous, missing, or zero catalog prices never fall back to PO prices', () => {
   assert.match(match(item(), [price(), { ...price(), itemId: '124', unitCost: '1' }]).issue, /multiple/);
   assert.match(match(item(), []).issue, /no matching/);

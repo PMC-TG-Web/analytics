@@ -22,6 +22,7 @@ import {
   commitmentMakerLineCreatePayload,
   commitmentMakerLineAmount,
   commitmentMakerOwnedLineItemsFromAudit,
+  commitmentMakerRequiresConcreteCode,
   commitmentMakerSourceWbsCandidate,
   commitmentMakerVendorIsAssignedToProject,
   consolidateCommitmentMakerLineItems,
@@ -844,7 +845,7 @@ function buildWbsIndex(records: UnknownRecord[]): Map<string, WbsMatch[]> {
 
 function resolveWbs(line: CommitmentMakerLineItem, index: Map<string, WbsMatch[]>): WbsMatch | null {
   const candidates = index.get(normalizeCode(line.costCode)) || [];
-  return selectCommitmentMakerWbsCandidate(candidates, line.costType, line.sourceWbsCodeId);
+  return selectCommitmentMakerWbsCandidate(candidates, line.costType, line.sourceWbsCodeId, line.uom);
 }
 
 function vendorName(record: UnknownRecord): string {
@@ -1150,6 +1151,11 @@ async function buildPlan(params: {
       }
       const match = resolveWbs(line, wbsIndex);
       if (!match) {
+        if (commitmentMakerRequiresConcreteCode(line.uom)) {
+          validationErrors.push(`Group "${group.name}": "${line.description}" uses CY and requires exactly one ${line.costCode}.CON Budget Code in this project. Add or correct that code in Procore, then preview again.`);
+          plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
+          continue;
+        }
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
         if (candidateCodes.length > 0) {

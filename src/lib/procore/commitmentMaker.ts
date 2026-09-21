@@ -540,9 +540,16 @@ export function normalizeCommitmentMakerCostType(value: unknown): string {
 
 const COMMITMENT_MAKER_FALLBACK_COST_TYPES = ["O", "C"];
 
+export function commitmentMakerRequiresConcreteCode(uom: string): boolean {
+  return ["cy", "cu yd", "cu_yd", "cu. yd.", "cubic yard", "cubic yards"].includes(uom.trim().toLowerCase());
+}
+
 export function commitmentMakerSourceWbsCandidate(
   line: CommitmentMakerLineItem,
 ): CommitmentMakerWbsCandidate | null {
+  // CY must resolve against the project's actual .CON code, never a synthetic
+  // candidate made from the source line's old cost type or WBS ID.
+  if (commitmentMakerRequiresConcreteCode(line.uom)) return null;
   const id = String(line.sourceWbsCodeId || "").trim();
   const costCode = String(line.costCode || "").trim().toUpperCase().split(".")[0];
   const costType = canonicalCostType(line.costType) || COMMITMENT_MAKER_COST_TYPE;
@@ -567,7 +574,14 @@ export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCa
   candidates: T[],
   requestedCostType: string,
   sourceWbsCodeId?: string | null,
+  uom?: string,
 ): T | null {
+  if (commitmentMakerRequiresConcreteCode(uom || "")) {
+    const concrete = candidates.filter((candidate) => (
+      candidate.flatCode.trim().toUpperCase().endsWith(".CON")
+    ));
+    return concrete.length === 1 ? concrete[0] : null;
+  }
   const sourceId = String(sourceWbsCodeId || "").trim();
   if (sourceId) {
     const sourceMatch = candidates.find((candidate) => String(candidate.id) === sourceId);

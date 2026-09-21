@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 export type LaborTimecard = { procoreId: string | null; date: Date; hours: number | null; totalHoursWorked: number | null; costCodeFullCode: string | null; costCodeName: string | null; updatedAt: Date };
-export type LaborRate = { costCode: string; rate: string | null; lineItemId: string; proposalId: string; bidBoardId: string; updatedAt: string };
+export type LaborRate = { costCode: string; rate: string | null; lineItemId: string; proposalId?: string; bidBoardId?: string; catalogItemId?: string; catalogId?: string; updatedAt: string };
 export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: LaborRate[]) {
   const issues: string[] = [], seen = new Set<string>();
   const groups = new Map<string, { description: string; hours: Prisma.Decimal; sourceLogs: { id: string; date: string; quantity: string; updatedAt: string }[] }>();
@@ -20,7 +20,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
   const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([costCode, group]) => {
     let sources: LaborRate[] = [], rate: string | null = null, rateCostCode: string | null = null;
     let conflicting = false, lowestTravel = false;
-    // User-defined project rate precedence; never cross project/estimate boundaries.
+    // Category, then SOG, then travel within the supplied company pricing snapshot.
     for (const candidate of [...new Set([costCode, '03-300-20-10', '01-300-10-30'])]) {
       const candidates = rates.filter(r => r.costCode.replace(/\.L$/i, '') === candidate);
       const valid = candidates.filter(r => {
@@ -46,7 +46,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
       rateCostCode,
       rateSelection: rateCostCode === null ? 'unresolved' : lowestTravel ? (rateCostCode === costCode ? 'Lowest travel rate' : 'Travel fallback (lowest rate)') : rateCostCode === costCode ? 'category' : rateCostCode === '03-300-20-10' ? 'SOG fallback' : 'Travel fallback',
       rateUpdatedAt: sources.map(s => s.updatedAt).sort().at(-1) || null,
-      rateSources: sources.map(s => ({ bidBoardId: s.bidBoardId, proposalId: s.proposalId, lineItemId: s.lineItemId, costCode: s.costCode, rate: s.rate })),
+      rateSources: sources.map(s => ({ ...(s.catalogItemId ? { catalogItemId: s.catalogItemId, catalogId: s.catalogId } : { bidBoardId: s.bidBoardId, proposalId: s.proposalId }), lineItemId: s.lineItemId, costCode: s.costCode, rate: s.rate })),
       sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
     };
   });

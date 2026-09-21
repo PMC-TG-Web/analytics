@@ -2,6 +2,7 @@ import type { DirectCostIssueSource } from './qboDirectCosts';
 import { prisma } from './prisma';
 import { directCostMonth } from './qboDirectCosts';
 import { loadQboDirectCosts } from './loadQboDirectCosts';
+import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { loadQboBillReview } from './loadQboBillReview';
 import { hasQboBillBridge, requestQboBillBridge } from './qboBillBridge';
 
@@ -16,6 +17,7 @@ export async function loadQboBillQueue(companyId: string, month: string) {
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, date: { gte: start, lt: end } }, distinct: ['procoreProjectId'], select: { procoreProjectId: true } }),
   ]);
   const active = new Set([...productivity, ...timecards].map(p => p.procoreProjectId));
+  const pricingCatalog = await loadQboCostCatalog(companyId);
   // A single registry read avoids a round trip for every inactive project, while
   // retaining mapped projects whose final source entry was removed or moved.
   const catalog = hasQboBillBridge() ? await requestQboBillBridge<{ projectIds: string[] }>({ operation: 'catalog', companyId, projectId: '0', month }).catch(() => null) : null;
@@ -31,7 +33,7 @@ export async function loadQboBillQueue(companyId: string, month: string) {
       try {
         let review = await loadQboBillReview(companyId, row.projectId, month);
         if (active.has(row.projectId) || review.billId || review.action === 'reconcile') {
-          const draft = await loadQboDirectCosts(companyId, row.projectId, month);
+          const draft = await loadQboDirectCosts(companyId, row.projectId, month, pricingCatalog);
           review = await loadQboBillReview(companyId, row.projectId, month, draft);
           Object.assign(row, { billNumber: review.billNumber, gross: draft.total, previousGross: review.previousGross, laborHours: draft.labor.totalHours, itemCount: draft.lines.length, lastPosted: review.lastPosted });
           row.reasons = [...new Set([...draft.issues, ...review.issues])];

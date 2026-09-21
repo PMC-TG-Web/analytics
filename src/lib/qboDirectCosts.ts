@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import type { CatalogPriceEvidence } from './qboCostCatalog';
 
 export const DIRECT_COST_VENDOR = 'PMC Procore Direct Costs';
 // Concrete purchase quantities are tracked outside these internal-cost bills.
@@ -42,8 +43,10 @@ export type DirectCostItem = {
   costCode?: string | null; costType?: string | null;
   purchaseOrderContract?: { number: string | null; title: string | null } | null;
   procorePurchaseOrderContractId?: string | null;
+  pricingIssue?: string | null;
+  catalogPrice?: CatalogPriceEvidence | null;
 };
-export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; target?: 'purchaseOrder' | 'dailyLog' };
+export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
 function issueSource(log: DirectCostSource, item?: DirectCostItem) {
   const po = (number?: string | null, title?: string | null) =>
     [number?.trim() ? (/^PO\b/i.test(number.trim()) ? number.trim() : `PO ${number.trim()}`) : '', title?.trim()].filter(Boolean).join(' — ');
@@ -59,7 +62,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
   const addIssue = (message: string, log: DirectCostSource, item?: DirectCostItem) => {
     issues.push(message);
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
-    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, target: item ? 'purchaseOrder' : 'dailyLog' });
+    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
   };
   const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0 };
   const seen = new Set<string>();
@@ -88,6 +91,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     if (EXCLUDED_CONCRETE_COST_CODES.has(item.costCode || '') && !/^(labor|l)$/i.test(item.costType || '')) {
       excluded.concrete++; continue;
     }
+    if (item.pricingIssue) { addIssue(`${item.pricingIssue} ${issueSource(log, item)}.`, log, item); continue; }
     const missingCost = item.unitCost === null || !Number.isFinite(item.unitCost) || item.unitCost <= 0;
     const missingUnit = !item.uom?.trim();
     if (missingCost || missingUnit) {
@@ -110,6 +114,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     uom: group.item.uom!,
     amount: group.quantity.mul(String(group.item.unitCost)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
     rateUpdatedAt: group.item.updatedAt.toISOString(),
+    ...(group.item.catalogPrice ? { catalogPrice: group.item.catalogPrice } : {}),
     sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
   }));
   return { lines, issues, issueSources, excluded, total: lines.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0)).toFixed(2) };

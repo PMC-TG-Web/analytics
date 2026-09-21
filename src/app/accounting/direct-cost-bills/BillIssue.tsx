@@ -8,7 +8,7 @@ export default function BillIssue({ message, companyId, projectId, sources }: {
   const href = source ? dailyLogIssueUrl(companyId, projectId, source.date) : null;
   const poHref = source?.purchaseOrderId ? purchaseOrderIssueUrl(companyId, projectId, source.purchaseOrderId) : null;
   const isPoIssue = source?.target === 'purchaseOrder';
-  const primaryHref = isPoIssue ? poHref : href;
+  const primaryHref = source?.target === 'catalog' ? null : isPoIssue ? poHref : href;
   const primaryLabel = isPoIssue ? 'purchase order' : 'daily log';
   const secondaryHref = isPoIssue ? href : poHref;
   const secondaryLabel = isPoIssue ? 'Open daily log' : 'Open PO';

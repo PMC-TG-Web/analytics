@@ -3,11 +3,13 @@ import { directCostMonth } from './qboDirectCosts';
 import { acquireProcoreWorker, releaseProcoreWorker } from './procoreSyncQueue';
 
 // One project per request, shared across tabs/machines, using the existing worker lane.
-export async function refreshQboBillSources(companyId: string, month: string, sync: (projectId: string) => Promise<void>) {
+export async function refreshQboBillSources(companyId: string, month: string, sync: (projectId: string) => Promise<void>, syncCatalog?: () => Promise<{ synced: boolean; checkedAt?: string }>) {
   const { start, end } = directCostMonth(month);
   const lease = await acquireProcoreWorker(companyId);
   if (!lease.acquired) return { status: 'waiting', reason: lease.reason };
   try {
+    const catalog = await syncCatalog?.();
+    if (catalog?.synced) return { status: 'synced', scope: 'catalog', checkedAt: catalog.checkedAt };
     const logs = await prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, date: { gte: start, lt: end } }, distinct: ['procoreProjectId'], select: { procoreProjectId: true } });
     const ids = logs.map(log => log.procoreProjectId);
     const states = await prisma.procoreSyncProjectState.findMany({ where: { companyId, dataset: 'bill_review_po', projectId: { in: ids } } });

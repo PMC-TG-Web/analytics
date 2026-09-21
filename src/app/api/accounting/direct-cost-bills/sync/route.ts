@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { refreshQboBillSources } from '@/lib/qboBillSourceRefresh';
+import { refreshQboCostCatalog } from '@/lib/qboCostCatalogSync';
+import { withProcoreLiveApiBypassForSyncSecret } from '@/lib/procore';
 import { POST as syncPurchaseOrders } from '@/app/api/procore/sync/purchase-order-line-item-details/route';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +18,8 @@ export async function POST(request: NextRequest) {
   const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
   if (!secret) return json({ error: 'Automatic Procore refresh is not configured.' }, 503);
   try {
-    return json(await refreshQboBillSources(companyId, body.month, async projectId => {
+    const internal = new Request('http://internal/catalog-refresh', { headers: { 'x-sync-secret': secret } });
+    return json(await withProcoreLiveApiBypassForSyncSecret(internal, () => refreshQboBillSources(companyId, body.month, async projectId => {
       // Internal invocation preserves the sync-secret gate without forwarding credentials to a URL.
       const result = await syncPurchaseOrders(new Request('http://internal/api/procore/sync/purchase-order-line-item-details', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-sync-secret': secret },
@@ -24,6 +27,6 @@ export async function POST(request: NextRequest) {
       }));
       const data = await result.json();
       if (!result.ok || data.success === false || data.errors?.length || data.activeProjects?.some((p: { status?: string }) => p.status?.includes('unavailable'))) throw new Error('PO sync incomplete');
-    }));
-  } catch { return json({ error: 'A PO refresh failed. Automatic checks will retry; existing costs remain visible.' }, 503); }
+    }, () => refreshQboCostCatalog(companyId))));
+  } catch { return json({ error: 'Cost Catalog or source refresh failed. Automatic checks will retry; the last synchronized costs remain visible.' }, 503); }
 }

@@ -9,6 +9,7 @@ import {
   commitmentMakerCombinedTitle,
   consolidateCommitmentMakerLineItems,
   commitmentMakerLineAmount,
+  commitmentMakerLaborDescription,
   commitmentMakerLineCreatePayload,
   commitmentMakerOwnedLineItemsFromAudit,
   commitmentMakerProjectIdFromSearch,
@@ -507,4 +508,21 @@ test('uses the approved change-order source WBS ID when multiple types share a c
   ];
 
   assert.equal(selectCommitmentMakerWbsCandidate(candidates, 'O', 'subcontract')?.id, 'subcontract');
+});
+
+
+test('generic hourly labor receives scope from its exact cost code before combining', () => {
+  assert.equal(commitmentMakerLaborDescription('1. Labor', '03-300-20-10', 'hours'), 'Labor Slab On Grade');
+  assert.equal(commitmentMakerLaborDescription('Labor', '03-300-30-10.L', 'HR'), 'Labor Site Concrete');
+  assert.equal(commitmentMakerLaborDescription('Hours Labor', '03-300-10-10', 'hours'), 'Labor Wall');
+  for (const [name, code, unit] of [['8. Travel Labor', '01-300-10-30', 'hours'], ['Slab Finishing Labor', '03-300-20-10', 'hours'], ['Labor', '99-999-99-99', 'hours'], ['Labor', '03-300-20-10', 'ea']]) {
+    assert.equal(commitmentMakerLaborDescription(name, code, unit), name);
+  }
+  const line = { costCode: '03-300-20-10', costType: 'L', description: '1. Labor', quantity: 10, uom: 'hours', unitCost: 0, subtotalOverride: null };
+  const merged = consolidateCommitmentMakerLineItems([line, { ...line, description: 'Labor Slab On Grade', quantity: 20 }]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].description, 'Labor Slab On Grade');
+  assert.equal(merged[0].quantity, 30);
+  assert.equal(merged[0].unitCost, 0);
+  assert.equal(line.description, '1. Labor');
 });

@@ -60,3 +60,24 @@ test('concurrent creates and updates require reopening instead of overwriting an
     assert.equal(h.writes.length, 0);
   }
 });
+test('freeform descriptions use an unambiguous current code/unit price without changing identity', () => {
+ const sameCode = { ...price, costCode: source.costCode };
+ const result = logic.mappedCatalogPrice(source, [sameCode], new Map(), undefined, true);
+ assert.equal(result.issue, null); assert.equal(result.unitCost, 8.25); assert.equal(result.evidence.itemId, '123');
+ assert.equal(source.description, 'Custom rebar description');
+ assert.equal(logic.mappedCatalogPrice(source, [{ ...sameCode, unitCost: '9.5' }], new Map(), undefined, true).unitCost, 9.5);
+ const equal = logic.mappedCatalogPrice(source, [{ ...sameCode, itemId: '124' }, sameCode], new Map(), undefined, true);
+ assert.equal(equal.unitCost, 8.25); assert.equal(equal.evidence.itemId, '123');
+});
+test('code fallback does not guess different prices, units, kinds or explicit identities', () => {
+ const sameCode = { ...price, costCode: source.costCode };
+ assert.match(logic.mappedCatalogPrice(source, [sameCode, { ...sameCode, itemId: '124', unitCost: '10' }], new Map(), undefined, true).issue, /different current/);
+ for (const changed of [{ uom: 'lf' }, { type: 'LABOR', laborRate: '70' }, { costCode: '99-999-99-99' }, { unitCost: null }]) assert.ok(logic.mappedCatalogPrice(source, [{ ...sameCode, ...changed }], new Map(), undefined, true).issue);
+ assert.ok(logic.mappedCatalogPrice({ ...source, catalogItemId: '999' }, [sameCode], new Map(), undefined, true).issue);
+ assert.ok(logic.mappedCatalogPrice(source, [sameCode], new Map(), undefined, false).issue);
+});
+test('duplicate source identity is cost code plus description, not repeated logs or distinct descriptions', () => {
+ const duplicates = logic.duplicateCatalogSourceIds([{ ...source, procoreId: '1' }, { ...source, procoreId: '1' }, { ...source, description: ' CUSTOM REBAR DESCRIPTION ', procoreId: '2' }, { ...source, description: 'Different work', procoreId: '3' }, { ...source, costCode: '99-999-99-99', procoreId: '4' }]);
+ assert.deepEqual([...duplicates].sort(), ['1', '2']);
+ assert.equal(logic.duplicateCatalogSourceIds([{ ...source, procoreId: '1' }, { ...source, procoreId: '1' }]).size, 0);
+});

@@ -5,7 +5,7 @@ import { aggregateDirectCostLabor } from './qboDirectCostLabor';
 import { loadQboDirectCostLaborRates } from './loadQboDirectCostLaborRates';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue, type BillCatalogSnapshot } from './qboCostCatalog';
-import { mappedCatalogPrice } from './qboCatalogMapping';
+import { mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
 import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
 
 export async function loadQboDirectCosts(companyId: string, projectId: string, month: string, catalogSnapshot?: BillCatalogSnapshot | null) {
@@ -28,11 +28,14 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   ]);
   const mappingByLine = new Map(catalogMappings.map(mapping => [mapping.lineItemId, mapping]));
   const crosswalk = loadEstimatingCostCodeCatalog();
+  const aliasByLine = new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id]));
+  const activeLineIds = new Set(logs.filter(log => log.status?.toLowerCase() === 'approved' && Number(log.quantityUsed) > 0 && !/billing file/i.test(log.lineItemHolderTitle || '')).map(log => aliasByLine.get(log.lineItemId || '') || log.lineItemId));
+  const duplicateIds = duplicateCatalogSourceIds(items.filter(item => activeLineIds.has(item.procoreId)));
   const pricedItems = items.map(item => {
     const raw = item.customFields as { cost_item?: { id?: string | number }; cost_item_id?: string | number } | null;
     const catalogItemId = raw?.cost_item?.id || raw?.cost_item_id;
     const price = catalogIssue ? { unitCost: null, evidence: null, issue: catalogIssue }
-      : mappedCatalogPrice({ ...item, catalogItemId: catalogItemId ? String(catalogItemId) : null }, catalog!.items, crosswalk, mappingByLine.get(item.procoreId || ''));
+      : mappedCatalogPrice({ ...item, catalogItemId: catalogItemId ? String(catalogItemId) : null }, catalog!.items, crosswalk, mappingByLine.get(item.procoreId || ''), !duplicateIds.has(item.procoreId || ''));
     return { ...item, unitCost: price.unitCost, pricingIssue: price.issue, catalogPrice: price.evidence, updatedAt: catalog ? new Date(catalog.fetchedAt) : item.updatedAt };
   });
   const summary = aggregateDirectCosts(logs.map(log => ({ ...log, id: log.procoreId || log.id })), pricedItems, new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id])));

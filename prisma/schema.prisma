@@ -2,6 +2,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Explicit catalog price choice for one Procore PO line; rates remain live catalog values.
+model QboCostCatalogMapping {
+  companyId       String   @map("company_id")
+  projectId       String   @map("project_id")
+  lineItemId      String   @map("line_item_id")
+  catalogItemId   String?  @map("catalog_item_id")
+  sourceSignature String   @map("source_signature")
+  revision        Int      @default(1)
+  updatedBy       String   @map("updated_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([companyId, projectId, lineItemId])
+  @@map("qbo_cost_catalog_mappings")
+}
+
 /// Transient transport to the single QBO host; OAuth tokens and bill ledger stay on that host.
 model QboBillRelayJob {
   id          String   @id

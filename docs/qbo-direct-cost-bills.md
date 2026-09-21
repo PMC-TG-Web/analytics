@@ -177,3 +177,10 @@ Confirmed deleted-bill recovery (2026-09-17): Sadsbury September PMCDC001 / QBO 
 
 
 Travel rate conflicts (2026-09-18): when cost code 01-300-10-30 has multiple valid positive hourly rates in the current company catalog, use the lowest rate for all applicable hours. Preserve one labor line, its source hours, and only the matching selected-rate evidence. The preview labels Lowest travel rate (or Travel fallback (lowest rate)). Missing/invalid rates retain existing fallback behavior; conflicting SOG and other category rates still require review.
+
+
+## Resolve catalog mappings from the bill page
+
+Expand a project and use **Cost Catalog mappings → Choose catalog item** beside an unresolved PO line. Search by item name or cost code, review the current cost and unit, then choose **Save mapping & refresh review**. Only compatible-unit items with a positive current cost appear. The choice is remembered for this project's PO line across monthly runs; the rate remains the latest catalog price. **View / change all mappings** also lets operators replace an automatic match or return a saved choice to automatic matching. A changed source identity or a removed/invalid catalog item requires another review. Different catalog/source cost codes are shown explicitly; choosing a catalog price does not reassign the bill's original cost code or QBO product.
+
+Missing QBO products are handled by the **Set up QBO project** panel on this same expanded row. The panel remains visible when a source issue blocks setup and explains what to resolve first. Once catalog/source issues are clear, use **Set up products** to reuse/create the required products, then review and save the bill separately.

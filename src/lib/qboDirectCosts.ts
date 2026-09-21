@@ -46,7 +46,7 @@ export type DirectCostItem = {
   pricingIssue?: string | null;
   catalogPrice?: CatalogPriceEvidence | null;
 };
-export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
+export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; catalogLineItemId?: string; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
 function issueSource(log: DirectCostSource, item?: DirectCostItem) {
   const po = (number?: string | null, title?: string | null) =>
     [number?.trim() ? (/^PO\b/i.test(number.trim()) ? number.trim() : `PO ${number.trim()}`) : '', title?.trim()].filter(Boolean).join(' — ');
@@ -62,7 +62,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
   const addIssue = (message: string, log: DirectCostSource, item?: DirectCostItem) => {
     issues.push(message);
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
-    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
+    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, ...(item?.pricingIssue && item.procoreId ? { catalogLineItemId: item.procoreId } : {}), target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
   };
   const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0 };
   const seen = new Set<string>();

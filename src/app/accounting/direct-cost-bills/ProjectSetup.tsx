@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { matchQboCustomer } from '@/lib/qboCustomerMatch';
 type Options = { customers: { id: string; name: string; fullName: string; suggested: boolean }[]; customerId: string | null; products: { name: string; description: string }[]; otherCostItems?: string[] };
-export default function ProjectSetup({ companyId, projectId, projectName, month, onBusy, onComplete }: { companyId: string; projectId: string; projectName: string; month: string; onBusy: (busy: boolean) => void; onComplete: () => Promise<void> }) {
+export default function ProjectSetup({ companyId, projectId, projectName, month, blockedReason, onBusy, onComplete }: { companyId: string; projectId: string; projectName: string; month: string; blockedReason?: string; onBusy: (busy: boolean) => void; onComplete: () => Promise<void> }) {
   const [options, setOptions] = useState<Options | null>(null);
   const [customerId, setCustomerId] = useState('');
   const [choosingCustomer, setChoosingCustomer] = useState(true);
@@ -41,9 +41,10 @@ export default function ProjectSetup({ companyId, projectId, projectName, month,
     finally { setBusy(false); onBusy(keepOpen); }
   }
   const selected = options?.customers.find(c => c.id === customerId);
-  return <section className="rounded-xl border border-blue-200 bg-white p-5 space-y-4">
+  return <section id="qbo-project-setup" className="rounded-xl border border-blue-200 bg-white p-5 space-y-4">
     <div><h3 className="font-semibold">Set up QBO project</h3><p className="mt-1 text-sm text-slate-600">Setup matches the QBO project automatically when its name has one exact match, reuses existing products, and creates missing products.</p></div>
-    {!options ? <button disabled={busy} onClick={() => run(false)} className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:opacity-50">Set up project</button> : <>
+    {blockedReason && <p className="text-sm text-amber-800">{blockedReason}</p>}
+    {!options ? <button disabled={busy || !!blockedReason} onClick={() => run(false)} className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:opacity-50">Set up project</button> : <>
       {choosingCustomer && <><p className="text-sm text-slate-600">Choose the correct QBO project below.</p><label className="block text-sm">Find QBO customer/project<input disabled={busy || !!options.customerId} value={search} onChange={e => setSearch(e.target.value)} placeholder="Customer or project name" className="mt-1 block w-full rounded border p-2" /></label>
       <label className="block text-sm font-medium">QBO customer / project<select disabled={busy || !!options.customerId} value={customerId} onChange={e => setCustomerId(e.target.value)} className="mt-1 block w-full rounded border p-2"><option value="">Select and confirm the correct QBO project</option>{options.customers.filter(c => c.id === customerId || c.fullName.toLowerCase().includes(search.toLowerCase())).map(c => <option key={c.id} value={c.id}>{c.suggested ? 'Suggested: ' : ''}{c.fullName}</option>)}</select></label>
       </>}

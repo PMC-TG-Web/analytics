@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 export type CatalogPrice = {
   itemId: string; catalogId: string; name: string; costCode: string;
-  type: string; uom: string; unitCost: string | null; laborRate: string | null;
+  type: string; uom: string; unitCost: string | null; laborRate: string | null; description?: string;
 };
 export type CatalogPriceEvidence = { itemId: string; catalogId: string; name: string; unitCost: string; uom: string };
 export type BillCatalogSnapshot = { version: 1; companyId: string; fetchedAt: string; items: CatalogPrice[] };
@@ -38,7 +38,7 @@ export function normalizeCatalogPrice(value: unknown, crosswalkCode?: string): C
   const costCode = String(code.full_code || code.code || row.cost_code || crosswalkCode || '').trim().replace(/\.[A-Z]+$/i, '');
   if (!/^\d+$/.test(String(row.id || '')) || !/^\d{2}-\d{3}-\d{2}-\d{2}$/.test(costCode) || row.deleted_at || row.active === false) return null;
   return { itemId: String(row.id), catalogId: String(row.catalog_id || ''), name: String(row.name || '').trim(), costCode,
-    type: String(row.type || '').toUpperCase(), uom: catalogUnit(String(row.unit || '')),
+    type: String(row.type || '').toUpperCase(), uom: catalogUnit(String(row.unit || '')), description: String(row.description || '').trim(),
     unitCost: price(row.unit_cost), laborRate: price(row.unit_labor_cost) };
 }
 export function catalogSnapshotIssue(snapshot: BillCatalogSnapshot | null, companyId: string, now = Date.now()) {

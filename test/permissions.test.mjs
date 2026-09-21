@@ -63,6 +63,7 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills'), 'accounting-direct-cost-bills');
   assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/sync'), 'accounting-direct-cost-bills');
   assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/setup'), 'accounting-direct-cost-bills');
+  assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/catalog-mapping'), 'accounting-direct-cost-bills');
   assert.equal(resolvePermissionForPath('/pm-dashboard'), 'pm-dashboard');
   assert.equal(resolvePermissionForPath('/api/pm-dashboard'), 'pm-dashboard');
   assert.equal(resolvePermissionForPath('/analytics/productivity'), 'analytics');

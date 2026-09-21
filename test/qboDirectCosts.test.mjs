@@ -16,7 +16,24 @@ test('sums used quantities and prices once per line with decimal rounding', () =
 test('excludes zero usage, unapproved logs and billing-file records', () => {
   const result = aggregateDirectCosts([log('1', 0), log('2', 100, { status: 'pending' }), log('3', 50, { lineItemHolderTitle: 'Billing File - SOG' })], [item], new Map());
   assert.equal(result.total, '0.00');
-  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0 });
+  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0, shopDrawings: 0 });
+});
+
+test('shop drawing vendor charges are omitted before catalog pricing and product mapping', () => {
+  for (const overrides of [
+    { description: 'Shop Drawings', costCode: '01-300-10-40', costType: 'Subcontractors' },
+    { description: 'CO6 - SHOP  DRAWINGS - Pier', costCode: '01-300-10-40', costType: 'Other' },
+    { description: 'Rebar Shop Drawings Lump Sum', costCode: '01-300-10-30', costType: 'Labor' },
+    { description: 'Renamed drawing charge', costCode: '01-300-10-40.C', costType: 'Subcontractors' },
+  ]) {
+    const r = aggregateDirectCosts([log('1', 1, { lineItemId: 'old' })], [{ ...item, ...overrides, unitCost: null, pricingIssue: 'multiple Cost Catalog matches' }], new Map([['old', '10']]));
+    assert.equal(r.total, '0.00'); assert.equal(r.lines.length, 0); assert.equal(r.excluded.shopDrawings, 1);
+    assert.deepEqual(r.issues, []); assert.deepEqual(r.issueSources, []);
+  }
+  for (const description of ['Shop and Office Time', 'Labor Travel', 'Rebar Fabrication Time']) {
+    const r = aggregateDirectCosts([log('1', 1)], [{ ...item, description, costCode: '01-300-10-30', costType: 'Labor' }], new Map());
+    assert.equal(r.lines.length, 1); assert.equal(r.excluded.shopDrawings, 0);
+  }
 });
 
 test('omits the four concrete material codes before pricing, but keeps labor and other materials', () => {

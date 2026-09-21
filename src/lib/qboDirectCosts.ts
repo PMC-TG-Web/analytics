@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { isShopDrawingCost } from './qboDirectCostExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
 
 export const DIRECT_COST_VENDOR = 'PMC Procore Direct Costs';
@@ -64,7 +65,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
     issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, ...(item?.pricingIssue && item.procoreId ? { catalogLineItemId: item.procoreId } : {}), target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
   };
-  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0 };
+  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0, shopDrawings: 0 };
   const seen = new Set<string>();
   const itemMap = new Map<string, DirectCostItem[]>();
   for (const item of items) {
@@ -85,6 +86,11 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const matches = itemMap.get(itemId || '') || [];
     if (matches.length !== 1) { addIssue(`${sourceLabel}: expected one matching Procore cost line; found ${matches.length}.`, log); continue; }
     const item = matches[0];
+    // Shop drawing vendor bills are entered separately, including legacy PO
+    // charges labeled Labor or carried under a different cost code.
+    if (isShopDrawingCost(item.costCode, item.description?.trim() || sourceName)) {
+      excluded.shopDrawings++; continue;
+    }
     if (isExcludedPumpingItem(item, sourceName)) {
       excluded.pumpingEquipment++; continue;
     }

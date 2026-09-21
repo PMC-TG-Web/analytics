@@ -32,6 +32,10 @@ test('PM quota and worker SQL is isolated from shared controls without changing 
       for (const statement of migration.replace(/^--.*$/gm, '').split(';').map(s => s.trim()).filter(Boolean)) {
         await tx.$executeRawUnsafe(statement.replace(/^CREATE TABLE/, 'CREATE TEMP TABLE'));
       }
+      const cmMigration = readFileSync('prisma/migrations/20260921160000_commitment_maker_procore_connection/migration.sql', 'utf8');
+      for (const statement of cmMigration.replace(/^--.*$/gm, '').split(';').map(s => s.trim()).filter(Boolean)) {
+        await tx.$executeRawUnsafe(statement.replace(/^CREATE TABLE/, 'CREATE TEMP TABLE'));
+      }
       const dependencies = { '@/lib/prisma': { prisma: tx }, '@/lib/procoreConnection': connection,
         'node:crypto': { randomUUID }, '@prisma/client': { Prisma } };
       const quota = load('src/lib/procoreQuotaControl.ts', dependencies);
@@ -61,6 +65,14 @@ test('PM quota and worker SQL is isolated from shared controls without changing 
       assert.equal(sharedRow.rate_limit_limit, null);
       assert.equal(pmRow.rate_limit_limit, 1000);
       assert.equal(pmRow.company_id, sharedRow.company_id);
+      await connection.withProcoreConnection('commitment-maker', async () => {
+        assert.equal(await quota.getProcoreBackgroundCooldown(company), null);
+        const cmWorker = await queue.acquireProcoreWorker(company, 1);
+        assert.equal(cmWorker.acquired, true, 'Other apps cannot block Commitment Maker');
+        await queue.setProcoreRateLimit({ companyId: company, until });
+        await queue.releaseProcoreWorker(company, cmWorker.leaseId);
+        assert.equal((await queue.acquireProcoreWorker(company, 1)).reason, 'rate_limit_cooldown');
+      });
       throw rollback;
     }, { timeout: 15_000 });
   } catch (error) {

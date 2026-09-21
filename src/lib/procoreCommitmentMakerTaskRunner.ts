@@ -1,3 +1,4 @@
+import { withCommitmentMakerProcoreConnection } from '@/lib/procoreConnection';
 import { prisma } from "@/lib/prisma";
 import { getClientCredentialsToken, makeRequest } from "@/lib/procore";
 import {
@@ -29,7 +30,7 @@ function taskRequest(accessToken: string, companyId: string): CommitmentMakerTas
   }, companyId);
 }
 
-export async function runCommitmentMakerChangeOrderTasks(params: {
+async function runTasksInConnection(params: {
   companyId: string;
   projectId: string;
   changeOrder: CommitmentMakerChangeOrderContext;
@@ -70,4 +71,8 @@ export async function runCommitmentMakerChangeOrderTasks(params: {
     },
   });
   return result;
+}
+
+export function runCommitmentMakerChangeOrderTasks(params: Parameters<typeof runTasksInConnection>[0]) {
+  return withCommitmentMakerProcoreConnection(() => runTasksInConnection(params));
 }

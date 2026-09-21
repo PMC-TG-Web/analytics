@@ -1,3 +1,5 @@
+import { withCommitmentMakerProcoreConnection } from '@/lib/procoreConnection';
+import { getCommitmentMakerProcoreToken } from '@/lib/procoreCommitmentMakerAuth';
 import { createHash } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,7 +14,6 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { validateCsrfRequest } from "@/lib/csrfProtection";
 import {
-  getClientCredentialsToken,
   procoreConfig,
 } from "@/lib/procore";
 import {
@@ -141,13 +142,13 @@ function upstreamError(response: ProcoreResponse): string {
 }
 
 function withProcoreClient<T>(operation: () => Promise<T>) {
-  return withCommitmentMakerProcoreClient({
+  return withCommitmentMakerProcoreConnection(() => withCommitmentMakerProcoreClient({
     apiUrl: procoreConfig.apiUrl,
     reserve: procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
     observeQuota: (companyId, observation) => recordProcoreQuotaObservation({ companyId, observation }),
     acquirePermit: (companyId) => acquireProcoreRequestPermit(companyId, "interactive"),
     completePermit: completeProcoreRequestPermit,
-  }, operation);
+  }, operation));
 }
 
 function rateLimitResponse(error: CommitmentMakerRateLimitError) {
@@ -1536,23 +1537,12 @@ async function handleRequest(request: NextRequest) {
   const requiresLiveProcore = mode === "create";
   const getEstimateToken = async () => {
     if (!accessToken) {
-      try { accessToken = await getClientCredentialsToken(); }
-      catch (error) {
-        if (!cookieToken) throw error;
-        accessToken = cookieToken;
-        tokenSource = "user_oauth_fallback";
-      }
+      ({ accessToken, tokenSource } = await getCommitmentMakerProcoreToken(cookieToken));
     }
     return accessToken;
   };
   if (requiresLiveProcore) {
-    try {
-      accessToken = await getClientCredentialsToken();
-    } catch (serviceTokenError) {
-      if (!cookieToken) throw serviceTokenError;
-      accessToken = cookieToken;
-      tokenSource = "user_oauth_fallback";
-    }
+    ({ accessToken, tokenSource } = await getCommitmentMakerProcoreToken(cookieToken));
   }
   const resolvedSourceChangeOrder = changeOrderPackageId
     ? await resolveApprovedChangeOrder({
@@ -1584,13 +1574,7 @@ async function handleRequest(request: NextRequest) {
   // Header sync can precede line sync. Only an empty mirror needs this bounded
   // live read; ordinary previews continue to use their synchronized detail.
   if (mode === "preview" && sourceChangeOrder && rawSourceChangeOrderLines.length === 0) {
-    try {
-      accessToken = await getClientCredentialsToken();
-    } catch (serviceTokenError) {
-      if (!cookieToken) throw serviceTokenError;
-      accessToken = cookieToken;
-      tokenSource = "user_oauth_fallback";
-    }
+    ({ accessToken, tokenSource } = await getCommitmentMakerProcoreToken(cookieToken));
     const freshSource = await resolveApprovedChangeOrder({
       accessToken, companyId, projectId, packageId: changeOrderPackageId, useLive: true,
     });
@@ -1662,12 +1646,7 @@ async function handleRequest(request: NextRequest) {
   const loadLiveWbs = async () => {
     loadedWbsLive = true;
     if (!accessToken) {
-      try { accessToken = await getClientCredentialsToken(); }
-      catch (error) {
-        if (!cookieToken) throw error;
-        accessToken = cookieToken;
-        tokenSource = "user_oauth_fallback";
-      }
+      ({ accessToken, tokenSource } = await getCommitmentMakerProcoreToken(cookieToken));
     }
     return fetchProjectWbsRecords(accessToken, companyId, projectId);
   };
@@ -2229,13 +2208,7 @@ async function handleDelete(request: NextRequest) {
   const userEmail = sessionUserEmail || "procore-project-link@pmcdecor.com";
 
   const cookieToken = readText(request.cookies.get("procore_access_token")?.value);
-  let accessToken = "";
-  try {
-    accessToken = await getClientCredentialsToken();
-  } catch (serviceTokenError) {
-    if (!cookieToken) throw serviceTokenError;
-    accessToken = cookieToken;
-  }
+  const { accessToken } = await getCommitmentMakerProcoreToken(cookieToken);
 
   const resolved = await resolveApprovedChangeOrder({
     accessToken,

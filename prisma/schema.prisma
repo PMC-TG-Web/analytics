@@ -2728,3 +2728,45 @@ model PmDashboardProcoreApiUsage {
   @@index([hour], map: "procore_pm_api_usage_hour_idx")
   @@map("procore_pm_api_usage")
 }
+
+model CommitmentMakerProcoreRequestGate {
+  companyId        String    @id @map("company_id")
+  leaseId          String?   @map("lease_id")
+  leaseUntil       DateTime? @map("lease_until") @db.Timestamptz(6)
+  interactiveUntil DateTime? @map("interactive_until") @db.Timestamptz(6)
+  blockedUntil     DateTime? @map("blocked_until") @db.Timestamptz(6)
+  windows          Json      @default("[]")
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("procore_cm_request_gates")
+}
+
+model CommitmentMakerProcoreSyncControl {
+  companyId       String    @id @map("company_id")
+  workerLockedBy  String?   @map("worker_locked_by")
+  workerLockedUntil DateTime? @map("worker_locked_until") @db.Timestamptz(6)
+  rateLimitUntil  DateTime? @map("rate_limit_until") @db.Timestamptz(6)
+  last429At       DateTime? @map("last_429_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error")
+  rateLimitLimit  Int?      @map("rate_limit_limit")
+  rateLimitRemaining Int?   @map("rate_limit_remaining")
+  rateLimitResetAt DateTime? @map("rate_limit_reset_at") @db.Timestamptz(6)
+  rateLimitObservedAt DateTime? @map("rate_limit_observed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("procore_cm_sync_controls")
+}
+
+model CommitmentMakerProcoreApiUsage {
+  companyId String   @map("company_id")
+  hour      DateTime @db.Timestamptz(6)
+  lane      String
+  endpoint  String
+  status    Int
+  requests  Int      @default(0)
+
+  @@id([companyId, hour, lane, endpoint, status])
+  @@index([hour], map: "procore_cm_api_usage_hour_idx")
+  @@map("procore_cm_api_usage")
+}

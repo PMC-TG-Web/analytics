@@ -1,4 +1,4 @@
-import { pmDashboardProcoreConnection, withProcoreConnection } from '@/lib/procoreConnection';
+import { commitmentMakerProcoreConnection, pmDashboardProcoreConnection, procoreCoordinationTables, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { procoreApiUsageSummary } from "@/lib/procoreRequestGate";
@@ -129,20 +129,26 @@ export async function GET(request: NextRequest) {
   }
   const companyId = String(request.nextUrl.searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
   const [health, apiUsage] = await Promise.all([loadHealth(companyId), procoreApiUsageSummary(companyId)]);
-  let pmDashboard;
-  try {
-    const connection = pmDashboardProcoreConnection();
-    pmDashboard = connection === 'shared' ? { connection, configured: false } : await withProcoreConnection(connection, async () => ({
-      connection, configured: true,
-      control: (await prisma.$queryRaw`SELECT rate_limit_until, rate_limit_limit, rate_limit_remaining,
-        rate_limit_reset_at, rate_limit_observed_at, worker_locked_until
-        FROM procore_pm_sync_controls WHERE company_id = ${companyId}` as unknown[])[0] || null,
-      apiUsage: await procoreApiUsageSummary(companyId),
-    }));
-  } catch (error) {
-    pmDashboard = { configured: false, error: error instanceof Error ? error.message : 'PM Dashboard connection unavailable.' };
+  async function connectionHealth(selectConnection: () => ProcoreConnection) {
+    try {
+      const connection = selectConnection();
+      if (connection === 'shared') return { connection, configured: false };
+      return await withProcoreConnection(connection, async () => ({
+        connection, configured: true,
+        // Table identifiers come only from the fixed connection allowlist.
+        control: (await prisma.$queryRawUnsafe<unknown[]>(`SELECT rate_limit_until, rate_limit_limit, rate_limit_remaining,
+          rate_limit_reset_at, rate_limit_observed_at, worker_locked_until
+          FROM ${procoreCoordinationTables().controls} WHERE company_id = $1`, companyId))[0] || null,
+        apiUsage: await procoreApiUsageSummary(companyId),
+      }));
+    } catch (error) {
+      return { configured: false, error: error instanceof Error ? error.message : 'Procore connection unavailable.' };
+    }
   }
-  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard });
+  const [pmDashboard, commitmentMaker] = await Promise.all([
+    connectionHealth(pmDashboardProcoreConnection), connectionHealth(commitmentMakerProcoreConnection),
+  ]);
+  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard, commitmentMaker });
 }
 
 function getSyncHealthAlertRecipients(

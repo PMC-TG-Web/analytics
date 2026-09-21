@@ -52,7 +52,7 @@ export async function loadQboBillReview(companyId: string, projectId: string, mo
           else {
             const comparison = compareMonthlyBill(draft, mapping, saved);
             result.previousGross = comparison.previousGross;
-            result.action = comparison.unchanged ? 'current' : 'update';
+            result.action = !receipt.reconciliationPending && comparison.unchanged ? 'current' : 'update';
             if (!draft.lines.length) result.issues.push('All cost lines were removed; reconcile the existing bill before clearing it.');
           }
           } catch { result.action = 'reconcile'; }

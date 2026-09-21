@@ -187,3 +187,10 @@ Missing QBO products are handled by the **Set up QBO project** panel on this sam
 
 
 Shop Drawings vendor charges are excluded before catalog pricing, product setup, and bill aggregation. Match cost code `01-300-10-40` (including typed suffixes) or the words Shop Drawing/Shop Drawings in the PO description, covering legacy Rebar Shop Drawings Lump Sum charges labeled Labor under travel code `01-300-10-30`. Employee timecard hours remain included. The preview reports excluded Shop Drawings entries. Existing bills reflect this exclusion on the next reviewed Update; unrelated vendor bills and source records are unchanged. Validate with `node --test test/qboDirectCosts.test.mjs test/qboDirectCostLabor.test.mjs`.
+
+
+### Manual QBO bill reconciliation
+
+The expanded monthly review includes **Reconcile QBO changes** for an existing bill. Its authenticated, same-origin `/api/accounting/direct-cost-bills/reconcile` endpoint rebuilds the database draft and requests `reconcile-preview` or `reconcile-confirm` through the shared host. Preview reads the live bill and shows current versus proposed lines. Confirmation rechecks the source fingerprint, receipt and live bill under the monthly lock, saves a local audit in `posted/<identity>/reconciliations/`, and acknowledges the reviewed SyncToken. It does not write QBO. `reconciliationPending` ensures the subsequent normal **Update bill in QBO** replaces lines even if source totals match the previous successful save. Further QBO changes still block. Deleted bills, uncertain writes, changed bill identity, payments and linked transactions require separate recovery. Normal posting still validates references and the current reviewed monthly draft.
+
+Validation: `node --test test/qboBillReconciliationRoute.test.mjs test/qboBillRelay.test.mjs test/permissions.test.mjs`; in QBO_1, `node --test test/bill-reconciliation.test.js test/monthly-bill-sync.test.js test/direct-cost-bill-service.test.js`.

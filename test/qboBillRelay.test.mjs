@@ -35,7 +35,7 @@ test('relay returns the worker result or explicit failure and records expiry', a
   await assert.rejects(requestQboBillRelay({ operation: 'post', companyId: '2' }), /Reopen/);
   state.error = null;
   state.result = { complete: false, remaining: 2 };
-  for (const operation of ['setup-options', 'setup']) {
+  for (const operation of ['setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm']) {
     assert.equal((await requestQboBillRelay({ operation, companyId: '2' })).remaining, 2);
     assert.equal(state.created.at(-1).operation, operation);
   }

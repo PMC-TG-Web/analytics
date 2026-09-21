@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import ts from 'typescript';
+import { Prisma } from '@prisma/client';
+import * as connection from '../src/lib/procoreConnection.ts';
 import * as budget from '../src/lib/procoreRequestBudget.ts';
 import * as rateLimits from '../src/lib/procoreRateLimit.ts';
 
@@ -32,10 +34,13 @@ test('shared gate SQL, lease ownership, cache identity and usage accounting work
         await tx.$executeRawUnsafe(statement.replace(/^CREATE TABLE/, 'CREATE TEMP TABLE'));
       }
       const gate = load('src/lib/procoreRequestGate.ts', {
+        '@prisma/client': { Prisma }, '@/lib/procoreConnection': connection,
         'node:crypto': { randomUUID }, '@/lib/prisma': { prisma: { $transaction: operation => operation(tx),
           $queryRaw: tx.$queryRaw.bind(tx) } },
         '@/lib/procoreRequestBudget': budget, '@/lib/procoreRateLimit': rateLimits,
       });
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_pm_request_gates (LIKE procore_request_gates INCLUDING ALL)');
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_pm_api_usage (LIKE procore_api_usage INCLUDING ALL)');
       const first = await gate.acquireProcoreRequestPermit('test-company', 'background');
       assert.ok(first.permit);
       const waiting = await gate.acquireProcoreRequestPermit('test-company', 'interactive');
@@ -56,6 +61,13 @@ test('shared gate SQL, lease ownership, cache identity and usage accounting work
       const usage = await gate.procoreApiUsageSummary('test-company');
       assert.equal(usage.reduce((sum, row) => sum + row.requests, 0), 2);
       assert.ok(usage.every(row => !row.endpoint.includes('598134326714493')));
+      const pm = await connection.withProcoreConnection('pm-dashboard', () => gate.acquireProcoreRequestPermit('test-company', 'background'));
+      assert.ok(pm.permit, 'Shared priority/quota must not block PM');
+      await gate.completeProcoreRequestPermit({ permit: pm.permit, observation: { ...observation, remaining: 0, rateLimited: true, cooldownUntil: observation.resetAt }, method: 'GET', path: '/rfis', status: 429 });
+      assert.equal((await connection.withProcoreConnection('pm-dashboard', () => gate.acquireProcoreRequestPermit('test-company', 'interactive'))).permit, null);
+      assert.ok((await gate.acquireProcoreRequestPermit('test-company', 'interactive')).permit, 'PM 429 must not block shared app');
+      assert.equal((await gate.procoreApiUsageSummary('test-company')).reduce((sum, row) => sum + row.requests, 0), 2);
+      assert.equal((await connection.withProcoreConnection('pm-dashboard', () => gate.procoreApiUsageSummary('test-company')))[0].rejected, 1);
       const cache = load('src/lib/procoreWbsCache.ts', { '@/lib/prisma': { prisma: tx } });
       const records = [{ id: 'wbs', flat_code: '03-300-40-30.C' }];
       const key = { companyId: 'test-company', projectId: 'project', forceLive: true, load: async () => records };

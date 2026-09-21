@@ -1,3 +1,4 @@
+import { currentProcoreConnection, procoreServiceCredentials } from '@/lib/procoreConnection';
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { waitForProcoreRequestPermit, completeProcoreRequestPermit } from '@/lib/procoreRequestGate';
@@ -227,17 +228,16 @@ export async function getAccessToken(code: string, redirectUriOverride?: string)
 
 // Get a service-account token using client_credentials grant.
 // This token has company-level access to all projects (vs. user OAuth which is scoped to the user's memberships).
-let _cachedServiceToken: { token: string; expiresAt: number } | null = null;
+const serviceTokens = new Map<string, { token: string; expiresAt: number }>();
 export async function getClientCredentialsToken(): Promise<string> {
   // NOTE: No PROCORE_LIVE_API_ENABLED check here — client credentials are a
   // pure server-to-server call (cron, webhooks). The live API gate in
   // middleware already protects browser/user-initiated routes.
 
-  if (_cachedServiceToken && Date.now() < _cachedServiceToken.expiresAt - 30_000) {
-    return _cachedServiceToken.token;
-  }
-  const clientId = (procoreConfig.clientId || '').trim();
-  const clientSecret = (procoreConfig.clientSecret || '').trim();
+  const { clientId, clientSecret } = procoreServiceCredentials();
+  const cacheKey = `${currentProcoreConnection()}:${clientId}`;
+  const cached = serviceTokens.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt - 30_000) return cached.token;
   if (!clientId || !clientSecret) {
     throw new Error('PROCORE_CLIENT_ID and PROCORE_CLIENT_SECRET must be set to use client credentials');
   }
@@ -265,10 +265,10 @@ export async function getClientCredentialsToken(): Promise<string> {
     throw tokenError;
   }
   const data = (await response.json()) as ProcoreTokenResponse;
-  _cachedServiceToken = {
+  serviceTokens.set(cacheKey, {
     token: data.access_token,
     expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
-  };
+  });
   return data.access_token;
 }
 

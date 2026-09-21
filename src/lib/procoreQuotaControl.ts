@@ -1,3 +1,4 @@
+import { procoreCoordinationTables } from '@/lib/procoreConnection';
 import { prisma } from "@/lib/prisma";
 import type { ProcoreQuotaObservation } from "@/lib/procoreRateLimit";
 
@@ -9,20 +10,23 @@ const NO_COOLDOWN_TTL_MS = 10_000;
 
 export function cacheProcoreBackgroundCooldown(companyId: string, until: Date | null) {
   if (!until) return;
-  const cached = quotaCooldownCache.get(companyId);
-  if (!cached || until > cached) quotaCooldownCache.set(companyId, until);
-  noCooldownCheckedAt.delete(companyId);
+  const cacheKey = `${procoreCoordinationTables().controls}:${companyId}`;
+  const cached = quotaCooldownCache.get(cacheKey);
+  if (!cached || until > cached) quotaCooldownCache.set(cacheKey, until);
+  noCooldownCheckedAt.delete(cacheKey);
 }
 
 export async function getProcoreBackgroundCooldown(companyId: string, now = new Date()) {
-  const cached = quotaCooldownCache.get(companyId);
+  const table = procoreCoordinationTables().controls;
+  const cacheKey = `${table}:${companyId}`;
+  const cached = quotaCooldownCache.get(cacheKey);
   if (cached && cached > now) return cached;
 
-  const checkedAt = noCooldownCheckedAt.get(companyId);
+  const checkedAt = noCooldownCheckedAt.get(cacheKey);
   if (checkedAt !== undefined && now.getTime() - checkedAt < NO_COOLDOWN_TTL_MS) return null;
 
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
-    `SELECT rate_limit_until FROM procore_sync_controls WHERE company_id = $1`,
+    `SELECT rate_limit_until FROM ${table} WHERE company_id = $1`,
     companyId,
   );
   const until = rows[0]?.rate_limit_until || null;
@@ -30,8 +34,8 @@ export async function getProcoreBackgroundCooldown(companyId: string, now = new 
     cacheProcoreBackgroundCooldown(companyId, until);
     return until;
   }
-  quotaCooldownCache.delete(companyId);
-  noCooldownCheckedAt.set(companyId, now.getTime());
+  quotaCooldownCache.delete(cacheKey);
+  noCooldownCheckedAt.set(cacheKey, now.getTime());
   return null;
 }
 
@@ -41,6 +45,7 @@ export async function recordProcoreQuotaObservation(params: {
   error?: string | null;
 }) {
   const { observation } = params;
+  const table = procoreCoordinationTables().controls;
   if (
     observation.limit === null
     && observation.remaining === null
@@ -50,7 +55,7 @@ export async function recordProcoreQuotaObservation(params: {
 
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `
-      INSERT INTO procore_sync_controls (
+      INSERT INTO ${table} (
         company_id, rate_limit_until, last_429_at, last_error,
         rate_limit_limit, rate_limit_remaining, rate_limit_reset_at,
         rate_limit_observed_at, created_at, updated_at
@@ -62,23 +67,23 @@ export async function recordProcoreQuotaObservation(params: {
       ON CONFLICT (company_id)
       DO UPDATE SET
         rate_limit_until = CASE
-          WHEN EXCLUDED.rate_limit_until IS NULL THEN procore_sync_controls.rate_limit_until
+          WHEN EXCLUDED.rate_limit_until IS NULL THEN ${table}.rate_limit_until
           ELSE GREATEST(
-            COALESCE(procore_sync_controls.rate_limit_until, EXCLUDED.rate_limit_until),
+            COALESCE(${table}.rate_limit_until, EXCLUDED.rate_limit_until),
             EXCLUDED.rate_limit_until
           )
         END,
         last_429_at = CASE
           WHEN $3 THEN NOW()
-          ELSE procore_sync_controls.last_429_at
+          ELSE ${table}.last_429_at
         END,
         last_error = CASE
           WHEN $3 THEN EXCLUDED.last_error
-          ELSE procore_sync_controls.last_error
+          ELSE ${table}.last_error
         END,
-        rate_limit_limit = COALESCE(EXCLUDED.rate_limit_limit, procore_sync_controls.rate_limit_limit),
-        rate_limit_remaining = COALESCE(EXCLUDED.rate_limit_remaining, procore_sync_controls.rate_limit_remaining),
-        rate_limit_reset_at = COALESCE(EXCLUDED.rate_limit_reset_at, procore_sync_controls.rate_limit_reset_at),
+        rate_limit_limit = COALESCE(EXCLUDED.rate_limit_limit, ${table}.rate_limit_limit),
+        rate_limit_remaining = COALESCE(EXCLUDED.rate_limit_remaining, ${table}.rate_limit_remaining),
+        rate_limit_reset_at = COALESCE(EXCLUDED.rate_limit_reset_at, ${table}.rate_limit_reset_at),
         rate_limit_observed_at = NOW(),
         updated_at = NOW()
       RETURNING rate_limit_until

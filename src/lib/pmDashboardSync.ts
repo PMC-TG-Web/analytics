@@ -1,3 +1,4 @@
+import { withPmDashboardProcoreConnection } from '@/lib/procoreConnection';
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -340,11 +341,10 @@ export async function deletePmDashboardActionItem(ref: ActionItemRef): Promise<n
  * A 404 removes the local mirror row; any other error propagates so the
  * webhook queue can retry.
  */
-export async function syncPmDashboardActionItem(
+async function syncPmDashboardActionItemInConnection(
   ref: ActionItemRef,
-  options?: { token?: string },
 ): Promise<{ outcome: "upserted" | "deleted" | "skipped"; item?: PmActionItemInput }> {
-  const token = options?.token || await getClientCredentialsToken();
+  const token = await getClientCredentialsToken();
   let record: UnknownRecord | null = null;
   let lastNotFound: unknown = null;
 
@@ -400,7 +400,7 @@ function isRateLimitMessage(message: string): boolean {
   return /\b429\b|rate limit|cooldown/i.test(message);
 }
 
-export async function syncPmDashboardProject(project: SyncProject) {
+async function syncPmDashboardProjectInConnection(project: SyncProject) {
   const attemptedAt = new Date();
   const token = await getClientCredentialsToken();
   const memberDirectory = await companyMemberDirectory(project.companyId);
@@ -455,4 +455,12 @@ export async function syncPmDashboardProject(project: SyncProject) {
     warnings: sourceResults.flatMap((result) => result.warning ? [result.warning] : []),
     errors,
   };
+}
+
+export function syncPmDashboardActionItem(ref: ActionItemRef) {
+  return withPmDashboardProcoreConnection(() => syncPmDashboardActionItemInConnection(ref));
+}
+
+export function syncPmDashboardProject(project: SyncProject) {
+  return withPmDashboardProcoreConnection(() => syncPmDashboardProjectInConnection(project));
 }

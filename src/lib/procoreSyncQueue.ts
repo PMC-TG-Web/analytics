@@ -1,3 +1,4 @@
+import { procoreCoordinationTables } from '@/lib/procoreConnection';
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -552,10 +553,11 @@ export async function seedSingletonSyncQueue(params: {
 }
 
 export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) {
+  const table = procoreCoordinationTables().controls;
   const leaseId = randomUUID();
   await prisma.$executeRawUnsafe(
     `
-      INSERT INTO procore_sync_controls (company_id, created_at, updated_at)
+      INSERT INTO ${table} (company_id, created_at, updated_at)
       VALUES ($1, NOW(), NOW())
       ON CONFLICT (company_id) DO NOTHING
     `,
@@ -564,7 +566,7 @@ export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) 
 
   const rows = await prisma.$queryRawUnsafe<ControlRow[]>(
     `
-      UPDATE procore_sync_controls
+      UPDATE ${table}
       SET worker_locked_by = $2,
           worker_locked_until = NOW() + ($3 * INTERVAL '1 minute'),
           updated_at = NOW()
@@ -583,7 +585,7 @@ export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) 
   const current = await prisma.$queryRawUnsafe<ControlRow[]>(
     `
       SELECT worker_locked_by, worker_locked_until, rate_limit_until
-      FROM procore_sync_controls
+      FROM ${table}
       WHERE company_id = $1
     `,
     companyId
@@ -600,9 +602,10 @@ export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) 
 }
 
 export async function releaseProcoreWorker(companyId: string, leaseId: string) {
+  const table = procoreCoordinationTables().controls;
   await prisma.$executeRawUnsafe(
     `
-      UPDATE procore_sync_controls
+      UPDATE ${table}
       SET worker_locked_by = NULL,
           worker_locked_until = NULL,
           updated_at = NOW()
@@ -615,9 +618,10 @@ export async function releaseProcoreWorker(companyId: string, leaseId: string) {
 }
 
 export async function extendProcoreWorker(companyId: string, leaseId: string, leaseMinutes = 8) {
+  const table = procoreCoordinationTables().controls;
   await prisma.$executeRawUnsafe(
     `
-      UPDATE procore_sync_controls
+      UPDATE ${table}
       SET worker_locked_until = NOW() + ($3 * INTERVAL '1 minute'),
           updated_at = NOW()
       WHERE company_id = $1
@@ -791,6 +795,7 @@ export async function setProcoreRateLimit(params: {
   until: Date;
   error?: string | null;
 }) {
+  const table = procoreCoordinationTables().controls;
   // A worker refused by makeRequest because a cooldown is already active is not
   // a new provider signal. Re-stamping last_429_at/last_error from that refusal
   // made the health view look like Procore kept throttling us and hid the
@@ -799,7 +804,7 @@ export async function setProcoreRateLimit(params: {
   if (echoedCooldown) {
     await prisma.$executeRawUnsafe(
       `
-        UPDATE procore_sync_controls
+        UPDATE ${table}
         SET rate_limit_until = GREATEST(COALESCE(rate_limit_until, $2), $2),
             updated_at = NOW()
         WHERE company_id = $1
@@ -813,13 +818,13 @@ export async function setProcoreRateLimit(params: {
 
   const rows = await prisma.$queryRawUnsafe<Array<{ rate_limit_until: Date | null }>>(
     `
-      INSERT INTO procore_sync_controls (
+      INSERT INTO ${table} (
         company_id, rate_limit_until, last_429_at, last_error, created_at, updated_at
       ) VALUES ($1, $2, NOW(), $3, NOW(), NOW())
       ON CONFLICT (company_id)
       DO UPDATE SET
         rate_limit_until = GREATEST(
-          COALESCE(procore_sync_controls.rate_limit_until, EXCLUDED.rate_limit_until),
+          COALESCE(${table}.rate_limit_until, EXCLUDED.rate_limit_until),
           EXCLUDED.rate_limit_until
         ),
         last_429_at = NOW(),

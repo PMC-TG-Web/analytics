@@ -161,7 +161,7 @@ test("worker wiring keeps dry runs read-only and webhook registration on its own
   const maintenance = await readFile(new URL("../src/lib/procoreWebhookMaintenance.ts", import.meta.url), "utf8");
   assert.match(processor, /dryRun \? \{ recovered: 0, failed: 0 \} : await recoverStaleWebhookClaims/);
   assert.match(processor, /where: \{ id: queueItem\.id, status: 'processing', lockedBy: workerId \}/);
-  assert.match(processor, /await releaseProcoreWorker\(cooldownCompanyId, worker\.leaseId\)/);
+  assert.match(processor, /withProcoreConnection\(worker\.connection, \(\) => releaseProcoreWorker\(worker\.companyId, worker\.leaseId\)/);
   assert.match(maintenance, /PROJECT_WEBHOOK_DATASET = "project_webhooks"/);
   assert.match(maintenance, /skipDuplicates: true/);
   assert.match(maintenance, /await deferProjectSync\(\{ project, until, result: detail \}\)/);

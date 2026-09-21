@@ -1,3 +1,4 @@
+import { pmDashboardProcoreConnection, withProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { procoreApiUsageSummary } from "@/lib/procoreRequestGate";
@@ -128,7 +129,20 @@ export async function GET(request: NextRequest) {
   }
   const companyId = String(request.nextUrl.searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
   const [health, apiUsage] = await Promise.all([loadHealth(companyId), procoreApiUsageSummary(companyId)]);
-  return NextResponse.json({ success: true, ...health, apiUsage });
+  let pmDashboard;
+  try {
+    const connection = pmDashboardProcoreConnection();
+    pmDashboard = connection === 'shared' ? { connection, configured: false } : await withProcoreConnection(connection, async () => ({
+      connection, configured: true,
+      control: (await prisma.$queryRaw`SELECT rate_limit_until, rate_limit_limit, rate_limit_remaining,
+        rate_limit_reset_at, rate_limit_observed_at, worker_locked_until
+        FROM procore_pm_sync_controls WHERE company_id = ${companyId}` as unknown[])[0] || null,
+      apiUsage: await procoreApiUsageSummary(companyId),
+    }));
+  } catch (error) {
+    pmDashboard = { configured: false, error: error instanceof Error ? error.message : 'PM Dashboard connection unavailable.' };
+  }
+  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard });
 }
 
 function getSyncHealthAlertRecipients(

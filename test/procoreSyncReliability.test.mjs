@@ -45,9 +45,9 @@ test("webhook processing treats provider throttling as a deferral, not an event 
     new URL("../src/app/api/webhooks/procore/process/route.ts", import.meta.url),
     "utf8",
   );
-  // Batch-level: defer before claiming anything during an active cooldown.
-  assert.match(route, /getProcoreBackgroundCooldown\(cooldownCompanyId, now\)/);
-  assert.match(route, /reason: 'rate_limit_cooldown'/);
+  // Defer only the affected app/company before claiming its events.
+  assert.match(route, /withProcoreConnection\(connection, \(\) => getProcoreBackgroundCooldown\(companyId\)\)/);
+  assert.match(route, /deferredConnections\.set\(connectionKey, rateLimitUntil\)/);
   // Item-level: give the attempt back and make it due at the cooldown end.
   assert.match(route, /attempts: \{ decrement: 1 \}/);
   assert.match(route, /availableAt: rateLimitUntil,/);
@@ -58,7 +58,7 @@ test("webhook processing treats provider throttling as a deferral, not an event 
   assert.doesNotMatch(route, /\} catch \{\n\s+\/\/ 404 — entry deleted/);
 });
 
-test("PM dashboard sweep shares the worker lease and yields on rate limits", async () => {
+test("PM dashboard sweep uses its connection worker lease and yields on rate limits", async () => {
   const route = await readFile(new URL("../src/app/api/cron/pm-dashboard/route.ts", import.meta.url), "utf8");
   const worker = await readFile(new URL("../netlify/functions/pm-dashboard-sync-background.mts", import.meta.url), "utf8");
   assert.match(route, /acquireProcoreWorker\(companyId, 4\)/);

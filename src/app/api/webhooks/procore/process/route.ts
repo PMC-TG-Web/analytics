@@ -1,3 +1,4 @@
+import { pmDashboardProcoreConnection, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
 import { parseBidBoardStatusChangedAt } from "@/lib/productivityReviewCooldown";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -1491,7 +1492,7 @@ async function handlePmActionItemEvent(event: {
     return;
   }
 
-  await syncPmDashboardActionItem(ref, { token: await getServiceToken() });
+  await syncPmDashboardActionItem(ref);
 }
 
 // ─── Event dispatch ──────────────────────────────────────────────────────────
@@ -1663,22 +1664,6 @@ export async function POST(request: NextRequest) {
     Number.parseInt(process.env.WEBHOOK_SYNC_CONFLICT_WINDOW_MINUTES || '5', 10) || 5
   );
   const activeOrRecentSync = await findRecentOrActiveSyncLog(syncWindowMinutes);
-  if (activeOrRecentSync) {
-    return NextResponse.json({
-      success: true,
-      deferred: true,
-      reason: 'full-sync-window',
-      windowMinutes: syncWindowMinutes,
-      syncLog: activeOrRecentSync,
-      scanned: 0,
-      claimed: 0,
-      processed: 0,
-      failed: 0,
-      coalesced: 0,
-      deferredDuplicates: 0,
-    });
-  }
-
   let requestedBatchSize = Number.parseInt(request.nextUrl.searchParams.get('batchSize') || '25', 10) || 25;
   let dryRun = request.nextUrl.searchParams.get('dryRun') === 'true';
   try {
@@ -1697,25 +1682,7 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const recovery = dryRun ? { recovered: 0, failed: 0 } : await recoverStaleWebhookClaims(prisma, now);
 
-  // Every handler needs at least one Procore GET; claiming during a cooldown
-  // would only burn retry attempts. Defer the whole batch instead.
   const cooldownCompanyId = String(procoreConfig.companyId || '').trim();
-  const cooldownUntil = cooldownCompanyId ? await getProcoreBackgroundCooldown(cooldownCompanyId, now) : null;
-  if (cooldownUntil && !dryRun) {
-    return NextResponse.json({
-      success: true,
-      deferred: true,
-      reason: 'rate_limit_cooldown',
-      rateLimitUntil: cooldownUntil.toISOString(),
-      scanned: 0,
-      claimed: 0,
-      processed: 0,
-      failed: 0,
-      coalesced: 0,
-      deferredDuplicates: 0,
-    });
-  }
-
   const candidates = await prisma.procoreWebhookQueue.findMany({
     where: {
       status: 'pending',
@@ -1748,14 +1715,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Serialize webhook reads with the other company workers as well as fencing
-  // each event claim. Polling and a long webhook batch share the same quota.
-  const worker = candidates.length ? await acquireProcoreWorker(cooldownCompanyId, 8) : null;
-  if (worker && !worker.acquired) {
-    return NextResponse.json({ success: true, deferred: true, reason: worker.reason,
-      rateLimitUntil: worker.control?.rate_limit_until || null,
-      scanned: 0, claimed: 0, processed: 0, failed: 0, coalesced: 0, deferredDuplicates: 0, recovery });
-  }
+  // Hold independent app/company leases. One app's cooldown must not park the
+  // other app's events or consume their retry attempts.
+  const workers = new Map<string, { connection: ProcoreConnection; companyId: string; leaseId: string }>();
+  const deferredConnections = new Map<string, Date>();
+  const pmConnection = pmDashboardProcoreConnection();
   try {
 
   let claimed = 0;
@@ -1774,12 +1738,29 @@ export async function POST(request: NextRequest) {
     if (Date.now() >= deadline) break;
     const workKey = getWebhookWorkKey(queueItem.event);
 
-    // Once Procore rate-limits us mid-batch, park the rest of the batch at the
-    // cooldown end instead of claiming them and failing one by one.
-    if (batchRateLimitUntil) {
+    const connection: ProcoreConnection = pmActionItemSourceType((queueItem.event.resourceName || '').toLowerCase())
+      ? pmConnection : 'shared';
+    const companyId = String(queueItem.event.companyId || cooldownCompanyId).trim();
+    const connectionKey = `${connection}:${companyId}`;
+    let deferredUntil = deferredConnections.get(connectionKey);
+    if (!deferredUntil && activeOrRecentSync && connection === 'shared') {
+      deferredUntil = new Date(Date.now() + syncWindowMinutes * 60_000);
+    }
+    if (!deferredUntil && !workers.has(connectionKey)) {
+      const cooldown = await withProcoreConnection(connection, () => getProcoreBackgroundCooldown(companyId));
+      if (cooldown) deferredUntil = cooldown;
+      else {
+        const worker = await withProcoreConnection(connection, () => acquireProcoreWorker(companyId, 8));
+        if (worker.acquired) workers.set(connectionKey, { connection, companyId, leaseId: worker.leaseId });
+        else deferredUntil = worker.control?.rate_limit_until && worker.control.rate_limit_until > new Date()
+          ? worker.control.rate_limit_until : new Date(Date.now() + 15_000);
+      }
+    }
+    if (deferredUntil) {
+      deferredConnections.set(connectionKey, deferredUntil);
       await prisma.procoreWebhookQueue.updateMany({
         where: { id: queueItem.id, status: 'pending' },
-        data: { availableAt: batchRateLimitUntil },
+        data: { availableAt: deferredUntil },
       });
       rateLimitDeferred += 1;
       continue;
@@ -1849,14 +1830,14 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await processEvent({
+      await withProcoreConnection(connection, () => processEvent({
         companyId: queueItem.event.companyId,
         projectId: queueItem.event.projectId,
         resourceName: queueItem.event.resourceName,
         eventType: queueItem.event.eventType,
         resourceId: queueItem.event.resourceId,
         payload: queueItem.event.payload,
-      });
+      }));
 
       const onboardingProjectId = projectIdForOnboarding(queueItem.event);
       if (onboardingProjectId) {
@@ -1903,7 +1884,8 @@ export async function POST(request: NextRequest) {
             lastError: `Deferred by Procore rate limit until ${rateLimitUntil.toISOString()}`,
           },
         });
-        batchRateLimitUntil = rateLimitUntil;
+        deferredConnections.set(connectionKey, rateLimitUntil);
+        if (!batchRateLimitUntil || rateLimitUntil > batchRateLimitUntil) batchRateLimitUntil = rateLimitUntil;
         rateLimitDeferred += 1;
         continue;
       }
@@ -1945,7 +1927,8 @@ export async function POST(request: NextRequest) {
     recovery,
   });
   } finally {
-    if (worker?.acquired) await releaseProcoreWorker(cooldownCompanyId, worker.leaseId);
+    await Promise.allSettled(Array.from(workers.values(), worker =>
+      withProcoreConnection(worker.connection, () => releaseProcoreWorker(worker.companyId, worker.leaseId))));
   }
   });
 }

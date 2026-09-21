@@ -1,3 +1,4 @@
+import { withPmDashboardProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
@@ -28,7 +29,7 @@ type SyncProjectRow = {
   lastAttemptAt?: Date | null;
 };
 
-export async function POST(request: NextRequest) {
+async function runSweep(request: NextRequest) {
   if (!hasValidProcoreSyncSecret(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -39,8 +40,7 @@ export async function POST(request: NextRequest) {
   const requestedProjectId = String(body.projectId || "").trim();
   const intervalMinutes = repollMinutes();
 
-  // Share the per-company lease with the other Procore workers so this sweep
-  // never runs alongside actuals/change-order syncs or during a cooldown.
+  // Coordinate with other workers using this same Procore app and company.
   const worker = await acquireProcoreWorker(companyId, 4);
   if (!worker.acquired) {
     return NextResponse.json({
@@ -119,4 +119,9 @@ export async function POST(request: NextRequest) {
   } finally {
     await releaseProcoreWorker(companyId, worker.leaseId).catch(() => undefined);
   }
+}
+
+export async function POST(request: NextRequest) {
+  if (!hasValidProcoreSyncSecret(request)) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  return withPmDashboardProcoreConnection(() => runSweep(request));
 }

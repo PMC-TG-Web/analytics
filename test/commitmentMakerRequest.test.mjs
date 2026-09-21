@@ -88,3 +88,27 @@ test("honors a one-hour reset without making requests during the wait", async ()
   assert.equal((await runCommitmentMakerRequest(f.options)).payload.success, true);
   assert.deepEqual(f.waits, [3_600_000]);
 });
+
+test('read-only preparation steps keep the spinner and forward only the server continuation ID', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const f = fixture([...Array.from({ length: 15 }, () => response(202, { preparing: true, retryable: true,
+    preparationId: id, resumeAt: new Date(start + 250).toISOString() })), pause(30), response(200, { success: true })]);
+  const tokens = [];
+  const request = f.options.request;
+  f.options.request = async token => { tokens.push(token); return request(); };
+  assert.equal((await runCommitmentMakerRequest(f.options)).payload.success, true);
+  assert.equal(tokens[0], undefined);
+  assert.ok(tokens.slice(1).every(token => token === id));
+  assert.equal(f.calls(), 17);
+});
+
+test('invalid preparation and cancelled waits cannot submit another request', async () => {
+  const f = fixture([response(202, { preparing: true, retryable: true, preparationId: 'bad', resumeAt: new Date(start).toISOString() })]);
+  await assert.rejects(runCommitmentMakerRequest(f.options), /couldn’t finish/);
+  assert.equal(f.calls(), 1);
+  const paused = fixture([response(202, { preparing: true, retryable: true,
+    preparationId: '11111111-1111-4111-8111-111111111111', resumeAt: new Date(start).toISOString() })]);
+  paused.options.wait = async () => paused.controller.abort();
+  await assert.rejects(runCommitmentMakerRequest(paused.options), { name: 'AbortError' });
+  assert.equal(paused.calls(), 1);
+});

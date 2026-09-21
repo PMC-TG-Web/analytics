@@ -443,9 +443,11 @@ export default function CommitmentMakerPage() {
       };
       const { response, payload } = await runCommitmentMakerRequest({
         signal: controller.signal,
-        request: () => {
+        request: (preparationId) => {
           receivedResponse = false;
-          return fetch("/api/procore/commitments-live/maker", requestOptions);
+          return fetch("/api/procore/commitments-live/maker", { ...requestOptions,
+            body: preparationId ? JSON.stringify({ ...JSON.parse(String(requestOptions.body)), estimatePreparationId: preparationId }) : requestOptions.body,
+          });
         },
         onResponse: () => { receivedResponse = true; },
       });

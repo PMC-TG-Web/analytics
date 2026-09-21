@@ -124,7 +124,7 @@ test('only known rate-limit failures with unchanged source can resume an estimat
   assert.match(imports.primaryEstimateImportBlock({ ...state, status: 'completed' }, 'same'), /already imported into PO 001/);
 });
 
-function sourceFixture({ cached = null, failPath = '', malformed = false, lines = [line()], catalogDetail = null } = {}) {
+function sourceFixture({ cached = null, prepared = null, failPath = '', malformed = false, lines = [line()], catalogDetail = null } = {}) {
   const calls = [];
   const writes = [];
   const prisma = {
@@ -144,6 +144,7 @@ function sourceFixture({ cached = null, failPath = '', malformed = false, lines 
     return { ok: true, status: 200, payload };
   };
   const source = load('src/lib/procoreCommitmentMakerEstimateSource.ts', {
+    '@/lib/procoreCommitmentEstimateRead': { openCommitmentEstimateRead: async () => ({ snapshot: prepared, read: (_key, fn) => fn(), complete: async snapshot => snapshot }) },
     '@/lib/prisma': { prisma }, '@/lib/procoreCommitmentMakerClient': { commitmentMakerProcoreJson: api },
     '@/lib/procore/commitmentMakerEstimate': logic,
   });
@@ -159,6 +160,17 @@ test('warm preview skips live reads; create rereads the primary and all detail',
   await fixture.source.readPrimaryCommitmentEstimate({ ...options, forceLive: true });
   assert.equal(fixture.calls.length, 4);
   assert.equal(fixture.writes.length, 1);
+});
+
+test('prepared source rechecks the live primary before planning and rejects a changed selection', async () => {
+  const prepared = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group] };
+  const options = { companyId: 'co', projectId: 'project', mode: 'create', forceLive: true, preparationId: 'prepared', getToken: async () => 'test' };
+  const fixture = sourceFixture({ prepared });
+  assert.deepEqual(await fixture.source.readPrimaryCommitmentEstimate(options), prepared);
+  assert.equal(fixture.calls.length, 1);
+  assert.match(fixture.calls[0], /\/proposals\?/);
+  const changed = sourceFixture({ prepared: { ...prepared, proposal: { ...primary, id: 'other' } } });
+  await assert.rejects(changed.source.readPrimaryCommitmentEstimate(options), /changed while it was loading/);
 });
 
 test('catalog reads use exact company/item IDs despite moved catalogs; old snapshots are refreshed', async () => {

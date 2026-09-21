@@ -19,7 +19,7 @@ function waitForNextAttempt(ms: number, signal: AbortSignal): Promise<void> {
 
 /** Keep recoverable pauses inside one user operation; publish only its final result. */
 export async function runCommitmentMakerRequest(options: {
-  request: () => Promise<Response>;
+  request: (preparationId?: string) => Promise<Response>;
   signal: AbortSignal;
   onResponse: () => void;
   now?: () => number;
@@ -28,9 +28,12 @@ export async function runCommitmentMakerRequest(options: {
   const now = options.now ?? Date.now;
   const wait = options.wait ?? waitForNextAttempt;
   const deadline = now() + 65 * 60_000;
-  for (let attempt = 0; ; attempt += 1) {
+  let preparationId: string | undefined;
+  let preparationSteps = 0;
+  let attempt = 0;
+  for (;;) {
     options.signal.throwIfAborted();
-    const response = await options.request();
+    const response = await options.request(preparationId);
     const responseText = await response.text();
     options.onResponse();
     let payload: MakerPayload = {};
@@ -39,10 +42,23 @@ export async function runCommitmentMakerRequest(options: {
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as MakerPayload;
     } catch { /* The caller handles incomplete responses without replaying writes. */ }
 
+    if (response.status === 202 && payload.preparing === true && payload.retryable === true && payload.outcomeUnknown !== true) {
+      const until = typeof payload.resumeAt === 'string' ? Date.parse(payload.resumeAt) : NaN;
+      const delay = Math.max(250, until - now());
+      if (typeof payload.preparationId === 'string' && /^[a-f0-9-]{36}$/i.test(payload.preparationId)
+        && Number.isFinite(until) && preparationSteps < 200 && now() + delay <= deadline) {
+        preparationId = payload.preparationId;
+        preparationSteps += 1;
+        await wait(delay, options.signal);
+        continue;
+      }
+      throw new Error(INCOMPLETE_MESSAGE);
+    }
     if (response.status === 429 && payload.rateLimited === true && payload.outcomeUnknown !== true) {
       const until = typeof payload.rateLimitUntil === "string" ? Date.parse(payload.rateLimitUntil) : NaN;
       const delay = Math.max(1_000, until - now());
       if (payload.retryable === true && Number.isFinite(until) && attempt < 10 && now() + delay <= deadline) {
+        attempt += 1;
         await wait(delay, options.signal);
         continue;
       }

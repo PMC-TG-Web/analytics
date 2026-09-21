@@ -195,6 +195,20 @@ model ProcoreCommitmentEstimateCache {
   @@map("procore_commitment_estimate_caches")
 }
 
+model CommitmentMakerEstimateRead {
+  id        String   @id
+  companyId String   @map("company_id")
+  projectId String   @map("project_id")
+  boardId   String   @map("board_id")
+  mode      String
+  state     Json
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("commitment_maker_estimate_reads")
+}
+
 model CommitmentMakerEstimateImport {
   companyId    String   @map("company_id")
   projectId    String   @map("project_id")

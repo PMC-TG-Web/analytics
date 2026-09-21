@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { commitmentMakerProcoreJson } from '@/lib/procoreCommitmentMakerClient';
+import { openCommitmentEstimateRead } from '@/lib/procoreCommitmentEstimateRead';
 import {
   enrichPrimaryEstimateBudgetCodes, estimateRecord, primaryEstimateCostAssignment,
   PrimaryEstimateError, selectCommitmentEstimateBoard, selectPrimaryCommitmentEstimate,
@@ -38,10 +39,11 @@ export async function primaryCommitmentEstimateSummary(companyId: string, projec
 /** A cached complete read can serve previews; creation always reads Procore again. */
 export async function readPrimaryCommitmentEstimate(options: {
   companyId: string; projectId: string; forceLive: boolean; getToken: () => Promise<string>;
+  mode?: 'preview' | 'create'; preparationId?: string;
 }) {
   const { companyId, projectId } = options;
   const bidBoardProjectId = await commitmentEstimateIdentity(companyId, projectId);
-  if (!options.forceLive) {
+  if (!options.forceLive && !options.preparationId) {
     const [row] = await prisma.$queryRaw<Array<{ snapshot: PrimaryEstimateSnapshot; fetched_at: Date }>>`
       SELECT snapshot, fetched_at FROM procore_commitment_estimate_caches
       WHERE company_id = ${companyId} AND project_id = ${projectId}`;
@@ -49,18 +51,23 @@ export async function readPrimaryCommitmentEstimate(options: {
     if (row && age >= 0 && age < 5 * 60_000 && row.snapshot.bidBoardProjectId === bidBoardProjectId
       && row.snapshot.budgetCodesVersion === 1) return row.snapshot;
   }
+  const preparation = await openCommitmentEstimateRead({ companyId, projectId, boardId: bidBoardProjectId,
+    mode: options.mode || 'preview', preparationId: options.preparationId });
   const token = await options.getToken();
   const base = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/bid_board_projects/${encodeURIComponent(bidBoardProjectId)}`;
-  async function read(path: string, catalog = false) {
-    const response = await commitmentMakerProcoreJson({ companyId, accessToken: token, path });
-    if (!response.ok) throw new PrimaryEstimateError(`The ${catalog ? 'estimate Cost Catalog assignments' : 'primary estimate'} could not be read from Procore (${response.status}).`);
-    return response.payload;
+  async function read(path: string, catalog = false, phase = '') {
+    const load = async () => {
+      const response = await commitmentMakerProcoreJson({ companyId, accessToken: token, path });
+      if (!response.ok) throw new PrimaryEstimateError(`The ${catalog ? 'estimate Cost Catalog assignments' : 'primary estimate'} could not be read from Procore (${response.status}).`);
+      return response.payload;
+    };
+    return preparation.snapshot ? load() : preparation.read(phase + path, load);
   }
-  async function pages(path: string, keys: string[], maxPages: number): Promise<RecordValue[]> {
+  async function pages(path: string, keys: string[], maxPages: number, phase = ''): Promise<RecordValue[]> {
     const rows: RecordValue[] = [];
     const seen = new Set<string>();
     for (let page = 1; page <= maxPages; page += 1) {
-      const payload = await read(`${path}?page=${page}&per_page=100`);
+      const payload = await read(`${path}?page=${page}&per_page=100`, false, phase);
       const root = estimateRecord(payload);
       const batch = Array.isArray(payload) ? payload : keys.map(key => root[key]).find(Array.isArray);
       if (!Array.isArray(batch)) throw new PrimaryEstimateError('Procore returned an incomplete estimate response. Refresh and try again.');
@@ -74,6 +81,14 @@ export async function readPrimaryCommitmentEstimate(options: {
       if (batch.length < 100) return rows;
     }
     throw new PrimaryEstimateError('The primary estimate exceeds the supported import size.');
+  }
+  if (preparation.snapshot) {
+    const snapshot = preparation.snapshot as PrimaryEstimateSnapshot;
+    const current = selectPrimaryCommitmentEstimate(await pages(`${base}/proposals`, ['data', 'proposals'], 10));
+    if (String(current.id) !== String(snapshot.proposal.id) || current.updated_at !== snapshot.proposal.updated_at) {
+      throw new PrimaryEstimateError('The primary estimate changed while it was loading. Refresh and preview again.');
+    }
+    return snapshot;
   }
   const proposals = await pages(`${base}/proposals`, ['data', 'proposals'], 10);
   const proposal = selectPrimaryCommitmentEstimate(proposals);
@@ -99,7 +114,7 @@ export async function readPrimaryCommitmentEstimate(options: {
     codingItems.set(id, item);
   }
   const lines = enrichPrimaryEstimateBudgetCodes(sourceLines, [...codingItems.values()]);
-  const confirmed = selectPrimaryCommitmentEstimate(await pages(`${base}/proposals`, ['data', 'proposals'], 10));
+  const confirmed = selectPrimaryCommitmentEstimate(await pages(`${base}/proposals`, ['data', 'proposals'], 10, 'confirm:'));
   if (String(confirmed.id) !== String(proposal.id) || confirmed.updated_at !== proposal.updated_at) {
     throw new PrimaryEstimateError('The primary estimate changed while it was loading. Refresh and preview again.');
   }
@@ -109,5 +124,5 @@ export async function readPrimaryCommitmentEstimate(options: {
     VALUES (${companyId}, ${projectId}, ${JSON.stringify(snapshot)}::jsonb, NOW())
     ON CONFLICT (company_id, project_id) DO UPDATE SET snapshot = EXCLUDED.snapshot, fetched_at = EXCLUDED.fetched_at`
     .catch(() => console.warn('Primary estimate cache could not be updated.'));
-  return snapshot;
+  return preparation.complete(snapshot);
 }

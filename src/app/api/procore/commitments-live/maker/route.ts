@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { acquireProcoreRequestPermit, completeProcoreRequestPermit } from "@/lib/procoreRequestGate";
 import { readCommitmentMakerWbs } from "@/lib/procoreWbsCache";
 import { primaryCommitmentEstimateSummary, readPrimaryCommitmentEstimate } from "@/lib/procoreCommitmentMakerEstimateSource";
+import { EstimateReadPending } from "@/lib/procoreCommitmentEstimateRead";
 import { applyPrimaryEstimateCombinations, parsePrimaryCommitmentEstimate, PrimaryEstimateError } from "@/lib/procore/commitmentMakerEstimate";
 import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
 import * as XLSX from "xlsx";
@@ -1614,6 +1615,7 @@ async function handleRequest(request: NextRequest) {
     : rawSourceChangeOrderLines;
   const primarySnapshot = usePrimaryEstimate ? await readPrimaryCommitmentEstimate({
     companyId, projectId, forceLive: mode === "create" || body.refreshEstimate === true, getToken: getEstimateToken,
+    mode, preparationId: readText(body.estimatePreparationId),
   }) : null;
   const primaryParsed = primarySnapshot ? parsePrimaryCommitmentEstimate(primarySnapshot.lines, primarySnapshot.groups) : null;
   const estimateImportState = usePrimaryEstimate ? await readPrimaryEstimateImport({ companyId, projectId }) : null;
@@ -2654,6 +2656,9 @@ export async function POST(request: NextRequest) {
   try {
     return await withProcoreClient(() => handleRequest(request));
   } catch (error) {
+    if (error instanceof EstimateReadPending) return NextResponse.json({
+      preparing: true, retryable: true, preparationId: error.preparationId, resumeAt: new Date(error.resumeAt).toISOString(),
+    }, { status: 202, headers: { "Cache-Control": "no-store" } });
     if (error instanceof CommitmentMakerRateLimitError) return rateLimitResponse(error);
     if (error instanceof PrimaryEstimateError) return NextResponse.json({ error: error.message }, { status: error.status });
     const message = error instanceof Error ? error.message : "Unknown error";

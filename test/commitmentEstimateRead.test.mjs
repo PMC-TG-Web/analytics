@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import ts from 'typescript';
+import * as maker from '../src/lib/procore/commitmentMaker.ts';
+import { runCommitmentMakerRequest } from '../src/lib/commitmentMakerRequest.ts';
 
 class PrimaryEstimateError extends Error {}
 class CommitmentMakerRateLimitError extends Error {
@@ -12,12 +14,14 @@ function fixture() {
   const rows = new Map();
   let time = Date.now();
   const prisma = {
-    $queryRaw: async (_sql, id, companyId, projectId, boardId, mode) => {
+    $queryRaw: async (sql, id, companyId, projectId, boardId, mode) => {
+      if (sql.join('').includes('procore_commitment_estimate_caches')) return [];
       const row = rows.get(id);
       return row && row.companyId === companyId && row.projectId === projectId && row.boardId === boardId && row.mode === mode
         ? [{ state: structuredClone(row.state) }] : [];
     },
     $executeRaw: async (sql, ...args) => {
+      if (sql.join('').includes('procore_commitment_estimate_caches')) return 1;
       if (sql.join('').includes('INSERT')) {
         const [id, companyId, projectId, boardId, mode, state] = args;
         rows.set(id, { companyId, projectId, boardId, mode, state: JSON.parse(state) });
@@ -37,7 +41,7 @@ function fixture() {
   new Function('require', 'module', 'exports', ts.transpileModule(readFileSync('src/lib/procoreCommitmentEstimateRead.ts', 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(id => deps[id], module, module.exports);
   const options = { companyId: 'company', projectId: 'project', boardId: 'board', mode: 'preview', now: () => time };
-  return { ...module.exports, options, advance: ms => { time += ms; }, now: () => time };
+  return { ...module.exports, prisma, options, advance: ms => { time += ms; }, now: () => time };
 }
 
 test('checkpoints each read and continues without replaying the completed pages or catalog items', async () => {
@@ -78,4 +82,61 @@ test('preparation is bound to exact company, project, board and preview/create m
   await assert.rejects(first.complete({}), f.EstimateReadPending);
   f.advance(5 * 60_000 + 1);
   await assert.rejects(f.openCommitmentEstimateRead({ ...f.options, preparationId: first.id }), /prepared estimate expired/);
+});
+
+test('a slow 53-item preview completes across HTTP continuations without rereading finished catalog items', async () => {
+  const f = fixture();
+  function load(file, dependencies) {
+    const module = { exports: {} };
+    new Function('require', 'module', 'exports', ts.transpileModule(readFileSync(file, 'utf8'),
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(id => dependencies[id], module, module.exports);
+    return module.exports;
+  }
+  const logic = load('src/lib/procore/commitmentMakerEstimate.ts', { './commitmentMaker': maker });
+  const primary = { id: 'primary', type: 'ESTIMATE', is_primary: true, updated_at: 'unchanged' };
+  const lines = Array.from({ length: 53 }, (_, i) => ({ id: String(i + 1), name: `Item ${i}`, group_id: 'g1', quantity: 1,
+    item_cost: 10, cost_item: { id: String(i + 100), unit: 'EA', unit_cost: 10 } }));
+  const catalogCalls = [];
+  let requestCalls = 0;
+  const requestDurations = [];
+  const source = load('src/lib/procoreCommitmentMakerEstimateSource.ts', {
+    '@/lib/prisma': { prisma: { ...f.prisma,
+      pmcProject: { findUnique: async () => ({ bidBoardId: '123' }) },
+      pmcBidBoardProject: { findMany: async () => [] }, procoreEstimateProposal: { findMany: async () => [] } } },
+    '@/lib/procore/commitmentMakerEstimate': logic,
+    '@/lib/procoreCommitmentEstimateRead': { openCommitmentEstimateRead: options => f.openCommitmentEstimateRead({ ...options, now: f.now }) },
+    '@/lib/procoreCommitmentMakerClient': { commitmentMakerProcoreJson: async ({ path }) => {
+      f.advance(2_000);
+      let payload;
+      if (path.includes('/catalogs/items/')) {
+        const id = path.split('/').at(-1);
+        catalogCalls.push(id);
+        payload = { id, cost_code: '03-300-00-20', cost_type_code: 'CON' };
+      } else if (path.includes('/line_items?')) payload = lines;
+      else if (path.includes('/line_item_groups?')) payload = [{ id: 'g1', name: 'Slabs' }];
+      else payload = [primary];
+      return { ok: true, status: 200, payload };
+    } },
+  });
+  const result = await runCommitmentMakerRequest({ signal: new AbortController().signal, now: f.now,
+    wait: async ms => f.advance(ms), onResponse: () => {}, request: async preparationId => {
+      requestCalls += 1;
+      const started = f.now();
+      try {
+        const snapshot = await source.readPrimaryCommitmentEstimate({ companyId: 'company', projectId: 'project',
+          mode: 'preview', forceLive: true, preparationId, getToken: async () => 'test' });
+        const parsed = logic.parsePrimaryCommitmentEstimate(snapshot.lines, snapshot.groups);
+        return Response.json({ success: true, lines: parsed.groups[0].lineItems.length,
+          total: parsed.groups[0].lineItems.reduce((sum, line) => sum + maker.commitmentMakerLineAmount(line), 0) });
+      } catch (error) {
+        if (!(error instanceof f.EstimateReadPending)) throw error;
+        return Response.json({ preparing: true, retryable: true, preparationId: error.preparationId,
+          resumeAt: new Date(error.resumeAt).toISOString() }, { status: 202 });
+      } finally { requestDurations.push(f.now() - started); }
+    } });
+  assert.deepEqual(result.payload, { success: true, lines: 53, total: 530 });
+  assert.equal(catalogCalls.length, 53);
+  assert.equal(new Set(catalogCalls).size, 53);
+  assert.ok(requestCalls > 10);
+  assert.ok(requestDurations.every(ms => ms <= 6_000));
 });

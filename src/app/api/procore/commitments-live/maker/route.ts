@@ -9,7 +9,7 @@ import { readCommitmentMakerWbs } from "@/lib/procoreWbsCache";
 import { primaryCommitmentEstimateSummary, readPrimaryCommitmentEstimate } from "@/lib/procoreCommitmentMakerEstimateSource";
 import { EstimateReadPending } from "@/lib/procoreCommitmentEstimateRead";
 import { applyPrimaryEstimateCombinations, parsePrimaryCommitmentEstimate, PrimaryEstimateError } from "@/lib/procore/commitmentMakerEstimate";
-import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport, verifyDeletedEstimateTargets, releaseDeletedEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
+import { claimPrimaryEstimateImport, primaryEstimateImportBlock, readPrimaryEstimateImport, savePrimaryEstimateImport, resetPrimaryEstimateGrouping, verifyDeletedEstimateTargets, releaseDeletedEstimateImport } from "@/lib/procoreCommitmentMakerEstimateImport";
 import * as XLSX from "xlsx";
 
 import { prisma } from "@/lib/prisma";
@@ -1626,7 +1626,11 @@ async function handleRequest(request: NextRequest) {
     if (!deleted && estimateImportState.status === "deleted") throw new PrimaryEstimateError("The previously deleted POs could not be confirmed absent. Review the project commitments before importing again.");
     if (deleted && estimateImportState.status === "completed") estimateImportState = await releaseDeletedEstimateImport({ companyId, projectId }, estimateImportState, userEmail);
   }
-  const estimateCombinations = body.estimateCombinations ?? estimateImportState?.combinations ?? [];
+  if (body.resetEstimateGrouping === true) {
+    if (!usePrimaryEstimate || mode !== "preview") throw new PrimaryEstimateError("Grouping can only be reset from a primary-estimate preview.");
+    await resetPrimaryEstimateGrouping({ companyId, projectId }, userEmail);
+  }
+  const estimateCombinations = body.resetEstimateGrouping === true ? [] : body.estimateCombinations ?? estimateImportState?.combinations ?? [];
   const sourceEstimate = primarySnapshot ? {
     proposalId: String(primarySnapshot.proposal.id), name: String(primarySnapshot.proposal.name || "Primary Estimate"),
     bidBoardProjectId: primarySnapshot.bidBoardProjectId, syncedAt: primarySnapshot.fetchedAt,

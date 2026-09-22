@@ -80,3 +80,20 @@ export async function savePrimaryEstimateImport(claim: Claim, targets: EstimateI
     WHERE company_id = ${claim.companyId} AND project_id = ${claim.projectId} AND owner = ${claim.owner} AND status = 'running'`;
   if (changed !== 1) throw new PrimaryEstimateError('The primary estimate import ownership could not be saved. Review the created POs before proceeding.');
 }
+
+/** Only abandoned/deleted imports may discard their saved grouping. */
+export async function resetPrimaryEstimateGrouping(identity: Identity, userEmail: string) {
+  return prisma.$transaction(async tx => {
+    const [state] = await tx.$queryRaw<EstimateImportState[]>`SELECT fingerprint, status, targets, combinations
+      FROM commitment_maker_estimate_imports
+      WHERE company_id = ${identity.companyId} AND project_id = ${identity.projectId} FOR UPDATE`;
+    if (!state) return;
+    if (state.status !== 'deleted') throw new PrimaryEstimateError('This estimate already has an active or completed import. Its grouping cannot be reset while its POs exist or need review.');
+    if (!Array.isArray(state.combinations) || state.combinations.length === 0) return;
+    await tx.auditLog.create({ data: { entity: 'ProcoreCommitmentMaker', entityId: identity.projectId,
+      action: 'reset-estimate-grouping', userEmail,
+      changes: { ...identity, previousCombinations: state.combinations, combinations: [] } } });
+    await tx.$executeRaw`UPDATE commitment_maker_estimate_imports SET combinations = '[]'::jsonb, updated_at = NOW()
+      WHERE company_id = ${identity.companyId} AND project_id = ${identity.projectId} AND status = 'deleted'`;
+  });
+}

@@ -1,8 +1,9 @@
+import type { CommitmentMakerOwnedLineItem } from '@/lib/procore/commitmentMaker';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { estimateRecord, PrimaryEstimateError } from '@/lib/procore/commitmentMakerEstimate';
 
-export type EstimateImportTarget = { name: string; id: string; number: string };
+export type EstimateImportTarget = { name: string; id: string; number: string; ownedLineItems?: CommitmentMakerOwnedLineItem[]; completedResult?: Record<string, unknown> };
 export type EstimateImportState = { fingerprint: string; status: string; targets: EstimateImportTarget[]; combinations: unknown };
 type Identity = { companyId: string; projectId: string };
 type Claim = Identity & { owner: string };
@@ -15,7 +16,7 @@ export function isBaseEstimateAudit(value: unknown): boolean {
     && String(changes.sheetName || '').trim().toLowerCase() !== 'approved change order';
 }
 
-export async function readPrimaryEstimateImport({ companyId, projectId }: Identity) {
+export async function readPrimaryEstimateImport({ companyId, projectId }: Identity): Promise<EstimateImportState | null> {
   const [row] = await prisma.$queryRaw<EstimateImportState[]>`SELECT fingerprint, status, targets, combinations
     FROM commitment_maker_estimate_imports WHERE company_id = ${companyId} AND project_id = ${projectId}`;
   if (row) return row;
@@ -62,7 +63,7 @@ export async function releaseDeletedEstimateImport(identity: Identity, state: Es
         AND status = 'completed' AND fingerprint = ${state.fingerprint} AND targets = ${JSON.stringify(state.targets)}::jsonb`;
     if (changed !== 1) throw new PrimaryEstimateError('The import changed while checking its deleted POs. Preview again.');
     await tx.auditLog.create({ data: { entity: 'ProcoreCommitmentMaker', action: 'release-deleted-estimate',
-      entityId: identity.projectId, userEmail, changes: { ...identity, fingerprint: state.fingerprint, targets: state.targets } } });
+      entityId: identity.projectId, userEmail, changes: JSON.parse(JSON.stringify({ ...identity, fingerprint: state.fingerprint, targets: state.targets })) } });
   });
   return { ...state, status: 'deleted' };
 }

@@ -31,6 +31,7 @@ export async function runCommitmentMakerRequest(options: {
   const deadline = now() + 65 * 60_000;
   let preparationId: string | undefined;
   let preparationSteps = 0;
+  let creationSteps = 0;
   let attempt = 0;
   const recoverCreation = async () => {
     if (!options.readCreationStatus) return null;
@@ -73,6 +74,15 @@ export async function runCommitmentMakerRequest(options: {
     if ([502, 504].includes(response.status) && !Array.isArray(payload.results)) {
       const recovered = await recoverCreation();
       if (recovered) return recovered;
+    }
+
+    if (response.status === 202 && payload.continuing === true && payload.retryable === true && payload.outcomeUnknown !== true) {
+      const until = typeof payload.resumeAt === 'string' ? Date.parse(payload.resumeAt) : NaN;
+      const delay = Math.max(250, until - now());
+      if (!Number.isFinite(until) || creationSteps >= 200 || now() + delay > deadline) throw new Error(INCOMPLETE_MESSAGE);
+      creationSteps += 1;
+      await wait(delay, options.signal);
+      continue;
     }
 
     if (response.status === 202 && payload.preparing === true && payload.retryable === true && payload.outcomeUnknown !== true) {

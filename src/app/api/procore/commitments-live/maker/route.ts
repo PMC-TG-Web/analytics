@@ -1,3 +1,4 @@
+import { commitmentMakerCreationBatch, CommitmentMakerBatchPending } from '@/lib/commitmentMakerCreationBatch';
 import { withCommitmentMakerProcoreConnection } from '@/lib/procoreConnection';
 import { getCommitmentMakerProcoreToken } from '@/lib/procoreCommitmentMakerAuth';
 import { createHash } from "node:crypto";
@@ -1874,6 +1875,7 @@ async function handleRequest(request: NextRequest) {
     }
   }
 
+  const checkCreationBatch = commitmentMakerCreationBatch(usePrimaryEstimate);
   const results: UnknownRecord[] = [];
   const estimateClaim = usePrimaryEstimate ? await claimPrimaryEstimateImport({ companyId, projectId,
     fingerprint: importFingerprint, combinations: estimateCombinations }) : null;
@@ -1881,12 +1883,18 @@ async function handleRequest(request: NextRequest) {
   let failure: UnknownRecord | null = null;
   const currentCommitments = [...liveCommitments];
   for (const group of plan.groups) {
+    const completed = estimateTargets.find(target => target.id === group.existingContractId)?.completedResult;
+    if (completed && liveCommitments.some(record => readId(record) === group.existingContractId && readText(record.status).toLowerCase() === "approved")) {
+      results.push(completed);
+      continue;
+    }
     let contractId = group.existingContractId;
     let createdContract = false;
     let actualNumber = group.number;
     let reusedLineItems = 0;
     const ownedLineItems: CommitmentMakerOwnedLineItem[] = [];
     try {
+      checkCreationBatch();
       if (!contractId) {
         const duplicate = findExistingByFingerprint(currentCommitments, group.fingerprint)
           || (sourceChangeOrder && changeOrderClaim?.reconcileUnconfirmedCreate
@@ -1958,13 +1966,14 @@ async function handleRequest(request: NextRequest) {
         // resumes the same target even though Procore omits origin_data on reads.
         await savePrimaryEstimateImport(estimateClaim, estimateTargets);
       }
+      checkCreationBatch();
       const existingLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
       const priorOwnedLineItems = changeOrderClaim
         ? await findIncompleteChangeOrderOwnedLines({
             applicationId: changeOrderClaim.applicationId,
             targetCommitmentId: contractId,
           })
-        : [];
+        : estimateTargets.find(target => target.id === contractId)?.ownedLineItems || [];
       const verifiedPriorOwnedLines = auditedCommitmentLinesById(priorOwnedLineItems, existingLines);
       const usedPriorOwnedLineIds = new Set<string>();
       const missingLines: PlannedLine[] = [];
@@ -1991,6 +2000,7 @@ async function handleRequest(request: NextRequest) {
         missingLines.push(line);
       }
       for (const line of missingLines) {
+        checkCreationBatch();
         const payload = commitmentMakerLineCreatePayload(line);
         const response = await procoreJson({
           path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
@@ -2011,8 +2021,15 @@ async function handleRequest(request: NextRequest) {
           );
         }
         ownedLineItems.push({ id: lineId, payload });
+        if (estimateClaim) {
+          const checkpoint = estimateTargets.find(target => target.id === contractId);
+          if (!checkpoint) throw new Error("The PO checkpoint is missing.");
+          checkpoint.ownedLineItems = [...ownedLineItems];
+          await savePrimaryEstimateImport(estimateClaim, estimateTargets);
+        }
       }
 
+      checkCreationBatch();
       const populatedLines = await fetchContractLineItems({ accessToken, companyId, projectId, contractId });
       const verifiedOwnedLineItems = auditedCommitmentLinesById(ownedLineItems, populatedLines);
       if (verifiedOwnedLineItems.length !== ownedLineItems.length) {
@@ -2021,6 +2038,7 @@ async function handleRequest(request: NextRequest) {
         );
       }
 
+      checkCreationBatch();
       const approveResponse = await procoreJson({
         path: `/rest/v2.0/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(
           projectId
@@ -2062,6 +2080,13 @@ async function handleRequest(request: NextRequest) {
       if (!auditRecorded) {
         throw new Error("The PO was updated, but its line ownership audit could not be saved.");
       }
+      if (estimateClaim) {
+        const checkpoint = estimateTargets.find(target => target.id === contractId);
+        if (!checkpoint) throw new Error("The PO checkpoint is missing.");
+        checkpoint.completedResult = result;
+        checkpoint.ownedLineItems = [...ownedLineItems];
+        await savePrimaryEstimateImport(estimateClaim, estimateTargets);
+      }
       results.push(result);
     } catch (error) {
       failure = {
@@ -2072,6 +2097,7 @@ async function handleRequest(request: NextRequest) {
         status: error instanceof CommitmentMakerRateLimitError
           ? "Paused - Procore rate limit"
           : contractId ? "Draft - attention required" : "Not created",
+        continuing: error instanceof CommitmentMakerBatchPending,
         rateLimited: error instanceof CommitmentMakerRateLimitError,
         rateLimitUntil: error instanceof CommitmentMakerRateLimitError ? error.rateLimitUntil : undefined,
         error: error instanceof Error ? error.message : String(error),
@@ -2110,7 +2136,7 @@ async function handleRequest(request: NextRequest) {
   let taskError = "";
   if (estimateClaim) {
     await savePrimaryEstimateImport(estimateClaim, estimateTargets,
-      !failure ? "completed" : failure.rateLimited === true && failure.outcomeUnknown !== true ? "retryable" : "uncertain");
+      !failure ? "completed" : (failure.rateLimited === true || failure.continuing === true) && failure.outcomeUnknown !== true ? "retryable" : "uncertain");
   }
   let tasksQueued = false;
   if (!failure && sourceChangeOrder) {
@@ -2195,11 +2221,13 @@ async function handleRequest(request: NextRequest) {
       tasksQueued,
       outcomeUnknown: failure?.outcomeUnknown === true,
       taskError: taskError || undefined,
+      continuing: failure?.continuing === true && failure.outcomeUnknown !== true,
+      resumeAt: failure?.continuing === true ? new Date(Date.now() + 250).toISOString() : undefined,
       rateLimited: failure?.rateLimited === true,
       rateLimitUntil: failure?.rateLimitUntil,
       // Durable CO/primary-estimate claims bind continuations to their POs.
       // Workbook imports can repeat automatically only before a PO is created.
-      retryable: failure?.rateLimited === true && failure.outcomeUnknown !== true && !taskError
+      retryable: (failure?.rateLimited === true || failure?.continuing === true) && failure?.outcomeUnknown !== true && !taskError
         && (Boolean(changeOrderClaim) || Boolean(estimateClaim) || results.every((result) => !result.contractId && result.success !== true)),
       created: results.filter((result) => result.success === true && result.createdContract === true).length,
       resumed: results.filter((result) => result.success === true && result.createdContract === false && target !== "existing_purchase_order").length,
@@ -2214,7 +2242,7 @@ async function handleRequest(request: NextRequest) {
           : undefined,
     },
     {
-      status: failure?.rateLimited === true && failure.outcomeUnknown !== true ? 429 : failure || taskError ? 502 : 200,
+      status: failure?.continuing === true && failure.outcomeUnknown !== true ? 202 : failure?.rateLimited === true && failure.outcomeUnknown !== true ? 429 : failure || taskError ? 502 : 200,
       headers: failure?.rateLimited === true ? {
         "Retry-After": String(Math.max(1, Math.ceil((Date.parse(readText(failure.rateLimitUntil)) - Date.now()) / 1_000))),
       } : undefined,

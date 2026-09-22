@@ -33,7 +33,7 @@ test('primary estimate claims preserve PO targets, reject duplicate ownership an
       const claim = await api.claimPrimaryEstimateImport(identity);
       await assert.rejects(api.resetPrimaryEstimateGrouping(identity, "test"), /cannot be reset/);
       await assert.rejects(api.claimPrimaryEstimateImport(identity), /already being imported/);
-      const targets = [{ name: 'Slabs', id: '123', number: '001' }];
+      const targets = [{ name: 'Slabs', id: '123', number: '001', ownedLineItems: [{ id: '456', payload: { description: 'Labor', quantity: 1, unit_cost: 0, amount: 0, uom: 'hours', wbs_code_id: '789' } }], completedResult: { success: true, contractId: '123', status: 'Approved' } }];
       await api.savePrimaryEstimateImport(claim, targets);
       assert.deepEqual((await api.readPrimaryEstimateImport(identity)).targets, targets);
       await api.savePrimaryEstimateImport(claim, targets, 'retryable');

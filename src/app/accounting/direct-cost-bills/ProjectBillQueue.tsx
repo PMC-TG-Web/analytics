@@ -1,6 +1,6 @@
 'use client';
 
-import { readBillResponse } from '@/lib/qboBillResponse';
+import { fetchBillRead, readBillResponse } from '@/lib/qboBillResponse';
 
 import BillIssue from './BillIssue';
 import { Fragment, useEffect, useState } from 'react';
@@ -22,7 +22,7 @@ export default function ProjectBillQueue({ companyId, month, revision, disabled,
     if (!companyId || !month) return;
     const controller = new AbortController();
     onLoading(true);
-    fetch(`/api/accounting/direct-cost-bills?${new URLSearchParams({ companyId, month, view: 'queue' })}`, { cache: 'no-store', signal: controller.signal })
+    fetchBillRead(`/api/accounting/direct-cost-bills?${new URLSearchParams({ companyId, month, view: 'queue' })}`, controller.signal)
       .then(async response => { const data = await readBillResponse(response); if (!response.ok) throw new Error(data.error || 'Unable to load monthly bills.'); return data; })
       .then(data => { if (!controller.signal.aborted) { setError(''); setRows(data.rows); setChecked(data.generatedAt); } })
       .catch(e => { if (!controller.signal.aborted) setError(e.message); })

@@ -12,3 +12,15 @@ export async function readBillResponse(response: Response) {
   try { return await response.json(); }
   catch { throw new Error(`The bill service returned unreadable data (HTTP ${response.status}). Refresh the page and try again.`); }
 }
+/** Retry only safe reads, once, for transient gateway/non-JSON responses. */
+export async function fetchBillRead(url: string, signal?: AbortSignal) {
+  const options = { cache: 'no-store' as const, signal };
+  const first = await fetch(url, options);
+  const transient = [502, 503, 504].includes(first.status)
+    || (first.ok && !first.redirected && !/\bapplication\/(?:[\w.-]+\+)?json\b/i.test(first.headers.get('content-type') || ''));
+  if (!transient || signal?.aborted) return first;
+  await first.body?.cancel();
+  await new Promise(resolve => setTimeout(resolve, 500));
+  signal?.throwIfAborted();
+  return fetch(url, options);
+}

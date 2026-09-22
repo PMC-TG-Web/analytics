@@ -1,6 +1,6 @@
 'use client';
 
-import { readBillResponse } from '@/lib/qboBillResponse';
+import { fetchBillRead, readBillResponse } from '@/lib/qboBillResponse';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { loadQboDirectCosts } from '@/lib/loadQboDirectCosts';
@@ -71,7 +71,7 @@ export default function DirectCostBillsPage() {
   }, [companyId, month]);
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/accounting/direct-cost-bills', { cache: 'no-store', signal: controller.signal })
+    fetchBillRead('/api/accounting/direct-cost-bills', controller.signal)
       .then(async r => { const data = await readBillResponse(r); if (!r.ok) throw new Error(data.error || 'Unable to load projects.'); return data; })
       .then(data => { setCompanyId(data.companyId); })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
@@ -82,7 +82,7 @@ export default function DirectCostBillsPage() {
     setProjectId(selectedId);
     setBusy(true); setError(''); setPreview(null);
     try {
-      const response = await fetch(`/api/accounting/direct-cost-bills?${new URLSearchParams({ companyId, projectId: selectedId, month })}`, { cache: 'no-store' });
+      const response = await fetchBillRead(`/api/accounting/direct-cost-bills?${new URLSearchParams({ companyId, projectId: selectedId, month })}`);
       const data = await readBillResponse(response);
       if (!response.ok) throw new Error(data.error || 'Unable to load preview.');
       setPreview(data);

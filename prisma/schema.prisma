@@ -2,6 +2,21 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Immutable individual Food expenses; entry ID makes retries idempotent.
+model QboBillFoodEntry {
+  id String @id
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  spentOn String @map("spent_on")
+  note String @default("")
+  amount Decimal @db.Decimal(12, 2)
+  createdBy String @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([companyId, projectId, month])
+  @@map("qbo_bill_food_entries")
+}
+
 /// Operator-entered total Food spend for one project/month; never a unit price.
 model QboBillFoodTotal {
   companyId String @map("company_id")

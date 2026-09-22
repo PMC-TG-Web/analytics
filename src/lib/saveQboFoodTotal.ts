@@ -1,27 +1,35 @@
 import { prisma } from './prisma';
-import { foodTotalAmount } from './qboFoodTotal';
-import { directCostMonth } from './qboDirectCosts';
+import { validateFoodEntry, type FoodEntryInput } from './qboFoodTotal';
 
-export async function saveQboFoodTotal(input: { companyId: string; projectId: string; month: string; amount: string; revision: number }, actor: string) {
-  if (![input.companyId, input.projectId].every(id => /^\d+$/.test(id)) || !Number.isInteger(input.revision) || input.revision < 0 || !actor) throw new Error('Invalid Food total request.');
-  directCostMonth(input.month);
-  const amount = foodTotalAmount(input.amount);
-  const { companyId, projectId, month } = input;
+export async function saveQboFoodTotal(raw: FoodEntryInput, actor: string) {
+  const input = validateFoodEntry(raw);
+  if (!actor || actor.length > 254) throw new Error('A signed-in operator is required.');
+  const { companyId, projectId, month, amount, spentOn, note, entryId } = input;
+  const key = { companyId, projectId, month };
   if (!await prisma.pmcProject.findUnique({ where: { companyId_procoreProjectId: { companyId, procoreProjectId: projectId } }, select: { procoreProjectId: true } })) throw new Error('Project not found in this company.');
+  async function existingResult() {
+    const entry = await prisma.qboBillFoodEntry.findUnique({ where: { id: entryId } });
+    if (!entry) return null;
+    if (entry.companyId !== companyId || entry.projectId !== projectId || entry.month !== month || entry.spentOn !== spentOn || entry.note !== note || entry.amount.toFixed(2) !== amount || entry.createdBy !== actor) throw new Error('This expense request was already used for different details. Reopen the Food ledger.');
+    return { saved: true, alreadySaved: true, entryId };
+  }
+  const existing = await existingResult();
+  if (existing) return existing;
   try {
     return await prisma.$transaction(async tx => {
-      const key = { companyId, projectId, month };
-      const data = { amount, updatedBy: actor };
-      if (input.revision === 0) await tx.qboBillFoodTotal.create({ data: { ...key, ...data } });
-      else {
-        const result = await tx.qboBillFoodTotal.updateMany({ where: { ...key, revision: input.revision }, data: { ...data, revision: { increment: 1 } } });
-        if (result.count !== 1) throw new Error('The Food total changed on another screen. Refresh the project before saving.');
-      }
-      await tx.qboBillFoodTotalRevision.create({ data: { ...key, ...data, revision: input.revision + 1 } });
-      return { saved: true, amount, revision: input.revision + 1 };
+      await tx.qboBillFoodEntry.create({ data: { id: entryId, ...key, spentOn, note, amount, createdBy: actor } });
+      // Atomic increment preserves simultaneous additions from other machines.
+      const total = await tx.qboBillFoodTotal.upsert({ where: { companyId_projectId_month: key }, create: { ...key, amount, updatedBy: actor }, update: { amount: { increment: amount }, revision: { increment: 1 }, updatedBy: actor } });
+      if (total.amount.gt('999999999.99')) throw new Error('The monthly Food total exceeds the supported amount.');
+      await tx.qboBillFoodTotalRevision.create({ data: { ...key, amount: total.amount, updatedBy: actor, revision: total.revision } });
+      return { saved: true, alreadySaved: false, entryId };
     });
   } catch (e) {
-    if ((e as { code?: string }).code === 'P2002') throw new Error('The Food total changed on another screen. Refresh the project before saving.');
+    if ((e as { code?: string }).code === 'P2002') {
+      const saved = await existingResult();
+      if (saved) return saved;
+      throw new Error('Another Food entry is being saved. Retry this same expense.');
+    }
     throw e;
   }
 }

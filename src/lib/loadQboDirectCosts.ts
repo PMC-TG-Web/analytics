@@ -18,7 +18,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const catalog = catalogSnapshot === undefined ? await loadQboCostCatalog(companyId) : catalogSnapshot;
   const catalogIssue = catalogSnapshotIssue(catalog, companyId);
   // Procore log dates are persisted as midnight UTC date-only values, not instants in local time.
-  const [logs, items, aliases, timecards, laborRates, catalogMappings, savedFood] = await Promise.all([
+  const [logs, items, aliases, timecards, laborRates, catalogMappings, foodLedger] = await Promise.all([
     prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } },
       select: { id: true, procoreId: true, date: true, status: true, quantityUsed: true, lineItemId: true, lineItemDescription: true, lineItemHolderTitle: true, lineItemHolderNumber: true, lineItemHolderId: true, lineItemHolderType: true, updatedAt: true } }),
     prisma.purchaseOrderLineItemContractDetail.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId },
@@ -27,8 +27,13 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } }, select: { procoreId: true, date: true, hours: true, totalHoursWorked: true, costCodeFullCode: true, costCodeName: true, updatedAt: true } }),
     loadQboDirectCostLaborRates(companyId, projectId, catalog),
     prisma.qboCostCatalogMapping.findMany({ where: { companyId, projectId } }),
-    prisma.qboBillFoodTotal.findUnique({ where: { companyId_projectId_month: { companyId, projectId, month } } }),
+    prisma.$transaction([
+      prisma.qboBillFoodTotal.findUnique({ where: { companyId_projectId_month: { companyId, projectId, month } } }),
+      prisma.qboBillFoodEntry.findMany({ where: { companyId, projectId, month }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    ], { isolationLevel: 'RepeatableRead' }),
   ]);
+  const [savedFood, foodEntries] = foodLedger;
+  const foodLedgerMismatch = !new Prisma.Decimal(savedFood?.amount || 0).eq(foodEntries.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0)));
   const mappingByLine = new Map(catalogMappings.map(mapping => [mapping.lineItemId, mapping]));
   const crosswalk = loadEstimatingCostCodeCatalog();
   const aliasByLine = new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id]));
@@ -55,11 +60,11 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
   const labor = aggregateDirectCostLabor(timecards, laborRates.rates);
   const overlap = summary.lines.filter(l => /^(labor|l)$/i.test(l.costType || '') && labor.rows.some(t => t.costCode === l.costCode));
-  const issues = [...(foodLogCount && !foodTotal ? ['Enter the total Food cost for this project/month (or save $0 if none).'] : []), ...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
+  const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...(foodLogCount && !foodTotal ? ['Add Food expenses for this project/month (or add $0 if none).'] : []), ...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
   return {
     schemaVersion: 3, scope: 'productivity_and_timecards', pricingSource: 'cost_catalog', catalogCheckedAt: catalog?.fetchedAt || null, generatedAt: new Date().toISOString(),
     companyId, projectId, projectName: project.projectName, projectNumber: project.projectNumber, month,
-    vendorName: DIRECT_COST_VENDOR, food: { saved: foodTotal, logCount: foodLogCount },
+    vendorName: DIRECT_COST_VENDOR, food: { saved: foodTotal, logCount: foodLogCount, entries: foodEntries.map(entry => ({ id: entry.id, spentOn: entry.spentOn, note: entry.note, amount: entry.amount.toFixed(2), createdBy: entry.createdBy, createdAt: entry.createdAt.toISOString() })) },
     ...summary,
     catalogMappingItems: pricedItems.filter(item => item.procoreId && visibleItems.has(item.procoreId)).map(item => ({ lineItemId: item.procoreId!, description: item.description || 'Unnamed item', costCode: item.costCode, uom: item.uom, issue: item.pricingIssue, catalogName: item.catalogPrice?.name || null, manual: !!mappingByLine.get(item.procoreId!)?.catalogItemId })),
     lines: [...summary.lines.map(l => ({ ...l, lineKey: l.procoreLineItemId, sourceType: 'productivity' as const })), ...labor.lines, ...(foodLine ? [foodLine] : [])],

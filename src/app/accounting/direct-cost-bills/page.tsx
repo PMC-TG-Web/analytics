@@ -1,5 +1,7 @@
 'use client';
 
+import { readBillResponse } from '@/lib/qboBillResponse';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { loadQboDirectCosts } from '@/lib/loadQboDirectCosts';
 import type { loadQboBillReview } from '@/lib/loadQboBillReview';
@@ -47,7 +49,7 @@ export default function DirectCostBillsPage() {
         if (document.visibilityState !== 'visible' || live.current.busy || live.current.posting) return;
         setSyncMessage('Checking Procore Cost Catalog prices…');
         const response = await fetch('/api/accounting/direct-cost-bills/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId, month }) });
-        const result = await response.json();
+        const result = await readBillResponse(response);
         if (stopped) return;
         if (!response.ok) throw new Error(result.error || 'Automatic refresh will retry.');
         delay = billSourcePollDelay(result.status);
@@ -70,7 +72,7 @@ export default function DirectCostBillsPage() {
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/accounting/direct-cost-bills', { cache: 'no-store', signal: controller.signal })
-      .then(async r => { if (!r.ok) throw new Error('Unable to load projects.'); return r.json(); })
+      .then(async r => { const data = await readBillResponse(r); if (!r.ok) throw new Error(data.error || 'Unable to load projects.'); return data; })
       .then(data => { setCompanyId(data.companyId); })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => controller.abort();
@@ -81,7 +83,7 @@ export default function DirectCostBillsPage() {
     setBusy(true); setError(''); setPreview(null);
     try {
       const response = await fetch(`/api/accounting/direct-cost-bills?${new URLSearchParams({ companyId, projectId: selectedId, month })}`, { cache: 'no-store' });
-      const data = await response.json();
+      const data = await readBillResponse(response);
       if (!response.ok) throw new Error(data.error || 'Unable to load preview.');
       setPreview(data);
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load preview.'); }
@@ -92,7 +94,7 @@ export default function DirectCostBillsPage() {
     setPosting(true); setError(''); setSavedMessage('');
     try {
       const response = await fetch('/api/accounting/direct-cost-bills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId, projectId: preview.projectId, month: preview.month, fingerprint: preview.review.fingerprint }) });
-      const data = await response.json();
+      const data = await readBillResponse(response);
       if (!response.ok) throw new Error(data.error || 'Unable to save bill. Refresh its review before retrying.');
       setSavedMessage(`${data.receipt.billNumber} ${data.receipt.alreadyCurrent ? 'is already current' : data.receipt.updated ? 'was updated' : 'was created'} in QBO.`);
       setProjectId(''); setPreview(null); setQueueRevision(n => n + 1);

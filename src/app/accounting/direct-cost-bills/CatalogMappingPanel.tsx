@@ -38,7 +38,7 @@ export default function CatalogMappingPanel({ companyId, projectId, items, disab
   }
   if (!items.length) return null;
   const selectedItem = choices?.candidates.find(item => item.itemId === selected);
-  return <section className="rounded-xl border border-blue-200 bg-white p-5 space-y-3">
+  return <section id="bill-catalog-mappings" className="scroll-mt-20 rounded-xl border border-blue-200 bg-white p-5 space-y-3">
     <div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">Cost Catalog mappings</h3><p className="text-sm text-slate-600">Choose the catalog item used to price each PO line. Saved choices apply to future runs; prices stay current.</p></div><button disabled={disabled || busy || !!editing} onClick={() => setShowAll(value => !value)} className="text-sm text-blue-700 underline disabled:opacity-50">{showAll ? 'Show issues only' : `View / change all ${items.length} mappings`}</button></div>
     {!showAll && !unresolved.length && <p className="text-sm text-slate-500">All items have a catalog match.</p>}
     {(showAll ? items : unresolved).map(item => <div key={item.lineItemId} className="rounded-lg border border-slate-200 p-3 space-y-3">

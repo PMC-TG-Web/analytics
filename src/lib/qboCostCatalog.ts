@@ -14,6 +14,8 @@ export function catalogName(value: string) {
   let name = value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ')
     .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '')
     .replace(/\s+-\s+(sog|foundation|foundations|wall|site)$/, '');
+  // Full shorthand bar size + purchased length, never a partial/fuzzy match.
+  name = name.replace(/^#(\d+)\s*[x\u00d7]\s*(\d+(?:\.\d+)?)\s*['\u2032]\s*rebar$/, "#$1 rebar - $2' pc");
   // Rebar spacing describes installation, not the bar size or purchased length.
   // Only remove a terminal, explicitly labelled on-center spacing annotation.
   if (/^#\d+\s+rebar\b/.test(name)) name = name.replace(/\s+[-\u2013\u2014]\s+\d+(?:\.\d+)?\s*["\u2033]\s*o\.?\s*c\.?(?:\s*e\.?\s*w\.?)?$/, '');
@@ -57,6 +59,12 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
     || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))
     || (aliases.get(p.itemId)?.costCode === code && catalogName(aliases.get(p.itemId)!.itemName) === catalogName(name))));
   const fail = (reason: string) => ({ unitCost: null, evidence: null, issue: `${name}: ${reason}` });
+  if (!matches.length && !item.catalogItemId) {
+    const otherCodes = prices.filter(p => p.costCode !== code && labor === (p.type === 'LABOR')
+      && !!item.uom && catalogUnit(item.uom) === p.uom
+      && (catalogName(p.name) === catalogName(name) || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))));
+    if (otherCodes.length === 1) return fail(`catalog item "${otherCodes[0].name}" uses cost code ${otherCodes[0].costCode}, but this PO uses ${code}. Select it in Cost Catalog mappings to confirm the pricing match.`);
+  }
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');
   const found = matches[0];
   if (found.costCode !== code) return fail('the linked Cost Catalog item has a different cost code.');

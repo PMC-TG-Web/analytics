@@ -17,6 +17,16 @@ const EXCLUDED_PUMPING_ITEMS = new Set([
   'telebelt (4 hr minimum)',
   'trailer pump (includes 3 hr)',
 ]);
+function isExcludedConcrete(item: DirectCostItem, sourceName: string) {
+  const labor = /^(labor|l)$/i.test(item.costType?.trim() || '');
+  if (labor && !/^(cy|cu\.?\s*yd|cubic\s*yards?)$/i.test(item.uom?.trim() || '')) return false;
+  const code = (item.costCode || '').trim().replace(/\.[A-Z]+$/i, '');
+  const name = (item.description?.trim() || sourceName).normalize('NFKC').toLowerCase()
+    .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '').replace(/\s+/g, ' ').trim()
+    .replace(/\s+-\s+(site|sog|foundation|foundations|wall)$/, '');
+  return (!labor && EXCLUDED_CONCRETE_COST_CODES.has(code))
+    || /^(site concrete|slab on grade concrete|foundation concrete|wall concrete|bollards concrete|concrete set and fill bollards)$/.test(name);
+}
 function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
   const name = (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
     // Change-order labels do not change the equipment being excluded.
@@ -95,7 +105,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     if (isExcludedPumpingItem(item, sourceName)) {
       excluded.pumpingEquipment++; continue;
     }
-    if (EXCLUDED_CONCRETE_COST_CODES.has(item.costCode || '') && !/^(labor|l)$/i.test(item.costType || '')) {
+    if (isExcludedConcrete(item, sourceName)) {
       excluded.concrete++; continue;
     }
     if (item.pricingIssue) { addIssue(`${item.pricingIssue} ${issueSource(log, item)}.`, log, item); continue; }

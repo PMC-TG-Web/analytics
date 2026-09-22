@@ -19,7 +19,7 @@ test('matches names and units while retaining size and cost-code distinctions', 
     assert.equal(result.issue, null); assert.equal(result.unitCost, 8.07173); assert.equal(result.evidence.itemId, '123');
   }
   assert.match(match({ ...item(), description: "#5 Rebar - 20' Pc" }).issue, /no matching/);
-  assert.match(match({ ...item(), costCode: '03-200-30-21' }).issue, /no matching/);
+  assert.match(match({ ...item(), costCode: '03-200-30-21' }).issue, /uses cost code/);
   assert.match(match({ ...item(), uom: 'LF' }).issue, /unit/);
 });
 test('explicit catalog ID wins over edited descriptions but not code/unit mismatches', () => {
@@ -34,7 +34,7 @@ test('matches catalog descriptions without confusing rebar sizes, codes, units o
   const source = { ...item(), description: 'CO6 - #4 Rebar By The Piece' };
   const result = match(source, [four, five]);
   assert.equal(result.issue, null); assert.equal(result.evidence.itemId, '123'); assert.equal(result.unitCost, 8.07173);
-  assert.match(match({ ...source, costCode: '03-200-40-20' }, [four, five]).issue, /no matching/);
+  assert.match(match({ ...source, costCode: '03-200-40-20' }, [four, five]).issue, /uses cost code/);
   assert.match(match({ ...source, uom: 'LF' }, [four, five]).issue, /unit/);
   assert.match(match(source, [four, { ...five, description: four.description }]).issue, /multiple/);
   assert.match(match(source, [{ ...four, unitCost: null }]).issue, /positive/);
@@ -65,4 +65,9 @@ test('catalog snapshot must belong to the company and be complete and current', 
   assert.ok(catalogSnapshotIssue({ ...snapshot, items: [] }, '1', now));
   assert.ok(catalogSnapshotIssue(snapshot, '1', now + 86400001));
   assert.ok(catalogSnapshotIssue({ ...snapshot, fetchedAt: 'bad' }, '1', now));
+});
+
+test('shorthand rebar matches only complete size and purchased length', () => {
+  for (const description of ["#4x20' rebar", "CO6 - #4 x 20' Rebar - Site"]) assert.equal(match({ ...item(), description }).unitCost, 8.07173);
+  for (const description of ["#5x20' rebar", "#4x10' rebar", "#4x20' rebar epoxy", '#4 rebar']) assert.match(match({ ...item(), description }).issue, /no matching/);
 });

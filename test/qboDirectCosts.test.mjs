@@ -127,3 +127,13 @@ test('errors retain PO references and each affected daily-log date, including al
 });
 
 
+
+test('legacy concrete names exclude only actual concrete despite wrong codes', () => {
+  for (const description of ['Bollards Concrete', 'Site Concrete - Site', 'CO6 - Concrete Set And Fill Bollards']) {
+    const r = aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Materials', unitCost: null, pricingIssue: 'No catalog match' }], new Map());
+    assert.equal(r.excluded.concrete, 1); assert.deepEqual(r.issues, []); assert.equal(r.lines.length, 0);
+    assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Labor', uom: 'hr' }], new Map()).lines.length, 1);
+    assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '03-300-20-10', costType: 'Labor', uom: 'cy' }], new Map()).excluded.concrete, 1);
+  }
+  for (const description of ['Concrete Repair Epoxy', 'Concrete Saw Rental', 'Bollard Sch 40', 'Labor Site Concrete']) assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Materials' }], new Map()).lines.length, 1);
+});

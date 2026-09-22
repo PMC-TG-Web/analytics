@@ -9,6 +9,7 @@ export const EXCLUDED_CONCRETE_COST_CODES = new Set([
   '03-300-10-20', // Wall Concrete
   '03-300-20-20', // Slab On Grade Concrete
   '03-300-30-20', // Site Concrete
+  '05-100-10-20', // Concrete Set And Fill Bollards
 ]);
 const EXCLUDED_PUMPING_ITEMS = new Set([
   'line dragon',

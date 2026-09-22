@@ -36,8 +36,8 @@ test('shop drawing vendor charges are omitted before catalog pricing and product
   }
 });
 
-test('omits the four concrete material codes before pricing, but keeps labor and other materials', () => {
-  for (const costCode of ['03-300-00-20', '03-300-10-20', '03-300-20-20', '03-300-30-20']) {
+test('omits concrete material codes including bollard concrete before pricing, but keeps labor and other materials', () => {
+  for (const costCode of ['03-300-00-20', '03-300-10-20', '03-300-20-20', '03-300-30-20', '05-100-10-20']) {
     const result = aggregateDirectCosts([log('1', 4, { lineItemId: 'old' })], [{ ...item, costCode, costType: 'Materials', unitCost: null }], new Map([['old', '10']]));
     assert.equal(result.total, '0.00');
     assert.equal(result.lines.length, 0);
@@ -47,6 +47,7 @@ test('omits the four concrete material codes before pricing, but keeps labor and
   }
   assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, costCode: '03-300-20-10', costType: 'Labor' }], new Map()).lines.length, 1);
   assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, costCode: '03-150-10-85', costType: 'Materials' }], new Map()).lines.length, 1);
+  assert.equal(aggregateDirectCosts([log('1', 12)], [{ ...item, description: 'Steel bollard', costCode: '05-100-10-10', costType: 'Materials' }], new Map()).lines.length, 1);
 });
 test('resolves explicit aliases and blocks ambiguous, missing, duplicate, or negative sources', () => {
   assert.equal(aggregateDirectCosts([log('1', 2, { lineItemId: 'old' })], [item], new Map([['old', '10']])).total, '306.48');

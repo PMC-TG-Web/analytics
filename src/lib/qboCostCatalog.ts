@@ -54,6 +54,7 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
   let matches = prices.filter(p => labor === (p.type === 'LABOR'));
   if (item.catalogItemId) matches = matches.filter(p => p.itemId === item.catalogItemId);
   else matches = matches.filter(p => p.costCode === code && (catalogName(p.name) === catalogName(name)
+    || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))
     || (aliases.get(p.itemId)?.costCode === code && catalogName(aliases.get(p.itemId)!.itemName) === catalogName(name))));
   const fail = (reason: string) => ({ unitCost: null, evidence: null, issue: `${name}: ${reason}` });
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');

@@ -28,6 +28,20 @@ test('explicit catalog ID wins over edited descriptions but not code/unit mismat
   assert.match(match({ ...item(), catalogItemId: '123', costCode: '03-200-30-21' }).issue, /different cost code/);
 });
 
+test('matches catalog descriptions without confusing rebar sizes, codes, units or ambiguous items', () => {
+  const four = { ...price(), description: '#4 Rebar By The Piece' };
+  const five = { ...four, itemId: '125', name: "#5 Rebar - 20' Pc", description: '#5 Rebar By The Piece', unitCost: '12.58873' };
+  const source = { ...item(), description: 'CO6 - #4 Rebar By The Piece' };
+  const result = match(source, [four, five]);
+  assert.equal(result.issue, null); assert.equal(result.evidence.itemId, '123'); assert.equal(result.unitCost, 8.07173);
+  assert.match(match({ ...source, costCode: '03-200-40-20' }, [four, five]).issue, /no matching/);
+  assert.match(match({ ...source, uom: 'LF' }, [four, five]).issue, /unit/);
+  assert.match(match(source, [four, { ...five, description: four.description }]).issue, /multiple/);
+  assert.match(match(source, [{ ...four, unitCost: null }]).issue, /positive/);
+  assert.match(match(source, [{ ...four, type: 'LABOR' }]).issue, /no matching/);
+  assert.match(match({ ...source, catalogItemId: '125' }, [four]).issue, /no matching/);
+});
+
 test('rebar placement spacing does not change the purchased bar identity', () => {
   for (const spacing of ['12" OCEW', '12" O.C. E.W.', '16" OC']) {
     const r = match({ ...item(), description: `CO6 - #4 Rebar - 20' Pc - ${spacing}` });

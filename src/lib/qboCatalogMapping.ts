@@ -31,8 +31,8 @@ export function mappedCatalogPrice(source: CatalogMappingSource, items: CatalogP
     const candidates = items.filter(item => item.costCode === code && (item.type === 'LABOR') === labor && !!item.uom && item.uom === catalogUnit(source.uom || ''));
     if (!candidates.length) return exact;
     const rates = candidates.map(item => labor ? item.laborRate : item.unitCost);
-    if (rates.some(rate => !rate || !Number.isFinite(Number(rate)) || Number(rate) <= 0)) return { unitCost: null, evidence: null, issue: `${source.description || 'Item'}: this cost code has a compatible Cost Catalog item without a positive price. Choose the correct catalog item.` };
-    if (new Set(rates.map(Number)).size !== 1) return { unitCost: null, evidence: null, issue: `${source.description || 'Item'}: this cost code and unit have different current Cost Catalog prices. Choose the correct catalog item.` };
+    if (rates.some(rate => !rate || !Number.isFinite(Number(rate)) || Number(rate) <= 0)) return { unitCost: null, evidence: null, issue: `${source.description || 'Item'}: no exact catalog match was found. Other items sharing this cost code include missing prices, so a price cannot be selected automatically. Confirm the catalog item used to price this line.` };
+    if (new Set(rates.map(Number)).size !== 1) return { unitCost: null, evidence: null, issue: `${source.description || 'Item'}: no exact catalog match was found, and items sharing this cost code and unit have different current prices. Confirm the catalog item used to price this line.` };
     // Equal rates require no pricing decision; use a stable item as evidence.
     const selected = [...candidates].sort((a, b) => a.itemId.localeCompare(b.itemId))[0];
     return matchCatalogPrice({ ...source, catalogItemId: selected.itemId }, items, aliases);

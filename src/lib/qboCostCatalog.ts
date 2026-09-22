@@ -63,7 +63,7 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
     const otherCodes = prices.filter(p => p.costCode !== code && labor === (p.type === 'LABOR')
       && !!item.uom && catalogUnit(item.uom) === p.uom
       && (catalogName(p.name) === catalogName(name) || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))));
-    if (otherCodes.length === 1) return fail(`catalog item "${otherCodes[0].name}" uses cost code ${otherCodes[0].costCode}, but this PO uses ${code}. Select it in Cost Catalog mappings to confirm the pricing match.`);
+    if (otherCodes.length === 1) return fail(`catalog item "${otherCodes[0].name}" uses cost code ${otherCodes[0].costCode}, but this PO uses ${code}. Select it under Confirm pricing source to confirm the pricing match.`);
   }
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');
   const found = matches[0];

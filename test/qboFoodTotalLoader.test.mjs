@@ -22,7 +22,7 @@ test('monthly loader excludes 85.86 Food log quantity and includes entered $85.8
  assert.equal(d.total,'92.86'); assert.equal(d.food.logCount,1); assert.equal(d.lines.length,2);
  assert.equal(d.lines.find(l=>l.sourceType==='manual_food').amount,'85.86'); assert.equal(d.catalogMappingItems.some(i=>i.description==='Food'),false);
 });
-test('Food logs require an explicit total; zero removes Food without removing other materials',async()=>{
- const missing=await load(null);assert.ok(missing.issues.some(i=>i.includes('Add Food expenses')));assert.equal(missing.total,'7.00');
+test('Food entries are optional even with daily logs; zero omits Food without removing other materials',async()=>{
+ const missing=await load(null);assert.equal(missing.issues.length,0);assert.equal(missing.lines.some(l=>l.sourceType==='manual_food'),false);assert.equal(missing.total,'7.00');
  const zero=await load({amount:new Prisma.Decimal(0),revision:1,updatedBy:'operator',updatedAt:date}); assert.equal(zero.total,'7.00');assert.equal(zero.issues.length,0);assert.equal(zero.lines.length,1);
 });

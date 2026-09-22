@@ -60,7 +60,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
   const labor = aggregateDirectCostLabor(timecards, laborRates.rates);
   const overlap = summary.lines.filter(l => /^(labor|l)$/i.test(l.costType || '') && labor.rows.some(t => t.costCode === l.costCode));
-  const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...(foodLogCount && !foodTotal ? ['Add Food expenses for this project/month (or add $0 if none).'] : []), ...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
+  const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
   return {
     schemaVersion: 3, scope: 'productivity_and_timecards', pricingSource: 'cost_catalog', catalogCheckedAt: catalog?.fetchedAt || null, generatedAt: new Date().toISOString(),
     companyId, projectId, projectName: project.projectName, projectNumber: project.projectNumber, month,

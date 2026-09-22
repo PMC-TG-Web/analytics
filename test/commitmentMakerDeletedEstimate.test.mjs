@@ -6,7 +6,7 @@ const module = { exports: {} };
 new Function('require', 'module', 'exports', ts.transpileModule(readFileSync('src/lib/procoreCommitmentMakerEstimateImport.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(id => {
  if (id === 'node:crypto') return {};
  if (id === '@/lib/prisma') return { prisma: {} };
- if (id === '@/lib/procore/commitmentMakerEstimate') return { PrimaryEstimateError: Error };
+ if (id === '@/lib/procore/commitmentMakerEstimate') return { PrimaryEstimateError: Error, estimateRecord: value => value && typeof value === 'object' ? value : {} };
  throw new Error(id);
 }, module, module.exports);
 const { verifyDeletedEstimateTargets, primaryEstimateImportBlock } = module.exports;
@@ -30,4 +30,15 @@ test('completed imports unlock only after list absence and exact NOT_FOUND for e
 });
 test('a released import is rechecked so restored POs still block recreation', async () => {
  assert.equal(await verifyDeletedEstimateTargets({ ...state, status: 'deleted' }, { listIds: async () => ['123'], isNotFound: async () => true }), false);
+});
+
+
+test('historical change-order audits never block a base-estimate import', () => {
+ const { isBaseEstimateAudit } = module.exports;
+ assert.equal(isBaseEstimateAudit({ sheetName: 'Approved Change Order', fileName: 'Procore CO 001', success: true }), false);
+ assert.equal(isBaseEstimateAudit({ sourceChangeOrder: { packageId: '123' } }), false);
+ assert.equal(isBaseEstimateAudit({ sourceType: 'approved_change_order' }), false);
+ assert.equal(isBaseEstimateAudit({ sheetName: 'Estimate', group: 'Slabs' }), true);
+ assert.equal(isBaseEstimateAudit({ sheetName: 'Primary Estimate', sourceEstimate: { proposalId: '123' } }), true);
+ assert.equal(isBaseEstimateAudit({ group: 'CO named workbook group' }), true);
 });

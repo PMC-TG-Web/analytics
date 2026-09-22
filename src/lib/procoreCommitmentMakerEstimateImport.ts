@@ -7,6 +7,14 @@ export type EstimateImportState = { fingerprint: string; status: string; targets
 type Identity = { companyId: string; projectId: string };
 type Claim = Identity & { owner: string };
 
+export function isBaseEstimateAudit(value: unknown): boolean {
+  const changes = estimateRecord(value);
+  // Older CO audits predate sourceChangeOrder but retain their source sheet.
+  return !changes.sourceChangeOrder
+    && changes.sourceType !== 'approved_change_order'
+    && String(changes.sheetName || '').trim().toLowerCase() !== 'approved change order';
+}
+
 export async function readPrimaryEstimateImport({ companyId, projectId }: Identity) {
   const [row] = await prisma.$queryRaw<EstimateImportState[]>`SELECT fingerprint, status, targets, combinations
     FROM commitment_maker_estimate_imports WHERE company_id = ${companyId} AND project_id = ${projectId}`;
@@ -16,7 +24,7 @@ export async function readPrimaryEstimateImport({ companyId, projectId }: Identi
   const audits = await prisma.auditLog.findMany({ where: { entity: 'ProcoreCommitmentMaker',
     action: { in: ['create', 'resume'] }, changes: { path: ['projectId'], equals: projectId } },
     select: { entityId: true, changes: true } });
-  const targets = audits.filter(audit => !estimateRecord(audit.changes).sourceChangeOrder).map(audit => {
+  const targets = audits.filter(audit => isBaseEstimateAudit(audit.changes)).map(audit => {
     const changes = estimateRecord(audit.changes);
     return { name: String(changes.group || ''), id: audit.entityId || '', number: String(changes.number || '') };
   });

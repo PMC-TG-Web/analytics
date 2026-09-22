@@ -6,7 +6,8 @@ import { loadQboDirectCostLaborRates } from './loadQboDirectCostLaborRates';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue, type BillCatalogSnapshot } from './qboCostCatalog';
 import { mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
-import { applyDirectCostCoding } from './qboDirectCostCoding';
+import { applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
+import { foodTotalLine } from './qboFoodTotal';
 import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
 
 export async function loadQboDirectCosts(companyId: string, projectId: string, month: string, catalogSnapshot?: BillCatalogSnapshot | null) {
@@ -17,7 +18,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const catalog = catalogSnapshot === undefined ? await loadQboCostCatalog(companyId) : catalogSnapshot;
   const catalogIssue = catalogSnapshotIssue(catalog, companyId);
   // Procore log dates are persisted as midnight UTC date-only values, not instants in local time.
-  const [logs, items, aliases, timecards, laborRates, catalogMappings] = await Promise.all([
+  const [logs, items, aliases, timecards, laborRates, catalogMappings, savedFood] = await Promise.all([
     prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } },
       select: { id: true, procoreId: true, date: true, status: true, quantityUsed: true, lineItemId: true, lineItemDescription: true, lineItemHolderTitle: true, lineItemHolderNumber: true, lineItemHolderId: true, lineItemHolderType: true, updatedAt: true } }),
     prisma.purchaseOrderLineItemContractDetail.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId },
@@ -26,38 +27,48 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } }, select: { procoreId: true, date: true, hours: true, totalHoursWorked: true, costCodeFullCode: true, costCodeName: true, updatedAt: true } }),
     loadQboDirectCostLaborRates(companyId, projectId, catalog),
     prisma.qboCostCatalogMapping.findMany({ where: { companyId, projectId } }),
+    prisma.qboBillFoodTotal.findUnique({ where: { companyId_projectId_month: { companyId, projectId, month } } }),
   ]);
   const mappingByLine = new Map(catalogMappings.map(mapping => [mapping.lineItemId, mapping]));
   const crosswalk = loadEstimatingCostCodeCatalog();
   const aliasByLine = new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id]));
   const activeLineIds = new Set(logs.filter(log => log.status?.toLowerCase() === 'approved' && Number(log.quantityUsed) > 0 && !/billing file/i.test(log.lineItemHolderTitle || '')).map(log => aliasByLine.get(log.lineItemId || '') || log.lineItemId));
   const codedItems = items.map(applyDirectCostCoding);
+  const foodIds = new Set(codedItems.filter(item => item.procoreId && isFoodCost(item)).map(item => item.procoreId!));
+  const knownItems = new Map(codedItems.map(item => [item.procoreId, item]));
+  const isFoodLog = (log: typeof logs[number]) => {
+    const id = aliasByLine.get(log.lineItemId || '') || log.lineItemId;
+    return foodIds.has(id || '') || (!knownItems.has(id) && isFoodCost({ description: log.lineItemDescription }));
+  };
+  const foodLogCount = logs.filter(log => isFoodLog(log) && log.status?.toLowerCase() === 'approved' && !/billing file/i.test(log.lineItemHolderTitle || '')).length;
+  const foodTotal = savedFood ? { amount: savedFood.amount.toFixed(2), revision: savedFood.revision, updatedBy: savedFood.updatedBy, updatedAt: savedFood.updatedAt.toISOString() } : null;
+  const foodLine = foodTotalLine(companyId, projectId, month, foodTotal);
   const duplicateIds = duplicateCatalogSourceIds(codedItems.filter(item => activeLineIds.has(item.procoreId)));
-  const pricedItems = codedItems.map(item => {
+  const pricedItems = codedItems.filter(item => !isFoodCost(item)).map(item => {
     const raw = item.customFields as { cost_item?: { id?: string | number }; cost_item_id?: string | number } | null;
     const catalogItemId = raw?.cost_item?.id || raw?.cost_item_id;
     const price = catalogIssue ? { unitCost: null, evidence: null, issue: catalogIssue }
       : mappedCatalogPrice({ ...item, catalogItemId: catalogItemId ? String(catalogItemId) : null }, catalog!.items, crosswalk, mappingByLine.get(item.procoreId || ''), !duplicateIds.has(item.procoreId || ''));
     return { ...item, unitCost: price.unitCost, pricingIssue: price.issue, catalogPrice: price.evidence, updatedAt: catalog ? new Date(catalog.fetchedAt) : item.updatedAt };
   });
-  const summary = aggregateDirectCosts(logs.map(log => ({ ...log, id: log.procoreId || log.id })), pricedItems, new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id])));
+  const summary = aggregateDirectCosts(logs.filter(log => !isFoodLog(log)).map(log => ({ ...log, id: log.procoreId || log.id })), pricedItems, new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id])));
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
   const labor = aggregateDirectCostLabor(timecards, laborRates.rates);
   const overlap = summary.lines.filter(l => /^(labor|l)$/i.test(l.costType || '') && labor.rows.some(t => t.costCode === l.costCode));
-  const issues = [...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
+  const issues = [...(foodLogCount && !foodTotal ? ['Enter the total Food cost for this project/month (or save $0 if none).'] : []), ...summary.issues, ...labor.issues, ...(timecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
   return {
     schemaVersion: 3, scope: 'productivity_and_timecards', pricingSource: 'cost_catalog', catalogCheckedAt: catalog?.fetchedAt || null, generatedAt: new Date().toISOString(),
     companyId, projectId, projectName: project.projectName, projectNumber: project.projectNumber, month,
-    vendorName: DIRECT_COST_VENDOR,
+    vendorName: DIRECT_COST_VENDOR, food: { saved: foodTotal, logCount: foodLogCount },
     ...summary,
     catalogMappingItems: pricedItems.filter(item => item.procoreId && visibleItems.has(item.procoreId)).map(item => ({ lineItemId: item.procoreId!, description: item.description || 'Unnamed item', costCode: item.costCode, uom: item.uom, issue: item.pricingIssue, catalogName: item.catalogPrice?.name || null, manual: !!mappingByLine.get(item.procoreId!)?.catalogItemId })),
-    lines: [...summary.lines.map(l => ({ ...l, lineKey: l.procoreLineItemId, sourceType: 'productivity' as const })), ...labor.lines],
-    issues, labor: { ...labor, proposalId: laborRates.proposalId }, materialTotal: summary.total,
-    total: new Prisma.Decimal(summary.total).plus(labor.total).toFixed(2),
+    lines: [...summary.lines.map(l => ({ ...l, lineKey: l.procoreLineItemId, sourceType: 'productivity' as const })), ...labor.lines, ...(foodLine ? [foodLine] : [])],
+    issues, labor: { ...labor, proposalId: laborRates.proposalId }, materialTotal: new Prisma.Decimal(summary.total).plus(foodLine?.amount || '0').toFixed(2),
+    total: new Prisma.Decimal(summary.total).plus(labor.total).plus(foodLine?.amount || '0').toFixed(2),
     timecardsNotIncluded: { count: labor.rows.filter(r => r.unitCost === null).reduce((n, r) => n + r.sourceLogs.length, 0), hours: Number(labor.unpricedHours) },
     sourceLogCount: logs.length,
     latestSourceUpdate: logs.length ? new Date(Math.max(...logs.map(l => l.updatedAt.getTime()))).toISOString() : null,
-    notes: ['Uses approved productivity logs and non-deleted timecards, including timecards whose source has no approval status.', 'All unit costs and labor rates come from the current synchronized company Cost Catalog. Missing or ambiguous catalog matches block posting.', 'Negative category offsets are not included.'],
+    notes: ['Uses approved productivity logs and non-deleted timecards, including timecards whose source has no approval status.', 'Food uses the entered monthly total once; Food daily-log quantities and PO prices are not multiplied. Other costs use the current synchronized company Cost Catalog. Missing or ambiguous catalog matches block posting.', 'Negative category offsets are not included.'],
   };
 }
 

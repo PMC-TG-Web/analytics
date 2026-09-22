@@ -2,6 +2,30 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Operator-entered total Food spend for one project/month; never a unit price.
+model QboBillFoodTotal {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  amount Decimal @db.Decimal(12, 2)
+  revision Int @default(1)
+  updatedBy String @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@id([companyId, projectId, month])
+  @@map("qbo_bill_food_totals")
+}
+model QboBillFoodTotalRevision {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  revision Int
+  amount Decimal @db.Decimal(12, 2)
+  updatedBy String @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([companyId, projectId, month, revision])
+  @@map("qbo_bill_food_total_revisions")
+}
+
 /// Explicit catalog price choice for one Procore PO line; rates remain live catalog values.
 model QboCostCatalogMapping {
   companyId       String   @map("company_id")

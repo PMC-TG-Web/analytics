@@ -10,13 +10,15 @@ export type BillQueueStatus = 'create' | 'update' | 'current' | 'blocked' | 'una
 export type BillQueueRow = { projectId: string; projectName: string; projectNumber: string | null; status: BillQueueStatus; billNumber: string | null; gross: string | null; previousGross: number | null; laborHours: string | null; itemCount: number; lastPosted: string | null; reasons: string[]; issueSources?: DirectCostIssueSource[] };
 export async function loadQboBillQueue(companyId: string, month: string) {
   const { start, end } = directCostMonth(month);
-  const [projects, productivity, timecards] = await Promise.all([
+  const [projects, productivity, timecards, foodTotals] = await Promise.all([
     prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, projectName: true, projectNumber: true }, orderBy: { projectName: 'asc' } }),
     // Include deleted sources so removal of the last log does not hide a posted bill.
     prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, date: { gte: start, lt: end } }, distinct: ['procoreProjectId'], select: { procoreProjectId: true } }),
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, date: { gte: start, lt: end } }, distinct: ['procoreProjectId'], select: { procoreProjectId: true } }),
+    prisma.qboBillFoodTotal.findMany({ where: { companyId, month }, select: { projectId: true } }),
   ]);
   const active = new Set([...productivity, ...timecards].map(p => p.procoreProjectId));
+  for (const food of foodTotals) active.add(food.projectId);
   const pricingCatalog = await loadQboCostCatalog(companyId);
   // A single registry read avoids a round trip for every inactive project, while
   // retaining mapped projects whose final source entry was removed or moved.

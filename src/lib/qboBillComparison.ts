@@ -30,7 +30,7 @@ export function compareMonthlyBill(draft: ComparisonDraft, mapping: BillMapping,
     const kind = line.sourceType === 'timecard' || /^(labor|l)$/i.test(line.costType?.trim() || '') ? 'labor' : /^(materials?|m)$/i.test(line.costType?.trim() || '') || (/^(other|o|equipment|e|commitments|c)$/i.test(line.costType?.trim() || '') && item?.offsetCategory === 'material') ? 'material' : null;
     if (!kind) issues.push(`Offset category needed for ${line.description}.`);
     else totals[kind] += Math.round(Number(line.amount) * 100);
-    bill.Line!.push({ DetailType: 'ItemBasedExpenseLineDetail', Description: `${line.description} (${line.uom})`, Amount: Number(line.amount), ItemBasedExpenseLineDetail: { ItemRef: { value: item?.itemId || '' }, Qty: Number(line.quantity), UnitPrice: Number(line.unitCost), CustomerRef: { value: mapping.customerId || '' }, BillableStatus: 'NotBillable', ...(item?.classId ? { ClassRef: { value: item.classId } } : {}) } });
+    bill.Line!.push({ DetailType: 'ItemBasedExpenseLineDetail', Description: line.sourceType === 'manual_food' ? 'Food (monthly total)' : `${line.description} (${line.uom})`, Amount: Number(line.amount), ItemBasedExpenseLineDetail: { ItemRef: { value: item?.itemId || '' }, Qty: Number(line.quantity), UnitPrice: Number(line.unitCost), CustomerRef: { value: mapping.customerId || '' }, BillableStatus: 'NotBillable', ...(item?.classId ? { ClassRef: { value: item.classId } } : {}) } });
   }
   if (mapping.offsets?.customerAssignment !== 'none') issues.push('Configure category offsets with no Customer / Project.');
   for (const kind of ['material', 'labor'] as const) {

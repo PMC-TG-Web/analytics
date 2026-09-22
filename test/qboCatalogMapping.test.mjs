@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
+import * as coding from '../src/lib/qboDirectCostCoding.ts';
 import * as catalog from '../src/lib/qboCostCatalog.ts';
 
 function moduleAt(file, imports) {
@@ -44,7 +45,7 @@ function service({ existing = null, changedDuringSave = false } = {}) {
     },
   };
   const snapshot = { version: 1, companyId: '1', fetchedAt: new Date().toISOString(), items: [price] };
-  return { ...moduleAt('src/lib/loadQboCatalogMapping.ts', { './prisma': { prisma }, './loadQboCostCatalog': { loadQboCostCatalog: async () => snapshot }, './qboCostCatalog': catalog, './qboCatalogMapping': logic }), writes };
+  return { ...moduleAt('src/lib/loadQboCatalogMapping.ts', { './prisma': { prisma }, './loadQboCostCatalog': { loadQboCostCatalog: async () => snapshot }, './qboCostCatalog': catalog, './qboCatalogMapping': logic, './qboDirectCostCoding': coding }), writes };
 }
 const input = () => ({ companyId: '1', projectId: '2', lineItemId: '3', catalogItemId: '123', sourceSignature: logic.catalogSourceSignature(source), revision: 0 });
 test('save validates server-side choices and records operator without accepting a browser price', async () => {

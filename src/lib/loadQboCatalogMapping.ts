@@ -2,6 +2,7 @@ import { prisma } from './prisma';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue } from './qboCostCatalog';
 import { catalogMappingCandidates, catalogSourceSignature } from './qboCatalogMapping';
+import { applyDirectCostCoding } from './qboDirectCostCoding';
 
 export async function loadQboCatalogMapping(companyId: string, projectId: string, lineItemId: string) {
   if (![companyId, projectId, lineItemId].every(id => /^\d+$/.test(id))) throw new Error('Choose a valid project and PO line.');
@@ -14,7 +15,7 @@ export async function loadQboCatalogMapping(companyId: string, projectId: string
   if (items.length !== 1) throw new Error('This PO line is unavailable or ambiguous in the selected project.');
   const issue = catalogSnapshotIssue(catalog, companyId);
   if (issue) throw new Error(issue);
-  const source = items[0];
+  const source = applyDirectCostCoding(items[0]);
   return { source, sourceSignature: catalogSourceSignature(source), revision: mapping?.revision || 0, selectedItemId: mapping?.catalogItemId || null, candidates: catalogMappingCandidates(source, catalog!.items), checkedAt: catalog!.fetchedAt };
 }
 

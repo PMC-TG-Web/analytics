@@ -6,6 +6,7 @@ import { loadQboDirectCostLaborRates } from './loadQboDirectCostLaborRates';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue, type BillCatalogSnapshot } from './qboCostCatalog';
 import { mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
+import { applyDirectCostCoding } from './qboDirectCostCoding';
 import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
 
 export async function loadQboDirectCosts(companyId: string, projectId: string, month: string, catalogSnapshot?: BillCatalogSnapshot | null) {
@@ -30,8 +31,9 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const crosswalk = loadEstimatingCostCodeCatalog();
   const aliasByLine = new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id]));
   const activeLineIds = new Set(logs.filter(log => log.status?.toLowerCase() === 'approved' && Number(log.quantityUsed) > 0 && !/billing file/i.test(log.lineItemHolderTitle || '')).map(log => aliasByLine.get(log.lineItemId || '') || log.lineItemId));
-  const duplicateIds = duplicateCatalogSourceIds(items.filter(item => activeLineIds.has(item.procoreId)));
-  const pricedItems = items.map(item => {
+  const codedItems = items.map(applyDirectCostCoding);
+  const duplicateIds = duplicateCatalogSourceIds(codedItems.filter(item => activeLineIds.has(item.procoreId)));
+  const pricedItems = codedItems.map(item => {
     const raw = item.customFields as { cost_item?: { id?: string | number }; cost_item_id?: string | number } | null;
     const catalogItemId = raw?.cost_item?.id || raw?.cost_item_id;
     const price = catalogIssue ? { unitCost: null, evidence: null, issue: catalogIssue }

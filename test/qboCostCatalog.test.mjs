@@ -19,7 +19,7 @@ test('matches names and units while retaining size and cost-code distinctions', 
     assert.equal(result.issue, null); assert.equal(result.unitCost, 8.07173); assert.equal(result.evidence.itemId, '123');
   }
   assert.match(match({ ...item(), description: "#5 Rebar - 20' Pc" }).issue, /no matching/);
-  assert.match(match({ ...item(), costCode: '03-200-30-21' }).issue, /uses cost code/);
+  assert.equal(match({ ...item(), costCode: '03-200-30-21' }).unitCost, 8.07173);
   assert.match(match({ ...item(), uom: 'LF' }).issue, /unit/);
 });
 test('explicit catalog ID wins over edited descriptions but not code/unit mismatches', () => {
@@ -34,7 +34,7 @@ test('matches catalog descriptions without confusing rebar sizes, codes, units o
   const source = { ...item(), description: 'CO6 - #4 Rebar By The Piece' };
   const result = match(source, [four, five]);
   assert.equal(result.issue, null); assert.equal(result.evidence.itemId, '123'); assert.equal(result.unitCost, 8.07173);
-  assert.match(match({ ...source, costCode: '03-200-40-20' }, [four, five]).issue, /uses cost code/);
+  assert.equal(match({ ...source, costCode: '03-200-40-20' }, [four, five]).unitCost, 8.07173);
   assert.match(match({ ...source, uom: 'LF' }, [four, five]).issue, /unit/);
   assert.match(match(source, [four, { ...five, description: four.description }]).issue, /multiple/);
   assert.match(match(source, [{ ...four, unitCost: null }]).issue, /positive/);
@@ -83,4 +83,18 @@ test('material singular/plural names match without dropping size or product qual
   assert.match(match(source, [dowel, { ...dowel, itemId: '8', name: '#7 Speed Dowel', unitCost: '4' }]).issue, /multiple/);
   assert.match(match({ ...source, catalogItemId: '999' }, [dowel]).issue, /no matching/);
   assert.equal(match({ ...source, description: 'Chairs 3"' }, [{ ...dowel, name: 'Chair 3"' }]).unitCost, 2.32);
+});
+test('exact equipment identities share a current price across placement codes without changing source coding', () => {
+  const source = { description: 'Somero Power Rake (8 hr minimum) - SOG', costCode: '03-300-00-12', costType: 'Other', uom: 'ea' };
+  const sog = { ...price(), name: 'Somero Power Rake (8 hr minimum)', costCode: '03-300-20-30', itemId: '101', unitCost: '600', type: 'SUBCONTRACTOR' };
+  const site = { ...sog, costCode: '03-300-30-30', itemId: '102' };
+  const result = match(source, [site, sog]);
+  for (const suffix of ['-SOG', ' - Site', ' – Wall', ' - Slab On Deck']) assert.equal(match({ ...source, description: 'Somero Power Rake (8 hr minimum)' + suffix }, [sog, site]).unitCost, 600);
+  assert.equal(result.issue, null); assert.equal(result.unitCost, 600); assert.equal(result.evidence.itemId, '101'); assert.equal(source.costCode, '03-300-00-12');
+  assert.match(match(source, [sog, {...site, unitCost:'650'}]).issue, /different prices/);
+  assert.match(match(source, [sog, {...site, unitCost:null}]).issue, /missing prices/);
+  assert.match(match({...source,uom:'hr'}, [sog,site]).issue, /no matching/);
+  assert.match(match({...source,catalogItemId:'101'}, [sog,site]).issue, /different cost code/);
+  assert.match(match({...source,description:'Somero S-840 (8 hr minimum) - SOG'}, [sog,site]).issue, /no matching/);
+  assert.match(match({...source,description:'Somero Power Rake (4 hr minimum) - SOG'}, [sog,site]).issue, /no matching/);
 });

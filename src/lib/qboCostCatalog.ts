@@ -34,6 +34,7 @@ function catalogMatchName(value: string) {
   // Normalize known material nouns only. Keep sizes, lengths, coatings, and
   // qualifiers (such as base/tube) intact. Do not change saved source signatures.
   return catalogName(value.normalize('NFKC').toLowerCase()
+    .replace(/\s*[-\u2013\u2014]\s*(sog|site|wall|walls|foundation|foundations|slab on grade|slab on deck)\s*$/, '')
     .replace(/\b(dowels|chairs|tubes|sheets|rolls|bars|bags|anchors|caps|pieces|bollards)\b/g, word => word.slice(0, -1)));
 }
 function price(value: unknown): string | null {
@@ -65,15 +66,22 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
     || (!!p.description?.trim() && catalogMatchName(p.description) === catalogMatchName(name))
     || (aliases.get(p.itemId)?.costCode === code && catalogMatchName(aliases.get(p.itemId)!.itemName) === catalogMatchName(name))));
   const fail = (reason: string) => ({ unitCost: null, evidence: null, issue: `${name}: ${reason}` });
+  let matchedAcrossCodes = false;
   if (!matches.length && !item.catalogItemId) {
     const otherCodes = prices.filter(p => p.costCode !== code && labor === (p.type === 'LABOR')
       && !!item.uom && catalogUnit(item.uom) === p.uom
       && (catalogMatchName(p.name) === catalogMatchName(name) || (!!p.description?.trim() && catalogMatchName(p.description) === catalogMatchName(name))));
-    if (otherCodes.length === 1) return fail(`catalog item "${otherCodes[0].name}" uses cost code ${otherCodes[0].costCode}, but this PO uses ${code}. Select it under Confirm pricing source to confirm the pricing match.`);
+    if (otherCodes.length) {
+      const rates = otherCodes.map(p => labor ? p.laborRate : p.unitCost);
+      if (rates.some(rate => !rate || !Number.isFinite(Number(rate)) || Number(rate) <= 0)) return fail('matching catalog items under other cost codes include missing prices. Confirm the pricing source.');
+      if (new Set(rates.map(Number)).size > 1) return fail('matching catalog items under other cost codes have different prices. Confirm the pricing source.');
+      matches = [[...otherCodes].sort((a, b) => a.itemId.localeCompare(b.itemId))[0]];
+      matchedAcrossCodes = true;
+    }
   }
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');
   const found = matches[0];
-  if (found.costCode !== code) return fail('the linked Cost Catalog item has a different cost code.');
+  if (!matchedAcrossCodes && found.costCode !== code) return fail('the linked Cost Catalog item has a different cost code.');
   if (!item.uom || !found.uom || catalogUnit(item.uom) !== found.uom) return fail(`Cost Catalog unit (${found.uom || 'missing'}) does not match daily-log/PO unit (${item.uom || 'missing'}).`);
   const unitCost = labor ? found.laborRate : found.unitCost;
   if (!unitCost) return fail('the Cost Catalog item needs a positive current unit cost.');

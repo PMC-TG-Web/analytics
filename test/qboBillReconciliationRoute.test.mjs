@@ -37,3 +37,5 @@ test('valid save uses session attribution and private no-store responses', async
   assert.equal(h.writes[0].body.operation, 'reconcile-confirm');
   assert.equal(h.writes[0].body.draft.trusted, true);
 });
+
+test('preserve choice is validated and forwarded', async () => { const h = route(); assert.equal((await h.POST(request({ ...body(), preserveAdditions: 'yes' }))).status, 400); assert.equal((await h.POST(request({ ...body(), preserveAdditions: true }))).status, 200); assert.equal(h.writes[0].body.preserveAdditions, true); });

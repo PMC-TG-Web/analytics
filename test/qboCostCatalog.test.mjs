@@ -71,3 +71,16 @@ test('shorthand rebar matches only complete size and purchased length', () => {
   for (const description of ["#4x20' rebar", "CO6 - #4 x 20' Rebar - Site"]) assert.equal(match({ ...item(), description }).unitCost, 8.07173);
   for (const description of ["#5x20' rebar", "#4x10' rebar", "#4x20' rebar epoxy", '#4 rebar']) assert.match(match({ ...item(), description }).issue, /no matching/);
 });
+test('material singular/plural names match without dropping size or product qualifiers', () => {
+  const dowel = { ...price(), itemId: '7', name: '#7 Speed Dowels', description: '#7 Speed Dowels', costCode: '03-150-10-85', unitCost: '2.32' };
+  const source = { ...item(), description: '#7 speed dowel', costCode: dowel.costCode };
+  const result = match(source, [dowel]);
+  assert.equal(result.unitCost, 2.32); assert.equal(result.evidence.itemId, '7');
+  for (const description of ['#5 speed dowel', '#7 speed dowel base', '#7 speed dowel tube', '#7 speed dowel epoxy', '#7 speed dowel 9"']) assert.match(match({ ...source, description }, [dowel]).issue, /no matching/);
+  assert.match(match({ ...source, uom: 'lf' }, [dowel]).issue, /unit/);
+  assert.match(match(source, [{ ...dowel, type: 'LABOR' }]).issue, /no matching/);
+  assert.match(match(source, [{ ...dowel, unitCost: null }]).issue, /positive/);
+  assert.match(match(source, [dowel, { ...dowel, itemId: '8', name: '#7 Speed Dowel', unitCost: '4' }]).issue, /multiple/);
+  assert.match(match({ ...source, catalogItemId: '999' }, [dowel]).issue, /no matching/);
+  assert.equal(match({ ...source, description: 'Chairs 3"' }, [{ ...dowel, name: 'Chair 3"' }]).unitCost, 2.32);
+});

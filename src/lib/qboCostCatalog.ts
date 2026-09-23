@@ -30,6 +30,12 @@ export function catalogUnit(value: string) {
   if (['cy', 'cuyd', 'cubicyards', 'cubicyard'].includes(unit)) return 'cy';
   return unit;
 }
+function catalogMatchName(value: string) {
+  // Normalize known material nouns only. Keep sizes, lengths, coatings, and
+  // qualifiers (such as base/tube) intact. Do not change saved source signatures.
+  return catalogName(value.normalize('NFKC').toLowerCase()
+    .replace(/\b(dowels|chairs|tubes|sheets|rolls|bars|bags|anchors|caps|pieces|bollards)\b/g, word => word.slice(0, -1)));
+}
 function price(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;
   try { const n = new Prisma.Decimal(String(value)); return n.isFinite() && n.gt(0) ? n.toDecimalPlaces(8).toString() : null; }
@@ -55,14 +61,14 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
   const labor = /^(labor|l)$/i.test(item.costType || '');
   let matches = prices.filter(p => labor === (p.type === 'LABOR'));
   if (item.catalogItemId) matches = matches.filter(p => p.itemId === item.catalogItemId);
-  else matches = matches.filter(p => p.costCode === code && (catalogName(p.name) === catalogName(name)
-    || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))
-    || (aliases.get(p.itemId)?.costCode === code && catalogName(aliases.get(p.itemId)!.itemName) === catalogName(name))));
+  else matches = matches.filter(p => p.costCode === code && (catalogMatchName(p.name) === catalogMatchName(name)
+    || (!!p.description?.trim() && catalogMatchName(p.description) === catalogMatchName(name))
+    || (aliases.get(p.itemId)?.costCode === code && catalogMatchName(aliases.get(p.itemId)!.itemName) === catalogMatchName(name))));
   const fail = (reason: string) => ({ unitCost: null, evidence: null, issue: `${name}: ${reason}` });
   if (!matches.length && !item.catalogItemId) {
     const otherCodes = prices.filter(p => p.costCode !== code && labor === (p.type === 'LABOR')
       && !!item.uom && catalogUnit(item.uom) === p.uom
-      && (catalogName(p.name) === catalogName(name) || (!!p.description?.trim() && catalogName(p.description) === catalogName(name))));
+      && (catalogMatchName(p.name) === catalogMatchName(name) || (!!p.description?.trim() && catalogMatchName(p.description) === catalogMatchName(name))));
     if (otherCodes.length === 1) return fail(`catalog item "${otherCodes[0].name}" uses cost code ${otherCodes[0].costCode}, but this PO uses ${code}. Select it under Confirm pricing source to confirm the pricing match.`);
   }
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');

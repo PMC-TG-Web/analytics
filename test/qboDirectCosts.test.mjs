@@ -137,3 +137,10 @@ test('legacy concrete names exclude only actual concrete despite wrong codes', (
   }
   for (const description of ['Concrete Repair Epoxy', 'Concrete Saw Rental', 'Bollard Sch 40', 'Labor Site Concrete']) assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Materials' }], new Map()).lines.length, 1);
 });
+
+test('priced lines retain PO names for actionable integration errors', () => {
+ const purchaseOrderContract={number:'PO-001',title:'Sidewalk'};
+ const result=aggregateDirectCosts([log('1',2)],[{...item,purchaseOrderContract}],new Map());
+ assert.deepEqual(result.lines[0].purchaseOrder,purchaseOrderContract);
+ assert.equal(result.lines[0].sourceLogs[0].date,'2026-09-10');
+});

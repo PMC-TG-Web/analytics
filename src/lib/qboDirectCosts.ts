@@ -126,6 +126,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
   const lines = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([procoreLineItemId, group]) => ({
     procoreLineItemId,
     description: group.item.description || `Procore item ${procoreLineItemId}`,
+    purchaseOrder: group.item.purchaseOrderContract || null,
     costCode: group.item.costCode || null,
     costType: group.item.costType || null,
     quantity: group.quantity.toString(),

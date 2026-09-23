@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { loadQboCatalogMapping } from '@/lib/loadQboCatalogMapping';
 
 type Choices = Awaited<ReturnType<typeof loadQboCatalogMapping>>;
-type Item = { lineItemId: string; description: string; costCode: string | null; uom: string | null; issue: string | null; catalogName: string | null; manual: boolean };
+type Item = { lineItemId: string; description: string; costCode: string | null; uom: string | null; issue: string | null; catalogName: string | null; manual: boolean; projectPrice?: boolean };
 export default function CatalogMappingPanel({ companyId, projectId, items, disabled, onBusy, onComplete }: { companyId: string; projectId: string; items: Item[]; disabled: boolean; onBusy: (busy: boolean) => void; onComplete: () => Promise<void> }) {
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState('');
@@ -40,9 +40,9 @@ export default function CatalogMappingPanel({ companyId, projectId, items, disab
   const selectedItem = choices?.candidates.find(item => item.itemId === selected);
   return <section id="bill-catalog-mappings" className="scroll-mt-20 rounded-xl border border-blue-200 bg-white p-5 space-y-3">
     <div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">Confirm pricing source</h3><p className="text-sm text-slate-600">Confirm which Procore catalog item supplies the current price. Saved choices apply to future runs. QBO product setup is handled separately.</p></div><button disabled={disabled || busy || !!editing} onClick={() => setShowAll(value => !value)} className="text-sm text-blue-700 underline disabled:opacity-50">{showAll ? 'Show issues only' : `View / change all ${items.length} pricing sources`}</button></div>
-    {!showAll && !unresolved.length && <p className="text-sm text-slate-500">All items have a catalog match.</p>}
+    {!showAll && !unresolved.length && <p className="text-sm text-slate-500">All items have a pricing source.</p>}
     {(showAll ? items : unresolved).map(item => <div key={item.lineItemId} className="rounded-lg border border-slate-200 p-3 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-medium">{item.description}</p><p className="text-xs text-slate-500">{item.costCode} · {item.uom || 'Unit missing'}{item.catalogName ? ` · ${item.manual ? 'Saved' : 'Automatic'} match: ${item.catalogName}` : ''}</p></div><button disabled={disabled || busy || (!!editing && editing !== item.lineItemId)} onClick={() => open(item.lineItemId)} className="rounded border border-blue-300 px-3 py-1 text-sm text-blue-800 disabled:opacity-50">{item.issue ? 'Confirm pricing source' : 'Change pricing source'}</button></div>
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-medium">{item.description}</p><p className="text-xs text-slate-500">{item.costCode} · {item.uom || 'Unit missing'}{item.projectPrice ? ' · Project-specific price' : item.catalogName ? ` · ${item.manual ? 'Saved' : 'Automatic'} match: ${item.catalogName}` : ''}</p></div><button disabled={disabled || busy || (!!editing && editing !== item.lineItemId)} onClick={() => open(item.lineItemId)} className="rounded border border-blue-300 px-3 py-1 text-sm text-blue-800 disabled:opacity-50">{item.issue ? 'Confirm pricing source' : 'Change pricing source'}</button></div>
       {item.issue && <p className="text-sm text-amber-800">{item.issue.startsWith(`${item.description}: `) ? item.issue.slice(item.description.length + 2) : item.issue}</p>}
       {editing === item.lineItemId && <div className="space-y-3 border-t pt-3">
         {busy && !choices && <p role="status" className="text-sm">Loading current catalog…</p>}

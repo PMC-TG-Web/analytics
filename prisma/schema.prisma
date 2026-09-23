@@ -2825,3 +2825,30 @@ model CommitmentMakerProcoreApiUsage {
   @@index([hour], map: "procore_cm_api_usage_hour_idx")
   @@map("procore_cm_api_usage")
 }
+
+/// Project-only bill exclusions and explicit purchase-line pricing; separate from source catalog.
+model QboBillLineRule {
+ companyId String @map("company_id")
+ projectId String @map("project_id")
+ lineKey String @map("line_key")
+ description String
+ sourceSignature String @map("source_signature")
+ ignored Boolean @default(false)
+ unitCost Decimal? @map("unit_cost") @db.Decimal(18, 8)
+ reason String
+ revision Int @default(1)
+ updatedBy String @map("updated_by")
+ updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+ @@id([companyId, projectId, lineKey])
+ @@map("qbo_bill_line_rules")
+}
+model QboBillLineRuleRevision {
+ companyId String @map("company_id")
+ projectId String @map("project_id")
+ lineKey String @map("line_key")
+ revision Int
+ rule Json
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@id([companyId, projectId, lineKey, revision])
+ @@map("qbo_bill_line_rule_revisions")
+}

@@ -116,3 +116,5 @@ test('direct cost bills can be granted independently of QBO profitability', () =
     delete USER_PERMISSIONS['profitability-reader@example.test'];
   }
 });
+
+test('project line settings require direct cost bill permission',()=>{assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills/line-rule'),'accounting-direct-cost-bills');});

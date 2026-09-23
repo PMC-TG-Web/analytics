@@ -1,3 +1,4 @@
+import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
 import { isShopDrawingCost } from './qboDirectCostExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
@@ -57,6 +58,7 @@ export type DirectCostItem = {
   procorePurchaseOrderContractId?: string | null;
   pricingIssue?: string | null;
   catalogPrice?: CatalogPriceEvidence | null;
+  projectPrice?: ProjectPriceEvidence | null;
 };
 export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; catalogLineItemId?: string; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
 function issueSource(log: DirectCostSource, item?: DirectCostItem) {
@@ -131,6 +133,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     uom: group.item.uom!,
     amount: group.quantity.mul(String(group.item.unitCost)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
     rateUpdatedAt: group.item.updatedAt.toISOString(),
+    ...(group.item.projectPrice ? { projectPrice: group.item.projectPrice } : {}),
     ...(group.item.catalogPrice ? { catalogPrice: group.item.catalogPrice } : {}),
     sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
   }));

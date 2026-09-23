@@ -37,7 +37,7 @@ export async function loadQboBillQueue(companyId: string, month: string) {
         if (active.has(row.projectId) || review.billId || review.action === 'reconcile') {
           const draft = await loadQboDirectCosts(companyId, row.projectId, month, pricingCatalog);
           review = await loadQboBillReview(companyId, row.projectId, month, draft);
-          Object.assign(row, { billNumber: review.billNumber, gross: draft.total, previousGross: review.previousGross, laborHours: draft.labor.totalHours, itemCount: draft.lines.length, lastPosted: review.lastPosted });
+          Object.assign(row, { billNumber: review.billNumber, gross: review.grossTotal == null ? draft.total : review.grossTotal.toFixed(2), previousGross: review.previousGross, laborHours: draft.labor.totalHours, itemCount: draft.lines.length, lastPosted: review.lastPosted });
           row.reasons = [...new Set([...draft.issues, ...review.issues])];
           row.issueSources = draft.issueSources;
           if (review.action === 'reconcile') { row.status = 'blocked'; row.reasons.push('Saved bill status requires reconciliation.'); }

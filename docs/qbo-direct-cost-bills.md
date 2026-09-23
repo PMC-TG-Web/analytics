@@ -211,3 +211,9 @@ Food / Food Cost PO lines (including numbered CO prefixes) use a bill-only codin
 The QBO host validates company/project/month attribution, saved revision, quantity 1 and `.M` mapping in `manual-food-bill-line.js`. Food retains the normal item customer, Flatwork class and Direct Costs - negative offset. Saving an expense never writes QBO; the normal bill save replaces the previous monthly Food line with the accumulated total. Other lines retain current catalog evidence requirements. The existing all-lines-empty bill restriction remains.
 
 Migration `20260922140000_qbo_bill_food_totals` added total/audit tables. `20260922150000_qbo_bill_food_ledger` adds entries and preserves existing monthly totals as opening entries. Validation: `node --test test/qboFoodTotal.test.mjs test/qboFoodTotalLoader.test.mjs test/qboFoodTotalRoute.test.mjs test/qboFoodLedgerPanel.test.mjs test/permissions.test.mjs`; QBO_1: `node --test test/manual-food-bill-line.test.js test/direct-cost-bill.test.js test/direct-cost-project-setup.test.js test/monthly-bill-sync.test.js`.
+
+### Change screeder prices in QBO
+
+After a monthly bill is created, edit a screeder's unit price directly in QBO. Refresh the project's review, then use **Update bill**. The review shows **QBO price**; the integration retains that price, updates the quantity from Procore, and recalculates the matching Screeding subclass offset. Lines added directly in QBO are kept automatically. These changes alone do not require reconciliation. A new monthly bill starts with its source/project price; retained QBO prices belong to that saved bill.
+
+Deleted or otherwise changed integration lines may still require reconciliation. A QBO change after preview requires refreshing the review before posting. No bill is updated just by opening its review.

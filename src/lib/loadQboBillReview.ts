@@ -9,11 +9,11 @@ import { actionableBillIssues } from './qboBillIssues';
 type Mapping = BillMapping;
 export async function loadQboBillReview(companyId: string, projectId: string, month: string, draft?: ComparisonDraft, prepare = false) {
   const directory = path.join(process.env.QBO_INTEGRATION_ROOT?.trim() || path.resolve(process.cwd(), '..', 'QBO_1'), '.runtime', 'direct-cost-bills');
-  const base = { itemClasses: {} as Record<string, string>, offsetLines: null as { accountName: string; className: string; amount: number }[] | null, connected: false, customer: null as string | null, billNumber: null as string | null, billId: null as string | null, lastPosted: null as string | null, action: 'unavailable', issues: [] as string[], previousGross: null as number | null, products: {} as Record<string, string>, offsetCategories: {} as Record<string, string>, offsets: null as Mapping['offsets'] | null, canPost: false, fingerprint: null as string | null };
+  const base = { qboPrices: {} as Record<string, {unitCost:string;amount:string;description:string}>, grossTotal: null as number | null, preservedLineCount: 0, itemClasses: {} as Record<string, string>, offsetLines: null as { accountName: string; className: string; amount: number }[] | null, connected: false, customer: null as string | null, billNumber: null as string | null, billId: null as string | null, lastPosted: null as string | null, action: 'unavailable', issues: [] as string[], previousGross: null as number | null, products: {} as Record<string, string>, offsetCategories: {} as Record<string, string>, offsets: null as Mapping['offsets'] | null, canPost: false, fingerprint: null as string | null };
   if (hasQboBillBridge()) {
     try {
       const review = await requestQboBillBridge<typeof base>({ operation: prepare ? 'prepare' : 'status', companyId, projectId, month, draft });
-      return { ...review, issues: actionableBillIssues(draft?.issues || [], review.issues) };
+      return { ...base, ...review, issues: actionableBillIssues(draft?.issues || [], review.issues) };
     }
     catch { return { ...base, issues: ['Shared QBO service unavailable. Status could not be verified; refresh before posting.'] }; }
   }

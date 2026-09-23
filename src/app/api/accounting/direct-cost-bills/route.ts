@@ -20,7 +20,10 @@ export async function GET(request: NextRequest) {
       return json({ companyId, projects });
     }
     const draft = await loadQboDirectCosts(companyId, params.get('projectId') || '', params.get('month') || '');
-    return json({ ...draft, review: await loadQboBillReview(companyId, draft.projectId, draft.month, draft, true) });
+    const review = await loadQboBillReview(companyId, draft.projectId, draft.month, draft, true);
+    // Display trusted host prices; POST still rebuilds source data and re-reads QBO.
+    const lines = draft.lines.map(line => review.qboPrices[line.lineKey] ? { ...line, ...review.qboPrices[line.lineKey] } : line);
+    return json({ ...draft, lines, total: review.grossTotal == null ? draft.total : review.grossTotal.toFixed(2), review });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (/Choose a valid month|Company and Procore|Project not found/.test(message)) return json({ error: message }, 400);

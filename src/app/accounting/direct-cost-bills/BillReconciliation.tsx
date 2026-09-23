@@ -5,7 +5,7 @@ import { useState } from 'react';
 type Row = { description: string; type: string; product: string; quantity: number | null; unitCost: number | null; amount: number; className: string; customer: string };
 type Review = { manuallyChanged: boolean; fingerprint: string; billNumber: string; current: { rows: Row[]; total: number; note: string }; proposed: { rows: Row[]; total: number; note: string } };
 const money = (value: number) => Number(value).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-export default function BillReconciliation({ companyId, projectId, month, disabled, onBusy, onComplete }: { companyId: string; projectId: string; month: string; disabled: boolean; onBusy: (busy: boolean) => void; onComplete: () => Promise<void> }) {
+export default function BillReconciliation({ companyId, projectId, month, disabled, needsReconciliation = false, onBusy, onComplete }: { companyId: string; projectId: string; month: string; disabled: boolean; needsReconciliation?: boolean; onBusy: (busy: boolean) => void; onComplete: () => Promise<void> }) {
   const [opened, setOpened] = useState(false);
   const [working, setWorking] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
@@ -24,7 +24,7 @@ export default function BillReconciliation({ companyId, projectId, month, disabl
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to reconcile the bill.'); setReview(null); setAccepted(false); }
     finally { setWorking(false); }
   }
-  if (!opened) return <button disabled={disabled} className="rounded border border-blue-700 px-4 py-2 text-blue-800 disabled:opacity-50" onClick={() => request('preview')}>Check QBO bill</button>;
+  if (!opened) return <button disabled={disabled} className="rounded border border-blue-700 px-4 py-2 text-blue-800 disabled:opacity-50" onClick={() => request('preview')}>{needsReconciliation ? 'Reconcile QBO changes' : 'Check QBO bill'}</button>;
   return <section className={`space-y-4 rounded-xl border p-5 ${review?.manuallyChanged ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`} aria-label="QBO bill comparison">
     <h3 className="font-semibold">{review?.manuallyChanged ? 'Reconciliation needed' : review ? 'No reconciliation needed' : 'Check QBO bill'}{review ? ` · ${review.billNumber}` : ''}</h3>
     {review?.manuallyChanged ? <p className="text-sm">QBO reports that this bill changed since the last saved or reconciled version. Review the current QBO bill and the proposed monthly replacement. Confirming saves the reviewed version and an audit copy. Then use Update bill in QBO to replace its item lines and negative offsets. Manual line changes will be replaced.</p> : <p className="text-sm">{review ? 'QBO has not changed since the last saved or reconciled version. Differences in the proposed monthly bill do not require reconciliation. Close this comparison and use the normal Update bill action if monthly costs need updating.' : 'Checking whether the QBO bill changed since the last saved or reconciled version.'}</p>}

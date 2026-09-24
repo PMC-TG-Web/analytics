@@ -1,3 +1,4 @@
+import { isHoursOnlyCost } from './qboDirectCostExclusions.js';
 import { projectPrice } from './qboBillLineRules';
 import { catalogSourceSignature } from './qboCatalogMapping';
 import { prisma } from './prisma';
@@ -65,7 +66,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   });
   const summary = aggregateDirectCosts(logs.filter(log => !isFoodLog(log) && !ignored.has(aliasByLine.get(log.lineItemId || '') || log.lineItemId || '')).map(log => ({ ...log, id: log.procoreId || log.id })), pricedItems, new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id])));
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
-  const includedTimecards = timecards.filter(t => !ignored.has(`labor:${(t.costCodeFullCode || '').trim().replace(/\.L$/i, '') || '(unassigned)'}`));
+  const includedTimecards = timecards.filter(t => !isHoursOnlyCost(t.costCodeFullCode) && !ignored.has(`labor:${(t.costCodeFullCode || '').trim().replace(/\.L$/i, '') || '(unassigned)'}`));
   const labor = aggregateDirectCostLabor(includedTimecards, laborRates.rates);
   const overlap = summary.lines.filter(l => /^(labor|l)$/i.test(l.costType || '') && labor.rows.some(t => t.costCode === l.costCode));
   const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...summary.issues, ...labor.issues, ...(includedTimecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];

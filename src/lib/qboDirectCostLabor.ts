@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { isHoursOnlyCost } from './qboDirectCostExclusions.js';
 
 export type LaborTimecard = { procoreId: string | null; date: Date; hours: number | null; totalHoursWorked: number | null; costCodeFullCode: string | null; costCodeName: string | null; updatedAt: Date };
 export type LaborRate = { costCode: string; rate: string | null; lineItemId: string; proposalId?: string; bidBoardId?: string; catalogItemId?: string; catalogId?: string; updatedAt: string };
@@ -6,6 +7,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
   const issues: string[] = [], seen = new Set<string>();
   const groups = new Map<string, { description: string; hours: Prisma.Decimal; sourceLogs: { id: string; date: string; quantity: string; updatedAt: string }[] }>();
   for (const t of timecards) {
+    if (isHoursOnlyCost(t.costCodeFullCode)) continue;
     const hours = t.hours ?? t.totalHoursWorked;
     if (!t.procoreId || seen.has(t.procoreId)) { issues.push('A timecard has a missing or duplicate Procore ID.'); continue; }
     seen.add(t.procoreId);

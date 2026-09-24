@@ -1,6 +1,6 @@
 import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
-import { isShopDrawingCost } from './qboDirectCostExclusions.js';
+import { isShopDrawingCost, isHoursOnlyCost } from './qboDirectCostExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
 
 export const DIRECT_COST_VENDOR = 'PMC Procore Direct Costs';
@@ -101,6 +101,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const item = matches[0];
     // Shop drawing vendor bills are entered separately, including legacy PO
     // charges labeled Labor or carried under a different cost code.
+    if (isHoursOnlyCost(item.costCode)) continue;
     if (isShopDrawingCost(item.costCode, item.description?.trim() || sourceName)) {
       excluded.shopDrawings++; continue;
     }

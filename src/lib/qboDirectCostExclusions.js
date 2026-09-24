@@ -3,3 +3,8 @@ export function isShopDrawingCost(costCode, description) {
   return String(costCode || '').trim().replace(/\.[A-Z]+$/i, '') === '01-300-10-40'
     || /\bshop\s+drawings?\b/i.test(String(description || '').normalize('NFKC'));
 }
+
+/** Project Management records hours only; it never contributes to QBO costs. */
+export function isHoursOnlyCost(costCode) {
+  return String(costCode || '').trim().replace(/\.[A-Z]+$/i, '') === '01-300-10-20';
+}

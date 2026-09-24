@@ -2,6 +2,14 @@ export type Segment = { id: number; code: string; path_code?: string; status: st
 export type Wbs = { id: number; flat_code: string; status: string; segment_items: Segment[] };
 export type Budget = { id: number; wbs_code: { id: number; flat_code: string }; original_budget_amount: string };
 export type BudgetPending = { code: string; kind: 'wbs' | 'budget' };
+export function recentBudgetCodesCover(codes: string[], rows: { code: string; verifiedAt: Date | string }[], now = Date.now()) {
+  return codes.length > 0 && codes.every(code => {
+    const matches = rows.filter(row => row.code === code);
+    if (matches.length !== 1) return false;
+    const age = now - new Date(matches[0].verifiedAt).getTime();
+    return Number.isFinite(age) && age >= 0 && age < 24 * 60 * 60_000;
+  });
+}
 type Ports = {
   budgets: () => Promise<Budget[]>;
   wbs: () => Promise<Wbs[]>;

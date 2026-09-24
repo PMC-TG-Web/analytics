@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetCodesForProducts, ensureBudgetCodeStep } from '../src/lib/qboBudgetReadiness.ts';
+import { budgetCodesForProducts, recentBudgetCodesCover, ensureBudgetCodeStep } from '../src/lib/qboBudgetReadiness.ts';
 const code='03-300-00-12.E';
 function fixture() {
  const budget=[],writes=[],pending=[];
@@ -45,4 +45,14 @@ test('duplicate and inactive codes never create another row',async()=>{
 test('missing cost segment cannot be substituted by name or a different type',async()=>{
  const f=fixture();f.wbs[0].flat_code='01-300-10-70.L';f.io.segments=async()=>[];
  await assert.rejects(()=>ensureBudgetCodeStep([code],f.io),/missing or ambiguous/);assert.equal(f.writes.length,0);
+});
+
+test('recent evidence must cover every exact code/type without duplicates',()=>{
+ const now=Date.now(),rows=[{code,verifiedAt:new Date(now-1000)}];
+ assert.equal(recentBudgetCodesCover([code],rows,now),true);
+ assert.equal(recentBudgetCodesCover([code,'01-300-10-70.L'],rows,now),false);
+ assert.equal(recentBudgetCodesCover([code.replace('.E','.M')],rows,now),false);
+ assert.equal(recentBudgetCodesCover([code],[...rows,...rows],now),false);
+ for(const age of [24*60*60_000,48*60*60_000,-1000]) assert.equal(recentBudgetCodesCover([code],[{code,verifiedAt:new Date(now-age)}],now),false);
+ assert.equal(recentBudgetCodesCover([code],[{code,verifiedAt:'invalid'}],now),false);
 });

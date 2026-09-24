@@ -1,16 +1,25 @@
 import { prisma } from './prisma';
 import { acquireProcoreWorker, releaseProcoreWorker } from './procoreSyncQueue';
 import { getClientCredentialsToken, makeRequest, withProcoreLiveApiBypassForSyncSecret } from './procore';
-import { budgetCodesForProducts, ensureBudgetCodeStep, type BudgetPending, type Wbs, type Budget } from './qboBudgetReadiness';
+import { budgetCodesForProducts, recentBudgetCodesCover, ensureBudgetCodeStep, type BudgetPending, type Wbs, type Budget } from './qboBudgetReadiness';
 
 export async function ensureQboBudgetReadiness(companyId: string, projectId: string, projectNumber: string, products: string[]) {
   if (companyId !== process.env.PROCORE_COMPANY_ID || !/^\d+$/.test(projectId)) throw new Error('Invalid Procore budget setup identity.');
   const codes = budgetCodesForProducts(projectNumber, products);
   const project = await prisma.pmcProject.findFirst({ where: { companyId, procoreProjectId: projectId } });
   if (!project || project.projectNumber?.trim() !== projectNumber.trim()) throw new Error('Project identity changed. Refresh the bill review.');
+  const where = { companyId_projectId_dataset: { companyId, projectId, dataset: 'qbo_bill_budget_setup' } };
+  const previous = await prisma.procoreSyncProjectState.findUnique({ where });
+  // A known budget entry needs no live API request on every bill save. Never
+  // allow a snapshot to conceal an uncertain outstanding mutation.
+  if (!previous?.lastError) {
+    const snapshot = previous?.lastResult as { version?: number; projectNumber?: string; verifiedAt?: string; codes?: string[] } | null;
+    if (snapshot?.version === 1 && snapshot.projectNumber === projectNumber.trim() && Array.isArray(snapshot.codes) && snapshot.verifiedAt && recentBudgetCodesCover(codes, snapshot.codes.map(code => ({ code, verifiedAt: snapshot.verifiedAt! })))) return { ready: true, remaining: 0, message: 'Procore budget codes were recently verified.' };
+    const mirrored = await prisma.budgetLineItem.findMany({ where: { companyId, projectId }, select: { costCode: true, syncedAt: true } });
+    if (recentBudgetCodesCover(codes, mirrored.map(row => ({ code: row.costCode || '', verifiedAt: row.syncedAt })))) return { ready: true, remaining: 0, message: 'Procore budget codes are present in the current synchronized budget.' };
+  }
   const lease = await acquireProcoreWorker(companyId);
   if (!lease.acquired) return { ready: false, remaining: codes.length, retryAfterMs: 5000, message: lease.reason === 'rate_limit_cooldown' ? 'Waiting for Procore API capacity before checking budget codes. No bill has been saved.' : 'Waiting for the current Procore sync before checking budget codes.' };
-  const where = { companyId_projectId_dataset: { companyId, projectId, dataset: 'qbo_bill_budget_setup' } };
   try {
     const state = await prisma.procoreSyncProjectState.findUnique({ where });
     const pending = state?.lastError ? JSON.parse(state.lastError) as BudgetPending : null;
@@ -46,7 +55,12 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
       };
       return ensureBudgetCodeStep(codes, {
         pending, savePending,
-        budgets: () => list(`/rest/v1.1/budget_line_items?project_id=${projectId}`),
+        budgets: async () => {
+          const rows = await list<Budget>(`/rest/v1.1/budget_line_items?project_id=${projectId}`);
+          const lastResult = { version: 1, projectNumber: projectNumber.trim(), verifiedAt: new Date().toISOString(), codes: rows.map(row => row.wbs_code?.flat_code).filter(Boolean) };
+          await prisma.procoreSyncProjectState.upsert({ where, create: { companyId, projectId, dataset: 'qbo_bill_budget_setup', lastResult }, update: { lastResult } });
+          return rows;
+        },
         wbs: () => list(`/rest/v1.0/projects/${projectId}/work_breakdown_structure/wbs_codes`),
         segments: async id => {
           // This endpoint returns the full collection and ignores pagination.

@@ -8,7 +8,7 @@ import { aggregateDirectCostLabor } from './qboDirectCostLabor';
 import { loadQboDirectCostLaborRates } from './loadQboDirectCostLaborRates';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue, type BillCatalogSnapshot } from './qboCostCatalog';
-import { mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
+import { purchasePriceFallback, mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
 import { applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
 import { foodTotalLine } from './qboFoodTotal';
 import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
@@ -25,7 +25,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } },
       select: { id: true, procoreId: true, date: true, status: true, quantityUsed: true, lineItemId: true, lineItemDescription: true, lineItemHolderTitle: true, lineItemHolderNumber: true, lineItemHolderId: true, lineItemHolderType: true, updatedAt: true } }),
     prisma.purchaseOrderLineItemContractDetail.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId },
-      select: { procoreId: true, description: true, uom: true, updatedAt: true, costCode: true, costType: true, customFields: true, procorePurchaseOrderContractId: true, purchaseOrderContract: { select: { number: true, title: true } } } }),
+      select: { procoreId: true, description: true, uom: true, unitCost: true, updatedAt: true, costCode: true, costType: true, customFields: true, procorePurchaseOrderContractId: true, purchaseOrderContract: { select: { number: true, title: true } } } }),
     prisma.$queryRaw<{ source_line_item_id: string; target_line_item_id: string }[]>`SELECT source_line_item_id, target_line_item_id FROM analytics_po_line_aliases WHERE company_id=${companyId} AND procore_project_id=${projectId}`,
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } }, select: { procoreId: true, date: true, hours: true, totalHoursWorked: true, costCodeFullCode: true, costCodeName: true, updatedAt: true } }),
     loadQboDirectCostLaborRates(companyId, projectId, catalog),
@@ -59,10 +59,12 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     const raw = item.customFields as { cost_item?: { id?: string | number }; cost_item_id?: string | number } | null;
     const catalogItemId = raw?.cost_item?.id || raw?.cost_item_id;
     const override = projectPrice(item, rulesByKey.get(item.procoreId || ''));
-    if (override) return { ...item, unitCost: override.unitCost ?? null, pricingIssue: override.issue ?? null, projectPrice: override.evidence ?? null, catalogPrice: null };
+    if (override) return { ...item, poPrice: null, unitCost: override.unitCost ?? null, pricingIssue: override.issue ?? null, projectPrice: override.evidence ?? null, catalogPrice: null };
+    const poFallback = !catalogIssue ? purchasePriceFallback({ ...item, catalogItemId: catalogItemId ? String(catalogItemId) : null }, catalog!.items, crosswalk, mappingByLine.get(item.procoreId || ''), companyId, projectId) : null;
+    if (poFallback) return { ...item, projectPrice: null, poPrice: poFallback.evidence, catalogPrice: null, pricingIssue: null, unitCost: poFallback.unitCost };
     const price = catalogIssue ? { unitCost: null, evidence: null, issue: catalogIssue }
       : mappedCatalogPrice({ ...item, catalogItemId: catalogItemId ? String(catalogItemId) : null }, catalog!.items, crosswalk, mappingByLine.get(item.procoreId || ''), !duplicateIds.has(item.procoreId || ''));
-    return { ...item, projectPrice: null, unitCost: price.unitCost, pricingIssue: price.issue, catalogPrice: price.evidence, updatedAt: catalog ? new Date(catalog.fetchedAt) : item.updatedAt };
+    return { ...item, poPrice: null, projectPrice: null, unitCost: price.unitCost, pricingIssue: price.issue, catalogPrice: price.evidence, updatedAt: catalog ? new Date(catalog.fetchedAt) : item.updatedAt };
   });
   const summary = aggregateDirectCosts(logs.filter(log => !isFoodLog(log) && !ignored.has(aliasByLine.get(log.lineItemId || '') || log.lineItemId || '')).map(log => ({ ...log, id: log.procoreId || log.id })), pricedItems, new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id])));
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
@@ -82,7 +84,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     companyId, projectId, projectName: project.projectName, projectNumber: project.projectNumber, month,
     vendorName: DIRECT_COST_VENDOR, food: { saved: foodTotal, logCount: foodLogCount, entries: foodEntries.map(entry => ({ id: entry.id, spentOn: entry.spentOn, note: entry.note, amount: entry.amount.toFixed(2), createdBy: entry.createdBy, createdAt: entry.createdAt.toISOString() })) },
     ...summary,
-    catalogMappingItems: pricedItems.filter(item => item.procoreId && visibleItems.has(item.procoreId)).map(item => ({ lineItemId: item.procoreId!, description: item.description || 'Unnamed item', costCode: item.costCode, uom: item.uom, issue: item.pricingIssue, projectPrice: !!item.projectPrice, catalogName: item.catalogPrice?.name || null, manual: !!mappingByLine.get(item.procoreId!)?.catalogItemId })),
+    catalogMappingItems: pricedItems.filter(item => item.procoreId && visibleItems.has(item.procoreId)).map(item => ({ lineItemId: item.procoreId!, description: item.description || 'Unnamed item', costCode: item.costCode, uom: item.uom, issue: item.pricingIssue, projectPrice: !!item.projectPrice, poPrice: !!item.poPrice, catalogName: item.catalogPrice?.name || null, manual: !!mappingByLine.get(item.procoreId!)?.catalogItemId })),
     lines: [...summary.lines.map(l => ({ ...l, lineKey: l.procoreLineItemId, sourceType: 'productivity' as const })), ...labor.lines, ...(foodLine ? [foodLine] : [])],
     issues, labor: { ...labor, proposalId: laborRates.proposalId }, materialTotal: new Prisma.Decimal(summary.total).plus(foodLine?.amount || '0').toFixed(2),
     total: new Prisma.Decimal(summary.total).plus(labor.total).plus(foodLine?.amount || '0').toFixed(2),

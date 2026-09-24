@@ -82,3 +82,14 @@ test('duplicate source identity is cost code plus description, not repeated logs
  assert.deepEqual([...duplicates].sort(), ['1', '2']);
  assert.equal(logic.duplicateCatalogSourceIds([{ ...source, procoreId: '1' }, { ...source, procoreId: '1' }]).size, 0);
 });
+
+test('unmatched descriptions use their own positive PO price when the catalog code exists',()=>{
+ const s={...source,procoreId:'10',unitCost:500,uom:'ls'};
+ const prices=[{...price,costCode:source.costCode,unitCost:'107'},{...price,itemId:'124',costCode:source.costCode,unitCost:'2160'}];
+ const result=logic.purchasePriceFallback(s,prices,new Map(),undefined,'1','2');assert.equal(result.unitCost,500);assert.equal(result.evidence.uom,'ls');assert.equal(result.evidence.lineKey,'10');
+ for(const unitCost of [0,-1,null])assert.equal(logic.purchasePriceFallback({...s,unitCost},prices,new Map(),undefined,'1','2'),null);
+ assert.equal(logic.purchasePriceFallback(s,[price],new Map(),undefined,'1','2'),null);
+ assert.equal(logic.purchasePriceFallback(s,prices,new Map(),saved(),'1','2'),null);
+ assert.equal(logic.purchasePriceFallback({...s,catalogItemId:'123'},prices,new Map(),undefined,'1','2'),null);
+ assert.equal(logic.purchasePriceFallback({...s,description:price.name},prices,new Map(),undefined,'1','2'),null);
+});

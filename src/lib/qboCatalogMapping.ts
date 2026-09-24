@@ -45,3 +45,16 @@ export function mappedCatalogPrice(source: CatalogMappingSource, items: CatalogP
   // source/QBO product code; only the current price comes from the selected item.
   return matchCatalogPrice({ ...source, catalogItemId: selected.itemId, costCode: selected.costCode }, items, aliases);
 }
+
+export type PurchasePriceEvidence = { companyId: string; projectId: string; lineKey: string; costCode: string; uom: string; unitCost: string; catalogCodeItemId: string; catalogId: string };
+export function purchasePriceFallback(source: CatalogMappingSource & { procoreId: string | null; unitCost: number | null }, items: CatalogPrice[], aliases: Map<string, { itemName: string; costCode: string }>, mapping: SavedCatalogMapping | undefined, companyId: string, projectId: string) {
+ if (mapping?.catalogItemId || source.catalogItemId || !source.procoreId || !source.uom) return null;
+ const exact=matchCatalogPrice(source,items,aliases);
+ if (!exact.issue?.includes('no matching current Cost Catalog item')) return null;
+ const code=(source.costCode || '').trim().replace(/\.[A-Z]+$/i,'');
+ const found=items.filter(i=>i.costCode===code).sort((a,b)=>a.itemId.localeCompare(b.itemId))[0];
+ if (!found) return null;
+ const rate=String(source.unitCost ?? '');
+ if (!/^\d{1,10}(\.\d{1,8})?$/.test(rate) || Number(rate)<=0) return null;
+ return {unitCost:Number(rate),evidence:{companyId,projectId,lineKey:source.procoreId,costCode:code,uom:source.uom,unitCost:rate,catalogCodeItemId:found.itemId,catalogId:found.catalogId} satisfies PurchasePriceEvidence};
+}

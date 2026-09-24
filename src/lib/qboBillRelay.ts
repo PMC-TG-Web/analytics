@@ -4,7 +4,7 @@ import { prisma } from './prisma';
 
 export async function requestQboBillRelay<T>(body: unknown): Promise<T> {
   const request = body as { operation?: string; companyId?: string };
-  if (!['catalog', 'status', 'prepare', 'post', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm'].includes(request.operation || '') || !/^\d+$/.test(request.companyId || '')) throw new Error('Invalid QBO relay request.');
+  if (!['catalog', 'status', 'prepare', 'post', 'budget-plan', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm'].includes(request.operation || '') || !/^\d+$/.test(request.companyId || '')) throw new Error('Invalid QBO relay request.');
   const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
   const host = await prisma.qboBillRelayHost.findUnique({ where: { id: hostId } });
   if (!host || host.companyId !== request.companyId || Date.now() - host.updatedAt.getTime() > 20_000) throw new Error('The QBO host computer is offline. Turn it on and sign in, then refresh the review.');

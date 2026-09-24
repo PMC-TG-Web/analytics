@@ -32,6 +32,11 @@ export default function ProjectSetup({ companyId, projectId, projectName, month,
         for (let step = 0; step < 501; step++) {
           if (step === 0) setProgress('Matching products and saving setup...');
           const result = await request('setup');
+          if (result.budgetPending) {
+            setProgress(result.message);
+            await new Promise(resolve => setTimeout(resolve, result.retryAfterMs || 1000));
+            continue;
+          }
           setProgress(`${result.total - result.remaining} of ${result.total} items ready`);
           if (result.complete) { keepOpen = false; await onComplete(); return; }
         }
@@ -42,7 +47,7 @@ export default function ProjectSetup({ companyId, projectId, projectName, month,
   }
   const selected = options?.customers.find(c => c.id === customerId);
   return <section id="qbo-project-setup" className="rounded-xl border border-blue-200 bg-white p-5 space-y-4">
-    <div><h3 className="font-semibold">Set up QBO project</h3><p className="mt-1 text-sm text-slate-600">Setup matches the QBO project automatically when its name has one exact match, reuses existing products, creates missing products, and refreshes assignments when only the source cost code changed.</p></div>
+    <div><h3 className="font-semibold">Set up QBO project</h3><p className="mt-1 text-sm text-slate-600">Setup matches the QBO project, adds missing Procore budget codes at $0, and sets up the required products. Procore imports bill costs through its separate job-cost sync.</p></div>
     {blockedReason && <p className="text-sm text-amber-800">{blockedReason} <a href="#bill-draft-issues" className="text-blue-700 underline">View items to resolve</a></p>}
     {!options ? <button disabled={busy || !!blockedReason} onClick={() => run(false)} className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:opacity-50">Set up project</button> : <>
       {choosingCustomer && <><p className="text-sm text-slate-600">Choose the correct QBO project below.</p><label className="block text-sm">Find QBO customer/project<input disabled={busy || !!options.customerId} value={search} onChange={e => setSearch(e.target.value)} placeholder="Customer or project name" className="mt-1 block w-full rounded border p-2" /></label>

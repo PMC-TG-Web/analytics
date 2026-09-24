@@ -3,6 +3,7 @@ import { getRequestUserEmail } from '@/lib/requestUser';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { loadQboDirectCosts } from '@/lib/loadQboDirectCosts';
 import { requestQboBillBridge } from '@/lib/qboBillBridge';
+import { ensureQboBudgetReadiness } from '@/lib/ensureQboBudgetReadiness';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
@@ -17,6 +18,11 @@ export async function POST(request: NextRequest) {
     const body = JSON.parse(raw);
     if (body.companyId !== process.env.PROCORE_COMPANY_ID || !/^\d+$/.test(body.projectId || '') || !['setup-options', 'setup'].includes(body.operation) || (body.operation === 'setup' && !/^\d+$/.test(body.customerId || ''))) return json({ error: 'Choose a valid project and QBO customer.' }, 400);
     const draft = await loadQboDirectCosts(body.companyId, body.projectId, body.month);
+    if (body.operation === 'setup') {
+      const plan = await requestQboBillBridge<{ products: string[] }>({ operation: 'budget-plan', companyId: body.companyId, projectId: body.projectId, month: draft.month, draft });
+      const budget = await ensureQboBudgetReadiness(body.companyId, body.projectId, draft.projectNumber || '', plan.products);
+      if (!budget.ready) return json({ complete: false, budgetPending: true, ...budget }, 202);
+    }
     const result = await requestQboBillBridge({ operation: body.operation, companyId: body.companyId, projectId: body.projectId, month: draft.month, customerId: body.customerId, otherCostsConfirmed: body.otherCostsConfirmed === true, draft, actor });
     return json(result);
   } catch (e) { return json({ error: e instanceof Error ? e.message : 'Setup could not finish. Reopen setup to check saved progress before resuming.' }, 409); }

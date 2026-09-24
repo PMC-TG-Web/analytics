@@ -96,10 +96,19 @@ export default function DirectCostBillsPage() {
     if (!preview?.review.canPost || !preview.review.fingerprint || posting) return;
     setPosting(true); setError(''); setSavedMessage('');
     try {
-      const response = await fetch('/api/accounting/direct-cost-bills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId, projectId: preview.projectId, month: preview.month, fingerprint: preview.review.fingerprint }) });
-      const data = await readBillResponse(response);
-      if (!response.ok) throw new Error(data.error || 'Unable to save bill. Refresh its review before retrying.');
-      setSavedMessage(`${data.receipt.billNumber} ${data.receipt.alreadyCurrent ? 'is already current' : data.receipt.updated ? 'was updated' : 'was created'} in QBO.`);
+      for (let step = 0; step < 601; step++) {
+        const response = await fetch('/api/accounting/direct-cost-bills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId, projectId: preview.projectId, month: preview.month, fingerprint: preview.review.fingerprint }) });
+        const data = await readBillResponse(response);
+        if (!response.ok) throw new Error(data.error || 'Unable to save bill. Refresh its review before retrying.');
+        if (data.budgetPending) {
+          setSavedMessage(data.message);
+          if (step === 600) throw new Error('Procore budget preparation is still pending. Saved progress is retained; retry when Procore is available.');
+          await new Promise(resolve => setTimeout(resolve, data.retryAfterMs || 1000));
+          continue;
+        }
+        setSavedMessage(`${data.receipt.billNumber} ${data.receipt.alreadyCurrent ? 'is already current' : data.receipt.updated ? 'was updated' : 'was created'} in QBO.`);
+        break;
+      }
       setProjectId(''); setPreview(null); setQueueRevision(n => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Bill status is unknown. Refresh its review before retrying.');

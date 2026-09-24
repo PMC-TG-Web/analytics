@@ -6,6 +6,7 @@ import { loadQboBillQueue } from '@/lib/loadQboBillQueue';
 import { requestQboBillBridge } from '@/lib/qboBillBridge';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
+import { ensureQboBudgetReadiness } from '@/lib/ensureQboBudgetReadiness';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -46,6 +47,12 @@ export async function POST(request: NextRequest) {
     if (!/^\d+$/.test(body.companyId || '') || !/^\d+$/.test(body.projectId || '') || !/^[a-f0-9]{64}$/.test(body.fingerprint || '')) return json({ error: 'Reopen the project review before posting.' }, 400);
     // Never trust browser-supplied costs or mapping IDs. Rebuild from the synchronized database.
     const draft = await loadQboDirectCosts(body.companyId, body.projectId, body.month);
+    const review = await loadQboBillReview(body.companyId, body.projectId, body.month, draft, true);
+    if (!review.canPost || review.fingerprint !== body.fingerprint) return json({ error: 'Monthly costs or mappings changed. Reopen the project review before posting.' }, 409);
+    const products = draft.lines.map(line => review.products[line.lineKey]);
+    if (products.some(name => !name)) return json({ error: 'Set up the missing QBO products before saving this bill.' }, 409);
+    const budget = await ensureQboBudgetReadiness(body.companyId, body.projectId, draft.projectNumber || '', products);
+    if (!budget.ready) return json({ success: false, budgetPending: true, ...budget }, 202);
     const receipt = await requestQboBillBridge({ operation: 'post', companyId: body.companyId, projectId: body.projectId, month: body.month, fingerprint: body.fingerprint, draft, actor });
     return json({ success: true, receipt });
   } catch (e) {

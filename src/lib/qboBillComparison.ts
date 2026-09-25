@@ -26,7 +26,7 @@ export function compareMonthlyBill(draft: ComparisonDraft, mapping: BillMapping,
   for (const line of draft.lines) {
     const item = mapping.items?.[line.lineKey];
     const prefix = `${projectNumber}-${line.costCode}.`;
-    if (!/^\d+$/.test(item?.itemId || '') || item?.uom !== line.uom || !item?.itemName?.startsWith(prefix) || !/^[A-Z0-9]+$/.test(item.itemName.slice(prefix.length))) issues.push(`Product mapping needed for ${line.costCode || line.description}.`);
+    if (!/^\d+$/.test(item?.itemId || '') || !item?.itemName?.startsWith(prefix) || !/^[A-Z0-9]+$/.test(item.itemName.slice(prefix.length))) issues.push(`Product mapping needed for ${line.costCode || line.description}.`);
     const kind = line.sourceType === 'timecard' || /^(labor|l)$/i.test(line.costType?.trim() || '') ? 'labor' : /^(materials?|m)$/i.test(line.costType?.trim() || '') || (/^(other|o|equipment|e|commitments|c)$/i.test(line.costType?.trim() || '') && item?.offsetCategory === 'material') ? 'material' : null;
     if (!kind) issues.push(`Offset category needed for ${line.description}.`);
     else totals[kind] += Math.round(Number(line.amount) * 100);

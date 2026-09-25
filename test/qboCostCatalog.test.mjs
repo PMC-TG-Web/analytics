@@ -20,7 +20,7 @@ test('matches names and units while retaining size and cost-code distinctions', 
   }
   assert.match(match({ ...item(), description: "#5 Rebar - 20' Pc" }).issue, /no matching/);
   assert.equal(match({ ...item(), costCode: '03-200-30-21' }).unitCost, 8.07173);
-  assert.match(match({ ...item(), uom: 'LF' }).issue, /unit/);
+  assert.equal(match({ ...item(), uom: 'LF' }).issue, null);
 });
 test('explicit catalog ID wins over edited descriptions but not code/unit mismatches', () => {
   assert.equal(match({ ...item(), description: 'custom description', catalogItemId: '123' }).issue, null);
@@ -35,7 +35,7 @@ test('matches catalog descriptions without confusing rebar sizes, codes, units o
   const result = match(source, [four, five]);
   assert.equal(result.issue, null); assert.equal(result.evidence.itemId, '123'); assert.equal(result.unitCost, 8.07173);
   assert.equal(match({ ...source, costCode: '03-200-40-20' }, [four, five]).unitCost, 8.07173);
-  assert.match(match({ ...source, uom: 'LF' }, [four, five]).issue, /unit/);
+  assert.equal(match({ ...source, uom: 'LF' }, [four, five]).issue, null);
   assert.match(match(source, [four, { ...five, description: four.description }]).issue, /multiple/);
   assert.match(match(source, [{ ...four, unitCost: null }]).issue, /positive/);
   assert.match(match(source, [{ ...four, type: 'LABOR' }]).issue, /no matching/);
@@ -50,7 +50,7 @@ test('rebar placement spacing does not change the purchased bar identity', () =>
   for (const name of ['#5 Rebar - 20\' Pc - 12" OCEW', '#4 Rebar - 10\' Pc - 12" OCEW', '#4 Rebar - 20\' Pc - epoxy coated', '#4 Rebar - 20\' Pc - 12"']) {
     assert.match(match({ ...item(), description: name }).issue, /no matching/);
   }
-  assert.match(match({ ...item(), description: 'CO6 - #4 Rebar - 20\' Pc - 12" OCEW', uom: 'LF' }).issue, /unit/);
+  assert.equal(match({ ...item(), description: 'CO6 - #4 Rebar - 20\' Pc - 12" OCEW', uom: 'LF' }).issue, null);
 });
 test('ambiguous, missing, or zero catalog prices never fall back to PO prices', () => {
   assert.match(match(item(), [price(), { ...price(), itemId: '124', unitCost: '1' }]).issue, /multiple/);
@@ -77,7 +77,7 @@ test('material singular/plural names match without dropping size or product qual
   const result = match(source, [dowel]);
   assert.equal(result.unitCost, 2.32); assert.equal(result.evidence.itemId, '7');
   for (const description of ['#5 speed dowel', '#7 speed dowel base', '#7 speed dowel tube', '#7 speed dowel epoxy', '#7 speed dowel 9"']) assert.match(match({ ...source, description }, [dowel]).issue, /no matching/);
-  assert.match(match({ ...source, uom: 'lf' }, [dowel]).issue, /unit/);
+  assert.equal(match({ ...source, uom: 'lf' }, [dowel]).issue, null);
   assert.match(match(source, [{ ...dowel, type: 'LABOR' }]).issue, /no matching/);
   assert.match(match(source, [{ ...dowel, unitCost: null }]).issue, /positive/);
   assert.match(match(source, [dowel, { ...dowel, itemId: '8', name: '#7 Speed Dowel', unitCost: '4' }]).issue, /multiple/);
@@ -93,8 +93,16 @@ test('exact equipment identities share a current price across placement codes wi
   assert.equal(result.issue, null); assert.equal(result.unitCost, 600); assert.equal(result.evidence.itemId, '101'); assert.equal(source.costCode, '03-300-00-12');
   assert.match(match(source, [sog, {...site, unitCost:'650'}]).issue, /different prices/);
   assert.match(match(source, [sog, {...site, unitCost:null}]).issue, /missing prices/);
-  assert.match(match({...source,uom:'hr'}, [sog,site]).issue, /no matching/);
+  assert.equal(match({...source,uom:'hr'}, [sog,site]).issue, null);
   assert.match(match({...source,catalogItemId:'101'}, [sog,site]).issue, /different cost code/);
   assert.match(match({...source,description:'Somero S-840 (8 hr minimum) - SOG'}, [sog,site]).issue, /no matching/);
   assert.match(match({...source,description:'Somero Power Rake (4 hr minimum) - SOG'}, [sog,site]).issue, /no matching/);
+});
+test('sonotubes match exact Standard Wall Construction dimensions across code and unit labels', () => {
+ const source={description:`16"x6' sonotube`,costCode:'03-100-20-20',costType:'Materials',uom:'lf'};
+ const tube={...price(),name:`Standard Wall Construction 16" x 6'`,costCode:'03-150-10-85',unitCost:'52.75493'};
+ const result=match(source,[tube]);
+ assert.equal(result.issue,null); assert.equal(result.unitCost,52.75493);
+ assert.ok(match({...source,description:`16"x12' sonotube`},[tube]).issue);
+ assert.ok(match({...source,description:`18"x6' sonotube`},[tube]).issue);
 });

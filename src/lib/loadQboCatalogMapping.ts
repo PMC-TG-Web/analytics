@@ -23,7 +23,7 @@ export async function loadQboCatalogMapping(companyId: string, projectId: string
 export async function saveQboCatalogMapping(input: { companyId: string; projectId: string; lineItemId: string; catalogItemId: string | null; sourceSignature: string; revision: number }, actor: string) {
   const current = await loadQboCatalogMapping(input.companyId, input.projectId, input.lineItemId);
   if (input.sourceSignature !== current.sourceSignature || input.revision !== current.revision) throw new Error('This item or its mapping changed. Reopen the catalog picker before saving.');
-  if (input.catalogItemId !== null && !current.candidates.some(item => item.itemId === input.catalogItemId)) throw new Error('Choose a current catalog item with a matching unit and a positive price.');
+  if (input.catalogItemId !== null && !current.candidates.some(item => item.itemId === input.catalogItemId)) throw new Error('Choose a current catalog item with a positive price.');
   const key = { companyId: input.companyId, projectId: input.projectId, lineItemId: input.lineItemId };
   const data = { catalogItemId: input.catalogItemId, sourceSignature: current.sourceSignature, updatedBy: actor };
   if (!current.revision) {

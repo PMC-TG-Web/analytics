@@ -14,6 +14,9 @@ export function catalogName(value: string) {
   let name = value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ')
     .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '')
     .replace(/\s+-\s+(sog|foundation|foundations|wall|site)$/, '');
+  // Sonotube is the field name for catalog Standard Wall Construction tubes.
+  const tube = name.match(/^(\d+(?:\.\d+)?)\s*["\u2033]\s*[x\u00d7]\s*(\d+(?:\.\d+)?)\s*['\u2032]\s*sonotubes?$/);
+  if (tube) name = `standard wall construction ${tube[1]}" x ${tube[2]}'`;
   // Full shorthand bar size + purchased length, never a partial/fuzzy match.
   name = name.replace(/^#(\d+)\s*[x\u00d7]\s*(\d+(?:\.\d+)?)\s*['\u2032]\s*rebar$/, "#$1 rebar - $2' pc");
   // Rebar spacing describes installation, not the bar size or purchased length.
@@ -69,7 +72,6 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
   let matchedAcrossCodes = false;
   if (!matches.length && !item.catalogItemId) {
     const otherCodes = prices.filter(p => p.costCode !== code && labor === (p.type === 'LABOR')
-      && !!item.uom && catalogUnit(item.uom) === p.uom
       && (catalogMatchName(p.name) === catalogMatchName(name) || (!!p.description?.trim() && catalogMatchName(p.description) === catalogMatchName(name))));
     if (otherCodes.length) {
       const rates = otherCodes.map(p => labor ? p.laborRate : p.unitCost);
@@ -82,7 +84,7 @@ export function matchCatalogPrice(item: { description: string | null; costCode?:
   if (matches.length !== 1) return fail(matches.length ? 'multiple Cost Catalog items match; a unique catalog item is required.' : 'no matching current Cost Catalog item. Check the catalog item name and cost code.');
   const found = matches[0];
   if (!matchedAcrossCodes && found.costCode !== code) return fail('the linked Cost Catalog item has a different cost code.');
-  if (!item.uom || !found.uom || catalogUnit(item.uom) !== found.uom) return fail(`Cost Catalog unit (${found.uom || 'missing'}) does not match daily-log/PO unit (${item.uom || 'missing'}).`);
+
   const unitCost = labor ? found.laborRate : found.unitCost;
   if (!unitCost) return fail('the Cost Catalog item needs a positive current unit cost.');
   const evidence: CatalogPriceEvidence = { itemId: found.itemId, catalogId: found.catalogId, name: found.name, unitCost, uom: found.uom };

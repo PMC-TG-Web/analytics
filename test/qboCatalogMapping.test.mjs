@@ -25,13 +25,13 @@ test('explicit choice resolves a renamed item and legacy code while retaining th
 });
 test('saved mappings block changed source identities and unavailable or incompatible catalog prices', () => {
   assert.match(logic.mappedCatalogPrice({ ...source, description: '#5 Rebar' }, [price], new Map(), saved()).issue, /source item changed/);
-  for (const items of [[], [{ ...price, uom: 'lf' }], [{ ...price, unitCost: null }], [{ ...price, type: 'LABOR', laborRate: '70' }]]) {
+  for (const items of [[], [{ ...price, unitCost: null }], [{ ...price, type: 'LABOR', laborRate: '70' }]]) {
     assert.match(logic.mappedCatalogPrice(source, items, new Map(), saved()).issue, /unavailable/);
   }
 });
 test('picker offers compatible positive rates and clearing restores automatic matching', () => {
   const choices = logic.catalogMappingCandidates(source, [price, { ...price, itemId: '124', uom: 'sf' }, { ...price, itemId: '125', unitCost: '0' }]);
-  assert.equal(choices.length, 1); assert.equal(choices[0].sameCostCode, false);
+  assert.equal(choices.length, 2); assert.equal(choices[0].sameCostCode, false);
   assert.match(logic.mappedCatalogPrice(source, [price], new Map(), { ...saved(), catalogItemId: null }).issue, /no matching/);
 });
 function service({ existing = null, changedDuringSave = false } = {}) {
@@ -51,7 +51,7 @@ const input = () => ({ companyId: '1', projectId: '2', lineItemId: '3', catalogI
 test('save validates server-side choices and records operator without accepting a browser price', async () => {
   const h = service(); await h.saveQboCatalogMapping({ ...input(), unitCost: '0.01' }, 'operator@example.test');
   assert.equal(h.writes[0].catalogItemId, '123'); assert.equal(h.writes[0].updatedBy, 'operator@example.test'); assert.equal(h.writes[0].unitCost, undefined);
-  await assert.rejects(h.saveQboCatalogMapping({ ...input(), catalogItemId: '999' }, 'operator'), /matching unit/);
+  await assert.rejects(h.saveQboCatalogMapping({ ...input(), catalogItemId: '999' }, 'operator'), /positive price/);
   await assert.rejects(h.saveQboCatalogMapping({ ...input(), sourceSignature: 'old' }, 'operator'), /changed/);
 });
 test('concurrent creates and updates require reopening instead of overwriting another choice', async () => {
@@ -73,7 +73,7 @@ test('freeform descriptions use an unambiguous current code/unit price without c
 test('code fallback does not guess different prices, units, kinds or explicit identities', () => {
  const sameCode = { ...price, costCode: source.costCode };
  assert.match(logic.mappedCatalogPrice(source, [sameCode, { ...sameCode, itemId: '124', unitCost: '10' }], new Map(), undefined, true).issue, /different current/);
- for (const changed of [{ uom: 'lf' }, { type: 'LABOR', laborRate: '70' }, { costCode: '99-999-99-99' }, { unitCost: null }]) assert.ok(logic.mappedCatalogPrice(source, [{ ...sameCode, ...changed }], new Map(), undefined, true).issue);
+ for (const changed of [{ type: 'LABOR', laborRate: '70' }, { costCode: '99-999-99-99' }, { unitCost: null }]) assert.ok(logic.mappedCatalogPrice(source, [{ ...sameCode, ...changed }], new Map(), undefined, true).issue);
  assert.ok(logic.mappedCatalogPrice({ ...source, catalogItemId: '999' }, [sameCode], new Map(), undefined, true).issue);
  assert.ok(logic.mappedCatalogPrice(source, [sameCode], new Map(), undefined, false).issue);
 });

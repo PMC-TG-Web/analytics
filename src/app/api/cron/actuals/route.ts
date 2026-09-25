@@ -1,3 +1,4 @@
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
@@ -476,6 +477,10 @@ async function runActualsSync(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  return withAnalyticsSyncProcoreConnection(() => runPostInConnection(request));
+}
+
+async function runPostInConnection(request: NextRequest) {
   if (!hasValidSecret(request) || !getRequiredSyncSecret()) {
     return runActualsSync(request);
   }

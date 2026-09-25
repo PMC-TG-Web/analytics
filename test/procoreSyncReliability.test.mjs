@@ -864,7 +864,7 @@ test("the shared Procore client gates background traffic but preserves interacti
   assert.match(procore, /process\.env\.PROCORE_SYNC_SECRET, process\.env\.CRON_SECRET/);
   assert.match(
     procore,
-    /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return runWithProcoreRequestContext\('background', operation\)/,
+    /if \(hasValidProcoreSyncSecret\(request\)\) \{\s+return withAuthenticatedSyncConnection\(request, \(\) => runWithProcoreRequestContext\('background', operation\)\)/,
   );
   assert.match(procore, /requestContext\?\.lane === 'background'/);
   assert.match(procore, /x-procore-api-request-count/);

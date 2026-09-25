@@ -1,3 +1,4 @@
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { getRequiredSyncSecret, parseNonNegativeInt, parsePositiveInt, runProcoreCronSync } from "@/lib/cronSync";
 
@@ -15,6 +16,10 @@ export const maxDuration = 300;
 const SINGLE_ALLOWED_PROCORE_COMPANY_ID = (process.env.PROCORE_COMPANY_ID || '598134325805519').trim();
 
 export async function POST(request: NextRequest) {
+  return withAnalyticsSyncProcoreConnection(() => runPostInConnection(request));
+}
+
+async function runPostInConnection(request: NextRequest) {
   const cronSecret = (process.env.CRON_SECRET || "").trim();
   if (!cronSecret) {
     return NextResponse.json(

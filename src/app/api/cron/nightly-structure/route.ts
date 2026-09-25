@@ -1,3 +1,4 @@
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { purchaseOrderDiscoveryPolling } from "@/lib/procorePollingPolicy";
 import { prisma } from "@/lib/prisma";
@@ -124,6 +125,10 @@ async function runStep(params: {
 }
 
 export async function POST(request: NextRequest) {
+  return withAnalyticsSyncProcoreConnection(() => runPostInConnection(request));
+}
+
+async function runPostInConnection(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }

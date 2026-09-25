@@ -1,3 +1,4 @@
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
@@ -83,6 +84,10 @@ async function runProjectReconciliation(request: NextRequest, syncSecret: string
 }
 
 export async function POST(request: NextRequest) {
+  return withAnalyticsSyncProcoreConnection(() => runPostInConnection(request));
+}
+
+async function runPostInConnection(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }

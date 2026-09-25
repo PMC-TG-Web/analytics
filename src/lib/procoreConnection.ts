@@ -1,7 +1,26 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-export type ProcoreConnection = 'shared' | 'pm-dashboard' | 'commitment-maker';
+export type ProcoreConnection = 'shared' | 'pm-dashboard' | 'commitment-maker' | 'analytics-sync';
 const connectionContext = new AsyncLocalStorage<ProcoreConnection>();
+
+export function analyticsSyncProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
+  if (!['true', '1', 'yes'].includes((env.PROCORE_ANALYTICS_SYNC_ENABLED || '').trim().toLowerCase())) return 'shared';
+  const id = env.PROCORE_ANALYTICS_SYNC_CLIENT_ID?.trim();
+  if (!id || !env.PROCORE_ANALYTICS_SYNC_CLIENT_SECRET?.trim()) throw new Error('Configure both PROCORE_ANALYTICS_SYNC_CLIENT_ID and PROCORE_ANALYTICS_SYNC_CLIENT_SECRET.');
+  if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_COMMITMENT_MAKER_CLIENT_ID].some(value => value?.trim() === id)) throw new Error('Analytics sync must use a distinct Procore OAuth client.');
+  return 'analytics-sync';
+}
+
+export function withAnalyticsSyncProcoreConnection<T>(operation: () => T): T {
+  return withProcoreConnection(analyticsSyncProcoreConnection(), operation);
+}
+
+// Only call after validating a server sync secret. Explicit app contexts win;
+// accounting can retain the original connection via its internal request header.
+export function withAuthenticatedSyncConnection<T>(request: Request, operation: () => T): T {
+  const selected = currentProcoreConnection();
+  return withProcoreConnection(request.headers.get('x-procore-connection') === 'shared' ? 'shared' : selected === 'shared' ? analyticsSyncProcoreConnection() : selected, operation);
+}
 
 export function pmDashboardProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
   const id = env.PROCORE_PM_DASHBOARD_CLIENT_ID?.trim();
@@ -46,6 +65,10 @@ export function withCommitmentMakerProcoreConnection<T>(operation: () => T): T {
 }
 
 export function procoreServiceCredentials(env: NodeJS.ProcessEnv = process.env) {
+  if (currentProcoreConnection() === 'analytics-sync') {
+    if (analyticsSyncProcoreConnection(env) !== 'analytics-sync') throw new Error('Analytics sync Procore credentials are missing.');
+    return { clientId: env.PROCORE_ANALYTICS_SYNC_CLIENT_ID!.trim(), clientSecret: env.PROCORE_ANALYTICS_SYNC_CLIENT_SECRET!.trim() };
+  }
   if (currentProcoreConnection() === 'commitment-maker') {
     if (commitmentMakerProcoreConnection(env) !== 'commitment-maker') throw new Error('Commitment Maker Procore credentials are missing.');
     return { clientId: env.PROCORE_COMMITMENT_MAKER_CLIENT_ID!.trim(), clientSecret: env.PROCORE_COMMITMENT_MAKER_CLIENT_SECRET!.trim() };
@@ -61,6 +84,9 @@ export function procoreServiceCredentials(env: NodeJS.ProcessEnv = process.env) 
 // These identifiers are a fixed allowlist, never request input. Separate tables
 // leave the existing app's live leases/quota intact and support rolling deploys.
 export function procoreCoordinationTables(connection = currentProcoreConnection()) {
+  if (connection === 'analytics-sync') return {
+    gates: 'procore_analytics_request_gates', controls: 'procore_analytics_sync_controls', usage: 'procore_analytics_api_usage',
+  };
   if (connection === 'commitment-maker') return {
     gates: 'procore_cm_request_gates', controls: 'procore_cm_sync_controls', usage: 'procore_cm_api_usage',
   };

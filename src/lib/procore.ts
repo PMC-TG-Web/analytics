@@ -1,4 +1,4 @@
-import { currentProcoreConnection, procoreServiceCredentials } from '@/lib/procoreConnection';
+import { currentProcoreConnection, procoreServiceCredentials, withAuthenticatedSyncConnection } from '@/lib/procoreConnection';
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { waitForProcoreRequestPermit, completeProcoreRequestPermit } from '@/lib/procoreRequestGate';
@@ -146,7 +146,7 @@ export function withProcoreLiveApiBypassForSyncSecret<T>(
     return operation();
   }
 
-  return runWithProcoreRequestContext('background', operation);
+  return withAuthenticatedSyncConnection(request, () => runWithProcoreRequestContext('background', operation));
 }
 
 export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
@@ -154,7 +154,7 @@ export function withProcoreLiveApiBypassForAuthenticatedSession<T>(
   operation: () => Promise<T>
 ): Promise<T> {
   if (hasValidProcoreSyncSecret(request)) {
-    return runWithProcoreRequestContext('background', operation);
+    return withAuthenticatedSyncConnection(request, () => runWithProcoreRequestContext('background', operation));
   }
   if (!hasProcoreAccessTokenCookie(request)) {
     return operation();

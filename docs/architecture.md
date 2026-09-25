@@ -518,3 +518,11 @@ Budget readiness reuses exact code/type evidence verified within 24 hours, scope
 ### Protected Analytics connection diagnostic
 
 The secret-authenticated synchronous function /api/background/analytics-connection-check accepts POST for a read-only OAuth/project-access check of PROCORE_ANALYTICS_SYNC_CLIENT_ID and PROCORE_ANALYTICS_SYNC_CLIENT_SECRET inside Netlify. It returns status metadata only and does not start reconciliation, expose tokens, or activate a connection. Netlify Secrets Controller masks production secret values in local CLI reads, so those values must not be used for local authentication tests. Test: analyticsConnectionCheck.test.mjs.
+
+### Dedicated Analytics Procore connection
+
+`PROCORE_ANALYTICS_SYNC_ENABLED=true` activates `PROCORE_ANALYTICS_SYNC_CLIENT_ID` and `PROCORE_ANALYTICS_SYNC_CLIENT_SECRET` for secret-authenticated ingestion and analytics workers. The client must differ from the shared, PM Dashboard, and Commitment Maker clients. Missing credentials fail closed after activation. Disable the flag to restore the shared connection.
+
+Apply migration `20260925140000_analytics_sync_procore_connection` before activation. Analytics uses independent `procore_analytics_request_gates`, `procore_analytics_sync_controls`, and `procore_analytics_api_usage` tables; company/project identities and ingestion state are unchanged. Provider limits remain enforced. Explicit PM/Commitment Maker contexts remain isolated. Accounting internal requests specify `x-procore-connection: shared`, honored only after sync-secret validation.
+
+GET `/api/cron/sync/health` reports Analytics control/usage and an `analyticsSync` section. Validation: `node --test test/procoreConnection.test.mjs test/procoreSyncReliability.test.mjs`. The optional `PROCORE_CAPACITY_DATABASE_TEST=1` test uses temporary tables and rolls back writes.

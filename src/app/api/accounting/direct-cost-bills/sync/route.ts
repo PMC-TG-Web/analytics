@@ -18,11 +18,11 @@ export async function POST(request: NextRequest) {
   const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
   if (!secret) return json({ error: 'Automatic Procore refresh is not configured.' }, 503);
   try {
-    const internal = new Request('http://internal/catalog-refresh', { headers: { 'x-sync-secret': secret } });
+    const internal = new Request('http://internal/catalog-refresh', { headers: { 'x-sync-secret': secret, 'x-procore-connection': 'shared' } });
     return json(await withProcoreLiveApiBypassForSyncSecret(internal, () => refreshQboBillSources(companyId, body.month, async projectId => {
       // Internal invocation preserves the sync-secret gate without forwarding credentials to a URL.
       const result = await syncPurchaseOrders(new Request('http://internal/api/procore/sync/purchase-order-line-item-details', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-sync-secret': secret },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-sync-secret': secret, 'x-procore-connection': 'shared' },
         body: JSON.stringify({ companyId, projectIds: [projectId], concurrency: 1, persist: true, persistUnpackedFields: false }),
       }));
       const data = await result.json();

@@ -29,7 +29,7 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
     };
     const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
     if (!secret) throw new Error('Procore budget setup requires the configured server sync connection.');
-    return await withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/qbo-budget-setup', { headers: { 'x-sync-secret': secret } }), async () => {
+    return await withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/qbo-budget-setup', { headers: { 'x-sync-secret': secret, 'x-procore-connection': 'shared' } }), async () => {
       const token = await getClientCredentialsToken();
       const list = async <T>(path: string): Promise<T[]> => {
         const all: T[] = [];

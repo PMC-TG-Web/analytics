@@ -1,3 +1,5 @@
+import { streamSyncResponse } from '@/lib/procoreSyncStream';
+import { hasValidProcoreSyncSecret } from '@/lib/procore';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
@@ -306,6 +308,11 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 }
 
 export async function POST(request: Request) {
+  if (hasValidProcoreSyncSecret(request)) return streamSyncResponse(() => runSync(request));
+  return runSync(request);
+}
+
+async function runSync(request: Request) {
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;

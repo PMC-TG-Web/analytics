@@ -683,6 +683,6 @@ export const config = {
   // NextResponse.next() through the Next.js handler and can produce a 404.
   // Each excluded function validates x-sync-secret before doing any work.
   matcher: [
-    '/((?!api/background/(?:actuals-sync|nightly-structure-sync|change-order-approvals|commitment-maker-tasks|pm-dashboard-sync|calendar-sync|project-reconciliation)/?$|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!api/background/(?:actuals-sync|nightly-structure-sync|change-order-approvals|commitment-maker-tasks|pm-dashboard-sync|calendar-sync|project-reconciliation|analytics-connection-check)/?$|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

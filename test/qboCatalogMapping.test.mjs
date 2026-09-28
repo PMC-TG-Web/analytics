@@ -23,8 +23,8 @@ test('explicit choice resolves a renamed item and legacy code while retaining th
   assert.equal(source.costCode, '03-200-30-20');
   assert.equal(logic.mappedCatalogPrice(source, [{ ...price, unitCost: '9' }], new Map(), saved()).unitCost, 9);
 });
-test('saved mappings block changed source identities and unavailable or incompatible catalog prices', () => {
-  assert.match(logic.mappedCatalogPrice({ ...source, description: '#5 Rebar' }, [price], new Map(), saved()).issue, /source item changed/);
+test('saved mappings survive source label edits but block unavailable or incompatible catalog prices', () => {
+  assert.equal(logic.mappedCatalogPrice({ ...source, description: 'Edited PO description', uom: 'lf', costCode: '03-150-10-85' }, [price], new Map(), saved()).unitCost, 8.25);
   for (const items of [[], [{ ...price, unitCost: null }], [{ ...price, type: 'LABOR', laborRate: '70' }]]) {
     assert.match(logic.mappedCatalogPrice(source, items, new Map(), saved()).issue, /unavailable/);
   }
@@ -92,4 +92,17 @@ test('unmatched descriptions use their own positive PO price when the catalog co
  assert.equal(logic.purchasePriceFallback(s,prices,new Map(),saved(),'1','2'),null);
  assert.equal(logic.purchasePriceFallback({...s,catalogItemId:'123'},prices,new Map(),undefined,'1','2'),null);
  assert.equal(logic.purchasePriceFallback({...s,description:price.name},prices,new Map(),undefined,'1','2'),null);
+});
+test('saved catalog IDs keep 5 and 55 gallon prices distinct through renames and price changes', () => {
+ const source={description:'L&M Curing Compound',costCode:'03-150-10-85',costType:'Materials',uom:'ea'};
+ const five={...price,itemId:'5',name:'L&M Curing Compound',description:'5 gal',costCode:source.costCode,unitCost:'100'};
+ const drum={...five,itemId:'55',description:'55 gal',unitCost:'800'};
+ const pick=id=>({catalogItemId:id,sourceSignature:'old-source-signature',revision:1});
+ assert.equal(logic.mappedCatalogPrice(source,[five,drum],new Map(),pick('5')).unitCost,100);
+ assert.equal(logic.mappedCatalogPrice(source,[five,drum],new Map(),pick('55')).unitCost,800);
+ const updated={...five,name:'Renamed five-gallon compound',unitCost:'115'};
+ assert.equal(logic.mappedCatalogPrice({...source,description:'Edited label',uom:'gal'},[drum,updated],new Map(),pick('5')).unitCost,115);
+ assert.ok(logic.mappedCatalogPrice(source,[drum],new Map(),pick('5')).issue);
+ assert.ok(logic.mappedCatalogPrice(source,[drum,{...five,unitCost:null}],new Map(),pick('5')).issue);
+ assert.equal(logic.purchasePriceFallback({...source,procoreId:'10',unitCost:5},[drum],new Map(),pick('5'),'1','2'),null);
 });

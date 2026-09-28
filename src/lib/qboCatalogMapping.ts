@@ -38,7 +38,9 @@ export function mappedCatalogPrice(source: CatalogMappingSource, items: CatalogP
     return matchCatalogPrice({ ...source, catalogItemId: selected.itemId }, items, aliases);
   }
   const fail = (issue: string) => ({ unitCost: null, evidence: null, issue: `${source.description || 'Item'}: ${issue}` });
-  if (mapping.sourceSignature !== catalogSourceSignature(source)) return fail('the source item changed since its catalog mapping was saved. Review the mapping again.');
+  // The database scopes this saved choice to company + project + immutable PO line ID.
+  // Description, unit and source-code edits do not discard an operator's pricing choice.
+  // sourceSignature still protects concurrent edits when saving a new choice.
   const selected = catalogMappingCandidates(source, items).find(item => item.itemId === mapping.catalogItemId);
   if (!selected) return fail('the saved Cost Catalog item is unavailable or no longer has a positive price. Review its mapping.');
   // Explicit operator choice may cross a legacy PO budget code. Keep the original

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyDirectCostCoding } from '../src/lib/qboDirectCostCoding.ts';
+import { applyDirectCostCoding, isFoodCost } from '../src/lib/qboDirectCostCoding.ts';
 test('Food uses the fixed material code while preserving source identity, unit and description', () => {
  for (const description of ['Food', ' food ', 'Food Cost', 'CO6 - Food']) {
   const original = { procoreId: '123', description, costCode: '03-150-10-85', costType: 'Other', uom: 'ls' };
@@ -25,4 +25,12 @@ test('approved Somero per-each charges use Direct Costs while retaining the sour
  for (const description of ['Somero operator labor', 'Somero S-840 (4 hr minimum)', 'Somero SRS4 (8 hr minimum)']) {
   const original = { description, costType: 'Labor', uom: 'ea' }; assert.equal(applyDirectCostCoding(original), original);
  }
+});
+test('food code and meal descriptions use the food ledger rather than catalog prices', () => {
+ for (const description of ['Breakfast','CO6 - Lunch','Dinner','Meals','Crew refreshments']) {
+  assert.equal(isFoodCost({description,costCode:'01-300-10-80.M',costType:'Materials'}),true);
+ }
+ assert.equal(isFoodCost({description:'Breakfast',costCode:'03-150-10-85',costType:'Other'}),true);
+ assert.equal(isFoodCost({description:'Breakfast',costCode:'01-300-10-80',costType:'Labor'}),false);
+ assert.equal(isFoodCost({description:'Breakfast room equipment',costCode:'03-150-10-85',costType:'Materials'}),false);
 });

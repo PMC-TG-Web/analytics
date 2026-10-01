@@ -6,6 +6,8 @@ This document is the fast-start map for the application. It describes the curren
 
 Production release baseline (2026-10-01): `fix/bill-worklist-release-20261001` carries the current estimate-import release plus the restored bill batching, exclusions, and bounded worklist reads. Future deployments must include this recovery; publishing an older checkout reverted these fixes and caused HTTP 504 errors.
 
+Direct Cost Bills monthly queue HTTP reads require `view=queue&paged=1` and return a cursor with each bounded page. Older open pages that omit `paged=1` receive HTTP 409 with `BILL_PAGE_RELOAD_REQUIRED` before any aggregation starts; they must reload the application. The API never substitutes a partial worklist for the older complete-list response. Successful page reads log duration, row count, and continuation presence without financial payloads or identifiers. Validate with `node --test test/qboBillQueueRoute.test.mjs test/qboBillResponse.test.mjs test/qboBillProjectPolicy.test.mjs`.
+
 ## Purpose
 
 This repository is an internal construction operations and analytics application. It combines:

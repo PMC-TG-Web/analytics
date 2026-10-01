@@ -2,11 +2,12 @@ import { prisma } from '@/lib/prisma';
 import { commitmentMakerProcoreJson } from '@/lib/procoreCommitmentMakerClient';
 import { openCommitmentEstimateRead } from '@/lib/procoreCommitmentEstimateRead';
 import {
-  enrichPrimaryEstimateBudgetCodes, estimateRecord, primaryEstimateCostAssignment,
+  enrichPrimaryEstimateBudgetCodes, estimateRecord, primaryEstimateAssemblyCatalogId, primaryEstimateCostAssignment,
   PrimaryEstimateError, selectCommitmentEstimateBoard, selectPrimaryCommitmentEstimate,
 } from '@/lib/procore/commitmentMakerEstimate';
 
 type RecordValue = Record<string, unknown>;
+const BUDGET_CODES_VERSION = 2;
 export type PrimaryEstimateSnapshot = {
   bidBoardProjectId: string; proposal: RecordValue; lines: RecordValue[]; groups: RecordValue[]; fetchedAt: string;
   budgetCodesVersion?: number;
@@ -49,7 +50,7 @@ export async function readPrimaryCommitmentEstimate(options: {
       WHERE company_id = ${companyId} AND project_id = ${projectId}`;
     const age = Date.now() - (row?.fetched_at.getTime() || 0);
     if (row && age >= 0 && age < 5 * 60_000 && row.snapshot.bidBoardProjectId === bidBoardProjectId
-      && row.snapshot.budgetCodesVersion === 1) return row.snapshot;
+      && row.snapshot.budgetCodesVersion === BUDGET_CODES_VERSION) return row.snapshot;
   }
   const preparation = await openCommitmentEstimateRead({ companyId, projectId, boardId: bidBoardProjectId,
     mode: options.mode || 'preview', preparationId: options.preparationId });
@@ -84,6 +85,9 @@ export async function readPrimaryCommitmentEstimate(options: {
   }
   if (preparation.snapshot) {
     const snapshot = preparation.snapshot as PrimaryEstimateSnapshot;
+    if (snapshot.budgetCodesVersion !== BUDGET_CODES_VERSION) {
+      throw new PrimaryEstimateError('The estimate coding reader changed. Refresh and preview again.');
+    }
     const current = selectPrimaryCommitmentEstimate(await pages(`${base}/proposals`, ['data', 'proposals'], 10));
     if (String(current.id) !== String(snapshot.proposal.id) || current.updated_at !== snapshot.proposal.updated_at) {
       throw new PrimaryEstimateError('The primary estimate changed while it was loading. Refresh and preview again.');
@@ -98,13 +102,16 @@ export async function readPrimaryCommitmentEstimate(options: {
   // Catalog IDs copied into old estimates can be historical after an item moves.
   // Resolve each unique item directly inside the authenticated company instead.
   const neededItems = new Set<string>();
+  const neededAssemblyCatalogs = new Set<string>();
   for (const line of sourceLines) {
     if (primaryEstimateCostAssignment(line).code) continue;
+    const assemblyCatalogId = primaryEstimateAssemblyCatalogId(line);
+    if (assemblyCatalogId) {
+      neededAssemblyCatalogs.add(assemblyCatalogId);
+      continue;
+    }
     const item = estimateRecord(line.cost_item);
     const id = String(item.id || '');
-    // Detached/copied estimate items use 0, which is not a catalog identity.
-    // Procore returns a misleading 403 for /items/0. Keep these lines uncoded
-    // so normal preview validation identifies the missing source assignment.
     if (!/^[1-9]\d*$/.test(id)) continue;
     neededItems.add(id);
   }
@@ -116,12 +123,16 @@ export async function readPrimaryCommitmentEstimate(options: {
     if (String(item.id) !== id) throw new PrimaryEstimateError('A linked estimate Cost Catalog item could not be read. Refresh and try again.');
     codingItems.set(id, item);
   }
-  const lines = enrichPrimaryEstimateBudgetCodes(sourceLines, [...codingItems.values()]);
+  const assemblyCatalogs = new Map<string, RecordValue[]>();
+  for (const id of neededAssemblyCatalogs) {
+    assemblyCatalogs.set(id, await pages(`${catalogBase}/${encodeURIComponent(id)}/items`, ['data', 'items'], 20));
+  }
+  const lines = enrichPrimaryEstimateBudgetCodes(sourceLines, [...codingItems.values()], assemblyCatalogs);
   const confirmed = selectPrimaryCommitmentEstimate(await pages(`${base}/proposals`, ['data', 'proposals'], 10, 'confirm:'));
   if (String(confirmed.id) !== String(proposal.id) || confirmed.updated_at !== proposal.updated_at) {
     throw new PrimaryEstimateError('The primary estimate changed while it was loading. Refresh and preview again.');
   }
-  const snapshot: PrimaryEstimateSnapshot = { bidBoardProjectId, proposal, groups, lines, fetchedAt: new Date().toISOString(), budgetCodesVersion: 1 };
+  const snapshot: PrimaryEstimateSnapshot = { bidBoardProjectId, proposal, groups, lines, fetchedAt: new Date().toISOString(), budgetCodesVersion: BUDGET_CODES_VERSION };
   // Write only a complete response. Never substitute an old snapshot after a failed live read.
   await prisma.$executeRaw`INSERT INTO procore_commitment_estimate_caches (company_id, project_id, snapshot, fetched_at)
     VALUES (${companyId}, ${projectId}, ${JSON.stringify(snapshot)}::jsonb, NOW())

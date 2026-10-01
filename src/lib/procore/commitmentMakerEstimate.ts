@@ -59,21 +59,89 @@ export function primaryEstimateCostAssignment(line: RecordValue) {
   return { code, type };
 }
 
-/** Only copy coding fields from the exact linked item; estimate pricing stays authoritative. */
-export function enrichPrimaryEstimateBudgetCodes(lines: RecordValue[], catalogItems: RecordValue[]): RecordValue[] {
+/** Some assembly children omit a permanent item ID in Procore's estimate response. */
+export function primaryEstimateAssemblyCatalogId(line: RecordValue): string {
+  const item = estimateRecord(line.cost_item);
+  if (text(item.id) && text(item.id) !== '0') return '';
+  const id = text(item.catalog_id);
+  return /^[1-9]\d*$/.test(id) ? id : '';
+}
+
+function assemblyItemIdentity(item: RecordValue): string {
+  // Estimate units and prices may be overridden. Match original item metadata,
+  // never the editable line name, group name, quantity, units or price.
+  if (!text(item.name) || !text(item.description) || !text(item.type)) return '';
+  return JSON.stringify([item.name, item.description, item.type, item.manufacturer, item.catalog_number]
+    .map(value => text(value).toLowerCase().replace(/\s+/g, ' ')));
+}
+
+/** Only copy coding fields; estimate-specific assignments and pricing stay authoritative. */
+export function enrichPrimaryEstimateBudgetCodes(lines: RecordValue[], catalogItems: RecordValue[],
+  assemblyCatalogs: ReadonlyMap<string, RecordValue[]> = new Map()): RecordValue[] {
   const byId = new Map<string, RecordValue>();
   for (const item of catalogItems) {
     const id = text(item.id);
     if (!id || byId.has(id)) throw new PrimaryEstimateError('Procore returned conflicting Cost Catalog records. Refresh and try again.');
     byId.set(id, item);
   }
+  type Candidate = { assemblyId: string; item: RecordValue };
+  const assemblyIndexes = new Map<string, Map<string, Candidate[]>>();
+  for (const [catalogId, assemblies] of assemblyCatalogs) {
+    const index = new Map<string, Candidate[]>();
+    for (const assembly of assemblies) {
+      const assemblyId = text(assembly.id);
+      if (!assemblyId) throw new PrimaryEstimateError('Procore returned an incomplete assembly catalog. Refresh and try again.');
+      function visit(value: unknown) {
+        if (!Array.isArray(value)) return;
+        for (const entry of value) {
+          const item = estimateRecord(entry);
+          const key = assemblyItemIdentity(item);
+          if (key) index.set(key, [...(index.get(key) || []), { assemblyId, item }]);
+          visit(item.sub_items);
+        }
+      }
+      visit(assembly.sub_items);
+    }
+    assemblyIndexes.set(catalogId, index);
+  }
+  const candidatesByLine = new Map<RecordValue, Candidate[]>();
+  const commonAssemblies = new Map<string, Set<string>>();
+  const scopeKey = (line: RecordValue, catalogId: string) => {
+    const groupId = text(line.group_id || estimateRecord(line.group).id);
+    return groupId ? JSON.stringify([catalogId, groupId]) : '';
+  };
+  for (const line of lines) {
+    const catalogId = primaryEstimateAssemblyCatalogId(line);
+    const candidates = assemblyIndexes.get(catalogId)?.get(assemblyItemIdentity(estimateRecord(line.cost_item))) || [];
+    candidatesByLine.set(line, candidates);
+    const scope = scopeKey(line, catalogId);
+    if (!scope || !candidates.length) continue;
+    const parents = new Set(candidates.map(candidate => candidate.assemblyId));
+    const common = commonAssemblies.get(scope);
+    // A group can identify an assembly only when every matching original item
+    // belongs to it. Conflicting groups never choose a best-scoring substitute.
+    commonAssemblies.set(scope, common ? new Set([...common].filter(id => parents.has(id))) : parents);
+  }
+  const assignmentKey = ({ item }: Candidate) => {
+    const assignment = primaryEstimateCostAssignment({ cost_item: item });
+    return assignment.code ? `${assignment.code}|${normalizeCommitmentMakerCostType(assignment.type)}` : '';
+  };
   return lines.map(line => {
     if (primaryEstimateCostAssignment(line).code) return line;
     const item = estimateRecord(line.cost_item);
-    const catalog = byId.get(text(item.id));
+    const catalogId = primaryEstimateAssemblyCatalogId(line);
+    let catalog = /^[1-9]\d*$/.test(text(item.id)) ? byId.get(text(item.id)) : undefined;
+    if (catalogId) {
+      let candidates = candidatesByLine.get(line) || [];
+      if (new Set(candidates.map(assignmentKey)).size > 1) {
+        const common = commonAssemblies.get(scopeKey(line, catalogId));
+        candidates = common?.size ? candidates.filter(candidate => common.has(candidate.assemblyId)) : [];
+      }
+      const assignments = new Set(candidates.map(assignmentKey));
+      if (assignments.size === 1 && !assignments.has('')) catalog = candidates[0].item;
+    }
     if (!catalog) return line;
-    // Items can move to another catalog after the estimate was saved. The item ID
-    // remains authoritative; the estimate's copied catalog_id can be historical.
+    // Leave the original item identity and all estimate overrides intact.
     return { ...line, cost_item: { ...item, cost_code: catalog.cost_code, cost_type_code: catalog.cost_type_code } };
   });
 }

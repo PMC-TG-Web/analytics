@@ -215,3 +215,15 @@ test('primary estimate route uses server detail and fingerprints the proposal id
   assert.match(route, /forceLive: mode === "create" \|\| body.refreshEstimate === true/);
   assert.match(route, /savePrimaryEstimateImport\(estimateClaim, estimateTargets\)/);
 });
+
+
+test('placeholder catalog IDs never cause a forbidden lookup or invented coding', async () => {
+ for (const id of ['0', 0, '', null, '-1']) {
+  const input = line({ cost_code: null, cost_code_type: null, cost_item: { id, unit: 'HOURS' } });
+  const fixture = sourceFixture({ lines: [input], failPath: '/catalogs/' });
+  const result = await fixture.source.readPrimaryCommitmentEstimate({ companyId: 'co', projectId: 'project', forceLive: true, getToken: async () => 'test' });
+  assert.equal(fixture.calls.some(path => path.includes('/catalogs/')), false);
+  assert.equal(logic.primaryEstimateCostAssignment(result.lines[0]).code, '');
+  assert.equal(result.lines.length, 1);
+ }
+});

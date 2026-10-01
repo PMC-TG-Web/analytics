@@ -102,7 +102,10 @@ export async function readPrimaryCommitmentEstimate(options: {
     if (primaryEstimateCostAssignment(line).code) continue;
     const item = estimateRecord(line.cost_item);
     const id = String(item.id || '');
-    if (!id) continue;
+    // Detached/copied estimate items use 0, which is not a catalog identity.
+    // Procore returns a misleading 403 for /items/0. Keep these lines uncoded
+    // so normal preview validation identifies the missing source assignment.
+    if (!/^[1-9]\d*$/.test(id)) continue;
     neededItems.add(id);
   }
   const catalogBase = `/rest/v2.0/companies/${encodeURIComponent(companyId)}/estimating/catalogs`;

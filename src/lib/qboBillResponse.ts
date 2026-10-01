@@ -24,3 +24,28 @@ export async function fetchBillRead(url: string, signal?: AbortSignal) {
   signal?.throwIfAborted();
   return fetch(url, options);
 }
+
+/** Finish every bounded read before exposing a selectable monthly worklist. */
+export async function fetchBillQueue<Row extends { projectId: string; projectName: string; status: string }>(companyId: string, month: string, signal?: AbortSignal, onProgress?: (loaded: number, total: number) => void) {
+  const rows = new Map<string, Row>();
+  const cursors = new Set<string>();
+  let after: string | null = null;
+  let generatedAt = '';
+  do {
+    signal?.throwIfAborted();
+    const params = new URLSearchParams({ companyId, month, view: 'queue', paged: '1', ...(after ? { after } : {}) });
+    const response = await fetchBillRead(`/api/accounting/direct-cost-bills?${params}`, signal);
+    const data = await readBillResponse(response);
+    if (!response.ok) throw new Error(data.error || 'Unable to load monthly bills.');
+    if (!Array.isArray(data.rows)) throw new Error('The project list was incomplete. Refresh monthly bills.');
+    signal?.throwIfAborted();
+    for (const row of data.rows as Row[]) rows.set(row.projectId, row);
+    generatedAt = data.generatedAt;
+    onProgress?.(rows.size, data.totalProjects ?? rows.size);
+    after = data.nextCursor ?? null;
+    if (after !== null && (typeof after !== 'string' || !/^\d+$/.test(after) || cursors.has(after))) throw new Error('The project list changed. Refresh monthly bills.');
+    if (after) cursors.add(after);
+  } while (after);
+  const priority: Record<string, number> = { update: 0, create: 1, blocked: 2, unavailable: 3, current: 4, no_activity: 5 };
+  return { generatedAt, rows: [...rows.values()].sort((a, b) => priority[a.status] - priority[b.status] || a.projectName.localeCompare(b.projectName)) };
+}

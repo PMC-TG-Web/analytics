@@ -6,12 +6,13 @@ import ts from 'typescript';
 import { validateCsrfRequest } from '../src/lib/csrfProtection.ts';
 
 const js = ts.transpileModule(fs.readFileSync('src/app/api/accounting/direct-cost-bills/reconcile/route.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function route(actor = 'operator@example.test') {
+function route(actor = 'operator@example.test', batchActive = false) {
   const writes = [];
   const imports = {
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/requestUser': { getRequestUserEmail: async () => actor },
     '@/lib/csrfProtection': { validateCsrfRequest },
+    '@/lib/qboBillBatchStore': { assertNoActiveBillBatch: async () => { if (batchActive) throw new Error('Monthly update is running.'); } },
     '@/lib/loadQboDirectCosts': { loadQboDirectCosts: async () => ({ trusted: true }) },
     '@/lib/qboBillBridge': { requestQboBillBridge: async body => { writes.push({ body, operator: body.actor }); return { saved: true }; } },
   };
@@ -39,3 +40,9 @@ test('valid save uses session attribution and private no-store responses', async
 });
 
 test('preserve choice is validated and forwarded', async () => { const h = route(); assert.equal((await h.POST(request({ ...body(), preserveAdditions: 'yes' }))).status, 400); assert.equal((await h.POST(request({ ...body(), preserveAdditions: true }))).status, 200); assert.equal(h.writes[0].body.preserveAdditions, true); });
+
+test('active monthly batch prevents manual reconciliation writes but allows preview', async () => {
+  const h = route('operator@example.test', true);
+  assert.equal((await h.POST(request())).status, 409); assert.equal(h.writes.length, 0);
+  assert.equal((await h.POST(request({ ...body(), operation: 'preview' }))).status, 200);
+});

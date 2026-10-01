@@ -4,6 +4,7 @@ import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { loadQboDirectCosts } from '@/lib/loadQboDirectCosts';
 import { requestQboBillBridge } from '@/lib/qboBillBridge';
 import { ensureQboBudgetReadiness } from '@/lib/ensureQboBudgetReadiness';
+import { assertNoActiveBillBatch } from '@/lib/qboBillBatchStore';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     const raw = await request.text();
     if (raw.length > 2000) return json({ error: 'Invalid setup request.' }, 400);
     const body = JSON.parse(raw);
+    if (body.operation === 'setup') await assertNoActiveBillBatch(String(body.companyId || ''));
     if (body.companyId !== process.env.PROCORE_COMPANY_ID || !/^\d+$/.test(body.projectId || '') || !['setup-options', 'setup'].includes(body.operation) || (body.operation === 'setup' && !/^\d+$/.test(body.customerId || ''))) return json({ error: 'Choose a valid project and QBO customer.' }, 400);
     const draft = await loadQboDirectCosts(body.companyId, body.projectId, body.month);
     if (body.operation === 'setup') {

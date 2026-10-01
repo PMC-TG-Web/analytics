@@ -41,3 +41,14 @@ test('relay returns the worker result or explicit failure and records expiry', a
   }
   await assert.rejects(requestQboBillRelay({ operation: 'arbitrary', companyId: '2' }), /Invalid/);
 });
+
+test('short worklist deadlines apply only to status/catalog reads, never financial operations', async () => {
+  state.host = { companyId: '2', updatedAt: new Date() }; state.error = null;
+  for (const operation of ['status', 'catalog', 'post', 'prepare', 'setup', 'reconcile-confirm']) {
+    const before = Date.now();
+    await requestQboBillRelay({ operation, companyId: '2' }, 8000);
+    const ttl = state.created.at(-1).expiresAt.getTime() - before;
+    const expected = ['status', 'catalog'].includes(operation) ? 8000 : 50000;
+    assert.ok(ttl >= expected && ttl < expected + 500, `${operation} TTL ${ttl}`);
+  }
+});

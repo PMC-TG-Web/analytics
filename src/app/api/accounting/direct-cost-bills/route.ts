@@ -7,6 +7,8 @@ import { requestQboBillBridge } from '@/lib/qboBillBridge';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { ensureQboBudgetReadiness } from '@/lib/ensureQboBudgetReadiness';
+import { assertNoActiveBillBatch } from '@/lib/qboBillBatchStore';
+import { eligibleBillProjects } from '@/lib/qboBillProjectPolicy';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -15,10 +17,13 @@ export async function GET(request: NextRequest) {
   const companyId = params.get('companyId') || process.env.PROCORE_COMPANY_ID || '';
   if (!/^\d+$/.test(companyId)) return json({ error: 'Company ID is required.' }, 400);
   try {
-    if (params.get('view') === 'queue') return json(await loadQboBillQueue(companyId, params.get('month') || ''));
+    if (params.get('view') === 'queue') {
+      const page = params.get('paged') === '1' ? { after: params.get('after') || null } : undefined;
+      return json(await loadQboBillQueue(companyId, params.get('month') || '', page));
+    }
     if (!params.has('projectId')) {
       const projects = await prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, projectName: true, projectNumber: true }, orderBy: { projectName: 'asc' } });
-      return json({ companyId, projects });
+      return json({ companyId, projects: eligibleBillProjects(companyId, projects) });
     }
     const draft = await loadQboDirectCosts(companyId, params.get('projectId') || '', params.get('month') || '');
     const review = await loadQboBillReview(companyId, draft.projectId, draft.month, draft, true);
@@ -27,7 +32,7 @@ export async function GET(request: NextRequest) {
     return json({ ...draft, lines, total: review.grossTotal == null ? draft.total : review.grossTotal.toFixed(2), review });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    if (/Choose a valid month|Company and Procore|Project not found/.test(message)) return json({ error: message }, 400);
+    if (/Choose a valid month|Company and Procore|Project not found|is excluded from direct-cost bills|project list changed/.test(message)) return json({ error: message }, 400);
     console.error('Direct cost bill preview failed');
     return json({ error: 'Unable to load the direct cost preview.' }, 500);
   }
@@ -44,6 +49,7 @@ export async function POST(request: NextRequest) {
     const raw = await request.text();
     if (raw.length > 2000) return json({ error: 'Invalid bill request.' }, 400);
     const body = JSON.parse(raw);
+    await assertNoActiveBillBatch(String(body.companyId || ''));
     if (!/^\d+$/.test(body.companyId || '') || !/^\d+$/.test(body.projectId || '') || !/^[a-f0-9]{64}$/.test(body.fingerprint || '')) return json({ error: 'Reopen the project review before posting.' }, 400);
     // Never trust browser-supplied costs or mapping IDs. Rebuild from the synchronized database.
     const draft = await loadQboDirectCosts(body.companyId, body.projectId, body.month);

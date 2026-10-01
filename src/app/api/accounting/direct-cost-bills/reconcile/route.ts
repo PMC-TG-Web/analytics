@@ -3,6 +3,7 @@ import { loadQboDirectCosts } from '@/lib/loadQboDirectCosts';
 import { requestQboBillBridge } from '@/lib/qboBillBridge';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
+import { assertNoActiveBillBatch } from '@/lib/qboBillBatchStore';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
     const body = JSON.parse(raw);
     if (!body || body.companyId !== process.env.PROCORE_COMPANY_ID || !/^\d+$/.test(body.companyId || '') || !/^\d+$/.test(body.projectId || '') || !/^\d{4}-(0[1-9]|1[0-2])$/.test(body.month || '') || !['preview', 'confirm'].includes(body.operation) || (body.operation === 'confirm' && !/^[a-f0-9]{64}$/.test(body.fingerprint || ''))) return json({ error: 'Reopen the project reconciliation.' }, 400);
     if (body.preserveAdditions !== undefined && typeof body.preserveAdditions !== 'boolean') return json({ error: 'Invalid reconciliation choice.' }, 400);
+    if (body.operation === 'confirm') await assertNoActiveBillBatch(body.companyId);
     const draft = await loadQboDirectCosts(body.companyId, body.projectId, body.month);
     return json(await requestQboBillBridge({ operation: `reconcile-${body.operation}`, companyId: body.companyId, projectId: body.projectId, month: body.month, fingerprint: body.fingerprint, draft, actor, preserveAdditions: body.preserveAdditions === true }));
   } catch (e) {

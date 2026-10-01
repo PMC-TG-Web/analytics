@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchBillRead, readBillResponse } from '../src/lib/qboBillResponse.ts';
+import { fetchBillRead, readBillResponse, fetchBillQueue } from '../src/lib/qboBillResponse.ts';
 
 test('reads JSON success and preserves actionable JSON service errors', async () => {
   assert.deepEqual(await readBillResponse(Response.json({ rows: [] })), { rows: [] });
@@ -41,4 +41,31 @@ test('safe reads stop after one retry and respect cancellation', async t => {
   t.mock.method(globalThis, 'fetch', async () => { controller.abort(); return new Response('', {status: 503}); });
   await fetchBillRead('/api/bills', controller.signal);
   assert.equal(count, 2);
+});
+
+test('monthly queue reads bounded pages, reports progress, and sorts the complete worklist', async t => {
+  const calls = [], progress = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    const params = new URL(url, 'https://local.test').searchParams; calls.push(params);
+    return Response.json(params.has('after')
+      ? { rows: [{ projectId: '2', projectName: 'B', status: 'update' }], totalProjects: 2, nextCursor: null, generatedAt: 'last' }
+      : { rows: [{ projectId: '1', projectName: 'A', status: 'current' }], totalProjects: 2, nextCursor: '1', generatedAt: 'first' });
+  });
+  const result = await fetchBillQueue('123', '2026-06', undefined, (...args) => progress.push(args));
+  assert.deepEqual(result.rows.map(r => r.projectId), ['2', '1']); assert.equal(result.generatedAt, 'last');
+  assert.deepEqual(progress, [[1, 2], [2, 2]]);
+  assert.equal(calls[1].get('after'), '1');
+  assert.ok(calls.every(p => p.get('paged') === '1' && p.get('companyId') === '123' && p.get('month') === '2026-06'));
+});
+test('failed later pages, repeated cursors and cancellation never return a partial selectable queue', async t => {
+  let calls = 0;
+  const first = { rows: [{ projectId: '1', projectName: 'A', status: 'create' }], nextCursor: '1' };
+  t.mock.method(globalThis, 'fetch', async () => ++calls === 1 ? Response.json(first) : Response.json({ error: 'Read failed' }, { status: 500 }));
+  await assert.rejects(fetchBillQueue('1', '2026-06'), /Read failed/);
+  t.mock.method(globalThis, 'fetch', async () => Response.json(first));
+  await assert.rejects(fetchBillQueue('1', '2026-06'), /project list changed/);
+  const controller = new AbortController(); calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; controller.abort(); return Response.json(first); });
+  await assert.rejects(fetchBillQueue('1', '2026-06', controller.signal), { name: 'AbortError' });
+  assert.equal(calls, 1);
 });

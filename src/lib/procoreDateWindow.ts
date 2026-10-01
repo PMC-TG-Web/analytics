@@ -26,6 +26,17 @@ export function procoreLookbackWindow(now: Date, lookbackDays: number) {
   };
 }
 
+// Daily-log APIs reject dates beyond the current project/company calendar day.
+export function procoreMonthWindow(month: string, now = new Date()) {
+  if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a valid month.');
+  const today = formatProcoreDate(now);
+  const startDate = `${month}-01`;
+  if (startDate > today) throw new Error('Choose the current month or an earlier month. Future months cannot be refreshed yet.');
+  const [year, number] = month.split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(year, number, 0)).toISOString().slice(0, 10);
+  return { startDate, endDate: monthEnd < today ? monthEnd : today };
+}
+
 const DAY_MS = 86_400_000;
 
 function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number) {

@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 /// Immutable individual Food expenses; entry ID makes retries idempotent.
@@ -2851,4 +2852,46 @@ model QboBillLineRuleRevision {
  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
  @@id([companyId, projectId, lineKey, revision])
  @@map("qbo_bill_line_rule_revisions")
+}
+
+model QboBillBatchRun {
+  id String @id @default(uuid())
+  companyId String
+  month String
+  requestedBy String
+  requestKey String
+  activeKey String? @unique
+  status String @default("running")
+  retryOf String?
+  leaseToken String?
+  leaseUntil DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  finishedAt DateTime? @db.Timestamptz(6)
+  projects QboBillBatchProject[]
+  @@unique([companyId, requestKey])
+  @@index([companyId, month, createdAt])
+  @@map("qbo_bill_batch_runs")
+}
+
+model QboBillBatchProject {
+  id String @id @default(uuid())
+  runId String
+  projectId String
+  projectName String
+  status String @default("queued")
+  stage String @default("catalog")
+  message String @default("Waiting to refresh sources.")
+  attempts Int @default(0)
+  context Json @default("{}")
+  issues Json @default("[]")
+  issueSources Json @default("[]")
+  billNumber String?
+  writeStartedAt DateTime? @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  run QboBillBatchRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  @@unique([runId, projectId])
+  @@index([runId, status, nextAttemptAt])
+  @@map("qbo_bill_batch_projects")
 }

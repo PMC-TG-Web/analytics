@@ -1,5 +1,6 @@
 'use client';
 import ProjectLineRules from './ProjectLineRules';
+import MonthlyBillBatch from './MonthlyBillBatch';
 import { billDisplayLines } from '@/lib/qboBillDisplayLines';
 
 import { fetchBillRead, readBillResponse } from '@/lib/qboBillResponse';
@@ -35,11 +36,16 @@ export default function DirectCostBillsPage() {
   const [mappingEditing, setMappingEditing] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
   const [queueRevision, setQueueRevision] = useState(0);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [visibleBatchProjects, setVisibleBatchProjects] = useState<{ companyId: string; month: string; ids: string[] | null } | null>(null);
+  const onVisibleProjects = useCallback((companyId: string, month: string, ids: string[] | null) => { setVisibleBatchProjects({ companyId, month, ids }); }, []);
+  const batchComplete = useCallback(() => { setQueueRevision(n => n + 1); setPreview(null); setProjectId(''); }, []);
+  useEffect(() => { if (batchRunning) { setPreview(null); setProjectId(''); } }, [batchRunning]);
   const [syncMessage, setSyncMessage] = useState('');
   const queueRequestPending = useRef(false);
   const onQueueLoading = useCallback((pending: boolean) => { queueRequestPending.current = pending; }, []);
-  const live = useRef({ busy, posting: posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview });
-  live.current = { busy, posting: posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview };
+  const live = useRef({ busy, posting: batchRunning || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview });
+  live.current = { busy, posting: batchRunning || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview };
   useEffect(() => {
     if (!companyId || !month) return;
     let stopped = false;
@@ -93,7 +99,7 @@ export default function DirectCostBillsPage() {
     finally { setBusy(false); }
   }
   async function saveBill() {
-    if (!preview?.review.canPost || !preview.review.fingerprint || posting) return;
+    if (!preview?.review.canPost || !preview.review.fingerprint || posting || batchRunning) return;
     setPosting(true); setError(''); setSavedMessage('');
     try {
       for (let step = 0; step < 601; step++) {
@@ -141,7 +147,7 @@ export default function DirectCostBillsPage() {
       <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-3"><div><dt className="text-slate-500">Vendor</dt><dd className="mt-1 font-medium">{preview.vendorName}</dd></div><div><dt className="text-slate-500">QBO customer / project · item lines only</dt><dd className="mt-1 font-medium">{preview.review.customer || 'Not mapped on this server'}</dd></div><div><dt className="text-slate-500">Bill number</dt><dd className="mt-1 font-medium">{preview.review.billNumber || 'Assigned during review (project name + sequence)'}</dd></div></dl>
       {preview.review.lastPosted && <p className="mt-4 text-sm text-slate-500">Last saved to QBO: {new Date(preview.review.lastPosted).toLocaleString()} · Bill ID {preview.review.billId}</p>}</section>
       <div className="grid gap-4 sm:grid-cols-4">{[['Materials', money(materialTotal)], ['Labor', money(laborTotal)], ['Gross project cost', money(preview.total)], ['Net bill after offsets', offsetsReady ? '$0.00' : 'Awaiting mapping']].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></div>)}</div>
-      <p className="text-sm text-slate-600">Labor: {preview.labor.pricedHours} of {preview.labor.totalHours} hours priced. Rate priority: category → SOG → travel. Unpriced: {preview.labor.unpricedHours} hours.</p>
+      <p className="text-sm text-slate-600">Labor: {preview.labor.combinedPricedHours} of {preview.labor.combinedHours} hours priced. Rate priority: category → SOG → travel. Unpriced: {preview.labor.combinedUnpricedHours} hours.</p>
       {preview.labor.rows.filter(r => r.unitCost === null).map(r => <p key={r.lineKey}>{r.description}: {r.quantity} hours — rate needed</p>)}
       {(preview.issues.length > 0 || preview.review.issues.length > 0) && <div id="bill-draft-issues" className="scroll-mt-20" role="alert"><p>Resolve these items before saving the bill:</p><ul className="list-disc pl-5">{[...new Set([...preview.issues, ...preview.review.issues])].map((issue, i) => <li key={i}><BillIssue message={issue} companyId={companyId} projectId={preview.projectId} sources={preview.issueSources} /></li>)}</ul></div>}
       <CatalogMappingPanel key={`catalog-mapping:${preview.projectId}:${preview.month}`} companyId={companyId} projectId={preview.projectId} items={preview.catalogMappingItems} disabled={posting || settingUp || reconciling || foodEditing || ruleEditing} onBusy={setMappingEditing} onComplete={async () => { await loadPreview(preview.projectId, true); setQueueRevision(n => n + 1); }} />
@@ -152,14 +158,14 @@ export default function DirectCostBillsPage() {
       </table></div></section>
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="border-b p-5"><h3 className="font-semibold">Category details · Negative offsets</h3><p className="text-sm text-slate-500">Recalculated on each run. Customer / project stays blank on these lines.</p></div>{offsetsReady ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr>{['Category', 'Class', 'Customer / project', 'Amount'].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{offsetRows.map((row, index) => <tr key={index}><td className="p-3">{row.accountName}</td><td className="p-3">{row.className}</td><td className="p-3 text-slate-500">—</td><td className="p-3 tabular-nums">{money(String(row.amount))}</td></tr>)}</tbody></table></div> : <p className="p-5 text-sm text-amber-800">Offset mapping is unavailable on this server. Configure material and labor accounts and classes in the integration before posting.</p>}</section>
       {!preview.lines.length && <p>No eligible usage lines for this month.</p>}
-      <details className="text-sm text-slate-600"><summary className="cursor-pointer font-medium">Source and exclusions</summary><p className="mt-2">{preview.sourceLogCount} productivity logs. Excluded: {preview.excluded.unapproved} unapproved, {preview.excluded.billingFile} billing-file, {preview.excluded.zeroUsage} zero-usage entries, {preview.excluded.concrete || 0} concrete material entries, {preview.excluded.pumpingEquipment || 0} excluded pumping-equipment entries, {preview.excluded.shopDrawings || 0} Shop Drawings vendor entries. Uses synchronized Procore data and current Cost Catalog rates. Food uses the entered monthly total once. Catalog checked: {preview.catalogCheckedAt || 'Not available'}. Latest log update: {preview.latestSourceUpdate || 'None'}.</p></details>
+      <details className="text-sm text-slate-600"><summary className="cursor-pointer font-medium">Source and exclusions</summary><p className="mt-2">{preview.sourceLogCount} productivity logs. Excluded: {preview.excluded.unapproved} unapproved, {preview.excluded.billingFile} billing-file, {preview.excluded.zeroUsage} zero-usage entries, {preview.excluded.concrete || 0} concrete material entries, {preview.excluded.pumpingEquipment || 0} excluded pumping-equipment entries, {preview.excluded.boomLiftRental || 0} Boom lift rental entries, {preview.excluded.shopDrawings || 0} Shop Drawings vendor entries. Uses synchronized Procore data and current Cost Catalog rates. Food uses the entered monthly total once. Catalog checked: {preview.catalogCheckedAt || 'Not available'}. Latest log update: {preview.latestSourceUpdate || 'None'}.</p></details>
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-5"><div><p className="font-medium">{needsReconciliation ? 'Reconciliation needed before updating' : preview.issues.length || preview.review.issues.length ? 'Resolve issues before posting' : 'Save monthly bill'}</p><p className="mt-1 text-sm text-slate-600">{needsReconciliation ? 'Use Reconcile QBO changes beside the update button to review and confirm the changes.' : preview.review.canPost ? 'Save this reviewed monthly bill through the shared QBO service.' : preview.review.action === 'current' ? 'This monthly bill is up to date.' : 'Posting requires the shared QBO service and a valid current review.'}</p></div><div className="flex flex-wrap gap-3"><button className="rounded-lg border border-slate-300 px-5 py-2 font-medium disabled:opacity-50" disabled={posting || mappingEditing || ruleEditing || settingUp || reconciling || foodEditing || preview.issues.length > 0 || !preview.lines.length || preview.review.action === 'reconcile'} onClick={download}>Export draft</button><button disabled={posting || mappingEditing || ruleEditing || settingUp || reconciling || foodEditing || needsReconciliation || !preview.review.canPost || preview.issues.length > 0 || preview.review.issues.length > 0} onClick={saveBill} className="rounded-lg bg-blue-700 px-5 py-2 font-medium text-white disabled:opacity-50">{posting ? 'Saving to QBO…' : preview.review.billId ? 'Update bill in QBO' : 'Create bill in QBO'}</button>{preview.review.billId && <BillReconciliation needsReconciliation={needsReconciliation} key={`reconciliation:${preview.projectId}:${preview.month}`} companyId={companyId} projectId={preview.projectId} month={preview.month} disabled={posting || settingUp || mappingEditing || ruleEditing || foodEditing} onBusy={setReconciling} onComplete={async () => { setError(''); setSavedMessage('Reconciliation saved. Review the monthly costs, then click Update bill in QBO to apply them.'); await loadPreview(preview.projectId, true); setQueueRevision(n => n + 1); }} />}</div></div>
     </>}
   </div>;
   return <main className="mx-auto max-w-7xl space-y-6 p-4 text-slate-900 sm:p-8">
     <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-blue-700">Accounting / Procore</p>
     <h1 className="text-3xl font-semibold tracking-tight">Direct cost bills</h1>
-    <p className="mt-2 text-slate-600">Review monthly project costs for PMC Procore Direct Costs using current Cost Catalog prices and an entered monthly Food total. Concrete materials, Shop Drawings vendor charges, and the four specified pumping items under 03-300-40-30 are excluded; employee labor remains included.</p></div><span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-800">One bill per project / month</span></header>
+    <p className="mt-2 text-slate-600">Review monthly project costs for PMC Procore Direct Costs using current Cost Catalog prices and an entered monthly Food total. Concrete materials, Shop Drawings vendor charges, Boom lift rental, and the four specified pumping items under 03-300-40-30 are excluded. Enter Boom lift rental charges manually; employee labor remains included.</p></div><span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-800">One bill per project / month</span></header>
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">Daily runs use the full month-to-date quantities. The first run creates a bill; later runs replace its item lines and offsets while keeping the same bill number. Running unchanged totals again does not create another bill.</div>
     <div className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <label className="flex flex-col gap-1">Month<input disabled={busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} className="rounded border p-2" type="month" value={month} onChange={e => { setMonth(e.target.value); setProjectId(''); setPreview(null); setError(''); }} /></label>
@@ -168,7 +174,8 @@ export default function DirectCostBillsPage() {
     {error && !projectId && <p role="alert" className="text-red-700">{error}</p>}
     {savedMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{savedMessage}</p>}
     <p role="status" className="text-sm text-slate-500">{syncMessage} Checks run while this page is visible; projects are checked in turn.</p>
-    <ProjectBillQueue key={`${companyId}:${month}`} revision={queueRevision} companyId={companyId} month={month} disabled={busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} selectedProjectId={projectId} onReview={loadPreview} onLoading={onQueueLoading} expandedContent={expandedContent} />
+    <MonthlyBillBatch companyId={companyId} month={month} visibleProjectIds={visibleBatchProjects?.companyId === companyId && visibleBatchProjects?.month === month ? visibleBatchProjects.ids : null} disabled={busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} onRunning={setBatchRunning} onComplete={batchComplete} onReview={loadPreview} />
+    <ProjectBillQueue key={`${companyId}:${month}`} revision={queueRevision} companyId={companyId} month={month} disabled={batchRunning || busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} selectedProjectId={projectId} onReview={loadPreview} onLoading={onQueueLoading} onVisibleProjects={onVisibleProjects} expandedContent={expandedContent} />
 
   </main>;
 }

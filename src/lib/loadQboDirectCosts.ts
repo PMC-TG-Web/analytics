@@ -1,4 +1,5 @@
 import { isHoursOnlyCost } from './qboDirectCostExclusions.js';
+import { assertBillProjectEligible } from './qboBillProjectPolicy';
 import { projectPrice } from './qboBillLineRules';
 import { catalogSourceSignature } from './qboCatalogMapping';
 import { prisma } from './prisma';
@@ -15,6 +16,7 @@ import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
 
 export async function loadQboDirectCosts(companyId: string, projectId: string, month: string, catalogSnapshot?: BillCatalogSnapshot | null) {
   if (!/^\d+$/.test(companyId) || !/^\d+$/.test(projectId)) throw new Error('Company and Procore project IDs are required.');
+  assertBillProjectEligible(companyId, projectId);
   const { start, end } = directCostMonth(month);
   const project = await prisma.pmcProject.findUnique({ where: { companyId_procoreProjectId: { companyId, procoreProjectId: projectId } } });
   if (!project) throw new Error('Project not found in the selected company.');
@@ -70,8 +72,9 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const visibleItems = new Set([...summary.lines.map(line => line.procoreLineItemId), ...summary.issueSources.map(source => source.catalogLineItemId)]);
   const includedTimecards = timecards.filter(t => !isHoursOnlyCost(t.costCodeFullCode) && !ignored.has(`labor:${(t.costCodeFullCode || '').trim().replace(/\.L$/i, '') || '(unassigned)'}`));
   const labor = aggregateDirectCostLabor(includedTimecards, laborRates.rates);
-  const overlap = summary.lines.filter(l => /^(labor|l)$/i.test(l.costType || '') && labor.rows.some(t => t.costCode === l.costCode));
-  const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...summary.issues, ...labor.issues, ...(includedTimecards.length && laborRates.issue ? [laborRates.issue] : []), ...overlap.map(l => `Labor cost code ${l.costCode} appears in both productivity logs and timecards; choose its source before posting.`)];
+  // Both sources are additive. Keep their identities and price evidence separate;
+  // the QBO host combines compatible labor rows by cost code after validation.
+  const issues = [...(foodLedgerMismatch ? ['Food ledger and saved total do not agree. Review the Food entries before posting.'] : []), ...summary.issues, ...labor.issues, ...(includedTimecards.length && laborRates.issue ? [laborRates.issue] : [])];
   const ruleSources = [
     ...codedItems.filter(item => item.procoreId && (activeLineIds.has(item.procoreId) || rulesByKey.has(item.procoreId)) && !isFoodCost(item)).map(item => ({ lineKey:item.procoreId!, description:item.description || 'Unnamed item', costCode:item.costCode, costType:item.costType, uom:item.uom, allowPrice:true })),
     ...[...new Map(timecards.map(t => { const code=(t.costCodeFullCode || '').trim().replace(/\.L$/i, '') || '(unassigned)'; return [code,{lineKey:`labor:${code}`,description:t.costCodeName || code,costCode:code,costType:'Labor',uom:'hr',allowPrice:false}]; })).values()],
@@ -86,7 +89,11 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     ...summary,
     catalogMappingItems: pricedItems.filter(item => item.procoreId && visibleItems.has(item.procoreId)).map(item => ({ lineItemId: item.procoreId!, description: item.description || 'Unnamed item', costCode: item.costCode, uom: item.uom, issue: item.pricingIssue, projectPrice: !!item.projectPrice, poPrice: !!item.poPrice, catalogName: item.catalogPrice?.name || null, manual: !!mappingByLine.get(item.procoreId!)?.catalogItemId })),
     lines: [...summary.lines.map(l => ({ ...l, lineKey: l.procoreLineItemId, sourceType: 'productivity' as const })), ...labor.lines, ...(foodLine ? [foodLine] : [])],
-    issues, labor: { ...labor, proposalId: laborRates.proposalId }, materialTotal: new Prisma.Decimal(summary.total).plus(foodLine?.amount || '0').toFixed(2),
+    issues, labor: { ...labor, proposalId: laborRates.proposalId,
+      combinedHours: new Prisma.Decimal(labor.totalHours).plus(summary.laborHours).toString(),
+      combinedPricedHours: new Prisma.Decimal(labor.pricedHours).plus(summary.pricedLaborHours).toString(),
+      combinedUnpricedHours: new Prisma.Decimal(labor.unpricedHours).plus(new Prisma.Decimal(summary.laborHours).minus(summary.pricedLaborHours)).toString(),
+    }, materialTotal: new Prisma.Decimal(summary.total).plus(foodLine?.amount || '0').toFixed(2),
     total: new Prisma.Decimal(summary.total).plus(labor.total).plus(foodLine?.amount || '0').toFixed(2),
     timecardsNotIncluded: { count: labor.rows.filter(r => r.unitCost === null).reduce((n, r) => n + r.sourceLogs.length, 0), hours: Number(labor.unpricedHours) },
     sourceLogCount: logs.length,

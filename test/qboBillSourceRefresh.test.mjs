@@ -26,6 +26,20 @@ test('refresh is bounded to one monthly project and releases shared worker', asy
   assert.equal(h.writes[0].create.dataset, 'bill_review_po');
   assert.equal(h.writes[0].create.nextRunAt - h.writes[0].create.lastAttemptAt, 300000);
   assert.equal(h.calls.length, 1);
+  assert.equal(h.writes[1].data.nextRunAt - h.writes[1].data.lastSuccessAt, 30 * 60_000);
+});
+
+test('recent successful PO snapshots remain reusable after the old five-minute deadline', async () => {
+  const h = setup({ states: ['2', '3'].map(projectId => ({ projectId, nextRunAt: new Date(0), lastSuccessAt: new Date(Date.now() - 10 * 60_000) })) });
+  assert.equal((await h.refresh('1', '2026-09', async () => assert.fail('Recent snapshot should be reused'))).status, 'current');
+  assert.equal(h.writes.length, 0);
+});
+
+test('PO snapshots older than thirty minutes are refreshed', async () => {
+  const h = setup({ states: ['2', '3'].map(projectId => ({ projectId, nextRunAt: new Date(0), lastSuccessAt: new Date(Date.now() - 31 * 60_000) })) });
+  const synced = [];
+  assert.equal((await h.refresh('1', '2026-09', async id => synced.push(id))).status, 'synced');
+  assert.deepEqual(synced, ['2']);
 });
 test('shared cooldown skips a recently checked project across tabs', async () => {
   const h = setup({ states: [{ projectId: '2', nextRunAt: new Date(Date.now() + 300000) }] });

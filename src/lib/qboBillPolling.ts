@@ -6,5 +6,7 @@ export function shouldRefreshBillQueue(now: number, lastRefresh: number, hasSync
 }
 
 export function billSourcePollDelay(status: string) {
-  return status === 'synced' ? 15_000 : 60_000;
+  // Retain the existing caller contract; successful work uses the same cadence.
+  void status;
+  return 60_000;
 }

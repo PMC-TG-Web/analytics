@@ -2,6 +2,7 @@ import { streamSyncResponse } from '@/lib/procoreSyncStream';
 import { hasValidProcoreSyncSecret } from '@/lib/procore';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { currentProcoreConnection } from "@/lib/procoreConnection";
 import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
 import {
@@ -319,7 +320,8 @@ async function runSync(request: Request) {
     const cookieStore = await cookies();
     const explicitAccessToken = String(body.accessToken || "").trim() || undefined;
     const cookieAccessToken = cookieStore.get("procore_access_token")?.value || undefined;
-    let accessToken = explicitAccessToken || cookieAccessToken;
+    // Dedicated syncs must not consume a browser token belonging to another app.
+    let accessToken = currentProcoreConnection() === 'shared' ? explicitAccessToken || cookieAccessToken : undefined;
     const companyId = String(
       body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || ''
     ).trim();

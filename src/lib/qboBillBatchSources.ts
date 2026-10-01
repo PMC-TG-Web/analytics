@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from './prisma';
+import { withBillingProcoreConnection } from './procoreConnection';
 import { BatchWait, type BatchStage } from './qboBillBatch';
 import { acquireProcoreWorker, releaseProcoreWorker } from './procoreSyncQueue';
 import { withProcoreLiveApiBypassForSyncSecret } from './procore';
@@ -11,6 +12,10 @@ import { POST as dailyLogs } from '@/app/api/procore/sync/productivity-projects/
 import { POST as timecards } from '@/app/api/procore/sync/timecard-entries/route';
 
 export async function refreshBillBatchSources(companyId: string, projectId: string, month: string, stage: BatchStage) {
+  return withBillingProcoreConnection(() => refreshSources(companyId, projectId, month, stage));
+}
+
+async function refreshSources(companyId: string, projectId: string, month: string, stage: BatchStage) {
   const dates = procoreMonthWindow(month);
   const lease = await acquireProcoreWorker(companyId);
   if (!lease.acquired) throw new BatchWait('Waiting for Procore sync capacity.');
@@ -18,7 +23,7 @@ export async function refreshBillBatchSources(companyId: string, projectId: stri
     const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
     if (!secret) throw new Error('The Procore sync connection is not configured.');
     const request = new NextRequest('http://internal/api/procore/sync/bill-batch', { method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-sync-secret': secret, 'x-procore-connection': 'shared' },
+      headers: { 'content-type': 'application/json', 'x-sync-secret': secret, 'x-procore-connection': 'billing' },
       body: JSON.stringify({ companyId, projectIds: [projectId], ...dates,
         concurrency: 1, persist: true, persistUnpackedFields: false, forceUserOAuth: false }) });
     await withProcoreLiveApiBypassForSyncSecret(request, async () => {

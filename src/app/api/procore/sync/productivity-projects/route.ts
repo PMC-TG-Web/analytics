@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { currentProcoreConnection } from "@/lib/procoreConnection";
 import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import {
   normalizeDate,
@@ -163,7 +164,7 @@ export async function POST(request: Request) {
     ).trim();
 
     let accessToken: string;
-    if (userAccessToken) {
+    if (userAccessToken && currentProcoreConnection() === 'shared') {
       accessToken = userAccessToken;
     } else {
       try {

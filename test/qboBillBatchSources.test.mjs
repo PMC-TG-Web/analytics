@@ -6,16 +6,18 @@ import ts from 'typescript';
 import { BatchWait } from '../src/lib/qboBillBatch.ts';
 import * as responseHelpers from '../src/lib/procoreSyncResponse.ts';
 import { procoreMonthWindow } from '../src/lib/procoreDateWindow.ts';
+import { withProcoreConnection, currentProcoreConnection } from '../src/lib/procoreConnection.ts';
 
 function sources({ acquired = true, reply = { success: true }, status = 200, catalog = { lastSuccessAt: new Date(), lastError: null } } = {}) {
   const calls = []; let released = 0;
-  const handler = name => async request => { calls.push({ name, headers: Object.fromEntries(request.headers), body: await request.json() }); return Response.json(reply, { status }); };
+  const handler = name => async request => { assert.equal(currentProcoreConnection(), 'billing'); calls.push({ name, headers: Object.fromEntries(request.headers), body: await request.json() }); return Response.json(reply, { status }); };
   const imports = {
     'next/server': { NextRequest: Request }, './prisma': { prisma: { procoreSyncProjectState: { findUnique: async () => catalog } } },
     './qboBillBatch': { BatchWait },
     './procoreDateWindow': { procoreMonthWindow: month => procoreMonthWindow(month, new Date('2026-09-29T14:00:00Z')) },
-    './procoreSyncQueue': { acquireProcoreWorker: async () => ({ acquired, leaseId: 'test' }), releaseProcoreWorker: async () => { released++; } },
-    './procore': { withProcoreLiveApiBypassForSyncSecret: async (request, work) => { assert.equal(request.headers.get('x-procore-connection'), 'shared'); return work(); } },
+    './procoreConnection': { withBillingProcoreConnection: work => withProcoreConnection('billing', work) },
+    './procoreSyncQueue': { acquireProcoreWorker: async () => { assert.equal(currentProcoreConnection(), 'billing'); return { acquired, leaseId: 'test' }; }, releaseProcoreWorker: async () => { assert.equal(currentProcoreConnection(), 'billing'); released++; } },
+    './procore': { withProcoreLiveApiBypassForSyncSecret: async (request, work) => { assert.equal(request.headers.get('x-procore-connection'), 'billing'); return work(); } },
     './qboCostCatalogSync': { refreshQboCostCatalog: async () => ({ synced: false }) }, './procoreSyncResponse': responseHelpers,
     '@/app/api/procore/sync/purchase-order-line-item-details/route': { POST: handler('po') },
     '@/app/api/procore/sync/productivity-projects/route': { POST: handler('logs') },
@@ -25,7 +27,7 @@ function sources({ acquired = true, reply = { success: true }, status = 200, cat
   const m = { exports: {} }; vm.runInNewContext(js, { exports: m.exports, Date, Error, process: { env: { PROCORE_SYNC_SECRET: 'local-test-secret' } }, require: id => { if (!(id in imports)) throw new Error('Unmocked dependency'); return imports[id]; } });
   return { ...m.exports, calls, released: () => released };
 }
-test('source refresh targets only the selected project and exact month on the shared worker connection', async () => {
+test('source refresh targets only the selected project and exact month on the Billing worker connection', async () => {
   const h = sources();
   for (const stage of ['purchase_orders', 'daily_logs', 'timecards']) await h.refreshBillBatchSources('1', '2', '2026-02', stage);
   assert.deepEqual(h.calls.map(c => c.name), ['po', 'logs', 'timecards']);

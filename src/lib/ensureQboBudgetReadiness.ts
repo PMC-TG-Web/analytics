@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { withBillingProcoreConnection } from './procoreConnection';
 import { acquireProcoreWorker, releaseProcoreWorker } from './procoreSyncQueue';
 import { getClientCredentialsToken, makeRequest, withProcoreLiveApiBypassForSyncSecret } from './procore';
 import { budgetCodesForProducts, recentBudgetCodesCover, ensureBudgetCodeStep, type BudgetPending, type Wbs, type Budget } from './qboBudgetReadiness';
@@ -18,6 +19,7 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
     const mirrored = await prisma.budgetLineItem.findMany({ where: { companyId, projectId }, select: { costCode: true, syncedAt: true } });
     if (recentBudgetCodesCover(codes, mirrored.map(row => ({ code: row.costCode || '', verifiedAt: row.syncedAt })))) return { ready: true, remaining: 0, message: 'Procore budget codes are present in the current synchronized budget.' };
   }
+  return withBillingProcoreConnection(async () => {
   const lease = await acquireProcoreWorker(companyId);
   if (!lease.acquired) return { ready: false, remaining: codes.length, retryAfterMs: 5000, message: lease.reason === 'rate_limit_cooldown' ? 'Waiting for Procore API capacity before checking budget codes. No bill has been saved.' : 'Waiting for the current Procore sync before checking budget codes.' };
   try {
@@ -29,7 +31,7 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
     };
     const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
     if (!secret) throw new Error('Procore budget setup requires the configured server sync connection.');
-    return await withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/qbo-budget-setup', { headers: { 'x-sync-secret': secret, 'x-procore-connection': 'shared' } }), async () => {
+    return await withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/qbo-budget-setup', { headers: { 'x-sync-secret': secret, 'x-procore-connection': 'billing' } }), async () => {
       const token = await getClientCredentialsToken();
       const list = async <T>(path: string): Promise<T[]> => {
         const all: T[] = [];
@@ -77,4 +79,5 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
     if ((error as { status?: number }).status === 429) return { ready: false, remaining: codes.length, retryAfterMs: 5000, message: 'Waiting for Procore API capacity. Budget progress is saved; no bill has been posted.' };
     throw error;
   } finally { await releaseProcoreWorker(companyId, lease.leaseId); }
+  });
 }

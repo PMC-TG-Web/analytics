@@ -15,7 +15,12 @@ export async function refreshQboBillSources(companyId: string, month: string, sy
     const states = await prisma.procoreSyncProjectState.findMany({ where: { companyId, dataset: 'bill_review_po', projectId: { in: ids } } });
     const byId = new Map(states.map(state => [state.projectId, state]));
     const now = new Date();
-    const projectId = ids.filter(id => !byId.has(id) || byId.get(id)!.nextRunAt <= now)
+    // Successful snapshots are reusable for 30 minutes, including snapshots
+    // saved by the old five-minute poller before this rollout.
+    const projectId = ids.filter(id => {
+      const state = byId.get(id);
+      return !state || (state.nextRunAt <= now && (!state.lastSuccessAt || state.lastSuccessAt.getTime() <= now.getTime() - 30 * 60_000));
+    })
       .sort((a, b) => (byId.get(a)?.lastAttemptAt?.getTime() || 0) - (byId.get(b)?.lastAttemptAt?.getTime() || 0))[0];
     if (!projectId) return { status: 'current' };
     const where = { companyId_projectId_dataset: { companyId, projectId, dataset: 'bill_review_po' } };
@@ -24,7 +29,7 @@ export async function refreshQboBillSources(companyId: string, month: string, sy
     try {
       await sync(projectId);
       const checkedAt = new Date();
-      await prisma.procoreSyncProjectState.update({ where, data: { lastSuccessAt: checkedAt, lastError: null, failureCount: 0 } });
+      await prisma.procoreSyncProjectState.update({ where, data: { lastSuccessAt: checkedAt, nextRunAt: new Date(checkedAt.getTime() + 30 * 60_000), lastError: null, failureCount: 0 } });
       return { status: 'synced', projectId, checkedAt: checkedAt.toISOString() };
     } catch {
       await prisma.procoreSyncProjectState.update({ where, data: { lastError: 'PO refresh failed; automatic retry scheduled.', failureCount: { increment: 1 } } });

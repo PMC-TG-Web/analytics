@@ -1,7 +1,21 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-export type ProcoreConnection = 'shared' | 'pm-dashboard' | 'commitment-maker' | 'analytics-sync';
+export type ProcoreConnection = 'shared' | 'pm-dashboard' | 'commitment-maker' | 'analytics-sync' | 'billing';
 const connectionContext = new AsyncLocalStorage<ProcoreConnection>();
+
+export function billingProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
+  if (!['true', '1', 'yes'].includes((env.PROCORE_BILLING_ENABLED || '').trim().toLowerCase())) return 'shared';
+  const id = env.PROCORE_BILLING_CLIENT_ID?.trim();
+  if (!id || !env.PROCORE_BILLING_CLIENT_SECRET?.trim()) throw new Error('Configure both PROCORE_BILLING_CLIENT_ID and PROCORE_BILLING_CLIENT_SECRET.');
+  if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_COMMITMENT_MAKER_CLIENT_ID, env.PROCORE_ANALYTICS_SYNC_CLIENT_ID].some(value => value?.trim() === id)) {
+    throw new Error('Billing must use a distinct Procore OAuth client.');
+  }
+  return 'billing';
+}
+
+export function withBillingProcoreConnection<T>(operation: () => T): T {
+  return withProcoreConnection(billingProcoreConnection(), operation);
+}
 
 export function analyticsSyncProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
   if (!['true', '1', 'yes'].includes((env.PROCORE_ANALYTICS_SYNC_ENABLED || '').trim().toLowerCase())) return 'shared';
@@ -16,10 +30,12 @@ export function withAnalyticsSyncProcoreConnection<T>(operation: () => T): T {
 }
 
 // Only call after validating a server sync secret. Explicit app contexts win;
-// accounting can retain the original connection via its internal request header.
+// Billing selects its configured connection via its internal request header.
 export function withAuthenticatedSyncConnection<T>(request: Request, operation: () => T): T {
   const selected = currentProcoreConnection();
-  return withProcoreConnection(request.headers.get('x-procore-connection') === 'shared' ? 'shared' : selected === 'shared' ? analyticsSyncProcoreConnection() : selected, operation);
+  if (selected !== 'shared') return withProcoreConnection(selected, operation);
+  const requested = request.headers.get('x-procore-connection');
+  return withProcoreConnection(requested === 'billing' ? billingProcoreConnection() : requested === 'shared' ? 'shared' : analyticsSyncProcoreConnection(), operation);
 }
 
 export function pmDashboardProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
@@ -65,6 +81,10 @@ export function withCommitmentMakerProcoreConnection<T>(operation: () => T): T {
 }
 
 export function procoreServiceCredentials(env: NodeJS.ProcessEnv = process.env) {
+  if (currentProcoreConnection() === 'billing') {
+    if (billingProcoreConnection(env) !== 'billing') throw new Error('Billing Procore credentials are missing or disabled.');
+    return { clientId: env.PROCORE_BILLING_CLIENT_ID!.trim(), clientSecret: env.PROCORE_BILLING_CLIENT_SECRET!.trim() };
+  }
   if (currentProcoreConnection() === 'analytics-sync') {
     if (analyticsSyncProcoreConnection(env) !== 'analytics-sync') throw new Error('Analytics sync Procore credentials are missing.');
     return { clientId: env.PROCORE_ANALYTICS_SYNC_CLIENT_ID!.trim(), clientSecret: env.PROCORE_ANALYTICS_SYNC_CLIENT_SECRET!.trim() };
@@ -84,6 +104,9 @@ export function procoreServiceCredentials(env: NodeJS.ProcessEnv = process.env) 
 // These identifiers are a fixed allowlist, never request input. Separate tables
 // leave the existing app's live leases/quota intact and support rolling deploys.
 export function procoreCoordinationTables(connection = currentProcoreConnection()) {
+  if (connection === 'billing') return {
+    gates: 'procore_billing_request_gates', controls: 'procore_billing_sync_controls', usage: 'procore_billing_api_usage',
+  };
   if (connection === 'analytics-sync') return {
     gates: 'procore_analytics_request_gates', controls: 'procore_analytics_sync_controls', usage: 'procore_analytics_api_usage',
   };
